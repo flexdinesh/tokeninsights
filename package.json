@@ -7,16 +7,13 @@
     "node": ">=24"
   },
   "scripts": {
-    "check-schema": "node scripts/check-schema.ts",
-    "build:server": "node --check plugins/opencode-server/src/index.ts",
-    "build:tui": "esbuild plugins/opencode-tui/src/index.tsx --bundle --platform=node --format=esm --target=node24 --jsx=automatic --jsx-import-source=@opentui/solid --outfile=plugins/opencode-tui/dist/index.js --external:@opencode-ai/plugin --external:@opencode-ai/plugin/tui --external:solid-js --external:@opentui/solid --external:@opentui/solid/jsx-runtime --external:@opentui/solid/jsx-dev-runtime --external:better-sqlite3",
-    "build:writer": "node --check plugins/opencode-server/src/oc-tokeninsights-writer.ts",
-    "typecheck:pi": "cd plugins/pi && pnpm run typecheck",
-    "smoke:plugins": "pnpm run build:server && pnpm run build:tui && pnpm run build:writer && pnpm run typecheck:pi",
-    "test:go": "cd cli && go test ./...",
-    "build:cli": "cd cli && go build -o tokeninsights-cli ./cmd/tokeninsights-cli",
-    "smoke:db": "cd cli && ./tokeninsights-cli --db-path ~/.local/state/tokeninsights/tokeninsights.sqlite --today",
-    "verify:all": "pnpm run check-schema && pnpm run smoke:plugins && pnpm run test:go && pnpm run build:cli"
+    "check-schema": "pnpm --filter check-schema run check-schema",
+    "build:opencode-server": "pnpm --filter @tokeninsights/opencode-server run build",
+    "build:opencode-tui": "pnpm --filter @tokeninsights/opencode-tui run build",
+    "build:pi": "pnpm --filter pi-tokeninsights run build",
+    "build:cli": "pnpm --filter tokeninsights-cli run build",
+    "build": "pnpm run build:opencode-server && pnpm run build:opencode-tui && pnpm run build:pi && pnpm run build:cli",
+    "test": "pnpm --filter tokeninsights-cli run test"
   },
   "devDependencies": {
     "esbuild": "^0.25.0"

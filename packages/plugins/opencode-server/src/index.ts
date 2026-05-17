@@ -179,7 +179,7 @@ async function createRequestStorage(path: string, retention: number): Promise<Re
   mkdirSync(dirname(path), { recursive: true })
 
   const db = new Database(path)
-  const schemaSql = await readFile(new URL("../../schema/schema.sql", import.meta.url), "utf8")
+  const schemaSql = await readFile(new URL("../../../schema/schema.sql", import.meta.url), "utf8")
   applySchema(db, schemaSql)
 
   const insertRequest = db.prepare(`

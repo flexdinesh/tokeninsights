@@ -88,7 +88,7 @@ Remove any `oc-tokeninspector` entry from your `~/.config/opencode/opencode.json
 The OpenCode plugins are package directories. Link them with pnpm instead of symlinking individual files:
 
 ```bash
-cd plugins/opencode-server
+cd packages/plugins/opencode-server
 pnpm install
 pnpm link --global
 
@@ -127,7 +127,7 @@ The Pi extension package name has changed:
 **Action:** Link the package and add it to Pi settings:
 
 ```bash
-cd plugins/pi
+cd packages/plugins/pi
 pnpm install
 pnpm link --global
 ```

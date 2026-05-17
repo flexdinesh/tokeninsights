@@ -1,0 +1,12 @@
+{
+  "name": "check-schema",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "check-schema": "node check-schema.ts"
+  }
+}

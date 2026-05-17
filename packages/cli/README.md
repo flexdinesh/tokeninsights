@@ -7,7 +7,7 @@ The CLI reads the SQLite database directly, aggregates rows from the OpenCode `o
 ## Usage
 
 ```sh
-~/workspace/tokeninsights/cli/tokeninsights-cli --db-path ~/.local/state/tokeninsights/tokeninsights.sqlite
+~/workspace/tokeninsights/packages/cli/tokeninsights-cli --db-path ~/.local/state/tokeninsights/tokeninsights.sqlite
 ```
 
 The default interactive view shows the current week. Press `q` to quit. Use `↑/↓` or `j/k` to scroll vertically, `←/→` or `h/l` to scroll horizontally, and `home`/`end` to jump to the start/end of the horizontal table viewport.

@@ -10,8 +10,8 @@ Full architecture, schema contract, event flow, and invariants are in [`docs/des
 - **Never use `any`** or type assertions (`!`, `as Type`) in TypeScript.
 - **Plugin and CLI are one project**. When changing storage, schema, events, SQL, aggregation, metric names, table columns, docs, or tests, update both sides in the same task.
 - **Default DB path** is `~/.local/state/tokeninsights/tokeninsights.sqlite`; writer overrides use `TOKENINSIGHTS_DB_PATH` and `TOKENINSIGHTS_RETENTION_DAYS`.
-- **Schema is the contract**. `schema/schema.sql` is the single source of truth. Plugin auto-migrates from it; CLI validates `PRAGMA user_version` against it.
-- **Schema changes require explicit user approval**. Before modifying `schema/schema.sql`, table structures, column definitions, or any cross-language schema contract, clearly explain the reasons to the user and ask for explicit approval. Never make silent or implicit schema changes — even for non-breaking additions.
+- **Schema is the contract**. `packages/schema/schema.sql` is the single source of truth. Plugin auto-migrates from it; CLI validates `PRAGMA user_version` against it.
+- **Schema changes require explicit user approval**. Before modifying `packages/schema/schema.sql`, table structures, column definitions, or any cross-language schema contract, clearly explain the reasons to the user and ask for explicit approval. Never make silent or implicit schema changes — even for non-breaking additions.
 - **TPS is first-class**. Do not remove `oc_tps_samples`, `tps avg`, `tps mean`, or `tps median` when changing token schema.
 - **`session_id` is required** for every durable row. Never allow token data without it.
 - **Prefer real token data** over estimated stream deltas. `message.part.delta` is live UI only.
@@ -21,8 +21,8 @@ Full architecture, schema contract, event flow, and invariants are in [`docs/des
 
 ## Change Checklist
 
-- Schema changed? Update `schema/schema.sql`, then run `pnpm run check-schema`.
-- Schema changed? Update `cli/internal/db/schema.go` constants so Go tests pass.
+- Schema changed? Update `packages/schema/schema.sql`, then run `pnpm run check-schema`.
+- Schema changed? Update `packages/cli/internal/db/schema.go` constants so Go tests pass.
 - Plugin row shape or token semantics changed? Update CLI query structs, SQL, aggregation, rendering, tests, README, and `docs/design.md`.
 - CLI query columns changed? Update `sample`, `querySamples`, scan order, aggregation, rendering, tests, README, and `docs/design.md`.
 - Grouping changed? Update sorting and table alignment tests.
@@ -37,15 +37,14 @@ Full architecture, schema contract, event flow, and invariants are in [`docs/des
 pnpm run check-schema
 ```
 
-### Plugin smoke build (TypeScript changes)
+### Build all plugins and CLI
 
 ```sh
-pnpm run smoke:plugins
+pnpm run build
 ```
 
-### CLI verification (Go changes)
+### CLI tests
 
 ```sh
-pnpm run test:go
-pnpm run build:cli
+pnpm run test
 ```

@@ -9,8 +9,7 @@
     "node": ">=24"
   },
   "scripts": {
-    "build": "node --check src/index.ts",
-    "build:writer": "node --check src/oc-tokeninsights-writer.ts"
+    "build": "node --check src/index.ts && node --check src/oc-tokeninsights-writer.ts"
   },
   "dependencies": {
     "better-sqlite3": "^11.10.0"

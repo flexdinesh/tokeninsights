@@ -6,47 +6,51 @@ See [`docs/design.md`](docs/design.md) for full architecture, schema contract, e
 
 ## Code Organization
 
-- `plugins/opencode-tui/` — OpenCode TUI plugin package (`@tokeninsights/opencode-tui`)
-- `plugins/opencode-server/` — OpenCode server plugin package (`@tokeninsights/opencode-server`)
-- `plugins/pi/` — Pi extension package
-- `cli/` — Go CLI (`tokeninsights-cli`) that queries the SQLite DB
-- `schema/schema.sql` — single source of truth for SQLite schema
-- `scripts/check-schema.ts` — cross-language schema contract validator
+- `packages/plugins/opencode-tui/` — OpenCode TUI plugin package (`@tokeninsights/opencode-tui`)
+- `packages/plugins/opencode-server/` — OpenCode server plugin package (`@tokeninsights/opencode-server`)
+- `packages/plugins/pi/` — Pi extension package
+- `packages/cli/` — Go CLI (`tokeninsights-cli`) that queries the SQLite DB
+- `packages/schema/schema.sql` — single source of truth for SQLite schema
+- `packages/scripts/check-schema.ts` — cross-language schema contract validator
 
 ## Development
 
 ### When to run what
 
-| You changed                                                    | Run                                                   |
-| -------------------------------------------------------------- | ----------------------------------------------------- |
-| `schema/schema.sql`                                            | `pnpm run check-schema`                               |
-| Any `.ts` in `plugins/`                                        | `pnpm run smoke:plugins`                              |
-| Any `.go` in `cli/`                                            | `pnpm run test:go && pnpm run build:cli`              |
-| Storage, schema, events, SQL, aggregation, rendering, or tests | Update **both** plugin and CLI; `pnpm run verify:all` |
+| You changed                                                    | Run                                                                   |
+| -------------------------------------------------------------- | --------------------------------------------------------------------- |
+| `packages/schema/schema.sql`                                   | `pnpm run check-schema`                                               |
+| Any `.ts` in `packages/plugins/`                               | `pnpm run build`                                                      |
+| Any `.go` in `packages/cli/`                                   | `pnpm run test && pnpm run build:cli`                                 |
+| Storage, schema, events, SQL, aggregation, rendering, or tests | Update **both** plugin and CLI; `pnpm run build && pnpm run test`     |
 
-> ⚠️ **Schema changes are user-approved only.** Never modify `schema/schema.sql` without explicit user approval, even for additive changes. Always explain the rationale and ask first.
+> ⚠️ **Schema changes are user-approved only.** Never modify `packages/schema/schema.sql` without explicit user approval, even for additive changes. Always explain the rationale and ask first.
 
 ### Build everything from a fresh checkout
 
-TokenInsights targets Node 24+. The OpenCode server plugin uses native Node TypeScript at runtime; the OpenCode TUI plugin is TSX and must be compiled to `plugins/opencode-tui/dist/index.js`.
+TokenInsights targets Node 24+. The OpenCode server plugin uses native Node TypeScript at runtime; the OpenCode TUI plugin is TSX and must be compiled to `packages/plugins/opencode-tui/dist/index.js`.
 
 ```sh
 pnpm install
-pnpm run verify:all
+pnpm run check-schema
+pnpm run build
+pnpm run test
 ```
 
-`verify:all` runs schema validation, plugin smoke checks, Go tests, and the CLI build.
+`build` builds the OpenCode plugins, Pi extension, and CLI. `test` runs all tests.
 
-### Plugin smoke builds
+### Plugin builds
 
 ```sh
-pnpm run smoke:plugins
+pnpm run build:opencode-server
+pnpm run build:opencode-tui
+pnpm run build:pi
 ```
 
 ### CLI verification
 
 ```sh
-pnpm run test:go
+pnpm run test
 pnpm run build:cli
 ```
 
@@ -56,7 +60,7 @@ Build the CLI first, then run against your local database:
 
 ```sh
 pnpm run build:cli
-pnpm run smoke:db
+./packages/cli/tokeninsights-cli --db-path ~/.local/state/tokeninsights/tokeninsights.sqlite --today
 ```
 
 ## Install OpenCode Plugins
@@ -64,7 +68,7 @@ pnpm run smoke:db
 Install dependencies, build the TSX TUI package, and link the local plugin packages with pnpm:
 
 ```sh
-cd plugins/opencode-server
+cd packages/plugins/opencode-server
 pnpm install
 pnpm link --global
 
@@ -100,7 +104,7 @@ Environment overrides for writers:
 Install dependencies, link the local Pi package with pnpm, and add the linked package name to Pi settings:
 
 ```sh
-cd plugins/pi
+cd packages/plugins/pi
 pnpm install
 pnpm link --global
 ```
