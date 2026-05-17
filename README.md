@@ -6,10 +6,9 @@ See [`docs/design.md`](docs/design.md) for full architecture, schema contract, e
 
 ## Code Organization
 
-- `plugins/opencode-tui/` — OpenCode TUI plugin
-- `plugins/opencode-server/` — OpenCode server plugin
-- `plugins/shared/` — Shared types, schema migration, writer client, writer worker
-- `plugins/pi/` — Pi extension
+- `plugins/opencode-tui/` — OpenCode TUI plugin package (`@tokeninsights/opencode-tui`)
+- `plugins/opencode-server/` — OpenCode server plugin package (`@tokeninsights/opencode-server`)
+- `plugins/pi/` — Pi extension package
 - `cli/` — Go CLI (`tokeninsights-cli`) that queries the SQLite DB
 - `schema/schema.sql` — single source of truth for SQLite schema
 - `scripts/check-schema.ts` — cross-language schema contract validator
@@ -51,40 +50,39 @@ npm run smoke:db
 
 ## Install OpenCode Plugins
 
-### Server plugin (auto-discovered)
-
-OpenCode auto-discovers server plugins in `~/.config/opencode/plugins/`. Symlink the server plugin there:
+Link the local plugin packages with pnpm:
 
 ```sh
-mkdir -p ~/.config/opencode/plugins
-ln -s "$PWD/plugins/opencode-server/oc-tokeninsights-server.ts" ~/.config/opencode/plugins/
+cd plugins/opencode-server
+pnpm link --global
+
+cd ../opencode-tui
+pnpm link --global
 ```
 
-Then **remove** any `tokeninsights` entry from `opencode.jsonc`.
+Configure OpenCode to load the package names rather than file paths.
 
-### TUI plugin (explicit config)
+Server plugin (`~/.config/opencode/opencode.jsonc`):
 
-TUI plugins do **not** auto-discover. Add the TUI plugin to your per-OS `tui.json`:
-
-**macOS** (`~/.config/opencode/tui.json`):
-```json
+```jsonc
 {
   "plugin": [
-    "/Users/dineshpandiyan/workspace/tokeninsights/plugins/opencode-tui/oc-tokeninsights.tsx"
+    "@tokeninsights/opencode-server"
   ]
 }
 ```
 
-**Linux** (`~/.config/opencode/tui.json`):
+TUI plugin (`~/.config/opencode/tui.json`):
+
 ```json
 {
   "plugin": [
-    "/home/dee/workspace/tokeninsights/plugins/opencode-tui/oc-tokeninsights.tsx"
+    "@tokeninsights/opencode-tui"
   ]
 }
 ```
 
-Do **not** add `plugins/shared/oc-tokeninsights-writer.ts` or `plugins/shared/writer-client.ts` to config. The writer is a worker module loaded internally by the server plugin.
+The server package contains its worker module internally. Do not add `oc-tokeninsights-writer.ts` or `writer-client.ts` as separate plugins.
 
 Default DB path: `~/.local/state/tokeninsights/tokeninsights.sqlite`
 
@@ -95,13 +93,13 @@ Environment overrides for writers:
 
 ## Install Pi Extension
 
-Pi extensions auto-discover from `~/.pi/agent/extensions/`. Copy or symlink the extension directory there and install its dependency:
+Pi extensions auto-discover from `~/.pi/agent/extensions/`. Copy or symlink the extension directory there and install its dependency with pnpm:
 
 ```sh
 mkdir -p ~/.pi/agent/extensions
 ln -s "$PWD/plugins/pi" ~/.pi/agent/extensions/pi-tokeninsights
 cd ~/.pi/agent/extensions/pi-tokeninsights
-npm install
+pnpm install
 ```
 
 The Pi extension writes to the same TokenInsights DB as the OpenCode plugins (`~/.local/state/tokeninsights/tokeninsights.sqlite`) but stores data in the `pi_*` table family. The CLI reads both `oc_*` and `pi_*` tables and shows a `harness` column (`oc` or `pi`) to distinguish sources.

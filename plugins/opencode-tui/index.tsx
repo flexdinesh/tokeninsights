@@ -5,7 +5,7 @@ import { createMemo, createSignal } from "solid-js"
 import type {
   StreamSample,
   TokenStorageConfig,
-} from "../shared/types.ts"
+} from "./types.ts"
 
 const STREAM_WINDOW_MS = 5_000
 const LIVE_STALE_MS = 1_500

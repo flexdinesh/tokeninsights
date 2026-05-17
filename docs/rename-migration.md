@@ -83,47 +83,43 @@ If you use a custom DB path via `TOKENINSIGHTS_DB_PATH` (or `TOKENINSPECTOR_DB_P
 
 Remove any `oc-tokeninspector` entry from your `~/.config/opencode/opencode.jsonc`.
 
-### 4b. Recreate plugin symlinks
+### 4b. Link the plugin packages
 
-The plugin file names have changed:
-
-| Old symlink target | New symlink target |
-|---|---|
-| `plugins/opencode-server/oc-tokeninspector-server.ts` | `plugins/opencode-server/oc-tokeninsights-server.ts` |
-| `plugins/opencode-tui/oc-tokeninspector.tsx` | `plugins/opencode-tui/oc-tokeninsights.tsx` |
-
-**Action:** Recreate the symlinks in `~/.config/opencode/plugins/`:
+The OpenCode plugins are package directories. Link them with pnpm instead of symlinking individual files:
 
 ```bash
-# Remove old symlinks
-rm -f ~/.config/opencode/plugins/oc-tokeninspector-server.ts
-rm -f ~/.config/opencode/plugins/oc-tokeninspector.tsx
+cd plugins/opencode-server
+pnpm link --global
 
-# Create new symlinks (adjust $PWD to your clone path)
-ln -s "$PWD/plugins/opencode-server/oc-tokeninsights-server.ts" \
-   ~/.config/opencode/plugins/
-ln -s "$PWD/plugins/opencode-tui/oc-tokeninsights.tsx" \
-   ~/.config/opencode/plugins/
+cd ../opencode-tui
+pnpm link --global
 ```
 
-### 4c. Update `opencode.jsonc`
+### 4c. Update OpenCode config
 
-Add the new plugin entries. The plugin ID has changed from `oc-tokeninspector` to `oc-tokeninsights`:
+Add the new package entries. The plugin ID has changed from `oc-tokeninspector` to `oc-tokeninsights`:
+
+Server plugin (`~/.config/opencode/opencode.jsonc`):
 
 ```jsonc
 {
-  "plugins": {
-    "server": [
-      "/home/dee/workspace/tokeninsights/plugins/opencode-server/oc-tokeninsights-server.ts"
-    ],
-    "tui": [
-      "/home/dee/workspace/tokeninsights/plugins/opencode-tui/oc-tokeninsights.tsx"
-    ]
-  }
+  "plugin": [
+    "@tokeninsights/opencode-server"
+  ]
 }
 ```
 
-> **Do not** add `plugins/shared/oc-tokeninsights-writer.ts` or `plugins/shared/writer-client.ts` to the config. The writer is a worker module loaded internally by the server plugin.
+TUI plugin (`~/.config/opencode/tui.json`):
+
+```json
+{
+  "plugin": [
+    "@tokeninsights/opencode-tui"
+  ]
+}
+```
+
+> **Do not** add `oc-tokeninsights-writer.ts` or `writer-client.ts` to the config. The writer is a worker module loaded internally by the server plugin package.
 
 ---
 
@@ -144,9 +140,9 @@ rm -f ~/.pi/agent/extensions/pi-tokeninspector
 # Create new symlink (adjust $PWD to your clone path)
 ln -s "$PWD/plugins/pi" ~/.pi/agent/extensions/pi-tokeninsights
 
-# Rebuild the extension
+# Install the extension dependencies
 cd ~/.pi/agent/extensions/pi-tokeninsights
-npm install   # or bun install
+pnpm install
 ```
 
 ---
@@ -168,8 +164,8 @@ git remote set-url origin git@github.com:flexdinesh/tokeninsights.git
 - [ ] Rename environment variables (`TOKENINSPECTOR_*` → `TOKENINSIGHTS_*`)
 - [ ] Update CLI binary references (`tokeninspector-cli` → `tokeninsights-cli`)
 - [ ] Move database file to new location (if using default path)
-- [ ] Recreate OpenCode plugin symlinks with new file names
-- [ ] Update `opencode.jsonc` with new plugin ID (`oc-tokeninsights`)
+- [ ] Link OpenCode plugin packages with `pnpm link --global`
+- [ ] Update OpenCode config with package names (`@tokeninsights/opencode-server`, `@tokeninsights/opencode-tui`)
 - [ ] Recreate Pi extension symlink (`pi-tokeninsights`)
 - [ ] Update git remote URL (after GitHub repo rename)
 - [ ] Rebuild CLI from source: `npm run build:cli`

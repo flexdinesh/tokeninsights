@@ -2,8 +2,8 @@ import { mkdirSync } from "node:fs"
 import { dirname, isAbsolute, join } from "node:path"
 import { Database } from "bun:sqlite"
 import type { Plugin } from "@opencode-ai/plugin"
-import { createTokenStorage } from "../shared/writer-client.ts"
-import { applySchema } from "../shared/schema-migrate.ts"
+import { createTokenStorage } from "./writer-client.ts"
+import { applySchema } from "./schema-migrate.ts"
 import type {
   MessageInfo,
   MessageInfoUpdate,
@@ -17,7 +17,7 @@ import type {
   ToolCallRow,
   ToolCallStatus,
   TpsSampleRow,
-} from "../shared/types.ts"
+} from "./types.ts"
 
 const DEFAULT_DB_NAME = "tokeninsights.sqlite"
 const DEFAULT_RETENTION_DAYS = 365
@@ -275,7 +275,7 @@ export const OcTokenInsightsServer: Plugin = async () => {
     if (tokenInitFailed) return undefined
     try {
       tokenStorage = createTokenStorage(
-        new URL("../shared/oc-tokeninsights-writer.ts", import.meta.url),
+        new URL("./oc-tokeninsights-writer.ts", import.meta.url),
         { dbPath: dbPath(), retentionDays: retentionDays() },
         () => {
           console.error("oc-tokeninsights-server: token worker error")

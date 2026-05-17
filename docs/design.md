@@ -13,8 +13,8 @@ TPS (tokens per second) is a first-class project metric. Do not remove persisted
 ```
 ┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
 │  OpenCode TUI   │     │  OpenCode Server│     │   Pi Extension  │
-│  oc-tokeninsights│     │oc-tokeninsights│     │ pi-tokeninsights│
-│     .tsx        │     │   -server.ts    │     │    index.ts     │
+│  @tokeninsights │     │ @tokeninsights │     │ pi-tokeninsights│
+│ /opencode-tui  │     │/opencode-server│     │    index.ts     │
 └────────┬────────┘     └────────┬────────┘     └────────┬────────┘
          │                       │                       │
          │ reads                 │ writes                │ writes
@@ -167,7 +167,7 @@ Identical schema to `oc_tool_calls`, using Pi `tool_execution_start` and `tool_e
 
 ### Schema Contract
 
-Plugin writers auto-migrate the DB using `plugins/shared/schema-migrate.ts`, which reads `schema/schema.sql` at init time. The migration parses `CREATE TABLE IF NOT EXISTS` and `ALTER TABLE ADD COLUMN` for missing columns.
+Plugin writers auto-migrate the DB using `plugins/opencode-server/schema-migrate.ts`, which reads `schema/schema.sql` at init time. The migration parses `CREATE TABLE IF NOT EXISTS` and `ALTER TABLE ADD COLUMN` for missing columns.
 
 **Any modification to `schema/schema.sql` or related cross-language schema contract requires explicit user approval.** Clearly surface the rationale and impact to the user and ask for explicit approval before implementation — even for non-breaking additive changes.
 
@@ -191,7 +191,7 @@ Missing `provider` or `model` must not drop token data. Store, render, and query
 
 ## Plugin Event Flow
 
-### TUI Plugin (`oc-tokeninsights.tsx`)
+### TUI Plugin (`plugins/opencode-tui/index.tsx`)
 
 The TUI plugin is **read-only** for durable data. It handles:
 
@@ -213,7 +213,7 @@ TPS <live> | AVG <session avg> | TTFT <session avg ttft>
 
 Live TPS uses the last 5 seconds of estimated stream deltas and hides when idle/stale. Session average and TTFT are queried from `oc_tps_samples` every `BANNER_REFRESH_MS` (default 2000 ms) and persist across TUI restarts.
 
-### Server Plugin (`oc-tokeninsights-server.ts`)
+### Server Plugin (`plugins/opencode-server/index.ts`)
 
 Runs as an OpenCode server plugin and is the **sole writer** of OpenCode token data.
 
@@ -361,12 +361,14 @@ Even the items below require explicit user approval before implementation. Surfa
 
 | Directory / File | Role |
 |-----------------|------|
-| `plugins/opencode-tui/oc-tokeninsights.tsx` | TUI plugin entry point; live display, DB queries |
-| `plugins/opencode-server/oc-tokeninsights-server.ts` | Server plugin; durable collection, LLM request and tool-call tracking |
-| `plugins/shared/oc-tokeninsights-writer.ts` | Bun worker; SQLite writes, schema migration, pruning |
-| `plugins/shared/writer-client.ts` | Shared worker client; used by both TUI and server plugins |
-| `plugins/shared/types.ts` | Shared TypeScript types (plugin + worker + server) |
-| `plugins/shared/schema-migrate.ts` | Auto-migration logic parsed from `schema/schema.sql` |
+| `plugins/opencode-tui/index.tsx` | TUI plugin entry point; live display, DB queries |
+| `plugins/opencode-tui/package.json` | OpenCode TUI plugin package manifest (`@tokeninsights/opencode-tui`) |
+| `plugins/opencode-server/index.ts` | Server plugin; durable collection, LLM request and tool-call tracking |
+| `plugins/opencode-server/oc-tokeninsights-writer.ts` | Bun worker; SQLite writes, schema migration, pruning |
+| `plugins/opencode-server/writer-client.ts` | Worker client used by the server plugin |
+| `plugins/opencode-server/types.ts` | TypeScript types for OpenCode durable rows and schema validation |
+| `plugins/opencode-server/schema-migrate.ts` | Auto-migration logic parsed from `schema/schema.sql` |
+| `plugins/opencode-server/package.json` | OpenCode server plugin package manifest (`@tokeninsights/opencode-server`) |
 | `plugins/pi/index.ts` | Pi extension entry point; event handlers, DB writes |
 | `plugins/pi/package.json` | Pi extension dependency manifest (`better-sqlite3`) |
 | `schema/schema.sql` | Single source of truth for SQLite schema |

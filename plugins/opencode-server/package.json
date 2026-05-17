@@ -1,0 +1,15 @@
+{
+  "name": "@tokeninsights/opencode-server",
+  "version": "1.0.0",
+  "description": "TokenInsights OpenCode server plugin",
+  "type": "module",
+  "main": "./index.ts",
+  "exports": "./index.ts",
+  "scripts": {
+    "build": "bun build index.ts --target=bun --outfile=/tmp/tokeninsights-opencode-server-check.js --external \"@opencode-ai/plugin\"",
+    "build:writer": "bun build oc-tokeninsights-writer.ts --target=bun --outfile=/tmp/tokeninsights-opencode-writer-check.js"
+  },
+  "peerDependencies": {
+    "@opencode-ai/plugin": "*"
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "name": "@tokeninsights/opencode-tui",
+  "version": "1.0.0",
+  "description": "TokenInsights OpenCode TUI plugin",
+  "type": "module",
+  "main": "./index.tsx",
+  "exports": "./index.tsx",
+  "scripts": {
+    "build": "bun build index.tsx --target=bun --outfile=/tmp/tokeninsights-opencode-tui-check.js --external \"solid-js\" --external \"@opentui/solid\" --external \"@opentui/solid/jsx-dev-runtime\""
+  },
+  "peerDependencies": {
+    "@opencode-ai/plugin": "*",
+    "@opentui/solid": "*",
+    "solid-js": "*"
+  }
+}
