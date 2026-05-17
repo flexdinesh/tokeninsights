@@ -60,7 +60,7 @@ Every occurrence of `tokeninspector` was renamed to `tokeninsights` across the e
 ## Gotchas
 
 - Users must **manually migrate their DB file** from the old default path to the new one, or set `TOKENINSIGHTS_DB_PATH` to the old location.
-- OpenCode plugin symlinks in `~/.config/opencode/plugins/` must be recreated pointing to the renamed files.
-- Pi extension symlink in `~/.pi/agent/extensions/` must be recreated as `pi-tokeninsights`.
+- OpenCode plugin config must use the renamed package entries.
+- Pi package settings must use the renamed package entry `pi-tokeninsights`.
 - Git remote URL (`github.com:flexdinesh/tokeninspector`) must be updated after the GitHub repo is renamed.
 - `scripts/check-schema.ts` previously used hardcoded absolute paths (`/Users/dineshpandiyan/workspace/...`). Fixed as part of this work to use `new URL(..., import.meta.url).pathname`.

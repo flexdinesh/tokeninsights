@@ -89,31 +89,24 @@ The OpenCode plugins are package directories. Link them with pnpm instead of sym
 
 ```bash
 cd plugins/opencode-server
+pnpm install
 pnpm link --global
 
 cd ../opencode-tui
+pnpm install
+pnpm run build
 pnpm link --global
 ```
 
 ### 4c. Update OpenCode config
 
-Add the new package entries. The plugin ID has changed from `oc-tokeninspector` to `oc-tokeninsights`:
-
-Server plugin (`~/.config/opencode/opencode.jsonc`):
+Add the new linked package entries. The plugin ID has changed from `oc-tokeninspector` to `oc-tokeninsights` (`~/.config/opencode/opencode.jsonc`):
 
 ```jsonc
 {
+  "$schema": "https://opencode.ai/config.json",
   "plugin": [
-    "@tokeninsights/opencode-server"
-  ]
-}
-```
-
-TUI plugin (`~/.config/opencode/tui.json`):
-
-```json
-{
-  "plugin": [
+    "@tokeninsights/opencode-server",
     "@tokeninsights/opencode-tui"
   ]
 }
@@ -125,24 +118,26 @@ TUI plugin (`~/.config/opencode/tui.json`):
 
 ## 5. Pi Extension (REQUIRED for Pi users)
 
-The Pi extension package name and symlink path have changed:
+The Pi extension package name has changed:
 
 | Old | New |
 |---|---|
 | `pi-tokeninspector` | `pi-tokeninsights` |
 
-**Action:** Recreate the extension symlink:
+**Action:** Link the package and add it to Pi settings:
 
 ```bash
-# Remove old symlink
-rm -f ~/.pi/agent/extensions/pi-tokeninspector
-
-# Create new symlink (adjust $PWD to your clone path)
-ln -s "$PWD/plugins/pi" ~/.pi/agent/extensions/pi-tokeninsights
-
-# Install the extension dependencies
-cd ~/.pi/agent/extensions/pi-tokeninsights
+cd plugins/pi
 pnpm install
+pnpm link --global
+```
+
+Pi settings (`~/.pi/agent/settings.json`):
+
+```json
+{
+  "packages": ["pi-tokeninsights"]
+}
 ```
 
 ---
@@ -166,6 +161,6 @@ git remote set-url origin git@github.com:flexdinesh/tokeninsights.git
 - [ ] Move database file to new location (if using default path)
 - [ ] Link OpenCode plugin packages with `pnpm link --global`
 - [ ] Update OpenCode config with package names (`@tokeninsights/opencode-server`, `@tokeninsights/opencode-tui`)
-- [ ] Recreate Pi extension symlink (`pi-tokeninsights`)
+- [ ] Link Pi package with `pnpm link --global` and add `pi-tokeninsights` to Pi `packages` settings
 - [ ] Update git remote URL (after GitHub repo rename)
 - [ ] Rebuild CLI from source: `pnpm run build:cli`

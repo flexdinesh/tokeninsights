@@ -74,21 +74,15 @@ pnpm run build
 pnpm link --global
 ```
 
-Configure OpenCode to load the package names rather than file paths.
-
-Server plugin (`~/.config/opencode/opencode.jsonc`):
+Configure OpenCode to load the linked package names rather than file paths (`~/.config/opencode/opencode.jsonc`):
 
 ```jsonc
 {
-  "plugin": ["@tokeninsights/opencode-server"],
-}
-```
-
-TUI plugin (`~/.config/opencode/tui.json`):
-
-```json
-{
-  "plugin": ["@tokeninsights/opencode-tui"]
+  "$schema": "https://opencode.ai/config.json",
+  "plugin": [
+    "@tokeninsights/opencode-server",
+    "@tokeninsights/opencode-tui"
+  ]
 }
 ```
 
@@ -103,13 +97,20 @@ Environment overrides for writers:
 
 ## Install Pi Extension
 
-Pi extensions auto-discover from `~/.pi/agent/extensions/`. Copy or symlink the extension directory there and install its dependency with pnpm:
+Install dependencies, link the local Pi package with pnpm, and add the linked package name to Pi settings:
 
 ```sh
-mkdir -p ~/.pi/agent/extensions
-ln -s "$PWD/plugins/pi" ~/.pi/agent/extensions/pi-tokeninsights
-cd ~/.pi/agent/extensions/pi-tokeninsights
+cd plugins/pi
 pnpm install
+pnpm link --global
+```
+
+Pi settings (`~/.pi/agent/settings.json`):
+
+```json
+{
+  "packages": ["pi-tokeninsights"]
+}
 ```
 
 The Pi extension writes to the same TokenInsights DB as the OpenCode plugins (`~/.local/state/tokeninsights/tokeninsights.sqlite`) but stores data in the `pi_*` table family. The CLI reads both `oc_*` and `pi_*` tables and shows a `harness` column (`oc` or `pi`) to distinguish sources.

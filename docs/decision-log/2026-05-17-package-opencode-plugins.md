@@ -11,9 +11,9 @@ tags:
   - pnpm
 related_paths:
   - plugins/opencode-server/package.json
-  - plugins/opencode-server/index.ts
+  - plugins/opencode-server/src/index.ts
   - plugins/opencode-tui/package.json
-  - plugins/opencode-tui/index.tsx
+  - plugins/opencode-tui/src/index.tsx
   - plugins/pi/package.json
   - README.md
   - docs/design.md
@@ -29,7 +29,7 @@ OpenCode plugins are now package-shaped directories, matching the Pi extension p
 
 - `plugins/opencode-server/` is package `@tokeninsights/opencode-server`.
 - `plugins/opencode-tui/` is package `@tokeninsights/opencode-tui`.
-- Entrypoints are package-standard `index.ts` and `index.tsx`.
+- Entrypoints are package-standard `src/index.ts` and `src/index.tsx`.
 - `plugins/shared/` is removed.
 - Each OpenCode plugin owns only the files it needs.
 - Plugin installation docs use `pnpm link --global` and package names instead of symlinked file paths.
@@ -44,10 +44,10 @@ The server package owns the shared implementation required for durable OpenCode 
 - `writer-client.ts`
 - `oc-tokeninsights-writer.ts`
 
-The TUI package only keeps a minimal local `types.ts` for its read-only/live display types. Schema validation reads TS row types from `plugins/opencode-server/types.ts`.
+The TUI package only keeps a minimal local `src/types.ts` for its read-only/live display types. Schema validation reads TS row types from `plugins/opencode-server/src/types.ts`.
 
 ## Tradeoffs and gotchas
 
-Duplicating only needed files avoids dead code in the TUI package, but shared concepts are no longer centralized in a single folder. Future schema/type updates should treat `plugins/opencode-server/types.ts` as the OpenCode TypeScript row-type source for schema validation.
+Duplicating only needed files avoids dead code in the TUI package, but shared concepts are no longer centralized in a single folder. Future schema/type updates should treat `plugins/opencode-server/src/types.ts` as the OpenCode TypeScript row-type source for schema validation.
 
 OpenCode package resolution should be checked when updating install docs or changing package names, because package-link behavior depends on how OpenCode resolves plugins from config.

@@ -50,7 +50,7 @@ async function createTokenStorage(dbPath: string, retentionDays: number): Promis
 
   const db = new Database(dbPath)
   db.exec("PRAGMA busy_timeout = 5000")
-  const schemaSql = await readFile(new URL("../../schema/schema.sql", import.meta.url), "utf8")
+  const schemaSql = await readFile(new URL("../../../schema/schema.sql", import.meta.url), "utf8")
   applySchema(db, schemaSql)
   try {
     db.exec("PRAGMA wal_checkpoint(PASSIVE)")

@@ -1,4 +1,4 @@
-// plugins/opencode-tui/index.tsx
+// plugins/opencode-tui/src/index.tsx
 import { isAbsolute, join } from "node:path";
 import Database from "better-sqlite3";
 import { createMemo, createSignal } from "solid-js";

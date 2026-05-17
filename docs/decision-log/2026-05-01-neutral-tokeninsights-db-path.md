@@ -13,7 +13,7 @@ tags:
 related_paths:
   - plugins/opencode-server/oc-tokeninsights-server.ts
   - plugins/opencode-tui/oc-tokeninsights.tsx
-  - plugins/pi/index.ts
+  - plugins/pi/src/index.ts
   - README.md
   - cli/README.md
   - docs/design.md

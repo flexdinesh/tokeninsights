@@ -8,9 +8,9 @@
   },
   "scripts": {
     "check-schema": "node scripts/check-schema.ts",
-    "build:server": "node --check plugins/opencode-server/index.ts",
-    "build:tui": "esbuild plugins/opencode-tui/index.tsx --bundle --platform=node --format=esm --target=node24 --jsx=automatic --jsx-import-source=@opentui/solid --outfile=plugins/opencode-tui/dist/index.js --external:@opencode-ai/plugin --external:@opencode-ai/plugin/tui --external:solid-js --external:@opentui/solid --external:@opentui/solid/jsx-runtime --external:@opentui/solid/jsx-dev-runtime --external:better-sqlite3",
-    "build:writer": "node --check plugins/opencode-server/oc-tokeninsights-writer.ts",
+    "build:server": "node --check plugins/opencode-server/src/index.ts",
+    "build:tui": "esbuild plugins/opencode-tui/src/index.tsx --bundle --platform=node --format=esm --target=node24 --jsx=automatic --jsx-import-source=@opentui/solid --outfile=plugins/opencode-tui/dist/index.js --external:@opencode-ai/plugin --external:@opencode-ai/plugin/tui --external:solid-js --external:@opentui/solid --external:@opentui/solid/jsx-runtime --external:@opentui/solid/jsx-dev-runtime --external:better-sqlite3",
+    "build:writer": "node --check plugins/opencode-server/src/oc-tokeninsights-writer.ts",
     "typecheck:pi": "cd plugins/pi && pnpm run typecheck",
     "smoke:plugins": "pnpm run build:server && pnpm run build:tui && pnpm run build:writer && pnpm run typecheck:pi",
     "test:go": "cd cli && go test ./...",

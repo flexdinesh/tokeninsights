@@ -2,8 +2,13 @@
   "name": "pi-tokeninsights",
   "version": "1.0.0",
   "description": "Token and TPS tracking extension for Pi coding agent",
+  "main": "./src/index.ts",
+  "exports": "./src/index.ts",
+  "pi": {
+    "extensions": ["./src/index.ts"]
+  },
   "scripts": {
-    "typecheck": "tsc --noEmit --module esnext --moduleResolution bundler --esModuleInterop --skipLibCheck index.ts"
+    "typecheck": "tsc --noEmit --module esnext --moduleResolution bundler --esModuleInterop --skipLibCheck src/index.ts"
   },
   "dependencies": {
     "@types/better-sqlite3": "^7.6.13",

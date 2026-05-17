@@ -5,7 +5,7 @@ import { readFile } from "node:fs/promises";
 
 const SCHEMA_SQL_PATH = new URL("../schema/schema.sql", import.meta.url).pathname;
 const SCHEMA_GO_PATH = new URL("../cli/internal/db/schema.go", import.meta.url).pathname;
-const TS_TYPES_PATH = new URL("../plugins/opencode-server/types.ts", import.meta.url).pathname;
+const TS_TYPES_PATH = new URL("../plugins/opencode-server/src/types.ts", import.meta.url).pathname;
 
 const SQL_KEYWORDS = new Set([
   "PRIMARY", "KEY", "AUTOINCREMENT", "NOT", "NULL", "DEFAULT", "CHECK", "UNIQUE",

@@ -3,14 +3,14 @@
   "version": "1.0.0",
   "description": "TokenInsights OpenCode server plugin",
   "type": "module",
-  "main": "./index.ts",
-  "exports": "./index.ts",
+  "main": "./src/index.ts",
+  "exports": "./src/index.ts",
   "engines": {
     "node": ">=24"
   },
   "scripts": {
-    "build": "node --check index.ts",
-    "build:writer": "node --check oc-tokeninsights-writer.ts"
+    "build": "node --check src/index.ts",
+    "build:writer": "node --check src/oc-tokeninsights-writer.ts"
   },
   "dependencies": {
     "better-sqlite3": "^11.10.0"

@@ -13,7 +13,7 @@ tags:
 related_paths:
   - schema/schema.sql
   - plugins/opencode-server/oc-tokeninsights-server.ts
-  - plugins/pi/index.ts
+  - plugins/pi/src/index.ts
   - cli/internal/db/aggregate.go
   - cli/internal/cli/render.go
   - docs/spec/tool-runtime-duration-metrics.md
