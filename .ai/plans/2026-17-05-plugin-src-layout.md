@@ -38,7 +38,7 @@ Restructure every plugin under `plugins/` so implementation code lives in `src/`
   - `@tokeninsights/opencode-server`
   - `@tokeninsights/opencode-tui`
 - Pi uses global package links and package names in Pi `settings.json` `packages`:
-  - `pi-tokeninsights`
+  - `@tokeninsights/pi`
 - No Pi extension-directory symlink.
 - No root `plugins/pi/index.ts` shim.
 

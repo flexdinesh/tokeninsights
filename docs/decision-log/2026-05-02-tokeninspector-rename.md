@@ -30,7 +30,7 @@ Every occurrence of `tokeninspector` was renamed to `tokeninsights` across the e
 - **CLI binary**: `tokeninspector-cli` → `tokeninsights-cli`
 - **OpenCode TUI plugin ID**: `oc-tokeninspector` → `oc-tokeninsights`
 - **OpenCode server plugin export**: `OcTokenInspectorServer` → `OcTokenInsightsServer`
-- **Pi extension package name**: `pi-tokeninspector` → `pi-tokeninsights`
+- **Pi extension package name**: `pi-tokeninspector` → `@tokeninsights/pi`
 - **Environment variables**: `TOKENINSPECTOR_DB_PATH` → `TOKENINSIGHTS_DB_PATH`, `TOKENINSPECTOR_RETENTION_DAYS` → `TOKENINSIGHTS_RETENTION_DAYS`
 - **Default DB file**: `tokeninspector.sqlite` → `tokeninsights.sqlite`
 - **Default state directory**: `~/.local/state/tokeninspector/` → `~/.local/state/tokeninsights/`
@@ -61,6 +61,6 @@ Every occurrence of `tokeninspector` was renamed to `tokeninsights` across the e
 
 - Users must **manually migrate their DB file** from the old default path to the new one, or set `TOKENINSIGHTS_DB_PATH` to the old location.
 - OpenCode plugin config must use the renamed package entries.
-- Pi package settings must use the renamed package entry `pi-tokeninsights`.
+- Pi package settings must use the renamed package entry `@tokeninsights/pi`.
 - Git remote URL (`github.com:flexdinesh/tokeninspector`) must be updated after the GitHub repo is renamed.
 - `scripts/check-schema.ts` previously used hardcoded absolute paths (`/Users/dineshpandiyan/workspace/...`). Fixed as part of this work to use `new URL(..., import.meta.url).pathname`.

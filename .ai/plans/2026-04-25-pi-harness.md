@@ -74,7 +74,7 @@
 
 ### 8. Docs
 - `docs/design.md`: update architecture diagram, document Pi event flow, Pi gaps, and `pi_*` table family
-- `README.md`: add Pi extension installation instructions (symlink or copy `pi-extension/` to `~/.pi/agent/extensions/pi-tokeninsights/`)
+- `README.md`: add Pi extension installation instructions using the Pi package entry `@tokeninsights/pi`
 
 ### 9. Verification
 - `bun run scripts/check-schema.ts`

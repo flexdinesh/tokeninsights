@@ -13,7 +13,7 @@ TPS (tokens per second) is a first-class project metric. Do not remove persisted
 ```
 ┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
 │  OpenCode TUI   │     │  OpenCode Server│     │   Pi Extension  │
-│  @tokeninsights │     │ @tokeninsights │     │ pi-tokeninsights│
+│  @tokeninsights │     │ @tokeninsights │     │ @tokeninsights/pi│
 │ /opencode-tui  │     │/opencode-server│     │    index.ts     │
 └────────┬────────┘     └────────┬────────┘     └────────┬────────┘
          │                       │                       │
@@ -371,7 +371,7 @@ Even the items below require explicit user approval before implementation. Surfa
 | `packages/plugins/opencode-server/src/schema-migrate.ts` | Auto-migration logic parsed from `packages/schema/schema.sql` |
 | `packages/plugins/opencode-server/package.json` | OpenCode server plugin package manifest (`@tokeninsights/opencode-server`) |
 | `packages/plugins/pi/src/index.ts` | Pi extension entry point; event handlers, DB writes |
-| `packages/plugins/pi/package.json` | Pi extension package manifest (`pi-tokeninsights`) |
+| `packages/plugins/pi/package.json` | Pi extension package manifest (`@tokeninsights/pi`) |
 | `packages/schema/schema.sql` | Single source of truth for SQLite schema |
 | `packages/scripts/check-schema.ts` | Cross-language schema contract validator |
 | `packages/cli/cmd/tokeninsights-cli/main.go` | CLI entry point |

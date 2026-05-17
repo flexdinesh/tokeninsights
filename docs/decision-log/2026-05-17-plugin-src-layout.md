@@ -35,7 +35,7 @@ OpenCode packages are configured by package name after `pnpm link --global`:
 
 The Pi extension is configured as a Pi package after `pnpm link --global` using the package name:
 
-- `pi-tokeninsights`
+- `@tokeninsights/pi`
 
 No Pi root `index.ts` shim is kept, and Pi extension-directory symlinks are no longer part of the documented workflow.
 
@@ -57,6 +57,6 @@ Schema validation reads OpenCode row types from `plugins/opencode-server/src/typ
 
 ## Tradeoffs and gotchas
 
-Pi must load `pi-tokeninsights` through the package mechanism, not auto-discover it from `~/.pi/agent/extensions/*/index.ts`.
+Pi must load `@tokeninsights/pi` through the package mechanism, not auto-discover it from `~/.pi/agent/extensions/*/index.ts`.
 
 The OpenCode TUI package still requires a build step before linking or use, because runtime export remains `dist/index.js`.

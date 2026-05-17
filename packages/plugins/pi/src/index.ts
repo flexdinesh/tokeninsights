@@ -266,7 +266,7 @@ function initDb(): boolean {
     return true
   } catch (err) {
     dbInitFailed = true
-    console.error("pi-tokeninsights: db init failed, tracking disabled:", err)
+    console.error("@tokeninsights/pi: db init failed, tracking disabled:", err)
     return false
   }
 }
@@ -314,7 +314,7 @@ function insertToolCallRow(input: {
       input.status,
     ])
   } catch (err) {
-    console.error("pi-tokeninsights: tool call insert failed:", err)
+    console.error("@tokeninsights/pi: tool call insert failed:", err)
   }
 }
 
@@ -372,7 +372,7 @@ export default function (pi: ExtensionAPI) {
         state.thinkingLevel,
       ])
     } catch (err) {
-      console.error("pi-tokeninsights: request insert failed:", err)
+      console.error("@tokeninsights/pi: request insert failed:", err)
     }
   })
 
@@ -481,7 +481,7 @@ export default function (pi: ExtensionAPI) {
         cacheRead, cacheWrite, totalTokens,
       ])
     } catch (err) {
-      console.error("pi-tokeninsights: token event insert failed:", err)
+      console.error("@tokeninsights/pi: token event insert failed:", err)
     }
 
     // Compute TPS
@@ -502,7 +502,7 @@ export default function (pi: ExtensionAPI) {
         durationMs, ttftMs, tps,
       ])
     } catch (err) {
-      console.error("pi-tokeninsights: tps sample insert failed:", err)
+      console.error("@tokeninsights/pi: tps sample insert failed:", err)
     }
 
     pruneDaily()

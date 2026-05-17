@@ -113,7 +113,7 @@ Pi settings (`~/.pi/agent/settings.json`):
 
 ```json
 {
-  "packages": ["pi-tokeninsights"]
+  "packages": ["@tokeninsights/pi"]
 }
 ```
 
