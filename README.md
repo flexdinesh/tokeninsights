@@ -60,7 +60,7 @@ Build the CLI first, then run against your local database:
 
 ```sh
 pnpm run build:cli
-./packages/cli/tokeninsights-cli --db-path ~/.local/state/tokeninsights/tokeninsights.sqlite --today
+./packages/cli/tokeninsights-cli --today
 ```
 
 ## Install OpenCode Plugins
@@ -92,11 +92,11 @@ Configure OpenCode to load the linked package names rather than file paths (`~/.
 
 The server package contains its Node worker-thread module internally. Do not add `oc-tokeninsights-writer.ts` or `writer-client.ts` as separate plugins.
 
-Default DB path: `~/.local/state/tokeninsights/tokeninsights.sqlite`
+Default DB path: `~/.local/share/tokeninsights/tokeninsights.sqlite`
 
 Environment overrides for writers:
 
-- `TOKENINSIGHTS_DB_PATH` — absolute path, or relative to the TokenInsights state directory
+- `TOKENINSIGHTS_DB_PATH` — absolute path, or relative to the TokenInsights data directory
 - `TOKENINSIGHTS_RETENTION_DAYS` — retention window for pruning durable rows
 
 ## Install Pi Extension
@@ -117,23 +117,23 @@ Pi settings (`~/.pi/agent/settings.json`):
 }
 ```
 
-The Pi extension writes to the same TokenInsights DB as the OpenCode plugins (`~/.local/state/tokeninsights/tokeninsights.sqlite`) but stores data in the `pi_*` table family. The CLI reads both `oc_*` and `pi_*` tables and shows a `harness` column (`oc` or `pi`) to distinguish sources.
+The Pi extension writes to the same TokenInsights DB as the OpenCode plugins (`~/.local/share/tokeninsights/tokeninsights.sqlite`) but stores data in the `pi_*` table family. The CLI reads both `oc_*` and `pi_*` tables and shows a `harness` column (`oc` or `pi`) to distinguish sources.
 
 Tool calls are tracked as lifecycle rows (`started`, `completed`, `error`). The CLI `tool calls` tab shows started-call counts plus error counts per normal group; `tool breakdown` adds per-tool grouping.
 
 ## CLI Usage
 
 ```sh
-tokeninsights-cli --db-path ~/.local/state/tokeninsights/tokeninsights.sqlite --today
-tokeninsights-cli --db-path ~/.local/state/tokeninsights/tokeninsights.sqlite --week
-tokeninsights-cli --db-path ~/.local/state/tokeninsights/tokeninsights.sqlite --month
-tokeninsights-cli --db-path ~/.local/state/tokeninsights/tokeninsights.sqlite --all-time
-tokeninsights-cli --db-path ~/.local/state/tokeninsights/tokeninsights.sqlite --week --group-by=hour
-tokeninsights-cli --db-path ~/.local/state/tokeninsights/tokeninsights.sqlite --week --group-by=session
-tokeninsights-cli --db-path ~/.local/state/tokeninsights/tokeninsights.sqlite --week --provider openai --model gpt-5.5
-tokeninsights-cli --db-path ~/.local/state/tokeninsights/tokeninsights.sqlite --week --harness pi
-tokeninsights-cli --db-path ~/.local/state/tokeninsights/tokeninsights.sqlite --month
-tokeninsights-cli --db-path ~/.local/state/tokeninsights/tokeninsights.sqlite --all-time --filter-day 2026-04-24,2026-04-23
+tokeninsights-cli --today
+tokeninsights-cli --week
+tokeninsights-cli --month
+tokeninsights-cli --all-time
+tokeninsights-cli --week --group-by=hour
+tokeninsights-cli --week --group-by=session
+tokeninsights-cli --week --provider openai --model gpt-5.5
+tokeninsights-cli --week --harness pi
+tokeninsights-cli --month
+tokeninsights-cli --all-time --filter-day 2026-04-24,2026-04-23
 ```
 
 Interactive keys:

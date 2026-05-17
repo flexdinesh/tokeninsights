@@ -5,6 +5,8 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 )
@@ -16,6 +18,7 @@ const (
 	periodWeek    period = "week"
 	periodMonth   period = "month"
 	periodAllTime period = "all"
+	defaultDBName        = "tokeninsights.sqlite"
 )
 
 type groupByMode string
@@ -67,7 +70,7 @@ func parseTableOptions(args []string, stderr io.Writer, requirePeriod bool, defa
 	var month bool
 	var allTime bool
 	var queryFilters filters
-	flags.StringVar(&dbPath, "db-path", "", "path to tokeninsights sqlite db")
+	flags.StringVar(&dbPath, "db-path", defaultDBPath(), "path to tokeninsights sqlite db")
 	flags.BoolVar(&today, "today", false, "show today")
 	flags.BoolVar(&week, "week", false, "show current calendar week (Mon-Sun)")
 	flags.BoolVar(&month, "month", false, "show current calendar month")
@@ -85,8 +88,9 @@ func parseTableOptions(args []string, stderr io.Writer, requirePeriod bool, defa
 	if flags.NArg() > 0 {
 		return tableOptions{}, fmt.Errorf("unexpected argument %q\n%w", flags.Arg(0), ErrUsage)
 	}
-	if strings.TrimSpace(dbPath) == "" {
-		return tableOptions{}, fmt.Errorf("missing --db-path\n%w", ErrUsage)
+	selectedDBPath := strings.TrimSpace(dbPath)
+	if selectedDBPath == "" {
+		selectedDBPath = defaultDBPath()
 	}
 
 	selected, err := selectedPeriod(today, week, month, allTime, requirePeriod, defaultPeriod)
@@ -117,7 +121,30 @@ func parseTableOptions(args []string, stderr io.Writer, requirePeriod bool, defa
 		}
 	}
 
-	return tableOptions{dbPath: dbPath, period: selected, filters: queryFilters}, nil
+	return tableOptions{dbPath: selectedDBPath, period: selected, filters: queryFilters}, nil
+}
+
+func defaultDBPath() string {
+	return filepath.Join(defaultDataPath(), defaultDBName)
+}
+
+func defaultDataPath() string {
+	xdgDataHome := strings.TrimSpace(os.Getenv("XDG_DATA_HOME"))
+	if xdgDataHome != "" {
+		return filepath.Join(xdgDataHome, "tokeninsights")
+	}
+
+	home := strings.TrimSpace(os.Getenv("HOME"))
+	if home != "" {
+		return filepath.Join(home, ".local", "share", "tokeninsights")
+	}
+
+	cwd, err := os.Getwd()
+	if err == nil && strings.TrimSpace(cwd) != "" {
+		return filepath.Join(cwd, ".tokeninsights-data")
+	}
+
+	return filepath.Join(".", ".tokeninsights-data")
 }
 
 func selectedPeriod(today bool, week bool, month bool, allTime bool, required bool, fallback period) (period, error) {
@@ -186,4 +213,4 @@ func validateHarnesses(values stringList) error {
 	return nil
 }
 
-var ErrUsage = errors.New("usage: tokeninsights-cli --db-path PATH [--today|--week|--month|--all-time] [--session-id ID] [--provider ID] [--model ID] [--harness oc|pi] [--filter-day-from YYYY-MM-DD] [--filter-day-to YYYY-MM-DD]")
+var ErrUsage = errors.New("usage: tokeninsights-cli [--db-path PATH] [--today|--week|--month|--all-time] [--session-id ID] [--provider ID] [--model ID] [--harness oc|pi] [--filter-day-from YYYY-MM-DD] [--filter-day-to YYYY-MM-DD]")

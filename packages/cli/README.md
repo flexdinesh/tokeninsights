@@ -7,7 +7,7 @@ The CLI reads the SQLite database directly, aggregates rows from the OpenCode `o
 ## Usage
 
 ```sh
-~/workspace/tokeninsights/packages/cli/tokeninsights-cli --db-path ~/.local/state/tokeninsights/tokeninsights.sqlite
+~/workspace/tokeninsights/packages/cli/tokeninsights-cli
 ```
 
 The default interactive view shows the current week. Press `q` to quit. Use `↑/↓` or `j/k` to scroll vertically, `←/→` or `h/l` to scroll horizontally, and `home`/`end` to jump to the start/end of the horizontal table viewport.
@@ -15,15 +15,15 @@ The default interactive view shows the current week. Press `q` to quit. Use `↑
 More examples:
 
 ```sh
-tokeninsights-cli table --db-path ~/.local/state/tokeninsights/tokeninsights.sqlite --today
-tokeninsights-cli table --db-path ~/.local/state/tokeninsights/tokeninsights.sqlite --week
-tokeninsights-cli table --db-path ~/.local/state/tokeninsights/tokeninsights.sqlite --month
-tokeninsights-cli table --db-path ~/.local/state/tokeninsights/tokeninsights.sqlite --all-time
-tokeninsights-cli table --db-path ~/.local/state/tokeninsights/tokeninsights.sqlite --today --group-by=hour
-tokeninsights-cli table --db-path ~/.local/state/tokeninsights/tokeninsights.sqlite --week --group-by=hour
-tokeninsights-cli table --db-path ~/.local/state/tokeninsights/tokeninsights.sqlite --week --group-by=session
-tokeninsights-cli table --db-path ~/.local/state/tokeninsights/tokeninsights.sqlite --week --provider openai --model gpt-5.5
-tokeninsights-cli table --db-path ~/.local/state/tokeninsights/tokeninsights.sqlite --month --filter-day-from 2026-04-20 --filter-day-to 2026-04-25 --session-id ses_abc,ses_xyz
+tokeninsights-cli --today
+tokeninsights-cli --week
+tokeninsights-cli --month
+tokeninsights-cli --all-time
+tokeninsights-cli --today --group-by=hour
+tokeninsights-cli --week --group-by=hour
+tokeninsights-cli --week --group-by=session
+tokeninsights-cli --week --provider openai --model gpt-5.5
+tokeninsights-cli --month --filter-day-from 2026-04-20 --filter-day-to 2026-04-25 --session-id ses_abc,ses_xyz
 ```
 
 ## Commands
@@ -33,9 +33,9 @@ Interactive mode
 Open the styled terminal UI. Defaults to the current week when no period flag is passed.
 
 ```sh
-tokeninsights-cli --db-path ~/.local/state/tokeninsights/tokeninsights.sqlite
-tokeninsights-cli --db-path ~/.local/state/tokeninsights/tokeninsights.sqlite --today
-tokeninsights-cli --db-path ~/.local/state/tokeninsights/tokeninsights.sqlite --month --group-by=session
+tokeninsights-cli
+tokeninsights-cli --today
+tokeninsights-cli --month --group-by=session
 ```
 
 `table`
@@ -46,12 +46,12 @@ Legacy alias for interactive mode.
 
 `--db-path PATH`
 
-Required. Path to the SQLite database created by TokenInsights.
+Optional. Path to the SQLite database created by TokenInsights.
 
 Default TokenInsights DB path:
 
 ```text
-~/.local/state/tokeninsights/tokeninsights.sqlite
+~/.local/share/tokeninsights/tokeninsights.sqlite
 ```
 
 `--today`
@@ -83,8 +83,8 @@ Optional. Split the selected period by hour or session. Only one `--group-by` ca
 Optional. Filter by OpenCode session ID. Can be repeated or comma-separated.
 
 ```sh
-tokeninsights-cli table --db-path ~/.local/state/tokeninsights/tokeninsights.sqlite --week --session-id ses_abc --session-id ses_xyz
-tokeninsights-cli table --db-path ~/.local/state/tokeninsights/tokeninsights.sqlite --week --session-id ses_abc,ses_xyz
+tokeninsights-cli --week --session-id ses_abc --session-id ses_xyz
+tokeninsights-cli --week --session-id ses_abc,ses_xyz
 ```
 
 `--provider ID`
@@ -92,7 +92,7 @@ tokeninsights-cli table --db-path ~/.local/state/tokeninsights/tokeninsights.sql
 Optional. Filter by provider ID. Can be repeated or comma-separated.
 
 ```sh
-tokeninsights-cli table --db-path ~/.local/state/tokeninsights/tokeninsights.sqlite --week --provider openai --provider github-copilot
+tokeninsights-cli --week --provider openai --provider github-copilot
 ```
 
 `--model ID`
@@ -100,7 +100,7 @@ tokeninsights-cli table --db-path ~/.local/state/tokeninsights/tokeninsights.sql
 Optional. Filter by model ID. Can be repeated or comma-separated.
 
 ```sh
-tokeninsights-cli table --db-path ~/.local/state/tokeninsights/tokeninsights.sqlite --week --model gpt-5.5 --model claude-opus-4.7
+tokeninsights-cli --week --model gpt-5.5 --model claude-opus-4.7
 ```
 
 `--filter-day-from YYYY-MM-DD`
@@ -114,8 +114,8 @@ Optional. Filter to this local day (inclusive). Must be a valid `YYYY-MM-DD` dat
 These range filters apply in addition to any selected period (`--today`, `--week`, `--month`, `--all-time`).
 
 ```sh
-tokeninsights-cli table --db-path ~/.local/state/tokeninsights/tokeninsights.sqlite --month --filter-day-from 2026-04-20 --filter-day-to 2026-04-25
-tokeninsights-cli table --db-path ~/.local/state/tokeninsights/tokeninsights.sqlite --all-time --filter-day-from 2026-04-20 --filter-day-to 2026-04-25
+tokeninsights-cli --month --filter-day-from 2026-04-20 --filter-day-to 2026-04-25
+tokeninsights-cli --all-time --filter-day-from 2026-04-20 --filter-day-to 2026-04-25
 ```
 
 Interactive mode defaults to `--week` when no period flag is passed.

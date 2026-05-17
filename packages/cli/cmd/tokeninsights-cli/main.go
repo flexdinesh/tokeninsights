@@ -8,8 +8,8 @@ import (
 	"os"
 	"time"
 
-	"tokeninsights-cli/internal/cli"
 	_ "modernc.org/sqlite"
+	"tokeninsights-cli/internal/cli"
 )
 
 func main() {
@@ -28,15 +28,13 @@ func run(ctx context.Context, args []string, stdout io.Writer, stderr io.Writer)
 }
 
 func runWithTime(ctx context.Context, args []string, stdout io.Writer, stderr io.Writer, now time.Time) error {
-	if len(args) == 0 {
-		return cli.ErrUsage
+	if len(args) > 0 {
+		switch args[0] {
+		case "help", "--help", "-h":
+			fmt.Fprintln(stdout, cli.ErrUsage)
+			return nil
+		}
 	}
 
-	switch args[0] {
-	case "help", "--help", "-h":
-		fmt.Fprintln(stdout, cli.ErrUsage)
-		return nil
-	default:
-		return cli.RunInteractive(ctx, args, stdout, stderr, now)
-	}
+	return cli.RunInteractive(ctx, args, stdout, stderr, now)
 }

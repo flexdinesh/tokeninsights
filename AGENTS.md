@@ -9,7 +9,7 @@ Full architecture, schema contract, event flow, and invariants are in [`docs/des
 - **Minimal, surgical changes**.
 - **Never use `any`** or type assertions (`!`, `as Type`) in TypeScript.
 - **Plugin and CLI are one project**. When changing storage, schema, events, SQL, aggregation, metric names, table columns, docs, or tests, update both sides in the same task.
-- **Default DB path** is `~/.local/state/tokeninsights/tokeninsights.sqlite`; writer overrides use `TOKENINSIGHTS_DB_PATH` and `TOKENINSIGHTS_RETENTION_DAYS`.
+- **Default DB path** is `~/.local/share/tokeninsights/tokeninsights.sqlite`; writer overrides use `TOKENINSIGHTS_DB_PATH` and `TOKENINSIGHTS_RETENTION_DAYS`.
 - **Schema is the contract**. `packages/schema/schema.sql` is the single source of truth. Plugin auto-migrates from it; CLI validates `PRAGMA user_version` against it.
 - **Schema changes require explicit user approval**. Before modifying `packages/schema/schema.sql`, table structures, column definitions, or any cross-language schema contract, clearly explain the reasons to the user and ask for explicit approval. Never make silent or implicit schema changes — even for non-breaking additions.
 - **TPS is first-class**. Do not remove `oc_tps_samples`, `tps avg`, `tps mean`, or `tps median` when changing token schema.

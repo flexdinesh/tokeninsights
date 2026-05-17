@@ -151,20 +151,20 @@ function thinkingLevelFromOptions(options: unknown) {
   )
 }
 
-function defaultStatePath() {
-  const xdgStateHome = process.env.XDG_STATE_HOME?.trim()
-  if (xdgStateHome && xdgStateHome.length > 0) return join(xdgStateHome, "tokeninsights")
+function defaultDataPath() {
+  const xdgDataHome = process.env.XDG_DATA_HOME?.trim()
+  if (xdgDataHome && xdgDataHome.length > 0) return join(xdgDataHome, "tokeninsights")
 
   const home = process.env.HOME?.trim()
-  if (home && home.length > 0) return join(home, ".local", "state", "tokeninsights")
+  if (home && home.length > 0) return join(home, ".local", "share", "tokeninsights")
 
-  return join(process.cwd(), ".tokeninsights-state")
+  return join(process.cwd(), ".tokeninsights-data")
 }
 
 function dbPath() {
   const configured = process.env.TOKENINSIGHTS_DB_PATH?.trim()
-  if (!configured) return join(defaultStatePath(), DEFAULT_DB_NAME)
-  return isAbsolute(configured) ? configured : join(defaultStatePath(), configured)
+  if (!configured) return join(defaultDataPath(), DEFAULT_DB_NAME)
+  return isAbsolute(configured) ? configured : join(defaultDataPath(), configured)
 }
 
 function retentionDays() {

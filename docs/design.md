@@ -22,7 +22,7 @@ TPS (tokens per second) is a first-class project metric. Do not remove persisted
          │                       │                       │
          ▼                       ▼                       ▼
 ┌───────────────────────────────────────────────────────────────┐
-│                SQLite DB (~/.local/state/tokeninsights/tokeninsights.sqlite) │
+│                SQLite DB (~/.local/share/tokeninsights/tokeninsights.sqlite) │
 │  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐  │
 │  │ oc_token_events │  │ oc_tps_samples  │  │ oc_llm_requests │  │
 │  │  (token rows)   │  │ (throughput)    │  │ (attempts)      │  │
@@ -52,7 +52,7 @@ TPS (tokens per second) is a first-class project metric. Do not remove persisted
 - **Pi extension writes** using `better-sqlite3` directly from the extension event handler. Volume is low enough that synchronous writes do not block the Pi TUI.
 - **CLI reads** using `modernc.org/sqlite` with a `file:` URL and `mode=ro`. It never writes.
 - Both sides share **one schema file**: `packages/schema/schema.sql`.
-- Default storage is TokenInsights-owned: `~/.local/state/tokeninsights/tokeninsights.sqlite`. Writer overrides use `TOKENINSIGHTS_DB_PATH` and `TOKENINSIGHTS_RETENTION_DAYS`; old harness-scoped env vars are not supported.
+- Default storage is TokenInsights-owned: `~/.local/share/tokeninsights/tokeninsights.sqlite`. Writer overrides use `TOKENINSIGHTS_DB_PATH` and `TOKENINSIGHTS_RETENTION_DAYS`; old harness-scoped env vars are not supported.
 
 ### Why This Boundary Matters
 
@@ -264,17 +264,18 @@ Runs as a Pi coding-agent extension. **One extension collects all data**: tokens
 ### Query Flow (`RunInteractive`)
 
 1. Parse flags (`--db-path`, `--today`, `--week`, `--month`, filters).
-2. Validate `--db-path` exists and is a file.
-3. Validate exactly one period flag.
-4. Compute period start:
+2. Default `--db-path` to `~/.local/share/tokeninsights/tokeninsights.sqlite` when omitted.
+3. Validate the resolved DB path exists and is a file.
+4. Validate no more than one period flag.
+5. Compute period start:
    - `--today`: today 00:00 local time
    - `--week`: Monday 00:00 local time of current calendar week
    - `--month`: first day of current month 00:00 local time
    - `--all-time`: no start filter (show all data)
    - Default (no period flag): `--week`
-5. Open DB read-only.
-6. Load and aggregate rows asynchronously with filters pushed into SQL WHERE clauses. Harness filters select which table families are queried.
-7. Render an ASCII table in the active tab. The interactive viewport supports vertical row scrolling and whole-table horizontal scrolling for wide tables.
+6. Open DB read-only.
+7. Load and aggregate rows asynchronously with filters pushed into SQL WHERE clauses. Harness filters select which table families are queried.
+8. Render an ASCII table in the active tab. The interactive viewport supports vertical row scrolling and whole-table horizontal scrolling for wide tables.
 
 ### Aggregation
 
@@ -411,5 +412,5 @@ Build the CLI first, then run against your local database:
 
 ```sh
 pnpm run build:cli
-./packages/cli/tokeninsights-cli --db-path ~/.local/state/tokeninsights/tokeninsights.sqlite --today
+./packages/cli/tokeninsights-cli --today
 ```

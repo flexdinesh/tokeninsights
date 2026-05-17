@@ -19,17 +19,17 @@ function readNumberOption(options, key, fallback) {
   const value = options?.[key];
   return typeof value === "number" && Number.isFinite(value) ? value : fallback;
 }
-function defaultStatePath() {
-  const xdgStateHome = process.env.XDG_STATE_HOME?.trim();
-  if (xdgStateHome && xdgStateHome.length > 0) return join(xdgStateHome, "tokeninsights");
+function defaultDataPath() {
+  const xdgDataHome = process.env.XDG_DATA_HOME?.trim();
+  if (xdgDataHome && xdgDataHome.length > 0) return join(xdgDataHome, "tokeninsights");
   const home = process.env.HOME?.trim();
-  if (home && home.length > 0) return join(home, ".local", "state", "tokeninsights");
-  return join(process.cwd(), ".tokeninsights-state");
+  if (home && home.length > 0) return join(home, ".local", "share", "tokeninsights");
+  return join(process.cwd(), ".tokeninsights-data");
 }
 function storageConfig(options) {
-  const statePath = defaultStatePath();
+  const dataPath = defaultDataPath();
   const configuredPath = readStringOption(options, "dbPath");
-  const dbPath = configuredPath ? isAbsolute(configuredPath) ? configuredPath : join(statePath, configuredPath) : join(statePath, DEFAULT_DB_NAME);
+  const dbPath = configuredPath ? isAbsolute(configuredPath) ? configuredPath : join(dataPath, configuredPath) : join(dataPath, DEFAULT_DB_NAME);
   return {
     dbPath,
     retentionDays: readNumberOption(options, "retentionDays", DEFAULT_RETENTION_DAYS)

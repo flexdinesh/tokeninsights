@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bytes"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -123,14 +124,37 @@ func TestPeriodStartAllTime(t *testing.T) {
 	}
 }
 
-func TestParseTableOptionsMissingDBPath(t *testing.T) {
+func TestParseTableOptionsDefaultDBPathXDGDataHome(t *testing.T) {
+	xdgDataHome := filepath.Join(t.TempDir(), "data")
+	t.Setenv("XDG_DATA_HOME", xdgDataHome)
+	t.Setenv("HOME", filepath.Join(t.TempDir(), "home"))
+
 	var stderr bytes.Buffer
-	_, err := parseTableOptions([]string{"--today"}, &stderr, false, periodWeek)
-	if err == nil {
-		t.Fatal("expected error")
+	opts, err := parseTableOptions([]string{"--today"}, &stderr, false, periodWeek)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if !strings.Contains(err.Error(), "missing --db-path") {
-		t.Fatalf("unexpected error: %v", err)
+
+	want := filepath.Join(xdgDataHome, "tokeninsights", "tokeninsights.sqlite")
+	if opts.dbPath != want {
+		t.Fatalf("got dbPath %q, want %q", opts.dbPath, want)
+	}
+}
+
+func TestParseTableOptionsDefaultDBPathHome(t *testing.T) {
+	home := filepath.Join(t.TempDir(), "home")
+	t.Setenv("XDG_DATA_HOME", "")
+	t.Setenv("HOME", home)
+
+	var stderr bytes.Buffer
+	opts, err := parseTableOptions([]string{"--today"}, &stderr, false, periodWeek)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	want := filepath.Join(home, ".local", "share", "tokeninsights", "tokeninsights.sqlite")
+	if opts.dbPath != want {
+		t.Fatalf("got dbPath %q, want %q", opts.dbPath, want)
 	}
 }
 
@@ -236,8 +260,10 @@ func TestParseTableOptionsUnexpectedArgument(t *testing.T) {
 }
 
 func TestParseTableOptionsDefaultWeek(t *testing.T) {
+	t.Setenv("XDG_DATA_HOME", filepath.Join(t.TempDir(), "data"))
+
 	var stderr bytes.Buffer
-	opts, err := parseTableOptions([]string{"--db-path", "/tmp/test.sqlite"}, &stderr, false, periodWeek)
+	opts, err := parseTableOptions([]string{}, &stderr, false, periodWeek)
 	if err != nil {
 		t.Fatal(err)
 	}

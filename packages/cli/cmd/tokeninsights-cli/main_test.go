@@ -11,8 +11,8 @@ import (
 	"testing"
 	"time"
 
-	"tokeninsights-cli/internal/db"
 	_ "modernc.org/sqlite"
+	"tokeninsights-cli/internal/db"
 )
 
 func newTestDBPath(t *testing.T) string {
@@ -146,23 +146,6 @@ var msgCounter int
 func nextMsgID() string {
 	msgCounter++
 	return fmt.Sprintf("msg_%d", msgCounter)
-}
-
-func TestMissingDBPath(t *testing.T) {
-	var stderr bytes.Buffer
-	err := runWithTime(
-		context.Background(),
-		[]string{"--today"},
-		io.Discard,
-		&stderr,
-		time.Date(2026, 4, 24, 15, 0, 0, 0, time.Local),
-	)
-	if err == nil {
-		t.Fatal("expected error")
-	}
-	if !strings.Contains(err.Error(), "missing --db-path") {
-		t.Fatalf("unexpected error: %v", err)
-	}
 }
 
 func TestInvalidPeriod(t *testing.T) {
