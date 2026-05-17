@@ -1,6 +1,8 @@
 import { mkdirSync } from "node:fs"
+import { readFile } from "node:fs/promises"
 import { dirname } from "node:path"
-import { Database } from "bun:sqlite"
+import { parentPort } from "node:worker_threads"
+import Database from "better-sqlite3"
 import { applySchema } from "./schema-migrate.ts"
 import type {
   MessageInfo,
@@ -36,7 +38,7 @@ type CloseMessage = {
 type WorkerMessage = InitMessage | FlushMessage | CloseMessage
 
 function post(response: WriterResponse) {
-  self.postMessage(response)
+  parentPort?.postMessage(response)
 }
 
 function pruneKey(now = Date.now()) {
@@ -48,7 +50,7 @@ async function createTokenStorage(dbPath: string, retentionDays: number): Promis
 
   const db = new Database(dbPath)
   db.exec("PRAGMA busy_timeout = 5000")
-  const schemaSql = await Bun.file(new URL("../../schema/schema.sql", import.meta.url)).text()
+  const schemaSql = await readFile(new URL("../../schema/schema.sql", import.meta.url), "utf8")
   applySchema(db, schemaSql)
   try {
     db.exec("PRAGMA wal_checkpoint(PASSIVE)")
@@ -175,73 +177,73 @@ async function createTokenStorage(dbPath: string, retentionDays: number): Promis
   const insertRows = db.transaction((rows: TokenEventRow[]) => {
     for (const row of rows) {
       if (row.source === "step-finish") {
-        deleteFallback.run({ $sessionID: row.sessionID, $messageID: row.messageID })
-      } else if (existingStepRow.get({ $sessionID: row.sessionID, $messageID: row.messageID })) {
+        deleteFallback.run({ sessionID: row.sessionID, messageID: row.messageID })
+      } else if (existingStepRow.get({ sessionID: row.sessionID, messageID: row.messageID })) {
         continue
       }
       insertEvent.run({
-        $recordedAt: row.recordedAt,
-        $recordedAtMs: row.recordedAtMs,
-        $sessionID: row.sessionID,
-        $messageID: row.messageID,
-        $partID: row.partID,
-        $source: row.source,
-        $provider: row.provider,
-        $model: row.model,
-        $inputTokens: row.inputTokens,
-        $outputTokens: row.outputTokens,
-        $reasoningTokens: row.reasoningTokens,
-        $cacheReadTokens: row.cacheReadTokens,
-        $cacheWriteTokens: row.cacheWriteTokens,
-        $totalTokens: row.totalTokens,
+        recordedAt: row.recordedAt,
+        recordedAtMs: row.recordedAtMs,
+        sessionID: row.sessionID,
+        messageID: row.messageID,
+        partID: row.partID,
+        source: row.source,
+        provider: row.provider,
+        model: row.model,
+        inputTokens: row.inputTokens,
+        outputTokens: row.outputTokens,
+        reasoningTokens: row.reasoningTokens,
+        cacheReadTokens: row.cacheReadTokens,
+        cacheWriteTokens: row.cacheWriteTokens,
+        totalTokens: row.totalTokens,
       })
     }
   })
   const insertTpsRows = db.transaction((rows: TpsSampleRow[]) => {
     for (const row of rows) {
       insertTpsSample.run({
-        $recordedAt: row.recordedAt,
-        $recordedAtMs: row.recordedAtMs,
-        $sessionID: row.sessionID,
-        $messageID: row.messageID,
-        $provider: row.provider,
-        $model: row.model,
-        $outputTokens: row.outputTokens,
-        $reasoningTokens: row.reasoningTokens,
-        $totalTokens: row.totalTokens,
-        $durationMs: row.durationMs,
-        $ttftMs: row.ttftMs,
-        $tokensPerSecond: row.tokensPerSecond,
+        recordedAt: row.recordedAt,
+        recordedAtMs: row.recordedAtMs,
+        sessionID: row.sessionID,
+        messageID: row.messageID,
+        provider: row.provider,
+        model: row.model,
+        outputTokens: row.outputTokens,
+        reasoningTokens: row.reasoningTokens,
+        totalTokens: row.totalTokens,
+        durationMs: row.durationMs,
+        ttftMs: row.ttftMs,
+        tokensPerSecond: row.tokensPerSecond,
       })
     }
   })
   const insertToolRows = db.transaction((rows: ToolCallRow[]) => {
     for (const row of rows) {
       insertToolCall.run({
-        $recordedAt: row.recordedAt,
-        $recordedAtMs: row.recordedAtMs,
-        $sessionID: row.sessionID,
-        $messageID: row.messageID,
-        $toolCallID: row.toolCallID,
-        $toolName: row.toolName,
-        $provider: row.provider,
-        $model: row.model,
-        $status: row.status,
+        recordedAt: row.recordedAt,
+        recordedAtMs: row.recordedAtMs,
+        sessionID: row.sessionID,
+        messageID: row.messageID,
+        toolCallID: row.toolCallID,
+        toolName: row.toolName,
+        provider: row.provider,
+        model: row.model,
+        status: row.status,
       })
     }
   })
   const updateInfo = db.transaction((messageID: string, info: MessageInfo) => {
     updateEventInfo.run({
-      $messageID: messageID,
-      $sessionID: info.sessionID,
-      $provider: info.provider,
-      $model: info.model,
+      messageID: messageID,
+      sessionID: info.sessionID,
+      provider: info.provider,
+      model: info.model,
     })
     updateTpsInfo.run({
-      $messageID: messageID,
-      $sessionID: info.sessionID,
-      $provider: info.provider,
-      $model: info.model,
+      messageID: messageID,
+      sessionID: info.sessionID,
+      provider: info.provider,
+      model: info.model,
     })
   })
 
@@ -253,9 +255,9 @@ async function createTokenStorage(dbPath: string, retentionDays: number): Promis
     if (key === lastPruneKey) return
     lastPruneKey = key
     const cutoff = Date.now() - retentionDays * DAY_MS
-    pruneEvents.run({ $cutoff: cutoff })
-    pruneTpsSamples.run({ $cutoff: cutoff })
-    pruneToolCalls.run({ $cutoff: cutoff })
+    pruneEvents.run({ cutoff: cutoff })
+    pruneTpsSamples.run({ cutoff: cutoff })
+    pruneToolCalls.run({ cutoff: cutoff })
   }
 
   pruneDaily()
@@ -290,9 +292,8 @@ function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
   })
 }
 
-self.onmessage = async (event: MessageEvent<WorkerMessage>) => {
+async function handleMessage(message: WorkerMessage) {
   try {
-    const message = event.data
     if (message.type === "init") {
       storage = await withTimeout(createTokenStorage(message.dbPath, message.retentionDays), WORKER_INIT_TIMEOUT_MS)
       post({ type: "ready" })
@@ -305,7 +306,12 @@ self.onmessage = async (event: MessageEvent<WorkerMessage>) => {
     }
     storage?.close()
     post({ type: "closed" })
+    parentPort?.close()
   } catch (error) {
     post({ type: "error", message: error instanceof Error ? error.message : "sqlite write failed" })
   }
 }
+
+parentPort?.on("message", (message: WorkerMessage) => {
+  void handleMessage(message)
+})

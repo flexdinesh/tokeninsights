@@ -17,26 +17,37 @@ See [`docs/design.md`](docs/design.md) for full architecture, schema contract, e
 
 ### When to run what
 
-| You changed | Run |
-|-------------|-----|
-| `schema/schema.sql` | `npm run check-schema` |
-| Any `.ts` in `plugins/` | `npm run smoke:plugins` |
-| Any `.go` in `cli/` | `npm run test:go && npm run build:cli` |
-| Storage, schema, events, SQL, aggregation, rendering, or tests | Update **both** plugin and CLI; `npm run verify:all` |
+| You changed                                                    | Run                                                   |
+| -------------------------------------------------------------- | ----------------------------------------------------- |
+| `schema/schema.sql`                                            | `pnpm run check-schema`                               |
+| Any `.ts` in `plugins/`                                        | `pnpm run smoke:plugins`                              |
+| Any `.go` in `cli/`                                            | `pnpm run test:go && pnpm run build:cli`              |
+| Storage, schema, events, SQL, aggregation, rendering, or tests | Update **both** plugin and CLI; `pnpm run verify:all` |
 
 > ⚠️ **Schema changes are user-approved only.** Never modify `schema/schema.sql` without explicit user approval, even for additive changes. Always explain the rationale and ask first.
+
+### Build everything from a fresh checkout
+
+TokenInsights targets Node 24+. The OpenCode server plugin uses native Node TypeScript at runtime; the OpenCode TUI plugin is TSX and must be compiled to `plugins/opencode-tui/dist/index.js`.
+
+```sh
+pnpm install
+pnpm run verify:all
+```
+
+`verify:all` runs schema validation, plugin smoke checks, Go tests, and the CLI build.
 
 ### Plugin smoke builds
 
 ```sh
-npm run smoke:plugins
+pnpm run smoke:plugins
 ```
 
 ### CLI verification
 
 ```sh
-npm run test:go
-npm run build:cli
+pnpm run test:go
+pnpm run build:cli
 ```
 
 ### Smoke test against real DB
@@ -44,19 +55,22 @@ npm run build:cli
 Build the CLI first, then run against your local database:
 
 ```sh
-npm run build:cli
-npm run smoke:db
+pnpm run build:cli
+pnpm run smoke:db
 ```
 
 ## Install OpenCode Plugins
 
-Link the local plugin packages with pnpm:
+Install dependencies, build the TSX TUI package, and link the local plugin packages with pnpm:
 
 ```sh
 cd plugins/opencode-server
+pnpm install
 pnpm link --global
 
 cd ../opencode-tui
+pnpm install
+pnpm run build
 pnpm link --global
 ```
 
@@ -66,9 +80,7 @@ Server plugin (`~/.config/opencode/opencode.jsonc`):
 
 ```jsonc
 {
-  "plugin": [
-    "@tokeninsights/opencode-server"
-  ]
+  "plugin": ["@tokeninsights/opencode-server"],
 }
 ```
 
@@ -76,13 +88,11 @@ TUI plugin (`~/.config/opencode/tui.json`):
 
 ```json
 {
-  "plugin": [
-    "@tokeninsights/opencode-tui"
-  ]
+  "plugin": ["@tokeninsights/opencode-tui"]
 }
 ```
 
-The server package contains its worker module internally. Do not add `oc-tokeninsights-writer.ts` or `writer-client.ts` as separate plugins.
+The server package contains its Node worker-thread module internally. Do not add `oc-tokeninsights-writer.ts` or `writer-client.ts` as separate plugins.
 
 Default DB path: `~/.local/state/tokeninsights/tokeninsights.sqlite`
 

@@ -28,4 +28,4 @@ Any change to `schema/schema.sql`, table structures, column definitions, or the 
 - Surface the rationale, impact, and scope to the user
 - Ask for explicit approval before modifying any schema-related files
 - Update `AGENTS.md`, `docs/design.md`, and `README.md` to reinforce this rule
-- Run `bun run scripts/check-schema.ts` after any approved schema change
+- Run `pnpm run check-schema` after any approved schema change

@@ -21,7 +21,7 @@ Full architecture, schema contract, event flow, and invariants are in [`docs/des
 
 ## Change Checklist
 
-- Schema changed? Update `schema/schema.sql`, then run `npm run check-schema`.
+- Schema changed? Update `schema/schema.sql`, then run `pnpm run check-schema`.
 - Schema changed? Update `cli/internal/db/schema.go` constants so Go tests pass.
 - Plugin row shape or token semantics changed? Update CLI query structs, SQL, aggregation, rendering, tests, README, and `docs/design.md`.
 - CLI query columns changed? Update `sample`, `querySamples`, scan order, aggregation, rendering, tests, README, and `docs/design.md`.
@@ -34,18 +34,18 @@ Full architecture, schema contract, event flow, and invariants are in [`docs/des
 ### Schema validation
 
 ```sh
-npm run check-schema
+pnpm run check-schema
 ```
 
 ### Plugin smoke build (TypeScript changes)
 
 ```sh
-npm run smoke:plugins
+pnpm run smoke:plugins
 ```
 
 ### CLI verification (Go changes)
 
 ```sh
-npm run test:go
-npm run build:cli
+pnpm run test:go
+pnpm run build:cli
 ```

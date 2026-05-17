@@ -1,3 +1,4 @@
+import { Worker } from "node:worker_threads"
 import type { TokenEventRow, TpsSampleRow, MessageInfoUpdate, TokenStorage, WriterResponse, WriterConfig } from "./types.ts"
 
 export function createTokenStorage(
@@ -7,20 +8,24 @@ export function createTokenStorage(
 ): TokenStorage {
   let workerReady = false
   const worker = new Worker(workerScriptUrl)
-  worker.onmessage = (event: MessageEvent<WriterResponse>) => {
-    if (event.data.type === "ready") {
+  worker.on("message", (response: WriterResponse) => {
+    if (response.type === "ready") {
       workerReady = true
       return
     }
-    if (event.data.type === "error") {
+    if (response.type === "closed") {
+      workerReady = false
+      return
+    }
+    if (response.type === "error") {
       workerReady = false
       onError()
     }
-  }
-  worker.onerror = () => {
+  })
+  worker.on("error", () => {
     workerReady = false
     onError()
-  }
+  })
   worker.postMessage({ type: "init", dbPath: config.dbPath, retentionDays: config.retentionDays })
 
   return {

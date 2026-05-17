@@ -3,16 +3,22 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
   "scripts": {
-    "check-schema": "node --experimental-strip-types scripts/check-schema.ts",
-    "build:server": "bun build plugins/opencode-server/index.ts --target=bun --outfile=/tmp/oc-tokeninsights-server-check.js --external \"@opencode-ai/plugin\"",
-    "build:tui": "bun build plugins/opencode-tui/index.tsx --target=bun --outfile=/tmp/oc-tokeninsights-tui-check.js --external \"solid-js\" --external \"@opentui/solid\" --external \"@opentui/solid/jsx-dev-runtime\"",
-    "build:writer": "bun build plugins/opencode-server/oc-tokeninsights-writer.ts --target=bun --outfile=/tmp/oc-tokeninsights-writer-check.js",
+    "check-schema": "node scripts/check-schema.ts",
+    "build:server": "node --check plugins/opencode-server/index.ts",
+    "build:tui": "esbuild plugins/opencode-tui/index.tsx --bundle --platform=node --format=esm --target=node24 --jsx=automatic --jsx-import-source=@opentui/solid --outfile=plugins/opencode-tui/dist/index.js --external:@opencode-ai/plugin --external:@opencode-ai/plugin/tui --external:solid-js --external:@opentui/solid --external:@opentui/solid/jsx-runtime --external:@opentui/solid/jsx-dev-runtime --external:better-sqlite3",
+    "build:writer": "node --check plugins/opencode-server/oc-tokeninsights-writer.ts",
     "typecheck:pi": "cd plugins/pi && pnpm run typecheck",
-    "smoke:plugins": "npm run build:server && npm run build:tui && npm run build:writer && npm run typecheck:pi",
+    "smoke:plugins": "pnpm run build:server && pnpm run build:tui && pnpm run build:writer && pnpm run typecheck:pi",
     "test:go": "cd cli && go test ./...",
     "build:cli": "cd cli && go build -o tokeninsights-cli ./cmd/tokeninsights-cli",
     "smoke:db": "cd cli && ./tokeninsights-cli --db-path ~/.local/state/tokeninsights/tokeninsights.sqlite --today",
-    "verify:all": "npm run check-schema && npm run smoke:plugins && npm run test:go && npm run build:cli"
+    "verify:all": "pnpm run check-schema && pnpm run smoke:plugins && pnpm run test:go && pnpm run build:cli"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.0"
   }
 }

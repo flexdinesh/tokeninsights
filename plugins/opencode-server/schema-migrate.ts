@@ -1,7 +1,20 @@
-import { Database } from "bun:sqlite"
-
 interface TableInfoRow {
   name: string
+}
+
+type QueryStatement = {
+  all: () => unknown[]
+}
+
+type SqliteDatabase = {
+  exec: (sql: string) => void
+  prepare: (sql: string) => QueryStatement
+}
+
+function tableInfoRow(value: unknown): TableInfoRow | undefined {
+  if (typeof value !== "object" || value === null) return undefined
+  if (!("name" in value)) return undefined
+  return typeof value.name === "string" ? { name: value.name } : undefined
 }
 
 function extractTableInfo(stmt: string): { tableName: string; body: string } | null {
@@ -43,7 +56,7 @@ function extractTableInfo(stmt: string): { tableName: string; body: string } | n
   return { tableName, body }
 }
 
-export function applySchema(db: Database, schemaSql: string): void {
+export function applySchema(db: SqliteDatabase, schemaSql: string): void {
   const rawStatements = schemaSql
     .split(";")
     .map((s) => s.trim())
@@ -95,9 +108,10 @@ export function applySchema(db: Database, schemaSql: string): void {
       }
 
       const existingColumns = new Set<string>()
-      const rows = db.query<TableInfoRow>(`PRAGMA table_info(${tableName})`).all()
-      for (const row of rows) {
-        existingColumns.add(row.name.toLowerCase())
+      const rows = db.prepare(`PRAGMA table_info(${tableName})`).all()
+      for (const value of rows) {
+        const row = tableInfoRow(value)
+        if (row) existingColumns.add(row.name.toLowerCase())
       }
 
       for (const [colName, colDef] of desiredColumns) {

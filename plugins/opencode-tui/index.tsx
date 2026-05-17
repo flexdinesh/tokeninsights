@@ -1,5 +1,6 @@
 /** @jsxImportSource @opentui/solid */
 import { isAbsolute, join } from "node:path"
+import Database from "better-sqlite3"
 import type { TuiPlugin, TuiPluginModule } from "@opencode-ai/plugin/tui"
 import { createMemo, createSignal } from "solid-js"
 import type {
@@ -91,26 +92,39 @@ type SessionAverages = {
   avgTtft: number | undefined
 }
 
+type SessionAverageRow = {
+  throughputTokens: number | null
+  durationMs: number | null
+  avgTtftMs: number | null
+}
+
+function numericOrNull(value: unknown) {
+  return typeof value === "number" ? value : null
+}
+
+function sessionAverageRow(value: unknown): SessionAverageRow | undefined {
+  if (typeof value !== "object" || value === null) return undefined
+  return {
+    throughputTokens: numericOrNull("throughput_tokens" in value ? value.throughput_tokens : undefined),
+    durationMs: numericOrNull("duration_ms" in value ? value.duration_ms : undefined),
+    avgTtftMs: numericOrNull("avg_ttft_ms" in value ? value.avg_ttft_ms : undefined),
+  }
+}
+
 function querySessionAverages(dbPath: string, sessionID: string): SessionAverages | undefined {
   try {
-    const { Database } = require("bun:sqlite")
-    const db = new Database(dbPath, { readonly: true, create: false })
+    const db = new Database(dbPath, { readonly: true, fileMustExist: true })
     try {
-      const stmt = db.query(`
+      const stmt = db.prepare(`
         SELECT SUM(total_tokens) as throughput_tokens, SUM(duration_ms) as duration_ms, AVG(ttft_ms) as avg_ttft_ms
         FROM oc_tps_samples
         WHERE session_id = ? AND duration_ms > 0
       `)
-      const row = stmt.get(sessionID) as {
-        throughput_tokens: number | null
-        duration_ms: number | null
-        avg_ttft_ms: number | null
-      } | null
-      stmt.finalize()
+      const row = sessionAverageRow(stmt.get(sessionID))
       if (!row) return undefined
-      const throughput = row.throughput_tokens ?? 0
-      const duration = row.duration_ms ?? 0
-      const avgTtftMs = row.avg_ttft_ms ?? 0
+      const throughput = row.throughputTokens ?? 0
+      const duration = row.durationMs ?? 0
+      const avgTtftMs = row.avgTtftMs ?? 0
       const avgTps = duration > 0 ? throughput / (duration / 1000) : undefined
       const avgTtft = avgTtftMs > 0 ? avgTtftMs / 1000 : undefined
       return { avgTps, avgTtft }

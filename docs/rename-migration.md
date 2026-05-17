@@ -44,7 +44,7 @@ tokeninsights-cli --db-path ~/.local/state/tokeninsights/tokeninsights.sqlite --
 If you had the old binary in your PATH, rebuild from source:
 
 ```bash
-npm run build:cli
+pnpm run build:cli
 ```
 
 ---
@@ -168,4 +168,4 @@ git remote set-url origin git@github.com:flexdinesh/tokeninsights.git
 - [ ] Update OpenCode config with package names (`@tokeninsights/opencode-server`, `@tokeninsights/opencode-tui`)
 - [ ] Recreate Pi extension symlink (`pi-tokeninsights`)
 - [ ] Update git remote URL (after GitHub repo rename)
-- [ ] Rebuild CLI from source: `npm run build:cli`
+- [ ] Rebuild CLI from source: `pnpm run build:cli`

@@ -47,7 +47,7 @@ TPS (tokens per second) is a first-class project metric. Do not remove persisted
 
 ### Plugin / CLI Boundary
 
-- **Server plugin writes** all durable OpenCode data using `bun:sqlite` in a Bun worker thread (`oc-tokeninsights-writer.ts`). Writes are queued in memory and flushed about once per second. A hard crash can lose the most recent queued batch.
+- **Server plugin writes** all durable OpenCode data using `better-sqlite3` in a Node worker thread (`oc-tokeninsights-writer.ts`). Writes are queued in memory and flushed about once per second. A hard crash can lose the most recent queued batch.
 - **TUI plugin reads only** — it queries `oc_tps_samples` for session averages/TTFT and estimates live TPS from `message.part.delta` events in memory.
 - **Pi extension writes** using `better-sqlite3` directly from the extension event handler. Volume is low enough that synchronous writes do not block the Pi TUI.
 - **CLI reads** using `modernc.org/sqlite` with a `file:` URL and `mode=ro`. It never writes.
@@ -175,7 +175,7 @@ Cross-language contract is validated by:
 - `scripts/check-schema.ts` — parses SQL, Go constants, and TS types
 - `cli/internal/db/schema_test.go` — Go-level contract test
 
-Run `npm run check-schema` before any schema-related commit.
+Run `pnpm run check-schema` before any schema-related commit.
 
 ## Token Semantics
 
@@ -364,7 +364,7 @@ Even the items below require explicit user approval before implementation. Surfa
 | `plugins/opencode-tui/index.tsx` | TUI plugin entry point; live display, DB queries |
 | `plugins/opencode-tui/package.json` | OpenCode TUI plugin package manifest (`@tokeninsights/opencode-tui`) |
 | `plugins/opencode-server/index.ts` | Server plugin; durable collection, LLM request and tool-call tracking |
-| `plugins/opencode-server/oc-tokeninsights-writer.ts` | Bun worker; SQLite writes, schema migration, pruning |
+| `plugins/opencode-server/oc-tokeninsights-writer.ts` | Node worker thread; SQLite writes, schema migration, pruning |
 | `plugins/opencode-server/writer-client.ts` | Worker client used by the server plugin |
 | `plugins/opencode-server/types.ts` | TypeScript types for OpenCode durable rows and schema validation |
 | `plugins/opencode-server/schema-migrate.ts` | Auto-migration logic parsed from `schema/schema.sql` |
@@ -389,20 +389,20 @@ Even the items below require explicit user approval before implementation. Surfa
 ### Schema Changes
 
 ```sh
-npm run check-schema
+pnpm run check-schema
 ```
 
 ### TypeScript / Plugin Changes
 
 ```sh
-npm run smoke:plugins
+pnpm run smoke:plugins
 ```
 
 ### Go / CLI Changes
 
 ```sh
-npm run test:go
-npm run build:cli
+pnpm run test:go
+pnpm run build:cli
 ```
 
 ### Smoke Test Against Real DB
@@ -410,6 +410,6 @@ npm run build:cli
 Build the CLI first, then run against your local database:
 
 ```sh
-npm run build:cli
-npm run smoke:db
+pnpm run build:cli
+pnpm run smoke:db
 ```

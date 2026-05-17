@@ -1,6 +1,7 @@
 import { mkdirSync } from "node:fs"
+import { readFile } from "node:fs/promises"
 import { dirname, isAbsolute, join } from "node:path"
-import { Database } from "bun:sqlite"
+import Database from "better-sqlite3"
 import type { Plugin } from "@opencode-ai/plugin"
 import { createTokenStorage } from "./writer-client.ts"
 import { applySchema } from "./schema-migrate.ts"
@@ -178,7 +179,7 @@ async function createRequestStorage(path: string, retention: number): Promise<Re
   mkdirSync(dirname(path), { recursive: true })
 
   const db = new Database(path)
-  const schemaSql = await Bun.file(new URL("../../schema/schema.sql", import.meta.url)).text()
+  const schemaSql = await readFile(new URL("../../schema/schema.sql", import.meta.url), "utf8")
   applySchema(db, schemaSql)
 
   const insertRequest = db.prepare(`
@@ -207,17 +208,17 @@ async function createRequestStorage(path: string, retention: number): Promise<Re
   return {
     insert(row) {
       insertRequest.run({
-        $recordedAt: row.recordedAt,
-        $recordedAtMs: row.recordedAtMs,
-        $sessionID: row.sessionID,
-        $messageID: row.messageID,
-        $provider: row.provider,
-        $model: row.model,
-        $attemptIndex: row.attemptIndex,
-        $thinkingLevel: row.thinkingLevel,
+        recordedAt: row.recordedAt,
+        recordedAtMs: row.recordedAtMs,
+        sessionID: row.sessionID,
+        messageID: row.messageID,
+        provider: row.provider,
+        model: row.model,
+        attemptIndex: row.attemptIndex,
+        thinkingLevel: row.thinkingLevel,
       })
       if (retention > 0) {
-        pruneRequests.run({ $cutoff: Date.now() - retention * DAY_MS })
+        pruneRequests.run({ cutoff: Date.now() - retention * DAY_MS })
       }
     },
     close() {

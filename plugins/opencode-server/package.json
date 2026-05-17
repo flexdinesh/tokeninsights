@@ -5,11 +5,20 @@
   "type": "module",
   "main": "./index.ts",
   "exports": "./index.ts",
+  "engines": {
+    "node": ">=24"
+  },
   "scripts": {
-    "build": "bun build index.ts --target=bun --outfile=/tmp/tokeninsights-opencode-server-check.js --external \"@opencode-ai/plugin\"",
-    "build:writer": "bun build oc-tokeninsights-writer.ts --target=bun --outfile=/tmp/tokeninsights-opencode-writer-check.js"
+    "build": "node --check index.ts",
+    "build:writer": "node --check oc-tokeninsights-writer.ts"
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.10.0"
   },
   "peerDependencies": {
     "@opencode-ai/plugin": "*"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13"
   }
 }
