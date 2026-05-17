@@ -5,14 +5,16 @@
   "main": "./src/index.ts",
   "exports": "./src/index.ts",
   "pi": {
-    "extensions": ["./src/index.ts"]
+    "extensions": [
+      "./src/index.ts"
+    ]
   },
   "scripts": {
     "build": "tsc --noEmit --module esnext --moduleResolution bundler --esModuleInterop --skipLibCheck src/index.ts"
   },
   "dependencies": {
     "@types/better-sqlite3": "^7.6.13",
-    "better-sqlite3": "^11.10.0"
+    "better-sqlite3": "^12.10.0"
   },
   "devDependencies": {
     "@mariozechner/pi-coding-agent": "^0.71.0",

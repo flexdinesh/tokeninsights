@@ -12,6 +12,7 @@
     "build:opencode-tui": "pnpm --filter @tokeninsights/opencode-tui run build",
     "build:pi": "pnpm --filter @tokeninsights/pi run build",
     "build:cli": "pnpm --filter tokeninsights-cli run build",
+    "install:cli": "cd packages/cli && go install ./cmd/tokeninsights-cli",
     "build": "pnpm run build:opencode-server && pnpm run build:opencode-tui && pnpm run build:pi && pnpm run build:cli",
     "test": "pnpm --filter tokeninsights-cli run test"
   },

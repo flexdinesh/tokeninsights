@@ -12,7 +12,7 @@
     "build": "esbuild src/index.tsx --bundle --platform=node --format=esm --target=node24 --jsx=automatic --jsx-import-source=@opentui/solid --outfile=dist/index.js --external:@opencode-ai/plugin --external:@opencode-ai/plugin/tui --external:solid-js --external:@opentui/solid --external:@opentui/solid/jsx-runtime --external:@opentui/solid/jsx-dev-runtime --external:better-sqlite3"
   },
   "dependencies": {
-    "better-sqlite3": "^11.10.0"
+    "better-sqlite3": "^12.10.0"
   },
   "peerDependencies": {
     "@opencode-ai/plugin": "*",
