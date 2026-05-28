@@ -50,9 +50,18 @@ TPS (tokens per second) is a first-class project metric. Do not remove persisted
 - **Server plugin writes** all durable OpenCode data using `better-sqlite3` in a Node worker thread (`oc-tokeninsights-writer.ts`). Writes are queued in memory and flushed about once per second. A hard crash can lose the most recent queued batch.
 - **TUI plugin reads only** — it queries `oc_tps_samples` for session averages/TTFT and estimates live TPS from `message.part.delta` events in memory.
 - **Pi extension writes** using `better-sqlite3` directly from the extension event handler. Volume is low enough that synchronous writes do not block the Pi TUI.
+- **Plugin logging** is shared through `packages/logger`. The OpenCode server plugin and Pi extension write best-effort metadata logs to `$XDG_STATE_HOME/tokeninsights/logs/{harness}-{YY-MM-DD}.log`, falling back to `~/.local/state/tokeninsights/logs/`. Debug logs require `TOKENINSIGHTS_DEBUG=1`.
 - **CLI reads** using `modernc.org/sqlite` with a `file:` URL and `mode=ro`. It never writes.
 - Both sides share **one schema file**: `packages/schema/schema.sql`.
 - Default storage is TokenInsights-owned: `~/.local/share/tokeninsights/tokeninsights.sqlite`. Writer overrides use `TOKENINSIGHTS_DB_PATH` and `TOKENINSIGHTS_RETENTION_DAYS`; old harness-scoped env vars are not supported.
+
+### Logging Contract
+
+The shared logger writes logfmt lines by default. `packages/logger/src/index.ts` owns the `LOG_FORMAT` constant so the implementation can be switched to JSONL later without changing plugin call sites.
+
+Log files are rotated by date using `YY-MM-DD` and retain the current day plus the previous 2 calendar days. Pruning is best-effort and runs on logger use after initialization or day rollover.
+
+Logs must remain metadata-only. Do not log prompt text, assistant message content, request headers, raw provider payloads, tool arguments, or tool output. Logging must never throw into plugin hooks or block durable token collection.
 
 ### Why This Boundary Matters
 
@@ -215,7 +224,7 @@ Live TPS uses the last 5 seconds of estimated stream deltas and hides when idle/
 
 ### Server Plugin (`packages/plugins/opencode-server/src/index.ts`)
 
-Runs as an OpenCode server plugin and is the **sole writer** of OpenCode token data.
+Runs as an OpenCode server plugin and is the **sole writer** of OpenCode token data. It emits an `info` log when the plugin loads, `debug` logs for all hooks/events when `TOKENINSIGHTS_DEBUG=1`, and error logs for DB/worker/write failures. `session.created` produces a debug log so activation and session starts can be diagnosed from the log file.
 
 - **Initialization is lazy**: DB open and schema migration are deferred to the first event that requires a write (`message.part.updated` or `message.updated`). If init fails (e.g. DB locked), the plugin logs to stderr and disables tracking for that session; OpenCode startup is never blocked.
 - **`chat.params`**: captures `thinking_level` from known params/options shapes before request headers are built.
@@ -242,7 +251,7 @@ Request-tracking limitations: counts request attempts, not confirmed HTTP succes
 
 ### Pi Extension (`packages/plugins/pi/src/index.ts`)
 
-Runs as a Pi coding-agent extension. **One extension collects all data**: tokens, TPS, requests, and tool calls (unlike OpenCode which splits this across TUI and server plugins).
+Runs as a Pi coding-agent extension. **One extension collects all data**: tokens, TPS, requests, and tool calls (unlike OpenCode which splits this across TUI and server plugins). It emits an `info` log when the extension loads, `debug` logs for all hooks when `TOKENINSIGHTS_DEBUG=1`, and error logs for DB/write failures. `session_start` produces a debug log so activation and session starts can be diagnosed from the log file.
 
 - **Initialization is lazy**: DB open and schema migration are deferred to the first event that requires a write. If init fails, the extension logs to stderr and disables tracking; Pi startup is never blocked.
 - **`turn_start`**: resets per-turn timing state (`requestStartAt`, `firstTokenAt`, `lastTokenAt`).
@@ -368,6 +377,7 @@ Even the items below require explicit user approval before implementation. Surfa
 | `packages/plugins/opencode-server/src/oc-tokeninsights-writer.ts` | Node worker thread; SQLite writes, schema migration, pruning |
 | `packages/plugins/opencode-server/src/writer-client.ts` | Worker client used by the server plugin |
 | `packages/plugins/opencode-server/src/types.ts` | TypeScript types for OpenCode durable rows and schema validation |
+| `packages/logger/src/index.ts` | Shared best-effort plugin file logger used by OpenCode server and Pi |
 | `packages/plugins/opencode-server/src/schema-migrate.ts` | Auto-migration logic parsed from `packages/schema/schema.sql` |
 | `packages/plugins/opencode-server/package.json` | OpenCode server plugin package manifest (`@tokeninsights/opencode-server`) |
 | `packages/plugins/pi/src/index.ts` | Pi extension entry point; event handlers, DB writes |

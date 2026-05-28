@@ -2,8 +2,11 @@ import { mkdirSync } from "node:fs"
 import { dirname, isAbsolute, join } from "node:path"
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent"
 import Database from "better-sqlite3"
+import { createTokenInsightsLogger, errorFields } from "@tokeninsights/logger"
 
 type DB = InstanceType<typeof Database>
+
+const logger = createTokenInsightsLogger({ harness: "pi" })
 
 // ── Schema (inline so the extension is self-contained) ────────────────────────
 
@@ -221,6 +224,7 @@ function initDb(): boolean {
 
   try {
     const path = dbPath()
+    logger.debug("db init start", { dbPath: path, retentionDays: retentionDays() })
     mkdirSync(dirname(path), { recursive: true })
 
     db = new Database(path)
@@ -263,10 +267,11 @@ function initDb(): boolean {
     pruneRequests = db.prepare("DELETE FROM pi_llm_requests WHERE recorded_at_ms < ?")
     pruneToolCalls = db.prepare("DELETE FROM pi_tool_calls WHERE recorded_at_ms < ?")
 
+    logger.debug("db init succeeded")
     return true
   } catch (err) {
     dbInitFailed = true
-    console.error("@tokeninsights/pi: db init failed, tracking disabled:", err)
+    logger.error("db init failed, tracking disabled", errorFields(err))
     return false
   }
 }
@@ -280,6 +285,7 @@ function pruneDaily() {
   lastPruneKey = key
 
   const cutoff = Date.now() - retention * DAY_MS
+  logger.debug("prune daily", { cutoff })
   pruneTokenEvents?.run(cutoff)
   pruneTpsSamples?.run(cutoff)
   pruneRequests?.run(cutoff)
@@ -313,23 +319,34 @@ function insertToolCallRow(input: {
       input.model,
       input.status,
     ])
+    logger.debug("tool call insert succeeded", { sessionID: input.sessionId, messageID: input.messageId, toolCallID: input.toolCallId, toolName: input.toolName, status: input.status })
   } catch (err) {
-    console.error("@tokeninsights/pi: tool call insert failed:", err)
+    logger.error("tool call insert failed", errorFields(err))
   }
 }
 
 // ── Event handlers ───────────────────────────────────────────────────────────
 
 export default function (pi: ExtensionAPI) {
+  logger.info("extension loaded")
+
   pi.on("session_start", async (event, ctx) => {
+    logger.debug("hook session_start")
     const sessionId = ctx.sessionManager.getSessionId()
     if (sessionId) {
       getOrCreateState(sessionId)
+      logger.debug("session started", { sessionID: sessionId })
+    } else {
+      logger.debug("session_start skipped missing session id")
     }
   })
 
   pi.on("turn_start", async (event, _ctx) => {
-    if (!initDb()) return
+    logger.debug("hook turn_start")
+    if (!initDb()) {
+      logger.debug("turn_start skipped because db init is disabled")
+      return
+    }
     pruneDaily()
 
     // We don't have sessionId on turn_start event directly, so we skip here.
@@ -337,10 +354,17 @@ export default function (pi: ExtensionAPI) {
   })
 
   pi.on("before_provider_request", async (event, ctx) => {
-    if (!initDb()) return
+    logger.debug("hook before_provider_request")
+    if (!initDb()) {
+      logger.debug("before_provider_request skipped because db init is disabled")
+      return
+    }
 
     const sessionId = ctx.sessionManager.getSessionId()
-    if (!sessionId) return
+    if (!sessionId) {
+      logger.debug("before_provider_request skipped missing session id")
+      return
+    }
 
     const state = getOrCreateState(sessionId)
     state.requestStartAt = Date.now()
@@ -371,19 +395,30 @@ export default function (pi: ExtensionAPI) {
         1, // Pi doesn't expose retry detection; all attempts are 1
         state.thinkingLevel,
       ])
+      logger.debug("request insert succeeded", { sessionID: sessionId, messageID: state.currentTurnId, provider: state.provider, model: state.model })
     } catch (err) {
-      console.error("@tokeninsights/pi: request insert failed:", err)
+      logger.error("request insert failed", errorFields(err))
     }
   })
 
   pi.on("message_update", async (event, ctx) => {
-    if (!initDb()) return
+    logger.debug("hook message_update", { role: event.message.role })
+    if (!initDb()) {
+      logger.debug("message_update skipped because db init is disabled")
+      return
+    }
 
     const msg = event.message
-    if (msg.role !== "assistant") return
+    if (msg.role !== "assistant") {
+      logger.debug("message_update skipped non-assistant message", { role: msg.role })
+      return
+    }
 
     const sessionId = ctx.sessionManager.getSessionId()
-    if (!sessionId) return
+    if (!sessionId) {
+      logger.debug("message_update skipped missing session id")
+      return
+    }
 
     const state = getOrCreateState(sessionId)
     const now = Date.now()
@@ -395,10 +430,17 @@ export default function (pi: ExtensionAPI) {
   })
 
   pi.on("tool_execution_start", async (event, ctx) => {
-    if (!initDb()) return
+    logger.debug("hook tool_execution_start", { toolCallID: knownValue(event.toolCallId), toolName: knownValue(event.toolName) })
+    if (!initDb()) {
+      logger.debug("tool_execution_start skipped because db init is disabled")
+      return
+    }
 
     const sessionId = ctx.sessionManager.getSessionId()
-    if (!sessionId) return
+    if (!sessionId) {
+      logger.debug("tool_execution_start skipped missing session id")
+      return
+    }
 
     const state = getOrCreateState(sessionId)
     const messageId = state.currentTurnId || String(state.turnSeq)
@@ -417,10 +459,17 @@ export default function (pi: ExtensionAPI) {
   })
 
   pi.on("tool_execution_end", async (event, ctx) => {
-    if (!initDb()) return
+    logger.debug("hook tool_execution_end", { toolCallID: knownValue(event.toolCallId), toolName: knownValue(event.toolName), isError: event.isError })
+    if (!initDb()) {
+      logger.debug("tool_execution_end skipped because db init is disabled")
+      return
+    }
 
     const sessionId = ctx.sessionManager.getSessionId()
-    if (!sessionId) return
+    if (!sessionId) {
+      logger.debug("tool_execution_end skipped missing session id")
+      return
+    }
 
     const state = getOrCreateState(sessionId)
     const messageId = state.currentTurnId || String(state.turnSeq)
@@ -441,13 +490,23 @@ export default function (pi: ExtensionAPI) {
   })
 
   pi.on("message_end", async (event, ctx) => {
-    if (!initDb()) return
+    logger.debug("hook message_end", { role: event.message.role })
+    if (!initDb()) {
+      logger.debug("message_end skipped because db init is disabled")
+      return
+    }
 
     const msg = event.message
-    if (msg.role !== "assistant") return
+    if (msg.role !== "assistant") {
+      logger.debug("message_end skipped non-assistant message", { role: msg.role })
+      return
+    }
 
     const sessionId = ctx.sessionManager.getSessionId()
-    if (!sessionId) return
+    if (!sessionId) {
+      logger.debug("message_end skipped missing session id")
+      return
+    }
 
     const state = getOrCreateState(sessionId)
     const messageId = state.currentTurnId || String(state.turnSeq)
@@ -459,7 +518,10 @@ export default function (pi: ExtensionAPI) {
     state.model = model
 
     const usage = recordValue(msg, "usage")
-    if (!usage) return
+    if (!usage) {
+      logger.debug("message_end skipped missing usage", { sessionID: sessionId, messageID: messageId })
+      return
+    }
 
     const recordedAtMs = Date.now()
     const recordedAt = new Date(recordedAtMs).toISOString()
@@ -480,8 +542,9 @@ export default function (pi: ExtensionAPI) {
         inputTokens, outputTokens, reasoningTokens,
         cacheRead, cacheWrite, totalTokens,
       ])
+      logger.debug("token event insert succeeded", { sessionID: sessionId, messageID: messageId, provider, model, totalTokens })
     } catch (err) {
-      console.error("@tokeninsights/pi: token event insert failed:", err)
+      logger.error("token event insert failed", errorFields(err))
     }
 
     // Compute TPS
@@ -501,14 +564,16 @@ export default function (pi: ExtensionAPI) {
         outputTokens, reasoningTokens, throughputTokens,
         durationMs, ttftMs, tps,
       ])
+      logger.debug("tps sample insert succeeded", { sessionID: sessionId, messageID: messageId, provider, model, totalTokens: throughputTokens, durationMs })
     } catch (err) {
-      console.error("@tokeninsights/pi: tps sample insert failed:", err)
+      logger.error("tps sample insert failed", errorFields(err))
     }
 
     pruneDaily()
   })
 
   pi.on("session_shutdown", async (event, _ctx) => {
+    logger.debug("hook session_shutdown")
     // Note: we don't have sessionId here directly.
     // Pi rebinds extensions on session switch, so state is naturally reset.
     // If we ever need explicit cleanup, we can iterate sessionStates.
@@ -525,5 +590,6 @@ export default function (pi: ExtensionAPI) {
     dbInitFailed = false
     lastPruneKey = ""
     sessionStates.clear()
+    await logger.close()
   })
 }

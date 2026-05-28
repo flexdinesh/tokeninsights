@@ -9,6 +9,7 @@ See [`docs/design.md`](docs/design.md) for full architecture, schema contract, e
 - `packages/plugins/opencode-tui/` — OpenCode TUI plugin package (`@tokeninsights/opencode-tui`)
 - `packages/plugins/opencode-server/` — OpenCode server plugin package (`@tokeninsights/opencode-server`)
 - `packages/plugins/pi/` — Pi extension package
+- `packages/logger/` — shared file logger for plugin diagnostics
 - `packages/cli/` — Go CLI (`tokeninsights-cli`) that queries the SQLite DB
 - `packages/schema/schema.sql` — single source of truth for SQLite schema
 - `packages/scripts/check-schema.ts` — cross-language schema contract validator
@@ -98,6 +99,26 @@ Environment overrides for writers:
 
 - `TOKENINSIGHTS_DB_PATH` — absolute path, or relative to the TokenInsights data directory
 - `TOKENINSIGHTS_RETENTION_DAYS` — retention window for pruning durable rows
+
+## Plugin Logs
+
+The OpenCode server plugin and Pi extension write best-effort metadata logs to daily files:
+
+```text
+$XDG_STATE_HOME/tokeninsights/logs/{harness}-{YY-MM-DD}.log
+```
+
+If `XDG_STATE_HOME` is unset, the default path is `~/.local/state/tokeninsights/logs/`. Log files keep the current day plus the previous 2 calendar days; older TokenInsights log files are pruned automatically.
+
+Debug logs are written only when `TOKENINSIGHTS_DEBUG=1` is set. Logs use logfmt format and intentionally avoid prompt text, message content, request headers, tool args, and tool output.
+
+Examples:
+
+```sh
+TOKENINSIGHTS_DEBUG=1 opencode
+ls ~/.local/state/tokeninsights/logs
+tail -f ~/.local/state/tokeninsights/logs/opencode-server-$(date +%y-%m-%d).log
+```
 
 ## Install Pi Extension
 

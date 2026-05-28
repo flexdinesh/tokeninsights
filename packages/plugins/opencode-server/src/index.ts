@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises"
 import { dirname, isAbsolute, join } from "node:path"
 import Database from "better-sqlite3"
 import type { Plugin } from "@opencode-ai/plugin"
+import { createTokenInsightsLogger, errorFields } from "@tokeninsights/logger"
 import { createTokenStorage } from "./writer-client.ts"
 import { applySchema } from "./schema-migrate.ts"
 import type {
@@ -19,6 +20,8 @@ import type {
   ToolCallStatus,
   TpsSampleRow,
 } from "./types.ts"
+
+const logger = createTokenInsightsLogger({ harness: "opencode-server" })
 
 const DEFAULT_DB_NAME = "tokeninsights.sqlite"
 const DEFAULT_RETENTION_DAYS = 365
@@ -241,6 +244,8 @@ type ServerMessageInfo = {
 }
 
 export const OcTokenInsightsServer: Plugin = async () => {
+  logger.info("plugin loaded")
+
   // --- LLM request tracking (direct DB) ---
   let requestStorage: RequestStorage | undefined
   let requestInitPromise: Promise<RequestStorage | undefined> | undefined
@@ -253,14 +258,16 @@ export const OcTokenInsightsServer: Plugin = async () => {
     if (requestInitFailed) return undefined
     if (requestInitPromise) return requestInitPromise
 
+    logger.debug("request db init start")
     requestInitPromise = createRequestStorage(dbPath(), retentionDays())
       .then((s) => {
         requestStorage = s
+        logger.debug("request db init succeeded")
         return s
       })
       .catch((err) => {
         requestInitFailed = true
-        console.error("oc-tokeninsights-server: request db init failed:", err)
+        logger.error("request db init failed", errorFields(err))
         return undefined
       })
 
@@ -275,17 +282,19 @@ export const OcTokenInsightsServer: Plugin = async () => {
     if (tokenStorage) return tokenStorage
     if (tokenInitFailed) return undefined
     try {
+      logger.debug("token worker init start")
       tokenStorage = createTokenStorage(
         new URL("./oc-tokeninsights-writer.ts", import.meta.url),
         { dbPath: dbPath(), retentionDays: retentionDays() },
         () => {
-          console.error("oc-tokeninsights-server: token worker error")
+          logger.error("token worker error")
         },
       )
+      logger.debug("token worker init requested")
       return tokenStorage
     } catch (err) {
       tokenInitFailed = true
-      console.error("oc-tokeninsights-server: token worker init failed:", err)
+      logger.error("token worker init failed", errorFields(err))
       return undefined
     }
   }
@@ -314,6 +323,13 @@ export const OcTokenInsightsServer: Plugin = async () => {
     if (rows.length === 0 && tpsRows.length === 0 && infoUpdates.length === 0 && toolRows.length === 0) return
 
     try {
+      logger.debug("flush rows", {
+        sessionID,
+        tokenRows: rows.length,
+        tpsRows: tpsRows.length,
+        infoUpdates: infoUpdates.length,
+        toolRows: toolRows.length,
+      })
       storage.flush(rows, tpsRows, infoUpdates, toolRows)
       pendingRows = sessionID ? pendingRows.filter((row) => row.sessionID !== sessionID) : []
       pendingTpsRows = sessionID ? pendingTpsRows.filter((row) => row.sessionID !== sessionID) : []
@@ -322,7 +338,7 @@ export const OcTokenInsightsServer: Plugin = async () => {
         : []
       pendingToolRows = sessionID ? pendingToolRows.filter((row) => row.sessionID !== sessionID) : []
     } catch (err) {
-      console.error("oc-tokeninsights-server: flush failed:", err)
+      logger.error("flush failed", errorFields(err))
     }
   }
 
@@ -345,7 +361,10 @@ export const OcTokenInsightsServer: Plugin = async () => {
   }
 
   const queueTokenEvent = (row: TokenEventRow) => {
-    if (row.totalTokens <= 0) return
+    if (row.totalTokens <= 0) {
+      logger.debug("skip token event with no tokens", { sessionID: row.sessionID, messageID: row.messageID, source: row.source })
+      return
+    }
     if (row.source === "step-finish") {
       messagesWithStepRows.add(messageKey(row.sessionID, row.messageID))
       pendingRows = pendingRows.filter(
@@ -356,24 +375,33 @@ export const OcTokenInsightsServer: Plugin = async () => {
       )
     }
     pendingRows = [...pendingRows, row]
+    logger.debug("queued token event", { sessionID: row.sessionID, messageID: row.messageID, source: row.source, totalTokens: row.totalTokens })
   }
 
   const queueFallbackEvent = (row: TokenEventRow) => {
-    if (messagesWithStepRows.has(messageKey(row.sessionID, row.messageID))) return
+    if (messagesWithStepRows.has(messageKey(row.sessionID, row.messageID))) {
+      logger.debug("skip fallback because step row exists", { sessionID: row.sessionID, messageID: row.messageID })
+      return
+    }
     pendingRows = [
       ...pendingRows.filter(
         (item) => item.sessionID !== row.sessionID || item.messageID !== row.messageID || item.source !== "message-fallback",
       ),
       row,
     ]
+    logger.debug("queued fallback token event", { sessionID: row.sessionID, messageID: row.messageID, totalTokens: row.totalTokens })
   }
 
   const queueTpsSample = (row: TpsSampleRow) => {
-    if (row.totalTokens <= 0 || row.durationMs <= 0) return
+    if (row.totalTokens <= 0 || row.durationMs <= 0) {
+      logger.debug("skip tps sample", { sessionID: row.sessionID, messageID: row.messageID, totalTokens: row.totalTokens, durationMs: row.durationMs })
+      return
+    }
     pendingTpsRows = [
       ...pendingTpsRows.filter((item) => item.sessionID !== row.sessionID || item.messageID !== row.messageID),
       row,
     ]
+    logger.debug("queued tps sample", { sessionID: row.sessionID, messageID: row.messageID, totalTokens: row.totalTokens, durationMs: row.durationMs })
   }
 
   const queueToolCall = (row: ToolCallRow) => {
@@ -383,6 +411,7 @@ export const OcTokenInsightsServer: Plugin = async () => {
       ),
       row,
     ]
+    logger.debug("queued tool call", { sessionID: row.sessionID, toolCallID: row.toolCallID, toolName: row.toolName, status: row.status })
   }
 
   const toolProviderInfo = (sessionID: string) => latestAssistantInfoBySession[sessionID]
@@ -428,9 +457,21 @@ export const OcTokenInsightsServer: Plugin = async () => {
 
   return {
     "chat.params": async (chatInput, output) => {
+      logger.debug("hook chat.params", {
+        sessionID: chatInput.sessionID,
+        messageID: knownValue(chatInput.message.id),
+        provider: knownValue(chatInput.provider.id),
+        model: knownValue(chatInput.model.id),
+      })
       thinkingLevelByKey[attemptKey(chatInput)] = thinkingLevelFromOptions(output.options)
     },
     "chat.headers": async (chatInput) => {
+      logger.debug("hook chat.headers", {
+        sessionID: chatInput.sessionID,
+        messageID: knownValue(chatInput.message.id),
+        provider: knownValue(chatInput.provider.id),
+        model: knownValue(chatInput.model.id),
+      })
       const s = await getRequestStorage()
       if (!s) return
 
@@ -451,10 +492,11 @@ export const OcTokenInsightsServer: Plugin = async () => {
           thinkingLevel: thinkingLevelByKey[key] ?? UNKNOWN_VALUE,
         })
       } catch (err) {
-        console.error("oc-tokeninsights-server: request insert failed:", err)
+        logger.error("request insert failed", errorFields(err))
       }
     },
     "tool.execute.before": async (input) => {
+      logger.debug("hook tool.execute.before", { sessionID: input.sessionID, toolCallID: knownValue(input.callID), toolName: input.tool })
       const providerInfo = toolProviderInfo(input.sessionID)
       const callID = knownValue(input.callID)
       queueToolCall(
@@ -472,6 +514,7 @@ export const OcTokenInsightsServer: Plugin = async () => {
       flushRows(input.sessionID)
     },
     "tool.execute.after": async (input, output) => {
+      logger.debug("hook tool.execute.after", { sessionID: input.sessionID, toolCallID: knownValue(input.callID), toolName: input.tool })
       const providerInfo = toolProviderInfo(input.sessionID)
       const callID = knownValue(input.callID)
       queueToolCall(
@@ -489,9 +532,17 @@ export const OcTokenInsightsServer: Plugin = async () => {
       flushRows(input.sessionID)
     },
     event: async ({ event }) => {
+      logger.debug("hook event", { eventType: event.type })
       switch (event.type) {
+        case "session.created": {
+          const sessionID = stringRecordValue(event.properties, "sessionID") ?? stringRecordValue(recordValue(event.properties, "info"), "id")
+          logger.debug("session started", { sessionID })
+          break
+        }
+
         case "message.updated": {
           const info = event.properties.info
+          logger.debug("event message.updated", { sessionID: event.properties.sessionID, messageID: info.id, role: info.role })
           const sessionMessages = serverMessagesBySession[event.properties.sessionID] ?? []
           const existingIndex = sessionMessages.findIndex((m) => m.id === info.id)
           const messageData: ServerMessageInfo = {
@@ -577,6 +628,12 @@ export const OcTokenInsightsServer: Plugin = async () => {
         }
 
         case "message.part.updated": {
+          logger.debug("event message.part.updated", {
+            sessionID: event.properties.sessionID,
+            messageID: event.properties.part.messageID,
+            partID: event.properties.part.id,
+            partType: event.properties.part.type,
+          })
           if (event.properties.part.type === "step-finish") {
             const partInfo = messageInfoByID[event.properties.part.messageID]
             queueTokenEvent(
@@ -612,12 +669,14 @@ export const OcTokenInsightsServer: Plugin = async () => {
         }
 
         case "session.idle": {
+          logger.debug("event session.idle", { sessionID: event.properties.sessionID })
           queueSessionFallbacks(event.properties.sessionID)
           flushRows(event.properties.sessionID)
           break
         }
 
         case "session.deleted": {
+          logger.debug("event session.deleted", { sessionID: event.properties.sessionID })
           queueSessionFallbacks(event.properties.sessionID)
           flushRows(event.properties.sessionID)
           delete serverMessagesBySession[event.properties.sessionID]

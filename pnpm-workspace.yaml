@@ -2,6 +2,7 @@ packages:
   - "packages/plugins/*"
   - "packages/cli"
   - "packages/check-schema"
+  - "packages/logger"
 allowBuilds:
   '@google/genai': true
   better-sqlite3: true

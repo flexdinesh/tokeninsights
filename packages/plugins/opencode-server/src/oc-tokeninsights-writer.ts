@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises"
 import { dirname } from "node:path"
 import { parentPort } from "node:worker_threads"
 import Database from "better-sqlite3"
+import { createTokenInsightsLogger, errorFields } from "@tokeninsights/logger"
 import { applySchema } from "./schema-migrate.ts"
 import type {
   MessageInfo,
@@ -14,6 +15,8 @@ import type {
   TpsSampleRow,
   WriterResponse,
 } from "./types.ts"
+
+const logger = createTokenInsightsLogger({ harness: "opencode-server" })
 
 const DAY_MS = 24 * 60 * 60 * 1000
 
@@ -46,16 +49,18 @@ function pruneKey(now = Date.now()) {
 }
 
 async function createTokenStorage(dbPath: string, retentionDays: number): Promise<TokenStorage> {
+  logger.debug("worker db init start", { dbPath, retentionDays })
   mkdirSync(dirname(dbPath), { recursive: true })
 
   const db = new Database(dbPath)
   db.exec("PRAGMA busy_timeout = 5000")
   const schemaSql = await readFile(new URL("../../../schema/schema.sql", import.meta.url), "utf8")
   applySchema(db, schemaSql)
+  logger.debug("worker db schema applied")
   try {
     db.exec("PRAGMA wal_checkpoint(PASSIVE)")
-  } catch {
-    // PASSIVE can fail if another writer holds the lock; safe to ignore
+  } catch (err) {
+    logger.debug("worker wal checkpoint skipped", errorFields(err))
   }
 
   const insertEvent = db.prepare(`
@@ -261,9 +266,16 @@ async function createTokenStorage(dbPath: string, retentionDays: number): Promis
   }
 
   pruneDaily()
+  logger.debug("worker db init succeeded")
 
   return {
     flush(tokenRows, tpsRows, infoUpdates, toolRows) {
+      logger.debug("worker flush", {
+        tokenRows: tokenRows.length,
+        tpsRows: tpsRows.length,
+        infoUpdates: infoUpdates.length,
+        toolRows: toolRows.length,
+      })
       if (tokenRows.length > 0) insertRows(tokenRows)
       if (tpsRows.length > 0) insertTpsRows(tpsRows)
       if (toolRows.length > 0) insertToolRows(toolRows)
@@ -273,6 +285,7 @@ async function createTokenStorage(dbPath: string, retentionDays: number): Promis
       pruneDaily()
     },
     close() {
+      logger.debug("worker db close")
       db.close()
     },
   }
@@ -295,19 +308,28 @@ function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
 async function handleMessage(message: WorkerMessage) {
   try {
     if (message.type === "init") {
+      logger.debug("worker init message", { dbPath: message.dbPath, retentionDays: message.retentionDays })
       storage = await withTimeout(createTokenStorage(message.dbPath, message.retentionDays), WORKER_INIT_TIMEOUT_MS)
       post({ type: "ready" })
       return
     }
     if (message.type === "flush") {
+      logger.debug("worker flush message", {
+        tokenRows: message.tokenRows.length,
+        tpsRows: message.tpsRows.length,
+        infoUpdates: message.infoUpdates.length,
+        toolRows: message.toolRows.length,
+      })
       storage?.flush(message.tokenRows, message.tpsRows, message.infoUpdates, message.toolRows)
       post({ type: "flushed" })
       return
     }
+    logger.debug("worker close message")
     storage?.close()
     post({ type: "closed" })
     parentPort?.close()
   } catch (error) {
+    logger.error("worker message failed", errorFields(error))
     post({ type: "error", message: error instanceof Error ? error.message : "sqlite write failed" })
   }
 }

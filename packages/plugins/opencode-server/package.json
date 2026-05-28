@@ -9,9 +9,10 @@
     "node": ">=24"
   },
   "scripts": {
-    "build": "node --check src/index.ts && node --check src/oc-tokeninsights-writer.ts"
+    "build": "node --check src/index.ts && node --check src/writer-client.ts && node --check src/oc-tokeninsights-writer.ts"
   },
   "dependencies": {
+    "@tokeninsights/logger": "workspace:*",
     "better-sqlite3": "^12.10.0"
   },
   "peerDependencies": {

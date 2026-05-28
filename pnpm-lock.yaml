@@ -16,11 +16,16 @@ importers:
 
   packages/cli: {}
 
+  packages/logger: {}
+
   packages/plugins/opencode-server:
     dependencies:
       '@opencode-ai/plugin':
         specifier: '*'
         version: 1.15.3(@opentui/core@0.2.12(typescript@6.0.3)(web-tree-sitter@0.25.10))(@opentui/solid@0.2.12(solid-js@1.9.12)(typescript@6.0.3)(web-tree-sitter@0.25.10))
+      '@tokeninsights/logger':
+        specifier: workspace:*
+        version: link:../../logger
       better-sqlite3:
         specifier: ^12.10.0
         version: 12.10.0
@@ -53,6 +58,9 @@ importers:
 
   packages/plugins/pi:
     dependencies:
+      '@tokeninsights/logger':
+        specifier: workspace:*
+        version: link:../../logger
       '@types/better-sqlite3':
         specifier: ^7.6.13
         version: 7.6.13
