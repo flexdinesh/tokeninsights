@@ -11,16 +11,16 @@ TPS (tokens per second) is a first-class project metric. Do not remove persisted
 ## System Architecture
 
 ```
-┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
-│  OpenCode TUI   │     │  OpenCode Server│     │   Pi Extension  │
-│  @tokeninsights │     │ @tokeninsights │     │ @tokeninsights/pi│
-│ /opencode-tui  │     │/opencode-server│     │    index.ts     │
-└────────┬────────┘     └────────┬────────┘     └────────┬────────┘
-         │                       │                       │
-         │ reads                 │ writes                │ writes
-         │ (live display)        │ (worker thread)       │ (direct)
-         │                       │                       │
-         ▼                       ▼                       ▼
+┌─────────────────┐     ┌─────────────────┐
+│  OpenCode Server│     │   Pi Extension  │
+│ @tokeninsights  │     │ @tokeninsights/pi│
+│/opencode-server │     │    index.ts     │
+└────────┬────────┘     └────────┬────────┘
+         │                       │
+         │ writes                │ writes
+         │ (worker thread)       │ (direct)
+         │                       │
+         ▼                       ▼
 ┌───────────────────────────────────────────────────────────────┐
 │                SQLite DB (~/.local/share/tokeninsights/tokeninsights.sqlite) │
 │  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐  │
@@ -48,7 +48,6 @@ TPS (tokens per second) is a first-class project metric. Do not remove persisted
 ### Plugin / CLI Boundary
 
 - **Server plugin writes** all durable OpenCode data using `better-sqlite3` in a Node worker thread (`oc-tokeninsights-writer.ts`). Writes are queued in memory and flushed about once per second. A hard crash can lose the most recent queued batch.
-- **TUI plugin reads only** — it queries `oc_tps_samples` for session averages/TTFT and estimates live TPS from `message.part.delta` events in memory.
 - **Pi extension writes** using `better-sqlite3` directly from the extension event handler. Volume is low enough that synchronous writes do not block the Pi TUI.
 - **Plugin logging** is shared through `packages/logger`. The OpenCode server plugin and Pi extension write best-effort metadata logs to `$XDG_STATE_HOME/tokeninsights/logs/{harness}-{YY-MM-DD}.log`, falling back to `~/.local/state/tokeninsights/logs/`. Debug logs require `TOKENINSIGHTS_DEBUG=1`.
 - **CLI reads** using `modernc.org/sqlite` with a `file:` URL and `mode=ro`. It never writes.
@@ -65,11 +64,9 @@ Logs must remain metadata-only. Do not log prompt text, assistant message conten
 
 ### Why This Boundary Matters
 
-Plugin DB writes must stay lightweight; the TUI should never feel blocked by analytics. The CLI is free to run expensive aggregates because it only reads.
+Plugin DB writes must stay lightweight; OpenCode and Pi should never feel blocked by analytics. The CLI is free to run expensive aggregates because it only reads.
 
 **Top priority**: plugin initialization must never block OpenCode startup. DB open and schema migration happen lazily on first write (server plugin) or inside a worker thread (server plugin token writer). If the DB is locked by another process, the plugin degrades gracefully rather than hanging OpenCode.
-
-**TUI defensiveness**: the TUI plugin never opens the DB for writes. It queries `oc_tps_samples` read-only for the live banner. If the DB is unavailable, averages display as `-`.
 
 **Server worker defensiveness**: the writer thread times out DB init after 10 s, runs a passive WAL checkpoint after migration to prevent unbounded WAL growth, and the main thread only flushes rows once the worker signals `ready`. If init fails, rows are dropped in-memory rather than queued forever.
 
@@ -200,28 +197,6 @@ Missing `provider` or `model` must not drop token data. Store, render, and query
 
 ## Plugin Event Flow
 
-### TUI Plugin (`packages/plugins/opencode-tui/src/index.tsx`)
-
-The TUI plugin is **read-only** for durable data. It handles:
-
-1. **`message.part.delta`**
-   - Used **only** for live TUI display.
-   - Text/reasoning deltas are estimated as `ceil(byteLength(delta) / 5)`, minimum 1 token.
-   - These estimates are **not persisted**.
-
-2. **`message.part.updated`** (tool parts only)
-   - `running`, `completed`, `error`: clears live stream samples so tool time does not look like streaming TPS.
-
-### TUI Display
-
-The plugin registers `session_prompt_right`:
-
-```text
-TPS <live> | AVG <session avg> | TTFT <session avg ttft>
-```
-
-Live TPS uses the last 5 seconds of estimated stream deltas and hides when idle/stale. Session average and TTFT are queried from `oc_tps_samples` every `BANNER_REFRESH_MS` (default 2000 ms) and persist across TUI restarts.
-
 ### Server Plugin (`packages/plugins/opencode-server/src/index.ts`)
 
 Runs as an OpenCode server plugin and is the **sole writer** of OpenCode token data. It emits an `info` log when the plugin loads, `debug` logs for all hooks/events when `TOKENINSIGHTS_DEBUG=1`, and error logs for DB/worker/write failures. `session.created` produces a debug log so activation and session starts can be diagnosed from the log file.
@@ -251,7 +226,7 @@ Request-tracking limitations: counts request attempts, not confirmed HTTP succes
 
 ### Pi Extension (`packages/plugins/pi/src/index.ts`)
 
-Runs as a Pi coding-agent extension. **One extension collects all data**: tokens, TPS, requests, and tool calls (unlike OpenCode which splits this across TUI and server plugins). It emits an `info` log when the extension loads, `debug` logs for all hooks when `TOKENINSIGHTS_DEBUG=1`, and error logs for DB/write failures. `session_start` produces a debug log so activation and session starts can be diagnosed from the log file.
+Runs as a Pi coding-agent extension. One extension collects all Pi data: tokens, TPS, requests, and tool calls. It emits an `info` log when the extension loads, `debug` logs for all hooks when `TOKENINSIGHTS_DEBUG=1`, and error logs for DB/write failures. `session_start` produces a debug log so activation and session starts can be diagnosed from the log file.
 
 - **Initialization is lazy**: DB open and schema migration are deferred to the first event that requires a write. If init fails, the extension logs to stderr and disables tracking; Pi startup is never blocked.
 - **`turn_start`**: resets per-turn timing state (`requestStartAt`, `firstTokenAt`, `lastTokenAt`).
@@ -349,7 +324,7 @@ Period and date range filters are pushed into SQL WHERE clauses. In the interact
 
 ### Must Never Change
 
-- **Plugin init must never block OpenCode**. DB open and schema migration must be lazy (server) or inside a worker thread (TUI). Failures degrade gracefully.
+- **Plugin init must never block OpenCode**. DB open and schema migration must be lazy or inside a worker thread. Failures degrade gracefully.
 - `session_id` is required for every durable row.
 - TPS tables, columns, and metrics (`tps avg`, `tps mean`, `tps median`) must remain.
 - Plugin DB writes must stay lightweight.
@@ -371,8 +346,6 @@ Even the items below require explicit user approval before implementation. Surfa
 
 | Directory / File | Role |
 |-----------------|------|
-| `packages/plugins/opencode-tui/src/index.tsx` | TUI plugin entry point; live display, DB queries |
-| `packages/plugins/opencode-tui/package.json` | OpenCode TUI plugin package manifest (`@tokeninsights/opencode-tui`) |
 | `packages/plugins/opencode-server/src/index.ts` | Server plugin; durable collection, LLM request and tool-call tracking |
 | `packages/plugins/opencode-server/src/oc-tokeninsights-writer.ts` | Node worker thread; SQLite writes, schema migration, pruning |
 | `packages/plugins/opencode-server/src/writer-client.ts` | Worker client used by the server plugin |

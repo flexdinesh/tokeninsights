@@ -2,7 +2,7 @@
 
 ## Context
 
-- `tokeninsights-cli` is a read-only Go CLI over a SQLite DB written by the `oc-tokeninsights` OpenCode TUI plugin (TypeScript).
+- `tokeninsights-cli` is a read-only Go CLI over a SQLite DB written by the OpenCode server plugin and Pi extension.
 - Single query today; schema is small; low churn.
 - Driver: `modernc.org/sqlite` (pure Go). Flat `main.go`, no migrations, no codegen, in-memory filtering/aggregation.
 - Two-repo project: writer (plugin) + reader (this CLI). Schema contract is implicit.

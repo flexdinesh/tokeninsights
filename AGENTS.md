@@ -1,6 +1,6 @@
 # tokeninsights — Agent Guide
 
-Track local token usage for OpenCode and Pi. The OpenCode server plugin writes to SQLite via worker thread; the OpenCode TUI plugin reads for live display; the Pi extension writes its own table family; the Go CLI reads aggregate tables.
+Track local token usage for OpenCode and Pi. The OpenCode server plugin writes to SQLite via worker thread; the Pi extension writes its own table family; the Go CLI reads aggregate tables.
 
 Full architecture, schema contract, event flow, and invariants are in [`docs/design.md`](docs/design.md). Read it before any non-trivial change.
 

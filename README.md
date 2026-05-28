@@ -1,12 +1,11 @@
 # tokeninsights
 
-Local token usage tools for OpenCode and Pi. The OpenCode server plugin and Pi extension write token/TPS/request/tool-call data to SQLite; the OpenCode TUI plugin queries the DB for live display; the Go CLI reads aggregate tables.
+Local token usage tools for OpenCode and Pi. The OpenCode server plugin and Pi extension write token/TPS/request/tool-call data to SQLite; the Go CLI reads aggregate tables.
 
 See [`docs/design.md`](docs/design.md) for full architecture, schema contract, event flow, and invariants.
 
 ## Code Organization
 
-- `packages/plugins/opencode-tui/` — OpenCode TUI plugin package (`@tokeninsights/opencode-tui`)
 - `packages/plugins/opencode-server/` — OpenCode server plugin package (`@tokeninsights/opencode-server`)
 - `packages/plugins/pi/` — Pi extension package
 - `packages/logger/` — shared file logger for plugin diagnostics
@@ -18,18 +17,18 @@ See [`docs/design.md`](docs/design.md) for full architecture, schema contract, e
 
 ### When to run what
 
-| You changed                                                    | Run                                                                   |
-| -------------------------------------------------------------- | --------------------------------------------------------------------- |
-| `packages/schema/schema.sql`                                   | `pnpm run check-schema`                                               |
-| Any `.ts` in `packages/plugins/`                               | `pnpm run build`                                                      |
-| Any `.go` in `packages/cli/`                                   | `pnpm run test && pnpm run build:cli`                                 |
-| Storage, schema, events, SQL, aggregation, rendering, or tests | Update **both** plugin and CLI; `pnpm run build && pnpm run test`     |
+| You changed                                                    | Run                                                               |
+| -------------------------------------------------------------- | ----------------------------------------------------------------- |
+| `packages/schema/schema.sql`                                   | `pnpm run check-schema`                                           |
+| Any `.ts` in `packages/plugins/`                               | `pnpm run build`                                                  |
+| Any `.go` in `packages/cli/`                                   | `pnpm run test && pnpm run build:cli`                             |
+| Storage, schema, events, SQL, aggregation, rendering, or tests | Update **both** plugin and CLI; `pnpm run build && pnpm run test` |
 
 > ⚠️ **Schema changes are user-approved only.** Never modify `packages/schema/schema.sql` without explicit user approval, even for additive changes. Always explain the rationale and ask first.
 
 ### Build everything from a fresh checkout
 
-TokenInsights targets Node 24+. The OpenCode server plugin uses native Node TypeScript at runtime; the OpenCode TUI plugin is TSX and must be compiled to `packages/plugins/opencode-tui/dist/index.js`.
+TokenInsights targets Node 24+. The OpenCode server plugin uses native Node TypeScript at runtime.
 
 ```sh
 pnpm install
@@ -38,13 +37,12 @@ pnpm run build
 pnpm run test
 ```
 
-`build` builds the OpenCode plugins, Pi extension, and CLI. `test` runs all tests.
+`build` builds the OpenCode server plugin, Pi extension, and CLI. `test` runs all tests.
 
 ### Plugin builds
 
 ```sh
 pnpm run build:opencode-server
-pnpm run build:opencode-tui
 pnpm run build:pi
 ```
 
@@ -64,18 +62,13 @@ pnpm run build:cli
 ./packages/cli/tokeninsights-cli --today
 ```
 
-## Install OpenCode Plugins
+## Install OpenCode Plugin
 
-Install dependencies, build the TSX TUI package, and link the local plugin packages with pnpm:
+Install dependencies and link the local server plugin package with pnpm:
 
 ```sh
 cd packages/plugins/opencode-server
 pnpm install
-pnpm link --global
-
-cd ../opencode-tui
-pnpm install
-pnpm run build
 pnpm link --global
 ```
 
@@ -84,10 +77,7 @@ Configure OpenCode to load the linked package names rather than file paths (`~/.
 ```jsonc
 {
   "$schema": "https://opencode.ai/config.json",
-  "plugin": [
-    "@tokeninsights/opencode-server",
-    "@tokeninsights/opencode-tui"
-  ]
+  "plugin": ["@tokeninsights/opencode-server"],
 }
 ```
 
@@ -138,7 +128,7 @@ Pi settings (`~/.pi/agent/settings.json`):
 }
 ```
 
-The Pi extension writes to the same TokenInsights DB as the OpenCode plugins (`~/.local/share/tokeninsights/tokeninsights.sqlite`) but stores data in the `pi_*` table family. The CLI reads both `oc_*` and `pi_*` tables and shows a `harness` column (`oc` or `pi`) to distinguish sources.
+The Pi extension writes to the same TokenInsights DB as the OpenCode server plugin (`~/.local/share/tokeninsights/tokeninsights.sqlite`) but stores data in the `pi_*` table family. The CLI reads both `oc_*` and `pi_*` tables and shows a `harness` column (`oc` or `pi`) to distinguish sources.
 
 Tool calls are tracked as lifecycle rows (`started`, `completed`, `error`). The CLI `tool calls` tab shows started-call counts plus error counts per normal group; `tool breakdown` adds per-tool grouping.
 
