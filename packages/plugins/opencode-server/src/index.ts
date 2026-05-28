@@ -2,7 +2,7 @@ import { mkdirSync } from "node:fs"
 import { readFile } from "node:fs/promises"
 import { dirname, isAbsolute, join } from "node:path"
 import Database from "better-sqlite3"
-import type { Plugin } from "@opencode-ai/plugin"
+import type { Plugin, PluginModule } from "@opencode-ai/plugin"
 import { createTokenInsightsLogger, errorFields } from "@tokeninsights/logger"
 import { createTokenStorage } from "./writer-client.ts"
 import { applySchema } from "./schema-migrate.ts"
@@ -243,8 +243,16 @@ type ServerMessageInfo = {
   tokens?: TokenCounts
 }
 
-export const OcTokenInsightsServer: Plugin = async () => {
+export const OcTokenInsightsServer: Plugin = async ({ client, directory, project }) => {
   logger.info("plugin loaded")
+  await client.app.log({
+    body: {
+      service: "tokeninsights",
+      level: "info",
+      message: "opencode server plugin loaded",
+      extra: { directory, project: project.id },
+    },
+  })
 
   // --- LLM request tracking (direct DB) ---
   let requestStorage: RequestStorage | undefined
@@ -695,4 +703,7 @@ export const OcTokenInsightsServer: Plugin = async () => {
   }
 }
 
-export default OcTokenInsightsServer
+export default {
+  id: "tokeninsights.opencode-server",
+  server: OcTokenInsightsServer,
+} satisfies PluginModule & { id: string }
