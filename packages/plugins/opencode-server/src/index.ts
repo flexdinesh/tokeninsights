@@ -1,7 +1,7 @@
 import { mkdirSync } from "node:fs"
 import { readFile } from "node:fs/promises"
 import { dirname, isAbsolute, join } from "node:path"
-import Database from "better-sqlite3"
+import { DatabaseSync } from "node:sqlite"
 import type { Plugin, PluginModule } from "@opencode-ai/plugin"
 import { createTokenInsightsLogger, errorFields } from "@tokeninsights/logger"
 import { createTokenStorage } from "./writer-client.ts"
@@ -194,7 +194,7 @@ function siblingModuleUrl(baseUrl: string, sourceModule: string, builtModule: st
 async function createRequestStorage(path: string, retention: number): Promise<RequestStorage> {
   mkdirSync(dirname(path), { recursive: true })
 
-  const db = new Database(path)
+  const db = new DatabaseSync(path, { timeout: 5000 })
   const schemaSql = await readSchemaSql()
   applySchema(db, schemaSql)
 

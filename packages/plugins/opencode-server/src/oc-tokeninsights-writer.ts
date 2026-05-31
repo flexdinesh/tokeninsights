@@ -1,8 +1,8 @@
 import { mkdirSync } from "node:fs"
 import { readFile } from "node:fs/promises"
 import { dirname } from "node:path"
+import { DatabaseSync } from "node:sqlite"
 import { parentPort } from "node:worker_threads"
-import Database from "better-sqlite3"
 import { createTokenInsightsLogger, errorFields } from "@tokeninsights/logger"
 import { applySchema } from "./schema-migrate.ts"
 import type {
@@ -48,6 +48,17 @@ function pruneKey(now = Date.now()) {
   return new Date(now).toISOString().slice(0, 10)
 }
 
+function transaction(db: DatabaseSync, fn: () => void) {
+  db.exec("BEGIN")
+  try {
+    fn()
+    db.exec("COMMIT")
+  } catch (err) {
+    if (db.isTransaction) db.exec("ROLLBACK")
+    throw err
+  }
+}
+
 async function readSchemaSql() {
   try {
     return await readFile(new URL("./schema.sql", import.meta.url), "utf8")
@@ -60,8 +71,7 @@ async function createTokenStorage(dbPath: string, retentionDays: number): Promis
   logger.debug("worker db init start", { dbPath, retentionDays })
   mkdirSync(dirname(dbPath), { recursive: true })
 
-  const db = new Database(dbPath)
-  db.exec("PRAGMA busy_timeout = 5000")
+  const db = new DatabaseSync(dbPath, { timeout: 5000 })
   const schemaSql = await readSchemaSql()
   applySchema(db, schemaSql)
   logger.debug("worker db schema applied")
@@ -187,78 +197,86 @@ async function createTokenStorage(dbPath: string, retentionDays: number): Promis
   const pruneEvents = db.prepare("DELETE FROM oc_token_events WHERE recorded_at_ms < $cutoff")
   const pruneTpsSamples = db.prepare("DELETE FROM oc_tps_samples WHERE recorded_at_ms < $cutoff")
   const pruneToolCalls = db.prepare("DELETE FROM oc_tool_calls WHERE recorded_at_ms < $cutoff")
-  const insertRows = db.transaction((rows: TokenEventRow[]) => {
-    for (const row of rows) {
-      if (row.source === "step-finish") {
-        deleteFallback.run({ sessionID: row.sessionID, messageID: row.messageID })
-      } else if (existingStepRow.get({ sessionID: row.sessionID, messageID: row.messageID })) {
-        continue
+  const insertRows = (rows: TokenEventRow[]) => {
+    transaction(db, () => {
+      for (const row of rows) {
+        if (row.source === "step-finish") {
+          deleteFallback.run({ sessionID: row.sessionID, messageID: row.messageID })
+        } else if (existingStepRow.get({ sessionID: row.sessionID, messageID: row.messageID })) {
+          continue
+        }
+        insertEvent.run({
+          recordedAt: row.recordedAt,
+          recordedAtMs: row.recordedAtMs,
+          sessionID: row.sessionID,
+          messageID: row.messageID,
+          partID: row.partID,
+          source: row.source,
+          provider: row.provider,
+          model: row.model,
+          inputTokens: row.inputTokens,
+          outputTokens: row.outputTokens,
+          reasoningTokens: row.reasoningTokens,
+          cacheReadTokens: row.cacheReadTokens,
+          cacheWriteTokens: row.cacheWriteTokens,
+          totalTokens: row.totalTokens,
+        })
       }
-      insertEvent.run({
-        recordedAt: row.recordedAt,
-        recordedAtMs: row.recordedAtMs,
-        sessionID: row.sessionID,
-        messageID: row.messageID,
-        partID: row.partID,
-        source: row.source,
-        provider: row.provider,
-        model: row.model,
-        inputTokens: row.inputTokens,
-        outputTokens: row.outputTokens,
-        reasoningTokens: row.reasoningTokens,
-        cacheReadTokens: row.cacheReadTokens,
-        cacheWriteTokens: row.cacheWriteTokens,
-        totalTokens: row.totalTokens,
-      })
-    }
-  })
-  const insertTpsRows = db.transaction((rows: TpsSampleRow[]) => {
-    for (const row of rows) {
-      insertTpsSample.run({
-        recordedAt: row.recordedAt,
-        recordedAtMs: row.recordedAtMs,
-        sessionID: row.sessionID,
-        messageID: row.messageID,
-        provider: row.provider,
-        model: row.model,
-        outputTokens: row.outputTokens,
-        reasoningTokens: row.reasoningTokens,
-        totalTokens: row.totalTokens,
-        durationMs: row.durationMs,
-        ttftMs: row.ttftMs,
-        tokensPerSecond: row.tokensPerSecond,
-      })
-    }
-  })
-  const insertToolRows = db.transaction((rows: ToolCallRow[]) => {
-    for (const row of rows) {
-      insertToolCall.run({
-        recordedAt: row.recordedAt,
-        recordedAtMs: row.recordedAtMs,
-        sessionID: row.sessionID,
-        messageID: row.messageID,
-        toolCallID: row.toolCallID,
-        toolName: row.toolName,
-        provider: row.provider,
-        model: row.model,
-        status: row.status,
-      })
-    }
-  })
-  const updateInfo = db.transaction((messageID: string, info: MessageInfo) => {
-    updateEventInfo.run({
-      messageID: messageID,
-      sessionID: info.sessionID,
-      provider: info.provider,
-      model: info.model,
     })
-    updateTpsInfo.run({
-      messageID: messageID,
-      sessionID: info.sessionID,
-      provider: info.provider,
-      model: info.model,
+  }
+  const insertTpsRows = (rows: TpsSampleRow[]) => {
+    transaction(db, () => {
+      for (const row of rows) {
+        insertTpsSample.run({
+          recordedAt: row.recordedAt,
+          recordedAtMs: row.recordedAtMs,
+          sessionID: row.sessionID,
+          messageID: row.messageID,
+          provider: row.provider,
+          model: row.model,
+          outputTokens: row.outputTokens,
+          reasoningTokens: row.reasoningTokens,
+          totalTokens: row.totalTokens,
+          durationMs: row.durationMs,
+          ttftMs: row.ttftMs,
+          tokensPerSecond: row.tokensPerSecond,
+        })
+      }
     })
-  })
+  }
+  const insertToolRows = (rows: ToolCallRow[]) => {
+    transaction(db, () => {
+      for (const row of rows) {
+        insertToolCall.run({
+          recordedAt: row.recordedAt,
+          recordedAtMs: row.recordedAtMs,
+          sessionID: row.sessionID,
+          messageID: row.messageID,
+          toolCallID: row.toolCallID,
+          toolName: row.toolName,
+          provider: row.provider,
+          model: row.model,
+          status: row.status,
+        })
+      }
+    })
+  }
+  const updateInfo = (messageID: string, info: MessageInfo) => {
+    transaction(db, () => {
+      updateEventInfo.run({
+        messageID: messageID,
+        sessionID: info.sessionID,
+        provider: info.provider,
+        model: info.model,
+      })
+      updateTpsInfo.run({
+        messageID: messageID,
+        sessionID: info.sessionID,
+        provider: info.provider,
+        model: info.model,
+      })
+    })
+  }
 
   let lastPruneKey = ""
 

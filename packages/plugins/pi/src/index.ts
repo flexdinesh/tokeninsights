@@ -1,10 +1,8 @@
 import { mkdirSync } from "node:fs"
 import { dirname, isAbsolute, join } from "node:path"
+import { DatabaseSync, type StatementSync } from "node:sqlite"
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent"
-import Database from "better-sqlite3"
 import { createTokenInsightsLogger, errorFields } from "@tokeninsights/logger"
-
-type DB = InstanceType<typeof Database>
 
 const logger = createTokenInsightsLogger({ harness: "pi" })
 
@@ -206,16 +204,16 @@ function getOrCreateState(sessionId: string): SessionState {
 
 // ── DB layer ────────────────────────────────────────────────────────────────
 
-let db: DB | undefined
+let db: DatabaseSync | undefined
 let dbInitFailed = false
-let insertTokenEvent: ReturnType<DB["prepare"]> | undefined
-let insertTpsSample: ReturnType<DB["prepare"]> | undefined
-let insertRequest: ReturnType<DB["prepare"]> | undefined
-let insertToolCall: ReturnType<DB["prepare"]> | undefined
-let pruneTokenEvents: ReturnType<DB["prepare"]> | undefined
-let pruneTpsSamples: ReturnType<DB["prepare"]> | undefined
-let pruneRequests: ReturnType<DB["prepare"]> | undefined
-let pruneToolCalls: ReturnType<DB["prepare"]> | undefined
+let insertTokenEvent: StatementSync | undefined
+let insertTpsSample: StatementSync | undefined
+let insertRequest: StatementSync | undefined
+let insertToolCall: StatementSync | undefined
+let pruneTokenEvents: StatementSync | undefined
+let pruneTpsSamples: StatementSync | undefined
+let pruneRequests: StatementSync | undefined
+let pruneToolCalls: StatementSync | undefined
 let lastPruneKey = ""
 
 function initDb(): boolean {
@@ -227,7 +225,7 @@ function initDb(): boolean {
     logger.debug("db init start", { dbPath: path, retentionDays: retentionDays() })
     mkdirSync(dirname(path), { recursive: true })
 
-    db = new Database(path)
+    db = new DatabaseSync(path, { timeout: 5000 })
     db.exec(PI_SCHEMA)
 
     insertTokenEvent = db.prepare(`
@@ -308,7 +306,7 @@ function insertToolCallRow(input: {
   status: "started" | "completed" | "error"
 }) {
   try {
-    insertToolCall?.run([
+    insertToolCall?.run(
       new Date(input.recordedAtMs).toISOString(),
       input.recordedAtMs,
       input.sessionId,
@@ -318,7 +316,7 @@ function insertToolCallRow(input: {
       input.provider,
       input.model,
       input.status,
-    ])
+    )
     logger.debug("tool call insert succeeded", { sessionID: input.sessionId, messageID: input.messageId, toolCallID: input.toolCallId, toolName: input.toolName, status: input.status })
   } catch (err) {
     logger.error("tool call insert failed", errorFields(err))
@@ -385,7 +383,7 @@ export default function (pi: ExtensionAPI) {
     const recordedAtMs = Date.now()
 
     try {
-      insertRequest?.run([
+      insertRequest?.run(
         new Date(recordedAtMs).toISOString(),
         recordedAtMs,
         sessionId,
@@ -394,7 +392,7 @@ export default function (pi: ExtensionAPI) {
         state.model,
         1, // Pi doesn't expose retry detection; all attempts are 1
         state.thinkingLevel,
-      ])
+      )
       logger.debug("request insert succeeded", { sessionID: sessionId, messageID: state.currentTurnId, provider: state.provider, model: state.model })
     } catch (err) {
       logger.error("request insert failed", errorFields(err))
@@ -536,12 +534,12 @@ export default function (pi: ExtensionAPI) {
 
     // Write token event
     try {
-      insertTokenEvent?.run([
+      insertTokenEvent?.run(
         recordedAt, recordedAtMs, sessionId, messageId,
         provider, model,
         inputTokens, outputTokens, reasoningTokens,
         cacheRead, cacheWrite, totalTokens,
-      ])
+      )
       logger.debug("token event insert succeeded", { sessionID: sessionId, messageID: messageId, provider, model, totalTokens })
     } catch (err) {
       logger.error("token event insert failed", errorFields(err))
@@ -558,12 +556,12 @@ export default function (pi: ExtensionAPI) {
 
     // Write TPS sample
     try {
-      insertTpsSample?.run([
+      insertTpsSample?.run(
         recordedAt, recordedAtMs, sessionId, messageId,
         provider, model,
         outputTokens, reasoningTokens, throughputTokens,
         durationMs, ttftMs, tps,
-      ])
+      )
       logger.debug("tps sample insert succeeded", { sessionID: sessionId, messageID: messageId, provider, model, totalTokens: throughputTokens, durationMs })
     } catch (err) {
       logger.error("tps sample insert failed", errorFields(err))

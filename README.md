@@ -19,6 +19,8 @@ pnpm install
 pnpm run build:plugins
 ```
 
+Requires Node.js 25 or newer for plugin builds and runtime.
+
 ### OpenCode
 
 Symlink the built server plugin into OpenCode's local plugin directory:

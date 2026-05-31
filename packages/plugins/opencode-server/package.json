@@ -6,21 +6,19 @@
   "main": "./src/index.ts",
   "exports": "./src/index.ts",
   "engines": {
-    "node": ">=24"
+    "node": ">=25"
   },
   "scripts": {
     "check": "node --check src/index.ts && node --check src/writer-client.ts && node --check src/oc-tokeninsights-writer.ts",
     "build": "pnpm run check && tsup && node scripts/build-dist.mjs"
   },
   "dependencies": {
-    "@tokeninsights/logger": "workspace:*",
-    "better-sqlite3": "^12.10.0"
+    "@tokeninsights/logger": "workspace:*"
   },
   "peerDependencies": {
     "@opencode-ai/plugin": "*"
   },
   "devDependencies": {
-    "@types/better-sqlite3": "^7.6.13",
     "tsup": "^8.5.1"
   }
 }

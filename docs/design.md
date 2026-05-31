@@ -47,12 +47,13 @@ TPS (tokens per second) is a first-class project metric. Do not remove persisted
 
 ### Plugin / CLI Boundary
 
-- **Server plugin writes** all durable OpenCode data using `better-sqlite3` in a Node worker thread (`oc-tokeninsights-writer.ts`). Writes are queued in memory and flushed about once per second. A hard crash can lose the most recent queued batch.
-- **Pi extension writes** using `better-sqlite3` directly from the extension event handler. Volume is low enough that synchronous writes do not block the Pi TUI.
+- **Server plugin writes** all durable OpenCode data using `node:sqlite` in a Node worker thread (`oc-tokeninsights-writer.ts`). Writes are queued in memory and flushed about once per second. A hard crash can lose the most recent queued batch.
+- **Pi extension writes** using `node:sqlite` directly from the extension event handler. Volume is low enough that synchronous writes do not block the Pi TUI.
 - **Plugin logging** is shared through `packages/logger`. The OpenCode server plugin and Pi extension write best-effort metadata logs to `$XDG_STATE_HOME/tokeninsights/logs/{harness}-{YY-MM-DD}.log`, falling back to `~/.local/state/tokeninsights/logs/`. Debug logs require `TOKENINSIGHTS_DEBUG=1`.
 - **CLI reads** using `modernc.org/sqlite` with a `file:` URL and `mode=ro`. It never writes.
 - Both sides share **one schema file**: `packages/schema/schema.sql`.
 - Default storage is TokenInsights-owned: `~/.local/share/tokeninsights/tokeninsights.sqlite`. Writer overrides use `TOKENINSIGHTS_DB_PATH` and `TOKENINSIGHTS_RETENTION_DAYS`; old harness-scoped env vars are not supported.
+- Plugins require Node.js 25 or newer for `node:sqlite`.
 
 ### Logging Contract
 

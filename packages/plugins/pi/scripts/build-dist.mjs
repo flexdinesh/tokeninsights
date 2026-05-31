@@ -21,9 +21,7 @@ const distPackage = {
   pi: {
     extensions: ["./index.js"],
   },
-  dependencies: {
-    "better-sqlite3": sourcePackage.dependencies["better-sqlite3"],
-  },
+  engines: sourcePackage.engines,
 }
 
 await writeFile(distPackagePath, `${JSON.stringify(distPackage, null, 2)}\n`, "utf8")

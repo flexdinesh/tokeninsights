@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "engines": {
-    "node": ">=24"
+    "node": ">=25"
   },
   "scripts": {
     "check-schema": "pnpm --filter check-schema run check-schema",

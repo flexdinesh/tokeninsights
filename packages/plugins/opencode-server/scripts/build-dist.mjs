@@ -22,9 +22,6 @@ const distPackage = {
   main: "./index.js",
   exports: "./index.js",
   engines: sourcePackage.engines,
-  dependencies: {
-    "better-sqlite3": sourcePackage.dependencies["better-sqlite3"],
-  },
   peerDependencies: sourcePackage.peerDependencies,
 }
 

@@ -9,14 +9,15 @@
       "./src/index.ts"
     ]
   },
+  "engines": {
+    "node": ">=25"
+  },
   "scripts": {
     "check": "tsc --noEmit --module esnext --moduleResolution bundler --esModuleInterop --skipLibCheck src/index.ts",
     "build": "pnpm run check && tsup && node scripts/build-dist.mjs"
   },
   "dependencies": {
-    "@tokeninsights/logger": "workspace:*",
-    "@types/better-sqlite3": "^7.6.13",
-    "better-sqlite3": "^12.10.0"
+    "@tokeninsights/logger": "workspace:*"
   },
   "devDependencies": {
     "@mariozechner/pi-coding-agent": "^0.71.0",

@@ -7,11 +7,10 @@ export default defineConfig({
   },
   format: ["esm"],
   platform: "node",
-  target: "node24",
+  target: "node25",
   outDir: "dist",
   clean: true,
   splitting: false,
   sourcemap: true,
-  external: ["better-sqlite3"],
   noExternal: ["@tokeninsights/logger"],
 })
