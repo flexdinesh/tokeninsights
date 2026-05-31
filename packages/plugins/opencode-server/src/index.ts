@@ -1,11 +1,11 @@
-import { mkdirSync } from "node:fs"
-import { readFile } from "node:fs/promises"
-import { dirname, isAbsolute, join } from "node:path"
-import { DatabaseSync } from "node:sqlite"
-import type { Plugin, PluginModule } from "@opencode-ai/plugin"
-import { createTokenInsightsLogger, errorFields } from "@tokeninsights/logger"
-import { createTokenStorage } from "./writer-client.ts"
-import { applySchema } from "./schema-migrate.ts"
+import { mkdirSync } from "node:fs";
+import { readFile } from "node:fs/promises";
+import { dirname, isAbsolute, join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
+import type { Plugin, PluginModule } from "@opencode-ai/plugin";
+import { createTokenInsightsLogger, errorFields } from "@tokeninsights/logger";
+import { createTokenStorage } from "./writer-client.ts";
+import { applySchema } from "./schema-migrate.ts";
 import type {
   MessageInfo,
   MessageInfoUpdate,
@@ -19,37 +19,44 @@ import type {
   ToolCallRow,
   ToolCallStatus,
   TpsSampleRow,
-} from "./types.ts"
+} from "./types.ts";
 
-const logger = createTokenInsightsLogger({ harness: "opencode-server" })
+const logger = createTokenInsightsLogger({ harness: "opencode-server" });
 
-const DEFAULT_DB_NAME = "tokeninsights.sqlite"
-const DEFAULT_RETENTION_DAYS = 365
-const DAY_MS = 24 * 60 * 60 * 1000
-const UNKNOWN_VALUE = "unknown"
+const DEFAULT_DB_NAME = "tokeninsights.sqlite";
+const DEFAULT_RETENTION_DAYS = 365;
+const DAY_MS = 24 * 60 * 60 * 1000;
+const UNKNOWN_VALUE = "unknown";
 
 function knownValue(value: string | undefined) {
-  const trimmed = value?.trim()
-  return trimmed && trimmed.length > 0 ? trimmed : UNKNOWN_VALUE
+  const trimmed = value?.trim();
+  return trimmed && trimmed.length > 0 ? trimmed : UNKNOWN_VALUE;
 }
 
 function messageKey(sessionID: string, messageID: string) {
-  return `${sessionID}:${messageID}`
+  return `${sessionID}:${messageID}`;
 }
 
 function totalTokenCount(tokens: TokenCounts) {
-  return tokens.total ?? tokens.input + tokens.output + tokens.reasoning + tokens.cache.read + tokens.cache.write
+  return (
+    tokens.total ??
+    tokens.input +
+      tokens.output +
+      tokens.reasoning +
+      tokens.cache.read +
+      tokens.cache.write
+  );
 }
 
 function tokenEventRow(input: {
-  recordedAtMs: number
-  sessionID: string
-  messageID: string
-  partID: string
-  source: TokenEventSource
-  provider: string | undefined
-  model: string | undefined
-  tokens: TokenCounts
+  recordedAtMs: number;
+  sessionID: string;
+  messageID: string;
+  partID: string;
+  source: TokenEventSource;
+  provider: string | undefined;
+  model: string | undefined;
+  tokens: TokenCounts;
 }): TokenEventRow {
   return {
     recordedAt: new Date(input.recordedAtMs).toISOString(),
@@ -66,52 +73,53 @@ function tokenEventRow(input: {
     cacheReadTokens: input.tokens.cache.read,
     cacheWriteTokens: input.tokens.cache.write,
     totalTokens: totalTokenCount(input.tokens),
-  }
+  };
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null
+  return typeof value === "object" && value !== null;
 }
 
 function recordValue(value: unknown, key: string) {
-  if (!isRecord(value)) return undefined
-  if (!Object.prototype.hasOwnProperty.call(value, key)) return undefined
-  return value[key]
+  if (!isRecord(value)) return undefined;
+  if (!Object.prototype.hasOwnProperty.call(value, key)) return undefined;
+  return value[key];
 }
 
 function stringRecordValue(value: unknown, key: string) {
-  const next = recordValue(value, key)
-  return typeof next === "string" ? next : undefined
+  const next = recordValue(value, key);
+  return typeof next === "string" ? next : undefined;
 }
 
 function outputHasError(value: unknown): boolean {
-  const error = recordValue(value, "error")
-  if (typeof error === "boolean") return error
-  if (typeof error === "string") return error.trim().length > 0
+  const error = recordValue(value, "error");
+  if (typeof error === "boolean") return error;
+  if (typeof error === "string") return error.trim().length > 0;
 
-  const isError = recordValue(value, "isError")
-  if (typeof isError === "boolean") return isError
+  const isError = recordValue(value, "isError");
+  if (typeof isError === "boolean") return isError;
 
-  const status = recordValue(value, "status")
-  if (typeof status === "string") return status.trim().toLowerCase() === "error"
+  const status = recordValue(value, "status");
+  if (typeof status === "string")
+    return status.trim().toLowerCase() === "error";
 
-  const metadata = recordValue(value, "metadata")
-  const metadataError = recordValue(metadata, "error")
-  if (typeof metadataError === "boolean") return metadataError
-  if (typeof metadataError === "string") return metadataError.trim().length > 0
+  const metadata = recordValue(value, "metadata");
+  const metadataError = recordValue(metadata, "error");
+  if (typeof metadataError === "boolean") return metadataError;
+  if (typeof metadataError === "string") return metadataError.trim().length > 0;
 
-  return false
+  return false;
 }
 
 function toolCallRow(input: {
-  recordedAtMs: number
-  sessionID: string
-  messageID: string
-  toolCallID: string
-  toolName: string | undefined
-  provider: string | undefined
-  model: string | undefined
-  status: ToolCallStatus
+  recordedAtMs: number;
+  sessionID: string;
+  messageID: string;
+  toolCallID: string;
+  toolName: string | undefined;
+  provider: string | undefined;
+  model: string | undefined;
+  status: ToolCallStatus;
 }): ToolCallRow {
   return {
     recordedAt: new Date(input.recordedAtMs).toISOString(),
@@ -123,25 +131,25 @@ function toolCallRow(input: {
     provider: knownValue(input.provider),
     model: knownValue(input.model),
     status: input.status,
-  }
+  };
 }
 
 function normalizedThinkingLevel(value: unknown): string | undefined {
   if (typeof value === "string") {
-    const normalized = value.trim().toLowerCase().replace(/[-_ ]/g, "")
-    if (normalized === "low") return "low"
-    if (normalized === "medium") return "medium"
-    if (normalized === "high") return "high"
-    if (normalized === "xhigh" || normalized === "extrahigh") return "xhigh"
-    return undefined
+    const normalized = value.trim().toLowerCase().replace(/[-_ ]/g, "");
+    if (normalized === "low") return "low";
+    if (normalized === "medium") return "medium";
+    if (normalized === "high") return "high";
+    if (normalized === "xhigh" || normalized === "extrahigh") return "xhigh";
+    return undefined;
   }
-  if (!isRecord(value)) return undefined
+  if (!isRecord(value)) return undefined;
 
   return (
     normalizedThinkingLevel(recordValue(value, "level")) ??
     normalizedThinkingLevel(recordValue(value, "effort")) ??
     normalizedThinkingLevel(recordValue(value, "reasoningEffort"))
-  )
+  );
 }
 
 function thinkingLevelFromOptions(options: unknown) {
@@ -151,52 +159,69 @@ function thinkingLevelFromOptions(options: unknown) {
     normalizedThinkingLevel(recordValue(options, "reasoning")) ??
     normalizedThinkingLevel(recordValue(options, "reasoningEffort")) ??
     UNKNOWN_VALUE
-  )
+  );
 }
 
 function defaultDataPath() {
-  const xdgDataHome = process.env.XDG_DATA_HOME?.trim()
-  if (xdgDataHome && xdgDataHome.length > 0) return join(xdgDataHome, "tokeninsights")
+  const xdgDataHome = process.env.XDG_DATA_HOME?.trim();
+  if (xdgDataHome && xdgDataHome.length > 0)
+    return join(xdgDataHome, "tokeninsights");
 
-  const home = process.env.HOME?.trim()
-  if (home && home.length > 0) return join(home, ".local", "share", "tokeninsights")
+  const home = process.env.HOME?.trim();
+  if (home && home.length > 0)
+    return join(home, ".local", "share", "tokeninsights");
 
-  return join(process.cwd(), ".tokeninsights-data")
+  return join(process.cwd(), ".tokeninsights-data");
 }
 
 function dbPath() {
-  const configured = process.env.TOKENINSIGHTS_DB_PATH?.trim()
-  if (!configured) return join(defaultDataPath(), DEFAULT_DB_NAME)
-  return isAbsolute(configured) ? configured : join(defaultDataPath(), configured)
+  const configured = process.env.TOKENINSIGHTS_DB_PATH?.trim();
+  if (!configured) return join(defaultDataPath(), DEFAULT_DB_NAME);
+  return isAbsolute(configured)
+    ? configured
+    : join(defaultDataPath(), configured);
 }
 
 function retentionDays() {
-  const configured = process.env.TOKENINSIGHTS_RETENTION_DAYS?.trim()
-  if (!configured) return DEFAULT_RETENTION_DAYS
+  const configured = process.env.TOKENINSIGHTS_RETENTION_DAYS?.trim();
+  if (!configured) return DEFAULT_RETENTION_DAYS;
 
-  const parsed = Number(configured)
-  return Number.isFinite(parsed) ? parsed : DEFAULT_RETENTION_DAYS
+  const parsed = Number(configured);
+  return Number.isFinite(parsed) ? parsed : DEFAULT_RETENTION_DAYS;
 }
 
 async function readSchemaSql() {
   try {
-    return await readFile(new URL("./schema.sql", import.meta.url), "utf8")
+    return await readFile(new URL("./schema.sql", import.meta.url), "utf8");
   } catch {
-    return await readFile(new URL("../../../schema/schema.sql", import.meta.url), "utf8")
+    return await readFile(
+      new URL("../../../schema/schema.sql", import.meta.url),
+      "utf8",
+    );
   }
 }
 
-function siblingModuleUrl(baseUrl: string, sourceModule: string, builtModule: string) {
-  const base = new URL(baseUrl)
-  return new URL(base.pathname.endsWith(".ts") ? sourceModule : builtModule, base)
+function siblingModuleUrl(
+  baseUrl: string,
+  sourceModule: string,
+  builtModule: string,
+) {
+  const base = new URL(baseUrl);
+  return new URL(
+    base.pathname.endsWith(".ts") ? sourceModule : builtModule,
+    base,
+  );
 }
 
-async function createRequestStorage(path: string, retention: number): Promise<RequestStorage> {
-  mkdirSync(dirname(path), { recursive: true })
+async function createRequestStorage(
+  path: string,
+  retention: number,
+): Promise<RequestStorage> {
+  mkdirSync(dirname(path), { recursive: true });
 
-  const db = new DatabaseSync(path, { timeout: 5000 })
-  const schemaSql = await readSchemaSql()
-  applySchema(db, schemaSql)
+  const db = new DatabaseSync(path, { timeout: 5000 });
+  const schemaSql = await readSchemaSql();
+  applySchema(db, schemaSql);
 
   const insertRequest = db.prepare(`
     INSERT INTO oc_llm_requests (
@@ -218,8 +243,10 @@ async function createRequestStorage(path: string, retention: number): Promise<Re
       $attemptIndex,
       $thinkingLevel
     )
-  `)
-  const pruneRequests = db.prepare("DELETE FROM oc_llm_requests WHERE recorded_at_ms < $cutoff")
+  `);
+  const pruneRequests = db.prepare(
+    "DELETE FROM oc_llm_requests WHERE recorded_at_ms < $cutoff",
+  );
 
   return {
     insert(row) {
@@ -232,32 +259,46 @@ async function createRequestStorage(path: string, retention: number): Promise<Re
         model: row.model,
         attemptIndex: row.attemptIndex,
         thinkingLevel: row.thinkingLevel,
-      })
+      });
       if (retention > 0) {
-        pruneRequests.run({ cutoff: Date.now() - retention * DAY_MS })
+        pruneRequests.run({ cutoff: Date.now() - retention * DAY_MS });
       }
     },
     close() {
-      db.close()
+      db.close();
     },
-  }
+  };
 }
 
-function attemptKey(input: { sessionID: string; message: { id?: string }; provider: { id?: string }; model: { id?: string } }) {
-  return [input.sessionID, knownValue(input.message.id), knownValue(input.provider.id), knownValue(input.model.id)].join("\u0000")
+function attemptKey(input: {
+  sessionID: string;
+  message: { id?: string };
+  provider: { id?: string };
+  model: { id?: string };
+}) {
+  return [
+    input.sessionID,
+    knownValue(input.message.id),
+    knownValue(input.provider.id),
+    knownValue(input.model.id),
+  ].join("\u0000");
 }
 
 type ServerMessageInfo = {
-  id: string
-  role: string
-  completedAt?: number
-  providerID?: string
-  modelID?: string
-  tokens?: TokenCounts
-}
+  id: string;
+  role: string;
+  completedAt?: number;
+  providerID?: string;
+  modelID?: string;
+  tokens?: TokenCounts;
+};
 
-export const OcTokenInsightsServer: Plugin = async ({ client, directory, project }) => {
-  logger.info("plugin loaded")
+const OcTokenInsightsServer: Plugin = async ({
+  client,
+  directory,
+  project,
+}) => {
+  logger.info("plugin loaded");
   await client.app.log({
     body: {
       service: "tokeninsights",
@@ -265,83 +306,101 @@ export const OcTokenInsightsServer: Plugin = async ({ client, directory, project
       message: "opencode server plugin loaded",
       extra: { directory, project: project.id },
     },
-  })
+  });
 
   // --- LLM request tracking (direct DB) ---
-  let requestStorage: RequestStorage | undefined
-  let requestInitPromise: Promise<RequestStorage | undefined> | undefined
-  let requestInitFailed = false
-  const attemptsByKey: Record<string, number> = {}
-  const thinkingLevelByKey: Record<string, string> = {}
+  let requestStorage: RequestStorage | undefined;
+  let requestInitPromise: Promise<RequestStorage | undefined> | undefined;
+  let requestInitFailed = false;
+  const attemptsByKey: Record<string, number> = {};
+  const thinkingLevelByKey: Record<string, string> = {};
 
   async function getRequestStorage(): Promise<RequestStorage | undefined> {
-    if (requestStorage) return requestStorage
-    if (requestInitFailed) return undefined
-    if (requestInitPromise) return requestInitPromise
+    if (requestStorage) return requestStorage;
+    if (requestInitFailed) return undefined;
+    if (requestInitPromise) return requestInitPromise;
 
-    logger.debug("request db init start")
+    logger.debug("request db init start");
     requestInitPromise = createRequestStorage(dbPath(), retentionDays())
       .then((s) => {
-        requestStorage = s
-        logger.debug("request db init succeeded")
-        return s
+        requestStorage = s;
+        logger.debug("request db init succeeded");
+        return s;
       })
       .catch((err) => {
-        requestInitFailed = true
-        logger.error("request db init failed", errorFields(err))
-        return undefined
-      })
+        requestInitFailed = true;
+        logger.error("request db init failed", errorFields(err));
+        return undefined;
+      });
 
-    return requestInitPromise
+    return requestInitPromise;
   }
 
   // --- Token / TPS tracking (worker) ---
-  let tokenStorage: TokenStorage | undefined
-  let tokenInitFailed = false
+  let tokenStorage: TokenStorage | undefined;
+  let tokenInitFailed = false;
 
   function getTokenStorage(): TokenStorage | undefined {
-    if (tokenStorage) return tokenStorage
-    if (tokenInitFailed) return undefined
+    if (tokenStorage) return tokenStorage;
+    if (tokenInitFailed) return undefined;
     try {
-      logger.debug("token worker init start")
+      logger.debug("token worker init start");
       tokenStorage = createTokenStorage(
-        siblingModuleUrl(import.meta.url, "./oc-tokeninsights-writer.ts", "./oc-tokeninsights-writer.js"),
+        siblingModuleUrl(
+          import.meta.url,
+          "./oc-tokeninsights-writer.ts",
+          "./oc-tokeninsights-writer.js",
+        ),
         { dbPath: dbPath(), retentionDays: retentionDays() },
         () => {
-          logger.error("token worker error")
+          logger.error("token worker error");
         },
-      )
-      logger.debug("token worker init requested")
-      return tokenStorage
+      );
+      logger.debug("token worker init requested");
+      return tokenStorage;
     } catch (err) {
-      tokenInitFailed = true
-      logger.error("token worker init failed", errorFields(err))
-      return undefined
+      tokenInitFailed = true;
+      logger.error("token worker init failed", errorFields(err));
+      return undefined;
     }
   }
 
   // --- In-memory state for durable collection ---
-  let pendingRows: TokenEventRow[] = []
-  let pendingTpsRows: TpsSampleRow[] = []
-  let pendingInfoUpdates: MessageInfoUpdate[] = []
-  let pendingToolRows: ToolCallRow[] = []
-  const messageInfoByID: Record<string, MessageInfo> = {}
-  const latestAssistantMessageBySession: Record<string, string> = {}
-  const latestAssistantInfoBySession: Record<string, MessageInfo> = {}
-  const messagesWithStepRows = new Set<string>()
-  const messageTimingByID: Record<string, MessageTiming> = {}
-  const serverMessagesBySession: Record<string, ServerMessageInfo[]> = {}
+  let pendingRows: TokenEventRow[] = [];
+  let pendingTpsRows: TpsSampleRow[] = [];
+  let pendingInfoUpdates: MessageInfoUpdate[] = [];
+  let pendingToolRows: ToolCallRow[] = [];
+  const messageInfoByID: Record<string, MessageInfo> = {};
+  const latestAssistantMessageBySession: Record<string, string> = {};
+  const latestAssistantInfoBySession: Record<string, MessageInfo> = {};
+  const messagesWithStepRows = new Set<string>();
+  const messageTimingByID: Record<string, MessageTiming> = {};
+  const serverMessagesBySession: Record<string, ServerMessageInfo[]> = {};
 
   const flushRows = (sessionID?: string) => {
-    const storage = getTokenStorage()
-    if (!storage) return
-    const rows = sessionID ? pendingRows.filter((row) => row.sessionID === sessionID) : pendingRows
-    const tpsRows = sessionID ? pendingTpsRows.filter((row) => row.sessionID === sessionID) : pendingTpsRows
+    const storage = getTokenStorage();
+    if (!storage) return;
+    const rows = sessionID
+      ? pendingRows.filter((row) => row.sessionID === sessionID)
+      : pendingRows;
+    const tpsRows = sessionID
+      ? pendingTpsRows.filter((row) => row.sessionID === sessionID)
+      : pendingTpsRows;
     const infoUpdates = sessionID
-      ? pendingInfoUpdates.filter((update) => update.info.sessionID === sessionID)
-      : pendingInfoUpdates
-    const toolRows = sessionID ? pendingToolRows.filter((row) => row.sessionID === sessionID) : pendingToolRows
-    if (rows.length === 0 && tpsRows.length === 0 && infoUpdates.length === 0 && toolRows.length === 0) return
+      ? pendingInfoUpdates.filter(
+          (update) => update.info.sessionID === sessionID,
+        )
+      : pendingInfoUpdates;
+    const toolRows = sessionID
+      ? pendingToolRows.filter((row) => row.sessionID === sessionID)
+      : pendingToolRows;
+    if (
+      rows.length === 0 &&
+      tpsRows.length === 0 &&
+      infoUpdates.length === 0 &&
+      toolRows.length === 0
+    )
+      return;
 
     try {
       logger.debug("flush rows", {
@@ -350,113 +409,178 @@ export const OcTokenInsightsServer: Plugin = async ({ client, directory, project
         tpsRows: tpsRows.length,
         infoUpdates: infoUpdates.length,
         toolRows: toolRows.length,
-      })
-      storage.flush(rows, tpsRows, infoUpdates, toolRows)
-      pendingRows = sessionID ? pendingRows.filter((row) => row.sessionID !== sessionID) : []
-      pendingTpsRows = sessionID ? pendingTpsRows.filter((row) => row.sessionID !== sessionID) : []
+      });
+      storage.flush(rows, tpsRows, infoUpdates, toolRows);
+      pendingRows = sessionID
+        ? pendingRows.filter((row) => row.sessionID !== sessionID)
+        : [];
+      pendingTpsRows = sessionID
+        ? pendingTpsRows.filter((row) => row.sessionID !== sessionID)
+        : [];
       pendingInfoUpdates = sessionID
-        ? pendingInfoUpdates.filter((update) => update.info.sessionID !== sessionID)
-        : []
-      pendingToolRows = sessionID ? pendingToolRows.filter((row) => row.sessionID !== sessionID) : []
+        ? pendingInfoUpdates.filter(
+            (update) => update.info.sessionID !== sessionID,
+          )
+        : [];
+      pendingToolRows = sessionID
+        ? pendingToolRows.filter((row) => row.sessionID !== sessionID)
+        : [];
     } catch (err) {
-      logger.error("flush failed", errorFields(err))
+      logger.error("flush failed", errorFields(err));
     }
-  }
+  };
 
   const updateMessageInfo = (messageID: string, info: MessageInfo) => {
-    messageInfoByID[messageID] = info
+    messageInfoByID[messageID] = info;
     pendingRows = pendingRows.map((row) =>
       row.sessionID === info.sessionID && row.messageID === messageID
         ? { ...row, provider: info.provider, model: info.model }
         : row,
-    )
+    );
     pendingTpsRows = pendingTpsRows.map((row) =>
       row.sessionID === info.sessionID && row.messageID === messageID
         ? { ...row, provider: info.provider, model: info.model }
         : row,
-    )
+    );
     pendingInfoUpdates = [
-      ...pendingInfoUpdates.filter((update) => update.info.sessionID !== info.sessionID || update.messageID !== messageID),
+      ...pendingInfoUpdates.filter(
+        (update) =>
+          update.info.sessionID !== info.sessionID ||
+          update.messageID !== messageID,
+      ),
       { messageID, info },
-    ]
-  }
+    ];
+  };
 
   const queueTokenEvent = (row: TokenEventRow) => {
     if (row.totalTokens <= 0) {
-      logger.debug("skip token event with no tokens", { sessionID: row.sessionID, messageID: row.messageID, source: row.source })
-      return
+      logger.debug("skip token event with no tokens", {
+        sessionID: row.sessionID,
+        messageID: row.messageID,
+        source: row.source,
+      });
+      return;
     }
     if (row.source === "step-finish") {
-      messagesWithStepRows.add(messageKey(row.sessionID, row.messageID))
+      messagesWithStepRows.add(messageKey(row.sessionID, row.messageID));
       pendingRows = pendingRows.filter(
         (item) =>
           item.sessionID !== row.sessionID ||
           item.messageID !== row.messageID ||
           (item.source !== "message-fallback" && item.partID !== row.partID),
-      )
+      );
     }
-    pendingRows = [...pendingRows, row]
-    logger.debug("queued token event", { sessionID: row.sessionID, messageID: row.messageID, source: row.source, totalTokens: row.totalTokens })
-  }
+    pendingRows = [...pendingRows, row];
+    logger.debug("queued token event", {
+      sessionID: row.sessionID,
+      messageID: row.messageID,
+      source: row.source,
+      totalTokens: row.totalTokens,
+    });
+  };
 
   const queueFallbackEvent = (row: TokenEventRow) => {
     if (messagesWithStepRows.has(messageKey(row.sessionID, row.messageID))) {
-      logger.debug("skip fallback because step row exists", { sessionID: row.sessionID, messageID: row.messageID })
-      return
+      logger.debug("skip fallback because step row exists", {
+        sessionID: row.sessionID,
+        messageID: row.messageID,
+      });
+      return;
     }
     pendingRows = [
       ...pendingRows.filter(
-        (item) => item.sessionID !== row.sessionID || item.messageID !== row.messageID || item.source !== "message-fallback",
+        (item) =>
+          item.sessionID !== row.sessionID ||
+          item.messageID !== row.messageID ||
+          item.source !== "message-fallback",
       ),
       row,
-    ]
-    logger.debug("queued fallback token event", { sessionID: row.sessionID, messageID: row.messageID, totalTokens: row.totalTokens })
-  }
+    ];
+    logger.debug("queued fallback token event", {
+      sessionID: row.sessionID,
+      messageID: row.messageID,
+      totalTokens: row.totalTokens,
+    });
+  };
 
   const queueTpsSample = (row: TpsSampleRow) => {
     if (row.totalTokens <= 0 || row.durationMs <= 0) {
-      logger.debug("skip tps sample", { sessionID: row.sessionID, messageID: row.messageID, totalTokens: row.totalTokens, durationMs: row.durationMs })
-      return
+      logger.debug("skip tps sample", {
+        sessionID: row.sessionID,
+        messageID: row.messageID,
+        totalTokens: row.totalTokens,
+        durationMs: row.durationMs,
+      });
+      return;
     }
     pendingTpsRows = [
-      ...pendingTpsRows.filter((item) => item.sessionID !== row.sessionID || item.messageID !== row.messageID),
+      ...pendingTpsRows.filter(
+        (item) =>
+          item.sessionID !== row.sessionID || item.messageID !== row.messageID,
+      ),
       row,
-    ]
-    logger.debug("queued tps sample", { sessionID: row.sessionID, messageID: row.messageID, totalTokens: row.totalTokens, durationMs: row.durationMs })
-  }
+    ];
+    logger.debug("queued tps sample", {
+      sessionID: row.sessionID,
+      messageID: row.messageID,
+      totalTokens: row.totalTokens,
+      durationMs: row.durationMs,
+    });
+  };
 
   const queueToolCall = (row: ToolCallRow) => {
     pendingToolRows = [
       ...pendingToolRows.filter(
-        (item) => item.sessionID !== row.sessionID || item.toolCallID !== row.toolCallID || item.status !== row.status,
+        (item) =>
+          item.sessionID !== row.sessionID ||
+          item.toolCallID !== row.toolCallID ||
+          item.status !== row.status,
       ),
       row,
-    ]
-    logger.debug("queued tool call", { sessionID: row.sessionID, toolCallID: row.toolCallID, toolName: row.toolName, status: row.status })
-  }
+    ];
+    logger.debug("queued tool call", {
+      sessionID: row.sessionID,
+      toolCallID: row.toolCallID,
+      toolName: row.toolName,
+      status: row.status,
+    });
+  };
 
-  const toolProviderInfo = (sessionID: string) => latestAssistantInfoBySession[sessionID]
+  const toolProviderInfo = (sessionID: string) =>
+    latestAssistantInfoBySession[sessionID];
 
   const messageIDForToolCall = (input: unknown) => {
-    const sessionID = stringRecordValue(input, "sessionID")
-    const explicit = stringRecordValue(input, "messageID") ?? stringRecordValue(input, "messageId")
-    if (explicit) return explicit
-    if (sessionID) return latestAssistantMessageBySession[sessionID] ?? stringRecordValue(input, "callID") ?? stringRecordValue(input, "callId") ?? UNKNOWN_VALUE
-    return stringRecordValue(input, "callID") ?? stringRecordValue(input, "callId") ?? UNKNOWN_VALUE
-  }
+    const sessionID = stringRecordValue(input, "sessionID");
+    const explicit =
+      stringRecordValue(input, "messageID") ??
+      stringRecordValue(input, "messageId");
+    if (explicit) return explicit;
+    if (sessionID)
+      return (
+        latestAssistantMessageBySession[sessionID] ??
+        stringRecordValue(input, "callID") ??
+        stringRecordValue(input, "callId") ??
+        UNKNOWN_VALUE
+      );
+    return (
+      stringRecordValue(input, "callID") ??
+      stringRecordValue(input, "callId") ??
+      UNKNOWN_VALUE
+    );
+  };
 
   const queueSessionFallbacks = (sessionID: string) => {
-    const messages = serverMessagesBySession[sessionID] ?? []
+    const messages = serverMessagesBySession[sessionID] ?? [];
     for (const message of messages) {
-      if (message.role !== "assistant") continue
-      if (typeof message.completedAt !== "number") continue
-      if (messagesWithStepRows.has(messageKey(sessionID, message.id))) continue
+      if (message.role !== "assistant") continue;
+      if (typeof message.completedAt !== "number") continue;
+      if (messagesWithStepRows.has(messageKey(sessionID, message.id))) continue;
       const info = {
         sessionID,
         provider: knownValue(message.providerID),
         model: knownValue(message.modelID),
-      }
-      updateMessageInfo(message.id, info)
+      };
+      updateMessageInfo(message.id, info);
       queueFallbackEvent(
         tokenEventRow({
           recordedAtMs: message.completedAt,
@@ -466,15 +590,20 @@ export const OcTokenInsightsServer: Plugin = async ({ client, directory, project
           source: "message-fallback",
           provider: info.provider,
           model: info.model,
-          tokens: message.tokens ?? { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+          tokens: message.tokens ?? {
+            input: 0,
+            output: 0,
+            reasoning: 0,
+            cache: { read: 0, write: 0 },
+          },
         }),
-      )
+      );
     }
-  }
+  };
 
   const timer = setInterval(() => {
-    flushRows()
-  }, 1000)
+    flushRows();
+  }, 1000);
 
   return {
     "chat.params": async (chatInput, output) => {
@@ -483,8 +612,10 @@ export const OcTokenInsightsServer: Plugin = async ({ client, directory, project
         messageID: knownValue(chatInput.message.id),
         provider: knownValue(chatInput.provider.id),
         model: knownValue(chatInput.model.id),
-      })
-      thinkingLevelByKey[attemptKey(chatInput)] = thinkingLevelFromOptions(output.options)
+      });
+      thinkingLevelByKey[attemptKey(chatInput)] = thinkingLevelFromOptions(
+        output.options,
+      );
     },
     "chat.headers": async (chatInput) => {
       logger.debug("hook chat.headers", {
@@ -492,15 +623,15 @@ export const OcTokenInsightsServer: Plugin = async ({ client, directory, project
         messageID: knownValue(chatInput.message.id),
         provider: knownValue(chatInput.provider.id),
         model: knownValue(chatInput.model.id),
-      })
-      const s = await getRequestStorage()
-      if (!s) return
+      });
+      const s = await getRequestStorage();
+      if (!s) return;
 
-      const key = attemptKey(chatInput)
-      const attemptIndex = (attemptsByKey[key] ?? 0) + 1
-      attemptsByKey[key] = attemptIndex
+      const key = attemptKey(chatInput);
+      const attemptIndex = (attemptsByKey[key] ?? 0) + 1;
+      attemptsByKey[key] = attemptIndex;
 
-      const recordedAtMs = Date.now()
+      const recordedAtMs = Date.now();
       try {
         s.insert({
           recordedAt: new Date(recordedAtMs).toISOString(),
@@ -511,15 +642,19 @@ export const OcTokenInsightsServer: Plugin = async ({ client, directory, project
           model: knownValue(chatInput.model.id),
           attemptIndex,
           thinkingLevel: thinkingLevelByKey[key] ?? UNKNOWN_VALUE,
-        })
+        });
       } catch (err) {
-        logger.error("request insert failed", errorFields(err))
+        logger.error("request insert failed", errorFields(err));
       }
     },
     "tool.execute.before": async (input) => {
-      logger.debug("hook tool.execute.before", { sessionID: input.sessionID, toolCallID: knownValue(input.callID), toolName: input.tool })
-      const providerInfo = toolProviderInfo(input.sessionID)
-      const callID = knownValue(input.callID)
+      logger.debug("hook tool.execute.before", {
+        sessionID: input.sessionID,
+        toolCallID: knownValue(input.callID),
+        toolName: input.tool,
+      });
+      const providerInfo = toolProviderInfo(input.sessionID);
+      const callID = knownValue(input.callID);
       queueToolCall(
         toolCallRow({
           recordedAtMs: Date.now(),
@@ -531,13 +666,17 @@ export const OcTokenInsightsServer: Plugin = async ({ client, directory, project
           model: providerInfo?.model,
           status: "started",
         }),
-      )
-      flushRows(input.sessionID)
+      );
+      flushRows(input.sessionID);
     },
     "tool.execute.after": async (input, output) => {
-      logger.debug("hook tool.execute.after", { sessionID: input.sessionID, toolCallID: knownValue(input.callID), toolName: input.tool })
-      const providerInfo = toolProviderInfo(input.sessionID)
-      const callID = knownValue(input.callID)
+      logger.debug("hook tool.execute.after", {
+        sessionID: input.sessionID,
+        toolCallID: knownValue(input.callID),
+        toolName: input.tool,
+      });
+      const providerInfo = toolProviderInfo(input.sessionID);
+      const callID = knownValue(input.callID);
       queueToolCall(
         toolCallRow({
           recordedAtMs: Date.now(),
@@ -549,23 +688,32 @@ export const OcTokenInsightsServer: Plugin = async ({ client, directory, project
           model: providerInfo?.model,
           status: outputHasError(output) ? "error" : "completed",
         }),
-      )
-      flushRows(input.sessionID)
+      );
+      flushRows(input.sessionID);
     },
     event: async ({ event }) => {
-      logger.debug("hook event", { eventType: event.type })
+      logger.debug("hook event", { eventType: event.type });
       switch (event.type) {
         case "session.created": {
-          const sessionID = stringRecordValue(event.properties, "sessionID") ?? stringRecordValue(recordValue(event.properties, "info"), "id")
-          logger.debug("session started", { sessionID })
-          break
+          const sessionID =
+            stringRecordValue(event.properties, "sessionID") ??
+            stringRecordValue(recordValue(event.properties, "info"), "id");
+          logger.debug("session started", { sessionID });
+          break;
         }
 
         case "message.updated": {
-          const info = event.properties.info
-          logger.debug("event message.updated", { sessionID: event.properties.sessionID, messageID: info.id, role: info.role })
-          const sessionMessages = serverMessagesBySession[event.properties.sessionID] ?? []
-          const existingIndex = sessionMessages.findIndex((m) => m.id === info.id)
+          const info = event.properties.info;
+          logger.debug("event message.updated", {
+            sessionID: event.properties.sessionID,
+            messageID: info.id,
+            role: info.role,
+          });
+          const sessionMessages =
+            serverMessagesBySession[event.properties.sessionID] ?? [];
+          const existingIndex = sessionMessages.findIndex(
+            (m) => m.id === info.id,
+          );
           const messageData: ServerMessageInfo = {
             id: info.id,
             role: info.role,
@@ -573,28 +721,29 @@ export const OcTokenInsightsServer: Plugin = async ({ client, directory, project
             providerID: info.providerID,
             modelID: info.modelID,
             tokens: info.tokens,
-          }
+          };
           if (existingIndex >= 0) {
-            sessionMessages[existingIndex] = messageData
+            sessionMessages[existingIndex] = messageData;
           } else {
-            sessionMessages.push(messageData)
+            sessionMessages.push(messageData);
           }
-          serverMessagesBySession[event.properties.sessionID] = sessionMessages
+          serverMessagesBySession[event.properties.sessionID] = sessionMessages;
 
-          if (info.role !== "assistant") return
+          if (info.role !== "assistant") return;
 
           const messageInfo = {
             sessionID: event.properties.sessionID,
             provider: knownValue(info.providerID),
             model: knownValue(info.modelID),
-          }
-          latestAssistantMessageBySession[event.properties.sessionID] = info.id
-          latestAssistantInfoBySession[event.properties.sessionID] = messageInfo
-          updateMessageInfo(info.id, messageInfo)
+          };
+          latestAssistantMessageBySession[event.properties.sessionID] = info.id;
+          latestAssistantInfoBySession[event.properties.sessionID] =
+            messageInfo;
+          updateMessageInfo(info.id, messageInfo);
 
-          const completedAt = info.time.completed
+          const completedAt = info.time.completed;
           if (typeof completedAt !== "number") {
-            const existing = messageTimingByID[info.id]
+            const existing = messageTimingByID[info.id];
             messageTimingByID[info.id] = {
               sessionID: event.properties.sessionID,
               requestStartAt: info.time.created,
@@ -602,19 +751,29 @@ export const OcTokenInsightsServer: Plugin = async ({ client, directory, project
               firstTokenAt: existing?.firstTokenAt,
               lastTokenAt: existing?.lastTokenAt,
               lastToolCallAt: existing?.lastToolCallAt,
-            }
-            return
+            };
+            return;
           }
 
-          const timing = messageTimingByID[info.id]
-          if (timing?.sessionID === event.properties.sessionID && typeof timing.firstResponseAt === "number") {
-            const totalTokens = (info.tokens?.output ?? 0) + (info.tokens?.reasoning ?? 0)
+          const timing = messageTimingByID[info.id];
+          if (
+            timing?.sessionID === event.properties.sessionID &&
+            typeof timing.firstResponseAt === "number"
+          ) {
+            const totalTokens =
+              (info.tokens?.output ?? 0) + (info.tokens?.reasoning ?? 0);
             const endAt =
               info.finish === "tool-calls"
                 ? timing.lastToolCallAt
-                : completedAt
-            const durationMs = typeof endAt === "number" ? Math.max(endAt - timing.firstResponseAt, 1) : undefined
-            const ttftMs = Math.max(timing.firstResponseAt - timing.requestStartAt, 0)
+                : completedAt;
+            const durationMs =
+              typeof endAt === "number"
+                ? Math.max(endAt - timing.firstResponseAt, 1)
+                : undefined;
+            const ttftMs = Math.max(
+              timing.firstResponseAt - timing.requestStartAt,
+              0,
+            );
             if (totalTokens > 0 && durationMs) {
               queueTpsSample({
                 recordedAt: new Date(completedAt).toISOString(),
@@ -629,7 +788,7 @@ export const OcTokenInsightsServer: Plugin = async ({ client, directory, project
                 durationMs,
                 ttftMs,
                 tokensPerSecond: totalTokens / (durationMs / 1000),
-              })
+              });
             }
           }
           queueFallbackEvent(
@@ -641,11 +800,16 @@ export const OcTokenInsightsServer: Plugin = async ({ client, directory, project
               source: "message-fallback",
               provider: messageInfo.provider,
               model: messageInfo.model,
-              tokens: info.tokens ?? { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+              tokens: info.tokens ?? {
+                input: 0,
+                output: 0,
+                reasoning: 0,
+                cache: { read: 0, write: 0 },
+              },
             }),
-          )
-          delete messageTimingByID[info.id]
-          break
+          );
+          delete messageTimingByID[info.id];
+          break;
         }
 
         case "message.part.updated": {
@@ -654,9 +818,9 @@ export const OcTokenInsightsServer: Plugin = async ({ client, directory, project
             messageID: event.properties.part.messageID,
             partID: event.properties.part.id,
             partType: event.properties.part.type,
-          })
+          });
           if (event.properties.part.type === "step-finish") {
-            const partInfo = messageInfoByID[event.properties.part.messageID]
+            const partInfo = messageInfoByID[event.properties.part.messageID];
             queueTokenEvent(
               tokenEventRow({
                 recordedAtMs: event.properties.time,
@@ -668,55 +832,61 @@ export const OcTokenInsightsServer: Plugin = async ({ client, directory, project
                 model: partInfo?.model,
                 tokens: event.properties.part.tokens,
               }),
-            )
-            return
+            );
+            return;
           }
-          if (event.properties.part.type !== "tool") return
-          const timing = messageTimingByID[event.properties.part.messageID]
-          if (!timing) return
+          if (event.properties.part.type !== "tool") return;
+          const timing = messageTimingByID[event.properties.part.messageID];
+          if (!timing) return;
           if (event.properties.part.state.status === "pending") {
             messageTimingByID[event.properties.part.messageID] = {
               ...timing,
               firstResponseAt: timing.firstResponseAt ?? event.properties.time,
-            }
-            return
+            };
+            return;
           }
-          if (event.properties.part.state.status !== "running") return
+          if (event.properties.part.state.status !== "running") return;
           messageTimingByID[event.properties.part.messageID] = {
             ...timing,
             lastToolCallAt: event.properties.part.state.time.start,
-          }
-          break
+          };
+          break;
         }
 
         case "session.idle": {
-          logger.debug("event session.idle", { sessionID: event.properties.sessionID })
-          queueSessionFallbacks(event.properties.sessionID)
-          flushRows(event.properties.sessionID)
-          break
+          logger.debug("event session.idle", {
+            sessionID: event.properties.sessionID,
+          });
+          queueSessionFallbacks(event.properties.sessionID);
+          flushRows(event.properties.sessionID);
+          break;
         }
 
         case "session.deleted": {
-          logger.debug("event session.deleted", { sessionID: event.properties.sessionID })
-          queueSessionFallbacks(event.properties.sessionID)
-          flushRows(event.properties.sessionID)
-          delete serverMessagesBySession[event.properties.sessionID]
-          delete latestAssistantMessageBySession[event.properties.sessionID]
-          delete latestAssistantInfoBySession[event.properties.sessionID]
+          logger.debug("event session.deleted", {
+            sessionID: event.properties.sessionID,
+          });
+          queueSessionFallbacks(event.properties.sessionID);
+          flushRows(event.properties.sessionID);
+          delete serverMessagesBySession[event.properties.sessionID];
+          delete latestAssistantMessageBySession[event.properties.sessionID];
+          delete latestAssistantInfoBySession[event.properties.sessionID];
           for (const key of Object.keys(attemptsByKey)) {
-            if (key.startsWith(`${event.properties.sessionID}\u0000`)) delete attemptsByKey[key]
+            if (key.startsWith(`${event.properties.sessionID}\u0000`))
+              delete attemptsByKey[key];
           }
           for (const key of Object.keys(thinkingLevelByKey)) {
-            if (key.startsWith(`${event.properties.sessionID}\u0000`)) delete thinkingLevelByKey[key]
+            if (key.startsWith(`${event.properties.sessionID}\u0000`))
+              delete thinkingLevelByKey[key];
           }
-          break
+          break;
         }
       }
     },
-  }
-}
+  };
+};
 
 export default {
   id: "tokeninsights.opencode-server",
   server: OcTokenInsightsServer,
-} satisfies PluginModule & { id: string }
+} satisfies PluginModule & { id: string };

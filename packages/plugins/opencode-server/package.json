@@ -3,14 +3,18 @@
   "version": "1.0.0",
   "description": "TokenInsights OpenCode server plugin",
   "type": "module",
-  "main": "./src/index.ts",
-  "exports": "./src/index.ts",
+  "main": "./dist/index.js",
+  "exports": "./dist/index.js",
+  "files": [
+    "dist"
+  ],
   "engines": {
     "node": ">=25"
   },
   "scripts": {
     "check": "node --check src/index.ts && node --check src/writer-client.ts && node --check src/oc-tokeninsights-writer.ts",
-    "build": "pnpm run check && tsup && node scripts/build-dist.mjs"
+    "build": "pnpm run check && tsup && node scripts/build-dist.mjs",
+    "vendor": "pnpm --filter @tokeninsights/opencode-server --prod deploy ./deploy"
   },
   "dependencies": {
     "@tokeninsights/logger": "workspace:*"

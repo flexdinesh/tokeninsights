@@ -1,4 +1,4 @@
-import { copyFile, mkdir, readFile, writeFile } from "node:fs/promises"
+import { copyFile, mkdir, readFile, rm, writeFile } from "node:fs/promises"
 import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
 
@@ -11,6 +11,7 @@ const distSchemaPath = join(distDir, "schema.sql")
 
 const sourcePackage = JSON.parse(await readFile(sourcePackagePath, "utf8"))
 
+await rm(join(distDir, "node_modules"), { recursive: true, force: true })
 await mkdir(distDir, { recursive: true })
 await copyFile(schemaSourcePath, distSchemaPath)
 

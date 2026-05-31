@@ -3,6 +3,7 @@ packages:
   - "packages/cli"
   - "packages/check-schema"
   - "packages/logger"
+injectWorkspacePackages: true
 allowBuilds:
   '@google/genai': true
   esbuild: true

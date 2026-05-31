@@ -1,3 +1,4 @@
 node_modules
 packages/plugins/opencode-server/dist/
+packages/plugins/opencode-server/deploy/
 packages/plugins/pi/dist/

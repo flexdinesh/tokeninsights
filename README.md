@@ -27,7 +27,7 @@ Symlink the built server plugin into OpenCode's local plugin directory:
 
 ```sh
 mkdir -p ~/.config/opencode/plugins
-ln -sfn "$PWD/packages/plugins/opencode-server/dist" ~/.config/opencode/plugins/tokeninsights
+ln -sfn "$PWD/packages/plugins/opencode-server/deploy" ~/.config/opencode/plugins/tokeninsights
 ```
 
 OpenCode auto-discovers server plugins from `~/.config/opencode/plugins`.
