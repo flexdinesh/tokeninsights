@@ -10,7 +10,8 @@
     ]
   },
   "scripts": {
-    "build": "tsc --noEmit --module esnext --moduleResolution bundler --esModuleInterop --skipLibCheck src/index.ts"
+    "check": "tsc --noEmit --module esnext --moduleResolution bundler --esModuleInterop --skipLibCheck src/index.ts",
+    "build": "pnpm run check && tsup && node scripts/build-dist.mjs"
   },
   "dependencies": {
     "@tokeninsights/logger": "workspace:*",
@@ -19,6 +20,7 @@
   },
   "devDependencies": {
     "@mariozechner/pi-coding-agent": "^0.71.0",
+    "tsup": "^8.5.1",
     "typescript": "^6.0.3"
   }
 }

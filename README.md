@@ -1,161 +1,110 @@
 # tokeninsights
 
-Local token usage tools for OpenCode and Pi. The OpenCode server plugin and Pi extension write token/TPS/request/tool-call data to SQLite; the Go CLI reads aggregate tables.
+Local token usage tracking for OpenCode and Pi. Plugins write to SQLite; the Go CLI reads aggregated token, TPS, request, and tool-call data.
 
-See [`docs/design.md`](docs/design.md) for full architecture, schema contract, event flow, and invariants.
+Default DB:
 
-## Code Organization
+```text
+~/.local/share/tokeninsights/tokeninsights.sqlite
+```
 
-- `packages/plugins/opencode-server/` — OpenCode server plugin package (`@tokeninsights/opencode-server`)
-- `packages/plugins/pi/` — Pi extension package
-- `packages/logger/` — shared file logger for plugin diagnostics
-- `packages/cli/` — Go CLI (`tokeninsights-cli`) that queries the SQLite DB
-- `packages/schema/schema.sql` — single source of truth for SQLite schema
-- `packages/scripts/check-schema.ts` — cross-language schema contract validator
+## Local plugin setup
 
-## Development
+This is for local development. The plugins are not published to npm yet, so use local symlinks.
 
-### When to run what
-
-| You changed                                                    | Run                                                               |
-| -------------------------------------------------------------- | ----------------------------------------------------------------- |
-| `packages/schema/schema.sql`                                   | `pnpm run check-schema`                                           |
-| Any `.ts` in `packages/plugins/`                               | `pnpm run build`                                                  |
-| Any `.go` in `packages/cli/`                                   | `pnpm run test && pnpm run build:cli`                             |
-| Storage, schema, events, SQL, aggregation, rendering, or tests | Update **both** plugin and CLI; `pnpm run build && pnpm run test` |
-
-> ⚠️ **Schema changes are user-approved only.** Never modify `packages/schema/schema.sql` without explicit user approval, even for additive changes. Always explain the rationale and ask first.
-
-### Build everything from a fresh checkout
-
-TokenInsights targets Node 24+. The OpenCode server plugin uses native Node TypeScript at runtime.
+From this repo:
 
 ```sh
 pnpm install
-pnpm run check-schema
-pnpm run build
-pnpm run test
+pnpm run build:plugins
 ```
 
-`build` builds the OpenCode server plugin, Pi extension, and CLI. `test` runs all tests.
+### OpenCode
 
-### Plugin builds
+Symlink the built server plugin into OpenCode's local plugin directory:
 
 ```sh
-pnpm run build:opencode-server
-pnpm run build:pi
+mkdir -p ~/.config/opencode/plugins
+ln -sfn "$PWD/packages/plugins/opencode-server/dist" ~/.config/opencode/plugins/tokeninsights
 ```
 
-### CLI verification
+OpenCode auto-discovers server plugins from `~/.config/opencode/plugins`.
+
+### Pi
+
+Symlink the built Pi extension into Pi's extension directory:
 
 ```sh
-pnpm run test
-pnpm run build:cli
+mkdir -p ~/.pi/agent/extensions
+ln -sfn "$PWD/packages/plugins/pi/dist" ~/.pi/agent/extensions/tokeninsights
 ```
 
-### Smoke test against real DB
+Pi auto-discovers extensions from `~/.pi/agent/extensions`. Run `/reload` or restart Pi after rebuilding.
 
-Build the CLI first, then run against your local database:
+## CLI
+
+Build and run:
 
 ```sh
 pnpm run build:cli
 ./packages/cli/tokeninsights-cli --today
 ```
 
-## Install OpenCode Plugin
-
-Install dependencies and link the local server plugin package with pnpm:
+Common filters:
 
 ```sh
-cd packages/plugins/opencode-server
-pnpm install
-pnpm link --global
+./packages/cli/tokeninsights-cli --week
+./packages/cli/tokeninsights-cli --month
+./packages/cli/tokeninsights-cli --all-time
+./packages/cli/tokeninsights-cli --week --group-by=session
+./packages/cli/tokeninsights-cli --week --harness pi
+./packages/cli/tokeninsights-cli --week --provider openai --model gpt-5.5
 ```
 
-Configure OpenCode to load the linked package names rather than file paths (`~/.config/opencode/opencode.jsonc`):
+## Development
 
-```jsonc
-{
-  "$schema": "https://opencode.ai/config.json",
-  "plugin": ["@tokeninsights/opencode-server"],
-}
+```sh
+pnpm run check-schema
+pnpm run build
+pnpm run test
 ```
 
-The server package contains its Node worker-thread module internally. Do not add `oc-tokeninsights-writer.ts` or `writer-client.ts` as separate plugins.
+For local plugin testing with a temporary database, start OpenCode or Pi with `TOKENINSIGHTS_DB_PATH` set:
 
-Default DB path: `~/.local/share/tokeninsights/tokeninsights.sqlite`
+```sh
+TOKENINSIGHTS_DB_PATH=/tmp/tokeninsights-test.sqlite opencode
+TOKENINSIGHTS_DB_PATH=/tmp/tokeninsights-test.sqlite pi
+```
 
-Environment overrides for writers:
+Then point the CLI at the same database:
 
-- `TOKENINSIGHTS_DB_PATH` — absolute path, or relative to the TokenInsights data directory
-- `TOKENINSIGHTS_RETENTION_DAYS` — retention window for pruning durable rows
+```sh
+tokeninsights-cli --db-path /tmp/tokeninsights-test.sqlite --today
+```
 
-## Plugin Logs
+Useful targeted commands:
 
-The OpenCode server plugin and Pi extension write best-effort metadata logs to daily files:
+```sh
+pnpm run build:plugins
+pnpm run build:opencode-server
+pnpm run build:pi
+pnpm run build:cli
+```
+
+Schema changes require explicit approval before editing `packages/schema/schema.sql`.
+
+## Logs and env
+
+Logs:
 
 ```text
-$XDG_STATE_HOME/tokeninsights/logs/{harness}-{YY-MM-DD}.log
+~/.local/state/tokeninsights/logs/{harness}-{YY-MM-DD}.log
 ```
 
-If `XDG_STATE_HOME` is unset, the default path is `~/.local/state/tokeninsights/logs/`. Log files keep the current day plus the previous 2 calendar days; older TokenInsights log files are pruned automatically.
+Environment overrides:
 
-Debug logs are written only when `TOKENINSIGHTS_DEBUG=1` is set. Logs use logfmt format and intentionally avoid prompt text, message content, request headers, tool args, and tool output.
+- `TOKENINSIGHTS_DB_PATH`
+- `TOKENINSIGHTS_RETENTION_DAYS`
+- `TOKENINSIGHTS_DEBUG=1`
 
-Examples:
-
-```sh
-TOKENINSIGHTS_DEBUG=1 opencode
-ls ~/.local/state/tokeninsights/logs
-tail -f ~/.local/state/tokeninsights/logs/opencode-server-$(date +%y-%m-%d).log
-```
-
-## Install Pi Extension
-
-Install dependencies, link the local Pi package with pnpm, and add the linked package name to Pi settings:
-
-```sh
-cd packages/plugins/pi
-pnpm install
-pnpm link --global
-```
-
-Pi settings (`~/.pi/agent/settings.json`):
-
-```json
-{
-  "packages": ["@tokeninsights/pi"]
-}
-```
-
-The Pi extension writes to the same TokenInsights DB as the OpenCode server plugin (`~/.local/share/tokeninsights/tokeninsights.sqlite`) but stores data in the `pi_*` table family. The CLI reads both `oc_*` and `pi_*` tables and shows a `harness` column (`oc` or `pi`) to distinguish sources.
-
-Tool calls are tracked as lifecycle rows (`started`, `completed`, `error`). The CLI `tool calls` tab shows started-call counts plus error counts per normal group; `tool breakdown` adds per-tool grouping.
-
-## CLI Usage
-
-```sh
-tokeninsights-cli --today
-tokeninsights-cli --week
-tokeninsights-cli --month
-tokeninsights-cli --all-time
-tokeninsights-cli --week --group-by=hour
-tokeninsights-cli --week --group-by=session
-tokeninsights-cli --week --provider openai --model gpt-5.5
-tokeninsights-cli --week --harness pi
-tokeninsights-cli --month
-tokeninsights-cli --all-time --filter-day 2026-04-24,2026-04-23
-```
-
-Interactive keys:
-
-- `tab` / `shift+tab` — switch tabs (tokens, tps, requests, tool calls, tool breakdown)
-- `g` — open grouping popup
-- `f` — open filter popup for provider or harness
-- `↑/↓` / `j/k` — scroll vertically or move cursor in popup
-- `←/→` / `h/l` — scroll the table horizontally
-- `home` / `end` — jump to the start/end of the horizontal table viewport
-- grouping popup: `space` / `enter` selects grouping mode
-- filter popup: `space` / `enter` enters value selection; in value selection, `space` toggles values and `enter` applies
-- `esc` in a popup closes without applying staged filter changes
-- `q` / `esc` / `ctrl+c` — quit
+See [`docs/design.md`](docs/design.md) for architecture and schema details.

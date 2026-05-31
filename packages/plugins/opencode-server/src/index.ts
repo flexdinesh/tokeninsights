@@ -178,11 +178,24 @@ function retentionDays() {
   return Number.isFinite(parsed) ? parsed : DEFAULT_RETENTION_DAYS
 }
 
+async function readSchemaSql() {
+  try {
+    return await readFile(new URL("./schema.sql", import.meta.url), "utf8")
+  } catch {
+    return await readFile(new URL("../../../schema/schema.sql", import.meta.url), "utf8")
+  }
+}
+
+function siblingModuleUrl(baseUrl: string, sourceModule: string, builtModule: string) {
+  const base = new URL(baseUrl)
+  return new URL(base.pathname.endsWith(".ts") ? sourceModule : builtModule, base)
+}
+
 async function createRequestStorage(path: string, retention: number): Promise<RequestStorage> {
   mkdirSync(dirname(path), { recursive: true })
 
   const db = new Database(path)
-  const schemaSql = await readFile(new URL("../../../schema/schema.sql", import.meta.url), "utf8")
+  const schemaSql = await readSchemaSql()
   applySchema(db, schemaSql)
 
   const insertRequest = db.prepare(`
@@ -292,7 +305,7 @@ export const OcTokenInsightsServer: Plugin = async ({ client, directory, project
     try {
       logger.debug("token worker init start")
       tokenStorage = createTokenStorage(
-        new URL("./oc-tokeninsights-writer.ts", import.meta.url),
+        siblingModuleUrl(import.meta.url, "./oc-tokeninsights-writer.ts", "./oc-tokeninsights-writer.js"),
         { dbPath: dbPath(), retentionDays: retentionDays() },
         () => {
           logger.error("token worker error")

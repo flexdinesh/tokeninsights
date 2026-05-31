@@ -48,13 +48,21 @@ function pruneKey(now = Date.now()) {
   return new Date(now).toISOString().slice(0, 10)
 }
 
+async function readSchemaSql() {
+  try {
+    return await readFile(new URL("./schema.sql", import.meta.url), "utf8")
+  } catch {
+    return await readFile(new URL("../../../schema/schema.sql", import.meta.url), "utf8")
+  }
+}
+
 async function createTokenStorage(dbPath: string, retentionDays: number): Promise<TokenStorage> {
   logger.debug("worker db init start", { dbPath, retentionDays })
   mkdirSync(dirname(dbPath), { recursive: true })
 
   const db = new Database(dbPath)
   db.exec("PRAGMA busy_timeout = 5000")
-  const schemaSql = await readFile(new URL("../../../schema/schema.sql", import.meta.url), "utf8")
+  const schemaSql = await readSchemaSql()
   applySchema(db, schemaSql)
   logger.debug("worker db schema applied")
   try {

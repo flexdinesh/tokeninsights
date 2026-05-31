@@ -9,7 +9,8 @@
     "node": ">=24"
   },
   "scripts": {
-    "build": "node --check src/index.ts && node --check src/writer-client.ts && node --check src/oc-tokeninsights-writer.ts"
+    "check": "node --check src/index.ts && node --check src/writer-client.ts && node --check src/oc-tokeninsights-writer.ts",
+    "build": "pnpm run check && tsup && node scripts/build-dist.mjs"
   },
   "dependencies": {
     "@tokeninsights/logger": "workspace:*",
@@ -19,6 +20,7 @@
     "@opencode-ai/plugin": "*"
   },
   "devDependencies": {
-    "@types/better-sqlite3": "^7.6.13"
+    "@types/better-sqlite3": "^7.6.13",
+    "tsup": "^8.5.1"
   }
 }

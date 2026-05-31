@@ -9,11 +9,12 @@
   "scripts": {
     "check-schema": "pnpm --filter check-schema run check-schema",
     "build:logger": "pnpm --filter @tokeninsights/logger run build",
-    "build:opencode-server": "pnpm --filter @tokeninsights/opencode-server run build",
-    "build:pi": "pnpm --filter @tokeninsights/pi run build",
+    "build:opencode-server": "pnpm --filter @tokeninsights/opencode-server build",
+    "build:pi": "pnpm --filter @tokeninsights/pi build",
+    "build:plugins": "pnpm run build:opencode-server && pnpm run build:pi",
     "build:cli": "pnpm --filter tokeninsights-cli run build",
     "install:cli": "cd packages/cli && go install ./cmd/tokeninsights-cli",
-    "build": "pnpm run build:logger && pnpm run build:opencode-server && pnpm run build:pi && pnpm run build:cli",
+    "build": "pnpm run build:logger && pnpm run build:plugins && pnpm run build:cli",
     "test": "pnpm --filter tokeninsights-cli run test"
   },
   "devDependencies": {
