@@ -12,5 +12,6 @@ export default defineConfig({
   clean: true,
   splitting: false,
   sourcemap: true,
+  removeNodeProtocol: false,
   noExternal: ["@tokeninsights/logger"],
 })
