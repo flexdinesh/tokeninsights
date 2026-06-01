@@ -13,7 +13,7 @@
     "build:opencode-server": "pnpm --filter @tokeninsights/opencode-server build",
     "vendor:opencode-server": "pnpm --filter @tokeninsights/opencode-server run vendor",
     "build:pi": "pnpm --filter @tokeninsights/pi build",
-    "build:plugins": "pnpm run build:opencode-server && pnpm run build:pi && pnpm run vendor:opencode-server",
+    "build:plugins": "pnpm run build:opencode-server && pnpm run build:pi",
     "build:cli": "pnpm --filter tokeninsights-cli run build",
     "install:cli": "cd packages/cli && go install ./cmd/tokeninsights-cli",
     "build": "pnpm run build:logger && pnpm run build:plugins && pnpm run build:cli",
