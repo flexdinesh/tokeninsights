@@ -19,7 +19,7 @@ pnpm install
 pnpm run build:plugins
 ```
 
-Requires Node.js 25 or newer for plugin builds and runtime.
+Requires Node.js 25 or newer for local builds and Pi runtime. The OpenCode server plugin runs under Bun.
 
 ### OpenCode
 

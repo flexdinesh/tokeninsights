@@ -13,5 +13,6 @@ export default defineConfig({
   splitting: false,
   sourcemap: true,
   removeNodeProtocol: false,
+  external: ["bun:sqlite"],
   noExternal: ["@tokeninsights/logger"],
 })

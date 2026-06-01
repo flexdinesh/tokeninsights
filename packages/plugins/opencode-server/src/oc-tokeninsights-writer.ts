@@ -1,7 +1,7 @@
 import { mkdirSync } from "node:fs"
 import { readFile } from "node:fs/promises"
 import { dirname } from "node:path"
-import { DatabaseSync } from "node:sqlite"
+import { Database } from "bun:sqlite"
 import { parentPort } from "node:worker_threads"
 import { createTokenInsightsLogger, errorFields } from "@tokeninsights/logger"
 import { applySchema } from "./schema-migrate.ts"
@@ -48,13 +48,13 @@ function pruneKey(now = Date.now()) {
   return new Date(now).toISOString().slice(0, 10)
 }
 
-function transaction(db: DatabaseSync, fn: () => void) {
+function transaction(db: Database, fn: () => void) {
   db.exec("BEGIN")
   try {
     fn()
     db.exec("COMMIT")
   } catch (err) {
-    if (db.isTransaction) db.exec("ROLLBACK")
+    db.exec("ROLLBACK")
     throw err
   }
 }
@@ -71,7 +71,7 @@ async function createTokenStorage(dbPath: string, retentionDays: number): Promis
   logger.debug("worker db init start", { dbPath, retentionDays })
   mkdirSync(dirname(dbPath), { recursive: true })
 
-  const db = new DatabaseSync(dbPath, { timeout: 5000 })
+  const db = new Database(dbPath, { create: true, strict: true })
   const schemaSql = await readSchemaSql()
   applySchema(db, schemaSql)
   logger.debug("worker db schema applied")

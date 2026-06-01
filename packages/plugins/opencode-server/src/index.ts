@@ -1,7 +1,7 @@
 import { mkdirSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { dirname, isAbsolute, join } from "node:path";
-import { DatabaseSync } from "node:sqlite";
+import { Database } from "bun:sqlite";
 import type { Plugin, PluginModule } from "@opencode-ai/plugin";
 import { createTokenInsightsLogger, errorFields } from "@tokeninsights/logger";
 import { createTokenStorage } from "./writer-client.ts";
@@ -219,7 +219,7 @@ async function createRequestStorage(
 ): Promise<RequestStorage> {
   mkdirSync(dirname(path), { recursive: true });
 
-  const db = new DatabaseSync(path, { timeout: 5000 });
+  const db = new Database(path, { create: true, strict: true });
   const schemaSql = await readSchemaSql();
   applySchema(db, schemaSql);
 
