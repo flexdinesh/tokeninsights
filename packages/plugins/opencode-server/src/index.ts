@@ -886,6 +886,7 @@ const OcTokenInsightsServer: Plugin = async ({
   };
 };
 
+export const server = OcTokenInsightsServer;
 export default {
   id: "tokeninsights.opencode-server",
   server: OcTokenInsightsServer,
