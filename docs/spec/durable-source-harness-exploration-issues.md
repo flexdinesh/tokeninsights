@@ -10,7 +10,7 @@ Last audited: 2026-06-13.
 |-------|--------|----------|-------|
 | 1. Explore OpenCode Modern SQLite Durable Sources | Evidence drafted | [`01-opencode-modern-sqlite.md`](durable-source-harness-exploration-issues/01-opencode-modern-sqlite.md) | SQLite-only. Legacy JSON message storage is out of scope. |
 | 2. Explore Pi Session Durable Sources | Evidence drafted | [`02-pi-sessions.md`](durable-source-harness-exploration-issues/02-pi-sessions.md) | Pi JSONL sessions only. Oh My Pi is out of scope. |
-| 3. Explore Codex Session Durable Sources | Not started | [`03-codex-sessions.md`](durable-source-harness-exploration-issues/03-codex-sessions.md) | Requires stateful token interpretation analysis. |
+| 3. Explore Codex Session Durable Sources | Implemented | [`03-codex-sessions.md`](durable-source-harness-exploration-issues/03-codex-sessions.md) | Stateful token-count interpretation implemented without schema changes. |
 
 ## Session Loading Guidance
 

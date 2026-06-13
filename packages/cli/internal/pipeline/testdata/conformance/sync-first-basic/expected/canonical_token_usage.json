@@ -2,7 +2,7 @@
   {
     "harness": "codex",
     "session_id": "cx_s1",
-    "message_id": "m1",
+    "message_id": "turn1:1767225602000",
     "provider": "openai",
     "model": "gpt-5-mini",
     "usage_scope": "message",

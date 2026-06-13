@@ -1,0 +1,3 @@
+{"timestamp":"2026-01-01T00:00:00.000Z","type":"session_meta","payload":{"id":"cx_s1","timestamp":"2026-01-01T00:00:00.000Z","source":"cli","originator":"codex_cli_rs","model_provider":"openai","cwd":"/redacted/project"}}
+{"timestamp":"2026-01-01T00:00:01.000Z","type":"turn_context","payload":{"turn_id":"turn1","model":"gpt-5-mini","cwd":"/redacted/project"}}
+{"timestamp":"2026-01-01T00:00:02.000Z","type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":7,"cached_input_tokens":0,"output_tokens":8,"reasoning_output_tokens":0,"total_tokens":15},"total_token_usage":{"input_tokens":7,"cached_input_tokens":0,"output_tokens":8,"reasoning_output_tokens":0,"total_tokens":15}}}}

@@ -208,6 +208,182 @@ func TestPiJSONLSyncsAssistantMessageTokenUsage(t *testing.T) {
 	})
 }
 
+func TestCodexJSONLSyncsTokenCountUsage(t *testing.T) {
+	ctx := context.Background()
+	dbPath := filepath.Join(t.TempDir(), "tokeninsights.sqlite")
+	sourceDir := t.TempDir()
+	now := time.Date(2026, 4, 24, 15, 0, 0, 0, time.UTC)
+	writeJSONL(t, filepath.Join(sourceDir, "codex", "2026", "01", "01", "rollout-2026-01-01T00-00-00-codex_s1.jsonl"),
+		`{"timestamp":"2026-01-01T00:00:00.000Z","type":"session_meta","payload":{"id":"codex_s1","timestamp":"2026-01-01T00:00:00.000Z","source":"cli","originator":"codex_cli_rs","model_provider":"openai","cwd":"/redacted/project"}}`,
+		`{"timestamp":"2026-01-01T00:00:01.000Z","type":"turn_context","payload":{"turn_id":"turn_1","model":"gpt-5.5","cwd":"/redacted/project"}}`,
+		`{"timestamp":"2026-01-01T00:00:02.000Z","type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":100,"cached_input_tokens":20,"output_tokens":50,"reasoning_output_tokens":10,"total_tokens":150},"total_token_usage":{"input_tokens":100,"cached_input_tokens":20,"output_tokens":50,"reasoning_output_tokens":10,"total_tokens":150}}}}`,
+		`{"timestamp":"2026-01-01T00:00:03.000Z","type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":30,"cached_input_tokens":10,"output_tokens":5,"reasoning_output_tokens":0,"total_tokens":35},"total_token_usage":{"input_tokens":130,"cached_input_tokens":30,"output_tokens":55,"reasoning_output_tokens":10,"total_tokens":185}}}}`,
+		`{"timestamp":"2026-01-01T00:00:04.000Z","type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":30,"cached_input_tokens":10,"output_tokens":5,"reasoning_output_tokens":0,"total_tokens":35},"total_token_usage":{"input_tokens":130,"cached_input_tokens":30,"output_tokens":55,"reasoning_output_tokens":10,"total_tokens":185}}}}`,
+	)
+
+	summary, err := Sync(ctx, SyncOptions{
+		DBPath:    dbPath,
+		Harnesses: []Harness{HarnessCodex},
+		Normalize: true,
+		SourceDir: sourceDir,
+		Now:       now,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertSummary(t, summary, Summary{
+		RequestedHarnesses: 1,
+		Synced:             1,
+		RawFacts:           2,
+		Observations:       2,
+		Canonical:          2,
+		Diagnostics:        1,
+	})
+
+	database := openTestDB(t, dbPath)
+	defer database.Close()
+	assertEqualJSON(t, queryRawTokenUsage(t, database), []expectedRawTokenUsage{
+		{
+			Harness:          "codex",
+			SourceKind:       "codex-session-jsonl",
+			SessionID:        stringPointer("codex_s1"),
+			MessageID:        stringPointer("turn_1:1767225602000"),
+			Provider:         stringPointer("openai"),
+			Model:            stringPointer("gpt-5.5"),
+			UsageScope:       "message",
+			Quality:          "exact",
+			InputTokens:      intPointer(80),
+			OutputTokens:     intPointer(50),
+			ReasoningTokens:  intPointer(10),
+			CacheReadTokens:  intPointer(20),
+			CacheWriteTokens: nil,
+			TotalTokens:      nil,
+		},
+		{
+			Harness:          "codex",
+			SourceKind:       "codex-session-jsonl",
+			SessionID:        stringPointer("codex_s1"),
+			MessageID:        stringPointer("turn_1:1767225603000"),
+			Provider:         stringPointer("openai"),
+			Model:            stringPointer("gpt-5.5"),
+			UsageScope:       "message",
+			Quality:          "exact",
+			InputTokens:      intPointer(20),
+			OutputTokens:     intPointer(5),
+			ReasoningTokens:  intPointer(0),
+			CacheReadTokens:  intPointer(10),
+			CacheWriteTokens: nil,
+			TotalTokens:      nil,
+		},
+	})
+	assertEqualJSON(t, queryCanonicalTokenUsage(t, database), []expectedCanonicalTokenUsage{
+		{
+			Harness:          "codex",
+			SessionID:        "codex_s1",
+			MessageID:        "turn_1:1767225602000",
+			Provider:         "openai",
+			Model:            "gpt-5.5",
+			UsageScope:       "message",
+			Quality:          "exact",
+			IsCountable:      1,
+			InputTokens:      80,
+			OutputTokens:     50,
+			ReasoningTokens:  10,
+			CacheReadTokens:  20,
+			CacheWriteTokens: 0,
+			TotalTokens:      160,
+		},
+		{
+			Harness:          "codex",
+			SessionID:        "codex_s1",
+			MessageID:        "turn_1:1767225603000",
+			Provider:         "openai",
+			Model:            "gpt-5.5",
+			UsageScope:       "message",
+			Quality:          "exact",
+			IsCountable:      1,
+			InputTokens:      20,
+			OutputTokens:     5,
+			ReasoningTokens:  0,
+			CacheReadTokens:  10,
+			CacheWriteTokens: 0,
+			TotalTokens:      35,
+		},
+	})
+	assertSQLCount(t, database, "SELECT COUNT(*) FROM normalization_diagnostics WHERE code = 'codex_jsonl_duplicate_token_snapshot'", 1)
+}
+
+func TestCodexJSONLBackfillsModelForPendingTokenCount(t *testing.T) {
+	ctx := context.Background()
+	dbPath := filepath.Join(t.TempDir(), "tokeninsights.sqlite")
+	sourceDir := t.TempDir()
+	now := time.Date(2026, 4, 24, 15, 0, 0, 0, time.UTC)
+	writeJSONL(t, filepath.Join(sourceDir, "codex", "2026", "01", "01", "rollout-2026-01-01T00-00-00-codex_pending.jsonl"),
+		`{"timestamp":"2026-01-01T00:00:00.000Z","type":"session_meta","payload":{"id":"codex_pending","timestamp":"2026-01-01T00:00:00.000Z","source":"cli","originator":"codex_cli_rs","model_provider":"openai"}}`,
+		`{"timestamp":"2026-01-01T00:00:02.000Z","type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":20,"cached_input_tokens":5,"output_tokens":7,"reasoning_output_tokens":1},"total_token_usage":{"input_tokens":20,"cached_input_tokens":5,"output_tokens":7,"reasoning_output_tokens":1}}}}`,
+		`{"timestamp":"2026-01-01T00:00:03.000Z","type":"turn_context","payload":{"turn_id":"turn_pending","model":"gpt-5.5"}}`,
+	)
+
+	summary, err := Sync(ctx, SyncOptions{
+		DBPath:    dbPath,
+		Harnesses: []Harness{HarnessCodex},
+		Normalize: true,
+		SourceDir: sourceDir,
+		Now:       now,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertSummary(t, summary, Summary{
+		RequestedHarnesses: 1,
+		Synced:             1,
+		RawFacts:           1,
+		Observations:       1,
+		Canonical:          1,
+	})
+
+	database := openTestDB(t, dbPath)
+	defer database.Close()
+	assertSQLCount(t, database, "SELECT COUNT(*) FROM raw_token_usage WHERE model = 'gpt-5.5' AND message_id = 'turn_pending:1767225602000'", 1)
+	assertSQLCount(t, database, "SELECT COUNT(*) FROM normalization_diagnostics WHERE code = 'codex_jsonl_missing_model'", 0)
+}
+
+func TestCodexJSONLSkipsRegressedCumulativeSnapshot(t *testing.T) {
+	ctx := context.Background()
+	dbPath := filepath.Join(t.TempDir(), "tokeninsights.sqlite")
+	sourceDir := t.TempDir()
+	now := time.Date(2026, 4, 24, 15, 0, 0, 0, time.UTC)
+	writeJSONL(t, filepath.Join(sourceDir, "codex", "2026", "01", "01", "rollout-2026-01-01T00-00-00-codex_regression.jsonl"),
+		`{"timestamp":"2026-01-01T00:00:00.000Z","type":"session_meta","payload":{"id":"codex_regression","model_provider":"openai"}}`,
+		`{"timestamp":"2026-01-01T00:00:01.000Z","type":"turn_context","payload":{"turn_id":"turn_1","model":"gpt-5.5"}}`,
+		`{"timestamp":"2026-01-01T00:00:02.000Z","type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":100,"cached_input_tokens":10,"output_tokens":20,"reasoning_output_tokens":0},"total_token_usage":{"input_tokens":100,"cached_input_tokens":10,"output_tokens":20,"reasoning_output_tokens":0}}}}`,
+		`{"timestamp":"2026-01-01T00:00:03.000Z","type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":5,"cached_input_tokens":0,"output_tokens":2,"reasoning_output_tokens":0},"total_token_usage":{"input_tokens":90,"cached_input_tokens":10,"output_tokens":18,"reasoning_output_tokens":0}}}}`,
+	)
+
+	summary, err := Sync(ctx, SyncOptions{
+		DBPath:    dbPath,
+		Harnesses: []Harness{HarnessCodex},
+		Normalize: true,
+		SourceDir: sourceDir,
+		Now:       now,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertSummary(t, summary, Summary{
+		RequestedHarnesses: 1,
+		Synced:             1,
+		RawFacts:           1,
+		Observations:       1,
+		Canonical:          1,
+		Diagnostics:        1,
+	})
+
+	database := openTestDB(t, dbPath)
+	defer database.Close()
+	assertSQLCount(t, database, "SELECT COUNT(*) FROM normalization_diagnostics WHERE code = 'codex_jsonl_stale_token_snapshot'", 1)
+}
+
 func TestPiJSONLUsesFilenameSessionFallbackWhenHeaderIsMissing(t *testing.T) {
 	ctx := context.Background()
 	dbPath := filepath.Join(t.TempDir(), "tokeninsights.sqlite")
@@ -833,8 +1009,10 @@ func TestSyncAllPartialSuccessNormalizesSuccessfulHarnesses(t *testing.T) {
 	if err := os.Symlink(filepath.Join(sourceDir, "pi", "missing-target.jsonl"), filepath.Join(sourceDir, "pi", "broken.jsonl")); err != nil {
 		t.Fatal(err)
 	}
-	writeJSONL(t, filepath.Join(sourceDir, "codex", "usage.jsonl"),
-		`{"recorded_at_ms":1770000002000,"session_id":"cx_s1","message_id":"m1","provider":"openai","model":"gpt-5-mini","input_tokens":7,"output_tokens":8}`,
+	writeJSONL(t, filepath.Join(sourceDir, "codex", "2026", "01", "01", "rollout-2026-01-01T00-00-00-cx_s1.jsonl"),
+		`{"timestamp":"2026-01-01T00:00:00.000Z","type":"session_meta","payload":{"id":"cx_s1","model_provider":"openai"}}`,
+		`{"timestamp":"2026-01-01T00:00:01.000Z","type":"turn_context","payload":{"turn_id":"turn1","model":"gpt-5-mini"}}`,
+		`{"timestamp":"2026-01-01T00:00:02.000Z","type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":7,"cached_input_tokens":0,"output_tokens":8,"reasoning_output_tokens":0},"total_token_usage":{"input_tokens":7,"cached_input_tokens":0,"output_tokens":8,"reasoning_output_tokens":0}}}}`,
 	)
 
 	summary, err := Sync(ctx, SyncOptions{
@@ -861,29 +1039,76 @@ func TestSyncAllPartialSuccessNormalizesSuccessfulHarnesses(t *testing.T) {
 func TestSourceIngestWriteFailureRollsBackSource(t *testing.T) {
 	ctx := context.Background()
 	dbPath := filepath.Join(t.TempDir(), "tokeninsights.sqlite")
-	sourceDir := t.TempDir()
 	now := time.Date(2026, 4, 24, 15, 0, 0, 0, time.UTC)
-	writeJSONL(t, filepath.Join(sourceDir, "codex", "usage.jsonl"),
-		`{"recorded_at_ms":1770000000000,"session_id":"cx_s1","message_id":"m1","provider":"openai","model":"gpt-5","input_tokens":10,"output_tokens":5}`,
-		`{"recorded_at_ms":1770000001000,"session_id":"cx_s1","message_id":"m2","provider":"openai","model":"gpt-5","input_tokens":-1,"output_tokens":5}`,
-	)
+	database, _, err := db.CreateIfMissing(dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
 
-	summary, err := Sync(ctx, SyncOptions{
-		DBPath:    dbPath,
-		Harnesses: []Harness{HarnessCodex},
-		Normalize: true,
-		SourceDir: sourceDir,
+	occurredAt := int64(1770000000000)
+	sessionID := "rollback_s1"
+	provider := "openai"
+	model := "gpt-5"
+	validMessageID := "m1"
+	invalidMessageID := "m2"
+	validInput := int64(10)
+	invalidInput := int64(-1)
+	output := int64(5)
+	source := Source{
+		Harness: HarnessCodex,
+		ID:      "rollback-source",
+		Kind:    "rollback-source-kind",
+		Path:    "rollback-source-path",
+	}
+	adapter := failingWriteAdapter{facts: []RawTokenFact{
+		{
+			Harness:      HarnessCodex,
+			SourceID:     "rollback-source",
+			SourceKind:   "rollback-source-kind",
+			Collector:    defaultCollector,
+			Parser:       defaultParser,
+			ObservedAtMs: now.UnixMilli(),
+			OccurredAtMs: &occurredAt,
+			SessionID:    &sessionID,
+			MessageID:    &validMessageID,
+			Provider:     &provider,
+			Model:        &model,
+			UsageScope:   "message",
+			Quality:      "exact",
+			InputTokens:  &validInput,
+			OutputTokens: &output,
+		},
+		{
+			Harness:      HarnessCodex,
+			SourceID:     "rollback-source",
+			SourceKind:   "rollback-source-kind",
+			Collector:    defaultCollector,
+			Parser:       defaultParser,
+			ObservedAtMs: now.UnixMilli(),
+			OccurredAtMs: &occurredAt,
+			SessionID:    &sessionID,
+			MessageID:    &invalidMessageID,
+			Provider:     &provider,
+			Model:        &model,
+			UsageScope:   "message",
+			Quality:      "exact",
+			InputTokens:  &invalidInput,
+			OutputTokens: &output,
+		},
+	}}
+
+	summary, err := ingestSource(ctx, database, adapter, SyncOptions{
+		Collector: defaultCollector,
+		Parser:    defaultParser,
 		Now:       now,
-	})
+	}, HarnessCodex, source, map[string]bool{})
 	if err == nil {
 		t.Fatal("expected source write failure")
 	}
-	if summary.Failed != 1 || summary.Synced != 0 || summary.RawFacts != 0 || summary.Observations != 0 || summary.Canonical != 0 || summary.Diagnostics != 0 {
+	if summary.RawFacts != 0 || summary.Observations != 0 || summary.Canonical != 0 || summary.Diagnostics != 0 {
 		t.Fatalf("unexpected failed ingest summary: %+v", summary)
 	}
-
-	database := openTestDB(t, dbPath)
-	defer database.Close()
 	assertCount(t, database, "raw_token_usage", 0)
 	assertCount(t, database, "raw_observations", 0)
 	assertCount(t, database, "canonical_token_usage", 0)
@@ -896,6 +1121,22 @@ type openCodeSQLiteMessage struct {
 	TimeCreated int64
 	TimeUpdated int64
 	Data        string
+}
+
+type failingWriteAdapter struct {
+	facts []RawTokenFact
+}
+
+func (adapter failingWriteAdapter) Harness() Harness {
+	return HarnessCodex
+}
+
+func (adapter failingWriteAdapter) Discover(context.Context, DiscoverOptions) ([]Source, error) {
+	return nil, nil
+}
+
+func (adapter failingWriteAdapter) Parse(context.Context, Source, SyncOptions) ([]RawTokenFact, []Diagnostic, error) {
+	return adapter.facts, nil, nil
 }
 
 func writeJSONL(t *testing.T, path string, lines ...string) {

@@ -1,17 +1,17 @@
 [
   {
     "harness": "codex",
-    "source_kind": "local-json",
+    "source_kind": "codex-session-jsonl",
     "session_id": "cx_s1",
-    "message_id": "m1",
+    "message_id": "turn1:1767225602000",
     "provider": "openai",
     "model": "gpt-5-mini",
     "usage_scope": "message",
     "quality": "exact",
     "input_tokens": 7,
     "output_tokens": 8,
-    "reasoning_tokens": null,
-    "cache_read_tokens": null,
+    "reasoning_tokens": 0,
+    "cache_read_tokens": 0,
     "cache_write_tokens": null,
     "total_tokens": null
   },

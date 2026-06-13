@@ -187,7 +187,9 @@ All harness adapters implement the same interface:
 - discover durable local sources;
 - parse a source into raw token facts and diagnostics.
 
-OpenCode sync parses modern durable SQLite databases named `opencode.db` or `opencode-<channel>.db` from the OpenCode data directory. Pi sync parses durable JSONL session files under `~/.pi/agent/sessions`, using assistant message usage as exact message-scoped token facts. Codex currently uses metadata-only JSONL/NDJSON scaffolding until its durable source adapter is implemented. Harness-specific source parsing stays behind the adapter interface and feeds the same raw-to-canonical pipeline.
+OpenCode sync parses modern durable SQLite databases named `opencode.db` or `opencode-<channel>.db` from the OpenCode data directory. Pi sync parses durable JSONL session files under `~/.pi/agent/sessions`, using assistant message usage as exact message-scoped token facts. Codex sync parses rollout JSONL session files under `${CODEX_HOME:-~/.codex}/sessions`, using `event_msg` records with `payload.type == "token_count"` as exact message-scoped token facts. Harness-specific source parsing stays behind the adapter interface and feeds the same raw-to-canonical pipeline.
+
+Codex token parsing is stateful per file. It uses the first `session_meta` record for the logical session and provider, `turn_context` or `task_started` records for turn/model state, `last_token_usage` for countable token components, and `total_token_usage` only to suppress duplicate or stale cumulative snapshots. Cached input is normalized into `cache_read_tokens` and subtracted from raw input tokens before canonical aggregation. Missing provider/model remains null in raw facts and normalizes to `unknown`.
 
 Uneven metric coverage is valid. An adapter should produce diagnostics for unavailable or rejected data instead of failing unrelated token usage sync.
 
@@ -284,7 +286,8 @@ Can evolve with care:
 | `packages/cli/internal/db/aggregate.go` | canonical aggregation queries |
 | `packages/cli/internal/db/events.go` | canonical event rows for UI model |
 | `packages/cli/internal/db/filter_values.go` | canonical filter value discovery |
-| `packages/cli/internal/pipeline/adapters.go` | harness adapter interface and scaffold adapters |
+| `packages/cli/internal/pipeline/adapters.go` | harness adapter interface and registry |
+| `packages/cli/internal/pipeline/codex_jsonl.go` | Codex JSONL session adapter |
 | `packages/cli/internal/pipeline/pi_jsonl.go` | Pi JSONL session adapter |
 | `packages/cli/internal/pipeline/sync.go` | raw ingest and observation pipeline |
 | `packages/cli/internal/pipeline/normalize.go` | canonical normalization and diagnostics |
