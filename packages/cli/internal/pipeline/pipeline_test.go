@@ -187,6 +187,38 @@ func TestSyncAllPartialSuccessNormalizesSuccessfulHarnesses(t *testing.T) {
 	assertCount(t, database, "canonical_token_usage", 2)
 }
 
+func TestSourceIngestWriteFailureRollsBackSource(t *testing.T) {
+	ctx := context.Background()
+	dbPath := filepath.Join(t.TempDir(), "tokeninsights.sqlite")
+	sourceDir := t.TempDir()
+	now := time.Date(2026, 4, 24, 15, 0, 0, 0, time.UTC)
+	writeJSONL(t, filepath.Join(sourceDir, "opencode", "usage.jsonl"),
+		`{"recorded_at_ms":1770000000000,"session_id":"oc_s1","message_id":"m1","provider":"openai","model":"gpt-5","input_tokens":10,"output_tokens":5}`,
+		`{"recorded_at_ms":1770000001000,"session_id":"oc_s1","message_id":"m2","provider":"openai","model":"gpt-5","input_tokens":-1,"output_tokens":5}`,
+	)
+
+	summary, err := Sync(ctx, SyncOptions{
+		DBPath:    dbPath,
+		Harnesses: []Harness{HarnessOpenCode},
+		Normalize: true,
+		SourceDir: sourceDir,
+		Now:       now,
+	})
+	if err == nil {
+		t.Fatal("expected source write failure")
+	}
+	if summary.Failed != 1 || summary.Synced != 0 || summary.RawFacts != 0 || summary.Observations != 0 || summary.Canonical != 0 || summary.Diagnostics != 0 {
+		t.Fatalf("unexpected failed ingest summary: %+v", summary)
+	}
+
+	database := openTestDB(t, dbPath)
+	defer database.Close()
+	assertCount(t, database, "raw_token_usage", 0)
+	assertCount(t, database, "raw_observations", 0)
+	assertCount(t, database, "canonical_token_usage", 0)
+	assertSQLCount(t, database, "SELECT COUNT(*) FROM ingest_runs WHERE status = 'failed' AND raw_fact_count = 0 AND observation_count = 0 AND diagnostic_count = 0 AND error_message IS NOT NULL", 1)
+}
+
 func writeJSONL(t *testing.T, path string, lines ...string) {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {

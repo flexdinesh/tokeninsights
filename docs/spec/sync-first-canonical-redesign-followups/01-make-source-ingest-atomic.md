@@ -12,11 +12,11 @@ Ensure each discovered source ingest is committed atomically. If any raw fact, o
 
 ## Acceptance criteria
 
-- [ ] A source ingest uses one transaction for ingest run creation, raw fact writes, observation writes, diagnostics, and run completion.
-- [ ] A mid-source write failure leaves no partial raw facts or observations for that source.
-- [ ] Failed source runs are still represented clearly as failed ingest attempts.
-- [ ] Auto-normalization only considers facts that were successfully committed.
-- [ ] Tests cover a valid row followed by a write failure and assert rollback and summary behavior.
+- [x] A source ingest uses one transaction for ingest run creation, raw fact writes, observation writes, diagnostics, and run completion.
+- [x] A mid-source write failure leaves no partial raw facts or observations for that source.
+- [x] Failed source runs are still represented clearly as failed ingest attempts.
+- [x] Auto-normalization only considers facts that were successfully committed.
+- [x] Tests cover a valid row followed by a write failure and assert rollback and summary behavior.
 
 ## Blocked by
 

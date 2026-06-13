@@ -19,6 +19,11 @@ const (
 
 var runSequence atomic.Uint64
 
+type sqlRunner interface {
+	ExecContext(context.Context, string, ...interface{}) (sql.Result, error)
+	QueryRowContext(context.Context, string, ...interface{}) *sql.Row
+}
+
 func Sync(ctx context.Context, options SyncOptions) (Summary, error) {
 	if options.Collector == "" {
 		options.Collector = defaultCollector
@@ -125,49 +130,119 @@ func syncHarness(ctx context.Context, database *sql.DB, options SyncOptions, har
 	}
 
 	for _, source := range sources {
-		runID := newRunID(harness, source.ID, options.Now)
-		runDBID, err := createIngestRun(ctx, database, runID, source, options)
+		sourceSummary, err := ingestSource(ctx, database, adapter, options, harness, source)
 		if err != nil {
-			return summary, err
-		}
-		facts, diagnostics, parseErr := adapter.Parse(ctx, source, options)
-		if parseErr != nil {
-			_ = completeIngestRun(ctx, database, runDBID, "failed", parseErr.Error(), Summary{})
-			return summary, fmt.Errorf("%s parse: %w", harness, parseErr)
-		}
-
-		sourceSummary := Summary{Diagnostics: len(diagnostics)}
-		for _, fact := range facts {
-			rawID, inserted, err := upsertRawTokenFact(ctx, database, fact)
-			if err != nil {
-				_ = completeIngestRun(ctx, database, runDBID, "failed", err.Error(), sourceSummary)
-				return summary, err
-			}
-			if inserted {
-				sourceSummary.RawFacts++
-			}
-			observed, err := insertObservation(ctx, database, runDBID, rawID, fact)
-			if err != nil {
-				_ = completeIngestRun(ctx, database, runDBID, "failed", err.Error(), sourceSummary)
-				return summary, err
-			}
-			if observed {
-				sourceSummary.Observations++
-			}
-		}
-
-		for _, diagnostic := range diagnostics {
-			if err := insertDiagnostic(ctx, database, diagnostic, nil, &runDBID, syncNowMs(options.Now)); err != nil {
-				_ = completeIngestRun(ctx, database, runDBID, "failed", err.Error(), sourceSummary)
-				return summary, err
-			}
-		}
-		if err := completeIngestRun(ctx, database, runDBID, "completed", "", sourceSummary); err != nil {
 			return summary, err
 		}
 		mergeSummary(&summary, sourceSummary)
 	}
 	return summary, nil
+}
+
+func ingestSource(ctx context.Context, database *sql.DB, adapter Adapter, options SyncOptions, harness Harness, source Source) (Summary, error) {
+	var summary Summary
+	tx, err := database.BeginTx(ctx, nil)
+	if err != nil {
+		return summary, err
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_ = tx.Rollback()
+		}
+	}()
+
+	runID := newRunID(harness, source.ID, options.Now)
+	runDBID, err := createIngestRun(ctx, tx, runID, source, options)
+	if err != nil {
+		return summary, err
+	}
+	if err := createSourceWriteSavepoint(ctx, tx); err != nil {
+		return summary, err
+	}
+
+	facts, diagnostics, parseErr := adapter.Parse(ctx, source, options)
+	if parseErr != nil {
+		if err := completeIngestRun(ctx, tx, runDBID, "failed", parseErr.Error(), Summary{}); err != nil {
+			return summary, err
+		}
+		if err := tx.Commit(); err != nil {
+			return summary, err
+		}
+		committed = true
+		return summary, fmt.Errorf("%s parse: %w", harness, parseErr)
+	}
+
+	sourceSummary, err := writeSourceIngest(ctx, tx, runDBID, facts, diagnostics, options)
+	if err != nil {
+		if rollbackErr := rollbackSourceWrites(ctx, tx); rollbackErr != nil {
+			return summary, errors.Join(err, rollbackErr)
+		}
+		if completeErr := completeIngestRun(ctx, tx, runDBID, "failed", err.Error(), Summary{}); completeErr != nil {
+			return summary, errors.Join(err, completeErr)
+		}
+		if commitErr := tx.Commit(); commitErr != nil {
+			return summary, errors.Join(err, commitErr)
+		}
+		committed = true
+		return summary, err
+	}
+	if err := releaseSourceWriteSavepoint(ctx, tx); err != nil {
+		return summary, err
+	}
+	if err := completeIngestRun(ctx, tx, runDBID, "completed", "", sourceSummary); err != nil {
+		return summary, err
+	}
+	if err := tx.Commit(); err != nil {
+		return summary, err
+	}
+	committed = true
+	return sourceSummary, nil
+}
+
+func writeSourceIngest(ctx context.Context, runner sqlRunner, runDBID int64, facts []RawTokenFact, diagnostics []Diagnostic, options SyncOptions) (Summary, error) {
+	sourceSummary := Summary{Diagnostics: len(diagnostics)}
+	for _, fact := range facts {
+		rawID, inserted, err := upsertRawTokenFact(ctx, runner, fact)
+		if err != nil {
+			return sourceSummary, err
+		}
+		if inserted {
+			sourceSummary.RawFacts++
+		}
+		observed, err := insertObservation(ctx, runner, runDBID, rawID, fact)
+		if err != nil {
+			return sourceSummary, err
+		}
+		if observed {
+			sourceSummary.Observations++
+		}
+	}
+
+	for _, diagnostic := range diagnostics {
+		if err := insertDiagnostic(ctx, runner, diagnostic, nil, &runDBID, syncNowMs(options.Now)); err != nil {
+			return sourceSummary, err
+		}
+	}
+	return sourceSummary, nil
+}
+
+func createSourceWriteSavepoint(ctx context.Context, runner sqlRunner) error {
+	_, err := runner.ExecContext(ctx, "SAVEPOINT source_ingest_writes")
+	return err
+}
+
+func rollbackSourceWrites(ctx context.Context, runner sqlRunner) error {
+	if _, err := runner.ExecContext(ctx, "ROLLBACK TO source_ingest_writes"); err != nil {
+		return err
+	}
+	_, err := runner.ExecContext(ctx, "RELEASE source_ingest_writes")
+	return err
+}
+
+func releaseSourceWriteSavepoint(ctx context.Context, runner sqlRunner) error {
+	_, err := runner.ExecContext(ctx, "RELEASE source_ingest_writes")
+	return err
 }
 
 func newRunID(harness Harness, sourceID string, now time.Time) string {
@@ -179,8 +254,8 @@ func newRunID(harness Harness, sourceID string, now time.Time) string {
 	return stableHash(fmt.Sprintf("%s:%s:%d:%d", harness, sourceID, startedAt, sequence))
 }
 
-func createIngestRun(ctx context.Context, database *sql.DB, runID string, source Source, options SyncOptions) (int64, error) {
-	result, err := database.ExecContext(ctx, `
+func createIngestRun(ctx context.Context, runner sqlRunner, runID string, source Source, options SyncOptions) (int64, error) {
+	result, err := runner.ExecContext(ctx, `
 		INSERT INTO ingest_runs (
 			run_id, harness, collector, parser, source_id, source_kind, status, started_at_ms
 		) VALUES (?, ?, ?, ?, ?, ?, 'running', ?)
@@ -191,8 +266,8 @@ func createIngestRun(ctx context.Context, database *sql.DB, runID string, source
 	return result.LastInsertId()
 }
 
-func completeIngestRun(ctx context.Context, database *sql.DB, runID int64, status string, message string, summary Summary) error {
-	_, err := database.ExecContext(ctx, `
+func completeIngestRun(ctx context.Context, runner sqlRunner, runID int64, status string, message string, summary Summary) error {
+	_, err := runner.ExecContext(ctx, `
 		UPDATE ingest_runs
 		SET status = ?,
 			completed_at_ms = CASE WHEN completed_at_ms IS NULL THEN strftime('%s','now') * 1000 ELSE completed_at_ms END,
@@ -206,9 +281,9 @@ func completeIngestRun(ctx context.Context, database *sql.DB, runID int64, statu
 	return err
 }
 
-func upsertRawTokenFact(ctx context.Context, database *sql.DB, fact RawTokenFact) (int64, bool, error) {
+func upsertRawTokenFact(ctx context.Context, runner sqlRunner, fact RawTokenFact) (int64, bool, error) {
 	key := rawFactKey(fact)
-	result, err := database.ExecContext(ctx, `
+	result, err := runner.ExecContext(ctx, `
 		INSERT OR IGNORE INTO raw_token_usage (
 			raw_fact_key, harness, source_id, source_kind, collector, parser, observed_at_ms, occurred_at_ms,
 			session_id, message_id, provider, model, usage_scope, quality,
@@ -225,15 +300,15 @@ func upsertRawTokenFact(ctx context.Context, database *sql.DB, fact RawTokenFact
 		return 0, false, err
 	}
 	var id int64
-	if err := database.QueryRowContext(ctx, "SELECT id FROM raw_token_usage WHERE raw_fact_key = ?", key).Scan(&id); err != nil {
+	if err := runner.QueryRowContext(ctx, "SELECT id FROM raw_token_usage WHERE raw_fact_key = ?", key).Scan(&id); err != nil {
 		return 0, false, err
 	}
 	return id, inserted > 0, nil
 }
 
-func insertObservation(ctx context.Context, database *sql.DB, runID int64, rawID int64, fact RawTokenFact) (bool, error) {
+func insertObservation(ctx context.Context, runner sqlRunner, runID int64, rawID int64, fact RawTokenFact) (bool, error) {
 	key := stableHash(fmt.Sprintf("%d:%s", runID, rawFactKey(fact)))
-	result, err := database.ExecContext(ctx, `
+	result, err := runner.ExecContext(ctx, `
 		INSERT OR IGNORE INTO raw_observations (
 			ingest_run_id, raw_fact_id, observed_at_ms, observation_key
 		) VALUES (?, ?, ?, ?)

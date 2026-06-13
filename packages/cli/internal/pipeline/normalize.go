@@ -252,7 +252,7 @@ func upsertCanonicalTokenUsage(ctx context.Context, database *sql.DB, row rawTok
 	return affected > 0, err
 }
 
-func insertDiagnostic(ctx context.Context, database *sql.DB, diagnostic Diagnostic, rawID *int64, runID *int64, recordedAtMs int64) error {
+func insertDiagnostic(ctx context.Context, runner sqlRunner, diagnostic Diagnostic, rawID *int64, runID *int64, recordedAtMs int64) error {
 	keyParts := []string{
 		string(diagnostic.Harness),
 		diagnostic.RawFactKey,
@@ -260,7 +260,7 @@ func insertDiagnostic(ctx context.Context, database *sql.DB, diagnostic Diagnost
 		int64PtrValue(runID),
 		diagnostic.Code,
 	}
-	_, err := database.ExecContext(ctx, `
+	_, err := runner.ExecContext(ctx, `
 		INSERT OR IGNORE INTO normalization_diagnostics (
 			diagnostic_key, recorded_at_ms, harness, raw_fact_id, ingest_run_id, severity, code, message, metadata_json
 		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
