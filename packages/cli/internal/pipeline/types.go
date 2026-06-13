@@ -13,10 +13,11 @@ const (
 var SupportedHarnesses = []Harness{HarnessOpenCode, HarnessPi, HarnessCodex}
 
 type Source struct {
-	Harness Harness
-	ID      string
-	Kind    string
-	Path    string
+	Harness     Harness
+	ID          string
+	Kind        string
+	Path        string
+	RawSourceID string
 }
 
 type DiscoverOptions struct {
@@ -45,6 +46,7 @@ type RawTokenFact struct {
 	CacheWriteTokens *int64
 	TotalTokens      *int64
 	MetadataJSON     *string
+	DedupeKey        string
 }
 
 type Diagnostic struct {

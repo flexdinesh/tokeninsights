@@ -87,6 +87,217 @@ func TestConformanceFixtureDefinesMissingSessionDiagnostics(t *testing.T) {
 	})
 }
 
+func TestOpenCodeSQLiteConformanceFixtureDefinesMessageTokenUsage(t *testing.T) {
+	fixtureDir := filepath.Join("testdata", "conformance", "opencode-sqlite")
+	ctx := context.Background()
+	dbPath := filepath.Join(t.TempDir(), "tokeninsights.sqlite")
+	sourceDir := filepath.Join(t.TempDir(), "source")
+	now := time.Date(2026, 4, 24, 15, 0, 0, 0, time.UTC)
+	createSQLiteFixtureDB(t,
+		filepath.Join(sourceDir, "opencode", "opencode.db"),
+		filepath.Join(fixtureDir, "source.sql"),
+	)
+
+	summary, err := Sync(ctx, SyncOptions{
+		DBPath:    dbPath,
+		Harnesses: []Harness{HarnessOpenCode},
+		Normalize: true,
+		SourceDir: sourceDir,
+		Now:       now,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertSummary(t, summary, Summary{
+		RequestedHarnesses: 1,
+		Synced:             1,
+		RawFacts:           2,
+		Observations:       2,
+		Canonical:          2,
+	})
+
+	database := openTestDB(t, dbPath)
+	defer database.Close()
+
+	assertEqualJSON(t,
+		queryRawTokenUsage(t, database),
+		readExpectedJSON[[]expectedRawTokenUsage](t, filepath.Join(fixtureDir, "expected", "raw_token_usage.json")),
+	)
+	assertEqualJSON(t,
+		queryRawObservations(t, database),
+		readExpectedJSON[[]expectedRawObservation](t, filepath.Join(fixtureDir, "expected", "raw_observations.json")),
+	)
+	assertEqualJSON(t,
+		queryCanonicalTokenUsage(t, database),
+		readExpectedJSON[[]expectedCanonicalTokenUsage](t, filepath.Join(fixtureDir, "expected", "canonical_token_usage.json")),
+	)
+	assertEqualJSON(t,
+		queryDiagnostics(t, database),
+		readExpectedJSON[[]expectedDiagnostic](t, filepath.Join(fixtureDir, "expected", "normalization_diagnostics.json")),
+	)
+}
+
+func TestOpenCodeSQLiteSuppressesDuplicateChannelRows(t *testing.T) {
+	ctx := context.Background()
+	dbPath := filepath.Join(t.TempDir(), "tokeninsights.sqlite")
+	sourceDir := t.TempDir()
+	now := time.Date(2026, 4, 24, 15, 0, 0, 0, time.UTC)
+	messageData := `{"id":"assistant_a","role":"assistant","providerID":"anthropic","modelID":"claude-sonnet-4","tokens":{"input":100,"output":50,"reasoning":10,"cache":{"read":20,"write":5}},"time":{"created":1700000000000,"completed":1700000000450}}`
+	createOpenCodeSQLiteMessages(t, filepath.Join(sourceDir, "opencode", "opencode.db"), openCodeSQLiteMessage{
+		ID:          "msg_a",
+		SessionID:   "ses_a",
+		TimeCreated: 1700000000000,
+		TimeUpdated: 1700000000450,
+		Data:        messageData,
+	})
+	createOpenCodeSQLiteMessages(t, filepath.Join(sourceDir, "opencode", "opencode-stable.db"), openCodeSQLiteMessage{
+		ID:          "msg_a_copy",
+		SessionID:   "ses_fork",
+		TimeCreated: 1700000000000,
+		TimeUpdated: 1700000000450,
+		Data:        messageData,
+	})
+
+	summary, err := Sync(ctx, SyncOptions{
+		DBPath:    dbPath,
+		Harnesses: []Harness{HarnessOpenCode},
+		Normalize: true,
+		SourceDir: sourceDir,
+		Now:       now,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertSummary(t, summary, Summary{
+		RequestedHarnesses: 1,
+		Synced:             1,
+		RawFacts:           1,
+		Observations:       1,
+		Canonical:          1,
+		Diagnostics:        1,
+	})
+
+	database := openTestDB(t, dbPath)
+	defer database.Close()
+	assertCount(t, database, "raw_token_usage", 1)
+	assertCount(t, database, "canonical_token_usage", 1)
+	assertSQLCount(t, database, "SELECT COUNT(*) FROM normalization_diagnostics WHERE code = 'opencode_sqlite_duplicate_suppressed'", 1)
+}
+
+func TestOpenCodeSQLiteClampsNegativeTokenComponents(t *testing.T) {
+	ctx := context.Background()
+	dbPath := filepath.Join(t.TempDir(), "tokeninsights.sqlite")
+	sourceDir := t.TempDir()
+	now := time.Date(2026, 4, 24, 15, 0, 0, 0, time.UTC)
+	createOpenCodeSQLiteMessages(t, filepath.Join(sourceDir, "opencode", "opencode.db"), openCodeSQLiteMessage{
+		ID:          "msg_negative",
+		SessionID:   "ses_a",
+		TimeCreated: 1700000000000,
+		TimeUpdated: 1700000000450,
+		Data:        `{"role":"assistant","providerID":"anthropic","modelID":"claude-sonnet-4","tokens":{"input":-100,"output":50,"reasoning":-10,"cache":{"read":-20,"write":5}},"time":{"created":1700000000000,"completed":1700000000450}}`,
+	})
+
+	summary, err := Sync(ctx, SyncOptions{
+		DBPath:    dbPath,
+		Harnesses: []Harness{HarnessOpenCode},
+		Normalize: true,
+		SourceDir: sourceDir,
+		Now:       now,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertSummary(t, summary, Summary{
+		RequestedHarnesses: 1,
+		Synced:             1,
+		RawFacts:           1,
+		Observations:       1,
+		Canonical:          1,
+		Diagnostics:        1,
+	})
+
+	database := openTestDB(t, dbPath)
+	defer database.Close()
+	assertSQLCount(t, database, "SELECT COUNT(*) FROM raw_token_usage WHERE input_tokens = 0 AND output_tokens = 50 AND reasoning_tokens = 0 AND cache_read_tokens = 0 AND cache_write_tokens = 5", 1)
+	assertSQLCount(t, database, "SELECT COUNT(*) FROM canonical_token_usage WHERE input_tokens = 0 AND output_tokens = 50 AND reasoning_tokens = 0 AND cache_read_tokens = 0 AND cache_write_tokens = 5 AND total_tokens = 55", 1)
+	assertSQLCount(t, database, "SELECT COUNT(*) FROM normalization_diagnostics WHERE code = 'opencode_sqlite_negative_tokens'", 1)
+}
+
+func TestSyncWithWallClockNowCompletesIngestRun(t *testing.T) {
+	ctx := context.Background()
+	dbPath := filepath.Join(t.TempDir(), "tokeninsights.sqlite")
+	sourceDir := t.TempDir()
+	createOpenCodeSQLiteMessages(t, filepath.Join(sourceDir, "opencode", "opencode.db"), openCodeSQLiteMessage{
+		ID:          "m1",
+		SessionID:   "oc_s1",
+		TimeCreated: 1770000000000,
+		TimeUpdated: 1770000000000,
+		Data:        `{"role":"assistant","providerID":"openai","modelID":"gpt-5","tokens":{"input":10,"output":5},"time":{"created":1770000000000}}`,
+	})
+
+	summary, err := Sync(ctx, SyncOptions{
+		DBPath:    dbPath,
+		Harnesses: []Harness{HarnessOpenCode},
+		Normalize: true,
+		SourceDir: sourceDir,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertSummary(t, summary, Summary{
+		RequestedHarnesses: 1,
+		Synced:             1,
+		RawFacts:           1,
+		Observations:       1,
+		Canonical:          1,
+	})
+
+	database := openTestDB(t, dbPath)
+	defer database.Close()
+	assertSQLCount(t, database, "SELECT COUNT(*) FROM ingest_runs WHERE status = 'completed' AND completed_at_ms >= started_at_ms", 1)
+}
+
+func TestOpenCodeSQLiteSyncAcceptsRelativeSourceDir(t *testing.T) {
+	ctx := context.Background()
+	workingDir := t.TempDir()
+	previousDir, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := os.Chdir(previousDir); err != nil {
+			t.Fatal(err)
+		}
+	})
+	if err := os.Chdir(workingDir); err != nil {
+		t.Fatal(err)
+	}
+	createOpenCodeSQLiteMessages(t, filepath.Join("source", "opencode", "opencode.db"), openCodeSQLiteMessage{
+		ID:          "m1",
+		SessionID:   "oc_s1",
+		TimeCreated: 1770000000000,
+		TimeUpdated: 1770000000000,
+		Data:        `{"role":"assistant","providerID":"openai","modelID":"gpt-5","tokens":{"input":10,"output":5},"time":{"created":1770000000000}}`,
+	})
+
+	summary, err := Sync(ctx, SyncOptions{
+		DBPath:    "tokeninsights.sqlite",
+		Harnesses: []Harness{HarnessOpenCode},
+		Normalize: true,
+		SourceDir: "source",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertSummary(t, summary, Summary{
+		RequestedHarnesses: 1,
+		Synced:             1,
+		RawFacts:           1,
+		Observations:       1,
+		Canonical:          1,
+	})
+}
+
 func assertConformanceFixture(t *testing.T, fixtureDir string, wantSummary Summary) {
 	t.Helper()
 	ctx := context.Background()
@@ -94,6 +305,7 @@ func assertConformanceFixture(t *testing.T, fixtureDir string, wantSummary Summa
 	sourceDir := filepath.Join(t.TempDir(), "source")
 	now := time.Date(2026, 4, 24, 15, 0, 0, 0, time.UTC)
 	copyFixtureDir(t, filepath.Join(fixtureDir, "source"), sourceDir)
+	materializeOpenCodeSQLiteSource(t, sourceDir)
 
 	summary, err := Sync(ctx, SyncOptions{
 		DBPath:    dbPath,
@@ -152,6 +364,7 @@ func TestSyncAndNormalizeHarnessFixtures(t *testing.T) {
 	sourceDir := t.TempDir()
 	now := time.Date(2026, 4, 24, 15, 0, 0, 0, time.UTC)
 	copyFixtureDir(t, filepath.Join(syncFirstBasicFixtureDir(), "source"), sourceDir)
+	materializeOpenCodeSQLiteSource(t, sourceDir)
 
 	summary, err := Sync(ctx, SyncOptions{
 		DBPath:    dbPath,
@@ -212,9 +425,13 @@ func TestSyncDryRunWritesNothing(t *testing.T) {
 	ctx := context.Background()
 	dbPath := filepath.Join(t.TempDir(), "tokeninsights.sqlite")
 	sourceDir := t.TempDir()
-	writeJSONL(t, filepath.Join(sourceDir, "opencode", "usage.jsonl"),
-		`{"recorded_at_ms":1770000000000,"session_id":"oc_s1","message_id":"m1","provider":"openai","model":"gpt-5","input_tokens":10,"output_tokens":5}`,
-	)
+	createOpenCodeSQLiteMessages(t, filepath.Join(sourceDir, "opencode", "opencode.db"), openCodeSQLiteMessage{
+		ID:          "m1",
+		SessionID:   "oc_s1",
+		TimeCreated: 1770000000000,
+		TimeUpdated: 1770000000000,
+		Data:        `{"role":"assistant","providerID":"openai","modelID":"gpt-5","tokens":{"input":10,"output":5},"time":{"created":1770000000000}}`,
+	})
 
 	summary, err := Sync(ctx, SyncOptions{
 		DBPath:    dbPath,
@@ -240,9 +457,13 @@ func TestSyncAllSourceDirUsesHarnessSubdirectoriesOnly(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "tokeninsights.sqlite")
 	sourceDir := t.TempDir()
 	now := time.Date(2026, 4, 24, 15, 0, 0, 0, time.UTC)
-	writeJSONL(t, filepath.Join(sourceDir, "opencode", "usage.jsonl"),
-		`{"recorded_at_ms":1770000000000,"session_id":"oc_s1","message_id":"m1","provider":"openai","model":"gpt-5","input_tokens":10,"output_tokens":5}`,
-	)
+	createOpenCodeSQLiteMessages(t, filepath.Join(sourceDir, "opencode", "opencode.db"), openCodeSQLiteMessage{
+		ID:          "m1",
+		SessionID:   "oc_s1",
+		TimeCreated: 1770000000000,
+		TimeUpdated: 1770000000000,
+		Data:        `{"role":"assistant","providerID":"openai","modelID":"gpt-5","tokens":{"input":10,"output":5},"time":{"created":1770000000000}}`,
+	})
 
 	summary, err := Sync(ctx, SyncOptions{
 		DBPath:    dbPath,
@@ -271,9 +492,13 @@ func TestSyncSingleHarnessSourceDirScansDirectoryDirectly(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "tokeninsights.sqlite")
 	sourceDir := t.TempDir()
 	now := time.Date(2026, 4, 24, 15, 0, 0, 0, time.UTC)
-	writeJSONL(t, filepath.Join(sourceDir, "usage.jsonl"),
-		`{"recorded_at_ms":1770000000000,"session_id":"oc_s1","message_id":"m1","provider":"openai","model":"gpt-5","input_tokens":10,"output_tokens":5}`,
-	)
+	createOpenCodeSQLiteMessages(t, filepath.Join(sourceDir, "opencode.db"), openCodeSQLiteMessage{
+		ID:          "m1",
+		SessionID:   "oc_s1",
+		TimeCreated: 1770000000000,
+		TimeUpdated: 1770000000000,
+		Data:        `{"role":"assistant","providerID":"openai","modelID":"gpt-5","tokens":{"input":10,"output":5},"time":{"created":1770000000000}}`,
+	})
 
 	summary, err := Sync(ctx, SyncOptions{
 		DBPath:    dbPath,
@@ -300,9 +525,13 @@ func TestMissingSessionWritesDiagnosticOnly(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "tokeninsights.sqlite")
 	sourceDir := t.TempDir()
 	now := time.Date(2026, 4, 24, 15, 0, 0, 0, time.UTC)
-	writeJSONL(t, filepath.Join(sourceDir, "opencode", "usage.jsonl"),
-		`{"recorded_at_ms":1770000000000,"message_id":"m1","provider":"openai","model":"gpt-5","input_tokens":10,"output_tokens":5}`,
-	)
+	createOpenCodeSQLiteMessages(t, filepath.Join(sourceDir, "opencode", "opencode.db"), openCodeSQLiteMessage{
+		ID:          "m1",
+		SessionID:   "",
+		TimeCreated: 1770000000000,
+		TimeUpdated: 1770000000000,
+		Data:        `{"role":"assistant","providerID":"openai","modelID":"gpt-5","tokens":{"input":10,"output":5},"time":{"created":1770000000000}}`,
+	})
 
 	summary, err := Sync(ctx, SyncOptions{
 		DBPath:    dbPath,
@@ -345,9 +574,13 @@ func TestSyncAllPartialSuccessNormalizesSuccessfulHarnesses(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "tokeninsights.sqlite")
 	sourceDir := t.TempDir()
 	now := time.Date(2026, 4, 24, 15, 0, 0, 0, time.UTC)
-	writeJSONL(t, filepath.Join(sourceDir, "opencode", "usage.jsonl"),
-		`{"recorded_at_ms":1770000000000,"session_id":"oc_s1","message_id":"m1","provider":"openai","model":"gpt-5","input_tokens":10,"output_tokens":5}`,
-	)
+	createOpenCodeSQLiteMessages(t, filepath.Join(sourceDir, "opencode", "opencode.db"), openCodeSQLiteMessage{
+		ID:          "m1",
+		SessionID:   "oc_s1",
+		TimeCreated: 1770000000000,
+		TimeUpdated: 1770000000000,
+		Data:        `{"role":"assistant","providerID":"openai","modelID":"gpt-5","tokens":{"input":10,"output":5},"time":{"created":1770000000000}}`,
+	})
 	if err := os.MkdirAll(filepath.Join(sourceDir, "pi"), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -384,14 +617,14 @@ func TestSourceIngestWriteFailureRollsBackSource(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "tokeninsights.sqlite")
 	sourceDir := t.TempDir()
 	now := time.Date(2026, 4, 24, 15, 0, 0, 0, time.UTC)
-	writeJSONL(t, filepath.Join(sourceDir, "opencode", "usage.jsonl"),
-		`{"recorded_at_ms":1770000000000,"session_id":"oc_s1","message_id":"m1","provider":"openai","model":"gpt-5","input_tokens":10,"output_tokens":5}`,
-		`{"recorded_at_ms":1770000001000,"session_id":"oc_s1","message_id":"m2","provider":"openai","model":"gpt-5","input_tokens":-1,"output_tokens":5}`,
+	writeJSONL(t, filepath.Join(sourceDir, "pi", "usage.jsonl"),
+		`{"recorded_at_ms":1770000000000,"session_id":"pi_s1","message_id":"m1","provider":"openai","model":"gpt-5","input_tokens":10,"output_tokens":5}`,
+		`{"recorded_at_ms":1770000001000,"session_id":"pi_s1","message_id":"m2","provider":"openai","model":"gpt-5","input_tokens":-1,"output_tokens":5}`,
 	)
 
 	summary, err := Sync(ctx, SyncOptions{
 		DBPath:    dbPath,
-		Harnesses: []Harness{HarnessOpenCode},
+		Harnesses: []Harness{HarnessPi},
 		Normalize: true,
 		SourceDir: sourceDir,
 		Now:       now,
@@ -411,6 +644,14 @@ func TestSourceIngestWriteFailureRollsBackSource(t *testing.T) {
 	assertSQLCount(t, database, "SELECT COUNT(*) FROM ingest_runs WHERE status = 'failed' AND raw_fact_count = 0 AND observation_count = 0 AND diagnostic_count = 0 AND error_message IS NOT NULL", 1)
 }
 
+type openCodeSQLiteMessage struct {
+	ID          string
+	SessionID   string
+	TimeCreated int64
+	TimeUpdated int64
+	Data        string
+}
+
 func writeJSONL(t *testing.T, path string, lines ...string) {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
@@ -419,6 +660,67 @@ func writeJSONL(t *testing.T, path string, lines ...string) {
 	content := strings.Join(lines, "\n") + "\n"
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func createSQLiteFixtureDB(t *testing.T, dbPath string, sqlPath string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(dbPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	database, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	statements, err := os.ReadFile(sqlPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.Exec(string(statements)); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func materializeOpenCodeSQLiteSource(t *testing.T, sourceDir string) {
+	t.Helper()
+	sqlPath := filepath.Join(sourceDir, "opencode", "source.sql")
+	if _, err := os.Stat(sqlPath); errors.Is(err, os.ErrNotExist) {
+		return
+	} else if err != nil {
+		t.Fatal(err)
+	}
+	createSQLiteFixtureDB(t, filepath.Join(sourceDir, "opencode", "opencode.db"), sqlPath)
+}
+
+func createOpenCodeSQLiteMessages(t *testing.T, dbPath string, messages ...openCodeSQLiteMessage) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(dbPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	database, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	if _, err := database.Exec(`
+		CREATE TABLE message (
+			id text PRIMARY KEY,
+			session_id text NOT NULL,
+			time_created integer NOT NULL,
+			time_updated integer NOT NULL,
+			data text NOT NULL
+		)
+	`); err != nil {
+		t.Fatal(err)
+	}
+	for _, message := range messages {
+		if _, err := database.Exec(`
+			INSERT INTO message (id, session_id, time_created, time_updated, data)
+			VALUES (?, ?, ?, ?, ?)
+		`, message.ID, message.SessionID, message.TimeCreated, message.TimeUpdated, message.Data); err != nil {
+			t.Fatal(err)
+		}
 	}
 }
 

@@ -26,6 +26,8 @@ tokeninsights-cli sync --all --no-normalize
 
 When `--source-dir` is provided, sync first looks for a harness subdirectory such as `/path/to/source-root/opencode`; otherwise it scans the provided directory directly.
 
+OpenCode sync reads modern SQLite sources named `opencode.db` or `opencode-<channel>.db`. Pi and Codex fixture ingestion currently reads metadata-only JSONL/NDJSON sources.
+
 `normalize`
 
 Rebuild canonical facts from existing raw facts.

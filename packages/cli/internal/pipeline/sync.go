@@ -129,8 +129,9 @@ func syncHarness(ctx context.Context, database *sql.DB, options SyncOptions, har
 		return summary, nil
 	}
 
+	seenDedupeKeys := map[string]bool{}
 	for _, source := range sources {
-		sourceSummary, err := ingestSource(ctx, database, adapter, options, harness, source)
+		sourceSummary, err := ingestSource(ctx, database, adapter, options, harness, source, seenDedupeKeys)
 		if err != nil {
 			return summary, err
 		}
@@ -139,7 +140,7 @@ func syncHarness(ctx context.Context, database *sql.DB, options SyncOptions, har
 	return summary, nil
 }
 
-func ingestSource(ctx context.Context, database *sql.DB, adapter Adapter, options SyncOptions, harness Harness, source Source) (Summary, error) {
+func ingestSource(ctx context.Context, database *sql.DB, adapter Adapter, options SyncOptions, harness Harness, source Source, seenDedupeKeys map[string]bool) (Summary, error) {
 	var summary Summary
 	tx, err := database.BeginTx(ctx, nil)
 	if err != nil {
@@ -163,7 +164,7 @@ func ingestSource(ctx context.Context, database *sql.DB, adapter Adapter, option
 
 	facts, diagnostics, parseErr := adapter.Parse(ctx, source, options)
 	if parseErr != nil {
-		if err := completeIngestRun(ctx, tx, runDBID, "failed", parseErr.Error(), Summary{}); err != nil {
+		if err := completeIngestRun(ctx, tx, runDBID, "failed", parseErr.Error(), Summary{}, syncNowMs(options.Now)); err != nil {
 			return summary, err
 		}
 		if err := tx.Commit(); err != nil {
@@ -172,13 +173,15 @@ func ingestSource(ctx context.Context, database *sql.DB, adapter Adapter, option
 		committed = true
 		return summary, fmt.Errorf("%s parse: %w", harness, parseErr)
 	}
+	facts, duplicateDiagnostics := suppressDuplicateFacts(facts, seenDedupeKeys)
+	diagnostics = append(diagnostics, duplicateDiagnostics...)
 
 	sourceSummary, err := writeSourceIngest(ctx, tx, runDBID, facts, diagnostics, options)
 	if err != nil {
 		if rollbackErr := rollbackSourceWrites(ctx, tx); rollbackErr != nil {
 			return summary, errors.Join(err, rollbackErr)
 		}
-		if completeErr := completeIngestRun(ctx, tx, runDBID, "failed", err.Error(), Summary{}); completeErr != nil {
+		if completeErr := completeIngestRun(ctx, tx, runDBID, "failed", err.Error(), Summary{}, syncNowMs(options.Now)); completeErr != nil {
 			return summary, errors.Join(err, completeErr)
 		}
 		if commitErr := tx.Commit(); commitErr != nil {
@@ -190,7 +193,7 @@ func ingestSource(ctx context.Context, database *sql.DB, adapter Adapter, option
 	if err := releaseSourceWriteSavepoint(ctx, tx); err != nil {
 		return summary, err
 	}
-	if err := completeIngestRun(ctx, tx, runDBID, "completed", "", sourceSummary); err != nil {
+	if err := completeIngestRun(ctx, tx, runDBID, "completed", "", sourceSummary, syncNowMs(options.Now)); err != nil {
 		return summary, err
 	}
 	if err := tx.Commit(); err != nil {
@@ -198,6 +201,32 @@ func ingestSource(ctx context.Context, database *sql.DB, adapter Adapter, option
 	}
 	committed = true
 	return sourceSummary, nil
+}
+
+func suppressDuplicateFacts(facts []RawTokenFact, seen map[string]bool) ([]RawTokenFact, []Diagnostic) {
+	if len(facts) == 0 {
+		return facts, nil
+	}
+	filtered := make([]RawTokenFact, 0, len(facts))
+	var diagnostics []Diagnostic
+	for _, fact := range facts {
+		if fact.DedupeKey == "" {
+			filtered = append(filtered, fact)
+			continue
+		}
+		if seen[fact.DedupeKey] {
+			diagnostics = append(diagnostics, Diagnostic{
+				Harness:  fact.Harness,
+				Severity: "info",
+				Code:     "opencode_sqlite_duplicate_suppressed",
+				Message:  "suppressed duplicate OpenCode assistant token row from channel or fork copy",
+			})
+			continue
+		}
+		seen[fact.DedupeKey] = true
+		filtered = append(filtered, fact)
+	}
+	return filtered, diagnostics
 }
 
 func writeSourceIngest(ctx context.Context, runner sqlRunner, runDBID int64, facts []RawTokenFact, diagnostics []Diagnostic, options SyncOptions) (Summary, error) {
@@ -270,18 +299,18 @@ func createIngestRun(ctx context.Context, runner sqlRunner, runID string, source
 	return result.LastInsertId()
 }
 
-func completeIngestRun(ctx context.Context, runner sqlRunner, runID int64, status string, message string, summary Summary) error {
+func completeIngestRun(ctx context.Context, runner sqlRunner, runID int64, status string, message string, summary Summary, completedAtMs int64) error {
 	_, err := runner.ExecContext(ctx, `
 		UPDATE ingest_runs
 		SET status = ?,
-			completed_at_ms = CASE WHEN completed_at_ms IS NULL THEN strftime('%s','now') * 1000 ELSE completed_at_ms END,
+			completed_at_ms = CASE WHEN completed_at_ms IS NULL THEN ? ELSE completed_at_ms END,
 			error_message = NULLIF(?, ''),
 			raw_fact_count = ?,
 			observation_count = ?,
 			canonical_count = ?,
 			diagnostic_count = ?
 		WHERE id = ? AND status = 'running'
-	`, status, message, summary.RawFacts, summary.Observations, summary.Canonical, summary.Diagnostics, runID)
+	`, status, completedAtMs, message, summary.RawFacts, summary.Observations, summary.Canonical, summary.Diagnostics, runID)
 	return err
 }
 

@@ -1,0 +1,34 @@
+[
+  {
+    "harness": "opencode",
+    "source_kind": "opencode-sqlite",
+    "session_id": "ses_a",
+    "message_id": "assistant_a",
+    "provider": "anthropic",
+    "model": "claude-sonnet-4",
+    "usage_scope": "message",
+    "quality": "exact",
+    "input_tokens": 100,
+    "output_tokens": 50,
+    "reasoning_tokens": 10,
+    "cache_read_tokens": 20,
+    "cache_write_tokens": 5,
+    "total_tokens": null
+  },
+  {
+    "harness": "opencode",
+    "source_kind": "opencode-sqlite",
+    "session_id": "ses_a",
+    "message_id": "msg_b",
+    "provider": null,
+    "model": null,
+    "usage_scope": "message",
+    "quality": "exact",
+    "input_tokens": 7,
+    "output_tokens": 8,
+    "reasoning_tokens": 0,
+    "cache_read_tokens": 0,
+    "cache_write_tokens": 2,
+    "total_tokens": null
+  }
+]

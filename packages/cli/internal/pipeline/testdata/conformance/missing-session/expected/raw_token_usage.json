@@ -1,7 +1,7 @@
 [
   {
     "harness": "opencode",
-    "source_kind": "local-json",
+    "source_kind": "opencode-sqlite",
     "session_id": null,
     "message_id": "m1",
     "provider": "openai",
@@ -10,7 +10,7 @@
     "quality": "exact",
     "input_tokens": 10,
     "output_tokens": 5,
-    "reasoning_tokens": null,
+    "reasoning_tokens": 0,
     "cache_read_tokens": null,
     "cache_write_tokens": null,
     "total_tokens": null

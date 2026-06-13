@@ -17,7 +17,7 @@
   },
   {
     "harness": "opencode",
-    "source_kind": "local-json",
+    "source_kind": "opencode-sqlite",
     "session_id": "oc_s1",
     "message_id": "m1",
     "provider": "openai",
@@ -29,7 +29,7 @@
     "reasoning_tokens": 5,
     "cache_read_tokens": 7,
     "cache_write_tokens": 3,
-    "total_tokens": 135
+    "total_tokens": null
   },
   {
     "harness": "pi",

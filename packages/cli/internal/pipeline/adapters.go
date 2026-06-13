@@ -21,7 +21,7 @@ type Adapter interface {
 
 func Adapters() []Adapter {
 	return []Adapter{
-		jsonAdapter{harness: HarnessOpenCode, defaultDirs: []string{".local/share/opencode", ".config/opencode", ".cache/opencode"}},
+		opencodeSQLiteAdapter{},
 		jsonAdapter{harness: HarnessPi, defaultDirs: []string{".pi"}},
 		jsonAdapter{harness: HarnessCodex, defaultDirs: []string{".codex", ".local/share/codex"}},
 	}

@@ -187,7 +187,7 @@ All harness adapters implement the same interface:
 - discover durable local sources;
 - parse a source into raw token facts and diagnostics.
 
-V1 starts with metadata-only JSONL/NDJSON scaffolding for OpenCode, Pi, and Codex. Real harness-specific source parsing should stay behind the adapter interface and feed the same raw-to-canonical pipeline.
+OpenCode sync parses modern durable SQLite databases named `opencode.db` or `opencode-<channel>.db` from the OpenCode data directory. Pi and Codex currently use metadata-only JSONL/NDJSON scaffolding until their durable source adapters are implemented. Harness-specific source parsing stays behind the adapter interface and feeds the same raw-to-canonical pipeline.
 
 Uneven metric coverage is valid. An adapter should produce diagnostics for unavailable or rejected data instead of failing unrelated token usage sync.
 
@@ -310,4 +310,4 @@ go test ./...
 ```
 
 Pipeline conformance fixtures live under `packages/cli/internal/pipeline/testdata/conformance/`.
-Fixture sources are JSONL and expected raw, observation, canonical, and diagnostic outputs are JSON so future non-Go writers can reuse the same contract.
+Fixture sources may include harness-native durable stores, such as synthetic OpenCode SQLite setup SQL, and expected raw, observation, canonical, and diagnostic outputs are JSON so future non-Go writers can reuse the same contract.
