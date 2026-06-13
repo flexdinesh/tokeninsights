@@ -1,0 +1,2 @@
+{"type":"session","version":1,"id":"pi_s1","timestamp":"2026-01-01T00:00:00.000Z","cwd":"/redacted/project"}
+{"type":"message","id":"turn1","parentId":null,"timestamp":"2026-01-01T00:00:01.000Z","message":{"role":"assistant","content":[],"usage":{"input":50,"output":10,"cacheRead":0,"cacheWrite":0,"totalTokens":60},"timestamp":1770000001000}}

@@ -45,7 +45,7 @@ Useful sync options:
 
 With `sync --all --source-dir <root>`, harnesses read from `<root>/<harness>` and skip missing harness subdirectories.
 
-OpenCode sync reads modern SQLite sources named `opencode.db` or `opencode-<channel>.db`. Pi and Codex fixture ingestion currently reads metadata-only JSONL/NDJSON sources.
+OpenCode sync reads modern SQLite sources named `opencode.db` or `opencode-<channel>.db`. Pi sync reads JSONL session files from `~/.pi/agent/sessions`, or from a provided Pi source directory. Codex fixture ingestion currently reads metadata-only JSONL/NDJSON sources.
 
 Canonical maintenance:
 

@@ -33,7 +33,7 @@
   },
   {
     "harness": "pi",
-    "source_kind": "local-json",
+    "source_kind": "pi-session-jsonl",
     "session_id": "pi_s1",
     "message_id": "turn1",
     "provider": null,
@@ -43,8 +43,8 @@
     "input_tokens": 50,
     "output_tokens": 10,
     "reasoning_tokens": null,
-    "cache_read_tokens": null,
-    "cache_write_tokens": null,
+    "cache_read_tokens": 0,
+    "cache_write_tokens": 0,
     "total_tokens": 60
   }
 ]

@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"runtime"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -135,6 +136,251 @@ func TestOpenCodeSQLiteConformanceFixtureDefinesMessageTokenUsage(t *testing.T) 
 		queryDiagnostics(t, database),
 		readExpectedJSON[[]expectedDiagnostic](t, filepath.Join(fixtureDir, "expected", "normalization_diagnostics.json")),
 	)
+}
+
+func TestPiJSONLSyncsAssistantMessageTokenUsage(t *testing.T) {
+	ctx := context.Background()
+	dbPath := filepath.Join(t.TempDir(), "tokeninsights.sqlite")
+	sourceDir := t.TempDir()
+	now := time.Date(2026, 4, 24, 15, 0, 0, 0, time.UTC)
+	writeJSONL(t, filepath.Join(sourceDir, "pi", "project", "2026-01-01T00-00-00_pi_s1.jsonl"),
+		`{"type":"session","version":1,"id":"pi_s1","timestamp":"2026-01-01T00:00:00.000Z","cwd":"/redacted/project"}`,
+		`{"type":"model_change","id":"evt_model","parentId":null,"timestamp":"2026-01-01T00:00:01.000Z","provider":"anthropic","modelId":"claude-sonnet-4"}`,
+		`{"type":"message","id":"msg_a","parentId":"evt_model","timestamp":"2026-01-01T00:00:02.000Z","message":{"role":"assistant","content":[],"provider":"anthropic","model":"claude-sonnet-4","usage":{"input":100,"output":50,"cacheRead":20,"cacheWrite":5,"totalTokens":175,"cost":{"total":0}},"stopReason":"stop","timestamp":1767225602000,"responseId":"redacted"}}`,
+		`{"type":"message","id":"msg_user","parentId":"msg_a","timestamp":"2026-01-01T00:00:03.000Z","message":{"role":"user","content":[],"timestamp":1767225603000}}`,
+	)
+
+	summary, err := Sync(ctx, SyncOptions{
+		DBPath:    dbPath,
+		Harnesses: []Harness{HarnessPi},
+		Normalize: true,
+		SourceDir: sourceDir,
+		Now:       now,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertSummary(t, summary, Summary{
+		RequestedHarnesses: 1,
+		Synced:             1,
+		RawFacts:           1,
+		Observations:       1,
+		Canonical:          1,
+	})
+
+	database := openTestDB(t, dbPath)
+	defer database.Close()
+	assertEqualJSON(t, queryRawTokenUsage(t, database), []expectedRawTokenUsage{
+		{
+			Harness:          "pi",
+			SourceKind:       "pi-session-jsonl",
+			SessionID:        stringPointer("pi_s1"),
+			MessageID:        stringPointer("msg_a"),
+			Provider:         stringPointer("anthropic"),
+			Model:            stringPointer("claude-sonnet-4"),
+			UsageScope:       "message",
+			Quality:          "exact",
+			InputTokens:      intPointer(100),
+			OutputTokens:     intPointer(50),
+			ReasoningTokens:  nil,
+			CacheReadTokens:  intPointer(20),
+			CacheWriteTokens: intPointer(5),
+			TotalTokens:      intPointer(175),
+		},
+	})
+	assertEqualJSON(t, queryCanonicalTokenUsage(t, database), []expectedCanonicalTokenUsage{
+		{
+			Harness:          "pi",
+			SessionID:        "pi_s1",
+			MessageID:        "msg_a",
+			Provider:         "anthropic",
+			Model:            "claude-sonnet-4",
+			UsageScope:       "message",
+			Quality:          "exact",
+			IsCountable:      1,
+			InputTokens:      100,
+			OutputTokens:     50,
+			ReasoningTokens:  0,
+			CacheReadTokens:  20,
+			CacheWriteTokens: 5,
+			TotalTokens:      175,
+		},
+	})
+}
+
+func TestPiJSONLUsesFilenameSessionFallbackWhenHeaderIsMissing(t *testing.T) {
+	ctx := context.Background()
+	dbPath := filepath.Join(t.TempDir(), "tokeninsights.sqlite")
+	sourceDir := t.TempDir()
+	now := time.Date(2026, 4, 24, 15, 0, 0, 0, time.UTC)
+	writeJSONL(t, filepath.Join(sourceDir, "pi", "project", "2026-01-01T00-00-00_pi_fallback.jsonl"),
+		`{"type":"message","id":"msg_a","parentId":null,"timestamp":"2026-01-01T00:00:02.000Z","message":{"role":"assistant","content":[],"usage":{"input":10,"output":5,"cacheRead":0,"cacheWrite":0,"totalTokens":15},"timestamp":1767225602000}}`,
+	)
+
+	summary, err := Sync(ctx, SyncOptions{
+		DBPath:    dbPath,
+		Harnesses: []Harness{HarnessPi},
+		Normalize: true,
+		SourceDir: sourceDir,
+		Now:       now,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertSummary(t, summary, Summary{
+		RequestedHarnesses: 1,
+		Synced:             1,
+		RawFacts:           1,
+		Observations:       1,
+		Canonical:          1,
+		Diagnostics:        1,
+	})
+
+	database := openTestDB(t, dbPath)
+	defer database.Close()
+	assertSQLCount(t, database, "SELECT COUNT(*) FROM canonical_sessions WHERE session_id = 'pi_fallback'", 1)
+	assertSQLCount(t, database, "SELECT COUNT(*) FROM canonical_token_usage WHERE provider = 'unknown' AND model = 'unknown'", 1)
+	assertSQLCount(t, database, "SELECT COUNT(*) FROM normalization_diagnostics WHERE code = 'pi_jsonl_missing_session_header'", 1)
+}
+
+func TestPiJSONLPrefersHeaderSessionWhenFilenameDiffers(t *testing.T) {
+	ctx := context.Background()
+	dbPath := filepath.Join(t.TempDir(), "tokeninsights.sqlite")
+	sourceDir := t.TempDir()
+	now := time.Date(2026, 4, 24, 15, 0, 0, 0, time.UTC)
+	writePiAssistantSession(t, filepath.Join(sourceDir, "pi", "project", "2026-01-01T00-00-00_filename_session.jsonl"), "header_session", "msg_a", 10, 5)
+
+	summary, err := Sync(ctx, SyncOptions{
+		DBPath:    dbPath,
+		Harnesses: []Harness{HarnessPi},
+		Normalize: true,
+		SourceDir: sourceDir,
+		Now:       now,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertSummary(t, summary, Summary{
+		RequestedHarnesses: 1,
+		Synced:             1,
+		RawFacts:           1,
+		Observations:       1,
+		Canonical:          1,
+		Diagnostics:        1,
+	})
+
+	database := openTestDB(t, dbPath)
+	defer database.Close()
+	assertSQLCount(t, database, "SELECT COUNT(*) FROM canonical_sessions WHERE session_id = 'header_session'", 1)
+	assertSQLCount(t, database, "SELECT COUNT(*) FROM canonical_sessions WHERE session_id = 'filename_session'", 0)
+	assertSQLCount(t, database, "SELECT COUNT(*) FROM normalization_diagnostics WHERE code = 'pi_jsonl_session_id_mismatch'", 1)
+}
+
+func TestPiJSONLDiscoveryIgnoresNestedSessionFilesBelowWorkspace(t *testing.T) {
+	ctx := context.Background()
+	dbPath := filepath.Join(t.TempDir(), "tokeninsights.sqlite")
+	sourceDir := t.TempDir()
+	now := time.Date(2026, 4, 24, 15, 0, 0, 0, time.UTC)
+	writePiAssistantSession(t, filepath.Join(sourceDir, "pi", "project", "2026-01-01T00-00-00_pi_s1.jsonl"), "pi_s1", "msg_a", 10, 5)
+	writePiAssistantSession(t, filepath.Join(sourceDir, "pi", "project", "nested", "2026-01-01T00-00-00_pi_s2.jsonl"), "pi_s2", "msg_b", 20, 10)
+
+	summary, err := Sync(ctx, SyncOptions{
+		DBPath:    dbPath,
+		Harnesses: []Harness{HarnessPi},
+		Normalize: true,
+		SourceDir: sourceDir,
+		Now:       now,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertSummary(t, summary, Summary{
+		RequestedHarnesses: 1,
+		Synced:             1,
+		RawFacts:           1,
+		Observations:       1,
+		Canonical:          1,
+	})
+
+	database := openTestDB(t, dbPath)
+	defer database.Close()
+	assertSQLCount(t, database, "SELECT COUNT(*) FROM canonical_sessions WHERE session_id = 'pi_s1'", 1)
+	assertSQLCount(t, database, "SELECT COUNT(*) FROM canonical_sessions WHERE session_id = 'pi_s2'", 0)
+}
+
+func TestPiJSONLCopiedSessionFilesDedupeByLogicalSessionSource(t *testing.T) {
+	ctx := context.Background()
+	dbPath := filepath.Join(t.TempDir(), "tokeninsights.sqlite")
+	sourceDir := t.TempDir()
+	now := time.Date(2026, 4, 24, 15, 0, 0, 0, time.UTC)
+	writePiAssistantSession(t, filepath.Join(sourceDir, "pi", "project-a", "2026-01-01T00-00-00_pi_s1.jsonl"), "pi_s1", "msg_a", 10, 5)
+	writePiAssistantSession(t, filepath.Join(sourceDir, "pi", "project-b", "2026-01-01T00-00-00_pi_s1.jsonl"), "pi_s1", "msg_a", 10, 5)
+
+	summary, err := Sync(ctx, SyncOptions{
+		DBPath:    dbPath,
+		Harnesses: []Harness{HarnessPi},
+		Normalize: true,
+		SourceDir: sourceDir,
+		Now:       now,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertSummary(t, summary, Summary{
+		RequestedHarnesses: 1,
+		Synced:             1,
+		RawFacts:           1,
+		Observations:       2,
+		Canonical:          1,
+	})
+
+	database := openTestDB(t, dbPath)
+	defer database.Close()
+	assertCount(t, database, "raw_token_usage", 1)
+	assertCount(t, database, "raw_observations", 2)
+	assertCount(t, database, "canonical_token_usage", 1)
+}
+
+func TestPiJSONLEmitsDiagnosticsForInvalidRowsAndIngestsUsableWarnings(t *testing.T) {
+	ctx := context.Background()
+	dbPath := filepath.Join(t.TempDir(), "tokeninsights.sqlite")
+	sourceDir := t.TempDir()
+	now := time.Date(2026, 4, 24, 15, 0, 0, 0, time.UTC)
+	writeJSONL(t, filepath.Join(sourceDir, "pi", "project", "2026-01-01T00-00-00_pi_s1.jsonl"),
+		`{"type":"session","version":1,"id":"pi_s1","timestamp":"2026-01-01T00:00:00.000Z","cwd":"/redacted/project"}`,
+		`{malformed}`,
+		`{"type":"message","parentId":null,"timestamp":"2026-01-01T00:00:01.000Z","message":{"role":"assistant","content":[],"provider":"anthropic","model":"claude-sonnet-4","usage":{"input":-10,"output":5,"cacheRead":0,"cacheWrite":0,"totalTokens":-5}}}`,
+		`{"type":"message","id":"msg_invalid_tokens","parentId":null,"timestamp":"2026-01-01T00:00:02.000Z","message":{"role":"assistant","content":[],"usage":{"input":"bad","output":5},"timestamp":1770000002000}}`,
+		`{"type":"message","id":"msg_missing_time","parentId":null,"timestamp":"not-a-time","message":{"role":"assistant","content":[],"usage":{"input":10,"output":5,"totalTokens":15}}}`,
+	)
+
+	summary, err := Sync(ctx, SyncOptions{
+		DBPath:    dbPath,
+		Harnesses: []Harness{HarnessPi},
+		Normalize: true,
+		SourceDir: sourceDir,
+		Now:       now,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertSummary(t, summary, Summary{
+		RequestedHarnesses: 1,
+		Synced:             1,
+		RawFacts:           1,
+		Observations:       1,
+		Canonical:          1,
+		Diagnostics:        5,
+	})
+
+	database := openTestDB(t, dbPath)
+	defer database.Close()
+	assertSQLCount(t, database, "SELECT COUNT(*) FROM raw_token_usage WHERE input_tokens = 0 AND output_tokens = 5 AND total_tokens = 0", 1)
+	assertSQLCount(t, database, "SELECT COUNT(*) FROM normalization_diagnostics WHERE code = 'pi_jsonl_parse_error'", 1)
+	assertSQLCount(t, database, "SELECT COUNT(*) FROM normalization_diagnostics WHERE code = 'pi_jsonl_missing_message_id'", 1)
+	assertSQLCount(t, database, "SELECT COUNT(*) FROM normalization_diagnostics WHERE code = 'pi_jsonl_negative_tokens'", 1)
+	assertSQLCount(t, database, "SELECT COUNT(*) FROM normalization_diagnostics WHERE code = 'pi_jsonl_invalid_tokens'", 1)
+	assertSQLCount(t, database, "SELECT COUNT(*) FROM normalization_diagnostics WHERE code = 'pi_jsonl_missing_time'", 1)
 }
 
 func TestOpenCodeSQLiteSuppressesDuplicateChannelRows(t *testing.T) {
@@ -617,14 +863,14 @@ func TestSourceIngestWriteFailureRollsBackSource(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "tokeninsights.sqlite")
 	sourceDir := t.TempDir()
 	now := time.Date(2026, 4, 24, 15, 0, 0, 0, time.UTC)
-	writeJSONL(t, filepath.Join(sourceDir, "pi", "usage.jsonl"),
-		`{"recorded_at_ms":1770000000000,"session_id":"pi_s1","message_id":"m1","provider":"openai","model":"gpt-5","input_tokens":10,"output_tokens":5}`,
-		`{"recorded_at_ms":1770000001000,"session_id":"pi_s1","message_id":"m2","provider":"openai","model":"gpt-5","input_tokens":-1,"output_tokens":5}`,
+	writeJSONL(t, filepath.Join(sourceDir, "codex", "usage.jsonl"),
+		`{"recorded_at_ms":1770000000000,"session_id":"cx_s1","message_id":"m1","provider":"openai","model":"gpt-5","input_tokens":10,"output_tokens":5}`,
+		`{"recorded_at_ms":1770000001000,"session_id":"cx_s1","message_id":"m2","provider":"openai","model":"gpt-5","input_tokens":-1,"output_tokens":5}`,
 	)
 
 	summary, err := Sync(ctx, SyncOptions{
 		DBPath:    dbPath,
-		Harnesses: []Harness{HarnessPi},
+		Harnesses: []Harness{HarnessCodex},
 		Normalize: true,
 		SourceDir: sourceDir,
 		Now:       now,
@@ -661,6 +907,14 @@ func writeJSONL(t *testing.T, path string, lines ...string) {
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatal(err)
 	}
+}
+
+func writePiAssistantSession(t *testing.T, path string, sessionID string, messageID string, inputTokens int64, outputTokens int64) {
+	t.Helper()
+	writeJSONL(t, path,
+		`{"type":"session","version":1,"id":"`+sessionID+`","timestamp":"2026-01-01T00:00:00.000Z","cwd":"/redacted/project"}`,
+		`{"type":"message","id":"`+messageID+`","parentId":null,"timestamp":"2026-01-01T00:00:01.000Z","message":{"role":"assistant","content":[],"provider":"anthropic","model":"claude-sonnet-4","usage":{"input":`+intString(inputTokens)+`,"output":`+intString(outputTokens)+`,"cacheRead":0,"cacheWrite":0,"totalTokens":`+intString(inputTokens+outputTokens)+`},"timestamp":1770000001000}}`,
+	)
 }
 
 func createSQLiteFixtureDB(t *testing.T, dbPath string, sqlPath string) {
@@ -984,4 +1238,16 @@ func nullIntPointer(value sql.NullInt64) *int64 {
 		return nil
 	}
 	return &value.Int64
+}
+
+func stringPointer(value string) *string {
+	return &value
+}
+
+func intPointer(value int64) *int64 {
+	return &value
+}
+
+func intString(value int64) string {
+	return strconv.FormatInt(value, 10)
 }

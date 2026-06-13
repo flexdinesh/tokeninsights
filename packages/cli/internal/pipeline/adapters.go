@@ -22,7 +22,7 @@ type Adapter interface {
 func Adapters() []Adapter {
 	return []Adapter{
 		opencodeSQLiteAdapter{},
-		jsonAdapter{harness: HarnessPi, defaultDirs: []string{".pi"}},
+		piJSONLAdapter{},
 		jsonAdapter{harness: HarnessCodex, defaultDirs: []string{".codex", ".local/share/codex"}},
 	}
 }
