@@ -52,6 +52,7 @@ func TestSyncAndNormalizeHarnessFixtures(t *testing.T) {
 	assertCount(t, database, "raw_observations", 3)
 	assertCount(t, database, "canonical_sessions", 3)
 	assertCount(t, database, "canonical_token_usage", 3)
+	assertSQLCount(t, database, "SELECT COUNT(*) FROM ingest_runs WHERE status = 'completed' AND raw_fact_count = 1 AND observation_count = 1 AND canonical_count = 1 AND diagnostic_count = 0", 3)
 	assertSQLCount(t, database, "SELECT COUNT(*) FROM raw_token_usage WHERE harness = 'pi' AND provider IS NULL AND model IS NULL", 1)
 	assertSQLCount(t, database, "SELECT COUNT(*) FROM canonical_token_usage WHERE harness = 'pi' AND provider = 'unknown' AND model = 'unknown'", 1)
 
@@ -65,21 +66,25 @@ func TestSyncAndNormalizeHarnessFixtures(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if secondSummary.RawFacts != 0 || secondSummary.Observations != 3 {
+	if secondSummary.RawFacts != 0 || secondSummary.Observations != 3 || secondSummary.Canonical != 0 || secondSummary.Diagnostics != 0 {
 		t.Fatalf("unexpected repeat summary: %+v", secondSummary)
 	}
 	assertCount(t, database, "raw_token_usage", 3)
 	assertCount(t, database, "raw_observations", 6)
 	assertCount(t, database, "canonical_token_usage", 3)
+	assertSQLCount(t, database, "SELECT COUNT(*) FROM ingest_runs WHERE status = 'completed' AND raw_fact_count = 1 AND observation_count = 1 AND canonical_count = 1 AND diagnostic_count = 0", 3)
+	assertSQLCount(t, database, "SELECT COUNT(*) FROM ingest_runs WHERE status = 'completed' AND raw_fact_count = 0 AND observation_count = 1 AND canonical_count = 0 AND diagnostic_count = 0", 3)
 
 	normalizeSummary, err := Normalize(ctx, NormalizeOptions{DBPath: dbPath, Now: now})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if normalizeSummary.Diagnostics != 0 {
+	if normalizeSummary.Canonical != 0 || normalizeSummary.Diagnostics != 0 {
 		t.Fatalf("unexpected normalize diagnostics: %+v", normalizeSummary)
 	}
 	assertCount(t, database, "canonical_token_usage", 3)
+	assertSQLCount(t, database, "SELECT COUNT(*) FROM ingest_runs WHERE status = 'completed' AND raw_fact_count = 1 AND observation_count = 1 AND canonical_count = 1 AND diagnostic_count = 0", 3)
+	assertSQLCount(t, database, "SELECT COUNT(*) FROM ingest_runs WHERE status = 'completed' AND raw_fact_count = 0 AND observation_count = 1 AND canonical_count = 0 AND diagnostic_count = 0", 3)
 }
 
 func TestSyncDryRunWritesNothing(t *testing.T) {
@@ -197,11 +202,17 @@ func TestMissingSessionWritesDiagnosticOnly(t *testing.T) {
 	assertCount(t, database, "raw_token_usage", 1)
 	assertCount(t, database, "canonical_token_usage", 0)
 	assertSQLCount(t, database, "SELECT COUNT(*) FROM normalization_diagnostics WHERE code = 'missing_session'", 1)
+	assertSQLCount(t, database, "SELECT COUNT(*) FROM ingest_runs WHERE status = 'completed' AND raw_fact_count = 1 AND observation_count = 1 AND canonical_count = 0 AND diagnostic_count = 1", 1)
 
-	if _, err := Normalize(ctx, NormalizeOptions{DBPath: dbPath, Now: now.Add(time.Hour)}); err != nil {
+	normalizeSummary, err := Normalize(ctx, NormalizeOptions{DBPath: dbPath, Now: now.Add(time.Hour)})
+	if err != nil {
 		t.Fatal(err)
 	}
+	if normalizeSummary.Canonical != 0 || normalizeSummary.Diagnostics != 0 {
+		t.Fatalf("unexpected repeat normalize summary: %+v", normalizeSummary)
+	}
 	assertSQLCount(t, database, "SELECT COUNT(*) FROM normalization_diagnostics WHERE code = 'missing_session'", 1)
+	assertSQLCount(t, database, "SELECT COUNT(*) FROM ingest_runs WHERE status = 'completed' AND raw_fact_count = 1 AND observation_count = 1 AND canonical_count = 0 AND diagnostic_count = 1", 1)
 }
 
 func TestSyncAllPartialSuccessNormalizesSuccessfulHarnesses(t *testing.T) {

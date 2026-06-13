@@ -32,6 +32,27 @@ type rawTokenRow struct {
 	LastRunID        sql.NullInt64
 }
 
+type canonicalTokenValues struct {
+	Key              string
+	RecordedAtMs     int64
+	Harness          Harness
+	SessionDBID      int64
+	MessageDBID      interface{}
+	Provider         string
+	Model            string
+	UsageScope       string
+	Quality          string
+	Countable        int
+	InputTokens      int64
+	OutputTokens     int64
+	ReasoningTokens  int64
+	CacheReadTokens  int64
+	CacheWriteTokens int64
+	TotalTokens      int64
+	RawFactID        int64
+	IngestRunID      interface{}
+}
+
 func Normalize(ctx context.Context, options NormalizeOptions) (Summary, error) {
 	summary := Summary{}
 	if options.DryRun {
@@ -64,14 +85,28 @@ func Normalize(ctx context.Context, options NormalizeOptions) (Summary, error) {
 	if err != nil {
 		return summary, err
 	}
+	tx, err := database.BeginTx(ctx, nil)
+	if err != nil {
+		return summary, err
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_ = tx.Rollback()
+		}
+	}()
 	for _, row := range rows {
-		count, diagnostic, err := normalizeRawTokenRow(ctx, database, row, options)
+		count, diagnostic, err := normalizeRawTokenRow(ctx, tx, row, options)
 		if err != nil {
 			return summary, err
 		}
 		summary.Canonical += count
 		summary.Diagnostics += diagnostic
 	}
+	if err := tx.Commit(); err != nil {
+		return summary, err
+	}
+	committed = true
 	return summary, nil
 }
 
@@ -142,7 +177,7 @@ func loadRawTokenRows(ctx context.Context, database *sql.DB, harnesses []Harness
 	return result, rows.Err()
 }
 
-func normalizeRawTokenRow(ctx context.Context, database *sql.DB, row rawTokenRow, options NormalizeOptions) (int, int, error) {
+func normalizeRawTokenRow(ctx context.Context, runner sqlRunner, row rawTokenRow, options NormalizeOptions) (int, int, error) {
 	if !row.SessionID.Valid || strings.TrimSpace(row.SessionID.String) == "" {
 		diagnostic := Diagnostic{
 			Harness:    row.Harness,
@@ -151,34 +186,44 @@ func normalizeRawTokenRow(ctx context.Context, database *sql.DB, row rawTokenRow
 			Code:       "missing_session",
 			Message:    "raw token fact skipped because no stable session identity is available",
 		}
-		if err := insertDiagnostic(ctx, database, diagnostic, &row.ID, rawRunPointer(row), nowMs(options)); err != nil {
+		inserted, err := insertDiagnostic(ctx, runner, diagnostic, &row.ID, rawRunPointer(row), nowMs(options))
+		if err != nil {
 			return 0, 0, err
 		}
-		return 0, 1, nil
+		if inserted {
+			if err := incrementIngestRunCounts(ctx, runner, row.LastRunID, 0, 1); err != nil {
+				return 0, 0, err
+			}
+			return 0, 1, nil
+		}
+		return 0, 0, nil
 	}
 
-	sessionDBID, err := upsertCanonicalSession(ctx, database, row)
+	sessionDBID, err := upsertCanonicalSession(ctx, runner, row)
 	if err != nil {
 		return 0, 0, err
 	}
-	messageDBID, err := upsertCanonicalMessage(ctx, database, row, sessionDBID)
+	messageDBID, err := upsertCanonicalMessage(ctx, runner, row, sessionDBID)
 	if err != nil {
 		return 0, 0, err
 	}
-	inserted, err := upsertCanonicalTokenUsage(ctx, database, row, sessionDBID, messageDBID)
+	inserted, err := upsertCanonicalTokenUsage(ctx, runner, row, sessionDBID, messageDBID)
 	if err != nil {
 		return 0, 0, err
 	}
 	if inserted {
+		if err := incrementIngestRunCounts(ctx, runner, row.LastRunID, 1, 0); err != nil {
+			return 0, 0, err
+		}
 		return 1, 0, nil
 	}
 	return 0, 0, nil
 }
 
-func upsertCanonicalSession(ctx context.Context, database *sql.DB, row rawTokenRow) (int64, error) {
+func upsertCanonicalSession(ctx context.Context, runner sqlRunner, row rawTokenRow) (int64, error) {
 	key := stableHash(fmt.Sprintf("session:%s:%s", row.Harness, row.SessionID.String))
 	timestamp := canonicalTime(row)
-	_, err := database.ExecContext(ctx, `
+	_, err := runner.ExecContext(ctx, `
 		INSERT INTO canonical_sessions (
 			semantic_key, harness, session_id, first_seen_at_ms, last_seen_at_ms, primary_raw_fact_id
 		) VALUES (?, ?, ?, ?, ?, ?)
@@ -191,18 +236,18 @@ func upsertCanonicalSession(ctx context.Context, database *sql.DB, row rawTokenR
 		return 0, err
 	}
 	var id int64
-	if err := database.QueryRowContext(ctx, "SELECT id FROM canonical_sessions WHERE semantic_key = ?", key).Scan(&id); err != nil {
+	if err := runner.QueryRowContext(ctx, "SELECT id FROM canonical_sessions WHERE semantic_key = ?", key).Scan(&id); err != nil {
 		return 0, err
 	}
 	return id, nil
 }
 
-func upsertCanonicalMessage(ctx context.Context, database *sql.DB, row rawTokenRow, sessionDBID int64) (*int64, error) {
+func upsertCanonicalMessage(ctx context.Context, runner sqlRunner, row rawTokenRow, sessionDBID int64) (*int64, error) {
 	if !row.MessageID.Valid || strings.TrimSpace(row.MessageID.String) == "" {
 		return nil, nil
 	}
 	key := stableHash(fmt.Sprintf("message:%s:%s:%s", row.Harness, row.SessionID.String, row.MessageID.String))
-	_, err := database.ExecContext(ctx, `
+	_, err := runner.ExecContext(ctx, `
 		INSERT INTO canonical_messages (
 			semantic_key, session_id, harness, harness_message_id, occurred_at_ms, primary_raw_fact_id
 		) VALUES (?, ?, ?, ?, ?, ?)
@@ -214,45 +259,79 @@ func upsertCanonicalMessage(ctx context.Context, database *sql.DB, row rawTokenR
 		return nil, err
 	}
 	var id int64
-	if err := database.QueryRowContext(ctx, "SELECT id FROM canonical_messages WHERE semantic_key = ?", key).Scan(&id); err != nil {
+	if err := runner.QueryRowContext(ctx, "SELECT id FROM canonical_messages WHERE semantic_key = ?", key).Scan(&id); err != nil {
 		return nil, err
 	}
 	return &id, nil
 }
 
-func upsertCanonicalTokenUsage(ctx context.Context, database *sql.DB, row rawTokenRow, sessionDBID int64, messageDBID *int64) (bool, error) {
-	key := canonicalTokenKey(row)
-	result, err := database.ExecContext(ctx, `
-		INSERT INTO canonical_token_usage (
+func upsertCanonicalTokenUsage(ctx context.Context, runner sqlRunner, row rawTokenRow, sessionDBID int64, messageDBID *int64) (bool, error) {
+	values := canonicalTokenValuesFor(row, sessionDBID, messageDBID)
+	result, err := runner.ExecContext(ctx, `
+		INSERT OR IGNORE INTO canonical_token_usage (
 			semantic_key, recorded_at_ms, harness, session_id, message_id, provider, model, usage_scope, quality,
 			is_countable, input_tokens, output_tokens, reasoning_tokens, cache_read_tokens, cache_write_tokens,
 			total_tokens, primary_raw_fact_id, ingest_run_id
 		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-		ON CONFLICT(semantic_key) DO UPDATE SET
-			recorded_at_ms = excluded.recorded_at_ms,
-			provider = excluded.provider,
-			model = excluded.model,
-			quality = excluded.quality,
-			is_countable = excluded.is_countable,
-			input_tokens = excluded.input_tokens,
-			output_tokens = excluded.output_tokens,
-			reasoning_tokens = excluded.reasoning_tokens,
-			cache_read_tokens = excluded.cache_read_tokens,
-			cache_write_tokens = excluded.cache_write_tokens,
-			total_tokens = excluded.total_tokens,
-			primary_raw_fact_id = excluded.primary_raw_fact_id,
-			ingest_run_id = excluded.ingest_run_id
-	`, key, canonicalTime(row), row.Harness, sessionDBID, nullableInt64Ptr(messageDBID), normalizedText(row.Provider, "unknown"), normalizedText(row.Model, "unknown"),
-		row.UsageScope, row.Quality, countable(row), nullIntValue(row.InputTokens), nullIntValue(row.OutputTokens), nullIntValue(row.ReasoningTokens),
-		nullIntValue(row.CacheReadTokens), nullIntValue(row.CacheWriteTokens), canonicalTotal(row), row.ID, nullableNullInt(row.LastRunID))
+	`, values.Key, values.RecordedAtMs, values.Harness, values.SessionDBID, values.MessageDBID, values.Provider, values.Model,
+		values.UsageScope, values.Quality, values.Countable, values.InputTokens, values.OutputTokens, values.ReasoningTokens,
+		values.CacheReadTokens, values.CacheWriteTokens, values.TotalTokens, values.RawFactID, values.IngestRunID)
 	if err != nil {
 		return false, err
 	}
 	affected, err := result.RowsAffected()
-	return affected > 0, err
+	if err != nil {
+		return false, err
+	}
+	if affected > 0 {
+		return true, nil
+	}
+	_, err = runner.ExecContext(ctx, `
+		UPDATE canonical_token_usage
+		SET recorded_at_ms = ?,
+			provider = ?,
+			model = ?,
+			quality = ?,
+			is_countable = ?,
+			input_tokens = ?,
+			output_tokens = ?,
+			reasoning_tokens = ?,
+			cache_read_tokens = ?,
+			cache_write_tokens = ?,
+			total_tokens = ?,
+			primary_raw_fact_id = ?,
+			ingest_run_id = ?
+		WHERE semantic_key = ?
+	`, values.RecordedAtMs, values.Provider, values.Model, values.Quality, values.Countable, values.InputTokens, values.OutputTokens,
+		values.ReasoningTokens, values.CacheReadTokens, values.CacheWriteTokens, values.TotalTokens, values.RawFactID, values.IngestRunID,
+		values.Key)
+	return false, err
 }
 
-func insertDiagnostic(ctx context.Context, runner sqlRunner, diagnostic Diagnostic, rawID *int64, runID *int64, recordedAtMs int64) error {
+func canonicalTokenValuesFor(row rawTokenRow, sessionDBID int64, messageDBID *int64) canonicalTokenValues {
+	return canonicalTokenValues{
+		Key:              canonicalTokenKey(row),
+		RecordedAtMs:     canonicalTime(row),
+		Harness:          row.Harness,
+		SessionDBID:      sessionDBID,
+		MessageDBID:      nullableInt64Ptr(messageDBID),
+		Provider:         normalizedText(row.Provider, "unknown"),
+		Model:            normalizedText(row.Model, "unknown"),
+		UsageScope:       row.UsageScope,
+		Quality:          row.Quality,
+		Countable:        countable(row),
+		InputTokens:      nullIntValue(row.InputTokens),
+		OutputTokens:     nullIntValue(row.OutputTokens),
+		ReasoningTokens:  nullIntValue(row.ReasoningTokens),
+		CacheReadTokens:  nullIntValue(row.CacheReadTokens),
+		CacheWriteTokens: nullIntValue(row.CacheWriteTokens),
+		TotalTokens:      canonicalTotal(row),
+		RawFactID:        row.ID,
+		IngestRunID:      nullableNullInt(row.LastRunID),
+	}
+}
+
+func insertDiagnostic(ctx context.Context, runner sqlRunner, diagnostic Diagnostic, rawID *int64, runID *int64, recordedAtMs int64) (bool, error) {
 	keyParts := []string{
 		string(diagnostic.Harness),
 		diagnostic.RawFactKey,
@@ -260,11 +339,28 @@ func insertDiagnostic(ctx context.Context, runner sqlRunner, diagnostic Diagnost
 		int64PtrValue(runID),
 		diagnostic.Code,
 	}
-	_, err := runner.ExecContext(ctx, `
+	result, err := runner.ExecContext(ctx, `
 		INSERT OR IGNORE INTO normalization_diagnostics (
 			diagnostic_key, recorded_at_ms, harness, raw_fact_id, ingest_run_id, severity, code, message, metadata_json
 		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`, stableHash(strings.Join(keyParts, "|")), recordedAtMs, diagnostic.Harness, nullableInt64Ptr(rawID), nullableInt64Ptr(runID), diagnostic.Severity, diagnostic.Code, diagnostic.Message, nullableString(diagnostic.MetadataJSON))
+	if err != nil {
+		return false, err
+	}
+	affected, err := result.RowsAffected()
+	return affected > 0, err
+}
+
+func incrementIngestRunCounts(ctx context.Context, runner sqlRunner, runID sql.NullInt64, canonicalCount int, diagnosticCount int) error {
+	if !runID.Valid {
+		return nil
+	}
+	_, err := runner.ExecContext(ctx, `
+		UPDATE ingest_runs
+		SET canonical_count = canonical_count + ?,
+			diagnostic_count = diagnostic_count + ?
+		WHERE id = ?
+	`, canonicalCount, diagnosticCount, runID.Int64)
 	return err
 }
 

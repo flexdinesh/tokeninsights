@@ -90,7 +90,9 @@ Important fields:
 - `status`, `started_at_ms`, `completed_at_ms`, `error_message`.
 - count columns for raw facts, observations, canonical facts, and diagnostics.
 
-Completed ingest metadata is audit history and should not be rewritten except for active-run completion fields.
+Raw fact and observation counts are written when source ingest completes. Auto-normalization may later increment `canonical_count` and `diagnostic_count` for newly inserted canonical facts or diagnostics associated with that run's observations; repeat normalization does not increment counters for existing rows.
+
+Completed ingest metadata is audit history and should not be rewritten except for active-run completion fields and post-ingest normalization count increments.
 
 ### `raw_token_usage`
 

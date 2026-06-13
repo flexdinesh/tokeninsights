@@ -201,7 +201,7 @@ func ingestSource(ctx context.Context, database *sql.DB, adapter Adapter, option
 }
 
 func writeSourceIngest(ctx context.Context, runner sqlRunner, runDBID int64, facts []RawTokenFact, diagnostics []Diagnostic, options SyncOptions) (Summary, error) {
-	sourceSummary := Summary{Diagnostics: len(diagnostics)}
+	sourceSummary := Summary{}
 	for _, fact := range facts {
 		rawID, inserted, err := upsertRawTokenFact(ctx, runner, fact)
 		if err != nil {
@@ -220,8 +220,12 @@ func writeSourceIngest(ctx context.Context, runner sqlRunner, runDBID int64, fac
 	}
 
 	for _, diagnostic := range diagnostics {
-		if err := insertDiagnostic(ctx, runner, diagnostic, nil, &runDBID, syncNowMs(options.Now)); err != nil {
+		inserted, err := insertDiagnostic(ctx, runner, diagnostic, nil, &runDBID, syncNowMs(options.Now))
+		if err != nil {
 			return sourceSummary, err
+		}
+		if inserted {
+			sourceSummary.Diagnostics++
 		}
 	}
 	return sourceSummary, nil
