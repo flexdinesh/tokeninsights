@@ -9,7 +9,7 @@ import (
 )
 
 func TestSelectedPeriodToday(t *testing.T) {
-	got, err := selectedPeriod(true, false, false, false, false, periodWeek)
+	got, err := selectedPeriod(true, false, false, false, false, false, false, periodMonth)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -19,7 +19,7 @@ func TestSelectedPeriodToday(t *testing.T) {
 }
 
 func TestSelectedPeriodWeek(t *testing.T) {
-	got, err := selectedPeriod(false, true, false, false, false, periodWeek)
+	got, err := selectedPeriod(false, false, true, false, false, false, false, periodMonth)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -29,7 +29,7 @@ func TestSelectedPeriodWeek(t *testing.T) {
 }
 
 func TestSelectedPeriodMonth(t *testing.T) {
-	got, err := selectedPeriod(false, false, true, false, false, periodWeek)
+	got, err := selectedPeriod(false, false, false, true, false, false, false, periodMonth)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -39,7 +39,7 @@ func TestSelectedPeriodMonth(t *testing.T) {
 }
 
 func TestSelectedPeriodAllTime(t *testing.T) {
-	got, err := selectedPeriod(false, false, false, true, false, periodWeek)
+	got, err := selectedPeriod(false, false, false, false, false, true, false, periodMonth)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -48,18 +48,38 @@ func TestSelectedPeriodAllTime(t *testing.T) {
 	}
 }
 
-func TestSelectedPeriodDefault(t *testing.T) {
-	got, err := selectedPeriod(false, false, false, false, false, periodWeek)
+func TestSelectedPeriodYesterday(t *testing.T) {
+	got, err := selectedPeriod(false, true, false, false, false, false, false, periodMonth)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got != periodWeek {
-		t.Fatalf("got %q, want %q", got, periodWeek)
+	if got != periodYesterday {
+		t.Fatalf("got %q, want %q", got, periodYesterday)
+	}
+}
+
+func TestSelectedPeriodYear(t *testing.T) {
+	got, err := selectedPeriod(false, false, false, false, true, false, false, periodMonth)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != periodYear {
+		t.Fatalf("got %q, want %q", got, periodYear)
+	}
+}
+
+func TestSelectedPeriodDefault(t *testing.T) {
+	got, err := selectedPeriod(false, false, false, false, false, false, false, periodMonth)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != periodMonth {
+		t.Fatalf("got %q, want %q", got, periodMonth)
 	}
 }
 
 func TestSelectedPeriodMultiple(t *testing.T) {
-	_, err := selectedPeriod(true, true, false, false, false, periodWeek)
+	_, err := selectedPeriod(true, false, true, false, false, false, false, periodMonth)
 	if err == nil {
 		t.Fatal("expected error for multiple periods")
 	}
@@ -69,7 +89,7 @@ func TestSelectedPeriodMultiple(t *testing.T) {
 }
 
 func TestSelectedPeriodRequired(t *testing.T) {
-	_, err := selectedPeriod(false, false, false, false, true, periodWeek)
+	_, err := selectedPeriod(false, false, false, false, false, false, true, periodMonth)
 	if err == nil {
 		t.Fatal("expected error when period required but none given")
 	}
@@ -82,6 +102,15 @@ func TestPeriodStartToday(t *testing.T) {
 	now := time.Date(2026, 4, 24, 15, 30, 0, 0, time.Local)
 	got := periodStart(now, periodToday)
 	want := time.Date(2026, 4, 24, 0, 0, 0, 0, time.Local)
+	if !got.Equal(want) {
+		t.Fatalf("got %v, want %v", got, want)
+	}
+}
+
+func TestPeriodStartYesterday(t *testing.T) {
+	now := time.Date(2026, 4, 24, 15, 30, 0, 0, time.Local)
+	got := periodStart(now, periodYesterday)
+	want := time.Date(2026, 4, 23, 0, 0, 0, 0, time.Local)
 	if !got.Equal(want) {
 		t.Fatalf("got %v, want %v", got, want)
 	}
@@ -116,11 +145,69 @@ func TestPeriodStartMonth(t *testing.T) {
 	}
 }
 
+func TestPeriodStartYear(t *testing.T) {
+	now := time.Date(2026, 4, 24, 15, 30, 0, 0, time.Local)
+	got := periodStart(now, periodYear)
+	want := time.Date(2026, 1, 1, 0, 0, 0, 0, time.Local)
+	if !got.Equal(want) {
+		t.Fatalf("got %v, want %v", got, want)
+	}
+}
+
 func TestPeriodStartAllTime(t *testing.T) {
 	now := time.Date(2026, 4, 24, 15, 30, 0, 0, time.Local)
 	got := periodStart(now, periodAllTime)
 	if !got.IsZero() {
 		t.Fatalf("expected zero time, got %v", got)
+	}
+}
+
+func TestParseTableOptionsDefaultsToMonthAndDayBucket(t *testing.T) {
+	t.Setenv("XDG_DATA_HOME", filepath.Join(t.TempDir(), "data"))
+
+	var stderr bytes.Buffer
+	opts, err := parseTableOptions([]string{}, &stderr, false, periodMonth)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if opts.period != periodMonth {
+		t.Fatalf("got period %q, want %q", opts.period, periodMonth)
+	}
+	if opts.bucket != bucketDay {
+		t.Fatalf("got bucket %q, want %q", opts.bucket, bucketDay)
+	}
+}
+
+func TestParseTableOptionsBucket(t *testing.T) {
+	var stderr bytes.Buffer
+	opts, err := parseTableOptions([]string{"--db-path", "/tmp/test.sqlite", "--bucket", "week"}, &stderr, false, periodMonth)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if opts.bucket != bucketWeek {
+		t.Fatalf("got bucket %q, want %q", opts.bucket, bucketWeek)
+	}
+}
+
+func TestParseTableOptionsInvalidBucket(t *testing.T) {
+	var stderr bytes.Buffer
+	_, err := parseTableOptions([]string{"--db-path", "/tmp/test.sqlite", "--bucket", "hour"}, &stderr, false, periodMonth)
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if !strings.Contains(err.Error(), "invalid --bucket") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestParseTableOptionsRejectsLegacyGroupBy(t *testing.T) {
+	var stderr bytes.Buffer
+	_, err := parseTableOptions([]string{"--db-path", "/tmp/test.sqlite", "--group-by", "session"}, &stderr, false, periodMonth)
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if !strings.Contains(err.Error(), "flag provided but not defined") {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }
 
@@ -263,12 +350,12 @@ func TestParseTableOptionsDefaultWeek(t *testing.T) {
 	t.Setenv("XDG_DATA_HOME", filepath.Join(t.TempDir(), "data"))
 
 	var stderr bytes.Buffer
-	opts, err := parseTableOptions([]string{}, &stderr, false, periodWeek)
+	opts, err := parseTableOptions([]string{}, &stderr, false, periodMonth)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if opts.period != periodWeek {
-		t.Fatalf("got %q, want %q", opts.period, periodWeek)
+	if opts.period != periodMonth {
+		t.Fatalf("got %q, want %q", opts.period, periodMonth)
 	}
 }
 

@@ -1,5 +1,7 @@
 # Sync-First Canonical Redesign PRD
 
+Viewer surface note: the sync-first pipeline decisions in this PRD remain active, but the detailed `view` TUI behavior has been superseded by [`canonical-viewer-tui-redesign-prd.md`](canonical-viewer-tui-redesign-prd.md) and [ADR 0001](../adr/0001-viewer-tabs-are-token-aggregation-modes.md).
+
 ## Problem Statement
 
 TokenInsights currently depends on harness plugins writing directly into harness-specific SQLite tables. That makes local usage data hard to rebuild, hard to deduplicate across multiple ingest paths, and hard to extend consistently across OpenCode, Pi, and Codex.

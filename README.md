@@ -72,10 +72,13 @@ View filters:
 
 ```sh
 ./packages/cli/bin/tokeninsights view --today
-./packages/cli/bin/tokeninsights view --week --group-by=session
+./packages/cli/bin/tokeninsights view --yesterday
+./packages/cli/bin/tokeninsights view --year --bucket month
 ./packages/cli/bin/tokeninsights view --month --harness pi
 ./packages/cli/bin/tokeninsights view --week --provider openai --model gpt-5
 ```
+
+`view` opens on the Tokens aggregation tab for this month with day buckets. Tabs switch between Tokens, Models, Providers, Harnesses, and Sessions. Date range presets are `--today`, `--yesterday`, `--week`, `--month`, `--year`, and `--all-time`; token time buckets are `--bucket day|week|month|year`.
 
 Running without a command still opens the interactive view for compatibility:
 

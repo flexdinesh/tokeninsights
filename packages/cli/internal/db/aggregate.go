@@ -42,12 +42,97 @@ type Row struct {
 	LatestAtMs       int64
 }
 
+type TimeBucket string
+
+const (
+	BucketDay   TimeBucket = "day"
+	BucketWeek  TimeBucket = "week"
+	BucketMonth TimeBucket = "month"
+	BucketYear  TimeBucket = "year"
+)
+
+type ViewerTokenBucketRow struct {
+	Bucket           string
+	SessionCount     int64
+	InputTokens      int64
+	OutputTokens     int64
+	ReasoningTokens  int64
+	CacheReadTokens  int64
+	CacheWriteTokens int64
+	TotalTokens      int64
+	LatestAtMs       int64
+}
+
+type ViewerDimensionRow struct {
+	Model            string
+	Provider         string
+	Harness          string
+	Models           string
+	Providers        string
+	Harnesses        string
+	SessionCount     int64
+	InputTokens      int64
+	OutputTokens     int64
+	ReasoningTokens  int64
+	CacheReadTokens  int64
+	CacheWriteTokens int64
+	TotalTokens      int64
+	LatestAtMs       int64
+}
+
+type ViewerSessionRow struct {
+	LatestAtMs       int64
+	SessionID        string
+	Harness          string
+	Providers        string
+	Models           string
+	InputTokens      int64
+	OutputTokens     int64
+	ReasoningTokens  int64
+	CacheReadTokens  int64
+	CacheWriteTokens int64
+	TotalTokens      int64
+}
+
 const (
 	canonicalAlias = "ctu"
 	sessionAlias   = "cs"
 	exprDay        = "date(ctu.recorded_at_ms/1000, 'unixepoch', 'localtime')"
 	exprHour       = "strftime('%H:00', ctu.recorded_at_ms/1000, 'unixepoch', 'localtime')"
 )
+
+func viewerBucketExpression(bucket TimeBucket) (string, error) {
+	switch bucket {
+	case BucketDay:
+		return exprDay, nil
+	case BucketWeek:
+		return fmt.Sprintf("date(%s, printf('-%%d days', (CAST(strftime('%%w', %s) AS INTEGER) + 6) %% 7))", exprDay, exprDay), nil
+	case BucketMonth:
+		return "strftime('%Y-%m', ctu.recorded_at_ms/1000, 'unixepoch', 'localtime')", nil
+	case BucketYear:
+		return "strftime('%Y', ctu.recorded_at_ms/1000, 'unixepoch', 'localtime')", nil
+	default:
+		return "", fmt.Errorf("unsupported time bucket %q", bucket)
+	}
+}
+
+func compactSummary(csv string) string {
+	if strings.TrimSpace(csv) == "" {
+		return ""
+	}
+	seen := make(map[string]bool)
+	for _, value := range strings.Split(csv, ",") {
+		trimmed := strings.TrimSpace(value)
+		if trimmed != "" {
+			seen[trimmed] = true
+		}
+	}
+	values := sortedKeys(seen)
+	if len(values) <= 2 {
+		return strings.Join(values, ", ")
+	}
+	return fmt.Sprintf("%d values", len(values))
+}
 
 func canonicalGroupSelect(g GroupBy) string {
 	switch g {
@@ -105,6 +190,10 @@ func canonicalWhereClause(f Filter) (string, []interface{}) {
 	if !f.Start.IsZero() {
 		where = append(where, "ctu."+ColRecordedAtMs+" >= ?")
 		args = append(args, f.Start.UnixMilli())
+	}
+	if !f.End.IsZero() {
+		where = append(where, "ctu."+ColRecordedAtMs+" < ?")
+		args = append(args, f.End.UnixMilli())
 	}
 	if len(f.SessionIDs) > 0 {
 		where = append(where, "cs."+ColSessionID+" IN ("+placeholders(len(f.SessionIDs))+")")
@@ -197,6 +286,254 @@ func AggregateTokens(ctx context.Context, db *sql.DB, f Filter, g GroupBy) ([]Ro
 	}
 
 	sortRows(result, g)
+	return result, nil
+}
+
+func ViewerTokenBuckets(ctx context.Context, db *sql.DB, f Filter, bucket TimeBucket) ([]ViewerTokenBucketRow, error) {
+	bucketExpr, err := viewerBucketExpression(bucket)
+	if err != nil {
+		return nil, err
+	}
+	whereClause, args := canonicalWhereClause(f)
+	query := fmt.Sprintf(`
+		SELECT %s AS bucket,
+			COUNT(DISTINCT ctu.%s) AS session_count,
+			SUM(ctu.%s) AS input_tokens,
+			SUM(ctu.%s) AS output_tokens,
+			SUM(ctu.%s) AS reasoning_tokens,
+			SUM(ctu.%s) AS cache_read_tokens,
+			SUM(ctu.%s) AS cache_write_tokens,
+			SUM(ctu.%s) AS total_tokens,
+			MAX(ctu.%s) AS latest_at_ms
+		FROM %s ctu
+		INNER JOIN %s cs ON cs.%s = ctu.%s
+		%s
+		GROUP BY %s
+		ORDER BY latest_at_ms DESC, bucket DESC
+	`,
+		bucketExpr,
+		ColSessionID,
+		ColInputTokens,
+		ColOutputTokens,
+		ColReasoningTokens,
+		ColCacheReadTokens,
+		ColCacheWriteTokens,
+		ColTotalTokens,
+		ColRecordedAtMs,
+		TableCanonicalTokenUsage,
+		TableCanonicalSessions,
+		ColID,
+		ColSessionID,
+		whereClause,
+		bucketExpr,
+	)
+
+	rows, err := db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var result []ViewerTokenBucketRow
+	for rows.Next() {
+		var row ViewerTokenBucketRow
+		if err := rows.Scan(
+			&row.Bucket,
+			&row.SessionCount,
+			&row.InputTokens,
+			&row.OutputTokens,
+			&row.ReasoningTokens,
+			&row.CacheReadTokens,
+			&row.CacheWriteTokens,
+			&row.TotalTokens,
+			&row.LatestAtMs,
+		); err != nil {
+			return nil, err
+		}
+		result = append(result, row)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
+func ViewerModels(ctx context.Context, db *sql.DB, f Filter) ([]ViewerDimensionRow, error) {
+	return viewerDimensions(ctx, db, f, ColModel)
+}
+
+func ViewerProviders(ctx context.Context, db *sql.DB, f Filter) ([]ViewerDimensionRow, error) {
+	return viewerDimensions(ctx, db, f, ColProvider)
+}
+
+func ViewerHarnesses(ctx context.Context, db *sql.DB, f Filter) ([]ViewerDimensionRow, error) {
+	return viewerDimensions(ctx, db, f, ColHarness)
+}
+
+func viewerDimensions(ctx context.Context, db *sql.DB, f Filter, primaryColumn string) ([]ViewerDimensionRow, error) {
+	whereClause, args := canonicalWhereClause(f)
+	query := fmt.Sprintf(`
+		SELECT ctu.%s AS primary_value,
+			GROUP_CONCAT(DISTINCT ctu.%s) AS providers,
+			GROUP_CONCAT(DISTINCT ctu.%s) AS models,
+			GROUP_CONCAT(DISTINCT ctu.%s) AS harnesses,
+			COUNT(DISTINCT ctu.%s) AS session_count,
+			SUM(ctu.%s) AS input_tokens,
+			SUM(ctu.%s) AS output_tokens,
+			SUM(ctu.%s) AS reasoning_tokens,
+			SUM(ctu.%s) AS cache_read_tokens,
+			SUM(ctu.%s) AS cache_write_tokens,
+			SUM(ctu.%s) AS total_tokens,
+			MAX(ctu.%s) AS latest_at_ms
+		FROM %s ctu
+		INNER JOIN %s cs ON cs.%s = ctu.%s
+		%s
+		GROUP BY ctu.%s
+		ORDER BY total_tokens DESC, primary_value ASC
+	`,
+		primaryColumn,
+		ColProvider,
+		ColModel,
+		ColHarness,
+		ColSessionID,
+		ColInputTokens,
+		ColOutputTokens,
+		ColReasoningTokens,
+		ColCacheReadTokens,
+		ColCacheWriteTokens,
+		ColTotalTokens,
+		ColRecordedAtMs,
+		TableCanonicalTokenUsage,
+		TableCanonicalSessions,
+		ColID,
+		ColSessionID,
+		whereClause,
+		primaryColumn,
+	)
+
+	rows, err := db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var result []ViewerDimensionRow
+	for rows.Next() {
+		var primaryValue string
+		var providers string
+		var models string
+		var harnesses string
+		var row ViewerDimensionRow
+		if err := rows.Scan(
+			&primaryValue,
+			&providers,
+			&models,
+			&harnesses,
+			&row.SessionCount,
+			&row.InputTokens,
+			&row.OutputTokens,
+			&row.ReasoningTokens,
+			&row.CacheReadTokens,
+			&row.CacheWriteTokens,
+			&row.TotalTokens,
+			&row.LatestAtMs,
+		); err != nil {
+			return nil, err
+		}
+		switch primaryColumn {
+		case ColModel:
+			row.Model = primaryValue
+		case ColProvider:
+			row.Provider = primaryValue
+		case ColHarness:
+			row.Harness = primaryValue
+		}
+		row.Providers = compactSummary(providers)
+		row.Models = compactSummary(models)
+		row.Harnesses = compactSummary(harnesses)
+		result = append(result, row)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
+func ViewerSessions(ctx context.Context, db *sql.DB, f Filter) ([]ViewerSessionRow, error) {
+	whereClause, args := canonicalWhereClause(f)
+	query := fmt.Sprintf(`
+		SELECT MAX(ctu.%s) AS latest_at_ms,
+			cs.%s AS session_id,
+			GROUP_CONCAT(DISTINCT ctu.%s) AS harnesses,
+			GROUP_CONCAT(DISTINCT ctu.%s) AS providers,
+			GROUP_CONCAT(DISTINCT ctu.%s) AS models,
+			SUM(ctu.%s) AS input_tokens,
+			SUM(ctu.%s) AS output_tokens,
+			SUM(ctu.%s) AS reasoning_tokens,
+			SUM(ctu.%s) AS cache_read_tokens,
+			SUM(ctu.%s) AS cache_write_tokens,
+			SUM(ctu.%s) AS total_tokens
+		FROM %s ctu
+		INNER JOIN %s cs ON cs.%s = ctu.%s
+		%s
+		GROUP BY ctu.%s, cs.%s
+		ORDER BY latest_at_ms DESC, session_id ASC
+	`,
+		ColRecordedAtMs,
+		ColSessionID,
+		ColHarness,
+		ColProvider,
+		ColModel,
+		ColInputTokens,
+		ColOutputTokens,
+		ColReasoningTokens,
+		ColCacheReadTokens,
+		ColCacheWriteTokens,
+		ColTotalTokens,
+		TableCanonicalTokenUsage,
+		TableCanonicalSessions,
+		ColID,
+		ColSessionID,
+		whereClause,
+		ColSessionID,
+		ColSessionID,
+	)
+
+	rows, err := db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var result []ViewerSessionRow
+	for rows.Next() {
+		var harnesses string
+		var providers string
+		var models string
+		var row ViewerSessionRow
+		if err := rows.Scan(
+			&row.LatestAtMs,
+			&row.SessionID,
+			&harnesses,
+			&providers,
+			&models,
+			&row.InputTokens,
+			&row.OutputTokens,
+			&row.ReasoningTokens,
+			&row.CacheReadTokens,
+			&row.CacheWriteTokens,
+			&row.TotalTokens,
+		); err != nil {
+			return nil, err
+		}
+		row.Harness = compactSummary(harnesses)
+		row.Providers = compactSummary(providers)
+		row.Models = compactSummary(models)
+		result = append(result, row)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
 	return result, nil
 }
 

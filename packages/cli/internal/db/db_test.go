@@ -162,6 +162,73 @@ func TestAggregateCanonicalDaily(t *testing.T) {
 	}
 }
 
+func TestViewerTokenBucketsAggregateByWeekWithSessionCounts(t *testing.T) {
+	database, _ := newTestDB(t)
+	defer database.Close()
+	monday := time.Date(2026, 4, 20, 9, 0, 0, 0, time.Local).UnixMilli()
+	friday := time.Date(2026, 4, 24, 12, 0, 0, 0, time.Local).UnixMilli()
+	nextMonday := time.Date(2026, 4, 27, 12, 0, 0, 0, time.Local).UnixMilli()
+	insertCanonicalToken(t, database, monday, "opencode", "ses_1", "openai", "gpt", 100, 10, 5, 20, 1, 136)
+	insertCanonicalToken(t, database, friday, "pi", "ses_2", "anthropic", "claude", 200, 20, 6, 30, 2, 258)
+	insertCanonicalToken(t, database, nextMonday, "codex", "ses_3", "unknown", "unknown", 300, 30, 7, 40, 3, 380)
+
+	rows, err := ViewerTokenBuckets(context.Background(), database, Filter{}, BucketWeek)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 2 {
+		t.Fatalf("got %d rows, want 2: %+v", len(rows), rows)
+	}
+	if rows[0].Bucket != "2026-04-27" || rows[0].SessionCount != 1 || rows[0].TotalTokens != 380 {
+		t.Fatalf("unexpected first bucket: %+v", rows[0])
+	}
+	if rows[1].Bucket != "2026-04-20" || rows[1].SessionCount != 2 || rows[1].TotalTokens != 394 {
+		t.Fatalf("unexpected second bucket: %+v", rows[1])
+	}
+}
+
+func TestViewerModelsAggregateByModelOnly(t *testing.T) {
+	database, _ := newTestDB(t)
+	defer database.Close()
+	recordedAt := time.Date(2026, 4, 24, 12, 0, 0, 0, time.Local).UnixMilli()
+	insertCanonicalToken(t, database, recordedAt, "opencode", "ses_1", "openai", "gpt-5", 100, 10, 5, 20, 1, 136)
+	insertCanonicalToken(t, database, recordedAt+1000, "pi", "ses_2", "azure", "gpt-5", 200, 20, 6, 30, 2, 258)
+	insertCanonicalToken(t, database, recordedAt+2000, "codex", "ses_3", "unknown", "claude", 300, 30, 7, 40, 3, 380)
+
+	rows, err := ViewerModels(context.Background(), database, Filter{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 2 {
+		t.Fatalf("got %d rows, want 2: %+v", len(rows), rows)
+	}
+	if rows[0].Model != "gpt-5" || rows[0].Providers != "azure, openai" || rows[0].Harnesses != "opencode, pi" || rows[0].SessionCount != 2 || rows[0].TotalTokens != 394 {
+		t.Fatalf("unexpected first model row: %+v", rows[0])
+	}
+	if rows[1].Model != "claude" || rows[1].Providers != "unknown" || rows[1].Harnesses != "codex" || rows[1].SessionCount != 1 {
+		t.Fatalf("unexpected second model row: %+v", rows[1])
+	}
+}
+
+func TestViewerSessionsAggregateByCanonicalSessionOnly(t *testing.T) {
+	database, _ := newTestDB(t)
+	defer database.Close()
+	recordedAt := time.Date(2026, 4, 24, 12, 0, 0, 0, time.Local).UnixMilli()
+	insertCanonicalToken(t, database, recordedAt, "opencode", "ses_1", "openai", "gpt-5", 100, 10, 5, 20, 1, 136)
+	insertCanonicalToken(t, database, recordedAt+1000, "opencode", "ses_1", "anthropic", "claude", 200, 20, 6, 30, 2, 258)
+
+	rows, err := ViewerSessions(context.Background(), database, Filter{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 1 {
+		t.Fatalf("got %d rows, want 1: %+v", len(rows), rows)
+	}
+	if rows[0].SessionID != "ses_1" || rows[0].Harness != "opencode" || rows[0].Providers != "anthropic, openai" || rows[0].Models != "claude, gpt-5" || rows[0].TotalTokens != 394 {
+		t.Fatalf("unexpected session row: %+v", rows[0])
+	}
+}
+
 func TestAggregateNonTokenDomainsEmptyWithCanonicalTokens(t *testing.T) {
 	database, _ := newTestDB(t)
 	defer database.Close()

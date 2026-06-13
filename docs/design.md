@@ -6,7 +6,7 @@ Track local token usage across supported coding harnesses over time, without rel
 
 The durable data model is a session-centric token time series. Every canonical token row must resolve to a stable `session_id` through `canonical_sessions`. Raw facts may preserve missing source values as null, but token facts without stable session identity must not enter canonical analytics.
 
-TPS remains a first-class UI/domain concept. The sync-first V1 schema does not require every harness to expose durable timing data, but `tps avg`, `tps mean`, and `tps median` stay part of the viewer surface and must not be removed when timing support is added back through canonical facts.
+Token usage is the active V1 viewer domain. TPS remains a future-compatible data domain when durable timing facts exist, but unavailable metric domains should not appear as empty active viewer tabs.
 
 ## System Architecture
 
@@ -63,14 +63,14 @@ Realtime plugins and checkpoint plugins are future-compatible concepts, not acti
 
 ## Current Implementation Status
 
-The sync-first canonical path is the active product path. Schema V3, DB lifecycle checks, `sync`, `normalize`, reset commands, canonical token aggregation, sparse viewer tabs, and fixture-style pipeline conformance tests are implemented.
+The sync-first canonical path is the active product path. Schema V3, DB lifecycle checks, `sync`, `normalize`, reset commands, canonical token aggregation, and fixture-style pipeline conformance tests are implemented.
 
 Known gaps are part of the current design contract:
 
 - normalization is idempotent, but it currently scans and upserts all matching raw token facts rather than tracking an incremental work queue;
 - canonical token upserts are deterministic by semantic key, but there is not yet an explicit conflict/precedence model for competing raw facts;
 - diagnostics exist for parser warnings, missing canonical session identity, and some source-level suppressions such as duplicate or stale snapshots, but the full rejected/conflicting/suppressed diagnostic taxonomy is still future work;
-- TPS, request, tool-call, and tool-breakdown tabs have separate query boundaries and intentionally render empty rows until canonical domains for those metrics exist;
+- the viewer is aligned to token aggregation tabs; future metric domains should stay hidden until durable canonical facts exist;
 - realtime and checkpoint plugin parity remains future-compatible only.
 
 ## Schema Contract
@@ -242,25 +242,25 @@ The TUI queries canonical tables only:
 - missing provider/model renders as `unknown`;
 - empty canonical tables produce a clean empty state.
 
-Current grouping modes:
+The active viewer surface uses token aggregation tabs:
 
-| Mode | Group key |
-|------|-----------|
-| `day` | local day, harness, provider, model |
-| `hour` | local day, local hour, harness, provider, model |
-| `session` | local day, session ID, harness, provider, model |
+| Tab | Primary aggregation |
+|-----|---------------------|
+| `tokens` | local calendar Time Bucket |
+| `models` | model |
+| `providers` | provider |
+| `harnesses` | harness |
+| `sessions` | canonical session |
 
-Current tabs:
+Date Range Filters choose which canonical facts are included. Supported presets are today, yesterday, this week, this month, this year, and all time; the default is this month. The `tokens` tab additionally uses a Time Bucket of day, week, month, or year, with day as the default and Monday-start local weeks.
 
-| Tab | V1 source |
-|-----|-----------|
-| tokens | `canonical_token_usage` |
-| tps | separate empty query path until canonical timing facts exist |
-| requests | separate empty query path until canonical request facts exist |
-| tool calls | separate empty query path until canonical tool facts exist |
-| tool breakdown | separate empty query path until canonical tool facts exist |
+Dimension Filters choose included provider, model, and harness values. Session filtering may be provided as a startup filter, but interactive session search/filtering is not part of the active viewer surface.
 
-Sparse or unavailable domains must not break token viewing.
+Interactive shortcuts use `d` for Date Range Filter, `g` for Time Bucket, `s` for sorting, and `p`, `m`, and `h` for provider, model, and harness filters. Horizontal scrolling uses left/right arrows and home/end; `h` is reserved for the harness filter.
+
+TPS, request, and tool domains are future-compatible canonical domains. They should remain absent from the active tab bar until durable canonical facts exist for them.
+
+Cost tracking is not part of TokenInsights and must not appear in viewer columns, totals, sort options, or docs.
 
 ## DB Lifecycle
 
@@ -280,13 +280,14 @@ Must not change silently:
 - missing provider/model must render as `unknown`, not cause row loss;
 - raw storage must remain metadata-only and avoid private content;
 - default token analytics use only countable canonical token rows;
-- TPS labels and UI concepts remain first-class for future timing support;
+- unavailable metric domains must not appear as empty active viewer tabs;
+- cost tracking must stay out of the active product;
 - `view` opens read-only and remains interactive-only.
 
 Can evolve with care:
 
 - new harness adapters;
-- new canonical fact domains for TPS, requests, tools, or costs;
+- new canonical fact domains for TPS, requests, or tools;
 - explicit conflict precedence and richer diagnostic categories;
 - generated schema constants;
 - future checkpoint plugins that write equivalent raw/canonical concepts.

@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/lipgloss"
-	"github.com/charmbracelet/lipgloss/table"
 	"github.com/charmbracelet/x/ansi"
 )
 
@@ -14,24 +14,24 @@ type tabMode int
 
 const (
 	tabTokens tabMode = iota
-	tabTPS
-	tabRequests
-	tabToolCalls
-	tabToolBreakdown
+	tabModels
+	tabProviders
+	tabHarnesses
+	tabSessions
 )
 
 func (t tabMode) String() string {
 	switch t {
 	case tabTokens:
 		return "tokens"
-	case tabTPS:
-		return "tps"
-	case tabRequests:
-		return "requests"
-	case tabToolCalls:
-		return "tool calls"
-	case tabToolBreakdown:
-		return "tool breakdown"
+	case tabModels:
+		return "models"
+	case tabProviders:
+		return "providers"
+	case tabHarnesses:
+		return "harnesses"
+	case tabSessions:
+		return "sessions"
 	default:
 		return ""
 	}
@@ -44,6 +44,49 @@ type column struct {
 }
 
 func columnsForModeAndTab(g groupByMode, t tabMode) []column {
+	switch t {
+	case tabTokens:
+		return []column{
+			{name: "bucket", field: "bucket"},
+			{name: "sessions", field: "sessions", numeric: true},
+			{name: "input", field: "inputTokens", numeric: true},
+			{name: "output", field: "outputTokens", numeric: true},
+			{name: "reasoning", field: "reasoningTokens", numeric: true},
+			{name: "cache read", field: "cacheReadTokens", numeric: true},
+			{name: "cache write", field: "cacheWriteTokens", numeric: true},
+			{name: "total", field: "totalTokens", numeric: true},
+		}
+	case tabModels:
+		return append([]column{
+			{name: "model", field: "model"},
+			{name: "providers", field: "providers"},
+			{name: "harnesses", field: "harnesses"},
+			{name: "sessions", field: "sessions", numeric: true},
+		}, tokenColumns()...)
+	case tabProviders:
+		return append([]column{
+			{name: "provider", field: "provider"},
+			{name: "models", field: "models"},
+			{name: "harnesses", field: "harnesses"},
+			{name: "sessions", field: "sessions", numeric: true},
+		}, tokenColumns()...)
+	case tabHarnesses:
+		return append([]column{
+			{name: "harness", field: "harness"},
+			{name: "providers", field: "providers"},
+			{name: "models", field: "models"},
+			{name: "sessions", field: "sessions", numeric: true},
+		}, tokenColumns()...)
+	case tabSessions:
+		return append([]column{
+			{name: "latest", field: "latest"},
+			{name: "session", field: "sessionID"},
+			{name: "harness", field: "harness"},
+			{name: "providers", field: "providers"},
+			{name: "models", field: "models"},
+		}, tokenColumns()...)
+	}
+
 	grouping := []column{{name: "day", field: "day"}}
 	switch g {
 	case groupByHour:
@@ -61,59 +104,50 @@ func columnsForModeAndTab(g groupByMode, t tabMode) []column {
 	)
 
 	switch t {
-	case tabTokens:
-		return append(grouping,
-			column{name: "input", field: "inputTokens", numeric: true},
-			column{name: "output", field: "outputTokens", numeric: true},
-			column{name: "reasoning", field: "reasoningTokens", numeric: true},
-			column{name: "cache read", field: "cacheReadTokens", numeric: true},
-			column{name: "cache write", field: "cacheWriteTokens", numeric: true},
-			column{name: "total", field: "totalTokens", numeric: true},
-		)
-	case tabTPS:
-		return append(grouping,
-			column{name: "tps avg", field: "tpsAvg", numeric: true},
-			column{name: "tps mean", field: "tpsMean", numeric: true},
-			column{name: "tps median", field: "tpsMedian", numeric: true},
-		)
-	case tabRequests:
-		return append(grouping,
-			column{name: "requests", field: "requests", numeric: true},
-			column{name: "retries", field: "retries", numeric: true},
-		)
-	case tabToolCalls:
-		return append(grouping,
-			column{name: "tool calls", field: "toolCalls", numeric: true},
-			column{name: "errors", field: "toolErrors", numeric: true},
-		)
-	case tabToolBreakdown:
-		return append(grouping,
-			column{name: "tool", field: "toolName"},
-			column{name: "tool calls", field: "toolCalls", numeric: true},
-			column{name: "errors", field: "toolErrors", numeric: true},
-		)
 	default:
 		return grouping
 	}
 }
 
+func tokenColumns() []column {
+	return []column{
+		{name: "input", field: "inputTokens", numeric: true},
+		{name: "output", field: "outputTokens", numeric: true},
+		{name: "reasoning", field: "reasoningTokens", numeric: true},
+		{name: "cache read", field: "cacheReadTokens", numeric: true},
+		{name: "cache write", field: "cacheWriteTokens", numeric: true},
+		{name: "total", field: "totalTokens", numeric: true},
+	}
+}
+
 type renderRow struct {
+	bucket           string
+	sessions         string
+	latest           string
+	latestValue      int64
 	harness          string
+	harnesses        string
 	day              string
 	hour             string
 	sessionID        string
 	provider         string
+	providers        string
 	model            string
+	models           string
 	thinkingLevels   string
 	tpsAvg           string
 	tpsMean          string
 	tpsMedian        string
 	inputTokens      string
+	inputValue       int64
 	outputTokens     string
+	outputValue      int64
 	reasoningTokens  string
 	cacheReadTokens  string
+	cacheReadValue   int64
 	cacheWriteTokens string
 	totalTokens      string
+	totalValue       int64
 	requests         string
 	retries          string
 	toolName         string
@@ -178,15 +212,22 @@ func formatTokens(value int64) string {
 	}
 }
 
+func formatLatest(value int64) string {
+	if value <= 0 {
+		return ""
+	}
+	return time.UnixMilli(value).Local().Format("2006-01-02 15:04")
+}
+
 var (
 	titleStyle  = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("212"))
 	hintStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
-	headerStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("230")).Background(lipgloss.Color("63")).Padding(0, 1)
-	cellStyle   = lipgloss.NewStyle().Padding(0, 1)
+	headerStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("86"))
+	cellStyle   = lipgloss.NewStyle()
 	oddStyle    = cellStyle.Foreground(lipgloss.Color("252"))
 	evenStyle   = cellStyle.Foreground(lipgloss.Color("245"))
 
-	numberStyle      = cellStyle.Align(lipgloss.Right)
+	numberStyle      = cellStyle.Foreground(lipgloss.Color("214"))
 	borderStyle      = lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
 	outerBorderStyle = lipgloss.NewStyle().
 				Border(lipgloss.RoundedBorder()).
@@ -247,18 +288,21 @@ func padANSI(value string, width int) string {
 func renderTableWithWidth(rows []renderRow, g groupByMode, tab tabMode, width int) string {
 	cols := columnsForModeAndTab(g, tab)
 
-	header := make([]string, len(cols))
-	for i, c := range cols {
-		header[i] = c.name
-	}
-
 	formatted := make([][]string, 0, len(rows))
 	for _, row := range rows {
 		values := make([]string, len(cols))
 		for i, c := range cols {
 			switch c.field {
+			case "bucket":
+				values[i] = row.bucket
+			case "sessions":
+				values[i] = row.sessions
+			case "latest":
+				values[i] = row.latest
 			case "harness":
 				values[i] = row.harness
+			case "harnesses":
+				values[i] = row.harnesses
 			case "day":
 				values[i] = row.day
 			case "hour":
@@ -269,8 +313,12 @@ func renderTableWithWidth(rows []renderRow, g groupByMode, tab tabMode, width in
 				values[i] = row.thinkingLevels
 			case "provider":
 				values[i] = row.provider
+			case "providers":
+				values[i] = row.providers
 			case "model":
 				values[i] = displayModel(row.model)
+			case "models":
+				values[i] = row.models
 			case "tpsAvg":
 				values[i] = row.tpsAvg
 			case "tpsMean":
@@ -306,28 +354,67 @@ func renderTableWithWidth(rows []renderRow, g groupByMode, tab tabMode, width in
 		formatted = append(formatted, values)
 	}
 
-	uiTable := table.New().
-		Border(lipgloss.RoundedBorder()).
-		BorderStyle(borderStyle).
-		Headers(header...).
-		Rows(formatted...).
-		Wrap(false).
-		StyleFunc(func(row int, col int) lipgloss.Style {
-			if row == table.HeaderRow {
-				return headerStyle
+	widths := make([]int, len(cols))
+	for i, col := range cols {
+		widths[i] = ansi.StringWidth(col.name)
+	}
+	for _, values := range formatted {
+		for i, value := range values {
+			if valueWidth := ansi.StringWidth(value); valueWidth > widths[i] {
+				widths[i] = valueWidth
 			}
-			base := oddStyle
-			if row%2 == 0 {
-				base = evenStyle
-			}
-			if col < len(cols) && cols[col].numeric {
-				return numberStyle.Inherit(base)
-			}
-			return base
-		})
-	if width > 0 {
-		uiTable = uiTable.Width(width)
+		}
 	}
 
-	return uiTable.String() + "\n"
+	var lines []string
+	header := make([]string, len(cols))
+	separator := make([]string, len(cols))
+	for i, col := range cols {
+		header[i] = padCell(col.name, widths[i], false)
+		separator[i] = strings.Repeat("─", widths[i])
+	}
+	lines = append(lines, headerStyle.Render(strings.Join(header, "  ")))
+	lines = append(lines, borderStyle.Render(strings.Join(separator, "  ")))
+
+	for rowIndex, values := range formatted {
+		cells := make([]string, len(cols))
+		for i, value := range values {
+			cells[i] = padCell(value, widths[i], cols[i].numeric)
+		}
+		style := oddStyle
+		if rowIndex%2 == 1 {
+			style = evenStyle
+		}
+		line := strings.Join(cells, "  ")
+		if hasNumericCells(cols) {
+			line = style.Render(line)
+		} else {
+			line = style.Render(line)
+		}
+		lines = append(lines, line)
+	}
+	if len(formatted) == 0 {
+		lines = append(lines, hintStyle.Render("No rows match the current scope."))
+	}
+	return strings.Join(lines, "\n") + "\n"
+}
+
+func padCell(value string, width int, numeric bool) string {
+	padding := width - ansi.StringWidth(value)
+	if padding <= 0 {
+		return value
+	}
+	if numeric {
+		return strings.Repeat(" ", padding) + value
+	}
+	return value + strings.Repeat(" ", padding)
+}
+
+func hasNumericCells(cols []column) bool {
+	for _, col := range cols {
+		if col.numeric {
+			return true
+		}
+	}
+	return false
 }

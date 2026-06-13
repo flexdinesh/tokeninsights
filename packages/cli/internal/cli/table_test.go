@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -79,14 +80,14 @@ func TestLoadRowsTokenTabUsesCanonicalTokens(t *testing.T) {
 	recordedAt := time.Date(2026, 4, 24, 12, 0, 0, 0, time.Local)
 	insertLoadRowsCanonicalToken(t, database, recordedAt.UnixMilli(), "opencode", "ses_1", "openai", "gpt-5")
 
-	rows, err := loadRows(context.Background(), tableOptions{dbPath: dbPath, period: periodAllTime}, recordedAt, groupByNone, tabTokens)
+	rows, err := loadRows(context.Background(), tableOptions{dbPath: dbPath, period: periodAllTime, bucket: bucketDay}, recordedAt, groupByNone, tabTokens)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(rows) != 1 {
 		t.Fatalf("got %d rows, want 1", len(rows))
 	}
-	if rows[0].harness != "opencode" || rows[0].provider != "openai" || rows[0].model != "gpt-5" {
+	if rows[0].bucket != "2026-04-24" || rows[0].sessions != "1" {
 		t.Fatalf("unexpected token row: %+v", rows[0])
 	}
 	if rows[0].inputTokens != "100" || rows[0].totalTokens != "136" {
@@ -94,32 +95,87 @@ func TestLoadRowsTokenTabUsesCanonicalTokens(t *testing.T) {
 	}
 }
 
-func TestLoadRowsNonTokenTabsEmptyWithCanonicalTokens(t *testing.T) {
+func TestLoadRowsTokenTabUsesTimeBucket(t *testing.T) {
+	database, dbPath := newLoadRowsTestDB(t)
+	defer database.Close()
+	now := time.Date(2026, 4, 30, 12, 0, 0, 0, time.Local)
+	insertLoadRowsCanonicalToken(t, database, time.Date(2026, 4, 20, 9, 0, 0, 0, time.Local).UnixMilli(), "opencode", "ses_1", "openai", "gpt-5")
+	insertLoadRowsCanonicalToken(t, database, time.Date(2026, 4, 24, 9, 0, 0, 0, time.Local).UnixMilli(), "pi", "ses_2", "anthropic", "claude")
+
+	rows, err := loadRows(context.Background(), tableOptions{dbPath: dbPath, period: periodAllTime, bucket: bucketWeek}, now, groupByNone, tabTokens)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 1 {
+		t.Fatalf("got %d rows, want 1", len(rows))
+	}
+	if rows[0].bucket != "2026-04-20" || rows[0].sessions != "2" || rows[0].totalTokens != "272" {
+		t.Fatalf("unexpected token row: %+v", rows[0])
+	}
+}
+
+func TestLoadRowsYesterdayPeriodExcludesToday(t *testing.T) {
+	database, dbPath := newLoadRowsTestDB(t)
+	defer database.Close()
+	now := time.Date(2026, 4, 24, 12, 0, 0, 0, time.Local)
+	insertLoadRowsCanonicalToken(t, database, now.AddDate(0, 0, -1).UnixMilli(), "opencode", "ses_1", "openai", "gpt-5")
+	insertLoadRowsCanonicalToken(t, database, now.UnixMilli(), "pi", "ses_2", "anthropic", "claude")
+
+	rows, err := loadRows(context.Background(), tableOptions{dbPath: dbPath, period: periodYesterday, bucket: bucketDay}, now, groupByNone, tabTokens)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 1 {
+		t.Fatalf("got %d rows, want 1: %+v", len(rows), rows)
+	}
+	if rows[0].bucket != "2026-04-23" {
+		t.Fatalf("got bucket %q, want 2026-04-23", rows[0].bucket)
+	}
+}
+
+func TestLoadRowsCustomDayBoundsOverridePreset(t *testing.T) {
+	database, dbPath := newLoadRowsTestDB(t)
+	defer database.Close()
+	now := time.Date(2026, 4, 24, 12, 0, 0, 0, time.Local)
+	insertLoadRowsCanonicalToken(t, database, time.Date(2026, 3, 15, 12, 0, 0, 0, time.Local).UnixMilli(), "opencode", "ses_1", "openai", "gpt-5")
+	insertLoadRowsCanonicalToken(t, database, now.UnixMilli(), "pi", "ses_2", "anthropic", "claude")
+
+	rows, err := loadRows(context.Background(), tableOptions{
+		dbPath: dbPath,
+		period: periodMonth,
+		bucket: bucketDay,
+		filters: filters{
+			dayFrom: "2026-03-15",
+			dayTo:   "2026-03-15",
+		},
+	}, now, groupByNone, tabTokens)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 1 {
+		t.Fatalf("got %d rows, want 1: %+v", len(rows), rows)
+	}
+	if rows[0].bucket != "2026-03-15" {
+		t.Fatalf("got bucket %q, want 2026-03-15", rows[0].bucket)
+	}
+}
+
+func TestLoadRowsModelTabAggregatesByModel(t *testing.T) {
 	database, dbPath := newLoadRowsTestDB(t)
 	defer database.Close()
 	recordedAt := time.Date(2026, 4, 24, 12, 0, 0, 0, time.Local)
 	insertLoadRowsCanonicalToken(t, database, recordedAt.UnixMilli(), "opencode", "ses_1", "openai", "gpt-5")
+	insertLoadRowsCanonicalToken(t, database, recordedAt.Add(time.Second).UnixMilli(), "pi", "ses_2", "azure", "gpt-5")
 
-	tabs := []struct {
-		name string
-		tab  tabMode
-	}{
-		{name: "tps", tab: tabTPS},
-		{name: "requests", tab: tabRequests},
-		{name: "tool calls", tab: tabToolCalls},
-		{name: "tool breakdown", tab: tabToolBreakdown},
+	rows, err := loadRows(context.Background(), tableOptions{dbPath: dbPath, period: periodAllTime, bucket: bucketDay}, recordedAt, groupByNone, tabModels)
+	if err != nil {
+		t.Fatal(err)
 	}
-
-	for _, tab := range tabs {
-		t.Run(tab.name, func(t *testing.T) {
-			rows, err := loadRows(context.Background(), tableOptions{dbPath: dbPath, period: periodAllTime}, recordedAt, groupByNone, tab.tab)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if len(rows) != 0 {
-				t.Fatalf("got %d rows, want 0: %+v", len(rows), rows)
-			}
-		})
+	if len(rows) != 1 {
+		t.Fatalf("got %d rows, want 1", len(rows))
+	}
+	if rows[0].model != "gpt-5" || rows[0].providers != "azure, openai" || rows[0].harnesses != "opencode, pi" || rows[0].sessions != "2" {
+		t.Fatalf("unexpected model row: %+v", rows[0])
 	}
 }
 
@@ -206,20 +262,39 @@ func TestTabSwitchResetsHorizontalOffset(t *testing.T) {
 	if updated.horizontalOffset != 0 {
 		t.Fatalf("got horizontal offset %d, want 0", updated.horizontalOffset)
 	}
+	if updated.activeTab != tabModels {
+		t.Fatalf("got active tab %q, want %q", updated.activeTab, tabModels)
+	}
 	if cmd == nil {
 		t.Fatal("expected reload command")
 	}
 }
 
-func TestGroupingPopupResetsHorizontalOffset(t *testing.T) {
+func TestNumberKeysJumpToAggregationTabs(t *testing.T) {
+	m := interactiveModel{activeTab: tabTokens}
+
+	model, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("5")})
+	updated, ok := model.(interactiveModel)
+	if !ok {
+		t.Fatalf("got model %T, want interactiveModel", model)
+	}
+	if updated.activeTab != tabSessions {
+		t.Fatalf("got active tab %q, want %q", updated.activeTab, tabSessions)
+	}
+	if cmd == nil {
+		t.Fatal("expected reload command")
+	}
+}
+
+func TestBucketPopupResetsHorizontalOffset(t *testing.T) {
 	m := interactiveModel{
-		popup:            popupGrouping,
-		popupCursor:      2,
-		groupBy:          groupBySession,
+		popup:            popupBucket,
+		popupCursor:      1,
+		options:          tableOptions{bucket: bucketDay},
 		horizontalOffset: 12,
 	}
 
-	model, cmd := m.handleGroupingPopupKey(tea.KeyMsg{Type: tea.KeySpace})
+	model, cmd := m.handleBucketPopupKey(tea.KeyMsg{Type: tea.KeySpace})
 	updated, ok := model.(interactiveModel)
 	if !ok {
 		t.Fatalf("got model %T, want interactiveModel", model)
@@ -232,14 +307,14 @@ func TestGroupingPopupResetsHorizontalOffset(t *testing.T) {
 	}
 }
 
-func TestGroupingPopupSpaceAppliesSelection(t *testing.T) {
+func TestDateRangePopupSpaceAppliesSelection(t *testing.T) {
 	m := interactiveModel{
-		popup:       popupGrouping,
-		popupCursor: 2,
-		groupBy:     groupBySession,
+		popup:       popupDateRange,
+		popupCursor: 1,
+		options:     tableOptions{period: periodMonth},
 	}
 
-	model, cmd := m.handleGroupingPopupKey(tea.KeyMsg{Type: tea.KeySpace})
+	model, cmd := m.handleDateRangePopupKey(tea.KeyMsg{Type: tea.KeySpace})
 	updated, ok := model.(interactiveModel)
 	if !ok {
 		t.Fatalf("got model %T, want interactiveModel", model)
@@ -247,21 +322,41 @@ func TestGroupingPopupSpaceAppliesSelection(t *testing.T) {
 	if updated.popup != popupNone {
 		t.Fatalf("got popup %d, want popupNone", updated.popup)
 	}
-	if updated.groupBy != groupByHour {
-		t.Fatalf("got groupBy %q, want %q", updated.groupBy, groupByHour)
+	if updated.options.period != periodYesterday {
+		t.Fatalf("got period %q, want %q", updated.options.period, periodYesterday)
 	}
 	if cmd == nil {
 		t.Fatal("expected reload command")
 	}
 }
 
-func TestFilterDimensionSpaceOpensValueSelection(t *testing.T) {
+func TestSortPopupSpaceAppliesSelection(t *testing.T) {
 	m := interactiveModel{
-		popup:       popupFilterDimension,
-		popupCursor: 1,
+		popup:       popupSort,
+		popupCursor: 5,
+		options:     tableOptions{sort: sortTokens},
 	}
 
-	model, cmd := m.handleFilterDimensionKey(tea.KeyMsg{Type: tea.KeySpace})
+	model, cmd := m.handleSortPopupKey(tea.KeyMsg{Type: tea.KeySpace})
+	updated, ok := model.(interactiveModel)
+	if !ok {
+		t.Fatalf("got model %T, want interactiveModel", model)
+	}
+	if updated.popup != popupNone {
+		t.Fatalf("got popup %d, want popupNone", updated.popup)
+	}
+	if updated.options.sort != sortName {
+		t.Fatalf("got sort %q, want %q", updated.options.sort, sortName)
+	}
+	if cmd == nil {
+		t.Fatal("expected reload command")
+	}
+}
+
+func TestHarnessShortcutOpensValueSelection(t *testing.T) {
+	m := interactiveModel{}
+
+	model, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("h")})
 	updated, ok := model.(interactiveModel)
 	if !ok {
 		t.Fatalf("got model %T, want interactiveModel", model)
@@ -277,6 +372,22 @@ func TestFilterDimensionSpaceOpensValueSelection(t *testing.T) {
 	}
 	if cmd == nil {
 		t.Fatal("expected filter values command")
+	}
+}
+
+func TestNoReloadShortcut(t *testing.T) {
+	m := interactiveModel{}
+
+	model, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("r")})
+	updated, ok := model.(interactiveModel)
+	if !ok {
+		t.Fatalf("got model %T, want interactiveModel", model)
+	}
+	if updated.popup != popupNone || updated.activeTab != tabTokens || updated.horizontalOffset != 0 || updated.scrollOffset != 0 {
+		t.Fatalf("model changed on reload shortcut: %+v", updated)
+	}
+	if cmd != nil {
+		t.Fatal("did not expect command")
 	}
 }
 
@@ -315,5 +426,62 @@ func TestFilterValuesSpaceTogglesSelection(t *testing.T) {
 	}
 	if updated.filterSelections["openai"] {
 		t.Fatal("expected highlighted value to be unselected")
+	}
+}
+
+func TestFilterValuesClearIsStagedUntilEnter(t *testing.T) {
+	m := interactiveModel{
+		popup:        popupFilterValues,
+		filterValues: []string{"anthropic", "openai"},
+		filterSelections: map[string]bool{
+			"anthropic": true,
+			"openai":    true,
+		},
+		options: tableOptions{
+			filters: filters{providers: stringList{"anthropic", "openai"}},
+		},
+	}
+
+	model, cmd := m.handleFilterValuesKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("c")})
+	updated, ok := model.(interactiveModel)
+	if !ok {
+		t.Fatalf("got model %T, want interactiveModel", model)
+	}
+	if cmd != nil {
+		t.Fatal("did not expect command before applying")
+	}
+	if len(updated.options.filters.providers) != 2 {
+		t.Fatalf("filter applied before enter: %+v", updated.options.filters.providers)
+	}
+	if updated.filterSelections["anthropic"] || updated.filterSelections["openai"] {
+		t.Fatalf("expected staged selections cleared: %+v", updated.filterSelections)
+	}
+}
+
+func TestFilterValuesEscapeCancelsStagedChanges(t *testing.T) {
+	m := interactiveModel{
+		popup:        popupFilterValues,
+		filterValues: []string{"anthropic", "openai"},
+		filterSelections: map[string]bool{
+			"anthropic": true,
+		},
+		options: tableOptions{
+			filters: filters{providers: stringList{"anthropic"}},
+		},
+	}
+
+	model, cmd := m.handleFilterValuesKey(tea.KeyMsg{Type: tea.KeyEsc})
+	updated, ok := model.(interactiveModel)
+	if !ok {
+		t.Fatalf("got model %T, want interactiveModel", model)
+	}
+	if cmd != nil {
+		t.Fatal("did not expect command")
+	}
+	if updated.popup != popupNone {
+		t.Fatalf("got popup %d, want popupNone", updated.popup)
+	}
+	if strings.Join([]string(updated.options.filters.providers), ",") != "anthropic" {
+		t.Fatalf("filter changed after escape: %+v", updated.options.filters.providers)
 	}
 }
