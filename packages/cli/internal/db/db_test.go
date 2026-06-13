@@ -162,6 +162,35 @@ func TestAggregateCanonicalDaily(t *testing.T) {
 	}
 }
 
+func TestAggregateNonTokenDomainsEmptyWithCanonicalTokens(t *testing.T) {
+	database, _ := newTestDB(t)
+	defer database.Close()
+	day := time.Date(2026, 4, 24, 12, 0, 0, 0, time.Local).UnixMilli()
+	insertCanonicalToken(t, database, day, "opencode", "ses_1", "openai", "gpt", 100, 10, 5, 20, 1, 136)
+
+	aggregates := []struct {
+		name string
+		load func(context.Context, *sql.DB, Filter, GroupBy) ([]Row, error)
+	}{
+		{name: "tps", load: AggregateTPS},
+		{name: "requests", load: AggregateRequests},
+		{name: "tool calls", load: AggregateToolCalls},
+		{name: "tool breakdown", load: AggregateToolBreakdown},
+	}
+
+	for _, aggregate := range aggregates {
+		t.Run(aggregate.name, func(t *testing.T) {
+			rows, err := aggregate.load(context.Background(), database, Filter{}, GroupByDay)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(rows) != 0 {
+				t.Fatalf("got %d rows, want 0: %+v", len(rows), rows)
+			}
+		})
+	}
+}
+
 func TestAggregateCanonicalSessionAndFilters(t *testing.T) {
 	database, _ := newTestDB(t)
 	defer database.Close()

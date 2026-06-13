@@ -858,10 +858,19 @@ func loadRows(ctx context.Context, options tableOptions, now time.Time, groupBy 
 	}
 
 	var aggRows []db.Row
-	if activeTab == tabToolBreakdown {
+	switch activeTab {
+	case tabTokens:
+		aggRows, err = db.AggregateTokens(ctx, database, f, g)
+	case tabTPS:
+		aggRows, err = db.AggregateTPS(ctx, database, f, g)
+	case tabRequests:
+		aggRows, err = db.AggregateRequests(ctx, database, f, g)
+	case tabToolCalls:
+		aggRows, err = db.AggregateToolCalls(ctx, database, f, g)
+	case tabToolBreakdown:
 		aggRows, err = db.AggregateToolBreakdown(ctx, database, f, g)
-	} else {
-		aggRows, err = db.Aggregate(ctx, database, f, g)
+	default:
+		aggRows, err = db.AggregateTokens(ctx, database, f, g)
 	}
 	if err != nil {
 		return nil, err

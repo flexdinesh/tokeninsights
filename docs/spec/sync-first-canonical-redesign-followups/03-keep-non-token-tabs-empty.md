@@ -12,11 +12,11 @@ Make TPS, requests, tool calls, and tool breakdown tabs use domain-specific quer
 
 ## Acceptance criteria
 
-- [ ] Token tab still reads countable `canonical_token_usage`.
-- [ ] TPS, requests, tool calls, and tool breakdown have explicit query/load paths.
-- [ ] Non-token tabs return empty rows when only canonical token facts exist.
-- [ ] Tests cover tab loading for token and non-token tabs.
-- [ ] Existing TPS labels remain visible and unchanged.
+- [x] Token tab still reads countable `canonical_token_usage`.
+- [x] TPS, requests, tool calls, and tool breakdown have explicit query/load paths.
+- [x] Non-token tabs return empty rows when only canonical token facts exist.
+- [x] Tests cover tab loading for token and non-token tabs.
+- [x] Existing TPS labels remain visible and unchanged.
 
 ## Blocked by
 

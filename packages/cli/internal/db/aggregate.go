@@ -143,6 +143,10 @@ func canonicalWhereClause(f Filter) (string, []interface{}) {
 }
 
 func Aggregate(ctx context.Context, db *sql.DB, f Filter, g GroupBy) ([]Row, error) {
+	return AggregateTokens(ctx, db, f, g)
+}
+
+func AggregateTokens(ctx context.Context, db *sql.DB, f Filter, g GroupBy) ([]Row, error) {
 	whereClause, args := canonicalWhereClause(f)
 	query := fmt.Sprintf(`
 		SELECT %s,
@@ -196,8 +200,20 @@ func Aggregate(ctx context.Context, db *sql.DB, f Filter, g GroupBy) ([]Row, err
 	return result, nil
 }
 
+func AggregateTPS(context.Context, *sql.DB, Filter, GroupBy) ([]Row, error) {
+	return []Row{}, nil
+}
+
+func AggregateRequests(context.Context, *sql.DB, Filter, GroupBy) ([]Row, error) {
+	return []Row{}, nil
+}
+
+func AggregateToolCalls(context.Context, *sql.DB, Filter, GroupBy) ([]Row, error) {
+	return []Row{}, nil
+}
+
 func AggregateToolBreakdown(context.Context, *sql.DB, Filter, GroupBy) ([]Row, error) {
-	return nil, nil
+	return []Row{}, nil
 }
 
 func sortRows(rows []Row, g GroupBy) {
