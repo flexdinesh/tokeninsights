@@ -11,7 +11,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	_ "modernc.org/sqlite"
 
-	"tokeninsights-cli/internal/db"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/db"
 )
 
 func newLoadRowsTestDB(t *testing.T) (*sql.DB, string) {

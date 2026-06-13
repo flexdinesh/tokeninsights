@@ -4,6 +4,10 @@ TokenInsights tracks local token usage across coding harnesses through durable l
 
 ## Language
 
+**TokenInsights CLI**:
+The user-facing command-line product for TokenInsights, invoked as `tokeninsights`.
+_Avoid_: tokeninsights-cli as the public command name
+
 **Durable Source**:
 A local harness-owned file, database, or directory that persists usage-relevant session data after a harness run completes and can be batch-synced without realtime hooks.
 _Avoid_: Harness source, local source, session file, harness local DB

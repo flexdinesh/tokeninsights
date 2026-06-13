@@ -1,4 +1,4 @@
-module tokeninsights-cli
+module github.com/flexdinesh/tokeninsights/packages/cli
 
 go 1.26
 

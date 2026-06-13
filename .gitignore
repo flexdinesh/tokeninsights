@@ -1,2 +1,4 @@
 node_modules
 packages/cli/tokeninsights-cli
+packages/cli/tokeninsights
+packages/cli/bin/

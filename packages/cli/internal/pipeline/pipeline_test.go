@@ -14,7 +14,7 @@ import (
 	"testing"
 	"time"
 
-	"tokeninsights-cli/internal/db"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/db"
 
 	_ "modernc.org/sqlite"
 )

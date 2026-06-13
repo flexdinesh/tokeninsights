@@ -11,7 +11,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"tokeninsights-cli/internal/db"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/db"
 )
 
 type reloadMsg struct {

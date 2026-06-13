@@ -14,6 +14,18 @@ Use `--db-path` or `TOKENINSIGHTS_DB_PATH` to choose another database.
 
 ## CLI
 
+Install the latest stable release:
+
+```sh
+go install github.com/flexdinesh/tokeninsights/packages/cli/cmd/tokeninsights@latest
+```
+
+Install the development version from the `dev` branch:
+
+```sh
+go install github.com/flexdinesh/tokeninsights/packages/cli/cmd/tokeninsights@dev
+```
+
 Build:
 
 ```sh
@@ -23,24 +35,24 @@ pnpm run build:cli
 Sync local data, then view it:
 
 ```sh
-./packages/cli/tokeninsights-cli sync --all
-./packages/cli/tokeninsights-cli view
+./packages/cli/bin/tokeninsights sync --all
+./packages/cli/bin/tokeninsights view
 ```
 
 Sync one harness:
 
 ```sh
-./packages/cli/tokeninsights-cli sync --harness opencode
-./packages/cli/tokeninsights-cli sync --harness pi
-./packages/cli/tokeninsights-cli sync --harness codex
+./packages/cli/bin/tokeninsights sync --harness opencode
+./packages/cli/bin/tokeninsights sync --harness pi
+./packages/cli/bin/tokeninsights sync --harness codex
 ```
 
 Useful sync options:
 
 ```sh
-./packages/cli/tokeninsights-cli sync --all --dry-run
-./packages/cli/tokeninsights-cli sync --all --no-normalize
-./packages/cli/tokeninsights-cli sync --harness opencode --source-dir /path/to/fixtures
+./packages/cli/bin/tokeninsights sync --all --dry-run
+./packages/cli/bin/tokeninsights sync --all --no-normalize
+./packages/cli/bin/tokeninsights sync --harness opencode --source-dir /path/to/fixtures
 ```
 
 With `sync --all --source-dir <root>`, harnesses read from `<root>/<harness>` and skip missing harness subdirectories.
@@ -50,25 +62,25 @@ OpenCode sync reads modern SQLite sources named `opencode.db` or `opencode-<chan
 Canonical maintenance:
 
 ```sh
-./packages/cli/tokeninsights-cli normalize
-./packages/cli/tokeninsights-cli normalize --dry-run
-./packages/cli/tokeninsights-cli reset-canonical --confirm
-./packages/cli/tokeninsights-cli reset-all --confirm
+./packages/cli/bin/tokeninsights normalize
+./packages/cli/bin/tokeninsights normalize --dry-run
+./packages/cli/bin/tokeninsights reset-canonical --confirm
+./packages/cli/bin/tokeninsights reset-all --confirm
 ```
 
 View filters:
 
 ```sh
-./packages/cli/tokeninsights-cli view --today
-./packages/cli/tokeninsights-cli view --week --group-by=session
-./packages/cli/tokeninsights-cli view --month --harness pi
-./packages/cli/tokeninsights-cli view --week --provider openai --model gpt-5
+./packages/cli/bin/tokeninsights view --today
+./packages/cli/bin/tokeninsights view --week --group-by=session
+./packages/cli/bin/tokeninsights view --month --harness pi
+./packages/cli/bin/tokeninsights view --week --provider openai --model gpt-5
 ```
 
 Running without a command still opens the interactive view for compatibility:
 
 ```sh
-./packages/cli/tokeninsights-cli --week
+./packages/cli/bin/tokeninsights --week
 ```
 
 ## Development

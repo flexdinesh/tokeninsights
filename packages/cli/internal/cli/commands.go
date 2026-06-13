@@ -8,8 +8,9 @@ import (
 	"strings"
 	"time"
 
-	"tokeninsights-cli/internal/db"
-	"tokeninsights-cli/internal/pipeline"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/db"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/pipeline"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/version"
 )
 
 func Run(ctx context.Context, args []string, stdout io.Writer, stderr io.Writer, now time.Time) error {
@@ -20,6 +21,9 @@ func Run(ctx context.Context, args []string, stdout io.Writer, stderr io.Writer,
 	switch args[0] {
 	case "help", "--help", "-h":
 		fmt.Fprintln(stdout, usageText())
+		return nil
+	case "--version", "version":
+		fmt.Fprintln(stdout, version.String())
 		return nil
 	case "view":
 		return RunInteractive(ctx, args[1:], stdout, stderr, now)
@@ -37,7 +41,7 @@ func Run(ctx context.Context, args []string, stdout io.Writer, stderr io.Writer,
 }
 
 func runSync(ctx context.Context, args []string, stdout io.Writer, stderr io.Writer, now time.Time) error {
-	flags := flag.NewFlagSet("tokeninsights-cli sync", flag.ContinueOnError)
+	flags := flag.NewFlagSet("tokeninsights sync", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	var dbPath string
 	var all bool
@@ -77,7 +81,7 @@ func runSync(ctx context.Context, args []string, stdout io.Writer, stderr io.Wri
 }
 
 func runNormalize(ctx context.Context, args []string, stdout io.Writer, stderr io.Writer, now time.Time) error {
-	flags := flag.NewFlagSet("tokeninsights-cli normalize", flag.ContinueOnError)
+	flags := flag.NewFlagSet("tokeninsights normalize", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	var dbPath string
 	var dryRun bool
@@ -105,7 +109,7 @@ func runNormalize(ctx context.Context, args []string, stdout io.Writer, stderr i
 }
 
 func runResetCanonical(ctx context.Context, args []string, stdout io.Writer, stderr io.Writer) error {
-	flags := flag.NewFlagSet("tokeninsights-cli reset-canonical", flag.ContinueOnError)
+	flags := flag.NewFlagSet("tokeninsights reset-canonical", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	var dbPath string
 	var confirm bool
@@ -134,7 +138,7 @@ func runResetCanonical(ctx context.Context, args []string, stdout io.Writer, std
 }
 
 func runResetAll(args []string, stdout io.Writer, stderr io.Writer) error {
-	flags := flag.NewFlagSet("tokeninsights-cli reset-all", flag.ContinueOnError)
+	flags := flag.NewFlagSet("tokeninsights reset-all", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	var dbPath string
 	var confirm bool
@@ -200,7 +204,7 @@ func printSummary(stdout io.Writer, command string, summary pipeline.Summary, dr
 }
 
 func usageText() string {
-	return `usage: tokeninsights-cli <command> [options]
+	return `usage: tokeninsights <command> [options]
 
 commands:
   sync              ingest local harness data

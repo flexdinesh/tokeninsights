@@ -8,8 +8,8 @@ import (
 	"os"
 	"time"
 
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/cli"
 	_ "modernc.org/sqlite"
-	"tokeninsights-cli/internal/cli"
 )
 
 func main() {

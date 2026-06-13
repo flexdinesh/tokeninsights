@@ -1,9 +1,9 @@
 {
-  "name": "tokeninsights-cli",
+  "name": "@tokeninsights/cli",
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "build": "go build -o tokeninsights-cli ./cmd/tokeninsights-cli",
+    "build": "go build -o bin/tokeninsights ./cmd/tokeninsights",
     "test": "go test ./..."
   }
 }
