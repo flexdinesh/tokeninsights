@@ -1,5 +1,7 @@
 # 3. Keep Sparse Non-Token Viewer Tabs Empty Until Canonical Domains Exist
 
+Superseded by [ADR 0001](../../adr/0001-viewer-tabs-are-token-aggregation-modes.md). Non-token viewer tabs were an interim sparse-domain boundary; the active viewer surface now uses token aggregation tabs and hides TPS, request, and tool domains until durable canonical facts exist for them.
+
 Execution order: 3
 
 Type: AFK

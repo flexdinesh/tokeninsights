@@ -10,12 +10,28 @@ import (
 
 type Filter struct {
 	Start      time.Time
+	End        time.Time
 	SessionIDs []string
 	Providers  []string
 	Models     []string
 	Harnesses  []string
 	DayFrom    string
 	DayTo      string
+}
+
+func LastCompletedSync(ctx context.Context, db *sql.DB) (int64, error) {
+	var value sql.NullInt64
+	if err := db.QueryRowContext(ctx, `
+		SELECT MAX(completed_at_ms)
+		FROM ingest_runs
+		WHERE status = 'completed'
+	`).Scan(&value); err != nil {
+		return 0, err
+	}
+	if !value.Valid {
+		return 0, nil
+	}
+	return value.Int64, nil
 }
 
 type Event struct {

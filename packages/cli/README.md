@@ -70,8 +70,8 @@ Open the interactive terminal UI over canonical token usage.
 ```sh
 tokeninsights view
 tokeninsights view --today
-tokeninsights view --week --group-by=hour
-tokeninsights view --week --group-by=session
+tokeninsights view --yesterday
+tokeninsights view --year --bucket month
 tokeninsights view --month --provider openai --model gpt-5
 ```
 
@@ -95,21 +95,29 @@ The CLI creates a missing database for `sync`, `normalize`, and reset workflows.
 
 Show data from today.
 
+`--yesterday`
+
+Show data from yesterday.
+
 `--week`
 
-Show data from the current calendar week. This is the default period for interactive view.
+Show data from the current calendar week.
 
 `--month`
 
-Show data from the current calendar month.
+Show data from the current calendar month. This is the default Date Range Filter for interactive view.
+
+`--year`
+
+Show data from the current calendar year.
 
 `--all-time`
 
 Show all canonical data with no period filter.
 
-`--group-by=hour|session`
+`--bucket day|week|month|year`
 
-Split the selected period by hour or session. The default grouping is day.
+Set the Tokens tab Time Bucket. The default bucket is `day`; week buckets start on Monday.
 
 `--session-id ID`
 
@@ -137,7 +145,7 @@ Inclusive local-day upper bound.
 
 ## Interactive Keys
 
-Press `q` to quit. Use `up/down` or `j/k` to scroll vertically, `left/right` or `h/l` to scroll horizontally, and `home/end` to jump to the start or end of the horizontal table viewport.
+Press `q` to quit. Use tab/shift-tab or number keys 1-5 to switch Aggregation Tabs. Use `d` for Date Range Filter, `g` for Time Bucket, `s` for sort, and `p`, `m`, or `h` for provider, model, or harness filters. Use `up/down` or `j/k` to scroll vertically, `left/right` to scroll horizontally, and `home/end` to jump to the start or end of the horizontal table viewport.
 
 ## Metrics
 
@@ -154,6 +162,6 @@ total
 
 Missing provider or model values are normalized to `unknown`.
 
-TPS, request, and tool-call tabs remain part of the UI surface, but sync-first V1 only guarantees token usage where durable local sources expose it. Sparse or unavailable domains render empty instead of failing token viewing.
+The active Aggregation Tabs are Tokens, Models, Providers, Harnesses, and Sessions. TPS, request, and tool domains remain future-compatible data domains, but they are not active empty viewer tabs.
 
-Session IDs are shortened to the last 8 characters in table output. Model names with `/` are shortened to the last path segment.
+Session IDs are shortened in table output. Model names with `/` are shortened to the last path segment where a compact display is needed.

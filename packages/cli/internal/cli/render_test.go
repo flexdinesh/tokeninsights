@@ -1,9 +1,6 @@
 package cli
 
 import (
-	"bytes"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
@@ -21,221 +18,52 @@ func TestHorizontalViewportSlicesAndPadsStyledContent(t *testing.T) {
 	}
 }
 
-func TestRenderTableDailyTokens(t *testing.T) {
-	output := renderTable([]renderRow{{
-		harness:          "oc",
-		day:              "2026-04-24",
-		provider:         "openai",
-		model:            "gpt",
+func TestRenderTableTokensUsesBucketAndSessionColumns(t *testing.T) {
+	output := ansi.Strip(renderTable([]renderRow{{
+		bucket:           "2026-04-24",
+		sessions:         "2",
 		inputTokens:      "300",
 		outputTokens:     "30",
 		reasoningTokens:  "11",
 		cacheReadTokens:  "50",
 		cacheWriteTokens: "3",
 		totalTokens:      "394",
-	}}, groupByNone, tabTokens)
+	}}, groupByNone, tabTokens))
 
-	golden := filepath.Join("testdata", "render_daily_tokens.txt")
-	if os.Getenv("UPDATE_GOLDEN") != "" {
-		if err := os.WriteFile(golden, []byte(output), 0644); err != nil {
-			t.Fatal(err)
+	for _, expected := range []string{"bucket", "sessions", "2026-04-24", "394"} {
+		if !strings.Contains(output, expected) {
+			t.Fatalf("output missing %q:\n%s", expected, output)
 		}
 	}
-	expected, err := os.ReadFile(golden)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !bytes.Equal([]byte(output), expected) {
-		t.Fatalf("output mismatch\ngot:\n%s\nwant:\n%s", output, expected)
+	if strings.Contains(output, "provider") || strings.Contains(output, "╭") {
+		t.Fatalf("output contains legacy table surface:\n%s", output)
 	}
 }
 
-func TestRenderTableHourlyTokens(t *testing.T) {
-	output := renderTable([]renderRow{{
-		harness:          "oc",
-		day:              "2026-04-24",
-		hour:             "12:00",
-		provider:         "openai",
-		model:            "gpt",
+func TestRenderTableModelSummaries(t *testing.T) {
+	output := ansi.Strip(renderTable([]renderRow{{
+		model:            "gpt-5",
+		providers:        "azure, openai",
+		harnesses:        "opencode, pi",
+		sessions:         "2",
 		inputTokens:      "300",
 		outputTokens:     "30",
 		reasoningTokens:  "11",
 		cacheReadTokens:  "50",
 		cacheWriteTokens: "3",
 		totalTokens:      "394",
-	}, {
-		harness:          "oc",
-		day:              "2026-04-24",
-		hour:             "12:00",
-		provider:         "anthropic",
-		model:            "claude",
-		inputTokens:      "200",
-		outputTokens:     "20",
-		reasoningTokens:  "5",
-		cacheReadTokens:  "10",
-		cacheWriteTokens: "1",
-		totalTokens:      "236",
-	}, {
-		harness:          "oc",
-		day:              "2026-04-24",
-		hour:             "13:00",
-		provider:         "openai",
-		model:            "gpt",
-		inputTokens:      "100",
-		outputTokens:     "10",
-		reasoningTokens:  "0",
-		cacheReadTokens:  "0",
-		cacheWriteTokens: "0",
-		totalTokens:      "110",
-	}}, groupByHour, tabTokens)
+	}}, groupByNone, tabModels))
 
-	golden := filepath.Join("testdata", "render_hourly_tokens.txt")
-	if os.Getenv("UPDATE_GOLDEN") != "" {
-		if err := os.WriteFile(golden, []byte(output), 0644); err != nil {
-			t.Fatal(err)
+	for _, expected := range []string{"model", "providers", "harnesses", "azure, openai", "opencode, pi"} {
+		if !strings.Contains(output, expected) {
+			t.Fatalf("output missing %q:\n%s", expected, output)
 		}
-	}
-	expected, err := os.ReadFile(golden)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !bytes.Equal([]byte(output), expected) {
-		t.Fatalf("output mismatch\ngot:\n%s\nwant:\n%s", output, expected)
 	}
 }
 
-func TestRenderTableSessionTokens(t *testing.T) {
-	output := renderTable([]renderRow{{
-		harness:          "oc",
-		day:              "2026-04-24",
-		sessionID:        "session_1234567890",
-		thinkingLevels:   "low,high",
-		provider:         "openai",
-		model:            "openai/gpt-5.5",
-		inputTokens:      "300",
-		outputTokens:     "30",
-		reasoningTokens:  "11",
-		cacheReadTokens:  "50",
-		cacheWriteTokens: "3",
-		totalTokens:      "394",
-	}}, groupBySession, tabTokens)
-
-	golden := filepath.Join("testdata", "render_session_tokens.txt")
-	if os.Getenv("UPDATE_GOLDEN") != "" {
-		if err := os.WriteFile(golden, []byte(output), 0644); err != nil {
-			t.Fatal(err)
-		}
-	}
-	expected, err := os.ReadFile(golden)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !bytes.Equal([]byte(output), expected) {
-		t.Fatalf("output mismatch\ngot:\n%s\nwant:\n%s", output, expected)
-	}
-}
-
-func TestRenderTableDailyTPS(t *testing.T) {
-	output := renderTable([]renderRow{{
-		harness:   "oc",
-		day:       "2026-04-24",
-		provider:  "openai",
-		model:     "gpt",
-		tpsAvg:    "18.18",
-		tpsMean:   "55.00",
-		tpsMedian: "55.00",
-	}}, groupByNone, tabTPS)
-
-	golden := filepath.Join("testdata", "render_daily_tps.txt")
-	if os.Getenv("UPDATE_GOLDEN") != "" {
-		if err := os.WriteFile(golden, []byte(output), 0644); err != nil {
-			t.Fatal(err)
-		}
-	}
-	expected, err := os.ReadFile(golden)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !bytes.Equal([]byte(output), expected) {
-		t.Fatalf("output mismatch\ngot:\n%s\nwant:\n%s", output, expected)
-	}
-}
-
-func TestRenderTableDailyToolCalls(t *testing.T) {
-	output := renderTable([]renderRow{{
-		harness:    "oc",
-		day:        "2026-04-24",
-		provider:   "openai",
-		model:      "gpt",
-		toolCalls:  "12",
-		toolErrors: "2",
-	}}, groupByNone, tabToolCalls)
-
-	golden := filepath.Join("testdata", "render_daily_tool_calls.txt")
-	if os.Getenv("UPDATE_GOLDEN") != "" {
-		if err := os.WriteFile(golden, []byte(output), 0644); err != nil {
-			t.Fatal(err)
-		}
-	}
-	expected, err := os.ReadFile(golden)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !bytes.Equal([]byte(output), expected) {
-		t.Fatalf("output mismatch\ngot:\n%s\nwant:\n%s", output, expected)
-	}
-}
-
-func TestRenderTableSessionToolBreakdown(t *testing.T) {
-	output := renderTable([]renderRow{{
-		harness:    "oc",
-		day:        "2026-04-24",
-		sessionID:  "session_1234567890",
-		provider:   "openai",
-		model:      "openai/gpt-5.5",
-		toolName:   "bash",
-		toolCalls:  "3",
-		toolErrors: "1",
-	}}, groupBySession, tabToolBreakdown)
-
-	golden := filepath.Join("testdata", "render_session_tool_breakdown.txt")
-	if os.Getenv("UPDATE_GOLDEN") != "" {
-		if err := os.WriteFile(golden, []byte(output), 0644); err != nil {
-			t.Fatal(err)
-		}
-	}
-	expected, err := os.ReadFile(golden)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !bytes.Equal([]byte(output), expected) {
-		t.Fatalf("output mismatch\ngot:\n%s\nwant:\n%s", output, expected)
-	}
-}
-
-func TestRenderTableSessionRequests(t *testing.T) {
-	output := renderTable([]renderRow{{
-		harness:        "oc",
-		day:            "2026-04-24",
-		sessionID:      "session_1234567890",
-		thinkingLevels: "low,high",
-		provider:       "openai",
-		model:          "openai/gpt-5.5",
-		requests:       "2",
-		retries:        "1",
-	}}, groupBySession, tabRequests)
-
-	golden := filepath.Join("testdata", "render_session_requests.txt")
-	if os.Getenv("UPDATE_GOLDEN") != "" {
-		if err := os.WriteFile(golden, []byte(output), 0644); err != nil {
-			t.Fatal(err)
-		}
-	}
-	expected, err := os.ReadFile(golden)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !bytes.Equal([]byte(output), expected) {
-		t.Fatalf("output mismatch\ngot:\n%s\nwant:\n%s", output, expected)
+func TestRenderTableEmptyState(t *testing.T) {
+	output := ansi.Strip(renderTable(nil, groupByNone, tabTokens))
+	if !strings.Contains(output, "No rows match the current scope.") {
+		t.Fatalf("missing empty state:\n%s", output)
 	}
 }

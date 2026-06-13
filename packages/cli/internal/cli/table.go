@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"io"
 	"os"
@@ -15,8 +16,9 @@ import (
 )
 
 type reloadMsg struct {
-	rows []renderRow
-	err  error
+	rows       []renderRow
+	lastSyncMs int64
+	err        error
 }
 
 type filterValuesMsg struct {
@@ -29,15 +31,25 @@ type popupMode int
 
 const (
 	popupNone popupMode = iota
-	popupGrouping
-	popupFilterDimension
+	popupDateRange
+	popupBucket
+	popupSort
 	popupFilterValues
+)
+
+type groupByMode string
+
+const (
+	groupByNone    groupByMode = ""
+	groupByHour    groupByMode = "hour"
+	groupBySession groupByMode = "session"
 )
 
 type filterDimension int
 
 const (
 	filterProvider filterDimension = iota
+	filterModel
 	filterHarness
 )
 
@@ -61,13 +73,16 @@ type interactiveModel struct {
 	options          tableOptions
 	now              time.Time
 	err              error
+	lastSyncMs       int64
 	cachedWidth      int
 	baseHeight       int
 	perRowHeight     int
 }
 
-var groupingOptions = []groupByMode{groupBySession, groupByNone, groupByHour}
-var filterDimensions = []filterDimension{filterProvider, filterHarness}
+var aggregationTabs = []tabMode{tabTokens, tabModels, tabProviders, tabHarnesses, tabSessions}
+var dateRangeOptions = []period{periodToday, periodYesterday, periodWeek, periodMonth, periodYear, periodAllTime}
+var bucketOptions = []timeBucket{bucketDay, bucketWeek, bucketMonth, bucketYear}
+var sortOptions = []sortMode{sortDate, sortTokens, sortInput, sortOutput, sortCacheRead, sortName}
 
 func (m interactiveModel) Init() tea.Cmd {
 	return m.reloadCmd()
@@ -79,7 +94,11 @@ func (m interactiveModel) reloadCmd() tea.Cmd {
 		if err != nil {
 			return reloadMsg{err: err}
 		}
-		return reloadMsg{rows: rows}
+		lastSyncMs, err := loadLastCompletedSync(m.ctx, m.options)
+		if err != nil {
+			return reloadMsg{err: err}
+		}
+		return reloadMsg{rows: rows, lastSyncMs: lastSyncMs}
 	}
 }
 
@@ -88,15 +107,6 @@ func (m interactiveModel) filterValuesCmd(dimension filterDimension) tea.Cmd {
 		values, err := loadFilterValues(m.ctx, m.options, m.now, dimension)
 		return filterValuesMsg{dimension: dimension, values: values, err: err}
 	}
-}
-
-func popupIndexForGroupBy(g groupByMode) int {
-	for i, opt := range groupingOptions {
-		if opt == g {
-			return i
-		}
-	}
-	return 0
 }
 
 const minVisibleRows = 5
@@ -126,12 +136,12 @@ func (m interactiveModel) measureHeights() interactiveModel {
 		return m
 	}
 
-	title := titleStyle.Render(fmt.Sprintf("Token Insights %s", m.period))
+	title := titleStyle.Render(fmt.Sprintf("TokenInsights %s", m.period))
 
 	var tabs []string
-	for i := tabTokens; i <= tabToolBreakdown; i++ {
-		label := i.String()
-		if i == m.activeTab {
+	for _, tab := range aggregationTabs {
+		label := tab.String()
+		if tab == m.activeTab {
 			tabs = append(tabs, activeTabStyle.Render(label))
 		} else {
 			tabs = append(tabs, inactiveTabStyle.Render(label))
@@ -140,7 +150,7 @@ func (m interactiveModel) measureHeights() interactiveModel {
 	tabBar := lipgloss.JoinHorizontal(lipgloss.Top, tabs...)
 	tabBox := sectionBorderStyle.Width(m.width - 4).Render(tabBar)
 
-	hintText := "tab/shift+tab switch · ↑/↓ j/k scroll · ←/→ h/l scroll · home/end horizontal · g grouping · f filter · q quit  ·  99999-99999 of 99999  ·  x 99999/99999"
+	hintText := "tab/shift+tab switch · ↑/↓ j/k scroll · ←/→ scroll · home/end horizontal · d date · g bucket · s sort · p/m/h filters · q quit  ·  99999-99999 of 99999  ·  x 99999/99999"
 	if filters := activeFiltersLabel(m.options.filters); filters != "" {
 		hintText += "  ·  " + filters
 	}
@@ -252,6 +262,7 @@ func (m interactiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.rows = msg.rows
+		m.lastSyncMs = msg.lastSyncMs
 		m.scrollOffset = clampScroll(m.scrollOffset, len(m.rows), m.maxVisibleRows())
 		m = m.clampHorizontalOffset()
 		return m, nil
@@ -275,19 +286,13 @@ func (m interactiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		switch msg.Type {
 		case tea.KeyTab:
-			m.activeTab++
-			if m.activeTab > tabToolBreakdown {
-				m.activeTab = tabTokens
-			}
+			m.activeTab = nextAggregationTab(m.activeTab, 1)
 			m.scrollOffset = 0
 			m.horizontalOffset = 0
 			m = m.measureHeights()
 			return m, m.reloadCmd()
 		case tea.KeyShiftTab:
-			m.activeTab--
-			if m.activeTab < 0 {
-				m.activeTab = tabToolBreakdown
-			}
+			m.activeTab = nextAggregationTab(m.activeTab, -1)
 			m.scrollOffset = 0
 			m.horizontalOffset = 0
 			m = m.measureHeights()
@@ -324,15 +329,32 @@ func (m interactiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			switch string(msg.Runes) {
 			case "q":
 				return m, tea.Quit
-			case "g":
-				m.popup = popupGrouping
-				m.popupCursor = popupIndexForGroupBy(m.groupBy)
+			case "1", "2", "3", "4", "5":
+				index := int(msg.Runes[0] - '1')
+				m.activeTab = aggregationTabs[index]
+				m.scrollOffset = 0
+				m.horizontalOffset = 0
+				m = m.measureHeights()
+				return m, m.reloadCmd()
+			case "d":
+				m.popup = popupDateRange
+				m.popupCursor = indexOfPeriod(m.options.period)
 				return m, nil
-			case "f":
-				m.popup = popupFilterDimension
-				m.popupCursor = 0
+			case "g":
+				m.popup = popupBucket
+				m.popupCursor = indexOfBucket(m.options.bucket)
+				return m, nil
+			case "s":
+				m.popup = popupSort
+				m.popupCursor = indexOfSort(activeSort(m.activeTab, m.options.sort))
 				m.filterErr = nil
 				return m, nil
+			case "p":
+				return m.openFilterValues(filterProvider)
+			case "m":
+				return m.openFilterValues(filterModel)
+			case "h":
+				return m.openFilterValues(filterHarness)
 			case "j":
 				visible := m.maxVisibleRows()
 				m.scrollOffset = clampScroll(m.scrollOffset+1, len(m.rows), visible)
@@ -348,10 +370,6 @@ func (m interactiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				rows := m.visibleRows()
 				m.horizontalOffset = clampHorizontalScroll(m.horizontalOffset+1, renderTableWidth(rows, m.groupBy, m.activeTab), m.tableViewportWidth())
 				return m, nil
-			case "h":
-				rows := m.visibleRows()
-				m.horizontalOffset = clampHorizontalScroll(m.horizontalOffset-1, renderTableWidth(rows, m.groupBy, m.activeTab), m.tableViewportWidth())
-				return m, nil
 			}
 		}
 	case tea.WindowSizeMsg:
@@ -364,12 +382,59 @@ func (m interactiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+func indexOfPeriod(value period) int {
+	for i, option := range dateRangeOptions {
+		if option == value {
+			return i
+		}
+	}
+	return 0
+}
+
+func indexOfBucket(value timeBucket) int {
+	for i, option := range bucketOptions {
+		if option == value {
+			return i
+		}
+	}
+	return 0
+}
+
+func indexOfSort(value sortMode) int {
+	for i, option := range sortOptions {
+		if option == value {
+			return i
+		}
+	}
+	return 0
+}
+
+func nextAggregationTab(active tabMode, delta int) tabMode {
+	activeIndex := 0
+	for i, tab := range aggregationTabs {
+		if tab == active {
+			activeIndex = i
+			break
+		}
+	}
+	next := activeIndex + delta
+	for next < 0 {
+		next += len(aggregationTabs)
+	}
+	for next >= len(aggregationTabs) {
+		next -= len(aggregationTabs)
+	}
+	return aggregationTabs[next]
+}
+
 func (m interactiveModel) handlePopupKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch m.popup {
-	case popupGrouping:
-		return m.handleGroupingPopupKey(msg)
-	case popupFilterDimension:
-		return m.handleFilterDimensionKey(msg)
+	case popupDateRange:
+		return m.handleDateRangePopupKey(msg)
+	case popupBucket:
+		return m.handleBucketPopupKey(msg)
+	case popupSort:
+		return m.handleSortPopupKey(msg)
 	case popupFilterValues:
 		return m.handleFilterValuesKey(msg)
 	default:
@@ -377,18 +442,18 @@ func (m interactiveModel) handlePopupKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 }
 
-func (m interactiveModel) handleGroupingPopupKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (m interactiveModel) handleDateRangePopupKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.Type {
 	case tea.KeyUp:
-		m.popupCursor = movePopupCursor(m.popupCursor, len(groupingOptions), -1)
+		m.popupCursor = movePopupCursor(m.popupCursor, len(dateRangeOptions), -1)
 		return m, nil
 	case tea.KeyDown:
-		m.popupCursor = movePopupCursor(m.popupCursor, len(groupingOptions), 1)
+		m.popupCursor = movePopupCursor(m.popupCursor, len(dateRangeOptions), 1)
 		return m, nil
 	case tea.KeyEnter:
-		return m.applyGroupingPopup()
+		return m.applyDateRangePopup()
 	case tea.KeySpace:
-		return m.applyGroupingPopup()
+		return m.applyDateRangePopup()
 	case tea.KeyEsc:
 		m.popup = popupNone
 		return m, nil
@@ -398,23 +463,24 @@ func (m interactiveModel) handleGroupingPopupKey(msg tea.KeyMsg) (tea.Model, tea
 			m.popup = popupNone
 			return m, nil
 		case "j":
-			m.popupCursor = movePopupCursor(m.popupCursor, len(groupingOptions), 1)
+			m.popupCursor = movePopupCursor(m.popupCursor, len(dateRangeOptions), 1)
 			return m, nil
 		case "k":
-			m.popupCursor = movePopupCursor(m.popupCursor, len(groupingOptions), -1)
+			m.popupCursor = movePopupCursor(m.popupCursor, len(dateRangeOptions), -1)
 			return m, nil
 		case " ":
-			return m.applyGroupingPopup()
+			return m.applyDateRangePopup()
 		}
 	}
 	return m, nil
 }
 
-func (m interactiveModel) applyGroupingPopup() (tea.Model, tea.Cmd) {
-	newGroupBy := groupingOptions[m.popupCursor]
+func (m interactiveModel) applyDateRangePopup() (tea.Model, tea.Cmd) {
+	newPeriod := dateRangeOptions[m.popupCursor]
 	m.popup = popupNone
-	if newGroupBy != m.groupBy {
-		m.groupBy = newGroupBy
+	if newPeriod != m.options.period {
+		m.options.period = newPeriod
+		m.period = newPeriod
 		m.scrollOffset = 0
 		m.horizontalOffset = 0
 		m = m.measureHeights()
@@ -423,18 +489,18 @@ func (m interactiveModel) applyGroupingPopup() (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m interactiveModel) handleFilterDimensionKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (m interactiveModel) handleBucketPopupKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.Type {
 	case tea.KeyUp:
-		m.popupCursor = movePopupCursor(m.popupCursor, len(filterDimensions), -1)
+		m.popupCursor = movePopupCursor(m.popupCursor, len(bucketOptions), -1)
 		return m, nil
 	case tea.KeyDown:
-		m.popupCursor = movePopupCursor(m.popupCursor, len(filterDimensions), 1)
+		m.popupCursor = movePopupCursor(m.popupCursor, len(bucketOptions), 1)
 		return m, nil
 	case tea.KeyEnter:
-		return m.openFilterValues()
+		return m.applyBucketPopup()
 	case tea.KeySpace:
-		return m.openFilterValues()
+		return m.applyBucketPopup()
 	case tea.KeyEsc:
 		m.popup = popupNone
 		return m, nil
@@ -444,20 +510,79 @@ func (m interactiveModel) handleFilterDimensionKey(msg tea.KeyMsg) (tea.Model, t
 			m.popup = popupNone
 			return m, nil
 		case "j":
-			m.popupCursor = movePopupCursor(m.popupCursor, len(filterDimensions), 1)
+			m.popupCursor = movePopupCursor(m.popupCursor, len(bucketOptions), 1)
 			return m, nil
 		case "k":
-			m.popupCursor = movePopupCursor(m.popupCursor, len(filterDimensions), -1)
+			m.popupCursor = movePopupCursor(m.popupCursor, len(bucketOptions), -1)
 			return m, nil
 		case " ":
-			return m.openFilterValues()
+			return m.applyBucketPopup()
 		}
 	}
 	return m, nil
 }
 
-func (m interactiveModel) openFilterValues() (tea.Model, tea.Cmd) {
-	m.filterDimension = filterDimensions[m.popupCursor]
+func (m interactiveModel) applyBucketPopup() (tea.Model, tea.Cmd) {
+	newBucket := bucketOptions[m.popupCursor]
+	m.popup = popupNone
+	if newBucket != m.options.bucket {
+		m.options.bucket = newBucket
+		m.scrollOffset = 0
+		m.horizontalOffset = 0
+		m = m.measureHeights()
+		return m, m.reloadCmd()
+	}
+	return m, nil
+}
+
+func (m interactiveModel) handleSortPopupKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.Type {
+	case tea.KeyUp:
+		m.popupCursor = movePopupCursor(m.popupCursor, len(sortOptions), -1)
+		return m, nil
+	case tea.KeyDown:
+		m.popupCursor = movePopupCursor(m.popupCursor, len(sortOptions), 1)
+		return m, nil
+	case tea.KeyEnter:
+		return m.applySortPopup()
+	case tea.KeySpace:
+		return m.applySortPopup()
+	case tea.KeyEsc:
+		m.popup = popupNone
+		return m, nil
+	case tea.KeyRunes:
+		switch string(msg.Runes) {
+		case "q":
+			m.popup = popupNone
+			return m, nil
+		case "j":
+			m.popupCursor = movePopupCursor(m.popupCursor, len(sortOptions), 1)
+			return m, nil
+		case "k":
+			m.popupCursor = movePopupCursor(m.popupCursor, len(sortOptions), -1)
+			return m, nil
+		case " ":
+			return m.applySortPopup()
+		}
+	}
+	return m, nil
+}
+
+func (m interactiveModel) applySortPopup() (tea.Model, tea.Cmd) {
+	newSort := sortOptions[m.popupCursor]
+	m.popup = popupNone
+	if newSort != m.options.sort {
+		m.options.sort = newSort
+		m.scrollOffset = 0
+		m.horizontalOffset = 0
+		m = m.measureHeights()
+		return m, m.reloadCmd()
+	}
+	return m, nil
+}
+
+func (m interactiveModel) openFilterValues(dimension filterDimension) (tea.Model, tea.Cmd) {
+	m.filterDimension = dimension
 	m.popup = popupFilterValues
 	m.popupCursor = 0
 	m.filterValues = nil
@@ -493,6 +618,9 @@ func (m interactiveModel) handleFilterValuesKey(msg tea.KeyMsg) (tea.Model, tea.
 		case "k":
 			m.popupCursor = movePopupCursor(m.popupCursor, len(m.filterValues), -1)
 			return m, nil
+		case "c":
+			m.filterSelections = make(map[string]bool)
+			return m, nil
 		case " ":
 			return m.toggleFilterValue(), nil
 		}
@@ -520,6 +648,8 @@ func (m interactiveModel) applyFilterValues() (tea.Model, tea.Cmd) {
 	switch m.filterDimension {
 	case filterProvider:
 		m.options.filters.providers = stringList(selected)
+	case filterModel:
+		m.options.filters.models = stringList(selected)
 	case filterHarness:
 		m.options.filters.harnesses = stringList(selected)
 	}
@@ -558,6 +688,8 @@ func (m interactiveModel) currentFilterValues(dimension filterDimension) []strin
 	switch dimension {
 	case filterProvider:
 		return []string(m.options.filters.providers)
+	case filterModel:
+		return []string(m.options.filters.models)
 	case filterHarness:
 		return []string(m.options.filters.harnesses)
 	default:
@@ -635,10 +767,21 @@ func groupByLabel(g groupByMode) string {
 	}
 }
 
+func periodLabel(value period) string {
+	switch value {
+	case periodAllTime:
+		return "all time"
+	default:
+		return strings.ReplaceAll(string(value), "_", " ")
+	}
+}
+
 func filterDimensionLabel(dimension filterDimension) string {
 	switch dimension {
 	case filterProvider:
 		return "provider"
+	case filterModel:
+		return "model"
 	case filterHarness:
 		return "harness"
 	default:
@@ -655,12 +798,12 @@ func (m interactiveModel) View() string {
 		return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, m.renderPopup())
 	}
 
-	title := titleStyle.Render(fmt.Sprintf("Token Insights %s", m.period))
+	title := titleStyle.Render(fmt.Sprintf("TokenInsights %s", m.period))
 
 	var tabs []string
-	for i := tabTokens; i <= tabToolBreakdown; i++ {
-		label := i.String()
-		if i == m.activeTab {
+	for _, tab := range aggregationTabs {
+		label := tab.String()
+		if tab == m.activeTab {
 			tabs = append(tabs, activeTabStyle.Render(label))
 		} else {
 			tabs = append(tabs, inactiveTabStyle.Render(label))
@@ -675,7 +818,7 @@ func (m interactiveModel) View() string {
 	maxHorizontal := m.maxHorizontalOffset(visibleRows)
 	horizontalOffset := clampHorizontalScroll(m.horizontalOffset, renderTableWidth(visibleRows, m.groupBy, m.activeTab), viewportWidth)
 
-	hintText := "tab/shift+tab switch · ↑/↓ j/k scroll · ←/→ h/l scroll · home/end horizontal · g grouping · f filter · q quit"
+	hintText := "tab/shift+tab switch · ↑/↓ j/k scroll · ←/→ scroll · home/end horizontal · d date · g bucket · s sort · p/m/h filters · q quit"
 	if visible > 0 && len(m.rows) > visible {
 		end := m.scrollOffset + visible
 		if end > len(m.rows) {
@@ -689,6 +832,7 @@ func (m interactiveModel) View() string {
 	if filters := activeFiltersLabel(m.options.filters); filters != "" {
 		hintText += "  ·  " + filters
 	}
+	hintText += fmt.Sprintf("  ·  total %s  ·  rows %d  ·  sync %s", formatTokens(totalTokens(m.rows)), len(m.rows), formatLastSync(m.lastSyncMs))
 	hint := hintStyle.Render(hintText)
 	hintBox := sectionBorderStyle.Width(m.width - 4).Render(hint)
 
@@ -703,6 +847,9 @@ func activeFiltersLabel(f filters) string {
 	if len(f.providers) > 0 {
 		parts = append(parts, "provider="+strings.Join([]string(f.providers), ","))
 	}
+	if len(f.models) > 0 {
+		parts = append(parts, "model="+strings.Join([]string(f.models), ","))
+	}
 	if len(f.harnesses) > 0 {
 		parts = append(parts, "harness="+strings.Join([]string(f.harnesses), ","))
 	}
@@ -712,12 +859,29 @@ func activeFiltersLabel(f filters) string {
 	return "filters: " + strings.Join(parts, " ")
 }
 
+func totalTokens(rows []renderRow) int64 {
+	var total int64
+	for _, row := range rows {
+		total += row.totalValue
+	}
+	return total
+}
+
+func formatLastSync(value int64) string {
+	if value <= 0 {
+		return "never"
+	}
+	return formatLatest(value)
+}
+
 func (m interactiveModel) renderPopup() string {
 	switch m.popup {
-	case popupGrouping:
-		return m.renderGroupingPopup()
-	case popupFilterDimension:
-		return m.renderFilterDimensionPopup()
+	case popupDateRange:
+		return m.renderDateRangePopup()
+	case popupBucket:
+		return m.renderBucketPopup()
+	case popupSort:
+		return m.renderSortPopup()
 	case popupFilterValues:
 		return m.renderFilterValuesPopup()
 	default:
@@ -725,37 +889,54 @@ func (m interactiveModel) renderPopup() string {
 	}
 }
 
-func (m interactiveModel) renderGroupingPopup() string {
-	title := popupTitleStyle.Render("Select grouping")
+func (m interactiveModel) renderDateRangePopup() string {
+	title := popupTitleStyle.Render("Date range")
 	var options []string
-	for i, opt := range groupingOptions {
+	for i, opt := range dateRangeOptions {
 		cursor := "  "
 		style := popupItemStyle
 		if i == m.popupCursor {
 			cursor = "> "
 			style = popupCursorStyle
 		}
-		options = append(options, style.Render(cursor+groupByLabel(opt)))
+		options = append(options, style.Render(cursor+periodLabel(opt)))
 	}
 	body := lipgloss.JoinVertical(lipgloss.Left, options...)
 	help := hintStyle.Render("space/enter = select · esc = close")
 	return popupStyle.Render(lipgloss.JoinVertical(lipgloss.Left, title, "", body, "", help))
 }
 
-func (m interactiveModel) renderFilterDimensionPopup() string {
-	title := popupTitleStyle.Render("Select filter")
+func (m interactiveModel) renderBucketPopup() string {
+	title := popupTitleStyle.Render("Time bucket")
 	var options []string
-	for i, opt := range filterDimensions {
+	for i, opt := range bucketOptions {
 		cursor := "  "
 		style := popupItemStyle
 		if i == m.popupCursor {
 			cursor = "> "
 			style = popupCursorStyle
 		}
-		options = append(options, style.Render(cursor+filterDimensionLabel(opt)))
+		options = append(options, style.Render(cursor+string(opt)))
 	}
 	body := lipgloss.JoinVertical(lipgloss.Left, options...)
-	help := hintStyle.Render("space/enter = select · esc = close without applying")
+	help := hintStyle.Render("space/enter = select · esc = close")
+	return popupStyle.Render(lipgloss.JoinVertical(lipgloss.Left, title, "", body, "", help))
+}
+
+func (m interactiveModel) renderSortPopup() string {
+	title := popupTitleStyle.Render("Sort")
+	var options []string
+	for i, opt := range sortOptions {
+		cursor := "  "
+		style := popupItemStyle
+		if i == m.popupCursor {
+			cursor = "> "
+			style = popupCursorStyle
+		}
+		options = append(options, style.Render(cursor+string(opt)))
+	}
+	body := lipgloss.JoinVertical(lipgloss.Left, options...)
+	help := hintStyle.Render("space/enter = select · esc = close")
 	return popupStyle.Render(lipgloss.JoinVertical(lipgloss.Left, title, "", body, "", help))
 }
 
@@ -790,7 +971,7 @@ func (m interactiveModel) renderFilterValuesPopup() string {
 }
 
 func RunInteractive(ctx context.Context, args []string, stdout io.Writer, stderr io.Writer, now time.Time) error {
-	options, err := parseTableOptions(args, stderr, false, periodWeek)
+	options, err := parseTableOptions(args, stderr, false, periodMonth)
 	if err != nil {
 		return err
 	}
@@ -800,7 +981,7 @@ func RunInteractive(ctx context.Context, args []string, stdout io.Writer, stderr
 		options:          options,
 		now:              now,
 		period:           options.period,
-		groupBy:          groupBySession,
+		groupBy:          groupByNone,
 		activeTab:        tabTokens,
 		popupCursor:      0,
 		filterSelections: make(map[string]bool),
@@ -809,8 +990,15 @@ func RunInteractive(ctx context.Context, args []string, stdout io.Writer, stderr
 }
 
 func filterFromOptions(options tableOptions, now time.Time) db.Filter {
+	start := periodStart(now, options.period)
+	end := periodEnd(now, options.period)
+	if options.filters.dayFrom != "" || options.filters.dayTo != "" {
+		start = time.Time{}
+		end = time.Time{}
+	}
 	return db.Filter{
-		Start:      periodStart(now, options.period),
+		Start:      start,
+		End:        end,
 		SessionIDs: []string(options.filters.sessionIDs),
 		Providers:  []string(options.filters.providers),
 		Models:     []string(options.filters.models),
@@ -831,11 +1019,22 @@ func loadFilterValues(ctx context.Context, options tableOptions, now time.Time, 
 	switch dimension {
 	case filterProvider:
 		return db.AvailableProviders(ctx, database, filter)
+	case filterModel:
+		return db.AvailableModels(ctx, database, filter)
 	case filterHarness:
 		return db.AvailableHarnesses(ctx, database, filter)
 	default:
 		return nil, nil
 	}
+}
+
+func loadLastCompletedSync(ctx context.Context, options tableOptions) (int64, error) {
+	database, err := db.Open(options.dbPath)
+	if err != nil {
+		return 0, err
+	}
+	defer database.Close()
+	return db.LastCompletedSync(ctx, database)
 }
 
 func loadRows(ctx context.Context, options tableOptions, now time.Time, groupBy groupByMode, activeTab tabMode) ([]renderRow, error) {
@@ -846,6 +1045,92 @@ func loadRows(ctx context.Context, options tableOptions, now time.Time, groupBy 
 	defer database.Close()
 
 	f := filterFromOptions(options, now)
+	if activeTab == tabTokens {
+		aggRows, err := db.ViewerTokenBuckets(ctx, database, f, db.TimeBucket(options.bucket))
+		if err != nil {
+			return nil, err
+		}
+		result := make([]renderRow, len(aggRows))
+		for i, r := range aggRows {
+			result[i] = renderRow{
+				bucket:           r.Bucket,
+				sessions:         formatTokens(r.SessionCount),
+				inputTokens:      formatTokens(r.InputTokens),
+				inputValue:       r.InputTokens,
+				outputTokens:     formatTokens(r.OutputTokens),
+				outputValue:      r.OutputTokens,
+				reasoningTokens:  formatTokens(r.ReasoningTokens),
+				cacheReadTokens:  formatTokens(r.CacheReadTokens),
+				cacheReadValue:   r.CacheReadTokens,
+				cacheWriteTokens: formatTokens(r.CacheWriteTokens),
+				totalTokens:      formatTokens(r.TotalTokens),
+				totalValue:       r.TotalTokens,
+				latestValue:      r.LatestAtMs,
+			}
+		}
+		sortRenderRows(result, activeTab, options.sort)
+		return result, nil
+	}
+	if activeTab == tabModels || activeTab == tabProviders || activeTab == tabHarnesses {
+		aggRows, err := loadDimensionRows(ctx, database, f, activeTab)
+		if err != nil {
+			return nil, err
+		}
+		result := make([]renderRow, len(aggRows))
+		for i, r := range aggRows {
+			result[i] = renderRow{
+				model:            r.Model,
+				provider:         r.Provider,
+				harness:          r.Harness,
+				models:           r.Models,
+				providers:        r.Providers,
+				harnesses:        r.Harnesses,
+				sessions:         formatTokens(r.SessionCount),
+				inputTokens:      formatTokens(r.InputTokens),
+				inputValue:       r.InputTokens,
+				outputTokens:     formatTokens(r.OutputTokens),
+				outputValue:      r.OutputTokens,
+				reasoningTokens:  formatTokens(r.ReasoningTokens),
+				cacheReadTokens:  formatTokens(r.CacheReadTokens),
+				cacheReadValue:   r.CacheReadTokens,
+				cacheWriteTokens: formatTokens(r.CacheWriteTokens),
+				totalTokens:      formatTokens(r.TotalTokens),
+				totalValue:       r.TotalTokens,
+				latestValue:      r.LatestAtMs,
+			}
+		}
+		sortRenderRows(result, activeTab, options.sort)
+		return result, nil
+	}
+	if activeTab == tabSessions {
+		aggRows, err := db.ViewerSessions(ctx, database, f)
+		if err != nil {
+			return nil, err
+		}
+		result := make([]renderRow, len(aggRows))
+		for i, r := range aggRows {
+			result[i] = renderRow{
+				latest:           formatLatest(r.LatestAtMs),
+				sessionID:        r.SessionID,
+				harness:          r.Harness,
+				providers:        r.Providers,
+				models:           r.Models,
+				inputTokens:      formatTokens(r.InputTokens),
+				inputValue:       r.InputTokens,
+				outputTokens:     formatTokens(r.OutputTokens),
+				outputValue:      r.OutputTokens,
+				reasoningTokens:  formatTokens(r.ReasoningTokens),
+				cacheReadTokens:  formatTokens(r.CacheReadTokens),
+				cacheReadValue:   r.CacheReadTokens,
+				cacheWriteTokens: formatTokens(r.CacheWriteTokens),
+				totalTokens:      formatTokens(r.TotalTokens),
+				totalValue:       r.TotalTokens,
+				latestValue:      r.LatestAtMs,
+			}
+		}
+		sortRenderRows(result, activeTab, options.sort)
+		return result, nil
+	}
 
 	var g db.GroupBy
 	switch groupBy {
@@ -859,16 +1144,6 @@ func loadRows(ctx context.Context, options tableOptions, now time.Time, groupBy 
 
 	var aggRows []db.Row
 	switch activeTab {
-	case tabTokens:
-		aggRows, err = db.AggregateTokens(ctx, database, f, g)
-	case tabTPS:
-		aggRows, err = db.AggregateTPS(ctx, database, f, g)
-	case tabRequests:
-		aggRows, err = db.AggregateRequests(ctx, database, f, g)
-	case tabToolCalls:
-		aggRows, err = db.AggregateToolCalls(ctx, database, f, g)
-	case tabToolBreakdown:
-		aggRows, err = db.AggregateToolBreakdown(ctx, database, f, g)
 	default:
 		aggRows, err = db.AggregateTokens(ctx, database, f, g)
 	}
@@ -890,11 +1165,16 @@ func loadRows(ctx context.Context, options tableOptions, now time.Time, groupBy 
 			tpsMean:          formatMeanTPS(r.TpsMean),
 			tpsMedian:        formatMedianTPS(r.TpsMedian),
 			inputTokens:      formatTokens(r.InputTokens),
+			inputValue:       r.InputTokens,
 			outputTokens:     formatTokens(r.OutputTokens),
+			outputValue:      r.OutputTokens,
 			reasoningTokens:  formatTokens(r.ReasoningTokens),
 			cacheReadTokens:  formatTokens(r.CacheReadTokens),
+			cacheReadValue:   r.CacheReadTokens,
 			cacheWriteTokens: formatTokens(r.CacheWriteTokens),
 			totalTokens:      formatTokens(r.TotalTokens),
+			totalValue:       r.TotalTokens,
+			latestValue:      r.LatestAtMs,
 			requests:         formatTokens(r.Requests),
 			retries:          formatTokens(r.Retries),
 			toolName:         r.ToolName,
@@ -903,4 +1183,83 @@ func loadRows(ctx context.Context, options tableOptions, now time.Time, groupBy 
 		}
 	}
 	return result, nil
+}
+
+func loadDimensionRows(ctx context.Context, database *sql.DB, f db.Filter, activeTab tabMode) ([]db.ViewerDimensionRow, error) {
+	switch activeTab {
+	case tabModels:
+		return db.ViewerModels(ctx, database, f)
+	case tabProviders:
+		return db.ViewerProviders(ctx, database, f)
+	case tabHarnesses:
+		return db.ViewerHarnesses(ctx, database, f)
+	default:
+		return nil, nil
+	}
+}
+
+func sortRenderRows(rows []renderRow, activeTab tabMode, selected sortMode) {
+	selected = activeSort(activeTab, selected)
+	sort.SliceStable(rows, func(i, j int) bool {
+		left := rows[i]
+		right := rows[j]
+		switch selected {
+		case sortName:
+			return rowName(left, activeTab) < rowName(right, activeTab)
+		case sortInput:
+			if left.inputValue != right.inputValue {
+				return left.inputValue > right.inputValue
+			}
+		case sortOutput:
+			if left.outputValue != right.outputValue {
+				return left.outputValue > right.outputValue
+			}
+		case sortCacheRead:
+			if left.cacheReadValue != right.cacheReadValue {
+				return left.cacheReadValue > right.cacheReadValue
+			}
+		case sortDate:
+			if activeTab == tabTokens && left.bucket != right.bucket {
+				return left.bucket > right.bucket
+			}
+			if left.latestValue != right.latestValue {
+				return left.latestValue > right.latestValue
+			}
+		default:
+			if left.totalValue != right.totalValue {
+				return left.totalValue > right.totalValue
+			}
+		}
+		if left.totalValue != right.totalValue {
+			return left.totalValue > right.totalValue
+		}
+		return rowName(left, activeTab) < rowName(right, activeTab)
+	})
+}
+
+func activeSort(activeTab tabMode, selected sortMode) sortMode {
+	if selected != "" {
+		return selected
+	}
+	switch activeTab {
+	case tabTokens, tabSessions:
+		return sortDate
+	default:
+		return sortTokens
+	}
+}
+
+func rowName(row renderRow, activeTab tabMode) string {
+	switch activeTab {
+	case tabModels:
+		return row.model
+	case tabProviders:
+		return row.provider
+	case tabHarnesses:
+		return row.harness
+	case tabSessions:
+		return row.sessionID
+	default:
+		return row.bucket
+	}
 }
