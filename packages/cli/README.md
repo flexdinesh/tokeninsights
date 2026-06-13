@@ -1,6 +1,13 @@
-# tokeninsights-cli
+# tokeninsights
 
 Sync durable local harness data into TokenInsights SQLite and view canonical token usage in an interactive terminal table.
+
+## Install
+
+```sh
+go install github.com/flexdinesh/tokeninsights/packages/cli/cmd/tokeninsights@latest
+go install github.com/flexdinesh/tokeninsights/packages/cli/cmd/tokeninsights@dev
+```
 
 Supported harness IDs:
 
@@ -17,11 +24,11 @@ codex
 Ingest local harness sources into raw tables and normalize to canonical facts by default.
 
 ```sh
-tokeninsights-cli sync --all
-tokeninsights-cli sync --harness opencode
-tokeninsights-cli sync --harness pi --source-dir /path/to/source-root
-tokeninsights-cli sync --all --dry-run
-tokeninsights-cli sync --all --no-normalize
+tokeninsights sync --all
+tokeninsights sync --harness opencode
+tokeninsights sync --harness pi --source-dir /path/to/source-root
+tokeninsights sync --all --dry-run
+tokeninsights sync --all --no-normalize
 ```
 
 When `--source-dir` is provided, sync first looks for a harness subdirectory such as `/path/to/source-root/opencode`; otherwise it scans the provided directory directly.
@@ -33,9 +40,9 @@ OpenCode sync reads modern SQLite sources named `opencode.db` or `opencode-<chan
 Rebuild canonical facts from existing raw facts.
 
 ```sh
-tokeninsights-cli normalize
-tokeninsights-cli normalize --harness codex
-tokeninsights-cli normalize --dry-run
+tokeninsights normalize
+tokeninsights normalize --harness codex
+tokeninsights normalize --dry-run
 ```
 
 `reset-canonical`
@@ -43,8 +50,8 @@ tokeninsights-cli normalize --dry-run
 Delete canonical sessions, messages, token usage, and normalization diagnostics while keeping raw facts and observations.
 
 ```sh
-tokeninsights-cli reset-canonical
-tokeninsights-cli reset-canonical --confirm
+tokeninsights reset-canonical
+tokeninsights reset-canonical --confirm
 ```
 
 `reset-all`
@@ -52,8 +59,8 @@ tokeninsights-cli reset-canonical --confirm
 Delete and recreate the TokenInsights database plus SQLite sidecars.
 
 ```sh
-tokeninsights-cli reset-all
-tokeninsights-cli reset-all --confirm
+tokeninsights reset-all
+tokeninsights reset-all --confirm
 ```
 
 `view`
@@ -61,14 +68,14 @@ tokeninsights-cli reset-all --confirm
 Open the interactive terminal UI over canonical token usage.
 
 ```sh
-tokeninsights-cli view
-tokeninsights-cli view --today
-tokeninsights-cli view --week --group-by=hour
-tokeninsights-cli view --week --group-by=session
-tokeninsights-cli view --month --provider openai --model gpt-5
+tokeninsights view
+tokeninsights view --today
+tokeninsights view --week --group-by=hour
+tokeninsights view --week --group-by=session
+tokeninsights view --month --provider openai --model gpt-5
 ```
 
-Running `tokeninsights-cli` without a command still opens `view`.
+Running `tokeninsights` without a command still opens `view`.
 
 ## Database
 

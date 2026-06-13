@@ -17,7 +17,7 @@ Local harness data
      +------------+----------+
                   |
                   v
-        tokeninsights-cli sync
+        tokeninsights sync
         - discover sources
         - parse metadata-only facts
         - write ingest runs
@@ -28,7 +28,7 @@ Local harness data
           SQLite raw tables
                   |
                   v
-      tokeninsights-cli normalize
+      tokeninsights normalize
         - resolve sessions/messages
         - choose countable token facts
         - write diagnostics
@@ -37,7 +37,7 @@ Local harness data
         SQLite canonical tables
                   |
                   v
-        tokeninsights-cli view
+        tokeninsights view
         interactive read-only TUI
 ```
 
@@ -173,7 +173,7 @@ Diagnostics must not contain private source content or full paths.
 
 ## Sync Pipeline
 
-`tokeninsights-cli sync`:
+`tokeninsights sync`:
 
 1. Selects harnesses through `--harness` or `--all`.
 2. Discovers local sources with the selected adapters.
@@ -213,7 +213,7 @@ Uneven metric coverage is valid. An adapter should produce diagnostics for unava
 
 ## Normalization Pipeline
 
-`tokeninsights-cli normalize`:
+`tokeninsights normalize`:
 
 1. Loads raw token facts, optionally filtered by harness.
 2. Rejects facts without stable session identity and writes a diagnostic.
@@ -233,7 +233,7 @@ Explicit conflict precedence between competing raw facts is not implemented yet.
 
 ## Viewer
 
-`tokeninsights-cli view` is interactive-only and opens the database read-only.
+`tokeninsights view` is interactive-only and opens the database read-only.
 
 The TUI queries canonical tables only:
 
@@ -298,7 +298,7 @@ Can evolve with care:
 | `packages/schema/schema.sql` | SQLite schema source of truth |
 | `packages/cli/internal/db/schema/schema.sql` | embedded checked schema copy |
 | `packages/check-schema/check-schema.ts` | schema contract validator |
-| `packages/cli/cmd/tokeninsights-cli/main.go` | CLI executable entry point |
+| `packages/cli/cmd/tokeninsights/main.go` | CLI executable entry point |
 | `packages/cli/internal/cli/commands.go` | command dispatch and thin orchestration |
 | `packages/cli/internal/cli/flags.go` | view flag parsing |
 | `packages/cli/internal/cli/table.go` | interactive TUI model |

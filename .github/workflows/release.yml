@@ -1,0 +1,132 @@
+name: Release TokenInsights CLI
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-tokeninsights
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: packages/cli/go.mod
+          cache-dependency-path: packages/cli/go.sum
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Enable pnpm
+        run: corepack enable
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Check schema
+        run: pnpm run check-schema
+
+      - name: Test
+        run: pnpm run test
+
+      - name: Build
+        run: pnpm run build
+
+      - name: Select release tag
+        id: tag
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          git fetch --tags --force
+
+          tag_prefix="packages/cli/v"
+          current="$(git tag --points-at HEAD -l "${tag_prefix}0.0.*" --sort=-v:refname | head -n 1)"
+          if [[ -n "${current}" ]]; then
+            tag="${current}"
+            create="false"
+          else
+            latest="$(git tag -l "${tag_prefix}0.0.*" --sort=-v:refname | head -n 1)"
+            if [[ -z "${latest}" ]]; then
+              tag="${tag_prefix}0.0.1"
+            else
+              patch="${latest##*.}"
+              tag="${tag_prefix}0.0.$((patch + 1))"
+            fi
+            create="true"
+          fi
+
+          version="${tag#${tag_prefix}}"
+          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "create=${create}" >> "$GITHUB_OUTPUT"
+
+      - name: Create release tag
+        if: steps.tag.outputs.create == 'true'
+        run: |
+          git tag "${{ steps.tag.outputs.tag }}"
+          git push origin "${{ steps.tag.outputs.tag }}"
+
+      - name: Build release archives
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          version="${{ steps.tag.outputs.version }}"
+          commit="$(git rev-parse --short HEAD)"
+          date="$(git show -s --format=%cI HEAD)"
+          module="github.com/flexdinesh/tokeninsights/packages/cli/internal/version"
+
+          rm -rf dist
+          mkdir -p dist
+
+          for target in darwin/amd64 darwin/arm64 linux/amd64 linux/arm64; do
+            goos="${target%/*}"
+            goarch="${target#*/}"
+            archive_dir="tokeninsights_${version}_${goos}_${goarch}"
+            mkdir -p "dist/${archive_dir}"
+
+            (
+              cd packages/cli
+              CGO_ENABLED=0 GOOS="${goos}" GOARCH="${goarch}" go build \
+                -trimpath \
+                -ldflags="-s -w -X ${module}.Version=${version} -X ${module}.Commit=${commit} -X ${module}.Date=${date}" \
+                -o "../../dist/${archive_dir}/tokeninsights" \
+                ./cmd/tokeninsights
+            )
+
+            cp README.md LICENSE "dist/${archive_dir}/"
+            tar -C dist -czf "dist/${archive_dir}.tar.gz" "${archive_dir}"
+            rm -rf "dist/${archive_dir}"
+          done
+
+          (
+            cd dist
+            shasum -a 256 *.tar.gz > checksums.txt
+          )
+
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ steps.tag.outputs.tag }}" \
+            dist/*.tar.gz \
+            dist/checksums.txt \
+            --title "tokeninsights v${{ steps.tag.outputs.version }}" \
+            --generate-notes

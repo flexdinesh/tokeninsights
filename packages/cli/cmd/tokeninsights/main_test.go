@@ -76,4 +76,24 @@ func TestHelp(t *testing.T) {
 	if !strings.Contains(stdout.String(), "usage:") {
 		t.Fatalf("expected usage in output: %q", stdout.String())
 	}
+	if !strings.Contains(stdout.String(), "usage: tokeninsights <command>") {
+		t.Fatalf("expected public command name in output: %q", stdout.String())
+	}
+}
+
+func TestVersion(t *testing.T) {
+	var stdout bytes.Buffer
+	err := runWithTime(
+		context.Background(),
+		[]string{"--version"},
+		&stdout,
+		io.Discard,
+		time.Date(2026, 4, 24, 15, 0, 0, 0, time.Local),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := stdout.String(), "tokeninsights dev\n"; got != want {
+		t.Fatalf("version output = %q, want %q", got, want)
+	}
 }

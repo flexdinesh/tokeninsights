@@ -61,7 +61,7 @@ type tableOptions struct {
 }
 
 func parseTableOptions(args []string, stderr io.Writer, requirePeriod bool, defaultPeriod period) (tableOptions, error) {
-	flags := flag.NewFlagSet("tokeninsights-cli", flag.ContinueOnError)
+	flags := flag.NewFlagSet("tokeninsights", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 
 	var dbPath string
@@ -217,4 +217,4 @@ func validateHarnesses(values stringList) error {
 	return nil
 }
 
-var ErrUsage = errors.New("usage: tokeninsights-cli <sync|normalize|reset-canonical|reset-all|view> [options]")
+var ErrUsage = errors.New("usage: tokeninsights <sync|normalize|reset-canonical|reset-all|view> [options]")

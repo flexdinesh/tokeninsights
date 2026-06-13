@@ -9,7 +9,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"tokeninsights-cli/internal/db"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/db"
 )
 
 const (

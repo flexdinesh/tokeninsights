@@ -9,10 +9,10 @@
   "scripts": {
     "clean": "node scripts/clean.mjs",
     "check-schema": "pnpm --filter check-schema run check-schema",
-    "build:cli": "pnpm --filter tokeninsights-cli run build",
-    "install:cli": "cd packages/cli && go install ./cmd/tokeninsights-cli",
+    "build:cli": "pnpm --filter @tokeninsights/cli run build",
+    "install:cli": "cd packages/cli && go install ./cmd/tokeninsights",
     "build": "pnpm run check-schema && pnpm run build:cli",
-    "test": "pnpm --filter tokeninsights-cli run test"
+    "test": "pnpm --filter @tokeninsights/cli run test"
   },
   "devDependencies": {
     "esbuild": "^0.25.0"

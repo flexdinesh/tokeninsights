@@ -1,0 +1,108 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - dev
+      - main
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Verify
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: packages/cli/go.mod
+          cache-dependency-path: packages/cli/go.sum
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Enable pnpm
+        run: corepack enable
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Check schema
+        run: pnpm run check-schema
+
+      - name: Test
+        run: pnpm run test
+
+      - name: Build
+        run: pnpm run build
+
+  package-snapshot:
+    name: Package Snapshot
+    runs-on: ubuntu-latest
+    needs: verify
+    if: github.event_name == 'push' && github.ref == 'refs/heads/dev'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: packages/cli/go.mod
+          cache-dependency-path: packages/cli/go.sum
+
+      - name: Build snapshot archives
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          version="dev-${GITHUB_SHA::7}"
+          commit="$(git rev-parse --short HEAD)"
+          date="$(git show -s --format=%cI HEAD)"
+          module="github.com/flexdinesh/tokeninsights/packages/cli/internal/version"
+
+          rm -rf dist
+          mkdir -p dist
+
+          for target in darwin/amd64 darwin/arm64 linux/amd64 linux/arm64; do
+            goos="${target%/*}"
+            goarch="${target#*/}"
+            archive_dir="tokeninsights_${version}_${goos}_${goarch}"
+            mkdir -p "dist/${archive_dir}"
+
+            (
+              cd packages/cli
+              CGO_ENABLED=0 GOOS="${goos}" GOARCH="${goarch}" go build \
+                -trimpath \
+                -ldflags="-s -w -X ${module}.Version=${version} -X ${module}.Commit=${commit} -X ${module}.Date=${date}" \
+                -o "../../dist/${archive_dir}/tokeninsights" \
+                ./cmd/tokeninsights
+            )
+
+            cp README.md LICENSE "dist/${archive_dir}/"
+            tar -C dist -czf "dist/${archive_dir}.tar.gz" "${archive_dir}"
+            rm -rf "dist/${archive_dir}"
+          done
+
+          (
+            cd dist
+            shasum -a 256 *.tar.gz > checksums.txt
+          )
+
+      - name: Upload snapshot archives
+        uses: actions/upload-artifact@v4
+        with:
+          name: tokeninsights-snapshot
+          path: dist/*
+          retention-days: 7
