@@ -2,7 +2,7 @@
 
 Local token usage tracking for OpenCode, Pi, and Codex.
 
-TokenInsights is now sync-first: the Go CLI ingests durable local harness data into SQLite, normalizes it into canonical token facts, and opens an interactive terminal view over the canonical tables.
+TokenInsights is a sync-first Go CLI. It ingests durable local harness data into SQLite, normalizes raw facts into canonical token usage, and opens an interactive terminal view over canonical tables.
 
 Default DB:
 
@@ -10,7 +10,7 @@ Default DB:
 ~/.local/share/tokeninsights/tokeninsights.sqlite
 ```
 
-Set `TOKENINSIGHTS_DB_PATH` to use a different database.
+Use `--db-path` or `TOKENINSIGHTS_DB_PATH` to choose another database.
 
 ## CLI
 
@@ -42,6 +42,8 @@ Useful sync options:
 ./packages/cli/tokeninsights-cli sync --all --no-normalize
 ./packages/cli/tokeninsights-cli sync --harness opencode --source-dir /path/to/fixtures
 ```
+
+With `sync --all --source-dir <root>`, harnesses read from `<root>/<harness>` and skip missing harness subdirectories.
 
 Canonical maintenance:
 
@@ -75,8 +77,6 @@ pnpm run test
 pnpm run build
 ```
 
-Schema changes require explicit approval before editing `packages/schema/schema.sql`.
-
-The schema source of truth is `packages/schema/schema.sql`; the CLI embeds a checked copy and validates `PRAGMA user_version` before reading or writing.
+Schema changes require explicit approval before editing `packages/schema/schema.sql`. The CLI embeds a checked schema copy and validates `PRAGMA user_version`.
 
 See [`docs/design.md`](docs/design.md) for architecture, schema, invariants, and pipeline details.
