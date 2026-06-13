@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "build": "go build -o tokeninsights ./cmd/tokeninsights",
+    "build": "go build -o bin/tokeninsights ./cmd/tokeninsights",
     "test": "go test ./..."
   }
 }

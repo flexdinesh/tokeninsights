@@ -35,24 +35,24 @@ pnpm run build:cli
 Sync local data, then view it:
 
 ```sh
-./packages/cli/tokeninsights sync --all
-./packages/cli/tokeninsights view
+./packages/cli/bin/tokeninsights sync --all
+./packages/cli/bin/tokeninsights view
 ```
 
 Sync one harness:
 
 ```sh
-./packages/cli/tokeninsights sync --harness opencode
-./packages/cli/tokeninsights sync --harness pi
-./packages/cli/tokeninsights sync --harness codex
+./packages/cli/bin/tokeninsights sync --harness opencode
+./packages/cli/bin/tokeninsights sync --harness pi
+./packages/cli/bin/tokeninsights sync --harness codex
 ```
 
 Useful sync options:
 
 ```sh
-./packages/cli/tokeninsights sync --all --dry-run
-./packages/cli/tokeninsights sync --all --no-normalize
-./packages/cli/tokeninsights sync --harness opencode --source-dir /path/to/fixtures
+./packages/cli/bin/tokeninsights sync --all --dry-run
+./packages/cli/bin/tokeninsights sync --all --no-normalize
+./packages/cli/bin/tokeninsights sync --harness opencode --source-dir /path/to/fixtures
 ```
 
 With `sync --all --source-dir <root>`, harnesses read from `<root>/<harness>` and skip missing harness subdirectories.
@@ -62,25 +62,25 @@ OpenCode sync reads modern SQLite sources named `opencode.db` or `opencode-<chan
 Canonical maintenance:
 
 ```sh
-./packages/cli/tokeninsights normalize
-./packages/cli/tokeninsights normalize --dry-run
-./packages/cli/tokeninsights reset-canonical --confirm
-./packages/cli/tokeninsights reset-all --confirm
+./packages/cli/bin/tokeninsights normalize
+./packages/cli/bin/tokeninsights normalize --dry-run
+./packages/cli/bin/tokeninsights reset-canonical --confirm
+./packages/cli/bin/tokeninsights reset-all --confirm
 ```
 
 View filters:
 
 ```sh
-./packages/cli/tokeninsights view --today
-./packages/cli/tokeninsights view --week --group-by=session
-./packages/cli/tokeninsights view --month --harness pi
-./packages/cli/tokeninsights view --week --provider openai --model gpt-5
+./packages/cli/bin/tokeninsights view --today
+./packages/cli/bin/tokeninsights view --week --group-by=session
+./packages/cli/bin/tokeninsights view --month --harness pi
+./packages/cli/bin/tokeninsights view --week --provider openai --model gpt-5
 ```
 
 Running without a command still opens the interactive view for compatibility:
 
 ```sh
-./packages/cli/tokeninsights --week
+./packages/cli/bin/tokeninsights --week
 ```
 
 ## Development
