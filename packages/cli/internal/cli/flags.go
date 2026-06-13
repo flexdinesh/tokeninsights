@@ -125,6 +125,10 @@ func parseTableOptions(args []string, stderr io.Writer, requirePeriod bool, defa
 }
 
 func defaultDBPath() string {
+	envPath := strings.TrimSpace(os.Getenv("TOKENINSIGHTS_DB_PATH"))
+	if envPath != "" {
+		return envPath
+	}
 	return filepath.Join(defaultDataPath(), defaultDBName)
 }
 
@@ -206,11 +210,11 @@ func periodStart(now time.Time, selected period) time.Time {
 
 func validateHarnesses(values stringList) error {
 	for _, value := range values {
-		if value != "oc" && value != "pi" {
-			return fmt.Errorf("invalid --harness %q: must be oc or pi\n%w", value, ErrUsage)
+		if value != "opencode" && value != "pi" && value != "codex" {
+			return fmt.Errorf("invalid --harness %q: must be opencode, pi, or codex\n%w", value, ErrUsage)
 		}
 	}
 	return nil
 }
 
-var ErrUsage = errors.New("usage: tokeninsights-cli [--db-path PATH] [--today|--week|--month|--all-time] [--session-id ID] [--provider ID] [--model ID] [--harness oc|pi] [--filter-day-from YYYY-MM-DD] [--filter-day-to YYYY-MM-DD]")
+var ErrUsage = errors.New("usage: tokeninsights-cli <sync|normalize|reset-canonical|reset-all|view> [options]")

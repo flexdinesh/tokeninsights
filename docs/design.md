@@ -2,399 +2,304 @@
 
 ## North Star
 
-Track local token usage across supported harnesses over time, without relying on vendor dashboards.
+Track local token usage across supported coding harnesses over time, without relying on vendor dashboards.
 
-The durable data model is a **session-centric token time series**. Every token row must relate to a `session_id`. No token data should exist without it.
+The durable data model is a session-centric token time series. Every canonical token row must resolve to a stable `session_id` through `canonical_sessions`. Raw facts may preserve missing source values as null, but token facts without stable session identity must not enter canonical analytics.
 
-TPS (tokens per second) is a first-class project metric. Do not remove persisted TPS columns, tables, or `tps avg`, `tps mean`, and `tps median` when changing token schema.
+TPS remains a first-class UI/domain concept. The sync-first V1 schema does not require every harness to expose durable timing data, but `tps avg`, `tps mean`, and `tps median` stay part of the viewer surface and must not be removed when timing support is added back through canonical facts.
 
 ## System Architecture
 
-```
-┌─────────────────┐     ┌─────────────────┐
-│  OpenCode Server│     │   Pi Extension  │
-│ @tokeninsights  │     │ @tokeninsights/pi│
-│/opencode-server │     │    index.ts     │
-└────────┬────────┘     └────────┬────────┘
-         │                       │
-         │ writes                │ writes
-         │ (worker thread)       │ (direct)
-         │                       │
-         ▼                       ▼
-┌───────────────────────────────────────────────────────────────┐
-│                SQLite DB (~/.local/share/tokeninsights/tokeninsights.sqlite) │
-│  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐  │
-│  │ oc_token_events │  │ oc_tps_samples  │  │ oc_llm_requests │  │
-│  │  (token rows)   │  │ (throughput)    │  │ (attempts)      │  │
-│  └─────────────────┘  └─────────────────┘  └─────────────────┘  │
-│  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐  │
-│  │ pi_token_events │  │ pi_tps_samples  │  │ pi_llm_requests │  │
-│  │  (token rows)   │  │ (throughput)    │  │ (attempts)      │  │
-│  └─────────────────┘  └─────────────────┘  └─────────────────┘  │
-│  ┌─────────────────┐  ┌─────────────────┐                       │
-│  │ oc_tool_calls   │  │ pi_tool_calls   │                       │
-│  │ (tool lifecycle)│  │ (tool lifecycle)│                       │
-│  └─────────────────┘  └─────────────────┘                       │
-└───────────────────────────────────────────────────────────────┘
-         ▲
-         │ reads (read-only)
-         │
-┌─────────────────┐
-│   Go CLI        │
-│ tokeninsights-cli│
-└─────────────────┘
+```text
+Local harness data
+  OpenCode        Pi        Codex
+     |            |          |
+     +------------+----------+
+                  |
+                  v
+        tokeninsights-cli sync
+        - discover sources
+        - parse metadata-only facts
+        - write ingest runs
+        - dedupe raw facts
+        - record observations
+                  |
+                  v
+          SQLite raw tables
+                  |
+                  v
+      tokeninsights-cli normalize
+        - resolve sessions/messages
+        - choose countable token facts
+        - write diagnostics
+                  |
+                  v
+        SQLite canonical tables
+                  |
+                  v
+        tokeninsights-cli view
+        interactive read-only TUI
 ```
 
-### Plugin / CLI Boundary
+Default storage is:
 
-- **Server plugin writes** all durable OpenCode data using `bun:sqlite` in a worker thread (`oc-tokeninsights-writer.ts`). Writes are queued in memory and flushed about once per second. A hard crash can lose the most recent queued batch.
-- **Pi extension writes** using `node:sqlite` directly from the extension event handler. Volume is low enough that synchronous writes do not block the Pi TUI.
-- **Plugin logging** is shared through `packages/logger`. The OpenCode server plugin and Pi extension write best-effort metadata logs to `$XDG_STATE_HOME/tokeninsights/logs/{harness}-{YY-MM-DD}.log`, falling back to `~/.local/state/tokeninsights/logs/`. Debug logs require `TOKENINSIGHTS_DEBUG=1`.
-- **CLI reads** using `modernc.org/sqlite` with a `file:` URL and `mode=ro`. It never writes.
-- Both sides share **one schema file**: `packages/schema/schema.sql`.
-- Default storage is TokenInsights-owned: `~/.local/share/tokeninsights/tokeninsights.sqlite`. Writer overrides use `TOKENINSIGHTS_DB_PATH` and `TOKENINSIGHTS_RETENTION_DAYS`; old harness-scoped env vars are not supported.
-- The OpenCode server plugin runs under Bun and uses `bun:sqlite`; the Pi extension runs under Node.js 25 or newer for `node:sqlite`.
+```text
+~/.local/share/tokeninsights/tokeninsights.sqlite
+```
 
-### Logging Contract
+`TOKENINSIGHTS_DB_PATH` and `--db-path` override the database path. `TOKENINSIGHTS_RETENTION_DAYS` is not part of sync-first V1 behavior.
 
-The shared logger writes logfmt lines by default. `packages/logger/src/index.ts` owns the `LOG_FORMAT` constant so the implementation can be switched to JSONL later without changing plugin call sites.
+## Product Boundary
 
-Log files are rotated by date using `YY-MM-DD` and retain the current day plus the previous 2 calendar days. Pruning is best-effort and runs on logger use after initialization or day rollover.
+TokenInsights V1 is a local Go CLI:
 
-Logs must remain metadata-only. Do not log prompt text, assistant message content, request headers, raw provider payloads, tool arguments, or tool output. Logging must never throw into plugin hooks or block durable token collection.
+- `sync` ingests durable local harness data into raw tables and normalizes by default.
+- `normalize` rebuilds canonical facts from existing raw facts.
+- `view` opens the interactive terminal UI over canonical data only.
+- `reset-canonical` clears rebuildable canonical facts and diagnostics.
+- `reset-all` recreates the local database and SQLite sidecars.
 
-### Why This Boundary Matters
+Realtime plugins and checkpoint plugins are future-compatible concepts, not active product code in this repository. The old direct-write OpenCode and Pi plugin packages are removed from the active workspace.
 
-Plugin DB writes must stay lightweight; OpenCode and Pi should never feel blocked by analytics. The CLI is free to run expensive aggregates because it only reads.
+## Schema Contract
 
-**Top priority**: plugin initialization must never block OpenCode startup. DB open and schema migration happen lazily on first write (server plugin) or inside a worker thread (server plugin token writer). If the DB is locked by another process, the plugin degrades gracefully rather than hanging OpenCode.
+`packages/schema/schema.sql` is the single source of truth for SQLite table and column definitions. The Go CLI embeds a checked copy at `packages/cli/internal/db/schema/schema.sql`.
 
-**Server worker defensiveness**: the writer thread times out DB init after 10 s, runs a passive WAL checkpoint after migration to prevent unbounded WAL growth, and the main thread only flushes rows once the worker signals `ready`. If init fails, rows are dropped in-memory rather than queued forever.
+Compatibility is gated by `PRAGMA user_version`. The current sync-first schema version is `3`.
+
+Cross-language/schema validation is handled by:
+
+- `pnpm run check-schema`
+- `packages/check-schema/check-schema.ts`
+- `packages/cli/internal/db/schema_test.go`
+
+Any modification to `packages/schema/schema.sql`, table structures, column definitions, or cross-language schema constants requires explicit user approval before implementation.
 
 ## Data Model
 
-`packages/schema/schema.sql` is the single source of truth for table and column definitions.
+### `ingest_runs`
 
-### `oc_token_events`
+One row per source sync attempt. Runs start as `running` and complete as `completed` or `failed`.
 
-One row per real token event, normally from an OpenCode `step-finish` part.
+Important fields:
 
-| Column | Meaning |
-|--------|---------|
-| `recorded_at_ms` | UTC millis when the event occurred |
-| `session_id` | Required. OpenCode session ID |
-| `message_id` | OpenCode message ID |
-| `part_id` | OpenCode part ID |
-| `source` | `'step-finish'` or `'message-fallback'` |
-| `provider` | `'unknown'` if missing |
-| `model` | `'unknown'` if missing |
-| `input_tokens` | Prompt tokens |
-| `output_tokens` | Completion tokens |
-| `reasoning_tokens` | Reasoning / thinking tokens |
-| `cache_read_tokens` | Cache read tokens |
-| `cache_write_tokens` | Cache write tokens |
-| `total_tokens` | `tokens.total` when present, otherwise sum of the above |
+- `run_id`: unique sync-run identity.
+- `harness`: `opencode`, `pi`, or `codex`.
+- `collector` and `parser`: implementation/version provenance.
+- `source_id` and `source_kind`: stable logical source identity without storing full paths.
+- `status`, `started_at_ms`, `completed_at_ms`, `error_message`.
+- count columns for raw facts, observations, canonical facts, and diagnostics.
 
-Unique on `(session_id, message_id, part_id)`.
+Completed ingest metadata is audit history and should not be rewritten except for active-run completion fields.
 
-### `oc_tps_samples`
+### `raw_token_usage`
 
-One row per completed assistant message that has timing data.
+Deduplicated metadata-only token facts parsed from harness sources.
 
-| Column | Meaning |
-|--------|---------|
-| `recorded_at_ms` | UTC millis when the message completed |
-| `session_id` | Required |
-| `message_id` | Unique per message |
-| `provider` | `'unknown'` if missing |
-| `model` | `'unknown'` if missing |
-| `output_tokens` | Output tokens from the message |
-| `reasoning_tokens` | Reasoning tokens from the message |
-| `total_tokens` | `output + reasoning` (throughput numerator) |
-| `duration_ms` | Streaming duration |
-| `ttft_ms` | Time to first token |
-| `tokens_per_second` | `total_tokens / (duration_ms / 1000)` |
+Raw facts preserve source absence as null. Missing provider/model stays null here and is normalized to `unknown` only in canonical facts.
 
-### `oc_llm_requests`
+Important fields:
 
-One row per LLM provider request attempt.
+- `raw_fact_key`: stable deterministic dedupe key.
+- `harness`, `source_id`, `source_kind`, `collector`, `parser`.
+- `observed_at_ms` and optional `occurred_at_ms`.
+- optional `session_id` and `message_id`.
+- optional `provider` and `model`.
+- `usage_scope`, `quality`.
+- token count columns.
+- optional `metadata_json` for constrained metadata only.
 
-| Column | Meaning |
-|--------|---------|
-| `recorded_at_ms` | UTC millis when the request was initiated |
-| `session_id` | Required |
-| `message_id` | OpenCode message ID |
-| `provider` | `'unknown'` if missing |
-| `model` | `'unknown'` if missing |
-| `attempt_index` | `1` for initial attempt, `> 1` for retries |
-| `thinking_level` | `low`, `medium`, `high`, `xhigh`, or `unknown` |
+Raw facts must not store prompt text, assistant text, tool arguments, tool output, request headers, secrets, raw provider payloads, or full source paths.
 
-### `oc_tool_calls`
+### `raw_observations`
 
-One row per observed OpenCode tool-call lifecycle transition.
+One row per ingest-run sighting of a raw fact.
 
-| Column | Meaning |
-|--------|---------|
-| `recorded_at_ms` | UTC millis when the transition was observed |
-| `session_id` | Required. OpenCode session ID |
-| `message_id` | Best-effort assistant message ID; falls back to tool call ID when unavailable |
-| `tool_call_id` | OpenCode tool call ID |
-| `tool_name` | Tool name, or `unknown` if missing |
-| `provider` | Provider from latest assistant message metadata, or `unknown` |
-| `model` | Model from latest assistant message metadata, or `unknown` |
-| `status` | `started`, `completed`, or `error` |
+Repeated syncs of the same source should not duplicate `raw_token_usage`, but they may append new `raw_observations`.
 
-Unique on `(session_id, tool_call_id, status)`.
+### `canonical_sessions`
 
-### `pi_token_events`
+Stable canonical session identities.
 
-One row per Pi assistant message completion.
+Every canonical token row references this table. Session semantic keys must be independent of raw row IDs and import order.
 
-Same columns as `oc_token_events` except `part_id` and `source` are omitted (Pi has no part-level granularity). `UNIQUE(session_id, message_id)`.
+### `canonical_messages`
 
-**Pi gap**: `reasoning_tokens` is always `0` because Pi's `Usage` type does not expose a separate reasoning count.
+Optional canonical message or turn identities within a canonical session.
 
-### `pi_tps_samples`
+Token facts can be canonicalized without a message ID, but when a source provides one it should be represented here.
 
-One row per Pi assistant message with timing data.
+### `canonical_token_usage`
 
-Identical schema to `oc_tps_samples`.
+The primary viewer-facing fact table for sync-first V1.
 
-### `pi_llm_requests`
+Rows include:
 
-One row per Pi provider request attempt.
+- `semantic_key`: stable fact identity.
+- `recorded_at_ms`, `harness`, canonical `session_id`, optional canonical `message_id`.
+- `provider` and `model`, with missing values normalized to `unknown`.
+- `usage_scope` and `quality`.
+- `is_countable`: default token analytics use only countable rows.
+- token count columns.
+- `primary_raw_fact_id` and optional `ingest_run_id` provenance.
 
-Identical schema to `oc_llm_requests`. `attempt_index` is always `1` because Pi does not expose retry detection to extensions.
+Canonical rows are not pre-aggregated rollups. Aggregation happens in the query layer.
 
-### `pi_tool_calls`
+### `normalization_diagnostics`
 
-One row per observed Pi tool-call lifecycle transition.
+Structured metadata-only diagnostics for skipped, rejected, conflicting, or suppressed facts.
 
-Identical schema to `oc_tool_calls`, using Pi `tool_execution_start` and `tool_execution_end` events. `message_id` is the synthetic Pi turn ID shared with Pi token/TPS/request rows when available.
+Examples:
 
-### Schema Contract
+- missing stable session identity.
+- source parse warnings.
+- unsupported or unavailable metric domains.
 
-Plugin writers auto-migrate the DB using `packages/plugins/opencode-server/src/schema-migrate.ts`, which reads `packages/schema/schema.sql` at init time. The migration parses `CREATE TABLE IF NOT EXISTS` and `ALTER TABLE ADD COLUMN` for missing columns.
+Diagnostics must not contain private source content or full paths.
 
-**Any modification to `packages/schema/schema.sql` or related cross-language schema contract requires explicit user approval.** Clearly surface the rationale and impact to the user and ask for explicit approval before implementation — even for non-breaking additive changes.
+## Sync Pipeline
 
-Cross-language contract is validated by:
-- `packages/scripts/check-schema.ts` — parses SQL, Go constants, and TS types
-- `packages/cli/internal/db/schema_test.go` — Go-level contract test
+`tokeninsights-cli sync`:
 
-Run `pnpm run check-schema` before any schema-related commit.
+1. Selects harnesses through `--harness` or `--all`.
+2. Discovers local sources with the selected adapters.
+3. Creates one `ingest_runs` row per source attempt.
+4. Parses candidate raw token facts and parser diagnostics.
+5. Inserts deduplicated `raw_token_usage` rows.
+6. Inserts `raw_observations` for this run.
+7. Records diagnostics.
+8. Marks ingest runs as `completed` or `failed`.
+9. Runs normalization unless `--no-normalize` or `--dry-run` is set.
 
-## Token Semantics
+`sync --dry-run` discovers and parses sources, reports counts, and writes nothing.
 
-`total_tokens` in `oc_token_events` means OpenCode `tokens.total` when present. Fallback:
+`sync --all` attempts all requested harnesses. Successful harness scopes should still normalize when one harness fails, and the command exits non-zero if any requested harness fails.
 
-```text
-input + output + reasoning + cache_read + cache_write
-```
+## Adapter Contract
 
-`total_tokens` in `oc_tps_samples` is **separate**: it is `output + reasoning` only, used as the throughput numerator.
+All harness adapters implement the same interface:
 
-Missing `provider` or `model` must not drop token data. Store, render, and query it as `unknown`. Missing `session_id` is **not allowed**.
+- return their harness ID;
+- discover durable local sources;
+- parse a source into raw token facts and diagnostics.
+
+V1 starts with metadata-only JSONL/NDJSON scaffolding for OpenCode, Pi, and Codex. Real harness-specific source parsing should stay behind the adapter interface and feed the same raw-to-canonical pipeline.
+
+Uneven metric coverage is valid. An adapter should produce diagnostics for unavailable or rejected data instead of failing unrelated token usage sync.
+
+## Normalization Pipeline
 
-## Plugin Event Flow
+`tokeninsights-cli normalize`:
 
-### Server Plugin (`packages/plugins/opencode-server/src/index.ts`)
+1. Loads raw token facts, optionally filtered by harness.
+2. Rejects facts without stable session identity and writes a diagnostic.
+3. Upserts canonical sessions.
+4. Upserts canonical messages when source message identity exists.
+5. Upserts canonical token usage by semantic key.
+6. Normalizes missing provider/model to `unknown`.
+7. Marks fallback-like scopes as non-countable to avoid default double counting.
 
-Runs as an OpenCode server plugin and is the **sole writer** of OpenCode token data. It emits an `info` log when the plugin loads, `debug` logs for all hooks/events when `TOKENINSIGHTS_DEBUG=1`, and error logs for DB/worker/write failures. `session.created` produces a debug log so activation and session starts can be diagnosed from the log file.
+Normalization must be idempotent: repeated runs should converge on the same canonical identities and must not duplicate canonical facts or diagnostics.
 
-- **Initialization is lazy**: DB open and schema migration are deferred to the first event that requires a write (`message.part.updated` or `message.updated`). If init fails (e.g. DB locked), the plugin logs to stderr and disables tracking for that session; OpenCode startup is never blocked.
-- **`chat.params`**: captures `thinking_level` from known params/options shapes before request headers are built.
-- **`chat.headers`**: writes one `oc_llm_requests` row per invocation (direct DB write). Attempts are tracked in memory by `session_id:message_id:provider:model`.
-- **`message.part.updated`**:
-  - `step-finish`: queues a true time-series token event with source `step-finish`.
-- **`message.updated`**:
-  - Assistant messages queue message metadata updates: `session_id`, provider, model.
-  - Tracks latest assistant message metadata per session for best-effort tool-call attribution.
-  - When a completed assistant message has no step rows, queues a `message-fallback` token row. This protects against missing `step-finish` data.
-  - Completed assistant messages also queue one `oc_tps_samples` row when timing data is available. This is the durable source for CLI `tps avg`, `tps mean`, and `tps median`.
-- **`tool.execute.before`**: queues one `oc_tool_calls` row with status `started`.
-- **`tool.execute.after`**: queues one `oc_tool_calls` row with status `completed` or `error`.
-- **`session.idle`** / **`session.deleted`**: scans an in-memory message tracker for completed assistant messages, queues missing fallback rows, then flushes pending rows for that session to the writer worker. Cleans up per-session state.
+`normalize --dry-run` computes candidate canonical and diagnostic counts without writing.
 
-### Session Lifecycle (Server Plugin)
+## Viewer
 
-- **`session.idle`**: scans in-memory message tracker for completed assistant messages, queues missing fallback rows, then sends pending rows for that session to the writer worker.
-- **`session.deleted`**: attempts the same fallback scan, then sends pending rows for that session to the writer worker, and cleans up per-session in-memory state.
+`tokeninsights-cli view` is interactive-only and opens the database read-only.
 
-`attempt_index == 1` contributes to `requests`. `attempt_index > 1` contributes to `retries`.
+The TUI queries canonical tables only:
 
-Request-tracking limitations: counts request attempts, not confirmed HTTP success. Does not count tool network calls, MCP traffic, auth/OAuth, provider metadata lookups, plugin-owned fetches, install/update checks, or local TUI/server API calls.
+- token totals come from countable `canonical_token_usage` rows;
+- provider/model/harness filters derive from available canonical rows;
+- missing provider/model renders as `unknown`;
+- empty canonical tables produce a clean empty state.
 
-### Pi Extension (`packages/plugins/pi/src/index.ts`)
+Current grouping modes:
 
-Runs as a Pi coding-agent extension. One extension collects all Pi data: tokens, TPS, requests, and tool calls. It emits an `info` log when the extension loads, `debug` logs for all hooks when `TOKENINSIGHTS_DEBUG=1`, and error logs for DB/write failures. `session_start` produces a debug log so activation and session starts can be diagnosed from the log file.
+| Mode | Group key |
+|------|-----------|
+| `day` | local day, harness, provider, model |
+| `hour` | local day, local hour, harness, provider, model |
+| `session` | local day, session ID, harness, provider, model |
 
-- **Initialization is lazy**: DB open and schema migration are deferred to the first event that requires a write. If init fails, the extension logs to stderr and disables tracking; Pi startup is never blocked.
-- **`turn_start`**: resets per-turn timing state (`requestStartAt`, `firstTokenAt`, `lastTokenAt`).
-- **`before_provider_request`**: extracts `thinking_level` from the provider payload, captures provider/model from `ctx.model`, increments `turnSeq`, generates `currentTurnId`, writes one `pi_llm_requests` row.
-- **`message_update`** (assistant only): records `firstTokenAt` on the first streaming update and updates `lastTokenAt` on every update.
-- **`tool_execution_start`**: writes one `pi_tool_calls` row with status `started`.
-- **`tool_execution_end`**: writes one `pi_tool_calls` row with status `completed` or `error`.
-- **`message_end`** (assistant only): reads `usage` from the completed message, writes one `pi_token_events` row; computes `durationMs` = `lastTokenAt − requestStartAt`, `ttftMs` = `firstTokenAt − requestStartAt`, and `tokens_per_second`, writes one `pi_tps_samples` row.
-- **`session_shutdown`**: closes the DB connection and clears all session state.
-- `reasoning_tokens` is always `0`.
-- `message_id` is a single synthetic `currentTurnId` per turn, shared across `pi_llm_requests`, `pi_token_events`, `pi_tps_samples`, and `pi_tool_calls` (Pi messages do not carry stable IDs).
+Current tabs:
 
-## CLI Architecture
+| Tab | V1 source |
+|-----|-----------|
+| tokens | `canonical_token_usage` |
+| tps | empty until canonical timing facts exist |
+| requests | empty until canonical request facts exist |
+| tool calls | empty until canonical tool facts exist |
+| tool breakdown | empty until canonical tool facts exist |
 
-### Entry Point
+Sparse or unavailable domains must not break token viewing.
 
-`packages/cli/cmd/tokeninsights-cli/main.go` dispatches to `packages/cli/internal/cli.RunInteractive()`.
+## DB Lifecycle
 
-### Query Flow (`RunInteractive`)
+- `db.Open` opens existing compatible DBs read-only for view.
+- `db.CreateIfMissing` creates missing DBs from the embedded schema for sync/normalize workflows.
+- incompatible schema versions are rejected with a `reset-all --confirm` instruction.
+- `reset-canonical --confirm` deletes canonical token usage, messages, sessions, and normalization diagnostics while keeping raw facts and observations.
+- `reset-all --confirm` removes the DB plus `-wal` and `-shm`, then recreates from schema.
 
-1. Parse flags (`--db-path`, `--today`, `--week`, `--month`, filters).
-2. Default `--db-path` to `~/.local/share/tokeninsights/tokeninsights.sqlite` when omitted.
-3. Validate the resolved DB path exists and is a file.
-4. Validate no more than one period flag.
-5. Compute period start:
-   - `--today`: today 00:00 local time
-   - `--week`: Monday 00:00 local time of current calendar week
-   - `--month`: first day of current month 00:00 local time
-   - `--all-time`: no start filter (show all data)
-   - Default (no period flag): `--week`
-6. Open DB read-only.
-7. Load and aggregate rows asynchronously with filters pushed into SQL WHERE clauses. Harness filters select which table families are queried.
-8. Render an ASCII table in the active tab. The interactive viewport supports vertical row scrolling and whole-table horizontal scrolling for wide tables.
+## Invariants
 
-### Aggregation
+Must not change silently:
 
-Aggregation is SQL-side for performance. The CLI queries both `oc_*` and `pi_*` table families independently and merges results by group key in memory.
+- schema changes require explicit user approval;
+- `packages/schema/schema.sql` remains the table source of truth;
+- canonical token usage must be session-centric;
+- missing provider/model must render as `unknown`, not cause row loss;
+- raw storage must remain metadata-only and avoid private content;
+- default token analytics use only countable canonical token rows;
+- TPS labels and UI concepts remain first-class for future timing support;
+- `view` opens read-only and remains interactive-only.
 
-- **Token events**: `SUM(input_tokens, output_tokens, reasoning_tokens, cache_read_tokens, cache_write_tokens, total_tokens)` grouped by day/hour/session + provider + model + harness.
-- **TPS samples**: window CTE for median, `AVG` for mean, `SUM(total_tokens) / SUM(duration_ms)` for avg, grouped by day/hour/session + provider + model + harness.
-- **LLM requests**: `SUM(CASE WHEN attempt_index = 1 THEN 1)` for requests, `SUM(CASE WHEN attempt_index > 1 THEN 1)` for retries, grouped by day/hour/session + provider + model + harness.
-- **Tool calls**: `SUM(CASE WHEN status = 'started' THEN 1)` for tool calls and `SUM(CASE WHEN status = 'error' THEN 1)` for errors, grouped by day/hour/session + provider + model + harness. The `tool breakdown` tab additionally groups by `tool_name`. Future duration metrics are planned in [`docs/spec/tool-runtime-duration-metrics.md`](spec/tool-runtime-duration-metrics.md).
-
-The `harness` column is a literal (`'oc'` or `'pi'`) selected in the query and included in the group key. Final sort order is defined per grouping mode in the table above.
+Can evolve with care:
 
-### Tabs
+- new harness adapters;
+- new canonical fact domains for TPS, requests, tools, or costs;
+- richer conflict precedence;
+- generated schema constants;
+- future checkpoint plugins that write equivalent raw/canonical concepts.
 
-The interactive TUI has five tabs. Only columns relevant to the active tab are rendered.
+## File Organization
 
-| Tab | Columns |
-|-----|---------|
-| **tokens** (default) | day, [hour \| session id, thinking], harness, provider, model, input, output, reasoning, cache read, cache write, total |
-| **tps** | day, [hour \| session id, thinking], harness, provider, model, tps avg, tps mean, tps median |
-| **requests** | day, [hour \| session id, thinking], harness, provider, model, requests, retries |
-| **tool calls** | day, [hour \| session id, thinking], harness, provider, model, tool calls, errors |
-| **tool breakdown** | day, [hour \| session id, thinking], harness, provider, model, tool, tool calls, errors |
+| Path | Role |
+|------|------|
+| `packages/schema/schema.sql` | SQLite schema source of truth |
+| `packages/cli/internal/db/schema/schema.sql` | embedded checked schema copy |
+| `packages/check-schema/check-schema.ts` | schema contract validator |
+| `packages/cli/cmd/tokeninsights-cli/main.go` | CLI executable entry point |
+| `packages/cli/internal/cli/commands.go` | command dispatch and thin orchestration |
+| `packages/cli/internal/cli/flags.go` | view flag parsing |
+| `packages/cli/internal/cli/table.go` | interactive TUI model |
+| `packages/cli/internal/cli/render.go` | table rendering |
+| `packages/cli/internal/db/open.go` | DB open/create/reset/schema lifecycle |
+| `packages/cli/internal/db/schema.go` | Go schema constants |
+| `packages/cli/internal/db/aggregate.go` | canonical aggregation queries |
+| `packages/cli/internal/db/events.go` | canonical event rows for UI model |
+| `packages/cli/internal/db/filter_values.go` | canonical filter value discovery |
+| `packages/cli/internal/pipeline/adapters.go` | harness adapter interface and scaffold adapters |
+| `packages/cli/internal/pipeline/sync.go` | raw ingest and observation pipeline |
+| `packages/cli/internal/pipeline/normalize.go` | canonical normalization and diagnostics |
+| `packages/cli/internal/pipeline/pipeline_test.go` | fixture-style sync/normalize conformance tests |
 
-### Grouping Modes
+## Testing And Verification
 
-| Mode | Group Key | Sort Order |
-|------|-----------|------------|
-| `session` (default) | day, session_id, provider, model, harness | MAX(recorded_at_ms) desc, day desc, harness asc, session_id asc, provider asc, model asc |
-| `day` | day, provider, model, harness | MAX(recorded_at_ms) desc, day desc, harness asc, provider asc, model asc |
-| `hour` | day, hour, provider, model, harness | MAX(recorded_at_ms) desc, day desc, hour desc, harness asc, provider asc, model asc |
-
-### Rendering
-
-- `renderTableWithWidth` builds rows as strings, calculates widths, left-aligns text columns, right-aligns numeric columns.
-- The interactive TUI renders the table at natural width with wrapping disabled, then applies an ANSI-aware horizontal viewport so wide tables can scroll left/right without breaking styling.
-- Numeric columns start after the grouping columns and provider/model.
-- **Compact token units**:
-  - `0` → blank
-  - `< 1,000` → raw integer
-  - `< 1,000,000` → `<value/1000>K`
-  - `>= 1,000,000` → `<value/1,000,000>M`
-- Session IDs are shortened to the last 8 characters.
-- Model names with `/` are shortened to the last path segment (e.g. `openai/gpt-5.5` → `gpt-5.5`).
-
-### Filters
-
-All filters can be repeated or comma-separated:
-
-- `--session-id`: exact match against `session_id`
-- `--provider`: exact match against `provider`
-- `--model`: exact match against `model`
-- `--harness`: exact match against harness (`oc` or `pi`)
-- `--filter-day-from YYYY-MM-DD`: inclusive lower bound on local day derived from `recorded_at_ms`
-- `--filter-day-to YYYY-MM-DD`: inclusive upper bound on local day derived from `recorded_at_ms`
-  - `--filter-day-from` must not be after `--filter-day-to`
-  - Both must be valid `YYYY-MM-DD` dates
-
-Period and date range filters are pushed into SQL WHERE clauses. In the interactive TUI, `f` opens a filter popup for provider or harness. The popup reflects the current effective filter state, including filters initialized from CLI flags. `space`/`enter` chooses a filter dimension, `space` toggles values, `enter` applies selected values, and `esc` closes without applying staged changes. `↑/↓` and `j/k` scroll rows; `←/→` and `h/l` scroll the whole table horizontally; `home`/`end` jump to the start/end of the horizontal table viewport. Provider value discovery is global across token, TPS, request, and tool-call data rather than active-tab-specific.
-
-## Invariants (What Can & Cannot Change)
-
-### Must Never Change
-
-- **Plugin init must never block OpenCode**. DB open and schema migration must be lazy or inside a worker thread. Failures degrade gracefully.
-- `session_id` is required for every durable row.
-- TPS tables, columns, and metrics (`tps avg`, `tps mean`, `tps median`) must remain.
-- Plugin DB writes must stay lightweight.
-- CLI must open the DB read-only.
-- Missing provider/model must be stored as `unknown`, never dropped.
-- `packages/schema/schema.sql` is the single source of truth for table definitions.
-
-### Can Evolve With Care
-
-Even the items below require explicit user approval before implementation. Surface the rationale, impact, and ask for approval.
-
-- New token columns can be added if both plugin and CLI are updated.
-- New grouping modes can be added if sort order, SQL, and rendering are updated.
-- New filters can be added if in-memory filter logic is updated.
-- Event sources can change if plugin handling, CLI expectations, and docs are updated.
-- New harnesses (other agents) can be added by following the `oc_*` / `pi_*` table family pattern and updating the aggregation merge logic.
-
-## File Organization & Naming Conventions
-
-| Directory / File | Role |
-|-----------------|------|
-| `packages/plugins/opencode-server/src/index.ts` | Server plugin; durable collection, LLM request and tool-call tracking |
-| `packages/plugins/opencode-server/src/oc-tokeninsights-writer.ts` | Node worker thread; SQLite writes, schema migration, pruning |
-| `packages/plugins/opencode-server/src/writer-client.ts` | Worker client used by the server plugin |
-| `packages/plugins/opencode-server/src/types.ts` | TypeScript types for OpenCode durable rows and schema validation |
-| `packages/logger/src/index.ts` | Shared best-effort plugin file logger used by OpenCode server and Pi |
-| `packages/plugins/opencode-server/src/schema-migrate.ts` | Auto-migration logic parsed from `packages/schema/schema.sql` |
-| `packages/plugins/opencode-server/package.json` | OpenCode server plugin package manifest (`@tokeninsights/opencode-server`) |
-| `packages/plugins/pi/src/index.ts` | Pi extension entry point; event handlers, DB writes |
-| `packages/plugins/pi/package.json` | Pi extension package manifest (`@tokeninsights/pi`) |
-| `packages/schema/schema.sql` | Single source of truth for SQLite schema |
-| `packages/scripts/check-schema.ts` | Cross-language schema contract validator |
-| `packages/cli/cmd/tokeninsights-cli/main.go` | CLI entry point |
-| `packages/cli/internal/db/open.go` | Read-only DB open + schema version check |
-| `packages/cli/internal/db/schema.go` | Go string constants for table/column names |
-| `packages/cli/internal/db/schema_test.go` | Go schema contract test |
-| `packages/cli/internal/db/events.go` | `oc_token_events` query + filter builder |
-| `packages/cli/internal/db/aggregate.go` | SQL aggregation for token, TPS, request, and tool-call tables + merge |
-| `packages/cli/internal/cli/flags.go` | CLI flag parsing |
-| `packages/cli/internal/cli/table.go` | Bubbletea TUI model, key handling, tab switching |
-| `packages/cli/internal/cli/render.go` | Table rendering, formatting, compact units |
-| `packages/cli/internal/cli/render_test.go` | Golden file tests for rendered tables |
-
-## Testing & Verification
-
-### Schema Changes
+Run before schema or pipeline changes are considered done:
 
 ```sh
 pnpm run check-schema
-```
-
-### TypeScript / Plugin Changes
-
-```sh
+pnpm run test
 pnpm run build
 ```
 
-### Go / CLI Changes
+Use focused Go tests during iteration:
 
 ```sh
-pnpm run test
-pnpm run build:cli
-```
-
-### Smoke Test Against Real DB
-
-Build the CLI first, then run against your local database:
-
-```sh
-pnpm run build:cli
-./packages/cli/tokeninsights-cli --today
+cd packages/cli
+go test ./internal/pipeline
+go test ./internal/db
+go test ./...
 ```

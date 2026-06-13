@@ -1,8 +1,6 @@
 packages:
-  - "packages/plugins/*"
   - "packages/cli"
   - "packages/check-schema"
-  - "packages/logger"
 injectWorkspacePackages: true
 allowBuilds:
   '@google/genai': true

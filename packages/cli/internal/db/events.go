@@ -8,18 +8,16 @@ import (
 	"time"
 )
 
-// Filter holds CLI filter criteria. All slices use exact-match IN clauses.
 type Filter struct {
 	Start      time.Time
 	SessionIDs []string
 	Providers  []string
 	Models     []string
 	Harnesses  []string
-	DayFrom    string // YYYY-MM-DD local
-	DayTo      string // YYYY-MM-DD local
+	DayFrom    string
+	DayTo      string
 }
 
-// Event is a single durable token-event row from oc_token_events.
 type Event struct {
 	RecordedAtMs     int64
 	SessionID        string
@@ -44,63 +42,40 @@ func placeholders(n int) string {
 	return strings.Join(parts, ",")
 }
 
-func buildFilterArgs(f Filter) ([]any, []string) {
-	var args []any
-	var where []string
-
-	if !f.Start.IsZero() {
-		where = append(where, fmt.Sprintf("%s >= ?", ColRecordedAtMs))
-		args = append(args, f.Start.UnixMilli())
+func buildFilterArgs(f Filter) ([]interface{}, []string) {
+	whereClause, args := canonicalWhereClause(f)
+	trimmed := strings.TrimPrefix(whereClause, "WHERE ")
+	if trimmed == "" {
+		return args, nil
 	}
-
-	if len(f.SessionIDs) > 0 {
-		where = append(where, fmt.Sprintf("%s IN (%s)", ColSessionID, placeholders(len(f.SessionIDs))))
-		for _, id := range f.SessionIDs {
-			args = append(args, id)
-		}
-	}
-	if len(f.Providers) > 0 {
-		where = append(where, fmt.Sprintf("%s IN (%s)", ColProvider, placeholders(len(f.Providers))))
-		for _, p := range f.Providers {
-			args = append(args, p)
-		}
-	}
-	if len(f.Models) > 0 {
-		where = append(where, fmt.Sprintf("%s IN (%s)", ColModel, placeholders(len(f.Models))))
-		for _, m := range f.Models {
-			args = append(args, m)
-		}
-	}
-	if f.DayFrom != "" {
-		where = append(where, fmt.Sprintf("date(%s/1000, 'unixepoch', 'localtime') >= ?", ColRecordedAtMs))
-		args = append(args, f.DayFrom)
-	}
-	if f.DayTo != "" {
-		where = append(where, fmt.Sprintf("date(%s/1000, 'unixepoch', 'localtime') <= ?", ColRecordedAtMs))
-		args = append(args, f.DayTo)
-	}
-	return args, where
+	return args, []string{trimmed}
 }
 
-// Events queries oc_token_events with filters pushed into SQL.
 func Events(ctx context.Context, db *sql.DB, f Filter) ([]Event, error) {
-	if !harnessAllowed(f, "oc") {
-		return nil, nil
-	}
-	args, where := buildFilterArgs(f)
-	clause := ""
-	if len(where) > 0 {
-		clause = "WHERE " + strings.Join(where, " AND ")
-	}
+	whereClause, args := canonicalWhereClause(f)
 	query := fmt.Sprintf(`
-		SELECT %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
-		FROM %s
+		SELECT ctu.%s, cs.%s, ctu.%s, ctu.%s, ctu.%s, ctu.%s, ctu.%s, ctu.%s, ctu.%s, ctu.%s
+		FROM %s ctu
+		INNER JOIN %s cs ON cs.%s = ctu.%s
 		%s
+		ORDER BY ctu.%s DESC
 	`,
-		ColRecordedAtMs, ColSessionID, ColProvider, ColModel,
-		ColInputTokens, ColOutputTokens, ColReasoningTokens,
-		ColCacheReadTokens, ColCacheWriteTokens, ColTotalTokens,
-		TableTokenEvents, clause,
+		ColRecordedAtMs,
+		ColSessionID,
+		ColProvider,
+		ColModel,
+		ColInputTokens,
+		ColOutputTokens,
+		ColReasoningTokens,
+		ColCacheReadTokens,
+		ColCacheWriteTokens,
+		ColTotalTokens,
+		TableCanonicalTokenUsage,
+		TableCanonicalSessions,
+		ColID,
+		ColSessionID,
+		whereClause,
+		ColRecordedAtMs,
 	)
 
 	rows, err := db.QueryContext(ctx, query, args...)
@@ -111,15 +86,22 @@ func Events(ctx context.Context, db *sql.DB, f Filter) ([]Event, error) {
 
 	var events []Event
 	for rows.Next() {
-		var e Event
+		var event Event
 		if err := rows.Scan(
-			&e.RecordedAtMs, &e.SessionID, &e.Provider, &e.Model,
-			&e.InputTokens, &e.OutputTokens, &e.ReasoningTokens,
-			&e.CacheReadTokens, &e.CacheWriteTokens, &e.TotalTokens,
+			&event.RecordedAtMs,
+			&event.SessionID,
+			&event.Provider,
+			&event.Model,
+			&event.InputTokens,
+			&event.OutputTokens,
+			&event.ReasoningTokens,
+			&event.CacheReadTokens,
+			&event.CacheWriteTokens,
+			&event.TotalTokens,
 		); err != nil {
 			return nil, err
 		}
-		events = append(events, e)
+		events = append(events, event)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err

@@ -274,12 +274,12 @@ func TestParseTableOptionsDefaultWeek(t *testing.T) {
 
 func TestParseTableOptionsHarness(t *testing.T) {
 	var stderr bytes.Buffer
-	opts, err := parseTableOptions([]string{"--db-path", "/tmp/test.sqlite", "--harness", "oc,pi"}, &stderr, false, periodWeek)
+	opts, err := parseTableOptions([]string{"--db-path", "/tmp/test.sqlite", "--harness", "opencode,pi,codex"}, &stderr, false, periodWeek)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Join([]string(opts.filters.harnesses), ",") != "oc,pi" {
-		t.Fatalf("got harnesses %q, want oc,pi", opts.filters.harnesses.String())
+	if strings.Join([]string(opts.filters.harnesses), ",") != "opencode,pi,codex" {
+		t.Fatalf("got harnesses %q, want opencode,pi,codex", opts.filters.harnesses.String())
 	}
 }
 

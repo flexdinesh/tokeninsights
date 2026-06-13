@@ -28,13 +28,5 @@ func run(ctx context.Context, args []string, stdout io.Writer, stderr io.Writer)
 }
 
 func runWithTime(ctx context.Context, args []string, stdout io.Writer, stderr io.Writer, now time.Time) error {
-	if len(args) > 0 {
-		switch args[0] {
-		case "help", "--help", "-h":
-			fmt.Fprintln(stdout, cli.ErrUsage)
-			return nil
-		}
-	}
-
-	return cli.RunInteractive(ctx, args, stdout, stderr, now)
+	return cli.Run(ctx, args, stdout, stderr, now)
 }

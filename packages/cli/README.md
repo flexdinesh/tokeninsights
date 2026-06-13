@@ -1,134 +1,138 @@
 # tokeninsights-cli
 
-Query token usage data written by the TokenInsights OpenCode plugin and Pi extension.
+Sync durable local harness data into TokenInsights SQLite and view canonical token usage in an interactive terminal table.
 
-The CLI reads the SQLite database directly, aggregates rows from the OpenCode `oc_*` table family and Pi `pi_*` table family, and opens a styled terminal table grouped by day, provider, and model. With `--group-by=hour`, it expands each day into hourly buckets. With `--group-by=session`, it expands each day into session buckets.
+Supported harness IDs:
 
-## Usage
-
-```sh
-~/workspace/tokeninsights/packages/cli/tokeninsights-cli
-```
-
-The default interactive view shows the current week. Press `q` to quit. Use `↑/↓` or `j/k` to scroll vertically, `←/→` or `h/l` to scroll horizontally, and `home`/`end` to jump to the start/end of the horizontal table viewport.
-
-More examples:
-
-```sh
-tokeninsights-cli --today
-tokeninsights-cli --week
-tokeninsights-cli --month
-tokeninsights-cli --all-time
-tokeninsights-cli --today --group-by=hour
-tokeninsights-cli --week --group-by=hour
-tokeninsights-cli --week --group-by=session
-tokeninsights-cli --week --provider openai --model gpt-5.5
-tokeninsights-cli --month --filter-day-from 2026-04-20 --filter-day-to 2026-04-25 --session-id ses_abc,ses_xyz
+```text
+opencode
+pi
+codex
 ```
 
 ## Commands
 
-Interactive mode
+`sync`
 
-Open the styled terminal UI. Defaults to the current week when no period flag is passed.
+Ingest local harness sources into raw tables and normalize to canonical facts by default.
 
 ```sh
-tokeninsights-cli
-tokeninsights-cli --today
-tokeninsights-cli --month --group-by=session
+tokeninsights-cli sync --all
+tokeninsights-cli sync --harness opencode
+tokeninsights-cli sync --harness pi --source-dir /path/to/source-root
+tokeninsights-cli sync --all --dry-run
+tokeninsights-cli sync --all --no-normalize
 ```
 
-`table`
+When `--source-dir` is provided, sync first looks for a harness subdirectory such as `/path/to/source-root/opencode`; otherwise it scans the provided directory directly.
 
-Legacy alias for interactive mode.
+`normalize`
 
-## Arguments
+Rebuild canonical facts from existing raw facts.
 
-`--db-path PATH`
+```sh
+tokeninsights-cli normalize
+tokeninsights-cli normalize --harness codex
+tokeninsights-cli normalize --dry-run
+```
 
-Optional. Path to the SQLite database created by TokenInsights.
+`reset-canonical`
 
-Default TokenInsights DB path:
+Delete canonical sessions, messages, token usage, and normalization diagnostics while keeping raw facts and observations.
+
+```sh
+tokeninsights-cli reset-canonical
+tokeninsights-cli reset-canonical --confirm
+```
+
+`reset-all`
+
+Delete and recreate the TokenInsights database plus SQLite sidecars.
+
+```sh
+tokeninsights-cli reset-all
+tokeninsights-cli reset-all --confirm
+```
+
+`view`
+
+Open the interactive terminal UI over canonical token usage.
+
+```sh
+tokeninsights-cli view
+tokeninsights-cli view --today
+tokeninsights-cli view --week --group-by=hour
+tokeninsights-cli view --week --group-by=session
+tokeninsights-cli view --month --provider openai --model gpt-5
+```
+
+Running `tokeninsights-cli` without a command still opens `view`.
+
+## Database
+
+Default path:
 
 ```text
 ~/.local/share/tokeninsights/tokeninsights.sqlite
 ```
 
+Override it with `--db-path` or `TOKENINSIGHTS_DB_PATH`.
+
+The CLI creates a missing database for `sync`, `normalize`, and reset workflows. `view` opens the database read-only and rejects missing or incompatible databases with a reset instruction.
+
+## View Arguments
+
 `--today`
 
-Show data from today, grouped by day unless `--group-by` is present.
+Show data from today.
 
 `--week`
 
-Show data from the current calendar week (Monday 00:00 to Sunday 23:59), grouped by day unless `--group-by` is present.
+Show data from the current calendar week. This is the default period for interactive view.
 
 `--month`
 
-Show data from the current calendar month, grouped by day unless `--group-by` is present.
+Show data from the current calendar month.
 
 `--all-time`
 
-Show all data with no time filter. This can be slow on large databases.
+Show all canonical data with no period filter.
 
 `--group-by=hour|session`
 
-Optional. Split the selected period by hour or session. Only one `--group-by` can be passed.
-
-`--group-by=hour` adds an `hour` column after `day`. Hours with no matching data are not printed.
-
-`--group-by=session` adds a `session id` column after `day`.
+Split the selected period by hour or session. The default grouping is day.
 
 `--session-id ID`
 
-Optional. Filter by OpenCode session ID. Can be repeated or comma-separated.
-
-```sh
-tokeninsights-cli --week --session-id ses_abc --session-id ses_xyz
-tokeninsights-cli --week --session-id ses_abc,ses_xyz
-```
+Filter by canonical harness session ID. Can be repeated or comma-separated.
 
 `--provider ID`
 
-Optional. Filter by provider ID. Can be repeated or comma-separated.
-
-```sh
-tokeninsights-cli --week --provider openai --provider github-copilot
-```
+Filter by provider. Can be repeated or comma-separated.
 
 `--model ID`
 
-Optional. Filter by model ID. Can be repeated or comma-separated.
+Filter by model. Can be repeated or comma-separated.
 
-```sh
-tokeninsights-cli --week --model gpt-5.5 --model claude-opus-4.7
-```
+`--harness ID`
+
+Filter by `opencode`, `pi`, or `codex`. Can be repeated or comma-separated.
 
 `--filter-day-from YYYY-MM-DD`
 
-Optional. Filter from this local day (inclusive). Must be a valid `YYYY-MM-DD` date.
+Inclusive local-day lower bound.
 
 `--filter-day-to YYYY-MM-DD`
 
-Optional. Filter to this local day (inclusive). Must be a valid `YYYY-MM-DD` date. `--filter-day-from` must not be after `--filter-day-to`.
+Inclusive local-day upper bound.
 
-These range filters apply in addition to any selected period (`--today`, `--week`, `--month`, `--all-time`).
+## Interactive Keys
 
-```sh
-tokeninsights-cli --month --filter-day-from 2026-04-20 --filter-day-to 2026-04-25
-tokeninsights-cli --all-time --filter-day-from 2026-04-20 --filter-day-to 2026-04-25
-```
-
-Interactive mode defaults to `--week` when no period flag is passed.
-
-## Display
-
-Session IDs are shortened to the last 8 characters in table output.
-
-Model names with `/` are shortened to the last path segment. For example, `openai/gpt-5.5` is shown as `gpt-5.5`.
+Press `q` to quit. Use `up/down` or `j/k` to scroll vertically, `left/right` or `h/l` to scroll horizontally, and `home/end` to jump to the start or end of the horizontal table viewport.
 
 ## Metrics
 
-Token columns are summed from `oc_token_events`:
+Token columns come from countable rows in `canonical_token_usage`:
 
 ```text
 input
@@ -139,56 +143,8 @@ cache write
 total
 ```
 
-`total` means OpenCode `tokens.total` when present in the plugin, otherwise input + output + reasoning + cache read + cache write.
+Missing provider or model values are normalized to `unknown`.
 
-TPS columns are read from `oc_tps_samples` and are part of the core project output:
+TPS, request, and tool-call tabs remain part of the UI surface, but sync-first V1 only guarantees token usage where durable local sources expose it. Sparse or unavailable domains render empty instead of failing token viewing.
 
-```text
-tps avg
-tps mean
-tps median
-```
-
-Request columns are read from `oc_llm_requests` when the server plugin is installed:
-
-```text
-requests
-retries
-```
-
-`requests` counts initial LLM provider attempts. `retries` counts later attempts for the same session/message/provider/model.
-
-With `--group-by=session`, the table also shows `thinking` after `session id`. It is a comma-separated list of non-unknown thinking levels seen for that session/provider/model row.
-
-## Example Output
-
-Daily output:
-
-```text
-╭────────────┬────────────────┬─────────────────┬─────────┬──────────┬────────────┬───────┬────────┬───────────┬────────────┬─────────────┬───────╮
-│ day        │ provider       │ model           │ tps avg │ tps mean │ tps median │ input │ output │ reasoning │ cache read │ cache write │ total │ requests │ retries │
-├────────────┼────────────────┼─────────────────┼─────────┼──────────┼────────────┼───────┼────────┼───────────┼────────────┼─────────────┼───────┼──────────┼─────────┤
-│ 2026-04-24 │ github-copilot │ claude-opus-4.7 │   68.30 │   553.52 │     127.86 │  112K │     3K │        1K │        75K │         600 │  192K │       12 │       1 │
-│ 2026-04-24 │ openai         │ gpt-5.5         │   45.24 │  2230.81 │      66.91 │   82K │     1K │       900 │        41K │         300 │  126K │        9 │       0 │
-╰────────────┴────────────────┴─────────────────┴─────────┴──────────┴────────────┴───────┴────────┴───────────┴────────────┴─────────────┴───────╯
-```
-
-Hourly output:
-
-```text
-day        | hour  | provider       | model           | tps avg | tps mean | tps median | input | output | reasoning | cache read | cache write | total | requests | retries
-2026-04-24 | 16:00 | github-copilot | claude-opus-4.7 |   68.30 |   553.52 │     127.86 │   32K │    900 │       300 │        21K │         200 │   54K │        4 │       1
-2026-04-24 | 16:00 | openai         | gpt-5.5         │   45.24 │  2230.81 │      66.91 │   21K │    500 │       250 │        12K │         100 │   33K │        3 │       0
-```
-
-Session output:
-
-```text
-day        | session id | thinking | provider       │ model           │ tps avg │ tps mean │ tps median │ input │ output │ reasoning │ cache read │ cache write │ total │ requests │ retries
-2026-04-24 │ ses_abc    │ high     │ github-copilot │ claude-opus-4.7 │   68.30 │   553.52 │     127.86 │   32K │    900 │       300 │        21K │         200 │   54K │        4 │       1
-2026-04-24 │ ses_xyz    │ low,high │ openai         │ gpt-5.5         │   45.24 │  2230.81 │      66.91 │   21K │    500 │       250 │        12K │         100 │   33K │        3 │       0
-```
-
-## Notes
-
-The default database filename is `tokeninsights.sqlite`. Current primary table families are `oc_*` for OpenCode data and `pi_*` for Pi data.
+Session IDs are shortened to the last 8 characters in table output. Model names with `/` are shortened to the last path segment.
