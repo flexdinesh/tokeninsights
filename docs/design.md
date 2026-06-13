@@ -61,6 +61,18 @@ TokenInsights V1 is a local Go CLI:
 
 Realtime plugins and checkpoint plugins are future-compatible concepts, not active product code in this repository. The old direct-write OpenCode and Pi plugin packages are removed from the active workspace.
 
+## Current Implementation Status
+
+The sync-first canonical path is the active product path. Schema V3, DB lifecycle checks, `sync`, `normalize`, reset commands, canonical token aggregation, sparse viewer tabs, and fixture-style pipeline conformance tests are implemented.
+
+Known gaps are part of the current design contract:
+
+- normalization is idempotent, but it currently scans and upserts all matching raw token facts rather than tracking an incremental work queue;
+- canonical token upserts are deterministic by semantic key, but there is not yet an explicit conflict/precedence model for competing raw facts;
+- diagnostics exist for parser warnings, missing canonical session identity, and some source-level suppressions such as duplicate or stale snapshots, but the full rejected/conflicting/suppressed diagnostic taxonomy is still future work;
+- TPS, request, tool-call, and tool-breakdown tabs have separate query boundaries and intentionally render empty rows until canonical domains for those metrics exist;
+- realtime and checkpoint plugin parity remains future-compatible only.
+
 ## Schema Contract
 
 `packages/schema/schema.sql` is the single source of truth for SQLite table and column definitions. The Go CLI embeds a checked copy at `packages/cli/internal/db/schema/schema.sql`.
@@ -173,6 +185,8 @@ Diagnostics must not contain private source content or full paths.
 8. Marks ingest runs as `completed` or `failed`.
 9. Runs normalization unless `--no-normalize` or `--dry-run` is set.
 
+Each source ingest is transactional. If a raw fact, observation, or diagnostic write fails after the run is created, raw writes for that source are rolled back and the ingest run is committed as failed with no partial raw fact or observation rows.
+
 `sync --dry-run` discovers and parses sources, reports counts, and writes nothing.
 
 `sync --all` attempts all requested harnesses. Successful harness scopes should still normalize when one harness fails, and the command exits non-zero if any requested harness fails.
@@ -187,9 +201,13 @@ All harness adapters implement the same interface:
 - discover durable local sources;
 - parse a source into raw token facts and diagnostics.
 
-OpenCode sync parses modern durable SQLite databases named `opencode.db` or `opencode-<channel>.db` from the OpenCode data directory. Pi sync parses durable JSONL session files under `~/.pi/agent/sessions`, using assistant message usage as exact message-scoped token facts. Codex sync parses rollout JSONL session files under `${CODEX_HOME:-~/.codex}/sessions`, using `event_msg` records with `payload.type == "token_count"` as exact message-scoped token facts. Harness-specific source parsing stays behind the adapter interface and feeds the same raw-to-canonical pipeline.
+OpenCode sync parses modern durable SQLite databases named `opencode.db` or `opencode-<channel>.db` from `${XDG_DATA_HOME:-~/.local/share}/opencode`. It reads assistant rows from the `message` table, parses metadata-only token fields from `message.data`, uses message/session IDs when available, and suppresses copied fork or channel rows with deterministic non-private fingerprints.
 
-Codex token parsing is stateful per file. It uses the first `session_meta` record for the logical session and provider, `turn_context` or `task_started` records for turn/model state, `last_token_usage` for countable token components, and `total_token_usage` only to suppress duplicate or stale cumulative snapshots. Cached input is normalized into `cache_read_tokens` and subtracted from raw input tokens before canonical aggregation. Missing provider/model remains null in raw facts and normalizes to `unknown`.
+Pi sync parses durable JSONL session files under `~/.pi/agent/sessions`, including one nested project directory level. It uses assistant message usage as exact message-scoped token facts. Session identity comes from the session header when available and may fall back to the filename session suffix.
+
+Codex sync parses rollout JSONL session files under `${CODEX_HOME:-~/.codex}/sessions`. It uses `event_msg` records with `payload.type == "token_count"` as exact message-scoped token facts. Codex token parsing is stateful per file: `session_meta` provides session/provider state, `turn_context` or `task_started` provides turn/model state, `last_token_usage` provides countable token components, and `total_token_usage` is used only to suppress duplicate or stale cumulative snapshots.
+
+Harness-specific source parsing stays behind the adapter interface and feeds the same raw-to-canonical pipeline. Missing provider/model remains null in raw facts and normalizes to `unknown`. Cached input is represented as `cache_read_tokens` where the source exposes it; Codex cached input is subtracted from raw input tokens before canonical aggregation.
 
 Uneven metric coverage is valid. An adapter should produce diagnostics for unavailable or rejected data instead of failing unrelated token usage sync.
 
@@ -206,6 +224,10 @@ Uneven metric coverage is valid. An adapter should produce diagnostics for unava
 7. Marks fallback-like scopes as non-countable to avoid default double counting.
 
 Normalization must be idempotent: repeated runs should converge on the same canonical identities and must not duplicate canonical facts or diagnostics.
+
+Current normalization is rebuild-capable but not work-queue incremental. It loads all matching raw token facts for the selected harness filter, upserts canonical rows by semantic key, and increments ingest-run canonical/diagnostic counters only for newly inserted canonical facts or diagnostics. Existing canonical rows may be updated deterministically when the same semantic key is seen again.
+
+Explicit conflict precedence between competing raw facts is not implemented yet. Until that model exists, canonical identity is governed by semantic keys and deterministic upsert behavior.
 
 `normalize --dry-run` computes candidate canonical and diagnostic counts without writing.
 
@@ -233,10 +255,10 @@ Current tabs:
 | Tab | V1 source |
 |-----|-----------|
 | tokens | `canonical_token_usage` |
-| tps | empty until canonical timing facts exist |
-| requests | empty until canonical request facts exist |
-| tool calls | empty until canonical tool facts exist |
-| tool breakdown | empty until canonical tool facts exist |
+| tps | separate empty query path until canonical timing facts exist |
+| requests | separate empty query path until canonical request facts exist |
+| tool calls | separate empty query path until canonical tool facts exist |
+| tool breakdown | separate empty query path until canonical tool facts exist |
 
 Sparse or unavailable domains must not break token viewing.
 
@@ -265,7 +287,7 @@ Can evolve with care:
 
 - new harness adapters;
 - new canonical fact domains for TPS, requests, tools, or costs;
-- richer conflict precedence;
+- explicit conflict precedence and richer diagnostic categories;
 - generated schema constants;
 - future checkpoint plugins that write equivalent raw/canonical concepts.
 
@@ -287,6 +309,7 @@ Can evolve with care:
 | `packages/cli/internal/db/events.go` | canonical event rows for UI model |
 | `packages/cli/internal/db/filter_values.go` | canonical filter value discovery |
 | `packages/cli/internal/pipeline/adapters.go` | harness adapter interface and registry |
+| `packages/cli/internal/pipeline/opencode_sqlite.go` | OpenCode durable SQLite adapter |
 | `packages/cli/internal/pipeline/codex_jsonl.go` | Codex JSONL session adapter |
 | `packages/cli/internal/pipeline/pi_jsonl.go` | Pi JSONL session adapter |
 | `packages/cli/internal/pipeline/sync.go` | raw ingest and observation pipeline |
