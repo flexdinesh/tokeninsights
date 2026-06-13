@@ -15,7 +15,7 @@ import (
 
 type Adapter interface {
 	Harness() Harness
-	Discover(context.Context, string) ([]Source, error)
+	Discover(context.Context, DiscoverOptions) ([]Source, error)
 	Parse(context.Context, Source, SyncOptions) ([]RawTokenFact, []Diagnostic, error)
 }
 
@@ -45,12 +45,18 @@ func (a jsonAdapter) Harness() Harness {
 	return a.harness
 }
 
-func (a jsonAdapter) Discover(ctx context.Context, sourceDir string) ([]Source, error) {
+func (a jsonAdapter) Discover(ctx context.Context, options DiscoverOptions) ([]Source, error) {
 	var roots []string
-	if strings.TrimSpace(sourceDir) != "" {
+	sourceDir := strings.TrimSpace(options.SourceDir)
+	if sourceDir != "" {
 		harnessDir := filepath.Join(sourceDir, string(a.harness))
 		if info, err := os.Stat(harnessDir); err == nil && info.IsDir() {
 			roots = append(roots, harnessDir)
+		} else if options.HarnessSubdirOnly {
+			if err != nil && !os.IsNotExist(err) {
+				return nil, err
+			}
+			return nil, nil
 		} else {
 			roots = append(roots, sourceDir)
 		}

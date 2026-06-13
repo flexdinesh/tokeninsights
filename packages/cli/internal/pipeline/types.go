@@ -19,6 +19,11 @@ type Source struct {
 	Path    string
 }
 
+type DiscoverOptions struct {
+	SourceDir         string
+	HarnessSubdirOnly bool
+}
+
 type RawTokenFact struct {
 	Harness          Harness
 	SourceID         string

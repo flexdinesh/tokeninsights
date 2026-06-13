@@ -12,10 +12,10 @@ Prevent `sync --all --source-dir <root>` from letting Pi or Codex ingest files i
 
 ## Acceptance criteria
 
-- [ ] With `sync --all --source-dir <root>`, each harness only scans `<root>/<harness>` when that subdirectory exists.
-- [ ] Harnesses with no matching subdirectory are skipped rather than scanning the whole root.
-- [ ] Single-harness sync can still scan the explicit source directory directly for ad hoc fixture usage.
-- [ ] Tests cover a root containing only `opencode/usage.jsonl` and verify Pi and Codex do not ingest it.
+- [x] With `sync --all --source-dir <root>`, each harness only scans `<root>/<harness>` when that subdirectory exists.
+- [x] Harnesses with no matching subdirectory are skipped rather than scanning the whole root.
+- [x] Single-harness sync can still scan the explicit source directory directly for ad hoc fixture usage.
+- [x] Tests cover a root containing only `opencode/usage.jsonl` and verify Pi and Codex do not ingest it.
 
 ## Blocked by
 

@@ -175,6 +175,8 @@ Diagnostics must not contain private source content or full paths.
 
 `sync --all` attempts all requested harnesses. Successful harness scopes should still normalize when one harness fails, and the command exits non-zero if any requested harness fails.
 
+With `sync --all --source-dir <root>`, harness discovery is bounded to `<root>/<harness>`. Harnesses whose subdirectory is absent are skipped. Single-harness sync with `--source-dir` still scans the provided directory directly for ad hoc fixtures.
+
 ## Adapter Contract
 
 All harness adapters implement the same interface:

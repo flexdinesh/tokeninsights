@@ -109,6 +109,66 @@ func TestSyncDryRunWritesNothing(t *testing.T) {
 	}
 }
 
+func TestSyncAllSourceDirUsesHarnessSubdirectoriesOnly(t *testing.T) {
+	ctx := context.Background()
+	dbPath := filepath.Join(t.TempDir(), "tokeninsights.sqlite")
+	sourceDir := t.TempDir()
+	now := time.Date(2026, 4, 24, 15, 0, 0, 0, time.UTC)
+	writeJSONL(t, filepath.Join(sourceDir, "opencode", "usage.jsonl"),
+		`{"recorded_at_ms":1770000000000,"session_id":"oc_s1","message_id":"m1","provider":"openai","model":"gpt-5","input_tokens":10,"output_tokens":5}`,
+	)
+
+	summary, err := Sync(ctx, SyncOptions{
+		DBPath:    dbPath,
+		Harnesses: SupportedHarnesses,
+		Normalize: true,
+		SourceDir: sourceDir,
+		Now:       now,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if summary.RequestedHarnesses != 3 || summary.Synced != 1 || summary.Skipped != 2 || summary.RawFacts != 1 || summary.Observations != 1 || summary.Canonical != 1 {
+		t.Fatalf("unexpected summary: %+v", summary)
+	}
+
+	database := openTestDB(t, dbPath)
+	defer database.Close()
+	assertSQLCount(t, database, "SELECT COUNT(*) FROM raw_token_usage WHERE harness = 'opencode'", 1)
+	assertSQLCount(t, database, "SELECT COUNT(*) FROM raw_token_usage WHERE harness IN ('pi', 'codex')", 0)
+	assertSQLCount(t, database, "SELECT COUNT(*) FROM canonical_token_usage WHERE harness = 'opencode'", 1)
+	assertSQLCount(t, database, "SELECT COUNT(*) FROM canonical_token_usage WHERE harness IN ('pi', 'codex')", 0)
+}
+
+func TestSyncSingleHarnessSourceDirScansDirectoryDirectly(t *testing.T) {
+	ctx := context.Background()
+	dbPath := filepath.Join(t.TempDir(), "tokeninsights.sqlite")
+	sourceDir := t.TempDir()
+	now := time.Date(2026, 4, 24, 15, 0, 0, 0, time.UTC)
+	writeJSONL(t, filepath.Join(sourceDir, "usage.jsonl"),
+		`{"recorded_at_ms":1770000000000,"session_id":"oc_s1","message_id":"m1","provider":"openai","model":"gpt-5","input_tokens":10,"output_tokens":5}`,
+	)
+
+	summary, err := Sync(ctx, SyncOptions{
+		DBPath:    dbPath,
+		Harnesses: []Harness{HarnessOpenCode},
+		Normalize: true,
+		SourceDir: sourceDir,
+		Now:       now,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if summary.RequestedHarnesses != 1 || summary.Synced != 1 || summary.Skipped != 0 || summary.RawFacts != 1 || summary.Observations != 1 || summary.Canonical != 1 {
+		t.Fatalf("unexpected summary: %+v", summary)
+	}
+
+	database := openTestDB(t, dbPath)
+	defer database.Close()
+	assertSQLCount(t, database, "SELECT COUNT(*) FROM raw_token_usage WHERE harness = 'opencode'", 1)
+	assertSQLCount(t, database, "SELECT COUNT(*) FROM canonical_token_usage WHERE harness = 'opencode'", 1)
+}
+
 func TestMissingSessionWritesDiagnosticOnly(t *testing.T) {
 	ctx := context.Background()
 	dbPath := filepath.Join(t.TempDir(), "tokeninsights.sqlite")

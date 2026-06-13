@@ -89,7 +89,7 @@ func dryRunSync(ctx context.Context, options SyncOptions) (Summary, error) {
 			summary.Errors = append(summary.Errors, fmt.Errorf("unsupported harness %q", harness))
 			continue
 		}
-		sources, err := adapter.Discover(ctx, options.SourceDir)
+		sources, err := adapter.Discover(ctx, discoverOptions(options))
 		if err != nil {
 			summary.Failed++
 			summary.Errors = append(summary.Errors, fmt.Errorf("%s discover: %w", harness, err))
@@ -121,7 +121,7 @@ func syncHarness(ctx context.Context, database *sql.DB, options SyncOptions, har
 		return summary, fmt.Errorf("unsupported harness %q", harness)
 	}
 
-	sources, err := adapter.Discover(ctx, options.SourceDir)
+	sources, err := adapter.Discover(ctx, discoverOptions(options))
 	if err != nil {
 		return summary, fmt.Errorf("%s discover: %w", harness, err)
 	}
@@ -372,6 +372,13 @@ func syncNowMs(now time.Time) int64 {
 		return time.Now().UnixMilli()
 	}
 	return now.UnixMilli()
+}
+
+func discoverOptions(options SyncOptions) DiscoverOptions {
+	return DiscoverOptions{
+		SourceDir:         options.SourceDir,
+		HarnessSubdirOnly: strings.TrimSpace(options.SourceDir) != "" && len(options.Harnesses) > 1,
+	}
 }
 
 func mergeSummary(target *Summary, source Summary) {
