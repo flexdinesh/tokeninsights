@@ -1,0 +1,50 @@
+[
+  {
+    "harness": "codex",
+    "source_kind": "local-json",
+    "session_id": "cx_s1",
+    "message_id": "m1",
+    "provider": "openai",
+    "model": "gpt-5-mini",
+    "usage_scope": "message",
+    "quality": "exact",
+    "input_tokens": 7,
+    "output_tokens": 8,
+    "reasoning_tokens": null,
+    "cache_read_tokens": null,
+    "cache_write_tokens": null,
+    "total_tokens": null
+  },
+  {
+    "harness": "opencode",
+    "source_kind": "local-json",
+    "session_id": "oc_s1",
+    "message_id": "m1",
+    "provider": "openai",
+    "model": "gpt-5",
+    "usage_scope": "message",
+    "quality": "exact",
+    "input_tokens": 100,
+    "output_tokens": 20,
+    "reasoning_tokens": 5,
+    "cache_read_tokens": 7,
+    "cache_write_tokens": 3,
+    "total_tokens": 135
+  },
+  {
+    "harness": "pi",
+    "source_kind": "local-json",
+    "session_id": "pi_s1",
+    "message_id": "turn1",
+    "provider": null,
+    "model": null,
+    "usage_scope": "message",
+    "quality": "exact",
+    "input_tokens": 50,
+    "output_tokens": 10,
+    "reasoning_tokens": null,
+    "cache_read_tokens": null,
+    "cache_write_tokens": null,
+    "total_tokens": 60
+  }
+]

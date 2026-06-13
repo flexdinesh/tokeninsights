@@ -288,6 +288,7 @@ Can evolve with care:
 | `packages/cli/internal/pipeline/sync.go` | raw ingest and observation pipeline |
 | `packages/cli/internal/pipeline/normalize.go` | canonical normalization and diagnostics |
 | `packages/cli/internal/pipeline/pipeline_test.go` | fixture-style sync/normalize conformance tests |
+| `packages/cli/internal/pipeline/testdata/conformance/` | language-neutral source and expected-output fixture contract |
 
 ## Testing And Verification
 
@@ -307,3 +308,6 @@ go test ./internal/pipeline
 go test ./internal/db
 go test ./...
 ```
+
+Pipeline conformance fixtures live under `packages/cli/internal/pipeline/testdata/conformance/`.
+Fixture sources are JSONL and expected raw, observation, canonical, and diagnostic outputs are JSON so future non-Go writers can reuse the same contract.

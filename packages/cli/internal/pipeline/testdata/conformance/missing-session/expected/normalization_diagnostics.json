@@ -1,0 +1,8 @@
+[
+  {
+    "harness": "opencode",
+    "severity": "warning",
+    "code": "missing_session",
+    "message": "raw token fact skipped because no stable session identity is available"
+  }
+]

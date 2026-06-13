@@ -1,0 +1,18 @@
+[
+  {
+    "harness": "opencode",
+    "source_kind": "local-json",
+    "session_id": null,
+    "message_id": "m1",
+    "provider": "openai",
+    "model": "gpt-5",
+    "usage_scope": "message",
+    "quality": "exact",
+    "input_tokens": 10,
+    "output_tokens": 5,
+    "reasoning_tokens": null,
+    "cache_read_tokens": null,
+    "cache_write_tokens": null,
+    "total_tokens": null
+  }
+]

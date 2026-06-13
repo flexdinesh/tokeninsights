@@ -1,0 +1,20 @@
+[
+  {
+    "harness": "codex",
+    "session_id": "cx_s1",
+    "message_id": "m1",
+    "observed_at_ms": 1777042800000
+  },
+  {
+    "harness": "opencode",
+    "session_id": "oc_s1",
+    "message_id": "m1",
+    "observed_at_ms": 1777042800000
+  },
+  {
+    "harness": "pi",
+    "session_id": "pi_s1",
+    "message_id": "turn1",
+    "observed_at_ms": 1777042800000
+  }
+]
