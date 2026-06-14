@@ -163,7 +163,7 @@ The visual redesign should take spacing and density inspiration from tokscale sc
 
 ## Further Notes
 
-- This PRD follows [ADR 0001](../adr/0001-viewer-tabs-are-token-aggregation-modes.md).
+- This PRD follows [ADR 0001](../../docs/adr/0001-viewer-tabs-are-token-aggregation-modes.md).
 - `docs/design.md` is the architecture reference and should be updated to describe the new active Viewer surface.
-- `docs/spec/sync-first-canonical-redesign-followups/03-keep-non-token-tabs-empty.md` is superseded by ADR 0001 for the active viewer surface.
+- `.scratch/sync-first-canonical-redesign-followups/issues/03-keep-non-token-tabs-empty.md` is superseded by ADR 0001 for the active viewer surface.
 - The implementation should remain minimally scoped to viewer query, TUI behavior, rendering, docs, and tests.

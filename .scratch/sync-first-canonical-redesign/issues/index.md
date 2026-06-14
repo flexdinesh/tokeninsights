@@ -255,6 +255,6 @@ Remove the current plugin packages and old direct-write product path from the ac
 
 ## Remaining Work
 
-1. Replace the generic JSONL/NDJSON adapter scaffold with researched OpenCode, Pi, and Codex Durable Source adapters. Track the exploration in [`durable-source-harness-exploration-prd.md`](durable-source-harness-exploration-prd.md) and [`durable-source-harness-exploration-issues.md`](durable-source-harness-exploration-issues.md).
+1. Replace the generic JSONL/NDJSON adapter scaffold with researched OpenCode, Pi, and Codex Durable Source adapters. Track the exploration in [`durable-source-harness-exploration/PRD.md`](../../durable-source-harness-exploration/PRD.md) and [`durable-source-harness-exploration/issues/index.md`](../../durable-source-harness-exploration/issues/index.md).
 2. Add an explicit normalization conflict and precedence model, plus diagnostics for rejected, conflicting, and suppressed facts.
 3. Add independent canonical query domains for TPS, requests, and tools when durable source data exists, then harden partial-domain error isolation in the TUI.

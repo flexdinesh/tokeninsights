@@ -2,7 +2,7 @@
 
 This document breaks the canonical viewer TUI redesign PRD into independently grabbable implementation slices. The slices are ordered by dependency and are intended to be executed from the local markdown issue tracker.
 
-Parent PRD: [`canonical-viewer-tui-redesign-prd.md`](canonical-viewer-tui-redesign-prd.md)
+Parent PRD: [`PRD.md`](../PRD.md)
 
 Triage label: `ready-for-agent`
 

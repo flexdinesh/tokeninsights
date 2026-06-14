@@ -1,6 +1,6 @@
 # Sync-First Canonical Redesign PRD
 
-Viewer surface note: the sync-first pipeline decisions in this PRD remain active, but the detailed `view` TUI behavior has been superseded by [`canonical-viewer-tui-redesign-prd.md`](canonical-viewer-tui-redesign-prd.md) and [ADR 0001](../adr/0001-viewer-tabs-are-token-aggregation-modes.md).
+Viewer surface note: the sync-first pipeline decisions in this PRD remain active, but the detailed `view` TUI behavior has been superseded by [`canonical-viewer-tui-redesign/PRD.md`](../canonical-viewer-tui-redesign/PRD.md) and [ADR 0001](../../docs/adr/0001-viewer-tabs-are-token-aggregation-modes.md).
 
 ## Problem Statement
 
