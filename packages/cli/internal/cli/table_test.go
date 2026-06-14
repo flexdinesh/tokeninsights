@@ -12,6 +12,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/muesli/termenv"
 	_ "modernc.org/sqlite"
 
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/db"
@@ -193,6 +194,13 @@ func TestClampHorizontalScroll(t *testing.T) {
 	}
 }
 
+func TestTableViewportWidthAlignsWithSectionContent(t *testing.T) {
+	m := interactiveModel{width: 100}
+	if got, want := m.tableViewportWidth(), 96; got != want {
+		t.Fatalf("got viewport width %d, want %d", got, want)
+	}
+}
+
 func TestHorizontalKeysScrollAndJump(t *testing.T) {
 	m := interactiveModel{
 		rows: []renderRow{{
@@ -336,6 +344,38 @@ func TestInitialViewShowsLoadingState(t *testing.T) {
 	}
 	if !strings.Contains(output, "loading") {
 		t.Fatalf("initial view missing loading hint:\n%s", output)
+	}
+}
+
+func TestViewUsesConsistentPanelBackground(t *testing.T) {
+	previousProfile := lipgloss.ColorProfile()
+	lipgloss.SetColorProfile(termenv.TrueColor)
+	t.Cleanup(func() {
+		lipgloss.SetColorProfile(previousProfile)
+	})
+
+	m := interactiveModel{
+		rows: []renderRow{{
+			bucket:      "2026-06-14",
+			sessions:    "1",
+			inputTokens: "35K",
+			totalTokens: "114K",
+			totalValue:  114000,
+		}},
+		activeTab: tabTokens,
+		period:    periodMonth,
+		width:     100,
+		height:    24,
+		options:   tableOptions{period: periodMonth},
+	}
+	m = m.measureHeights()
+
+	output := m.View()
+	if strings.Contains(output, "\x1b[48;2;23;23;31m") {
+		t.Fatalf("view contains darker panel background:\n%q", output)
+	}
+	if !strings.Contains(output, "\x1b[48;2;27;27;42m") {
+		t.Fatalf("view missing app background:\n%q", output)
 	}
 }
 

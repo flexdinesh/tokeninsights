@@ -128,6 +128,7 @@ func (m interactiveModel) filterValuesCmd(dimension filterDimension) tea.Cmd {
 }
 
 const minVisibleRows = 5
+const sectionHorizontalInset = 1
 
 func (m interactiveModel) maxVisibleRows() int {
 	if m.height <= 0 {
@@ -175,7 +176,7 @@ func (m interactiveModel) measureHeights() interactiveModel {
 	hint := hintStyle.Render(hintText)
 	hintBox := sectionBorderStyle.Width(m.width - 4).Render(hint)
 
-	emptyTable := renderTableViewport([]renderRow{}, m.groupBy, m.activeTab, m.tableViewportWidth(), 0)
+	emptyTable := tableSectionStyle.Render(renderTableViewport([]renderRow{}, m.groupBy, m.activeTab, m.tableViewportWidth(), 0))
 	contentBase := lipgloss.JoinVertical(lipgloss.Left, title, tabBox, emptyTable, hintBox)
 	baseFull := outerBorderStyle.Width(m.width - 2).Render(contentBase)
 	m.baseHeight = lipgloss.Height(baseFull)
@@ -196,7 +197,7 @@ func (m interactiveModel) measureHeights() interactiveModel {
 	}
 
 	// Measure cost of a single data row (no separators).
-	oneRowTable := renderTableViewport([]renderRow{sampleRow}, m.groupBy, m.activeTab, m.tableViewportWidth(), 0)
+	oneRowTable := tableSectionStyle.Render(renderTableViewport([]renderRow{sampleRow}, m.groupBy, m.activeTab, m.tableViewportWidth(), 0))
 	contentOneRow := lipgloss.JoinVertical(lipgloss.Left, title, tabBox, oneRowTable, hintBox)
 	oneRowFull := outerBorderStyle.Width(m.width - 2).Render(contentOneRow)
 	perDataRow := lipgloss.Height(oneRowFull) - m.baseHeight
@@ -242,7 +243,7 @@ func clampHorizontalScroll(offset int, contentWidth int, viewportWidth int) int 
 }
 
 func (m interactiveModel) tableViewportWidth() int {
-	return max(0, m.width-2)
+	return max(0, m.width-2-(sectionHorizontalInset*2))
 }
 
 func (m interactiveModel) visibleRows() []renderRow {
@@ -258,7 +259,7 @@ func (m interactiveModel) visibleRows() []renderRow {
 }
 
 func (m interactiveModel) maxHorizontalOffset(rows []renderRow) int {
-	contentWidth := renderTableWidth(rows, m.groupBy, m.activeTab)
+	contentWidth := renderTableWidthWithSort(rows, m.groupBy, m.activeTab, activeSort(m.activeTab, m.options.sort))
 	viewportWidth := m.tableViewportWidth()
 	if contentWidth <= 0 || viewportWidth <= 0 || contentWidth <= viewportWidth {
 		return 0
@@ -267,7 +268,7 @@ func (m interactiveModel) maxHorizontalOffset(rows []renderRow) int {
 }
 
 func (m interactiveModel) clampHorizontalOffset() interactiveModel {
-	m.horizontalOffset = clampHorizontalScroll(m.horizontalOffset, renderTableWidth(m.rows, m.groupBy, m.activeTab), m.tableViewportWidth())
+	m.horizontalOffset = clampHorizontalScroll(m.horizontalOffset, renderTableWidthWithSort(m.rows, m.groupBy, m.activeTab, activeSort(m.activeTab, m.options.sort)), m.tableViewportWidth())
 	return m
 }
 
@@ -332,10 +333,10 @@ func (m interactiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m = m.clampHorizontalOffset()
 			return m, nil
 		case tea.KeyRight:
-			m.horizontalOffset = clampHorizontalScroll(m.horizontalOffset+1, renderTableWidth(m.rows, m.groupBy, m.activeTab), m.tableViewportWidth())
+			m.horizontalOffset = clampHorizontalScroll(m.horizontalOffset+1, renderTableWidthWithSort(m.rows, m.groupBy, m.activeTab, activeSort(m.activeTab, m.options.sort)), m.tableViewportWidth())
 			return m, nil
 		case tea.KeyLeft:
-			m.horizontalOffset = clampHorizontalScroll(m.horizontalOffset-1, renderTableWidth(m.rows, m.groupBy, m.activeTab), m.tableViewportWidth())
+			m.horizontalOffset = clampHorizontalScroll(m.horizontalOffset-1, renderTableWidthWithSort(m.rows, m.groupBy, m.activeTab, activeSort(m.activeTab, m.options.sort)), m.tableViewportWidth())
 			return m, nil
 		case tea.KeyHome:
 			m.horizontalOffset = 0
@@ -389,7 +390,7 @@ func (m interactiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m = m.clampHorizontalOffset()
 				return m, nil
 			case "l":
-				m.horizontalOffset = clampHorizontalScroll(m.horizontalOffset+1, renderTableWidth(m.rows, m.groupBy, m.activeTab), m.tableViewportWidth())
+				m.horizontalOffset = clampHorizontalScroll(m.horizontalOffset+1, renderTableWidthWithSort(m.rows, m.groupBy, m.activeTab, activeSort(m.activeTab, m.options.sort)), m.tableViewportWidth())
 				return m, nil
 			}
 		}
@@ -777,16 +778,30 @@ var (
 
 	inactiveTabStyle = lipgloss.NewStyle().
 				Foreground(lipgloss.Color("245")).
+				Background(lipgloss.Color(panelBackgroundColor)).
 				Padding(0, 2)
+
+	tableSectionStyle = lipgloss.NewStyle().
+				Background(lipgloss.Color(appBackgroundColor)).
+				Padding(0, sectionHorizontalInset)
 
 	popupStyle = lipgloss.NewStyle().
 			Border(lipgloss.RoundedBorder()).
 			BorderForeground(lipgloss.Color("212")).
+			Background(lipgloss.Color(panelBackgroundColor)).
 			Padding(1, 2)
 
-	popupTitleStyle  = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("212"))
-	popupCursorStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("63"))
-	popupItemStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("252"))
+	popupTitleStyle = lipgloss.NewStyle().
+			Bold(true).
+			Foreground(lipgloss.Color("212")).
+			Background(lipgloss.Color(panelBackgroundColor))
+	popupCursorStyle = lipgloss.NewStyle().
+				Bold(true).
+				Foreground(lipgloss.Color("63")).
+				Background(lipgloss.Color(panelBackgroundColor))
+	popupItemStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("252")).
+			Background(lipgloss.Color(panelBackgroundColor))
 )
 
 func groupByLabel(g groupByMode) string {
@@ -828,7 +843,18 @@ func (m interactiveModel) View() string {
 	}
 
 	if m.popup != popupNone {
-		return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, m.renderPopup())
+		return renderOnAppSurface(
+			lipgloss.Place(
+				m.width,
+				m.height,
+				lipgloss.Center,
+				lipgloss.Center,
+				m.renderPopup(),
+				lipgloss.WithWhitespaceBackground(lipgloss.Color(appBackgroundColor)),
+			),
+			m.width,
+			m.height,
+		)
 	}
 
 	title := titleStyle.Render(fmt.Sprintf("TokenInsights %s", m.period))
@@ -850,9 +876,11 @@ func (m interactiveModel) View() string {
 	viewportWidth := m.tableViewportWidth()
 	maxHorizontal := 0
 	horizontalOffset := 0
+	selectedSort := activeSort(m.activeTab, m.options.sort)
 	if !m.loading {
-		maxHorizontal = m.maxHorizontalOffset(m.rows)
-		horizontalOffset = clampHorizontalScroll(m.horizontalOffset, renderTableWidth(m.rows, m.groupBy, m.activeTab), viewportWidth)
+		contentWidth := renderTableWidthWithSort(m.rows, m.groupBy, m.activeTab, selectedSort)
+		maxHorizontal = max(0, contentWidth-viewportWidth)
+		horizontalOffset = clampHorizontalScroll(m.horizontalOffset, contentWidth, viewportWidth)
 	}
 
 	hintText := "tab/shift+tab switch · ↑/↓ j/k scroll · ←/→ scroll · home/end horizontal · d date · g bucket · s sort · p/m/h filters · q quit"
@@ -879,13 +907,15 @@ func (m interactiveModel) View() string {
 
 	var body string
 	if m.loading {
-		body = renderLoadingTableViewport(m.groupBy, m.activeTab, viewportWidth, visible)
+		body = renderLoadingTableViewportWithSort(m.groupBy, m.activeTab, selectedSort, viewportWidth, visible)
 	} else {
-		body = renderTableViewportWithReferenceRows(visibleRows, m.rows, m.groupBy, m.activeTab, viewportWidth, horizontalOffset, visible)
+		body = renderTableViewportWithSort(visibleRows, m.rows, m.groupBy, m.activeTab, selectedSort, viewportWidth, horizontalOffset, visible)
 	}
+	body = tableSectionStyle.Render(body)
 
 	content := lipgloss.JoinVertical(lipgloss.Left, title, tabBox, body, hintBox)
-	return outerBorderStyle.Width(m.width - 2).Render(content)
+	rendered := outerBorderStyle.Width(m.width - 2).Render(content)
+	return renderOnAppSurface(rendered, m.width, m.height)
 }
 
 func activeFiltersLabel(f filters) string {
