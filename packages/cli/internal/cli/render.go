@@ -242,10 +242,25 @@ func renderTable(rows []renderRow, g groupByMode, tab tabMode) string {
 }
 
 func renderTableViewport(rows []renderRow, g groupByMode, tab tabMode, width int, horizontalOffset int) string {
+	return renderTableViewportWithRows(rows, g, tab, width, horizontalOffset, 0)
+}
+
+func renderTableViewportWithRows(rows []renderRow, g groupByMode, tab tabMode, width int, horizontalOffset int, minDataRows int) string {
+	return renderTableViewportWithReferenceRows(rows, rows, g, tab, width, horizontalOffset, minDataRows)
+}
+
+func renderTableViewportWithReferenceRows(rows []renderRow, referenceRows []renderRow, g groupByMode, tab tabMode, width int, horizontalOffset int, minDataRows int) string {
 	if width <= 0 {
 		return ""
 	}
-	return horizontalViewport(renderTable(rows, g, tab), horizontalOffset, width)
+	return horizontalViewport(renderTableWithReferenceRows(rows, referenceRows, g, tab, minDataRows, "No rows match the current scope."), horizontalOffset, width)
+}
+
+func renderLoadingTableViewport(g groupByMode, tab tabMode, width int, minDataRows int) string {
+	if width <= 0 {
+		return ""
+	}
+	return horizontalViewport(renderTableWithReferenceRows(nil, loadingReferenceRows(tab), g, tab, minDataRows, "Loading data..."), 0, width)
 }
 
 func renderTableWidth(rows []renderRow, g groupByMode, tab tabMode) int {
@@ -286,8 +301,71 @@ func padANSI(value string, width int) string {
 }
 
 func renderTableWithWidth(rows []renderRow, g groupByMode, tab tabMode, width int) string {
+	return renderTableWithMinRows(rows, g, tab, 0, "No rows match the current scope.")
+}
+
+func renderTableWithMinRows(rows []renderRow, g groupByMode, tab tabMode, minDataRows int, emptyMessage string) string {
+	return renderTableWithReferenceRows(rows, rows, g, tab, minDataRows, emptyMessage)
+}
+
+func renderTableWithReferenceRows(rows []renderRow, referenceRows []renderRow, g groupByMode, tab tabMode, minDataRows int, emptyMessage string) string {
 	cols := columnsForModeAndTab(g, tab)
 
+	formatted := formatRenderRows(rows, cols)
+	widthFormatted := formatted
+	if len(referenceRows) > 0 {
+		widthFormatted = formatRenderRows(referenceRows, cols)
+	}
+
+	widths := make([]int, len(cols))
+	for i, col := range cols {
+		widths[i] = max(ansi.StringWidth(col.name), minimumColumnWidth(col))
+	}
+	for _, values := range widthFormatted {
+		for i, value := range values {
+			if valueWidth := ansi.StringWidth(value); valueWidth > widths[i] {
+				widths[i] = valueWidth
+			}
+		}
+	}
+
+	var lines []string
+	header := make([]string, len(cols))
+	separator := make([]string, len(cols))
+	for i, col := range cols {
+		header[i] = padCell(col.name, widths[i], false)
+		separator[i] = strings.Repeat("─", widths[i])
+	}
+	lines = append(lines, headerStyle.Render(strings.Join(header, "  ")))
+	lines = append(lines, borderStyle.Render(strings.Join(separator, "  ")))
+
+	for rowIndex, values := range formatted {
+		cells := make([]string, len(cols))
+		for i, value := range values {
+			cells[i] = padCell(value, widths[i], cols[i].numeric)
+		}
+		style := oddStyle
+		if rowIndex%2 == 1 {
+			style = evenStyle
+		}
+		line := strings.Join(cells, "  ")
+		if hasNumericCells(cols) {
+			line = style.Render(line)
+		} else {
+			line = style.Render(line)
+		}
+		lines = append(lines, line)
+	}
+	if len(formatted) == 0 {
+		lines = append(lines, hintStyle.Render(emptyMessage))
+	}
+	for dataLines := max(len(formatted), 1); dataLines < minDataRows; dataLines++ {
+		lines = append(lines, "")
+	}
+	return strings.Join(lines, "\n") + "\n"
+}
+
+func formatRenderRows(rows []renderRow, cols []column) [][]string {
 	formatted := make([][]string, 0, len(rows))
 	for _, row := range rows {
 		values := make([]string, len(cols))
@@ -353,50 +431,54 @@ func renderTableWithWidth(rows []renderRow, g groupByMode, tab tabMode, width in
 		}
 		formatted = append(formatted, values)
 	}
+	return formatted
+}
 
-	widths := make([]int, len(cols))
-	for i, col := range cols {
-		widths[i] = ansi.StringWidth(col.name)
+func loadingReferenceRows(tab tabMode) []renderRow {
+	row := renderRow{
+		bucket:           "9999-99-99",
+		sessions:         "99999",
+		latest:           "9999-99-99 99:99",
+		sessionID:        "session-99999999",
+		harness:          "opencode",
+		harnesses:        "opencode, codex",
+		provider:         "openai-codex",
+		providers:        "openai, anthropic",
+		model:            "gpt-5-codex-preview",
+		models:           "gpt-5-codex, claude",
+		inputTokens:      "999M",
+		outputTokens:     "999M",
+		reasoningTokens:  "999M",
+		cacheReadTokens:  "999M",
+		cacheWriteTokens: "999M",
+		totalTokens:      "999M",
 	}
-	for _, values := range formatted {
-		for i, value := range values {
-			if valueWidth := ansi.StringWidth(value); valueWidth > widths[i] {
-				widths[i] = valueWidth
-			}
-		}
-	}
+	return []renderRow{row}
+}
 
-	var lines []string
-	header := make([]string, len(cols))
-	separator := make([]string, len(cols))
-	for i, col := range cols {
-		header[i] = padCell(col.name, widths[i], false)
-		separator[i] = strings.Repeat("─", widths[i])
+func minimumColumnWidth(col column) int {
+	switch col.field {
+	case "bucket":
+		return 10
+	case "latest":
+		return 16
+	case "model":
+		return 32
+	case "models":
+		return 32
+	case "provider":
+		return 28
+	case "providers":
+		return 32
+	case "harness":
+		return 12
+	case "harnesses":
+		return 18
+	case "sessionID":
+		return 8
+	default:
+		return 0
 	}
-	lines = append(lines, headerStyle.Render(strings.Join(header, "  ")))
-	lines = append(lines, borderStyle.Render(strings.Join(separator, "  ")))
-
-	for rowIndex, values := range formatted {
-		cells := make([]string, len(cols))
-		for i, value := range values {
-			cells[i] = padCell(value, widths[i], cols[i].numeric)
-		}
-		style := oddStyle
-		if rowIndex%2 == 1 {
-			style = evenStyle
-		}
-		line := strings.Join(cells, "  ")
-		if hasNumericCells(cols) {
-			line = style.Render(line)
-		} else {
-			line = style.Render(line)
-		}
-		lines = append(lines, line)
-	}
-	if len(formatted) == 0 {
-		lines = append(lines, hintStyle.Render("No rows match the current scope."))
-	}
-	return strings.Join(lines, "\n") + "\n"
 }
 
 func padCell(value string, width int, numeric bool) string {

@@ -73,6 +73,8 @@ type interactiveModel struct {
 	options          tableOptions
 	now              time.Time
 	err              error
+	loading          bool
+	reloadInFlight   bool
 	lastSyncMs       int64
 	cachedWidth      int
 	baseHeight       int
@@ -84,8 +86,10 @@ var dateRangeOptions = []period{periodToday, periodYesterday, periodWeek, period
 var bucketOptions = []timeBucket{bucketDay, bucketWeek, bucketMonth, bucketYear}
 var sortOptions = []sortMode{sortDate, sortTokens, sortInput, sortOutput, sortCacheRead, sortName}
 
+const initialLoadingPaintDelay = 75 * time.Millisecond
+
 func (m interactiveModel) Init() tea.Cmd {
-	return m.reloadCmd()
+	return nil
 }
 
 func (m interactiveModel) reloadCmd() tea.Cmd {
@@ -100,6 +104,20 @@ func (m interactiveModel) reloadCmd() tea.Cmd {
 		}
 		return reloadMsg{rows: rows, lastSyncMs: lastSyncMs}
 	}
+}
+
+func (m interactiveModel) deferredReloadCmd(delay time.Duration) tea.Cmd {
+	return tea.Tick(delay, func(time.Time) tea.Msg {
+		rows, err := loadRows(m.ctx, m.options, m.now, m.groupBy, m.activeTab)
+		if err != nil {
+			return reloadMsg{err: err}
+		}
+		lastSyncMs, err := loadLastCompletedSync(m.ctx, m.options)
+		if err != nil {
+			return reloadMsg{err: err}
+		}
+		return reloadMsg{rows: rows, lastSyncMs: lastSyncMs}
+	})
 }
 
 func (m interactiveModel) filterValuesCmd(dimension filterDimension) tea.Cmd {
@@ -249,14 +267,15 @@ func (m interactiveModel) maxHorizontalOffset(rows []renderRow) int {
 }
 
 func (m interactiveModel) clampHorizontalOffset() interactiveModel {
-	rows := m.visibleRows()
-	m.horizontalOffset = clampHorizontalScroll(m.horizontalOffset, renderTableWidth(rows, m.groupBy, m.activeTab), m.tableViewportWidth())
+	m.horizontalOffset = clampHorizontalScroll(m.horizontalOffset, renderTableWidth(m.rows, m.groupBy, m.activeTab), m.tableViewportWidth())
 	return m
 }
 
 func (m interactiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case reloadMsg:
+		m.loading = false
+		m.reloadInFlight = false
 		if msg.err != nil {
 			m.err = msg.err
 			return m, nil
@@ -289,12 +308,16 @@ func (m interactiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.activeTab = nextAggregationTab(m.activeTab, 1)
 			m.scrollOffset = 0
 			m.horizontalOffset = 0
+			m.loading = true
+			m.reloadInFlight = true
 			m = m.measureHeights()
 			return m, m.reloadCmd()
 		case tea.KeyShiftTab:
 			m.activeTab = nextAggregationTab(m.activeTab, -1)
 			m.scrollOffset = 0
 			m.horizontalOffset = 0
+			m.loading = true
+			m.reloadInFlight = true
 			m = m.measureHeights()
 			return m, m.reloadCmd()
 		case tea.KeyUp:
@@ -309,19 +332,16 @@ func (m interactiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m = m.clampHorizontalOffset()
 			return m, nil
 		case tea.KeyRight:
-			rows := m.visibleRows()
-			m.horizontalOffset = clampHorizontalScroll(m.horizontalOffset+1, renderTableWidth(rows, m.groupBy, m.activeTab), m.tableViewportWidth())
+			m.horizontalOffset = clampHorizontalScroll(m.horizontalOffset+1, renderTableWidth(m.rows, m.groupBy, m.activeTab), m.tableViewportWidth())
 			return m, nil
 		case tea.KeyLeft:
-			rows := m.visibleRows()
-			m.horizontalOffset = clampHorizontalScroll(m.horizontalOffset-1, renderTableWidth(rows, m.groupBy, m.activeTab), m.tableViewportWidth())
+			m.horizontalOffset = clampHorizontalScroll(m.horizontalOffset-1, renderTableWidth(m.rows, m.groupBy, m.activeTab), m.tableViewportWidth())
 			return m, nil
 		case tea.KeyHome:
 			m.horizontalOffset = 0
 			return m, nil
 		case tea.KeyEnd:
-			rows := m.visibleRows()
-			m.horizontalOffset = m.maxHorizontalOffset(rows)
+			m.horizontalOffset = m.maxHorizontalOffset(m.rows)
 			return m, nil
 		case tea.KeyCtrlC:
 			return m, tea.Quit
@@ -334,6 +354,8 @@ func (m interactiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.activeTab = aggregationTabs[index]
 				m.scrollOffset = 0
 				m.horizontalOffset = 0
+				m.loading = true
+				m.reloadInFlight = true
 				m = m.measureHeights()
 				return m, m.reloadCmd()
 			case "d":
@@ -367,8 +389,7 @@ func (m interactiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m = m.clampHorizontalOffset()
 				return m, nil
 			case "l":
-				rows := m.visibleRows()
-				m.horizontalOffset = clampHorizontalScroll(m.horizontalOffset+1, renderTableWidth(rows, m.groupBy, m.activeTab), m.tableViewportWidth())
+				m.horizontalOffset = clampHorizontalScroll(m.horizontalOffset+1, renderTableWidth(m.rows, m.groupBy, m.activeTab), m.tableViewportWidth())
 				return m, nil
 			}
 		}
@@ -378,6 +399,10 @@ func (m interactiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m = m.measureHeights()
 		m.scrollOffset = clampScroll(m.scrollOffset, len(m.rows), m.maxVisibleRows())
 		m = m.clampHorizontalOffset()
+		if m.loading && !m.reloadInFlight {
+			m.reloadInFlight = true
+			return m, m.deferredReloadCmd(initialLoadingPaintDelay)
+		}
 	}
 	return m, nil
 }
@@ -483,6 +508,8 @@ func (m interactiveModel) applyDateRangePopup() (tea.Model, tea.Cmd) {
 		m.period = newPeriod
 		m.scrollOffset = 0
 		m.horizontalOffset = 0
+		m.loading = true
+		m.reloadInFlight = true
 		m = m.measureHeights()
 		return m, m.reloadCmd()
 	}
@@ -529,6 +556,8 @@ func (m interactiveModel) applyBucketPopup() (tea.Model, tea.Cmd) {
 		m.options.bucket = newBucket
 		m.scrollOffset = 0
 		m.horizontalOffset = 0
+		m.loading = true
+		m.reloadInFlight = true
 		m = m.measureHeights()
 		return m, m.reloadCmd()
 	}
@@ -575,6 +604,8 @@ func (m interactiveModel) applySortPopup() (tea.Model, tea.Cmd) {
 		m.options.sort = newSort
 		m.scrollOffset = 0
 		m.horizontalOffset = 0
+		m.loading = true
+		m.reloadInFlight = true
 		m = m.measureHeights()
 		return m, m.reloadCmd()
 	}
@@ -656,6 +687,8 @@ func (m interactiveModel) applyFilterValues() (tea.Model, tea.Cmd) {
 	m.popup = popupNone
 	m.scrollOffset = 0
 	m.horizontalOffset = 0
+	m.loading = true
+	m.reloadInFlight = true
 	m = m.measureHeights()
 	return m, m.reloadCmd()
 }
@@ -815,11 +848,15 @@ func (m interactiveModel) View() string {
 	visible := m.maxVisibleRows()
 	visibleRows := m.visibleRows()
 	viewportWidth := m.tableViewportWidth()
-	maxHorizontal := m.maxHorizontalOffset(visibleRows)
-	horizontalOffset := clampHorizontalScroll(m.horizontalOffset, renderTableWidth(visibleRows, m.groupBy, m.activeTab), viewportWidth)
+	maxHorizontal := 0
+	horizontalOffset := 0
+	if !m.loading {
+		maxHorizontal = m.maxHorizontalOffset(m.rows)
+		horizontalOffset = clampHorizontalScroll(m.horizontalOffset, renderTableWidth(m.rows, m.groupBy, m.activeTab), viewportWidth)
+	}
 
 	hintText := "tab/shift+tab switch · ↑/↓ j/k scroll · ←/→ scroll · home/end horizontal · d date · g bucket · s sort · p/m/h filters · q quit"
-	if visible > 0 && len(m.rows) > visible {
+	if !m.loading && visible > 0 && len(m.rows) > visible {
 		end := m.scrollOffset + visible
 		if end > len(m.rows) {
 			end = len(m.rows)
@@ -832,11 +869,20 @@ func (m interactiveModel) View() string {
 	if filters := activeFiltersLabel(m.options.filters); filters != "" {
 		hintText += "  ·  " + filters
 	}
-	hintText += fmt.Sprintf("  ·  total %s  ·  rows %d  ·  sync %s", formatTokens(totalTokens(m.rows)), len(m.rows), formatLastSync(m.lastSyncMs))
+	if m.loading {
+		hintText += fmt.Sprintf("  ·  loading  ·  sync %s", formatLastSync(m.lastSyncMs))
+	} else {
+		hintText += fmt.Sprintf("  ·  total %s  ·  rows %d  ·  sync %s", formatTokens(totalTokens(m.rows)), len(m.rows), formatLastSync(m.lastSyncMs))
+	}
 	hint := hintStyle.Render(hintText)
 	hintBox := sectionBorderStyle.Width(m.width - 4).Render(hint)
 
-	body := renderTableViewport(visibleRows, m.groupBy, m.activeTab, viewportWidth, horizontalOffset)
+	var body string
+	if m.loading {
+		body = renderLoadingTableViewport(m.groupBy, m.activeTab, viewportWidth, visible)
+	} else {
+		body = renderTableViewportWithReferenceRows(visibleRows, m.rows, m.groupBy, m.activeTab, viewportWidth, horizontalOffset, visible)
+	}
 
 	content := lipgloss.JoinVertical(lipgloss.Left, title, tabBox, body, hintBox)
 	return outerBorderStyle.Width(m.width - 2).Render(content)
@@ -985,6 +1031,7 @@ func RunInteractive(ctx context.Context, args []string, stdout io.Writer, stderr
 		activeTab:        tabTokens,
 		popupCursor:      0,
 		filterSelections: make(map[string]bool),
+		loading:          true,
 	}, tea.WithAltScreen(), tea.WithInput(os.Stdin), tea.WithOutput(stdout)).Run()
 	return err
 }

@@ -10,6 +10,8 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 	_ "modernc.org/sqlite"
 
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/db"
@@ -268,6 +270,171 @@ func TestTabSwitchResetsHorizontalOffset(t *testing.T) {
 	if cmd == nil {
 		t.Fatal("expected reload command")
 	}
+}
+
+func TestViewHeightStableAcrossTabReloadRows(t *testing.T) {
+	m := interactiveModel{
+		rows: []renderRow{{
+			bucket:      "2026-04-24",
+			sessions:    "1",
+			inputTokens: "100",
+			totalTokens: "136",
+			totalValue:  136,
+		}},
+		activeTab: tabTokens,
+		period:    periodMonth,
+		width:     72,
+		height:    24,
+		options:   tableOptions{period: periodMonth},
+	}
+	m = m.measureHeights()
+
+	model, _ := m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	pending, ok := model.(interactiveModel)
+	if !ok {
+		t.Fatalf("got model %T, want interactiveModel", model)
+	}
+	pendingHeight := lipgloss.Height(pending.View())
+	if !strings.Contains(pending.View(), "Loading data...") {
+		t.Fatalf("pending view missing loading state:\n%s", pending.View())
+	}
+
+	loadedRows := []renderRow{
+		{model: "claude-3-5-sonnet-with-a-very-long-context-window", providers: "anthropic", harnesses: "pi", sessions: "1", inputTokens: "100", totalTokens: "136", totalValue: 136},
+		{model: "gpt-5", providers: "openai", harnesses: "opencode", sessions: "1", inputTokens: "100", totalTokens: "136", totalValue: 136},
+		{model: "o4-mini", providers: "openai", harnesses: "codex", sessions: "1", inputTokens: "100", totalTokens: "136", totalValue: 136},
+		{model: "gemini-2.5-pro", providers: "google", harnesses: "opencode", sessions: "1", inputTokens: "100", totalTokens: "136", totalValue: 136},
+		{model: "unknown", providers: "unknown", harnesses: "codex", sessions: "1", inputTokens: "100", totalTokens: "136", totalValue: 136},
+		{model: "llama-4", providers: "meta", harnesses: "opencode", sessions: "1", inputTokens: "100", totalTokens: "136", totalValue: 136},
+	}
+	model, _ = pending.Update(reloadMsg{rows: loadedRows})
+	loaded, ok := model.(interactiveModel)
+	if !ok {
+		t.Fatalf("got model %T, want interactiveModel", model)
+	}
+	loadedHeight := lipgloss.Height(loaded.View())
+
+	if loadedHeight != pendingHeight {
+		t.Fatalf("view height changed across tab reload: pending=%d loaded=%d", pendingHeight, loadedHeight)
+	}
+}
+
+func TestInitialViewShowsLoadingState(t *testing.T) {
+	m := interactiveModel{
+		activeTab: tabTokens,
+		period:    periodMonth,
+		width:     72,
+		height:    24,
+		options:   tableOptions{period: periodMonth},
+		loading:   true,
+	}
+	m = m.measureHeights()
+
+	output := m.View()
+	if !strings.Contains(output, "Loading data...") {
+		t.Fatalf("initial view missing loading state:\n%s", output)
+	}
+	if !strings.Contains(output, "loading") {
+		t.Fatalf("initial view missing loading hint:\n%s", output)
+	}
+}
+
+func TestInitialReloadStartsAfterWindowSize(t *testing.T) {
+	m := interactiveModel{
+		activeTab: tabTokens,
+		period:    periodMonth,
+		options:   tableOptions{period: periodMonth},
+		loading:   true,
+	}
+
+	if cmd := m.Init(); cmd != nil {
+		t.Fatal("initial reload should wait until the terminal size is known")
+	}
+
+	model, cmd := m.Update(tea.WindowSizeMsg{Width: 72, Height: 24})
+	updated, ok := model.(interactiveModel)
+	if !ok {
+		t.Fatalf("got model %T, want interactiveModel", model)
+	}
+	if cmd == nil {
+		t.Fatal("expected initial reload command after window size")
+	}
+	if !updated.loading || !updated.reloadInFlight {
+		t.Fatalf("expected loading reload in flight: %+v", updated)
+	}
+	if !strings.Contains(updated.View(), "Loading data...") {
+		t.Fatalf("initial sized view missing loading state:\n%s", updated.View())
+	}
+}
+
+func TestViewColumnWidthsStableAcrossVisibleRowWindows(t *testing.T) {
+	rows := []renderRow{
+		{model: "a", providers: "x", harnesses: "pi", sessions: "1", inputTokens: "1", totalTokens: "1", totalValue: 1},
+		{model: "b", providers: "x", harnesses: "pi", sessions: "1", inputTokens: "1", totalTokens: "1", totalValue: 1},
+		{model: "c", providers: "x", harnesses: "pi", sessions: "1", inputTokens: "1", totalTokens: "1", totalValue: 1},
+		{model: "d", providers: "x", harnesses: "pi", sessions: "1", inputTokens: "1", totalTokens: "1", totalValue: 1},
+		{model: "e", providers: "x", harnesses: "pi", sessions: "1", inputTokens: "1", totalTokens: "1", totalValue: 1},
+		{model: "model-name-that-is-only-visible-after-scroll", providers: "provider-name-that-is-only-visible-after-scroll", harnesses: "opencode", sessions: "1", inputTokens: "1", totalTokens: "1", totalValue: 1},
+	}
+	m := interactiveModel{
+		rows:      rows,
+		activeTab: tabModels,
+		period:    periodMonth,
+		width:     120,
+		height:    24,
+		options:   tableOptions{period: periodMonth},
+	}
+	m = m.measureHeights()
+	before := tableHeaderLine(m.View(), "model")
+
+	model, _ := m.Update(tea.KeyMsg{Type: tea.KeyDown})
+	updated, ok := model.(interactiveModel)
+	if !ok {
+		t.Fatalf("got model %T, want interactiveModel", model)
+	}
+	after := tableHeaderLine(updated.View(), "model")
+
+	if after != before {
+		t.Fatalf("table header changed after visible row window changed:\nbefore: %q\nafter:  %q", before, after)
+	}
+}
+
+func TestLoadingAndLoadedHeadersUseStableColumnWidths(t *testing.T) {
+	base := interactiveModel{
+		activeTab: tabModels,
+		period:    periodMonth,
+		width:     80,
+		height:    24,
+		options:   tableOptions{period: periodMonth},
+		loading:   true,
+	}
+	base = base.measureHeights()
+	loadingHeader := tableHeaderLine(base.View(), "model")
+
+	base.loading = false
+	base.rows = []renderRow{{
+		model:       "gpt-5.5",
+		providers:   "openai, openai-codex",
+		harnesses:   "3 values",
+		sessions:    "132",
+		inputTokens: "19M",
+		totalTokens: "227M",
+		totalValue:  227_000_000,
+	}}
+	loadedHeader := tableHeaderLine(base.View(), "model")
+
+	if loadedHeader != loadingHeader {
+		t.Fatalf("table header changed from loading to loaded:\nloading: %q\nloaded:  %q", loadingHeader, loadedHeader)
+	}
+}
+
+func tableHeaderLine(output string, marker string) string {
+	for _, line := range strings.Split(ansi.Strip(output), "\n") {
+		if strings.Contains(line, marker) {
+			return line
+		}
+	}
+	return ""
 }
 
 func TestNumberKeysJumpToAggregationTabs(t *testing.T) {
