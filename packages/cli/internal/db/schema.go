@@ -32,6 +32,7 @@ const (
 	ColSessionID        = "session_id"
 	ColMessageID        = "message_id"
 	ColProvider         = "provider"
+	ColProviderSource   = "provider_source"
 	ColModel            = "model"
 	ColUsageScope       = "usage_scope"
 	ColQuality          = "quality"
@@ -58,4 +59,4 @@ const (
 	ColMessage          = "message"
 )
 
-const SupportedSchemaVersion = 3
+const SupportedSchemaVersion = 5

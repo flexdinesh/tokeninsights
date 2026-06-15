@@ -50,7 +50,7 @@ func runSync(ctx context.Context, args []string, stdout io.Writer, stderr io.Wri
 	var sourceDir string
 	var harnesses stringList
 	flags.StringVar(&dbPath, "db-path", defaultDBPath(), "path to tokeninsights sqlite db")
-	flags.Var(&harnesses, "harness", "harness to sync: opencode, pi, or codex")
+	flags.Var(&harnesses, "harness", "harness to sync: opencode, pi, codex, or claude-code")
 	flags.BoolVar(&all, "all", false, "sync all supported harnesses")
 	flags.BoolVar(&dryRun, "dry-run", false, "discover and parse without writing")
 	flags.BoolVar(&noNormalize, "no-normalize", false, "skip canonical normalization after raw ingest")
@@ -88,7 +88,7 @@ func runNormalize(ctx context.Context, args []string, stdout io.Writer, stderr i
 	var harnesses stringList
 	flags.StringVar(&dbPath, "db-path", defaultDBPath(), "path to tokeninsights sqlite db")
 	flags.BoolVar(&dryRun, "dry-run", false, "compute without writing")
-	flags.Var(&harnesses, "harness", "optional harness filter: opencode, pi, or codex")
+	flags.Var(&harnesses, "harness", "optional harness filter: opencode, pi, codex, or claude-code")
 	if err := flags.Parse(args); err != nil {
 		return fmt.Errorf("%v\n%w", err, ErrUsage)
 	}

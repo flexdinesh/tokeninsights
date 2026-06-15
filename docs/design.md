@@ -12,9 +12,9 @@ Token usage is the active V1 viewer domain. TPS remains a future-compatible data
 
 ```text
 Local harness data
-  OpenCode        Pi        Codex
-     |            |          |
-     +------------+----------+
+  OpenCode        Pi        Codex      Claude Code
+     |            |          |             |
+     +------------+----------+-------------+
                   |
                   v
         tokeninsights sync
@@ -63,7 +63,7 @@ Realtime plugins and checkpoint plugins are future-compatible concepts, not acti
 
 ## Current Implementation Status
 
-The sync-first canonical path is the active product path. Schema V3, DB lifecycle checks, `sync`, `normalize`, reset commands, canonical token aggregation, and fixture-style pipeline conformance tests are implemented.
+The sync-first canonical path is the active product path. Schema V5, DB lifecycle checks, `sync`, `normalize`, reset commands, canonical token aggregation, and fixture-style pipeline conformance tests are implemented.
 
 Known gaps are part of the current design contract:
 
@@ -77,7 +77,11 @@ Known gaps are part of the current design contract:
 
 `packages/schema/schema.sql` is the single source of truth for SQLite table and column definitions. The Go CLI embeds a checked copy at `packages/cli/internal/db/schema/schema.sql`.
 
-Compatibility is gated by `PRAGMA user_version`. The current sync-first schema version is `3`.
+Compatibility is gated by `PRAGMA user_version`. The current sync-first schema version is `5`.
+
+Schema V4 adds the persisted `claude-code` harness value. Existing V3 databases reject that value physically through SQLite `CHECK` constraints, so users must run `reset-all --confirm` rather than relying on an in-place migration.
+
+Schema V5 adds canonical provider provenance through `canonical_token_usage.provider_source`. Existing V4 databases need `reset-all --confirm` because TokenInsights does not perform in-place SQLite migrations.
 
 Cross-language/schema validation is handled by:
 
@@ -96,7 +100,7 @@ One row per source sync attempt. Runs start as `running` and complete as `comple
 Important fields:
 
 - `run_id`: unique sync-run identity.
-- `harness`: `opencode`, `pi`, or `codex`.
+- `harness`: `opencode`, `pi`, `codex`, or `claude-code`.
 - `collector` and `parser`: implementation/version provenance.
 - `source_id` and `source_kind`: stable logical source identity without storing full paths.
 - `status`, `started_at_ms`, `completed_at_ms`, `error_message`.
@@ -110,7 +114,7 @@ Completed ingest metadata is audit history and should not be rewritten except fo
 
 Deduplicated metadata-only token facts parsed from harness sources.
 
-Raw facts preserve source absence as null. Missing provider/model stays null here and is normalized to `unknown` only in canonical facts.
+Raw facts preserve source absence as null. Missing provider/model stays null here and is resolved only in canonical facts.
 
 Important fields:
 
@@ -151,7 +155,8 @@ Rows include:
 
 - `semantic_key`: stable fact identity.
 - `recorded_at_ms`, `harness`, canonical `session_id`, optional canonical `message_id`.
-- `provider` and `model`, with missing values normalized to `unknown`.
+- `provider` and `model`. Missing models normalize to `unknown`. Missing providers normalize to `unknown` except Claude Code artifact-derived rows, which canonicalize to `maybe-anthropic`.
+- `provider_source`: `explicit`, `inferred`, or `unknown`.
 - `usage_scope` and `quality`.
 - `is_countable`: default token analytics use only countable rows.
 - token count columns.
@@ -207,7 +212,9 @@ Pi sync parses durable JSONL session files under `~/.pi/agent/sessions`, includi
 
 Codex sync parses rollout JSONL session files under `${CODEX_HOME:-~/.codex}/sessions`. It uses `event_msg` records with `payload.type == "token_count"` as exact message-scoped token facts. Codex token parsing is stateful per file: `session_meta` provides session/provider state, `turn_context` or `task_started` provides turn/model state, `last_token_usage` provides countable token components, and `total_token_usage` is used only to suppress duplicate or stale cumulative snapshots.
 
-Harness-specific source parsing stays behind the adapter interface and feeds the same raw-to-canonical pipeline. Missing provider/model remains null in raw facts and normalizes to `unknown`. Cached input is represented as `cache_read_tokens` where the source exposes it; Codex cached input is subtracted from raw input tokens before canonical aggregation.
+Claude Code sync parses JSONL transcript files under `${CLAUDE_CONFIG_DIR:-~/.claude}/projects`. Single-harness `--source-dir` scans the provided directory directly, and `sync --all --source-dir <root>` scans `<root>/claude-code`. It uses assistant message `usage` metadata as derived message-scoped token facts, with the file stem as the fallback session identity and top-level `sessionId` as the parent session identity when present. This attributes sidechain/subagent usage to the user-visible parent session when Claude Code records that parent. Message identity uses `message.id` when present and falls back to the row `uuid`. Streaming duplicate assistant rows are merged within a source by `message.id + requestId`, or by `message.id` when no request ID is present, keeping the maximum token component values. Copied transcript facts are suppressed by logical dedupe keys that do not include full source paths. `cache_read_input_tokens` maps to cache read tokens, `cache_creation_input_tokens` maps to cache write tokens, and raw total tokens remain null unless the source provides a total. Claude Code explicit provider values are preserved with provider source `explicit`. When Claude Code artifacts omit provider metadata, canonical rows use provider `maybe-anthropic` with provider source `inferred`. Model values come from explicit model fields, and missing models canonicalize to `unknown`.
+
+Harness-specific source parsing stays behind the adapter interface and feeds the same raw-to-canonical pipeline. Missing provider/model remains null in raw facts. Canonical provider provenance records whether a provider was explicit, inferred, or unknown. Cached input is represented as `cache_read_tokens` where the source exposes it; Codex cached input is subtracted from raw input tokens before canonical aggregation.
 
 Uneven metric coverage is valid. An adapter should produce diagnostics for unavailable or rejected data instead of failing unrelated token usage sync.
 
@@ -220,7 +227,7 @@ Uneven metric coverage is valid. An adapter should produce diagnostics for unava
 3. Upserts canonical sessions.
 4. Upserts canonical messages when source message identity exists.
 5. Upserts canonical token usage by semantic key.
-6. Normalizes missing provider/model to `unknown`.
+6. Resolves missing provider/model according to canonical provider/model rules.
 7. Marks fallback-like scopes as non-countable to avoid default double counting.
 
 Normalization must be idempotent: repeated runs should converge on the same canonical identities and must not duplicate canonical facts or diagnostics.
@@ -239,7 +246,7 @@ The TUI queries canonical tables only:
 
 - token totals come from countable `canonical_token_usage` rows;
 - provider/model/harness filters derive from available canonical rows;
-- missing provider/model renders as `unknown`;
+- missing model renders as `unknown`; missing provider renders as `unknown` except inferred Claude Code provider, which renders as `maybe-anthropic`;
 - empty canonical tables produce a clean empty state.
 
 The active viewer surface uses token aggregation tabs:
@@ -277,7 +284,7 @@ Must not change silently:
 - schema changes require explicit user approval;
 - `packages/schema/schema.sql` remains the table source of truth;
 - canonical token usage must be session-centric;
-- missing provider/model must render as `unknown`, not cause row loss;
+- missing model and unavailable provider must render with canonical fallback values, not cause row loss;
 - raw storage must remain metadata-only and avoid private content;
 - default token analytics use only countable canonical token rows;
 - unavailable metric domains must not appear as empty active viewer tabs;
@@ -313,6 +320,7 @@ Can evolve with care:
 | `packages/cli/internal/pipeline/opencode_sqlite.go` | OpenCode durable SQLite adapter |
 | `packages/cli/internal/pipeline/codex_jsonl.go` | Codex JSONL session adapter |
 | `packages/cli/internal/pipeline/pi_jsonl.go` | Pi JSONL session adapter |
+| `packages/cli/internal/pipeline/claude_code_jsonl.go` | Claude Code JSONL transcript adapter |
 | `packages/cli/internal/pipeline/sync.go` | raw ingest and observation pipeline |
 | `packages/cli/internal/pipeline/normalize.go` | canonical normalization and diagnostics |
 | `packages/cli/internal/pipeline/pipeline_test.go` | fixture-style sync/normalize conformance tests |

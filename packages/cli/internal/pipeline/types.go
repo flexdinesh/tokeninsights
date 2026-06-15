@@ -5,12 +5,13 @@ import "time"
 type Harness string
 
 const (
-	HarnessOpenCode Harness = "opencode"
-	HarnessPi       Harness = "pi"
-	HarnessCodex    Harness = "codex"
+	HarnessOpenCode   Harness = "opencode"
+	HarnessPi         Harness = "pi"
+	HarnessCodex      Harness = "codex"
+	HarnessClaudeCode Harness = "claude-code"
 )
 
-var SupportedHarnesses = []Harness{HarnessOpenCode, HarnessPi, HarnessCodex}
+var SupportedHarnesses = []Harness{HarnessOpenCode, HarnessPi, HarnessCodex, HarnessClaudeCode}
 
 type Source struct {
 	Harness     Harness

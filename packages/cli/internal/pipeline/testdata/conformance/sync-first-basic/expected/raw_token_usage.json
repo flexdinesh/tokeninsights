@@ -1,5 +1,21 @@
 [
   {
+    "harness": "claude-code",
+    "source_kind": "claude-code-session-jsonl",
+    "session_id": "claude_s1",
+    "message_id": "cc_msg1",
+    "provider": null,
+    "model": "claude-sonnet-4-5",
+    "usage_scope": "message",
+    "quality": "derived",
+    "input_tokens": 40,
+    "output_tokens": 12,
+    "reasoning_tokens": null,
+    "cache_read_tokens": 8,
+    "cache_write_tokens": 2,
+    "total_tokens": null
+  },
+  {
     "harness": "codex",
     "source_kind": "codex-session-jsonl",
     "session_id": "cx_s1",

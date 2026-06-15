@@ -5,7 +5,7 @@ PRAGMA foreign_keys = ON;
 CREATE TABLE IF NOT EXISTS ingest_runs (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   run_id TEXT NOT NULL UNIQUE,
-  harness TEXT NOT NULL CHECK (harness IN ('opencode', 'pi', 'codex')),
+  harness TEXT NOT NULL CHECK (harness IN ('opencode', 'pi', 'codex', 'claude-code')),
   collector TEXT NOT NULL,
   parser TEXT NOT NULL,
   source_id TEXT NOT NULL,
@@ -27,7 +27,7 @@ CREATE INDEX IF NOT EXISTS ingest_runs_status_time_idx ON ingest_runs (status, s
 CREATE TABLE IF NOT EXISTS raw_token_usage (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   raw_fact_key TEXT NOT NULL UNIQUE,
-  harness TEXT NOT NULL CHECK (harness IN ('opencode', 'pi', 'codex')),
+  harness TEXT NOT NULL CHECK (harness IN ('opencode', 'pi', 'codex', 'claude-code')),
   source_id TEXT NOT NULL,
   source_kind TEXT NOT NULL,
   collector TEXT NOT NULL,
@@ -75,7 +75,7 @@ CREATE INDEX IF NOT EXISTS raw_observations_fact_idx ON raw_observations (raw_fa
 CREATE TABLE IF NOT EXISTS canonical_sessions (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   semantic_key TEXT NOT NULL UNIQUE,
-  harness TEXT NOT NULL CHECK (harness IN ('opencode', 'pi', 'codex')),
+  harness TEXT NOT NULL CHECK (harness IN ('opencode', 'pi', 'codex', 'claude-code')),
   session_id TEXT NOT NULL,
   first_seen_at_ms INTEGER NOT NULL,
   last_seen_at_ms INTEGER NOT NULL,
@@ -90,7 +90,7 @@ CREATE TABLE IF NOT EXISTS canonical_messages (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   semantic_key TEXT NOT NULL UNIQUE,
   session_id INTEGER NOT NULL,
-  harness TEXT NOT NULL CHECK (harness IN ('opencode', 'pi', 'codex')),
+  harness TEXT NOT NULL CHECK (harness IN ('opencode', 'pi', 'codex', 'claude-code')),
   harness_message_id TEXT NOT NULL,
   occurred_at_ms INTEGER,
   primary_raw_fact_id INTEGER,
@@ -104,10 +104,11 @@ CREATE TABLE IF NOT EXISTS canonical_token_usage (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   semantic_key TEXT NOT NULL UNIQUE,
   recorded_at_ms INTEGER NOT NULL,
-  harness TEXT NOT NULL CHECK (harness IN ('opencode', 'pi', 'codex')),
+  harness TEXT NOT NULL CHECK (harness IN ('opencode', 'pi', 'codex', 'claude-code')),
   session_id INTEGER NOT NULL,
   message_id INTEGER,
   provider TEXT NOT NULL DEFAULT 'unknown',
+  provider_source TEXT NOT NULL DEFAULT 'unknown' CHECK (provider_source IN ('explicit', 'inferred', 'unknown')),
   model TEXT NOT NULL DEFAULT 'unknown',
   usage_scope TEXT NOT NULL,
   quality TEXT NOT NULL CHECK (quality IN ('exact', 'derived', 'estimated')),
@@ -136,7 +137,7 @@ CREATE TABLE IF NOT EXISTS normalization_diagnostics (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   diagnostic_key TEXT NOT NULL UNIQUE,
   recorded_at_ms INTEGER NOT NULL,
-  harness TEXT NOT NULL CHECK (harness IN ('opencode', 'pi', 'codex')),
+  harness TEXT NOT NULL CHECK (harness IN ('opencode', 'pi', 'codex', 'claude-code')),
   raw_fact_id INTEGER,
   ingest_run_id INTEGER,
   severity TEXT NOT NULL CHECK (severity IN ('info', 'warning', 'error')),
@@ -150,4 +151,4 @@ CREATE TABLE IF NOT EXISTS normalization_diagnostics (
 CREATE INDEX IF NOT EXISTS normalization_diagnostics_harness_time_idx ON normalization_diagnostics (harness, recorded_at_ms);
 CREATE INDEX IF NOT EXISTS normalization_diagnostics_code_idx ON normalization_diagnostics (code);
 
-PRAGMA user_version = 3;
+PRAGMA user_version = 5;

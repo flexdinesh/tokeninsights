@@ -1,6 +1,6 @@
 # tokeninsights — Agent Guide
 
-Track local token usage for OpenCode, Pi, and Codex.
+Track local token usage for OpenCode, Pi, Codex, and Claude Code.
 
 TokenInsights is a sync-first Go CLI: `sync` ingests durable local harness data into raw SQLite tables, `normalize` writes canonical facts, and `view` reads canonical tables. Realtime and checkpoint plugins are future-compatible concepts, not active product code.
 
@@ -16,7 +16,7 @@ Full architecture, schema contract, pipelines, and invariants are in [`docs/desi
 - **Schema changes require explicit user approval**. Before modifying `packages/schema/schema.sql`, table structures, column definitions, or any cross-language schema contract, clearly explain the reasons to the user and ask for explicit approval. Never make silent or implicit schema changes — even for non-breaking additions.
 - **Canonical token usage is session-centric**. Every canonical token row must resolve to a stable `session_id`; raw facts may preserve missing source session IDs as null and normalization must skip unresolved facts with diagnostics.
 - **Prefer durable token data** over estimated stream deltas. `message.part.delta` is live UI only if realtime support returns later.
-- **Missing provider/model → `unknown`** in canonical/view data. Raw facts preserve source absence as null.
+- **Missing provider/model handling**: Raw facts preserve source absence as null. Canonical/view model absence becomes `unknown`; provider absence becomes `unknown` except Claude Code artifact-derived rows, which use provider `maybe-anthropic` with `provider_source='inferred'`.
 - **Raw storage is metadata-only**. Do not store prompt text, assistant text, tool arguments, tool output, request headers, secrets, raw provider payloads, or full source paths.
 - **TPS is first-class**. Keep the TPS tab and `tps avg`, `tps mean`, and `tps median` viewer concepts even when timing data is sparse or unavailable.
 - **Write for maintainability**. Do not use magic numbers in calculations for quick fixes that violate code discipline.

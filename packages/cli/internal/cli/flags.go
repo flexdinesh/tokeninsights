@@ -100,7 +100,7 @@ func parseTableOptions(args []string, stderr io.Writer, requirePeriod bool, defa
 	flags.Var(&queryFilters.sessionIDs, "session-id", "filter by session id; repeat or comma-separate")
 	flags.Var(&queryFilters.providers, "provider", "filter by provider; repeat or comma-separate")
 	flags.Var(&queryFilters.models, "model", "filter by model; repeat or comma-separate")
-	flags.Var(&queryFilters.harnesses, "harness", "filter by harness (oc or pi); repeat or comma-separate")
+	flags.Var(&queryFilters.harnesses, "harness", "filter by harness; repeat or comma-separate")
 	flags.StringVar(&queryFilters.dayFrom, "filter-day-from", "", "filter from local day YYYY-MM-DD")
 	flags.StringVar(&queryFilters.dayTo, "filter-day-to", "", "filter to local day YYYY-MM-DD")
 
@@ -286,8 +286,8 @@ func periodEnd(now time.Time, selected period) time.Time {
 
 func validateHarnesses(values stringList) error {
 	for _, value := range values {
-		if value != "opencode" && value != "pi" && value != "codex" {
-			return fmt.Errorf("invalid --harness %q: must be opencode, pi, or codex\n%w", value, ErrUsage)
+		if value != "opencode" && value != "pi" && value != "codex" && value != "claude-code" {
+			return fmt.Errorf("invalid --harness %q: must be opencode, pi, codex, or claude-code\n%w", value, ErrUsage)
 		}
 	}
 	return nil

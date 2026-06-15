@@ -41,6 +41,7 @@ type expectedCanonicalTokenUsage struct {
 	SessionID        string `json:"session_id"`
 	MessageID        string `json:"message_id"`
 	Provider         string `json:"provider"`
+	ProviderSource   string `json:"provider_source"`
 	Model            string `json:"model"`
 	UsageScope       string `json:"usage_scope"`
 	Quality          string `json:"quality"`
@@ -69,19 +70,20 @@ type expectedDiagnostic struct {
 
 func TestConformanceFixtureDefinesRawCanonicalAndDiagnostics(t *testing.T) {
 	assertConformanceFixture(t, syncFirstBasicFixtureDir(), Summary{
-		RequestedHarnesses: 3,
-		Synced:             3,
-		RawFacts:           3,
-		Observations:       3,
-		Canonical:          3,
+		RequestedHarnesses: 4,
+		Synced:             4,
+		RawFacts:           4,
+		Observations:       4,
+		Canonical:          4,
+		Diagnostics:        1,
 	})
 }
 
 func TestConformanceFixtureDefinesMissingSessionDiagnostics(t *testing.T) {
 	assertConformanceFixture(t, filepath.Join("testdata", "conformance", "missing-session"), Summary{
-		RequestedHarnesses: 3,
+		RequestedHarnesses: 4,
 		Synced:             1,
-		Skipped:            2,
+		Skipped:            3,
 		RawFacts:           1,
 		Observations:       1,
 		Diagnostics:        1,
@@ -194,6 +196,7 @@ func TestPiJSONLSyncsAssistantMessageTokenUsage(t *testing.T) {
 			SessionID:        "pi_s1",
 			MessageID:        "msg_a",
 			Provider:         "anthropic",
+			ProviderSource:   "explicit",
 			Model:            "claude-sonnet-4",
 			UsageScope:       "message",
 			Quality:          "exact",
@@ -282,6 +285,7 @@ func TestCodexJSONLSyncsTokenCountUsage(t *testing.T) {
 			SessionID:        "codex_s1",
 			MessageID:        "turn_1:1767225602000",
 			Provider:         "openai",
+			ProviderSource:   "explicit",
 			Model:            "gpt-5.5",
 			UsageScope:       "message",
 			Quality:          "exact",
@@ -298,6 +302,7 @@ func TestCodexJSONLSyncsTokenCountUsage(t *testing.T) {
 			SessionID:        "codex_s1",
 			MessageID:        "turn_1:1767225603000",
 			Provider:         "openai",
+			ProviderSource:   "explicit",
 			Model:            "gpt-5.5",
 			UsageScope:       "message",
 			Quality:          "exact",
@@ -311,6 +316,204 @@ func TestCodexJSONLSyncsTokenCountUsage(t *testing.T) {
 		},
 	})
 	assertSQLCount(t, database, "SELECT COUNT(*) FROM normalization_diagnostics WHERE code = 'codex_jsonl_duplicate_token_snapshot'", 1)
+}
+
+func TestClaudeCodeJSONLDryRunDiscoversAndParsesMainSessionTokenUsage(t *testing.T) {
+	ctx := context.Background()
+	sourceDir := t.TempDir()
+	now := time.Date(2026, 4, 24, 15, 0, 0, 0, time.UTC)
+	writeJSONL(t, filepath.Join(sourceDir, "claude-code", "project-a", "claude_main.jsonl"),
+		`{"type":"assistant","uuid":"msg_a","requestId":"req_a","timestamp":"2026-01-01T00:00:02.000Z","message":{"id":"msg_api_a","role":"assistant","model":"claude-sonnet-4-5","usage":{"input_tokens":100,"output_tokens":50,"cache_read_input_tokens":20,"cache_creation_input_tokens":5}}}`,
+	)
+
+	summary, err := Sync(ctx, SyncOptions{
+		Harnesses: []Harness{HarnessClaudeCode},
+		DryRun:    true,
+		SourceDir: sourceDir,
+		Now:       now,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertSummary(t, summary, Summary{
+		RequestedHarnesses: 1,
+		Synced:             1,
+		RawFacts:           1,
+		Diagnostics:        1,
+	})
+}
+
+func TestClaudeCodeJSONLSyncsMainSessionTokenUsage(t *testing.T) {
+	ctx := context.Background()
+	dbPath := filepath.Join(t.TempDir(), "tokeninsights.sqlite")
+	sourceDir := t.TempDir()
+	now := time.Date(2026, 4, 24, 15, 0, 0, 0, time.UTC)
+	writeJSONL(t, filepath.Join(sourceDir, "claude-code", "project-a", "claude_main.jsonl"),
+		`{"type":"assistant","uuid":"uuid_a","requestId":"req_a","timestamp":"2026-01-01T00:00:02.000Z","message":{"id":"msg_api_a","role":"assistant","model":"claude-sonnet-4-5","usage":{"input_tokens":100,"output_tokens":50,"cache_read_input_tokens":20,"cache_creation_input_tokens":5}}}`,
+	)
+
+	summary, err := Sync(ctx, SyncOptions{
+		DBPath:    dbPath,
+		Harnesses: []Harness{HarnessClaudeCode},
+		Normalize: true,
+		SourceDir: sourceDir,
+		Now:       now,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertSummary(t, summary, Summary{
+		RequestedHarnesses: 1,
+		Synced:             1,
+		RawFacts:           1,
+		Observations:       1,
+		Canonical:          1,
+		Diagnostics:        1,
+	})
+
+	database := openTestDB(t, dbPath)
+	defer database.Close()
+	assertEqualJSON(t, queryRawTokenUsage(t, database), []expectedRawTokenUsage{
+		{
+			Harness:          "claude-code",
+			SourceKind:       "claude-code-session-jsonl",
+			SessionID:        stringPointer("claude_main"),
+			MessageID:        stringPointer("msg_api_a"),
+			Provider:         nil,
+			Model:            stringPointer("claude-sonnet-4-5"),
+			UsageScope:       "message",
+			Quality:          "derived",
+			InputTokens:      intPointer(100),
+			OutputTokens:     intPointer(50),
+			ReasoningTokens:  nil,
+			CacheReadTokens:  intPointer(20),
+			CacheWriteTokens: intPointer(5),
+			TotalTokens:      nil,
+		},
+	})
+	assertEqualJSON(t, queryCanonicalTokenUsage(t, database), []expectedCanonicalTokenUsage{
+		{
+			Harness:          "claude-code",
+			SessionID:        "claude_main",
+			MessageID:        "msg_api_a",
+			Provider:         "maybe-anthropic",
+			ProviderSource:   "inferred",
+			Model:            "claude-sonnet-4-5",
+			UsageScope:       "message",
+			Quality:          "derived",
+			IsCountable:      1,
+			InputTokens:      100,
+			OutputTokens:     50,
+			ReasoningTokens:  0,
+			CacheReadTokens:  20,
+			CacheWriteTokens: 5,
+			TotalTokens:      175,
+		},
+	})
+	assertSQLCount(t, database, "SELECT COUNT(*) FROM normalization_diagnostics WHERE code = 'claude_code_jsonl_transcript_derived' AND severity = 'info'", 1)
+}
+
+func TestClaudeCodeJSONLMergesStreamingDuplicateAssistantUsage(t *testing.T) {
+	ctx := context.Background()
+	sourceDir := t.TempDir()
+	path := filepath.Join(sourceDir, "project-a", "claude_main.jsonl")
+	writeJSONL(t, path,
+		`{"type":"assistant","uuid":"uuid_a","requestId":"req_a","timestamp":"2026-01-01T00:00:02.000Z","message":{"id":"msg_api_a","role":"assistant","model":"claude-sonnet-4-5","usage":{"input_tokens":100,"output_tokens":10,"cache_read_input_tokens":20,"cache_creation_input_tokens":5}}}`,
+		`{"type":"assistant","uuid":"uuid_a","requestId":"req_a","timestamp":"2026-01-01T00:00:03.000Z","message":{"id":"msg_api_a","role":"assistant","model":"claude-sonnet-4-5","usage":{"input_tokens":100,"output_tokens":50,"cache_read_input_tokens":20,"cache_creation_input_tokens":5}}}`,
+	)
+
+	adapter := claudeCodeJSONLAdapter{}
+	facts, _, err := adapter.Parse(ctx, Source{
+		Harness: HarnessClaudeCode,
+		ID:      "test-source",
+		Kind:    claudeCodeJSONLSourceKind,
+		Path:    path,
+	}, SyncOptions{Now: time.Date(2026, 4, 24, 15, 0, 0, 0, time.UTC)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(facts) != 1 {
+		t.Fatalf("got %d facts, want 1", len(facts))
+	}
+	if facts[0].MessageID == nil || *facts[0].MessageID != "msg_api_a" {
+		t.Fatalf("got message id %v, want msg_api_a", facts[0].MessageID)
+	}
+	if facts[0].OutputTokens == nil || *facts[0].OutputTokens != 50 {
+		t.Fatalf("got output tokens %v, want 50", facts[0].OutputTokens)
+	}
+}
+
+func TestClaudeCodeJSONLAttributesSidechainUsageToParentSession(t *testing.T) {
+	ctx := context.Background()
+	dbPath := filepath.Join(t.TempDir(), "tokeninsights.sqlite")
+	sourceDir := t.TempDir()
+	now := time.Date(2026, 4, 24, 15, 0, 0, 0, time.UTC)
+	writeJSONL(t, filepath.Join(sourceDir, "claude-code", "project-a", "parent_session.jsonl"),
+		`{"type":"assistant","uuid":"uuid_main","requestId":"req_main","timestamp":"2026-01-01T00:00:02.000Z","sessionId":"parent_session","message":{"id":"msg_main","role":"assistant","model":"claude-sonnet-4-5","usage":{"input_tokens":10,"output_tokens":5}}}`,
+	)
+	writeJSONL(t, filepath.Join(sourceDir, "claude-code", "project-a", "agent-sidechain.jsonl"),
+		`{"type":"assistant","uuid":"uuid_agent","requestId":"req_agent","timestamp":"2026-01-01T00:00:03.000Z","sessionId":"parent_session","isSidechain":true,"message":{"id":"msg_agent","role":"assistant","model":"claude-sonnet-4-5","usage":{"input_tokens":20,"output_tokens":10}}}`,
+	)
+
+	summary, err := Sync(ctx, SyncOptions{
+		DBPath:    dbPath,
+		Harnesses: []Harness{HarnessClaudeCode},
+		Normalize: true,
+		SourceDir: sourceDir,
+		Now:       now,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertSummary(t, summary, Summary{
+		RequestedHarnesses: 1,
+		Synced:             1,
+		RawFacts:           2,
+		Observations:       2,
+		Canonical:          2,
+		Diagnostics:        2,
+	})
+
+	database := openTestDB(t, dbPath)
+	defer database.Close()
+	assertSQLCount(t, database, "SELECT COUNT(*) FROM canonical_sessions WHERE session_id = 'parent_session'", 1)
+	assertSQLCount(t, database, "SELECT COUNT(*) FROM canonical_sessions WHERE session_id = 'agent-sidechain'", 0)
+	assertSQLCount(t, database, "SELECT COUNT(*) FROM canonical_token_usage ctu INNER JOIN canonical_sessions cs ON cs.id = ctu.session_id WHERE cs.session_id = 'parent_session'", 2)
+}
+
+func TestClaudeCodeJSONLSuppressesCopiedTranscriptFacts(t *testing.T) {
+	ctx := context.Background()
+	dbPath := filepath.Join(t.TempDir(), "tokeninsights.sqlite")
+	sourceDir := t.TempDir()
+	now := time.Date(2026, 4, 24, 15, 0, 0, 0, time.UTC)
+	line := `{"type":"assistant","uuid":"uuid_a","requestId":"req_a","timestamp":"2026-01-01T00:00:02.000Z","sessionId":"claude_copy","message":{"id":"msg_api_a","role":"assistant","model":"claude-sonnet-4-5","usage":{"input_tokens":100,"output_tokens":50}}}`
+	writeJSONL(t, filepath.Join(sourceDir, "claude-code", "project-a", "claude_copy.jsonl"), line)
+	writeJSONL(t, filepath.Join(sourceDir, "claude-code", "project-b", "claude_copy.jsonl"), line)
+
+	summary, err := Sync(ctx, SyncOptions{
+		DBPath:    dbPath,
+		Harnesses: []Harness{HarnessClaudeCode},
+		Normalize: true,
+		SourceDir: sourceDir,
+		Now:       now,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertSummary(t, summary, Summary{
+		RequestedHarnesses: 1,
+		Synced:             1,
+		RawFacts:           1,
+		Observations:       1,
+		Canonical:          1,
+		Diagnostics:        3,
+	})
+
+	database := openTestDB(t, dbPath)
+	defer database.Close()
+	assertCount(t, database, "raw_token_usage", 1)
+	assertCount(t, database, "canonical_token_usage", 1)
+	assertSQLCount(t, database, "SELECT COUNT(*) FROM normalization_diagnostics WHERE code = 'claude_code_jsonl_duplicate_suppressed'", 1)
 }
 
 func TestCodexJSONLBackfillsModelForPendingTokenCount(t *testing.T) {
@@ -798,17 +1001,18 @@ func TestSyncAndNormalizeHarnessFixtures(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if summary.RequestedHarnesses != 3 || summary.Synced != 3 || summary.RawFacts != 3 || summary.Observations != 3 || summary.Canonical != 3 || summary.Diagnostics != 0 {
+	if summary.RequestedHarnesses != 4 || summary.Synced != 4 || summary.RawFacts != 4 || summary.Observations != 4 || summary.Canonical != 4 || summary.Diagnostics != 1 {
 		t.Fatalf("unexpected summary: %+v", summary)
 	}
 
 	database := openTestDB(t, dbPath)
 	defer database.Close()
-	assertCount(t, database, "raw_token_usage", 3)
-	assertCount(t, database, "raw_observations", 3)
-	assertCount(t, database, "canonical_sessions", 3)
-	assertCount(t, database, "canonical_token_usage", 3)
+	assertCount(t, database, "raw_token_usage", 4)
+	assertCount(t, database, "raw_observations", 4)
+	assertCount(t, database, "canonical_sessions", 4)
+	assertCount(t, database, "canonical_token_usage", 4)
 	assertSQLCount(t, database, "SELECT COUNT(*) FROM ingest_runs WHERE status = 'completed' AND raw_fact_count = 1 AND observation_count = 1 AND canonical_count = 1 AND diagnostic_count = 0", 3)
+	assertSQLCount(t, database, "SELECT COUNT(*) FROM ingest_runs WHERE status = 'completed' AND raw_fact_count = 1 AND observation_count = 1 AND canonical_count = 1 AND diagnostic_count = 1", 1)
 	assertSQLCount(t, database, "SELECT COUNT(*) FROM raw_token_usage WHERE harness = 'pi' AND provider IS NULL AND model IS NULL", 1)
 	assertSQLCount(t, database, "SELECT COUNT(*) FROM canonical_token_usage WHERE harness = 'pi' AND provider = 'unknown' AND model = 'unknown'", 1)
 
@@ -822,14 +1026,16 @@ func TestSyncAndNormalizeHarnessFixtures(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if secondSummary.RawFacts != 0 || secondSummary.Observations != 3 || secondSummary.Canonical != 0 || secondSummary.Diagnostics != 0 {
+	if secondSummary.RawFacts != 0 || secondSummary.Observations != 4 || secondSummary.Canonical != 0 || secondSummary.Diagnostics != 1 {
 		t.Fatalf("unexpected repeat summary: %+v", secondSummary)
 	}
-	assertCount(t, database, "raw_token_usage", 3)
-	assertCount(t, database, "raw_observations", 6)
-	assertCount(t, database, "canonical_token_usage", 3)
+	assertCount(t, database, "raw_token_usage", 4)
+	assertCount(t, database, "raw_observations", 8)
+	assertCount(t, database, "canonical_token_usage", 4)
 	assertSQLCount(t, database, "SELECT COUNT(*) FROM ingest_runs WHERE status = 'completed' AND raw_fact_count = 1 AND observation_count = 1 AND canonical_count = 1 AND diagnostic_count = 0", 3)
+	assertSQLCount(t, database, "SELECT COUNT(*) FROM ingest_runs WHERE status = 'completed' AND raw_fact_count = 1 AND observation_count = 1 AND canonical_count = 1 AND diagnostic_count = 1", 1)
 	assertSQLCount(t, database, "SELECT COUNT(*) FROM ingest_runs WHERE status = 'completed' AND raw_fact_count = 0 AND observation_count = 1 AND canonical_count = 0 AND diagnostic_count = 0", 3)
+	assertSQLCount(t, database, "SELECT COUNT(*) FROM ingest_runs WHERE status = 'completed' AND raw_fact_count = 0 AND observation_count = 1 AND canonical_count = 0 AND diagnostic_count = 1", 1)
 
 	normalizeSummary, err := Normalize(ctx, NormalizeOptions{DBPath: dbPath, Now: now})
 	if err != nil {
@@ -838,9 +1044,11 @@ func TestSyncAndNormalizeHarnessFixtures(t *testing.T) {
 	if normalizeSummary.Canonical != 0 || normalizeSummary.Diagnostics != 0 {
 		t.Fatalf("unexpected normalize diagnostics: %+v", normalizeSummary)
 	}
-	assertCount(t, database, "canonical_token_usage", 3)
+	assertCount(t, database, "canonical_token_usage", 4)
 	assertSQLCount(t, database, "SELECT COUNT(*) FROM ingest_runs WHERE status = 'completed' AND raw_fact_count = 1 AND observation_count = 1 AND canonical_count = 1 AND diagnostic_count = 0", 3)
+	assertSQLCount(t, database, "SELECT COUNT(*) FROM ingest_runs WHERE status = 'completed' AND raw_fact_count = 1 AND observation_count = 1 AND canonical_count = 1 AND diagnostic_count = 1", 1)
 	assertSQLCount(t, database, "SELECT COUNT(*) FROM ingest_runs WHERE status = 'completed' AND raw_fact_count = 0 AND observation_count = 1 AND canonical_count = 0 AND diagnostic_count = 0", 3)
+	assertSQLCount(t, database, "SELECT COUNT(*) FROM ingest_runs WHERE status = 'completed' AND raw_fact_count = 0 AND observation_count = 1 AND canonical_count = 0 AND diagnostic_count = 1", 1)
 }
 
 func TestSyncDryRunWritesNothing(t *testing.T) {
@@ -897,16 +1105,16 @@ func TestSyncAllSourceDirUsesHarnessSubdirectoriesOnly(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if summary.RequestedHarnesses != 3 || summary.Synced != 1 || summary.Skipped != 2 || summary.RawFacts != 1 || summary.Observations != 1 || summary.Canonical != 1 {
+	if summary.RequestedHarnesses != 4 || summary.Synced != 1 || summary.Skipped != 3 || summary.RawFacts != 1 || summary.Observations != 1 || summary.Canonical != 1 {
 		t.Fatalf("unexpected summary: %+v", summary)
 	}
 
 	database := openTestDB(t, dbPath)
 	defer database.Close()
 	assertSQLCount(t, database, "SELECT COUNT(*) FROM raw_token_usage WHERE harness = 'opencode'", 1)
-	assertSQLCount(t, database, "SELECT COUNT(*) FROM raw_token_usage WHERE harness IN ('pi', 'codex')", 0)
+	assertSQLCount(t, database, "SELECT COUNT(*) FROM raw_token_usage WHERE harness IN ('pi', 'codex', 'claude-code')", 0)
 	assertSQLCount(t, database, "SELECT COUNT(*) FROM canonical_token_usage WHERE harness = 'opencode'", 1)
-	assertSQLCount(t, database, "SELECT COUNT(*) FROM canonical_token_usage WHERE harness IN ('pi', 'codex')", 0)
+	assertSQLCount(t, database, "SELECT COUNT(*) FROM canonical_token_usage WHERE harness IN ('pi', 'codex', 'claude-code')", 0)
 }
 
 func TestSyncSingleHarnessSourceDirScansDirectoryDirectly(t *testing.T) {
@@ -1025,7 +1233,7 @@ func TestSyncAllPartialSuccessNormalizesSuccessfulHarnesses(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected partial failure")
 	}
-	if summary.Failed != 1 || summary.Synced != 2 || summary.RawFacts != 2 || summary.Observations != 2 || summary.Canonical != 2 {
+	if summary.Failed != 1 || summary.Synced != 2 || summary.Skipped != 1 || summary.RawFacts != 2 || summary.Observations != 2 || summary.Canonical != 2 {
 		t.Fatalf("unexpected partial summary: %+v", summary)
 	}
 
@@ -1368,7 +1576,7 @@ func queryRawTokenUsage(t *testing.T, database *sql.DB) []expectedRawTokenUsage 
 func queryCanonicalTokenUsage(t *testing.T, database *sql.DB) []expectedCanonicalTokenUsage {
 	t.Helper()
 	rows, err := database.Query(`
-		SELECT ctu.harness, cs.session_id, COALESCE(cm.harness_message_id, ''), ctu.provider, ctu.model,
+		SELECT ctu.harness, cs.session_id, COALESCE(cm.harness_message_id, ''), ctu.provider, ctu.provider_source, ctu.model,
 			ctu.usage_scope, ctu.quality, ctu.is_countable, ctu.input_tokens, ctu.output_tokens,
 			ctu.reasoning_tokens, ctu.cache_read_tokens, ctu.cache_write_tokens, ctu.total_tokens
 		FROM canonical_token_usage ctu
@@ -1389,6 +1597,7 @@ func queryCanonicalTokenUsage(t *testing.T, database *sql.DB) []expectedCanonica
 			&row.SessionID,
 			&row.MessageID,
 			&row.Provider,
+			&row.ProviderSource,
 			&row.Model,
 			&row.UsageScope,
 			&row.Quality,

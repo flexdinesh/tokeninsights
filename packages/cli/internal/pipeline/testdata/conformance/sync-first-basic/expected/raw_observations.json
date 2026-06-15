@@ -1,5 +1,11 @@
 [
   {
+    "harness": "claude-code",
+    "session_id": "claude_s1",
+    "message_id": "cc_msg1",
+    "observed_at_ms": 1777042800000
+  },
+  {
     "harness": "codex",
     "session_id": "cx_s1",
     "message_id": "turn1:1767225602000",

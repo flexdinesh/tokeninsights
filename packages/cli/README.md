@@ -133,7 +133,7 @@ Filter by model. Can be repeated or comma-separated.
 
 `--harness ID`
 
-Filter by `opencode`, `pi`, or `codex`. Can be repeated or comma-separated.
+Filter by `opencode`, `pi`, `codex`, or `claude-code`. Can be repeated or comma-separated.
 
 `--filter-day-from YYYY-MM-DD`
 
@@ -160,7 +160,7 @@ cache write
 total
 ```
 
-Missing provider or model values are normalized to `unknown`.
+Missing model values are normalized to `unknown`. Missing provider values are normalized to `unknown`, except Claude Code artifact-derived rows, which appear as `maybe-anthropic` with inferred provider provenance.
 
 The active Aggregation Tabs are Tokens, Models, Providers, Harnesses, and Sessions. TPS, request, and tool domains remain future-compatible data domains, but they are not active empty viewer tabs.
 

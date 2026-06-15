@@ -20,6 +20,7 @@ func Adapters() []Adapter {
 		opencodeSQLiteAdapter{},
 		piJSONLAdapter{},
 		codexJSONLAdapter{},
+		claudeCodeJSONLAdapter{},
 	}
 }
 
