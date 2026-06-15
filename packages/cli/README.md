@@ -5,7 +5,18 @@ Sync durable local harness data into TokenInsights SQLite and view canonical tok
 ## Install
 
 ```sh
+brew install flexdinesh/tap/tokeninsights
+```
+
+Alternative stable install with Go:
+
+```sh
 go install github.com/flexdinesh/tokeninsights/packages/cli/cmd/tokeninsights@latest
+```
+
+Development version from `dev`:
+
+```sh
 go install github.com/flexdinesh/tokeninsights/packages/cli/cmd/tokeninsights@dev
 ```
 

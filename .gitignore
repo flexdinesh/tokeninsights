@@ -1,4 +1,5 @@
 node_modules
+.pnpm-store
 packages/cli/tokeninsights-cli
 packages/cli/tokeninsights
 packages/cli/bin/

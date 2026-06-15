@@ -17,6 +17,12 @@ Use `--db-path` or `TOKENINSIGHTS_DB_PATH` to choose another database.
 Install the latest stable release:
 
 ```sh
+brew install flexdinesh/tap/tokeninsights
+```
+
+Alternative stable install with Go:
+
+```sh
 go install github.com/flexdinesh/tokeninsights/packages/cli/cmd/tokeninsights@latest
 ```
 
