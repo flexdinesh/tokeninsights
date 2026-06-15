@@ -117,3 +117,28 @@ func TestProvidersTableInitialViewportIncludesTotalColumn(t *testing.T) {
 		t.Fatalf("providers table initial viewport missing total column:\n%s", output)
 	}
 }
+
+func TestProvidersTableTruncatesLongListsBeforeHorizontalOverflow(t *testing.T) {
+	output := ansi.Strip(renderTableViewportWithSort([]renderRow{
+		{
+			provider:         "openai",
+			models:           "gpt-5.5, gpt-5.4, gpt-5.3-codex-spark, gpt-5.3-codex, gpt-5.2-codex",
+			harnesses:        "codex, opencode, pi",
+			sessions:         "260",
+			inputTokens:      "31M",
+			outputTokens:     "2M",
+			reasoningTokens:  "919K",
+			cacheReadTokens:  "330M",
+			cacheWriteTokens: "1M",
+			totalTokens:      "366M",
+		},
+	}, nil, groupByNone, tabProviders, sortTokens, 120, 0, 4))
+
+	header := tableHeaderLine(output, "provider")
+	if !strings.Contains(header, "total") {
+		t.Fatalf("providers table initial viewport missing total column:\n%s", output)
+	}
+	if !strings.Contains(output, "...") {
+		t.Fatalf("providers table did not show truncated long list:\n%s", output)
+	}
+}

@@ -258,6 +258,71 @@ func TestHorizontalKeysScrollAndJump(t *testing.T) {
 	}
 }
 
+func TestViewDoesNotShowHorizontalScrollWhenTableFitsAfterTruncation(t *testing.T) {
+	m := interactiveModel{
+		rows: []renderRow{{
+			provider:         "openai",
+			models:           "gpt-5.5, gpt-5.4, gpt-5.3-codex-spark, gpt-5.3-codex, gpt-5.2-codex",
+			harnesses:        "codex, opencode, pi",
+			sessions:         "260",
+			inputTokens:      "31M",
+			outputTokens:     "2M",
+			reasoningTokens:  "919K",
+			cacheReadTokens:  "330M",
+			cacheWriteTokens: "1M",
+			totalTokens:      "366M",
+			totalValue:       366_000_000,
+		}},
+		activeTab: tabProviders,
+		period:    periodAllTime,
+		width:     124,
+		height:    24,
+		options:   tableOptions{period: periodAllTime, sort: sortTokens},
+	}
+	m = m.measureHeights()
+
+	output := ansi.Strip(m.View())
+	if strings.Contains(output, "x     1/") {
+		t.Fatalf("view showed horizontal scroll even though table fits after truncation:\n%s", output)
+	}
+}
+
+func TestEndKeyScrollsWhenMinimumTableWidthExceedsViewport(t *testing.T) {
+	m := interactiveModel{
+		rows: []renderRow{{
+			provider:         "openai",
+			models:           "gpt-5.5, gpt-5.4, gpt-5.3-codex-spark",
+			harnesses:        "codex, opencode, pi",
+			sessions:         "260",
+			inputTokens:      "31M",
+			outputTokens:     "2M",
+			reasoningTokens:  "919K",
+			cacheReadTokens:  "330M",
+			cacheWriteTokens: "1M",
+			totalTokens:      "366M",
+			totalValue:       366_000_000,
+		}},
+		activeTab: tabProviders,
+		period:    periodAllTime,
+		width:     74,
+		height:    24,
+		options:   tableOptions{period: periodAllTime, sort: sortTokens},
+	}
+	m = m.measureHeights()
+
+	model, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnd})
+	updated, ok := model.(interactiveModel)
+	if !ok {
+		t.Fatalf("got model %T, want interactiveModel", model)
+	}
+	if cmd != nil {
+		t.Fatal("did not expect command")
+	}
+	if updated.horizontalOffset <= 0 {
+		t.Fatalf("got horizontal offset %d, want horizontal scroll to be available", updated.horizontalOffset)
+	}
+}
+
 func TestTabSwitchResetsHorizontalOffset(t *testing.T) {
 	m := interactiveModel{
 		horizontalOffset: 12,
