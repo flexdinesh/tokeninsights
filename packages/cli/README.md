@@ -147,6 +147,8 @@ Inclusive local-day upper bound.
 
 Press `q` to quit. Use tab/shift-tab or number keys 1-5 to switch Aggregation Tabs. Use `d` for Date Range Filter, `g` for Time Bucket, `s` for sort, and `p`, `m`, or `h` for provider, model, or harness filters. Use `up/down` or `j/k` to scroll vertically, `left/right` to scroll horizontally, and `home/end` to jump to the start or end of the horizontal table viewport.
 
+Tables fit the current terminal width where possible. Long model, provider, and harness values are truncated in-place; horizontal scrolling is used only when the minimum readable table width is still wider than the viewport.
+
 ## Metrics
 
 Token columns come from countable rows in `canonical_token_usage`:

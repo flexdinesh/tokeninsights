@@ -46,6 +46,24 @@ type column struct {
 const sortIndicator = " ↓"
 
 const (
+	tableColumnGapWidth = 2
+	truncationMarker    = "..."
+
+	bucketColumnWidth  = 10
+	latestColumnWidth  = 16
+	sessionColumnWidth = 8
+
+	harnessColumnMinWidth  = 7
+	harnessColumnMaxWidth  = 14
+	providerColumnMinWidth = 8
+	providerColumnMaxWidth = 18
+	modelColumnMinWidth    = 14
+	modelColumnMaxWidth    = 32
+	listColumnMinWidth     = 12
+	listColumnMaxWidth     = 36
+)
+
+const (
 	appBackgroundColor   = "#1b1b2a"
 	panelBackgroundColor = appBackgroundColor
 	tableSeparatorColor  = "#565766"
@@ -255,14 +273,16 @@ var (
 	rowOddStyle     = appSurfaceStyle
 	rowEvenStyle    = appSurfaceStyle
 
-	borderStyle      = lipgloss.NewStyle().Foreground(lipgloss.Color(tableSeparatorColor))
+	borderStyle      = lipgloss.NewStyle().Foreground(lipgloss.Color(tableSeparatorColor)).Background(lipgloss.Color(appBackgroundColor))
 	outerBorderStyle = lipgloss.NewStyle().
 				Border(lipgloss.RoundedBorder()).
 				BorderForeground(lipgloss.Color(outerBorderColor)).
+				BorderBackground(lipgloss.Color(appBackgroundColor)).
 				Background(lipgloss.Color(appBackgroundColor))
 	sectionBorderStyle = lipgloss.NewStyle().
 				Border(lipgloss.RoundedBorder()).
 				BorderForeground(lipgloss.Color(sectionBorderColor)).
+				BorderBackground(lipgloss.Color(panelBackgroundColor)).
 				Background(lipgloss.Color(panelBackgroundColor))
 )
 
@@ -282,14 +302,14 @@ func renderTableViewportWithReferenceRows(rows []renderRow, referenceRows []rend
 	if width <= 0 {
 		return ""
 	}
-	return horizontalViewport(renderTableWithReferenceRowsWidth(rows, referenceRows, g, tab, horizontalOffset+width, minDataRows, "No rows match the current scope."), horizontalOffset, width)
+	return horizontalViewport(renderTableWithReferenceRowsWidth(rows, referenceRows, g, tab, width, minDataRows, "No rows match the current scope."), horizontalOffset, width)
 }
 
 func renderTableViewportWithSort(rows []renderRow, referenceRows []renderRow, g groupByMode, tab tabMode, sort sortMode, width int, horizontalOffset int, minDataRows int) string {
 	if width <= 0 {
 		return ""
 	}
-	return horizontalViewport(renderTableWithReferenceRowsAndSortWidth(rows, referenceRows, g, tab, sort, horizontalOffset+width, minDataRows, "No rows match the current scope."), horizontalOffset, width)
+	return horizontalViewport(renderTableWithReferenceRowsAndSortWidth(rows, referenceRows, g, tab, sort, width, minDataRows, "No rows match the current scope."), horizontalOffset, width)
 }
 
 func renderLoadingTableViewport(g groupByMode, tab tabMode, width int, minDataRows int) string {
@@ -312,6 +332,10 @@ func renderTableWidth(rows []renderRow, g groupByMode, tab tabMode) int {
 
 func renderTableWidthWithSort(rows []renderRow, g groupByMode, tab tabMode, sort sortMode) int {
 	return lipgloss.Width(renderTableWithReferenceRowsAndSort(rows, rows, g, tab, sort, 0, "No rows match the current scope."))
+}
+
+func renderTableWidthWithSortAndViewport(rows []renderRow, g groupByMode, tab tabMode, sort sortMode, width int) int {
+	return lipgloss.Width(renderTableWithReferenceRowsAndSortWidth(rows, rows, g, tab, sort, width, 0, "No rows match the current scope."))
 }
 
 func horizontalViewport(value string, horizontalOffset int, width int) string {
@@ -377,22 +401,37 @@ func renderTableWithReferenceRowsAndSortWidth(rows []renderRow, referenceRows []
 	}
 
 	widths := make([]int, len(cols))
+	minWidths := make([]int, len(cols))
+	maxWidths := make([]int, len(cols))
+	headerLabels := make([]string, len(cols))
 	for i, col := range cols {
-		widths[i] = max(ansi.StringWidth(headerLabel(col, tab, sort)), minimumColumnWidth(col))
+		headerLabels[i] = headerLabel(col, tab, sort)
+		headerWidth := ansi.StringWidth(headerLabels[i])
+		minWidth, maxWidth := columnWidthBounds(col, headerWidth)
+		minWidths[i] = minWidth
+		maxWidths[i] = maxWidth
+		widths[i] = minWidth
+		if maxWidth > 0 && widths[i] > maxWidth {
+			widths[i] = maxWidth
+		}
 	}
 	for _, values := range widthFormatted {
 		for i, value := range values {
 			if valueWidth := ansi.StringWidth(value); valueWidth > widths[i] {
 				widths[i] = valueWidth
 			}
+			if maxWidths[i] > 0 && widths[i] > maxWidths[i] {
+				widths[i] = maxWidths[i]
+			}
 		}
 	}
+	widths = fitColumnWidths(widths, minWidths, cols, minLineWidth)
 
 	var lines []string
 	header := make([]string, len(cols))
 	separator := make([]string, len(cols))
-	for i, col := range cols {
-		header[i] = padCell(headerLabel(col, tab, sort), widths[i], false)
+	for i := range cols {
+		header[i] = padCell(truncateCell(headerLabels[i], widths[i]), widths[i], false)
 		separator[i] = strings.Repeat("─", widths[i])
 	}
 	lines = append(lines, padStyledLine(headerStyle.Render(strings.Join(header, "  ")), minLineWidth, headerStyle))
@@ -401,7 +440,7 @@ func renderTableWithReferenceRowsAndSortWidth(rows []renderRow, referenceRows []
 	for rowIndex, values := range formatted {
 		cells := make([]string, len(cols))
 		for i, value := range values {
-			cells[i] = renderCell(padCell(value, widths[i], cols[i].numeric), cols[i], rowIndex)
+			cells[i] = renderCell(padCell(truncateCell(value, widths[i]), widths[i], cols[i].numeric), cols[i], rowIndex)
 		}
 		lines = append(lines, padStyledLine(joinStyledCells(cells, rowIndex), minLineWidth, rowStyle(rowIndex)))
 	}
@@ -611,29 +650,100 @@ func loadingReferenceRows(tab tabMode) []renderRow {
 	return []renderRow{row}
 }
 
-func minimumColumnWidth(col column) int {
+func columnWidthBounds(col column, headerWidth int) (int, int) {
 	switch col.field {
 	case "bucket":
-		return 10
+		return bucketColumnWidth, bucketColumnWidth
 	case "latest":
-		return 16
+		return latestColumnWidth, latestColumnWidth
 	case "model":
-		return 32
+		return max(headerWidth, modelColumnMinWidth), modelColumnMaxWidth
 	case "models":
-		return 32
+		return max(headerWidth, listColumnMinWidth), listColumnMaxWidth
 	case "provider":
-		return 14
+		return max(headerWidth, providerColumnMinWidth), providerColumnMaxWidth
 	case "providers":
-		return 32
+		return max(headerWidth, listColumnMinWidth), listColumnMaxWidth
 	case "harness":
-		return 12
+		return max(headerWidth, harnessColumnMinWidth), harnessColumnMaxWidth
 	case "harnesses":
-		return 18
+		return max(headerWidth, listColumnMinWidth), listColumnMaxWidth
 	case "sessionID":
-		return 8
+		return sessionColumnWidth, sessionColumnWidth
+	default:
+		return headerWidth, 0
+	}
+}
+
+func fitColumnWidths(widths []int, minWidths []int, cols []column, lineWidth int) []int {
+	if lineWidth <= 0 || len(widths) == 0 {
+		return widths
+	}
+	available := lineWidth - ((len(widths) - 1) * tableColumnGapWidth)
+	if available <= 0 || sumInts(widths) <= available {
+		return widths
+	}
+
+	for _, priority := range []int{1, 2} {
+		for i, col := range cols {
+			if shrinkPriority(col) != priority || widths[i] <= minWidths[i] {
+				continue
+			}
+			overflow := sumInts(widths) - available
+			if overflow <= 0 {
+				return widths
+			}
+			shrinkBy := min(widths[i]-minWidths[i], overflow)
+			widths[i] -= shrinkBy
+		}
+	}
+
+	return widths
+}
+
+func shrinkPriority(col column) int {
+	switch col.field {
+	case "models", "providers", "harnesses":
+		return 1
+	case "model", "provider", "harness":
+		return 2
 	default:
 		return 0
 	}
+}
+
+func sumInts(values []int) int {
+	total := 0
+	for _, value := range values {
+		total += value
+	}
+	return total
+}
+
+func truncateCell(value string, width int) string {
+	if width <= 0 {
+		return ""
+	}
+	if ansi.StringWidth(value) <= width {
+		return value
+	}
+	markerWidth := ansi.StringWidth(truncationMarker)
+	if width <= markerWidth {
+		return ansi.Cut(value, 0, width)
+	}
+
+	limit := width - markerWidth
+	var builder strings.Builder
+	used := 0
+	for _, r := range value {
+		runeWidth := ansi.StringWidth(string(r))
+		if used+runeWidth > limit {
+			break
+		}
+		builder.WriteRune(r)
+		used += runeWidth
+	}
+	return builder.String() + truncationMarker
 }
 
 func padCell(value string, width int, numeric bool) string {

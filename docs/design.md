@@ -265,6 +265,8 @@ Dimension Filters choose included provider, model, and harness values. Session f
 
 Interactive shortcuts use `d` for Date Range Filter, `g` for Time Bucket, `s` for sorting, and `p`, `m`, and `h` for provider, model, and harness filters. Horizontal scrolling uses left/right arrows and home/end; `h` is reserved for the harness filter.
 
+Viewer tables are viewport-aware. They use consistent column width rules across Aggregation Tabs, truncate long display values, and fall back to horizontal scrolling only when minimum readable widths cannot fit.
+
 TPS, request, and tool domains are future-compatible canonical domains. They should remain absent from the active tab bar until durable canonical facts exist for them.
 
 Cost tracking is not part of TokenInsights and must not appear in viewer columns, totals, sort options, or docs.

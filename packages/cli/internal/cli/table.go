@@ -155,7 +155,7 @@ func (m interactiveModel) measureHeights() interactiveModel {
 		return m
 	}
 
-	title := titleStyle.Render(fmt.Sprintf("TokenInsights %s", m.period))
+	title := renderTitle(m.width, m.period)
 
 	var tabs []string
 	for _, tab := range aggregationTabs {
@@ -259,7 +259,7 @@ func (m interactiveModel) visibleRows() []renderRow {
 }
 
 func (m interactiveModel) maxHorizontalOffset(rows []renderRow) int {
-	contentWidth := renderTableWidthWithSort(rows, m.groupBy, m.activeTab, activeSort(m.activeTab, m.options.sort))
+	contentWidth := m.tableContentWidth(rows)
 	viewportWidth := m.tableViewportWidth()
 	if contentWidth <= 0 || viewportWidth <= 0 || contentWidth <= viewportWidth {
 		return 0
@@ -268,8 +268,12 @@ func (m interactiveModel) maxHorizontalOffset(rows []renderRow) int {
 }
 
 func (m interactiveModel) clampHorizontalOffset() interactiveModel {
-	m.horizontalOffset = clampHorizontalScroll(m.horizontalOffset, renderTableWidthWithSort(m.rows, m.groupBy, m.activeTab, activeSort(m.activeTab, m.options.sort)), m.tableViewportWidth())
+	m.horizontalOffset = clampHorizontalScroll(m.horizontalOffset, m.tableContentWidth(m.rows), m.tableViewportWidth())
 	return m
+}
+
+func (m interactiveModel) tableContentWidth(rows []renderRow) int {
+	return renderTableWidthWithSortAndViewport(rows, m.groupBy, m.activeTab, activeSort(m.activeTab, m.options.sort), m.tableViewportWidth())
 }
 
 func (m interactiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -333,10 +337,10 @@ func (m interactiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m = m.clampHorizontalOffset()
 			return m, nil
 		case tea.KeyRight:
-			m.horizontalOffset = clampHorizontalScroll(m.horizontalOffset+1, renderTableWidthWithSort(m.rows, m.groupBy, m.activeTab, activeSort(m.activeTab, m.options.sort)), m.tableViewportWidth())
+			m.horizontalOffset = clampHorizontalScroll(m.horizontalOffset+1, m.tableContentWidth(m.rows), m.tableViewportWidth())
 			return m, nil
 		case tea.KeyLeft:
-			m.horizontalOffset = clampHorizontalScroll(m.horizontalOffset-1, renderTableWidthWithSort(m.rows, m.groupBy, m.activeTab, activeSort(m.activeTab, m.options.sort)), m.tableViewportWidth())
+			m.horizontalOffset = clampHorizontalScroll(m.horizontalOffset-1, m.tableContentWidth(m.rows), m.tableViewportWidth())
 			return m, nil
 		case tea.KeyHome:
 			m.horizontalOffset = 0
@@ -390,7 +394,7 @@ func (m interactiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m = m.clampHorizontalOffset()
 				return m, nil
 			case "l":
-				m.horizontalOffset = clampHorizontalScroll(m.horizontalOffset+1, renderTableWidthWithSort(m.rows, m.groupBy, m.activeTab, activeSort(m.activeTab, m.options.sort)), m.tableViewportWidth())
+				m.horizontalOffset = clampHorizontalScroll(m.horizontalOffset+1, m.tableContentWidth(m.rows), m.tableViewportWidth())
 				return m, nil
 			}
 		}
@@ -788,6 +792,7 @@ var (
 	popupStyle = lipgloss.NewStyle().
 			Border(lipgloss.RoundedBorder()).
 			BorderForeground(lipgloss.Color("212")).
+			BorderBackground(lipgloss.Color(panelBackgroundColor)).
 			Background(lipgloss.Color(panelBackgroundColor)).
 			Padding(1, 2)
 
@@ -837,6 +842,10 @@ func filterDimensionLabel(dimension filterDimension) string {
 	}
 }
 
+func renderTitle(width int, value period) string {
+	return titleStyle.Width(max(0, width-2)).Render(fmt.Sprintf("TokenInsights %s", value))
+}
+
 func (m interactiveModel) View() string {
 	if m.err != nil {
 		return fmt.Sprintf("Error: %v\n", m.err)
@@ -857,7 +866,7 @@ func (m interactiveModel) View() string {
 		)
 	}
 
-	title := titleStyle.Render(fmt.Sprintf("TokenInsights %s", m.period))
+	title := renderTitle(m.width, m.period)
 
 	var tabs []string
 	for _, tab := range aggregationTabs {
@@ -878,7 +887,7 @@ func (m interactiveModel) View() string {
 	horizontalOffset := 0
 	selectedSort := activeSort(m.activeTab, m.options.sort)
 	if !m.loading {
-		contentWidth := renderTableWidthWithSort(m.rows, m.groupBy, m.activeTab, selectedSort)
+		contentWidth := m.tableContentWidth(m.rows)
 		maxHorizontal = max(0, contentWidth-viewportWidth)
 		horizontalOffset = clampHorizontalScroll(m.horizontalOffset, contentWidth, viewportWidth)
 	}
