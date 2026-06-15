@@ -181,7 +181,7 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git checkout -B "${branch}"
 
-          if git diff --quiet -- Formula/tokeninsights.rb; then
+          if [[ -z "$(git status --porcelain -- Formula/tokeninsights.rb)" ]]; then
             echo "Homebrew formula is already up to date for tokeninsights v${version}."
             exit 0
           fi
