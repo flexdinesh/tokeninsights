@@ -1,6 +1,6 @@
 # tokeninsights
 
-Local token usage tracking for OpenCode, Pi, and Codex.
+Local token usage tracking for OpenCode, Pi, Codex, and Claude Code.
 
 TokenInsights is a sync-first Go CLI. It ingests durable local harness data into SQLite, normalizes raw facts into canonical token usage, and opens an interactive terminal view over canonical tables.
 
@@ -45,6 +45,7 @@ Sync one harness:
 ./packages/cli/bin/tokeninsights sync --harness opencode
 ./packages/cli/bin/tokeninsights sync --harness pi
 ./packages/cli/bin/tokeninsights sync --harness codex
+./packages/cli/bin/tokeninsights sync --harness claude-code
 ```
 
 Useful sync options:
@@ -57,7 +58,7 @@ Useful sync options:
 
 With `sync --all --source-dir <root>`, harnesses read from `<root>/<harness>` and skip missing harness subdirectories.
 
-OpenCode sync reads modern SQLite sources named `opencode.db` or `opencode-<channel>.db`. Pi sync reads JSONL session files from `~/.pi/agent/sessions`, or from a provided Pi source directory. Codex sync reads rollout JSONL session files from `${CODEX_HOME:-~/.codex}/sessions`, parsing structured `event_msg` token-count records.
+OpenCode sync reads modern SQLite sources named `opencode.db` or `opencode-<channel>.db`. Pi sync reads JSONL session files from `~/.pi/agent/sessions`, or from a provided Pi source directory. Codex sync reads rollout JSONL session files from `${CODEX_HOME:-~/.codex}/sessions`, parsing structured `event_msg` token-count records. Claude Code sync reads JSONL transcript files from `${CLAUDE_CONFIG_DIR:-~/.claude}/projects`, treating assistant usage rows as transcript-derived token facts. Claude Code rows without explicit provider metadata appear as provider `maybe-anthropic` with inferred provider provenance.
 
 Canonical maintenance:
 
@@ -95,5 +96,7 @@ pnpm run build
 ```
 
 Schema changes require explicit approval before editing `packages/schema/schema.sql`. The CLI embeds a checked schema copy and validates `PRAGMA user_version`.
+
+Schema V5 adds Claude Code support and canonical provider provenance. Older local databases need `tokeninsights reset-all --confirm` before syncing Claude Code data.
 
 See [`docs/design.md`](docs/design.md) for architecture, schema, invariants, and pipeline details.

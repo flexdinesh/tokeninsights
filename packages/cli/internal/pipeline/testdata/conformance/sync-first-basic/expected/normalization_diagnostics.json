@@ -1,1 +1,8 @@
-[]
+[
+  {
+    "harness": "claude-code",
+    "severity": "info",
+    "code": "claude_code_jsonl_transcript_derived",
+    "message": "Claude Code token usage was derived from local JSONL transcript data"
+  }
+]

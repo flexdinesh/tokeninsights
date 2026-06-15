@@ -39,6 +39,7 @@ type canonicalTokenValues struct {
 	SessionDBID      int64
 	MessageDBID      interface{}
 	Provider         string
+	ProviderSource   string
 	Model            string
 	UsageScope       string
 	Quality          string
@@ -269,11 +270,11 @@ func upsertCanonicalTokenUsage(ctx context.Context, runner sqlRunner, row rawTok
 	values := canonicalTokenValuesFor(row, sessionDBID, messageDBID)
 	result, err := runner.ExecContext(ctx, `
 		INSERT OR IGNORE INTO canonical_token_usage (
-			semantic_key, recorded_at_ms, harness, session_id, message_id, provider, model, usage_scope, quality,
+			semantic_key, recorded_at_ms, harness, session_id, message_id, provider, provider_source, model, usage_scope, quality,
 			is_countable, input_tokens, output_tokens, reasoning_tokens, cache_read_tokens, cache_write_tokens,
 			total_tokens, primary_raw_fact_id, ingest_run_id
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`, values.Key, values.RecordedAtMs, values.Harness, values.SessionDBID, values.MessageDBID, values.Provider, values.Model,
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, values.Key, values.RecordedAtMs, values.Harness, values.SessionDBID, values.MessageDBID, values.Provider, values.ProviderSource, values.Model,
 		values.UsageScope, values.Quality, values.Countable, values.InputTokens, values.OutputTokens, values.ReasoningTokens,
 		values.CacheReadTokens, values.CacheWriteTokens, values.TotalTokens, values.RawFactID, values.IngestRunID)
 	if err != nil {
@@ -290,6 +291,7 @@ func upsertCanonicalTokenUsage(ctx context.Context, runner sqlRunner, row rawTok
 		UPDATE canonical_token_usage
 		SET recorded_at_ms = ?,
 			provider = ?,
+			provider_source = ?,
 			model = ?,
 			quality = ?,
 			is_countable = ?,
@@ -302,20 +304,22 @@ func upsertCanonicalTokenUsage(ctx context.Context, runner sqlRunner, row rawTok
 			primary_raw_fact_id = ?,
 			ingest_run_id = ?
 		WHERE semantic_key = ?
-	`, values.RecordedAtMs, values.Provider, values.Model, values.Quality, values.Countable, values.InputTokens, values.OutputTokens,
+	`, values.RecordedAtMs, values.Provider, values.ProviderSource, values.Model, values.Quality, values.Countable, values.InputTokens, values.OutputTokens,
 		values.ReasoningTokens, values.CacheReadTokens, values.CacheWriteTokens, values.TotalTokens, values.RawFactID, values.IngestRunID,
 		values.Key)
 	return false, err
 }
 
 func canonicalTokenValuesFor(row rawTokenRow, sessionDBID int64, messageDBID *int64) canonicalTokenValues {
+	provider, providerSource := canonicalProvider(row)
 	return canonicalTokenValues{
 		Key:              canonicalTokenKey(row),
 		RecordedAtMs:     canonicalTime(row),
 		Harness:          row.Harness,
 		SessionDBID:      sessionDBID,
 		MessageDBID:      nullableInt64Ptr(messageDBID),
-		Provider:         normalizedText(row.Provider, "unknown"),
+		Provider:         provider,
+		ProviderSource:   providerSource,
 		Model:            normalizedText(row.Model, "unknown"),
 		UsageScope:       row.UsageScope,
 		Quality:          row.Quality,
@@ -406,6 +410,16 @@ func normalizedText(value sql.NullString, fallback string) string {
 		return fallback
 	}
 	return strings.TrimSpace(value.String)
+}
+
+func canonicalProvider(row rawTokenRow) (string, string) {
+	if provider := normalizedText(row.Provider, ""); provider != "" {
+		return provider, "explicit"
+	}
+	if row.Harness == HarnessClaudeCode {
+		return "maybe-anthropic", "inferred"
+	}
+	return "unknown", "unknown"
 }
 
 func nullStringValue(value sql.NullString) string {

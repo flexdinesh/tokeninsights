@@ -215,18 +215,32 @@ func suppressDuplicateFacts(facts []RawTokenFact, seen map[string]bool) ([]RawTo
 			continue
 		}
 		if seen[fact.DedupeKey] {
-			diagnostics = append(diagnostics, Diagnostic{
-				Harness:  fact.Harness,
-				Severity: "info",
-				Code:     "opencode_sqlite_duplicate_suppressed",
-				Message:  "suppressed duplicate OpenCode assistant token row from channel or fork copy",
-			})
+			diagnostics = append(diagnostics, duplicateSuppressedDiagnostic(fact.Harness))
 			continue
 		}
 		seen[fact.DedupeKey] = true
 		filtered = append(filtered, fact)
 	}
 	return filtered, diagnostics
+}
+
+func duplicateSuppressedDiagnostic(harness Harness) Diagnostic {
+	switch harness {
+	case HarnessClaudeCode:
+		return Diagnostic{
+			Harness:  harness,
+			Severity: "info",
+			Code:     "claude_code_jsonl_duplicate_suppressed",
+			Message:  "suppressed duplicate Claude Code assistant token row from copied transcript",
+		}
+	default:
+		return Diagnostic{
+			Harness:  harness,
+			Severity: "info",
+			Code:     "opencode_sqlite_duplicate_suppressed",
+			Message:  "suppressed duplicate OpenCode assistant token row from channel or fork copy",
+		}
+	}
 }
 
 func writeSourceIngest(ctx context.Context, runner sqlRunner, runDBID int64, facts []RawTokenFact, diagnostics []Diagnostic, options SyncOptions) (Summary, error) {

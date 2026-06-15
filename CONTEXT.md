@@ -9,7 +9,7 @@ The user-facing command-line product for TokenInsights, invoked as `tokeninsight
 _Avoid_: tokeninsights-cli as the public command name
 
 **Durable Source**:
-A local harness-owned file, database, or directory that persists usage-relevant session data after a harness run completes and can be batch-synced without realtime hooks.
+A local harness-owned file, database, or directory that persists usage-relevant session data after a harness run completes and can be batch-synced without realtime hooks or separate authenticated API export.
 _Avoid_: Harness source, local source, session file, harness local DB
 
 **Date Range Filter**:
@@ -31,3 +31,19 @@ _Avoid_: Metric tab, domain tab, filter
 **Viewer Aggregation**:
 A read-only summary of countable canonical token facts for one aggregation tab and the active date range and dimension filters.
 _Avoid_: Pre-aggregated rollup, metric domain
+
+**Claude Code Harness**:
+The Claude Code command-line coding harness as a token usage source, distinct from the Anthropic provider and Claude model family.
+_Avoid_: Claude as a harness ID
+
+**Parent Session Token Attribution**:
+The rule that token usage produced by a subordinate agent run belongs to the parent user-visible coding session when the source identifies that parent session.
+_Avoid_: Counting subordinate agent runs as separate sessions when parent identity is available
+
+**Provider Attribution Source**:
+The canonical provenance marker that distinguishes provider values copied from source artifacts (`explicit`), derived from harness-level knowledge (`inferred`), or unavailable (`unknown`).
+_Avoid_: Treating inferred provider values as source-provided facts
+
+**Claude Code Inferred Provider**:
+The rule that Claude Code artifact-derived token facts without explicit provider metadata canonicalize to provider `maybe-anthropic` with provider source `inferred`, because the artifact source is Claude Code but the provider was not explicitly present.
+_Avoid_: Canonicalizing these rows as actual `anthropic` provider facts
