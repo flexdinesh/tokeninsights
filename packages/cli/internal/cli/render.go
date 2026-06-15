@@ -273,14 +273,16 @@ var (
 	rowOddStyle     = appSurfaceStyle
 	rowEvenStyle    = appSurfaceStyle
 
-	borderStyle      = lipgloss.NewStyle().Foreground(lipgloss.Color(tableSeparatorColor))
+	borderStyle      = lipgloss.NewStyle().Foreground(lipgloss.Color(tableSeparatorColor)).Background(lipgloss.Color(appBackgroundColor))
 	outerBorderStyle = lipgloss.NewStyle().
 				Border(lipgloss.RoundedBorder()).
 				BorderForeground(lipgloss.Color(outerBorderColor)).
+				BorderBackground(lipgloss.Color(appBackgroundColor)).
 				Background(lipgloss.Color(appBackgroundColor))
 	sectionBorderStyle = lipgloss.NewStyle().
 				Border(lipgloss.RoundedBorder()).
 				BorderForeground(lipgloss.Color(sectionBorderColor)).
+				BorderBackground(lipgloss.Color(panelBackgroundColor)).
 				Background(lipgloss.Color(panelBackgroundColor))
 )
 

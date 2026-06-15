@@ -155,7 +155,7 @@ func (m interactiveModel) measureHeights() interactiveModel {
 		return m
 	}
 
-	title := titleStyle.Render(fmt.Sprintf("TokenInsights %s", m.period))
+	title := renderTitle(m.width, m.period)
 
 	var tabs []string
 	for _, tab := range aggregationTabs {
@@ -792,6 +792,7 @@ var (
 	popupStyle = lipgloss.NewStyle().
 			Border(lipgloss.RoundedBorder()).
 			BorderForeground(lipgloss.Color("212")).
+			BorderBackground(lipgloss.Color(panelBackgroundColor)).
 			Background(lipgloss.Color(panelBackgroundColor)).
 			Padding(1, 2)
 
@@ -841,6 +842,10 @@ func filterDimensionLabel(dimension filterDimension) string {
 	}
 }
 
+func renderTitle(width int, value period) string {
+	return titleStyle.Width(max(0, width-2)).Render(fmt.Sprintf("TokenInsights %s", value))
+}
+
 func (m interactiveModel) View() string {
 	if m.err != nil {
 		return fmt.Sprintf("Error: %v\n", m.err)
@@ -861,7 +866,7 @@ func (m interactiveModel) View() string {
 		)
 	}
 
-	title := titleStyle.Render(fmt.Sprintf("TokenInsights %s", m.period))
+	title := renderTitle(m.width, m.period)
 
 	var tabs []string
 	for _, tab := range aggregationTabs {
