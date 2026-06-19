@@ -69,6 +69,7 @@ const (
 const (
 	appBackgroundColor   = "#1b1b2a"
 	panelBackgroundColor = appBackgroundColor
+	rowStripeColor       = "#24242c"
 	tableSeparatorColor  = "#565766"
 	outerBorderColor     = "#4a4b59"
 	sectionBorderColor   = "#3d3e49"
@@ -313,7 +314,7 @@ var (
 	totalStyle       = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("157"))
 	appSurfaceStyle  = lipgloss.NewStyle().Background(lipgloss.Color(appBackgroundColor))
 	rowOddStyle      = appSurfaceStyle
-	rowEvenStyle     = appSurfaceStyle
+	rowEvenStyle     = lipgloss.NewStyle().Background(lipgloss.Color(rowStripeColor))
 
 	borderStyle      = lipgloss.NewStyle().Foreground(lipgloss.Color(tableSeparatorColor)).Background(lipgloss.Color(appBackgroundColor))
 	outerBorderStyle = lipgloss.NewStyle().

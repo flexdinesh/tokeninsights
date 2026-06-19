@@ -141,7 +141,7 @@ func TestRenderTableEmptyState(t *testing.T) {
 	}
 }
 
-func TestRenderTableViewportUsesConsistentBackground(t *testing.T) {
+func TestRenderTableViewportUsesStripedDataBackgrounds(t *testing.T) {
 	previousProfile := lipgloss.ColorProfile()
 	lipgloss.SetColorProfile(termenv.TrueColor)
 	t.Cleanup(func() {
@@ -159,11 +159,20 @@ func TestRenderTableViewportUsesConsistentBackground(t *testing.T) {
 		}
 	}
 
-	if strings.Contains(output, "\x1b[48;2;36;36;44m") {
-		t.Fatalf("table viewport contains full-width stripe background:\n%q", output)
-	}
 	if !strings.Contains(output, "\x1b[48;2;27;27;42m") {
 		t.Fatalf("table viewport missing app background:\n%q", output)
+	}
+	if !strings.Contains(output, "\x1b[48;2;36;36;44m") {
+		t.Fatalf("table viewport missing alternate row background:\n%q", output)
+	}
+	lines := strings.Split(strings.TrimSuffix(output, "\n"), "\n")
+	for _, line := range lines {
+		switch {
+		case strings.Contains(ansi.Strip(line), "2026-06-14"):
+			assertLineCellsHaveBackground(t, line, "48;2;27;27;42")
+		case strings.Contains(ansi.Strip(line), "2026-06-13"):
+			assertLineCellsHaveBackground(t, line, "48;2;36;36;44")
+		}
 	}
 }
 
