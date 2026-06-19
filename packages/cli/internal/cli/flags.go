@@ -77,6 +77,7 @@ type filters struct {
 
 type tableOptions struct {
 	dbPath  string
+	noSync  bool
 	period  period
 	bucket  timeBucket
 	sort    sortMode
@@ -94,9 +95,11 @@ func parseTableOptions(args []string, stderr io.Writer, requirePeriod bool, defa
 	var month bool
 	var year bool
 	var allTime bool
+	var noSync bool
 	var bucket string
 	var queryFilters filters
 	flags.StringVar(&dbPath, "db-path", defaultDBPath(), "path to tokeninsights sqlite db")
+	flags.BoolVar(&noSync, "no-sync", false, "skip implicit sync before opening the TUI")
 	flags.BoolVar(&today, "today", false, "show today")
 	flags.BoolVar(&yesterday, "yesterday", false, "show yesterday")
 	flags.BoolVar(&week, "week", false, "show current calendar week (Mon-Sun)")
@@ -154,7 +157,7 @@ func parseTableOptions(args []string, stderr io.Writer, requirePeriod bool, defa
 		}
 	}
 
-	return tableOptions{dbPath: selectedDBPath, period: selected, bucket: selectedBucket, filters: queryFilters}, nil
+	return tableOptions{dbPath: selectedDBPath, noSync: noSync, period: selected, bucket: selectedBucket, filters: queryFilters}, nil
 }
 
 func defaultDBPath() string {

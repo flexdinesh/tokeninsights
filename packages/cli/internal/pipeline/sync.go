@@ -50,21 +50,26 @@ func Sync(ctx context.Context, options SyncOptions) (Summary, error) {
 	}
 
 	for _, harness := range options.Harnesses {
+		reportSyncProgress(options, SyncProgressEvent{Harness: harness, Status: SyncProgressDiscovering})
 		harnessSummary, err := syncHarness(ctx, database, options, harness)
 		mergeSummary(&summary, harnessSummary)
 		if err != nil {
+			reportSyncProgress(options, SyncProgressEvent{Harness: harness, Status: SyncProgressFailed})
 			summary.Failed++
 			summary.Errors = append(summary.Errors, err)
 			continue
 		}
 		if harnessSummary.RawFacts == 0 && harnessSummary.Observations == 0 {
+			reportSyncProgress(options, SyncProgressEvent{Harness: harness, Status: SyncProgressSkipped})
 			summary.Skipped++
 			continue
 		}
+		reportSyncProgress(options, SyncProgressEvent{Harness: harness, Status: SyncProgressSynced})
 		summary.Synced++
 	}
 
 	if options.Normalize && summary.Observations > 0 {
+		reportSyncProgress(options, SyncProgressEvent{Status: SyncProgressNormalizing})
 		normalSummary, err := Normalize(ctx, NormalizeOptions{
 			DBPath:    options.DBPath,
 			Harnesses: options.Harnesses,
@@ -130,6 +135,7 @@ func syncHarness(ctx context.Context, database *sql.DB, options SyncOptions, har
 	}
 
 	seenDedupeKeys := map[string]bool{}
+	reportSyncProgress(options, SyncProgressEvent{Harness: harness, Status: SyncProgressSyncing})
 	for _, source := range sources {
 		sourceSummary, err := ingestSource(ctx, database, adapter, options, harness, source, seenDedupeKeys)
 		if err != nil {
@@ -138,6 +144,12 @@ func syncHarness(ctx context.Context, database *sql.DB, options SyncOptions, har
 		mergeSummary(&summary, sourceSummary)
 	}
 	return summary, nil
+}
+
+func reportSyncProgress(options SyncOptions, event SyncProgressEvent) {
+	if options.Progress != nil {
+		options.Progress(event)
+	}
 }
 
 func ingestSource(ctx context.Context, database *sql.DB, adapter Adapter, options SyncOptions, harness Harness, source Source, seenDedupeKeys map[string]bool) (Summary, error) {

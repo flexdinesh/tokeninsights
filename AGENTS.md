@@ -2,7 +2,7 @@
 
 Track local token usage for OpenCode, Pi, Codex, and Claude Code.
 
-TokenInsights is a sync-first Go CLI: `sync` ingests durable local harness data into raw SQLite tables, `normalize` writes canonical facts, and `view` reads canonical tables. Realtime and checkpoint plugins are future-compatible concepts, not active product code.
+TokenInsights is a sync-first Go CLI: `sync` ingests durable local harness data into raw SQLite tables, `normalize` writes canonical facts, and `view` opens a TUI sync progress state that runs implicit all-harness sync by default before reading canonical tables. `view --no-sync` skips ingest and normalization. Realtime and checkpoint plugins are future-compatible concepts, not active product code.
 
 Full architecture, schema contract, pipelines, and invariants are in [`docs/design.md`](docs/design.md). Read it before any non-trivial change.
 

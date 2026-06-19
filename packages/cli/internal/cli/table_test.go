@@ -16,6 +16,7 @@ import (
 	_ "modernc.org/sqlite"
 
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/db"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/pipeline"
 )
 
 func newLoadRowsTestDB(t *testing.T) (*sql.DB, string) {
@@ -457,6 +458,223 @@ func TestInitialViewShowsLoadingState(t *testing.T) {
 	}
 	if !strings.Contains(output, "loading") {
 		t.Fatalf("initial view missing loading hint:\n%s", output)
+	}
+}
+
+func TestImplicitSyncProgressViewShowsHarnessStatusIcons(t *testing.T) {
+	m := interactiveModel{
+		activeTab:        tabTokens,
+		period:           periodMonth,
+		width:            80,
+		height:           24,
+		options:          tableOptions{period: periodMonth},
+		syncing:          true,
+		syncProgressRows: initialSyncProgressRows(),
+	}
+
+	output := m.View()
+	stripped := ansi.Strip(output)
+	for _, want := range []string{"Syncing data", "OpenCode", "Pi", "Codex", "Claude Code", ".   OpenCode"} {
+		if !strings.Contains(output, want) {
+			t.Fatalf("sync progress view missing %q:\n%s", want, output)
+		}
+	}
+	for _, status := range []string{"pending", "discovering", "syncing", "synced", "skipped", "failed"} {
+		if strings.Contains(stripped, status) {
+			t.Fatalf("sync progress row rendered status text %q:\n%s", status, stripped)
+		}
+	}
+	if strings.Contains(output, "Loading data...") {
+		t.Fatalf("sync progress view rendered table loading state:\n%s", output)
+	}
+}
+
+func TestImplicitSyncProgressUsesAppBackground(t *testing.T) {
+	previousProfile := lipgloss.ColorProfile()
+	lipgloss.SetColorProfile(termenv.TrueColor)
+	t.Cleanup(func() {
+		lipgloss.SetColorProfile(previousProfile)
+	})
+
+	m := interactiveModel{
+		activeTab:        tabTokens,
+		period:           periodMonth,
+		width:            80,
+		height:           24,
+		options:          tableOptions{period: periodMonth},
+		syncing:          true,
+		syncProgressRows: initialSyncProgressRows(),
+	}
+
+	output := m.View()
+	if strings.Contains(output, "\x1b[48;2;23;23;31m") {
+		t.Fatalf("sync progress view contains darker panel background:\n%q", output)
+	}
+	if !strings.Contains(output, "\x1b[48;2;27;27;42m.   OpenCode") {
+		t.Fatalf("sync progress row is not painted on app background:\n%q", output)
+	}
+	for _, line := range strings.Split(output, "\n") {
+		if width := ansi.StringWidth(line); width != 80 {
+			t.Fatalf("sync progress line width = %d, want 80 for %q", width, line)
+		}
+		assertLineCellsHaveBackground(t, line, "48;2;27;27;42")
+	}
+}
+
+func TestImplicitSyncProgressUpdatesHarnessStatus(t *testing.T) {
+	m := interactiveModel{
+		activeTab:        tabTokens,
+		period:           periodMonth,
+		width:            80,
+		height:           24,
+		options:          tableOptions{period: periodMonth},
+		syncing:          true,
+		syncProgressRows: initialSyncProgressRows(),
+	}
+
+	model, _ := m.Update(syncProgressMsg{event: pipeline.SyncProgressEvent{
+		Harness: pipeline.HarnessOpenCode,
+		Status:  pipeline.SyncProgressDiscovering,
+	}})
+	updated, ok := model.(interactiveModel)
+	if !ok {
+		t.Fatalf("got model %T, want interactiveModel", model)
+	}
+
+	output := updated.View()
+	if !strings.Contains(output, "|   OpenCode") {
+		t.Fatalf("sync progress view missing updated status icon:\n%s", output)
+	}
+	if strings.Contains(ansi.Strip(output), "discovering") {
+		t.Fatalf("sync progress view rendered status text:\n%s", output)
+	}
+}
+
+func TestImplicitSyncProgressRendersTerminalStatusIcons(t *testing.T) {
+	m := interactiveModel{
+		activeTab: tabTokens,
+		period:    periodMonth,
+		width:     80,
+		height:    24,
+		options:   tableOptions{period: periodMonth},
+		syncing:   true,
+		syncProgressRows: []syncProgressRow{
+			{harness: pipeline.HarnessOpenCode, label: "OpenCode", status: pipeline.SyncProgressSynced},
+			{harness: pipeline.HarnessPi, label: "Pi", status: pipeline.SyncProgressSkipped},
+			{harness: pipeline.HarnessCodex, label: "Codex", status: pipeline.SyncProgressFailed},
+		},
+	}
+
+	output := ansi.Strip(m.View())
+	for _, want := range []string{"✓   OpenCode", "-   Pi", "✗   Codex"} {
+		if !strings.Contains(output, want) {
+			t.Fatalf("sync progress view missing %q:\n%s", want, output)
+		}
+	}
+}
+
+func TestImplicitSyncAnimationTickAdvancesWhileSyncing(t *testing.T) {
+	m := interactiveModel{
+		activeTab:        tabTokens,
+		period:           periodMonth,
+		width:            80,
+		height:           24,
+		options:          tableOptions{period: periodMonth},
+		syncing:          true,
+		syncProgressRows: initialSyncProgressRows(),
+	}
+
+	model, cmd := m.Update(syncAnimationTickMsg{})
+	updated, ok := model.(interactiveModel)
+	if !ok {
+		t.Fatalf("got model %T, want interactiveModel", model)
+	}
+	if updated.syncFrame != 1 {
+		t.Fatalf("syncFrame = %d, want 1", updated.syncFrame)
+	}
+	if cmd == nil {
+		t.Fatal("expected another animation tick while syncing")
+	}
+}
+
+func TestImplicitSyncSuccessTransitionsThroughLoadingDashboardToTableLoading(t *testing.T) {
+	m := interactiveModel{
+		activeTab:        tabTokens,
+		period:           periodMonth,
+		width:            80,
+		height:           24,
+		options:          tableOptions{period: periodMonth},
+		syncing:          true,
+		syncProgressRows: initialSyncProgressRows(),
+	}
+
+	model, cmd := m.Update(syncDoneMsg{})
+	updated, ok := model.(interactiveModel)
+	if !ok {
+		t.Fatalf("got model %T, want interactiveModel", model)
+	}
+	if cmd == nil {
+		t.Fatal("expected deferred dashboard loading command")
+	}
+	if !strings.Contains(updated.View(), "loading dashboard") {
+		t.Fatalf("sync progress view missing loading dashboard status:\n%s", updated.View())
+	}
+
+	model, cmd = updated.Update(startDashboardLoadMsg{})
+	loading, ok := model.(interactiveModel)
+	if !ok {
+		t.Fatalf("got model %T, want interactiveModel", model)
+	}
+	if loading.syncing {
+		t.Fatal("expected sync progress to be finished")
+	}
+	if !loading.loading || !loading.reloadInFlight {
+		t.Fatalf("expected table loading state after sync: %+v", loading)
+	}
+	if cmd == nil {
+		t.Fatal("expected dashboard reload command")
+	}
+	if !strings.Contains(loading.View(), "Loading data...") {
+		t.Fatalf("expected existing table loading state:\n%s", loading.View())
+	}
+
+	model, cmd = loading.Update(syncAnimationTickMsg{})
+	stopped, ok := model.(interactiveModel)
+	if !ok {
+		t.Fatalf("got model %T, want interactiveModel", model)
+	}
+	if stopped.syncFrame != loading.syncFrame+1 {
+		t.Fatalf("syncFrame = %d, want %d", stopped.syncFrame, loading.syncFrame+1)
+	}
+	if cmd != nil {
+		t.Fatal("expected animation ticks to stop after sync progress exits")
+	}
+}
+
+func TestImplicitSyncStartsAfterWindowSize(t *testing.T) {
+	m := interactiveModel{
+		ctx:              context.Background(),
+		activeTab:        tabTokens,
+		period:           periodMonth,
+		options:          tableOptions{period: periodMonth, dbPath: filepath.Join(t.TempDir(), "tokeninsights.sqlite")},
+		syncing:          true,
+		syncProgressRows: initialSyncProgressRows(),
+	}
+
+	if cmd := m.Init(); cmd != nil {
+		t.Fatal("implicit sync should wait until the terminal size is known")
+	}
+
+	model, cmd := m.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
+	updated, ok := model.(interactiveModel)
+	if !ok {
+		t.Fatalf("got model %T, want interactiveModel", model)
+	}
+	if cmd == nil {
+		t.Fatal("expected implicit sync command after window size")
+	}
+	if !updated.syncing || !updated.syncInFlight {
+		t.Fatalf("expected sync progress in flight: %+v", updated)
 	}
 }
 

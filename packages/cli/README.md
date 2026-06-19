@@ -32,7 +32,7 @@ codex
 
 `sync`
 
-Ingest local harness sources into raw tables and normalize to canonical facts by default.
+Ingest local harness sources into raw tables and normalize to canonical facts by default. `view` runs an implicit all-harness sync before opening, so use explicit sync for targeted harness refreshes, dry runs, no-normalize workflows, or custom source directories.
 
 ```sh
 tokeninsights sync --all
@@ -76,17 +76,18 @@ tokeninsights reset-all --confirm
 
 `view`
 
-Open the interactive terminal UI over canonical token usage.
+Open the interactive terminal UI over canonical token usage. By default, `view` opens into a sync progress screen, refreshes all supported Durable Sources, and normalizes the results before rendering the dashboard. Use `--no-sync` to skip raw ingest and normalization and open existing canonical data read-only.
 
 ```sh
 tokeninsights view
+tokeninsights view --no-sync
 tokeninsights view --today
 tokeninsights view --yesterday
 tokeninsights view --year --bucket month
 tokeninsights view --month --provider openai --model gpt-5
 ```
 
-Running `tokeninsights` without a command still opens `view`.
+Running `tokeninsights` without a command still opens `view`, including implicit sync. `tokeninsights --no-sync` is equivalent to `tokeninsights view --no-sync`.
 
 ## Database
 
@@ -98,9 +99,13 @@ Default path:
 
 Override it with `--db-path` or `TOKENINSIGHTS_DB_PATH`.
 
-The CLI creates a missing database for `sync`, `normalize`, and reset workflows. `view` opens the database read-only and rejects missing or incompatible databases with a reset instruction.
+The CLI creates a missing database for `sync`, implicit `view` sync, `normalize`, and reset workflows. `view --no-sync` opens the database read-only and rejects missing or incompatible databases with a reset instruction.
 
 ## View Arguments
+
+`--no-sync`
+
+Skip the implicit all-harness sync before opening the TUI. This preserves read-only viewing of existing canonical data.
 
 `--today`
 
