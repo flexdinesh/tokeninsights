@@ -100,6 +100,17 @@ type ViewerSessionRow struct {
 	TotalTokens       int64
 }
 
+type ViewerContextRow struct {
+	Harness                  string
+	Provider                 string
+	Model                    string
+	SessionCount             int64
+	AverageContextUsedTokens int64
+	MedianContextUsedTokens  int64
+	MaxContextUsedTokens     int64
+	LatestAtMs               int64
+}
+
 const (
 	canonicalAlias = "ctu"
 	sessionAlias   = "cs"
@@ -387,6 +398,97 @@ func ViewerProviders(ctx context.Context, db *sql.DB, f Filter) ([]ViewerDimensi
 
 func ViewerHarnesses(ctx context.Context, db *sql.DB, f Filter) ([]ViewerDimensionRow, error) {
 	return viewerDimensions(ctx, db, f, ColHarness)
+}
+
+func ViewerContext(ctx context.Context, db *sql.DB, f Filter) ([]ViewerContextRow, error) {
+	whereClause, args := canonicalWhereClause(f)
+	query := fmt.Sprintf(`
+		WITH per_session AS (
+			SELECT ctu.%s AS harness,
+				ctu.%s AS provider,
+				ctu.%s AS model,
+				ctu.%s AS session_id,
+				MAX(%s) AS session_peak_context,
+				MAX(ctu.%s) AS latest_at_ms
+			FROM %s ctu
+			INNER JOIN %s cs ON cs.%s = ctu.%s
+			%s
+			GROUP BY ctu.%s, ctu.%s, ctu.%s, ctu.%s
+		),
+		ranked AS (
+			SELECT harness,
+				provider,
+				model,
+				session_peak_context,
+				latest_at_ms,
+				ROW_NUMBER() OVER (
+					PARTITION BY harness, provider, model
+					ORDER BY session_peak_context
+				) AS rank,
+				COUNT(*) OVER (
+					PARTITION BY harness, provider, model
+				) AS session_count
+			FROM per_session
+		)
+		SELECT harness,
+			provider,
+			model,
+			session_count,
+			CAST(SUM(session_peak_context) / session_count AS INTEGER) AS average_context_used_tokens,
+			CAST(AVG(CASE
+				WHEN rank IN ((session_count + 1) / 2, (session_count + 2) / 2)
+				THEN session_peak_context
+			END) AS INTEGER) AS median_context_used_tokens,
+			MAX(session_peak_context) AS max_context_used_tokens,
+			MAX(latest_at_ms) AS latest_at_ms
+		FROM ranked
+		GROUP BY harness, provider, model, session_count
+		ORDER BY average_context_used_tokens DESC, harness ASC, provider ASC, model ASC
+	`,
+		ColHarness,
+		ColProvider,
+		ColModel,
+		ColSessionID,
+		contextUsedExpression(canonicalAlias),
+		ColRecordedAtMs,
+		TableCanonicalTokenUsage,
+		TableCanonicalSessions,
+		ColID,
+		ColSessionID,
+		whereClause,
+		ColHarness,
+		ColProvider,
+		ColModel,
+		ColSessionID,
+	)
+
+	rows, err := db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var result []ViewerContextRow
+	for rows.Next() {
+		var row ViewerContextRow
+		if err := rows.Scan(
+			&row.Harness,
+			&row.Provider,
+			&row.Model,
+			&row.SessionCount,
+			&row.AverageContextUsedTokens,
+			&row.MedianContextUsedTokens,
+			&row.MaxContextUsedTokens,
+			&row.LatestAtMs,
+		); err != nil {
+			return nil, err
+		}
+		result = append(result, row)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return result, nil
 }
 
 func viewerDimensions(ctx context.Context, db *sql.DB, f Filter, primaryColumn string) ([]ViewerDimensionRow, error) {

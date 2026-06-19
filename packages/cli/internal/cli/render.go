@@ -18,6 +18,7 @@ const (
 	tabProviders
 	tabHarnesses
 	tabSessions
+	tabContext
 )
 
 func (t tabMode) String() string {
@@ -32,6 +33,8 @@ func (t tabMode) String() string {
 		return "harnesses"
 	case tabSessions:
 		return "sessions"
+	case tabContext:
+		return "context"
 	default:
 		return ""
 	}
@@ -114,6 +117,16 @@ func columnsForModeAndTab(g groupByMode, t tabMode) []column {
 			{name: "models", field: "models"},
 			{name: "ctx used", field: "contextUsedTokens", numeric: true},
 		}, tokenColumns()...)
+	case tabContext:
+		return []column{
+			{name: "harness", field: "harness"},
+			{name: "provider", field: "provider"},
+			{name: "model", field: "model"},
+			{name: "sessions", field: "sessions", numeric: true},
+			{name: "avg ctx", field: "averageContextUsedTokens", numeric: true},
+			{name: "median ctx", field: "medianContextUsedTokens", numeric: true},
+			{name: "max ctx", field: "maxContextUsedTokens", numeric: true},
+		}
 	}
 
 	grouping := []column{{name: "day", field: "day"}}
@@ -150,40 +163,47 @@ func tokenColumns() []column {
 }
 
 type renderRow struct {
-	bucket            string
-	sessions          string
-	latest            string
-	latestValue       int64
-	harness           string
-	harnesses         string
-	day               string
-	hour              string
-	sessionID         string
-	provider          string
-	providers         string
-	model             string
-	models            string
-	thinkingLevels    string
-	tpsAvg            string
-	tpsMean           string
-	tpsMedian         string
-	inputTokens       string
-	inputValue        int64
-	outputTokens      string
-	outputValue       int64
-	reasoningTokens   string
-	cacheReadTokens   string
-	cacheReadValue    int64
-	cacheWriteTokens  string
-	contextUsedTokens string
-	contextUsedValue  int64
-	totalTokens       string
-	totalValue        int64
-	requests          string
-	retries           string
-	toolName          string
-	toolCalls         string
-	toolErrors        string
+	bucket                   string
+	sessions                 string
+	sessionsValue            int64
+	latest                   string
+	latestValue              int64
+	harness                  string
+	harnesses                string
+	day                      string
+	hour                     string
+	sessionID                string
+	provider                 string
+	providers                string
+	model                    string
+	models                   string
+	thinkingLevels           string
+	tpsAvg                   string
+	tpsMean                  string
+	tpsMedian                string
+	inputTokens              string
+	inputValue               int64
+	outputTokens             string
+	outputValue              int64
+	reasoningTokens          string
+	cacheReadTokens          string
+	cacheReadValue           int64
+	cacheWriteTokens         string
+	contextUsedTokens        string
+	contextUsedValue         int64
+	averageContextUsedTokens string
+	averageContextUsedValue  int64
+	medianContextUsedTokens  string
+	medianContextUsedValue   int64
+	maxContextUsedTokens     string
+	maxContextUsedValue      int64
+	totalTokens              string
+	totalValue               int64
+	requests                 string
+	retries                  string
+	toolName                 string
+	toolCalls                string
+	toolErrors               string
 }
 
 func displaySessionID(value string) string {
@@ -523,6 +543,20 @@ func sortField(tab tabMode, sort sortMode) string {
 		return "cacheReadTokens"
 	case sortTokens:
 		return "totalTokens"
+	case sortAverageContext:
+		return "averageContextUsedTokens"
+	case sortMedianContext:
+		return "medianContextUsedTokens"
+	case sortMaxContext:
+		return "maxContextUsedTokens"
+	case sortSessions:
+		return "sessions"
+	case sortHarness:
+		return "harness"
+	case sortProvider:
+		return "provider"
+	case sortModel:
+		return "model"
 	case sortName:
 		return rowNameField(tab)
 	case sortDate:
@@ -583,7 +617,7 @@ func cellStyleForColumn(col column) lipgloss.Style {
 		return cacheReadStyle
 	case "cacheWriteTokens":
 		return cacheWriteStyle
-	case "contextUsedTokens":
+	case "contextUsedTokens", "averageContextUsedTokens", "medianContextUsedTokens", "maxContextUsedTokens":
 		return contextUsedStyle
 	case "totalTokens":
 		return totalStyle
@@ -643,6 +677,12 @@ func formatRenderRows(rows []renderRow, cols []column) [][][]string {
 				value = row.cacheWriteTokens
 			case "contextUsedTokens":
 				value = row.contextUsedTokens
+			case "averageContextUsedTokens":
+				value = row.averageContextUsedTokens
+			case "medianContextUsedTokens":
+				value = row.medianContextUsedTokens
+			case "maxContextUsedTokens":
+				value = row.maxContextUsedTokens
 			case "totalTokens":
 				value = row.totalTokens
 			case "requests":

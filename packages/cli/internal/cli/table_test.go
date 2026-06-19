@@ -33,11 +33,17 @@ func newLoadRowsTestDB(t *testing.T) (*sql.DB, string) {
 
 func insertLoadRowsCanonicalToken(t *testing.T, database *sql.DB, recordedAtMs int64, harness string, sessionID string, provider string, model string) {
 	t.Helper()
+	insertLoadRowsCanonicalTokenWithCounts(t, database, recordedAtMs, harness, sessionID, provider, model, 100, 10, 5, 20, 1, 136)
+}
+
+func insertLoadRowsCanonicalTokenWithCounts(t *testing.T, database *sql.DB, recordedAtMs int64, harness string, sessionID string, provider string, model string, input int64, output int64, reasoning int64, cacheRead int64, cacheWrite int64, total int64) {
+	t.Helper()
 	sessionKey := harness + ":" + sessionID
 	_, err := database.Exec(`
 		INSERT INTO canonical_sessions (
 			semantic_key, harness, session_id, first_seen_at_ms, last_seen_at_ms
 		) VALUES (?, ?, ?, ?, ?)
+		ON CONFLICT(semantic_key) DO UPDATE SET last_seen_at_ms = excluded.last_seen_at_ms
 	`, sessionKey, harness, sessionID, recordedAtMs, recordedAtMs)
 	if err != nil {
 		t.Fatal(err)
@@ -54,8 +60,8 @@ func insertLoadRowsCanonicalToken(t *testing.T, database *sql.DB, recordedAtMs i
 			raw_fact_key, harness, source_id, source_kind, collector, parser, observed_at_ms,
 			session_id, provider, model, usage_scope, quality, input_tokens, output_tokens,
 			reasoning_tokens, cache_read_tokens, cache_write_tokens, total_tokens
-		) VALUES (?, ?, ?, 'test', 'test', 'test', ?, ?, ?, ?, 'message', 'exact', 100, 10, 5, 20, 1, 136)
-	`, rawKey, harness, sessionID, recordedAtMs, sessionID, provider, model)
+		) VALUES (?, ?, ?, 'test', 'test', 'test', ?, ?, ?, ?, 'message', 'exact', ?, ?, ?, ?, ?, ?)
+	`, rawKey, harness, sessionID, recordedAtMs, sessionID, provider, model, input, output, reasoning, cacheRead, cacheWrite, total)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -70,8 +76,8 @@ func insertLoadRowsCanonicalToken(t *testing.T, database *sql.DB, recordedAtMs i
 			semantic_key, recorded_at_ms, harness, session_id, provider, model, usage_scope, quality,
 			is_countable, input_tokens, output_tokens, reasoning_tokens, cache_read_tokens,
 			cache_write_tokens, total_tokens, primary_raw_fact_id
-		) VALUES (?, ?, ?, ?, ?, ?, 'message', 'exact', 1, 100, 10, 5, 20, 1, 136, ?)
-	`, rawKey+":canonical", recordedAtMs, harness, canonicalSessionID, provider, model, rawID)
+		) VALUES (?, ?, ?, ?, ?, ?, 'message', 'exact', 1, ?, ?, ?, ?, ?, ?, ?)
+	`, rawKey+":canonical", recordedAtMs, harness, canonicalSessionID, provider, model, input, output, reasoning, cacheRead, cacheWrite, total, rawID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -197,6 +203,30 @@ func TestLoadRowsModelTabAggregatesByModel(t *testing.T) {
 	}
 	if rows[0].model != "gpt-5" || rows[0].providers != "azure, openai" || rows[0].harnesses != "opencode, pi" || rows[0].sessions != "2" {
 		t.Fatalf("unexpected model row: %+v", rows[0])
+	}
+}
+
+func TestLoadRowsContextTabShowsSessionPeakContextLoadStats(t *testing.T) {
+	database, dbPath := newLoadRowsTestDB(t)
+	defer database.Close()
+	recordedAt := time.Date(2026, 4, 24, 12, 0, 0, 0, time.Local)
+	insertLoadRowsCanonicalTokenWithCounts(t, database, recordedAt.UnixMilli(), "codex", "ses_1", "openai", "gpt-5", 100, 10, 5, 20, 1, 136)
+	insertLoadRowsCanonicalTokenWithCounts(t, database, recordedAt.Add(time.Second).UnixMilli(), "codex", "ses_1", "openai", "gpt-5", 200, 20, 6, 30, 2, 258)
+	insertLoadRowsCanonicalTokenWithCounts(t, database, recordedAt.Add(2*time.Second).UnixMilli(), "codex", "ses_2", "openai", "gpt-5", 50, 5, 1, 5, 0, 61)
+	insertLoadRowsCanonicalTokenWithCounts(t, database, recordedAt.Add(3*time.Second).UnixMilli(), "opencode", "ses_3", "openai", "gpt-5", 500, 50, 10, 0, 0, 560)
+
+	rows, err := loadRows(context.Background(), tableOptions{dbPath: dbPath, period: periodAllTime, bucket: bucketDay}, recordedAt, groupByNone, tabContext)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 2 {
+		t.Fatalf("got %d rows, want 2: %+v", len(rows), rows)
+	}
+	if rows[0].harness != "opencode" || rows[0].provider != "openai" || rows[0].model != "gpt-5" || rows[0].sessions != "1" || rows[0].averageContextUsedTokens != "500" || rows[0].medianContextUsedTokens != "500" || rows[0].maxContextUsedTokens != "500" {
+		t.Fatalf("unexpected first context row: %+v", rows[0])
+	}
+	if rows[1].harness != "codex" || rows[1].sessions != "2" || rows[1].averageContextUsedTokens != "143" || rows[1].medianContextUsedTokens != "143" || rows[1].maxContextUsedTokens != "232" {
+		t.Fatalf("unexpected second context row: %+v", rows[1])
 	}
 }
 
@@ -598,6 +628,44 @@ func TestNumberKeysJumpToAggregationTabs(t *testing.T) {
 	}
 }
 
+func TestNumberKeySixJumpsToContextAggregationTab(t *testing.T) {
+	m := interactiveModel{activeTab: tabTokens}
+
+	model, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("6")})
+	updated, ok := model.(interactiveModel)
+	if !ok {
+		t.Fatalf("got model %T, want interactiveModel", model)
+	}
+	if updated.activeTab != tabContext {
+		t.Fatalf("got active tab %q, want %q", updated.activeTab, tabContext)
+	}
+	if cmd == nil {
+		t.Fatal("expected reload command")
+	}
+}
+
+func TestSortRenderRowsContextTabUsesContextSortModes(t *testing.T) {
+	rows := []renderRow{
+		{harness: "codex", provider: "openai", model: "gpt-5", sessions: "2", sessionsValue: 2, averageContextUsedValue: 143, medianContextUsedValue: 143, maxContextUsedValue: 232},
+		{harness: "opencode", provider: "openai", model: "gpt-5", sessions: "1", sessionsValue: 1, averageContextUsedValue: 500, medianContextUsedValue: 500, maxContextUsedValue: 500},
+	}
+
+	sortRenderRows(rows, tabContext, "")
+	if rows[0].harness != "opencode" {
+		t.Fatalf("default sort should use avg ctx descending: %+v", rows)
+	}
+
+	sortRenderRows(rows, tabContext, sortSessions)
+	if rows[0].harness != "codex" {
+		t.Fatalf("sessions sort should use session count descending: %+v", rows)
+	}
+
+	sortRenderRows(rows, tabContext, sortHarness)
+	if rows[0].harness != "codex" {
+		t.Fatalf("harness sort should be alphabetical: %+v", rows)
+	}
+}
+
 func TestBucketPopupResetsHorizontalOffset(t *testing.T) {
 	m := interactiveModel{
 		popup:            popupBucket,
@@ -662,6 +730,23 @@ func TestSortPopupSpaceAppliesSelection(t *testing.T) {
 	}
 	if cmd == nil {
 		t.Fatal("expected reload command")
+	}
+}
+
+func TestContextSortPopupShowsContextSortOptions(t *testing.T) {
+	m := interactiveModel{
+		activeTab: tabContext,
+		popup:     popupSort,
+	}
+
+	output := ansi.Strip(m.renderSortPopup())
+	for _, expected := range []string{"avg ctx", "median ctx", "max ctx", "sessions", "harness", "provider", "model"} {
+		if !strings.Contains(output, expected) {
+			t.Fatalf("context sort popup missing %q:\n%s", expected, output)
+		}
+	}
+	if strings.Contains(output, "tokens") || strings.Contains(output, "cache read") {
+		t.Fatalf("context sort popup should not include token-total sort options:\n%s", output)
 	}
 }
 

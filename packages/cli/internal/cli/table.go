@@ -81,10 +81,11 @@ type interactiveModel struct {
 	perRowHeight     int
 }
 
-var aggregationTabs = []tabMode{tabTokens, tabModels, tabProviders, tabHarnesses, tabSessions}
+var aggregationTabs = []tabMode{tabTokens, tabModels, tabProviders, tabHarnesses, tabSessions, tabContext}
 var dateRangeOptions = []period{periodToday, periodYesterday, periodWeek, periodMonth, periodYear, periodAllTime}
 var bucketOptions = []timeBucket{bucketDay, bucketWeek, bucketMonth, bucketYear}
-var sortOptions = []sortMode{sortDate, sortTokens, sortInput, sortOutput, sortCacheRead, sortName}
+var defaultSortOptions = []sortMode{sortDate, sortTokens, sortInput, sortOutput, sortCacheRead, sortName}
+var contextSortOptions = []sortMode{sortAverageContext, sortMedianContext, sortMaxContext, sortSessions, sortHarness, sortProvider, sortModel}
 
 const initialLoadingPaintDelay = 75 * time.Millisecond
 
@@ -185,6 +186,7 @@ func (m interactiveModel) measureHeights() interactiveModel {
 		day: "2006-01-01", harness: "oc", provider: "openai", model: "gpt-4o",
 		inputTokens: "1000", outputTokens: "100", reasoningTokens: "10",
 		cacheReadTokens: "5", cacheWriteTokens: "1", contextUsedTokens: "1006", totalTokens: "1116",
+		averageContextUsedTokens: "1006", medianContextUsedTokens: "1006", maxContextUsedTokens: "1006",
 		tpsAvg: "12.34", tpsMean: "56.78", tpsMedian: "45.67",
 		requests: "3", retries: "1", toolName: "bash", toolCalls: "5", toolErrors: "1",
 	}
@@ -414,7 +416,7 @@ func (m interactiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			switch string(msg.Runes) {
 			case "q":
 				return m, tea.Quit
-			case "1", "2", "3", "4", "5":
+			case "1", "2", "3", "4", "5", "6":
 				index := int(msg.Runes[0] - '1')
 				m.activeTab = aggregationTabs[index]
 				m.scrollOffset = 0
@@ -433,7 +435,7 @@ func (m interactiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			case "s":
 				m.popup = popupSort
-				m.popupCursor = indexOfSort(activeSort(m.activeTab, m.options.sort))
+				m.popupCursor = indexOfSort(activeSort(m.activeTab, m.options.sort), m.activeTab)
 				m.filterErr = nil
 				return m, nil
 			case "p":
@@ -490,8 +492,8 @@ func indexOfBucket(value timeBucket) int {
 	return 0
 }
 
-func indexOfSort(value sortMode) int {
-	for i, option := range sortOptions {
+func indexOfSort(value sortMode, activeTab tabMode) int {
+	for i, option := range sortOptionsForTab(activeTab) {
 		if option == value {
 			return i
 		}
@@ -630,12 +632,13 @@ func (m interactiveModel) applyBucketPopup() (tea.Model, tea.Cmd) {
 }
 
 func (m interactiveModel) handleSortPopupKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	options := sortOptionsForTab(m.activeTab)
 	switch msg.Type {
 	case tea.KeyUp:
-		m.popupCursor = movePopupCursor(m.popupCursor, len(sortOptions), -1)
+		m.popupCursor = movePopupCursor(m.popupCursor, len(options), -1)
 		return m, nil
 	case tea.KeyDown:
-		m.popupCursor = movePopupCursor(m.popupCursor, len(sortOptions), 1)
+		m.popupCursor = movePopupCursor(m.popupCursor, len(options), 1)
 		return m, nil
 	case tea.KeyEnter:
 		return m.applySortPopup()
@@ -650,10 +653,10 @@ func (m interactiveModel) handleSortPopupKey(msg tea.KeyMsg) (tea.Model, tea.Cmd
 			m.popup = popupNone
 			return m, nil
 		case "j":
-			m.popupCursor = movePopupCursor(m.popupCursor, len(sortOptions), 1)
+			m.popupCursor = movePopupCursor(m.popupCursor, len(options), 1)
 			return m, nil
 		case "k":
-			m.popupCursor = movePopupCursor(m.popupCursor, len(sortOptions), -1)
+			m.popupCursor = movePopupCursor(m.popupCursor, len(options), -1)
 			return m, nil
 		case " ":
 			return m.applySortPopup()
@@ -663,7 +666,8 @@ func (m interactiveModel) handleSortPopupKey(msg tea.KeyMsg) (tea.Model, tea.Cmd
 }
 
 func (m interactiveModel) applySortPopup() (tea.Model, tea.Cmd) {
-	newSort := sortOptions[m.popupCursor]
+	options := sortOptionsForTab(m.activeTab)
+	newSort := options[m.popupCursor]
 	m.popup = popupNone
 	if newSort != m.options.sort {
 		m.options.sort = newSort
@@ -770,6 +774,13 @@ func movePopupCursor(cursor int, length int, delta int) int {
 		cursor -= length
 	}
 	return cursor
+}
+
+func sortOptionsForTab(activeTab tabMode) []sortMode {
+	if activeTab == tabContext {
+		return contextSortOptions
+	}
+	return defaultSortOptions
 }
 
 func clampPopupCursor(cursor int, length int) int {
@@ -1071,8 +1082,9 @@ func (m interactiveModel) renderBucketPopup() string {
 
 func (m interactiveModel) renderSortPopup() string {
 	title := popupTitleStyle.Render("Sort")
+	sortModes := sortOptionsForTab(m.activeTab)
 	var options []string
-	for i, opt := range sortOptions {
+	for i, opt := range sortModes {
 		cursor := "  "
 		style := popupItemStyle
 		if i == m.popupCursor {
@@ -1280,6 +1292,31 @@ func loadRows(ctx context.Context, options tableOptions, now time.Time, groupBy 
 		sortRenderRows(result, activeTab, options.sort)
 		return result, nil
 	}
+	if activeTab == tabContext {
+		aggRows, err := db.ViewerContext(ctx, database, f)
+		if err != nil {
+			return nil, err
+		}
+		result := make([]renderRow, len(aggRows))
+		for i, r := range aggRows {
+			result[i] = renderRow{
+				harness:                  r.Harness,
+				provider:                 r.Provider,
+				model:                    r.Model,
+				sessions:                 formatTokens(r.SessionCount),
+				sessionsValue:            r.SessionCount,
+				averageContextUsedTokens: formatContextTokens(r.AverageContextUsedTokens),
+				averageContextUsedValue:  r.AverageContextUsedTokens,
+				medianContextUsedTokens:  formatContextTokens(r.MedianContextUsedTokens),
+				medianContextUsedValue:   r.MedianContextUsedTokens,
+				maxContextUsedTokens:     formatContextTokens(r.MaxContextUsedTokens),
+				maxContextUsedValue:      r.MaxContextUsedTokens,
+				latestValue:              r.LatestAtMs,
+			}
+		}
+		sortRenderRows(result, activeTab, options.sort)
+		return result, nil
+	}
 
 	var g db.GroupBy
 	switch groupBy {
@@ -1367,6 +1404,34 @@ func sortRenderRows(rows []renderRow, activeTab tabMode, selected sortMode) {
 			if left.cacheReadValue != right.cacheReadValue {
 				return left.cacheReadValue > right.cacheReadValue
 			}
+		case sortAverageContext:
+			if left.averageContextUsedValue != right.averageContextUsedValue {
+				return left.averageContextUsedValue > right.averageContextUsedValue
+			}
+		case sortMedianContext:
+			if left.medianContextUsedValue != right.medianContextUsedValue {
+				return left.medianContextUsedValue > right.medianContextUsedValue
+			}
+		case sortMaxContext:
+			if left.maxContextUsedValue != right.maxContextUsedValue {
+				return left.maxContextUsedValue > right.maxContextUsedValue
+			}
+		case sortSessions:
+			if left.sessionsValue != right.sessionsValue {
+				return left.sessionsValue > right.sessionsValue
+			}
+		case sortHarness:
+			if left.harness != right.harness {
+				return left.harness < right.harness
+			}
+		case sortProvider:
+			if left.provider != right.provider {
+				return left.provider < right.provider
+			}
+		case sortModel:
+			if left.model != right.model {
+				return left.model < right.model
+			}
 		case sortDate:
 			if activeTab == tabTokens && left.bucket != right.bucket {
 				return left.bucket > right.bucket
@@ -1393,6 +1458,8 @@ func activeSort(activeTab tabMode, selected sortMode) sortMode {
 	switch activeTab {
 	case tabTokens, tabSessions:
 		return sortDate
+	case tabContext:
+		return sortAverageContext
 	default:
 		return sortTokens
 	}
@@ -1408,6 +1475,8 @@ func rowName(row renderRow, activeTab tabMode) string {
 		return row.harness
 	case tabSessions:
 		return row.sessionID
+	case tabContext:
+		return row.harness + "\x00" + row.provider + "\x00" + row.model
 	default:
 		return row.bucket
 	}

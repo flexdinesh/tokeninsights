@@ -32,6 +32,10 @@ _Avoid_: Metric tab, domain tab, filter
 A read-only summary of countable canonical token facts for one aggregation tab and the active date range and dimension filters.
 _Avoid_: Pre-aggregated rollup, metric domain
 
+**Session Peak Context Load**:
+The largest prompt-side context load observed within a session, counted as input tokens plus cache read tokens plus cache write tokens and excluding output and reasoning tokens.
+_Avoid_: Context used when it could mean total tokens, output tokens, or context window size
+
 **Claude Code Harness**:
 The Claude Code command-line coding harness as a token usage source, distinct from the Anthropic provider and Claude model family.
 _Avoid_: Claude as a harness ID

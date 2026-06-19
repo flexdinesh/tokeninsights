@@ -35,12 +35,19 @@ const (
 type sortMode string
 
 const (
-	sortDate      sortMode = "date"
-	sortTokens    sortMode = "tokens"
-	sortInput     sortMode = "input"
-	sortOutput    sortMode = "output"
-	sortCacheRead sortMode = "cache read"
-	sortName      sortMode = "name"
+	sortDate           sortMode = "date"
+	sortTokens         sortMode = "tokens"
+	sortInput          sortMode = "input"
+	sortOutput         sortMode = "output"
+	sortCacheRead      sortMode = "cache read"
+	sortName           sortMode = "name"
+	sortAverageContext sortMode = "avg ctx"
+	sortMedianContext  sortMode = "median ctx"
+	sortMaxContext     sortMode = "max ctx"
+	sortSessions       sortMode = "sessions"
+	sortHarness        sortMode = "harness"
+	sortProvider       sortMode = "provider"
+	sortModel          sortMode = "model"
 )
 
 type stringList []string

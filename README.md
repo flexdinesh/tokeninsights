@@ -51,6 +51,7 @@ tokeninsights sync --all --source-dir /path/to/custom/fixtures
 
 Launch the interactive terminal user interface (TUI) to view the token dashboard. You can pre-filter the data or set time buckets.
 The token views use short cache labels (`cache R`, `cache W`), and the sessions view includes a derived `ctx used` column that shows the peak prompt-side token load without counting assistant output or reasoning tokens.
+The context view groups by harness, provider, and model, then summarizes Session Peak Context Load across sessions with `avg ctx`, `median ctx`, and `max ctx`.
 Rows with multiple summary values stack them vertically instead of collapsing them to a count.
 
 ```sh

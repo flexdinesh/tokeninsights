@@ -210,6 +210,60 @@ func TestViewerModelsAggregateByModelOnly(t *testing.T) {
 	}
 }
 
+func TestViewerContextAggregatesSessionPeakContextLoadByHarnessProviderModel(t *testing.T) {
+	database, _ := newTestDB(t)
+	defer database.Close()
+	recordedAt := time.Date(2026, 4, 24, 12, 0, 0, 0, time.Local).UnixMilli()
+	insertCanonicalToken(t, database, recordedAt, "codex", "ses_1", "openai", "gpt-5", 100, 10, 5, 20, 1, 136)
+	insertCanonicalToken(t, database, recordedAt+1000, "codex", "ses_1", "openai", "gpt-5", 200, 20, 6, 30, 2, 258)
+	insertCanonicalToken(t, database, recordedAt+2000, "codex", "ses_2", "openai", "gpt-5", 50, 5, 1, 5, 0, 61)
+	insertCanonicalToken(t, database, recordedAt+3000, "codex", "ses_3", "openai", "gpt-5", 20, 2, 1, 0, 0, 23)
+	insertCanonicalToken(t, database, recordedAt+4000, "codex", "ses_4", "openai", "gpt-5", 80, 8, 1, 0, 0, 89)
+	insertCanonicalToken(t, database, recordedAt+5000, "opencode", "ses_1", "openai", "gpt-5", 500, 50, 10, 0, 0, 560)
+
+	rows, err := ViewerContext(context.Background(), database, Filter{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 2 {
+		t.Fatalf("got %d rows, want 2: %+v", len(rows), rows)
+	}
+	if rows[0].Harness != "opencode" || rows[0].Provider != "openai" || rows[0].Model != "gpt-5" || rows[0].SessionCount != 1 || rows[0].AverageContextUsedTokens != 500 || rows[0].MedianContextUsedTokens != 500 || rows[0].MaxContextUsedTokens != 500 {
+		t.Fatalf("unexpected first context row: %+v", rows[0])
+	}
+	if rows[1].Harness != "codex" || rows[1].Provider != "openai" || rows[1].Model != "gpt-5" || rows[1].SessionCount != 4 || rows[1].AverageContextUsedTokens != 96 || rows[1].MedianContextUsedTokens != 67 || rows[1].MaxContextUsedTokens != 232 {
+		t.Fatalf("unexpected second context row: %+v", rows[1])
+	}
+}
+
+func TestViewerContextAppliesFiltersBeforeSessionPeakContextLoad(t *testing.T) {
+	database, _ := newTestDB(t)
+	defer database.Close()
+	inRange := time.Date(2026, 4, 24, 12, 0, 0, 0, time.Local)
+	outOfRange := time.Date(2026, 4, 23, 12, 0, 0, 0, time.Local)
+	insertCanonicalToken(t, database, outOfRange.UnixMilli(), "codex", "ses_1", "openai", "gpt-5", 1000, 10, 5, 0, 0, 1015)
+	insertCanonicalToken(t, database, inRange.UnixMilli(), "codex", "ses_1", "openai", "gpt-5", 100, 10, 5, 20, 1, 136)
+	insertCanonicalToken(t, database, inRange.Add(time.Second).UnixMilli(), "opencode", "ses_2", "openai", "gpt-5", 500, 50, 10, 0, 0, 560)
+	insertCanonicalToken(t, database, inRange.Add(2*time.Second).UnixMilli(), "codex", "ses_3", "anthropic", "claude", 300, 30, 7, 40, 3, 380)
+
+	rows, err := ViewerContext(context.Background(), database, Filter{
+		Start:     time.Date(2026, 4, 24, 0, 0, 0, 0, time.Local),
+		End:       time.Date(2026, 4, 25, 0, 0, 0, 0, time.Local),
+		Harnesses: []string{"codex"},
+		Providers: []string{"openai"},
+		Models:    []string{"gpt-5"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 1 {
+		t.Fatalf("got %d rows, want 1: %+v", len(rows), rows)
+	}
+	if rows[0].Harness != "codex" || rows[0].Provider != "openai" || rows[0].Model != "gpt-5" || rows[0].SessionCount != 1 || rows[0].MaxContextUsedTokens != 121 {
+		t.Fatalf("unexpected filtered context row: %+v", rows[0])
+	}
+}
+
 func TestViewerDimensionsExposeAllSummaryValues(t *testing.T) {
 	database, _ := newTestDB(t)
 	defer database.Close()
