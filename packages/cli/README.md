@@ -168,13 +168,13 @@ Token columns come from countable rows in `canonical_token_usage`:
 input
 output
 reasoning
-cache read
-cache write
+cache R
+cache W
 total
 ```
 
 Missing model values are normalized to `unknown`. Missing provider values are normalized to `unknown`, except Claude Code artifact-derived rows, which appear as `maybe-anthropic` with inferred provider provenance.
 
-The active Aggregation Tabs are Tokens, Models, Providers, Harnesses, and Sessions. TPS, request, and tool domains remain future-compatible data domains, but they are not active empty viewer tabs.
+The active Aggregation Tabs are Tokens, Models, Providers, Harnesses, and Sessions. TPS, request, and tool domains remain future-compatible data domains, but they are not active empty viewer tabs. The Sessions tab also shows derived `ctx used`, the peak prompt-side context load for the session.
 
 Session IDs are shortened in table output. Model names with `/` are shortened to the last path segment where a compact display is needed.

@@ -98,6 +98,24 @@ func TestLoadRowsTokenTabUsesCanonicalTokens(t *testing.T) {
 	}
 }
 
+func TestLoadRowsSessionTabIncludesContextUsed(t *testing.T) {
+	database, dbPath := newLoadRowsTestDB(t)
+	defer database.Close()
+	recordedAt := time.Date(2026, 4, 24, 12, 0, 0, 0, time.Local)
+	insertLoadRowsCanonicalToken(t, database, recordedAt.UnixMilli(), "opencode", "ses_1", "openai", "gpt-5")
+
+	rows, err := loadRows(context.Background(), tableOptions{dbPath: dbPath, period: periodAllTime, bucket: bucketDay}, recordedAt, groupByNone, tabSessions)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 1 {
+		t.Fatalf("got %d rows, want 1", len(rows))
+	}
+	if rows[0].contextUsedTokens != "121" {
+		t.Fatalf("unexpected session context used: %+v", rows[0])
+	}
+}
+
 func TestLoadRowsTokenTabUsesTimeBucket(t *testing.T) {
 	database, dbPath := newLoadRowsTestDB(t)
 	defer database.Close()

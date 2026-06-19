@@ -16,30 +16,33 @@ const (
 	GroupByDaySession
 )
 
+const ColContextUsedTokens = "context_used_tokens"
+
 type Row struct {
-	Harness          string
-	Day              string
-	Hour             string
-	SessionID        string
-	Provider         string
-	Model            string
-	InputTokens      int64
-	OutputTokens     int64
-	ReasoningTokens  int64
-	CacheReadTokens  int64
-	CacheWriteTokens int64
-	TotalTokens      int64
-	ThroughputTokens int64
-	DurationMs       int64
-	TpsMean          float64
-	TpsMedian        float64
-	Requests         int64
-	Retries          int64
-	ToolName         string
-	ToolCalls        int64
-	ToolErrors       int64
-	ThinkingLevels   string
-	LatestAtMs       int64
+	Harness           string
+	Day               string
+	Hour              string
+	SessionID         string
+	Provider          string
+	Model             string
+	InputTokens       int64
+	OutputTokens      int64
+	ReasoningTokens   int64
+	CacheReadTokens   int64
+	CacheWriteTokens  int64
+	ContextUsedTokens int64
+	TotalTokens       int64
+	ThroughputTokens  int64
+	DurationMs        int64
+	TpsMean           float64
+	TpsMedian         float64
+	Requests          int64
+	Retries           int64
+	ToolName          string
+	ToolCalls         int64
+	ToolErrors        int64
+	ThinkingLevels    string
+	LatestAtMs        int64
 }
 
 type TimeBucket string
@@ -52,46 +55,49 @@ const (
 )
 
 type ViewerTokenBucketRow struct {
-	Bucket           string
-	SessionCount     int64
-	InputTokens      int64
-	OutputTokens     int64
-	ReasoningTokens  int64
-	CacheReadTokens  int64
-	CacheWriteTokens int64
-	TotalTokens      int64
-	LatestAtMs       int64
+	Bucket            string
+	SessionCount      int64
+	InputTokens       int64
+	OutputTokens      int64
+	ReasoningTokens   int64
+	CacheReadTokens   int64
+	CacheWriteTokens  int64
+	ContextUsedTokens int64
+	TotalTokens       int64
+	LatestAtMs        int64
 }
 
 type ViewerDimensionRow struct {
-	Model            string
-	Provider         string
-	Harness          string
-	Models           string
-	Providers        string
-	Harnesses        string
-	SessionCount     int64
-	InputTokens      int64
-	OutputTokens     int64
-	ReasoningTokens  int64
-	CacheReadTokens  int64
-	CacheWriteTokens int64
-	TotalTokens      int64
-	LatestAtMs       int64
+	Model             string
+	Provider          string
+	Harness           string
+	Models            string
+	Providers         string
+	Harnesses         string
+	SessionCount      int64
+	InputTokens       int64
+	OutputTokens      int64
+	ReasoningTokens   int64
+	CacheReadTokens   int64
+	CacheWriteTokens  int64
+	ContextUsedTokens int64
+	TotalTokens       int64
+	LatestAtMs        int64
 }
 
 type ViewerSessionRow struct {
-	LatestAtMs       int64
-	SessionID        string
-	Harness          string
-	Providers        string
-	Models           string
-	InputTokens      int64
-	OutputTokens     int64
-	ReasoningTokens  int64
-	CacheReadTokens  int64
-	CacheWriteTokens int64
-	TotalTokens      int64
+	LatestAtMs        int64
+	SessionID         string
+	Harness           string
+	Providers         string
+	Models            string
+	InputTokens       int64
+	OutputTokens      int64
+	ReasoningTokens   int64
+	CacheReadTokens   int64
+	CacheWriteTokens  int64
+	ContextUsedTokens int64
+	TotalTokens       int64
 }
 
 const (
@@ -100,6 +106,14 @@ const (
 	exprDay        = "date(ctu.recorded_at_ms/1000, 'unixepoch', 'localtime')"
 	exprHour       = "strftime('%H:00', ctu.recorded_at_ms/1000, 'unixepoch', 'localtime')"
 )
+
+func contextUsedExpression(alias string) string {
+	return fmt.Sprintf("COALESCE(%s.%s, 0) + COALESCE(%s.%s, 0) + COALESCE(%s.%s, 0)",
+		alias, ColInputTokens,
+		alias, ColCacheReadTokens,
+		alias, ColCacheWriteTokens,
+	)
+}
 
 func viewerBucketExpression(bucket TimeBucket) (string, error) {
 	switch bucket {
@@ -173,6 +187,7 @@ func scanCanonicalTokenRow(rows *sql.Rows, g GroupBy) (Row, error) {
 		&row.ReasoningTokens,
 		&row.CacheReadTokens,
 		&row.CacheWriteTokens,
+		&row.ContextUsedTokens,
 		&row.TotalTokens,
 		&row.LatestAtMs,
 	)
@@ -244,6 +259,7 @@ func AggregateTokens(ctx context.Context, db *sql.DB, f Filter, g GroupBy) ([]Ro
 			SUM(ctu.%s) AS reasoning_tokens,
 			SUM(ctu.%s) AS cache_read_tokens,
 			SUM(ctu.%s) AS cache_write_tokens,
+			MAX(%s) AS %s,
 			SUM(ctu.%s) AS total_tokens,
 			MAX(ctu.%s) AS latest_at_ms
 		FROM %s ctu
@@ -257,6 +273,8 @@ func AggregateTokens(ctx context.Context, db *sql.DB, f Filter, g GroupBy) ([]Ro
 		ColReasoningTokens,
 		ColCacheReadTokens,
 		ColCacheWriteTokens,
+		contextUsedExpression(canonicalAlias),
+		ColContextUsedTokens,
 		ColTotalTokens,
 		ColRecordedAtMs,
 		TableCanonicalTokenUsage,
@@ -303,6 +321,7 @@ func ViewerTokenBuckets(ctx context.Context, db *sql.DB, f Filter, bucket TimeBu
 			SUM(ctu.%s) AS reasoning_tokens,
 			SUM(ctu.%s) AS cache_read_tokens,
 			SUM(ctu.%s) AS cache_write_tokens,
+			MAX(%s) AS %s,
 			SUM(ctu.%s) AS total_tokens,
 			MAX(ctu.%s) AS latest_at_ms
 		FROM %s ctu
@@ -318,6 +337,8 @@ func ViewerTokenBuckets(ctx context.Context, db *sql.DB, f Filter, bucket TimeBu
 		ColReasoningTokens,
 		ColCacheReadTokens,
 		ColCacheWriteTokens,
+		contextUsedExpression(canonicalAlias),
+		ColContextUsedTokens,
 		ColTotalTokens,
 		ColRecordedAtMs,
 		TableCanonicalTokenUsage,
@@ -345,6 +366,7 @@ func ViewerTokenBuckets(ctx context.Context, db *sql.DB, f Filter, bucket TimeBu
 			&row.ReasoningTokens,
 			&row.CacheReadTokens,
 			&row.CacheWriteTokens,
+			&row.ContextUsedTokens,
 			&row.TotalTokens,
 			&row.LatestAtMs,
 		); err != nil {
@@ -383,6 +405,7 @@ func viewerDimensions(ctx context.Context, db *sql.DB, f Filter, primaryColumn s
 			SUM(ctu.%s) AS reasoning_tokens,
 			SUM(ctu.%s) AS cache_read_tokens,
 			SUM(ctu.%s) AS cache_write_tokens,
+			MAX(%s) AS %s,
 			SUM(ctu.%s) AS total_tokens,
 			MAX(ctu.%s) AS latest_at_ms
 		FROM %s ctu
@@ -401,6 +424,8 @@ func viewerDimensions(ctx context.Context, db *sql.DB, f Filter, primaryColumn s
 		ColReasoningTokens,
 		ColCacheReadTokens,
 		ColCacheWriteTokens,
+		contextUsedExpression(canonicalAlias),
+		ColContextUsedTokens,
 		ColTotalTokens,
 		ColRecordedAtMs,
 		TableCanonicalTokenUsage,
@@ -435,6 +460,7 @@ func viewerDimensions(ctx context.Context, db *sql.DB, f Filter, primaryColumn s
 			&row.ReasoningTokens,
 			&row.CacheReadTokens,
 			&row.CacheWriteTokens,
+			&row.ContextUsedTokens,
 			&row.TotalTokens,
 			&row.LatestAtMs,
 		); err != nil {
@@ -472,6 +498,7 @@ func ViewerSessions(ctx context.Context, db *sql.DB, f Filter) ([]ViewerSessionR
 			SUM(ctu.%s) AS reasoning_tokens,
 			SUM(ctu.%s) AS cache_read_tokens,
 			SUM(ctu.%s) AS cache_write_tokens,
+			MAX(%s) AS %s,
 			SUM(ctu.%s) AS total_tokens
 		FROM %s ctu
 		INNER JOIN %s cs ON cs.%s = ctu.%s
@@ -489,6 +516,8 @@ func ViewerSessions(ctx context.Context, db *sql.DB, f Filter) ([]ViewerSessionR
 		ColReasoningTokens,
 		ColCacheReadTokens,
 		ColCacheWriteTokens,
+		contextUsedExpression(canonicalAlias),
+		ColContextUsedTokens,
 		ColTotalTokens,
 		TableCanonicalTokenUsage,
 		TableCanonicalSessions,
@@ -522,6 +551,7 @@ func ViewerSessions(ctx context.Context, db *sql.DB, f Filter) ([]ViewerSessionR
 			&row.ReasoningTokens,
 			&row.CacheReadTokens,
 			&row.CacheWriteTokens,
+			&row.ContextUsedTokens,
 			&row.TotalTokens,
 		); err != nil {
 			return nil, err

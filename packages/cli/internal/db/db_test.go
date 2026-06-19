@@ -154,10 +154,10 @@ func TestAggregateCanonicalDaily(t *testing.T) {
 	if len(rows) != 2 {
 		t.Fatalf("got %d rows, want 2", len(rows))
 	}
-	if rows[0].Harness != "opencode" || rows[0].InputTokens != 300 || rows[0].TotalTokens != 394 {
+	if rows[0].Harness != "opencode" || rows[0].InputTokens != 300 || rows[0].ContextUsedTokens != 232 || rows[0].TotalTokens != 394 {
 		t.Fatalf("unexpected first row: %+v", rows[0])
 	}
-	if rows[1].Harness != "pi" || rows[1].TotalTokens != 21 {
+	if rows[1].Harness != "pi" || rows[1].ContextUsedTokens != 15 || rows[1].TotalTokens != 21 {
 		t.Fatalf("unexpected second row: %+v", rows[1])
 	}
 }
@@ -179,10 +179,10 @@ func TestViewerTokenBucketsAggregateByWeekWithSessionCounts(t *testing.T) {
 	if len(rows) != 2 {
 		t.Fatalf("got %d rows, want 2: %+v", len(rows), rows)
 	}
-	if rows[0].Bucket != "2026-04-27" || rows[0].SessionCount != 1 || rows[0].TotalTokens != 380 {
+	if rows[0].Bucket != "2026-04-27" || rows[0].SessionCount != 1 || rows[0].ContextUsedTokens != 343 || rows[0].TotalTokens != 380 {
 		t.Fatalf("unexpected first bucket: %+v", rows[0])
 	}
-	if rows[1].Bucket != "2026-04-20" || rows[1].SessionCount != 2 || rows[1].TotalTokens != 394 {
+	if rows[1].Bucket != "2026-04-20" || rows[1].SessionCount != 2 || rows[1].ContextUsedTokens != 232 || rows[1].TotalTokens != 394 {
 		t.Fatalf("unexpected second bucket: %+v", rows[1])
 	}
 }
@@ -202,7 +202,7 @@ func TestViewerModelsAggregateByModelOnly(t *testing.T) {
 	if len(rows) != 2 {
 		t.Fatalf("got %d rows, want 2: %+v", len(rows), rows)
 	}
-	if rows[0].Model != "gpt-5" || rows[0].Providers != "azure, openai" || rows[0].Harnesses != "opencode, pi" || rows[0].SessionCount != 2 || rows[0].TotalTokens != 394 {
+	if rows[0].Model != "gpt-5" || rows[0].Providers != "azure, openai" || rows[0].Harnesses != "opencode, pi" || rows[0].SessionCount != 2 || rows[0].ContextUsedTokens != 232 || rows[0].TotalTokens != 394 {
 		t.Fatalf("unexpected first model row: %+v", rows[0])
 	}
 	if rows[1].Model != "claude" || rows[1].Providers != "unknown" || rows[1].Harnesses != "codex" || rows[1].SessionCount != 1 {
@@ -224,7 +224,7 @@ func TestViewerSessionsAggregateByCanonicalSessionOnly(t *testing.T) {
 	if len(rows) != 1 {
 		t.Fatalf("got %d rows, want 1: %+v", len(rows), rows)
 	}
-	if rows[0].SessionID != "ses_1" || rows[0].Harness != "opencode" || rows[0].Providers != "anthropic, openai" || rows[0].Models != "claude, gpt-5" || rows[0].TotalTokens != 394 {
+	if rows[0].SessionID != "ses_1" || rows[0].Harness != "opencode" || rows[0].Providers != "anthropic, openai" || rows[0].Models != "claude, gpt-5" || rows[0].ContextUsedTokens != 232 || rows[0].TotalTokens != 394 {
 		t.Fatalf("unexpected session row: %+v", rows[0])
 	}
 }

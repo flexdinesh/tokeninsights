@@ -33,7 +33,7 @@ func TestRenderTableTokensUsesBucketAndSessionColumns(t *testing.T) {
 		totalTokens:      "394",
 	}}, groupByNone, tabTokens))
 
-	for _, expected := range []string{"bucket", "sessions", "2026-04-24", "394"} {
+	for _, expected := range []string{"bucket", "sessions", "cache R", "cache W", "2026-04-24", "394"} {
 		if !strings.Contains(output, expected) {
 			t.Fatalf("output missing %q:\n%s", expected, output)
 		}
@@ -58,6 +58,29 @@ func TestRenderTableModelSummaries(t *testing.T) {
 	}}, groupByNone, tabModels))
 
 	for _, expected := range []string{"model", "providers", "harnesses", "azure, openai", "opencode, pi"} {
+		if !strings.Contains(output, expected) {
+			t.Fatalf("output missing %q:\n%s", expected, output)
+		}
+	}
+}
+
+func TestRenderTableSessionsIncludesContextUsed(t *testing.T) {
+	output := ansi.Strip(renderTable([]renderRow{{
+		latest:            "2026-04-24 12:00",
+		sessionID:         "ses_12345678",
+		harness:           "opencode",
+		providers:         "openai",
+		models:            "gpt-5",
+		contextUsedTokens: "10k",
+		inputTokens:       "300",
+		outputTokens:      "30",
+		reasoningTokens:   "11",
+		cacheReadTokens:   "50",
+		cacheWriteTokens:  "3",
+		totalTokens:       "394",
+	}}, groupByNone, tabSessions))
+
+	for _, expected := range []string{"latest", "session", "ctx used", "cache R", "cache W", "10k"} {
 		if !strings.Contains(output, expected) {
 			t.Fatalf("output missing %q:\n%s", expected, output)
 		}
@@ -167,8 +190,8 @@ func TestProvidersTableInitialViewportIncludesTotalColumn(t *testing.T) {
 	}, nil, groupByNone, tabProviders, sortTokens, 150, 0, 4))
 
 	header := tableHeaderLine(output, "provider")
-	if !strings.Contains(header, "total") {
-		t.Fatalf("providers table initial viewport missing total column:\n%s", output)
+	if !strings.Contains(header, "cache R") || !strings.Contains(header, "cache W") || !strings.Contains(header, "total") {
+		t.Fatalf("providers table initial viewport missing cache R, cache W, or total column:\n%s", output)
 	}
 }
 
@@ -223,8 +246,8 @@ func TestProvidersTableTruncatesLongListsBeforeHorizontalOverflow(t *testing.T) 
 	}, nil, groupByNone, tabProviders, sortTokens, 120, 0, 4))
 
 	header := tableHeaderLine(output, "provider")
-	if !strings.Contains(header, "total") {
-		t.Fatalf("providers table initial viewport missing total column:\n%s", output)
+	if !strings.Contains(header, "cache R") || !strings.Contains(header, "cache W") || !strings.Contains(header, "total") {
+		t.Fatalf("providers table initial viewport missing cache R, cache W, or total column:\n%s", output)
 	}
 	if !strings.Contains(output, "...") {
 		t.Fatalf("providers table did not show truncated long list:\n%s", output)

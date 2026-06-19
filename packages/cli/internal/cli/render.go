@@ -80,8 +80,8 @@ func columnsForModeAndTab(g groupByMode, t tabMode) []column {
 			{name: "input", field: "inputTokens", numeric: true},
 			{name: "output", field: "outputTokens", numeric: true},
 			{name: "reasoning", field: "reasoningTokens", numeric: true},
-			{name: "cache read", field: "cacheReadTokens", numeric: true},
-			{name: "cache write", field: "cacheWriteTokens", numeric: true},
+			{name: "cache R", field: "cacheReadTokens", numeric: true},
+			{name: "cache W", field: "cacheWriteTokens", numeric: true},
 			{name: "total", field: "totalTokens", numeric: true},
 		}
 	case tabModels:
@@ -112,6 +112,7 @@ func columnsForModeAndTab(g groupByMode, t tabMode) []column {
 			{name: "harness", field: "harness"},
 			{name: "providers", field: "providers"},
 			{name: "models", field: "models"},
+			{name: "ctx used", field: "contextUsedTokens", numeric: true},
 		}, tokenColumns()...)
 	}
 
@@ -142,45 +143,47 @@ func tokenColumns() []column {
 		{name: "input", field: "inputTokens", numeric: true},
 		{name: "output", field: "outputTokens", numeric: true},
 		{name: "reasoning", field: "reasoningTokens", numeric: true},
-		{name: "cache read", field: "cacheReadTokens", numeric: true},
-		{name: "cache write", field: "cacheWriteTokens", numeric: true},
+		{name: "cache R", field: "cacheReadTokens", numeric: true},
+		{name: "cache W", field: "cacheWriteTokens", numeric: true},
 		{name: "total", field: "totalTokens", numeric: true},
 	}
 }
 
 type renderRow struct {
-	bucket           string
-	sessions         string
-	latest           string
-	latestValue      int64
-	harness          string
-	harnesses        string
-	day              string
-	hour             string
-	sessionID        string
-	provider         string
-	providers        string
-	model            string
-	models           string
-	thinkingLevels   string
-	tpsAvg           string
-	tpsMean          string
-	tpsMedian        string
-	inputTokens      string
-	inputValue       int64
-	outputTokens     string
-	outputValue      int64
-	reasoningTokens  string
-	cacheReadTokens  string
-	cacheReadValue   int64
-	cacheWriteTokens string
-	totalTokens      string
-	totalValue       int64
-	requests         string
-	retries          string
-	toolName         string
-	toolCalls        string
-	toolErrors       string
+	bucket            string
+	sessions          string
+	latest            string
+	latestValue       int64
+	harness           string
+	harnesses         string
+	day               string
+	hour              string
+	sessionID         string
+	provider          string
+	providers         string
+	model             string
+	models            string
+	thinkingLevels    string
+	tpsAvg            string
+	tpsMean           string
+	tpsMedian         string
+	inputTokens       string
+	inputValue        int64
+	outputTokens      string
+	outputValue       int64
+	reasoningTokens   string
+	cacheReadTokens   string
+	cacheReadValue    int64
+	cacheWriteTokens  string
+	contextUsedTokens string
+	contextUsedValue  int64
+	totalTokens       string
+	totalValue        int64
+	requests          string
+	retries           string
+	toolName          string
+	toolCalls         string
+	toolErrors        string
 }
 
 func displaySessionID(value string) string {
@@ -240,6 +243,24 @@ func formatTokens(value int64) string {
 	}
 }
 
+func formatContextTokens(value int64) string {
+	if value == 0 {
+		return ""
+	}
+	abs := value
+	if abs < 0 {
+		abs = -abs
+	}
+	switch {
+	case abs < 1000:
+		return strconv.FormatInt(value, 10)
+	case abs < 1_000_000:
+		return fmt.Sprintf("%dk", (abs+999)/1000)
+	default:
+		return fmt.Sprintf("%dM", value/1_000_000)
+	}
+}
+
 func formatLatest(value int64) string {
 	if value <= 0 {
 		return ""
@@ -260,18 +281,19 @@ var (
 			Foreground(lipgloss.Color("86")).
 			Background(lipgloss.Color(appBackgroundColor))
 
-	dimensionStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("87"))
-	textCellStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("252"))
-	mutedCellStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
-	inputStyle      = lipgloss.NewStyle().Foreground(lipgloss.Color("113"))
-	outputStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("203"))
-	reasoningStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("176"))
-	cacheReadStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("75"))
-	cacheWriteStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("179"))
-	totalStyle      = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("157"))
-	appSurfaceStyle = lipgloss.NewStyle().Background(lipgloss.Color(appBackgroundColor))
-	rowOddStyle     = appSurfaceStyle
-	rowEvenStyle    = appSurfaceStyle
+	dimensionStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("87"))
+	textCellStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("252"))
+	mutedCellStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
+	inputStyle       = lipgloss.NewStyle().Foreground(lipgloss.Color("113"))
+	outputStyle      = lipgloss.NewStyle().Foreground(lipgloss.Color("203"))
+	reasoningStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("176"))
+	cacheReadStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("75"))
+	cacheWriteStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("179"))
+	contextUsedStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("81"))
+	totalStyle       = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("157"))
+	appSurfaceStyle  = lipgloss.NewStyle().Background(lipgloss.Color(appBackgroundColor))
+	rowOddStyle      = appSurfaceStyle
+	rowEvenStyle     = appSurfaceStyle
 
 	borderStyle      = lipgloss.NewStyle().Foreground(lipgloss.Color(tableSeparatorColor)).Background(lipgloss.Color(appBackgroundColor))
 	outerBorderStyle = lipgloss.NewStyle().
@@ -552,6 +574,8 @@ func cellStyleForColumn(col column) lipgloss.Style {
 		return cacheReadStyle
 	case "cacheWriteTokens":
 		return cacheWriteStyle
+	case "contextUsedTokens":
+		return contextUsedStyle
 	case "totalTokens":
 		return totalStyle
 	default:
@@ -607,6 +631,8 @@ func formatRenderRows(rows []renderRow, cols []column) [][]string {
 				values[i] = row.cacheReadTokens
 			case "cacheWriteTokens":
 				values[i] = row.cacheWriteTokens
+			case "contextUsedTokens":
+				values[i] = row.contextUsedTokens
 			case "totalTokens":
 				values[i] = row.totalTokens
 			case "requests":
@@ -630,22 +656,23 @@ func formatRenderRows(rows []renderRow, cols []column) [][]string {
 
 func loadingReferenceRows(tab tabMode) []renderRow {
 	row := renderRow{
-		bucket:           "9999-99-99",
-		sessions:         "99999",
-		latest:           "9999-99-99 99:99",
-		sessionID:        "session-99999999",
-		harness:          "opencode",
-		harnesses:        "opencode, codex",
-		provider:         "openai-codex",
-		providers:        "openai, anthropic",
-		model:            "gpt-5-codex-preview",
-		models:           "gpt-5-codex, claude",
-		inputTokens:      "999M",
-		outputTokens:     "999M",
-		reasoningTokens:  "999M",
-		cacheReadTokens:  "999M",
-		cacheWriteTokens: "999M",
-		totalTokens:      "999M",
+		bucket:            "9999-99-99",
+		sessions:          "99999",
+		latest:            "9999-99-99 99:99",
+		sessionID:         "session-99999999",
+		harness:           "opencode",
+		harnesses:         "opencode, codex",
+		provider:          "openai-codex",
+		providers:         "openai, anthropic",
+		model:             "gpt-5-codex-preview",
+		models:            "gpt-5-codex, claude",
+		inputTokens:       "999M",
+		outputTokens:      "999M",
+		reasoningTokens:   "999M",
+		cacheReadTokens:   "999M",
+		cacheWriteTokens:  "999M",
+		contextUsedTokens: "999M",
+		totalTokens:       "999M",
 	}
 	return []renderRow{row}
 }

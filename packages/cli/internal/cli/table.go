@@ -184,7 +184,7 @@ func (m interactiveModel) measureHeights() interactiveModel {
 	sampleRow := renderRow{
 		day: "2006-01-01", harness: "oc", provider: "openai", model: "gpt-4o",
 		inputTokens: "1000", outputTokens: "100", reasoningTokens: "10",
-		cacheReadTokens: "5", cacheWriteTokens: "1", totalTokens: "1116",
+		cacheReadTokens: "5", cacheWriteTokens: "1", contextUsedTokens: "1006", totalTokens: "1116",
 		tpsAvg: "12.34", tpsMean: "56.78", tpsMedian: "45.67",
 		requests: "3", retries: "1", toolName: "bash", toolCalls: "5", toolErrors: "1",
 	}
@@ -1196,22 +1196,24 @@ func loadRows(ctx context.Context, options tableOptions, now time.Time, groupBy 
 		result := make([]renderRow, len(aggRows))
 		for i, r := range aggRows {
 			result[i] = renderRow{
-				latest:           formatLatest(r.LatestAtMs),
-				sessionID:        r.SessionID,
-				harness:          r.Harness,
-				providers:        r.Providers,
-				models:           r.Models,
-				inputTokens:      formatTokens(r.InputTokens),
-				inputValue:       r.InputTokens,
-				outputTokens:     formatTokens(r.OutputTokens),
-				outputValue:      r.OutputTokens,
-				reasoningTokens:  formatTokens(r.ReasoningTokens),
-				cacheReadTokens:  formatTokens(r.CacheReadTokens),
-				cacheReadValue:   r.CacheReadTokens,
-				cacheWriteTokens: formatTokens(r.CacheWriteTokens),
-				totalTokens:      formatTokens(r.TotalTokens),
-				totalValue:       r.TotalTokens,
-				latestValue:      r.LatestAtMs,
+				latest:            formatLatest(r.LatestAtMs),
+				sessionID:         r.SessionID,
+				harness:           r.Harness,
+				providers:         r.Providers,
+				models:            r.Models,
+				contextUsedTokens: formatContextTokens(r.ContextUsedTokens),
+				contextUsedValue:  r.ContextUsedTokens,
+				inputTokens:       formatTokens(r.InputTokens),
+				inputValue:        r.InputTokens,
+				outputTokens:      formatTokens(r.OutputTokens),
+				outputValue:       r.OutputTokens,
+				reasoningTokens:   formatTokens(r.ReasoningTokens),
+				cacheReadTokens:   formatTokens(r.CacheReadTokens),
+				cacheReadValue:    r.CacheReadTokens,
+				cacheWriteTokens:  formatTokens(r.CacheWriteTokens),
+				totalTokens:       formatTokens(r.TotalTokens),
+				totalValue:        r.TotalTokens,
+				latestValue:       r.LatestAtMs,
 			}
 		}
 		sortRenderRows(result, activeTab, options.sort)
