@@ -49,7 +49,7 @@ tokeninsights sync --all --source-dir /path/to/custom/fixtures
 
 ### Open TUI View
 
-Launch the interactive terminal user interface (TUI) to view the token dashboard. By default, `view` first refreshes all supported Durable Sources and normalizes the results, then opens the dashboard. You can pre-filter the displayed data or set time buckets.
+Launch the interactive terminal user interface (TUI) to view the token dashboard. By default, `view` opens into a sync progress screen, refreshes all supported Durable Sources, normalizes the results, then renders the dashboard. You can pre-filter the displayed data or set time buckets.
 The token views use short cache labels (`cache R`, `cache W`), and the sessions view includes a derived `ctx used` column that shows the peak prompt-side token load without counting assistant output or reasoning tokens.
 The context view groups by harness, provider, and model, then summarizes Session Peak Context Load across sessions with `avg ctx`, `median ctx`, and `max ctx`.
 Rows with multiple summary values stack them vertically instead of collapsing them to a count.
@@ -76,7 +76,7 @@ tokeninsights view --harness pi
 
 ```
 
-Viewer filters such as `--harness`, `--provider`, and `--model` only filter displayed canonical facts; they do not limit the implicit sync. If implicit sync fails, refresh unaffected harnesses manually with `tokeninsights sync --harness <harness>`, then open `tokeninsights view --no-sync`.
+Viewer filters such as `--harness`, `--provider`, and `--model` only filter displayed canonical facts; they do not limit the implicit sync. The sync progress screen shows high-level harness statuses without source paths or source IDs. If implicit sync fails, the TUI exits; refresh unaffected harnesses manually with `tokeninsights sync --harness <harness>`, then open `tokeninsights view --no-sync`.
 
 ### Maintenance & Debugging
 

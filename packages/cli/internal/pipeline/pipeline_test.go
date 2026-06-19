@@ -90,6 +90,109 @@ func TestConformanceFixtureDefinesMissingSessionDiagnostics(t *testing.T) {
 	})
 }
 
+func TestSyncReportsHarnessProgress(t *testing.T) {
+	ctx := context.Background()
+	dbPath := filepath.Join(t.TempDir(), "tokeninsights.sqlite")
+	sourceDir := t.TempDir()
+	var events []SyncProgressEvent
+
+	summary, err := Sync(ctx, SyncOptions{
+		DBPath:    dbPath,
+		Harnesses: SupportedHarnesses,
+		Normalize: true,
+		SourceDir: sourceDir,
+		Now:       time.Date(2026, 6, 19, 10, 0, 0, 0, time.UTC),
+		Progress: func(event SyncProgressEvent) {
+			events = append(events, event)
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertSummary(t, summary, Summary{
+		RequestedHarnesses: 4,
+		Skipped:            4,
+	})
+
+	got := progressLabels(events)
+	want := []string{
+		"opencode:discovering",
+		"opencode:skipped",
+		"pi:discovering",
+		"pi:skipped",
+		"codex:discovering",
+		"codex:skipped",
+		"claude-code:discovering",
+		"claude-code:skipped",
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("progress events = %#v, want %#v", got, want)
+	}
+}
+
+func TestSyncReportsSuccessfulHarnessAndNormalizationProgress(t *testing.T) {
+	ctx := context.Background()
+	dbPath := filepath.Join(t.TempDir(), "tokeninsights.sqlite")
+	sourceDir := filepath.Join(t.TempDir(), "source")
+	copyFixtureDir(t, filepath.Join(syncFirstBasicFixtureDir(), "source"), sourceDir)
+	materializeOpenCodeSQLiteSource(t, sourceDir)
+	var events []SyncProgressEvent
+
+	summary, err := Sync(ctx, SyncOptions{
+		DBPath:    dbPath,
+		Harnesses: SupportedHarnesses,
+		Normalize: true,
+		SourceDir: sourceDir,
+		Now:       time.Date(2026, 6, 19, 10, 0, 0, 0, time.UTC),
+		Progress: func(event SyncProgressEvent) {
+			events = append(events, event)
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertSummary(t, summary, Summary{
+		RequestedHarnesses: 4,
+		Synced:             4,
+		RawFacts:           4,
+		Observations:       4,
+		Canonical:          4,
+		Diagnostics:        1,
+	})
+
+	got := progressLabels(events)
+	want := []string{
+		"opencode:discovering",
+		"opencode:syncing",
+		"opencode:synced",
+		"pi:discovering",
+		"pi:syncing",
+		"pi:synced",
+		"codex:discovering",
+		"codex:syncing",
+		"codex:synced",
+		"claude-code:discovering",
+		"claude-code:syncing",
+		"claude-code:synced",
+		"normalizing",
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("progress events = %#v, want %#v", got, want)
+	}
+}
+
+func progressLabels(events []SyncProgressEvent) []string {
+	labels := make([]string, 0, len(events))
+	for _, event := range events {
+		if event.Harness == "" {
+			labels = append(labels, string(event.Status))
+			continue
+		}
+		labels = append(labels, string(event.Harness)+":"+string(event.Status))
+	}
+	return labels
+}
+
 func TestOpenCodeSQLiteConformanceFixtureDefinesMessageTokenUsage(t *testing.T) {
 	fixtureDir := filepath.Join("testdata", "conformance", "opencode-sqlite")
 	ctx := context.Background()

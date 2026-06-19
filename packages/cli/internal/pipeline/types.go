@@ -68,6 +68,24 @@ type SyncOptions struct {
 	Collector string
 	Parser    string
 	Now       time.Time
+	Progress  func(SyncProgressEvent)
+}
+
+type SyncProgressStatus string
+
+const (
+	SyncProgressDiscovering SyncProgressStatus = "discovering"
+	SyncProgressSyncing     SyncProgressStatus = "syncing"
+	SyncProgressSkipped     SyncProgressStatus = "skipped"
+	SyncProgressSynced      SyncProgressStatus = "synced"
+	SyncProgressFailed      SyncProgressStatus = "failed"
+	SyncProgressNormalizing SyncProgressStatus = "normalizing"
+	SyncProgressLoading     SyncProgressStatus = "loading dashboard"
+)
+
+type SyncProgressEvent struct {
+	Harness Harness
+	Status  SyncProgressStatus
 }
 
 type NormalizeOptions struct {

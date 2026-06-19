@@ -12,9 +12,10 @@ import (
 	"time"
 
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/db"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/pipeline"
 )
 
-func TestViewPerformsImplicitSyncBeforeLaunchingTUI(t *testing.T) {
+func TestViewLaunchesProgressTUIBeforeImplicitSyncCompletes(t *testing.T) {
 	sourceRoot := t.TempDir()
 	t.Setenv("HOME", filepath.Join(sourceRoot, "home"))
 	t.Setenv("XDG_DATA_HOME", filepath.Join(sourceRoot, "xdg"))
@@ -25,12 +26,18 @@ func TestViewPerformsImplicitSyncBeforeLaunchingTUI(t *testing.T) {
 	now := time.Date(2026, 6, 19, 10, 0, 0, 0, time.Local)
 	var launched bool
 
-	restore := replaceInteractiveProgramRunnerForTest(t, func(model interactiveModel, stdout io.Writer) error {
+	restore := replaceInteractiveProgramRunnerForTest(t, func(model interactiveModel, stdout io.Writer) (interactiveModel, error) {
 		launched = true
 		if model.options.dbPath != dbPath {
 			t.Fatalf("interactive dbPath = %q, want %q", model.options.dbPath, dbPath)
 		}
-		return nil
+		if !model.syncing {
+			t.Fatal("expected initial model to show sync progress")
+		}
+		if _, err := os.Stat(dbPath); !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("expected db not to exist before TUI launches, stat error = %v", err)
+		}
+		return model, nil
 	})
 	defer restore()
 
@@ -45,18 +52,9 @@ func TestViewPerformsImplicitSyncBeforeLaunchingTUI(t *testing.T) {
 	if !launched {
 		t.Fatal("expected TUI to launch")
 	}
-	if _, err := os.Stat(dbPath); err != nil {
-		t.Fatalf("expected implicit sync to create db: %v", err)
-	}
-
-	database, err := db.Open(dbPath)
-	if err != nil {
-		t.Fatalf("expected created db to be readable: %v", err)
-	}
-	defer database.Close()
 }
 
-func TestNoCommandPerformsImplicitSyncBeforeLaunchingTUI(t *testing.T) {
+func TestNoCommandLaunchesProgressTUIBeforeImplicitSyncCompletes(t *testing.T) {
 	sourceRoot := t.TempDir()
 	t.Setenv("HOME", filepath.Join(sourceRoot, "home"))
 	t.Setenv("XDG_DATA_HOME", filepath.Join(sourceRoot, "xdg"))
@@ -65,12 +63,18 @@ func TestNoCommandPerformsImplicitSyncBeforeLaunchingTUI(t *testing.T) {
 
 	dbPath := filepath.Join(sourceRoot, "xdg", "tokeninsights", "tokeninsights.sqlite")
 	var launched bool
-	restore := replaceInteractiveProgramRunnerForTest(t, func(model interactiveModel, stdout io.Writer) error {
+	restore := replaceInteractiveProgramRunnerForTest(t, func(model interactiveModel, stdout io.Writer) (interactiveModel, error) {
 		launched = true
 		if model.options.dbPath != dbPath {
 			t.Fatalf("interactive dbPath = %q, want %q", model.options.dbPath, dbPath)
 		}
-		return nil
+		if !model.syncing {
+			t.Fatal("expected initial model to show sync progress")
+		}
+		if _, err := os.Stat(dbPath); !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("expected default db not to exist before TUI launches, stat error = %v", err)
+		}
+		return model, nil
 	})
 	defer restore()
 
@@ -81,17 +85,14 @@ func TestNoCommandPerformsImplicitSyncBeforeLaunchingTUI(t *testing.T) {
 	if !launched {
 		t.Fatal("expected TUI to launch")
 	}
-	if _, err := os.Stat(dbPath); err != nil {
-		t.Fatalf("expected implicit sync to create default db: %v", err)
-	}
 }
 
 func TestViewNoSyncPreservesReadOnlyMissingDBBehavior(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "missing.sqlite")
 	var launched bool
-	restore := replaceInteractiveProgramRunnerForTest(t, func(model interactiveModel, stdout io.Writer) error {
+	restore := replaceInteractiveProgramRunnerForTest(t, func(model interactiveModel, stdout io.Writer) (interactiveModel, error) {
 		launched = true
-		return nil
+		return model, nil
 	})
 	defer restore()
 
@@ -114,12 +115,39 @@ func TestViewNoSyncPreservesReadOnlyMissingDBBehavior(t *testing.T) {
 	}
 }
 
+func TestViewNoSyncLaunchesTableLoadingWithoutSyncProgress(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "tokeninsights.sqlite")
+	if err := db.ResetAll(dbPath); err != nil {
+		t.Fatal(err)
+	}
+	var launched bool
+	restore := replaceInteractiveProgramRunnerForTest(t, func(model interactiveModel, stdout io.Writer) (interactiveModel, error) {
+		launched = true
+		if model.syncing {
+			t.Fatal("expected --no-sync not to show sync progress")
+		}
+		if !model.loading {
+			t.Fatal("expected --no-sync to use table loading state")
+		}
+		return model, nil
+	})
+	defer restore()
+
+	err := Run(context.Background(), []string{"view", "--db-path", dbPath, "--no-sync"}, io.Discard, io.Discard, time.Date(2026, 6, 19, 10, 0, 0, 0, time.Local))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !launched {
+		t.Fatal("expected TUI to launch")
+	}
+}
+
 func TestNoCommandNoSyncUsesViewNoSync(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "missing.sqlite")
 	var launched bool
-	restore := replaceInteractiveProgramRunnerForTest(t, func(model interactiveModel, stdout io.Writer) error {
+	restore := replaceInteractiveProgramRunnerForTest(t, func(model interactiveModel, stdout io.Writer) (interactiveModel, error) {
 		launched = true
-		return nil
+		return model, nil
 	})
 	defer restore()
 
@@ -135,12 +163,14 @@ func TestNoCommandNoSyncUsesViewNoSync(t *testing.T) {
 	}
 }
 
-func TestViewImplicitSyncFailureDoesNotLaunchTUIAndPrintsRecoveryGuidance(t *testing.T) {
+func TestViewImplicitSyncFailureExitsTUIAndPrintsRecoveryGuidance(t *testing.T) {
 	dbPath := t.TempDir()
 	var launched bool
-	restore := replaceInteractiveProgramRunnerForTest(t, func(model interactiveModel, stdout io.Writer) error {
+	restore := replaceInteractiveProgramRunnerForTest(t, func(model interactiveModel, stdout io.Writer) (interactiveModel, error) {
 		launched = true
-		return nil
+		model.syncSummary = pipeline.Summary{RequestedHarnesses: 4, Failed: 1}
+		model.syncErr = errors.New("db path is a directory")
+		return model, nil
 	})
 	defer restore()
 
@@ -149,8 +179,8 @@ func TestViewImplicitSyncFailureDoesNotLaunchTUIAndPrintsRecoveryGuidance(t *tes
 	if err == nil {
 		t.Fatal("expected implicit sync error")
 	}
-	if launched {
-		t.Fatal("expected TUI not to launch")
+	if !launched {
+		t.Fatal("expected TUI to launch before sync failure")
 	}
 	if !strings.Contains(stdout.String(), "sync: requested=") {
 		t.Fatalf("stdout missing sync summary: %q", stdout.String())
@@ -166,7 +196,7 @@ func TestViewImplicitSyncFailureDoesNotLaunchTUIAndPrintsRecoveryGuidance(t *tes
 	}
 }
 
-func replaceInteractiveProgramRunnerForTest(t *testing.T, runner func(interactiveModel, io.Writer) error) func() {
+func replaceInteractiveProgramRunnerForTest(t *testing.T, runner func(interactiveModel, io.Writer) (interactiveModel, error)) func() {
 	t.Helper()
 	previous := runInteractiveProgram
 	runInteractiveProgram = runner

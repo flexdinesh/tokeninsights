@@ -55,7 +55,7 @@ TokenInsights V1 is a local Go CLI:
 
 - `sync` ingests durable local harness data into raw tables and normalizes by default.
 - `normalize` rebuilds canonical facts from existing raw facts.
-- `view` runs an implicit all-harness sync by default, then opens the interactive terminal UI over canonical data only.
+- `view` opens the interactive terminal UI and runs implicit all-harness sync by default before showing canonical data.
 - `reset-canonical` clears rebuildable canonical facts and diagnostics.
 - `reset-all` recreates the local database and SQLite sidecars.
 
@@ -240,13 +240,15 @@ Explicit conflict precedence between competing raw facts is not implemented yet.
 
 ## Viewer
 
-`tokeninsights view` is interactive-only. By default it first performs Implicit View Sync: the same all-harness refresh behavior as `sync --all`, including default normalization and create-if-missing DB lifecycle. After that optional write-before-read step, the TUI opens the database read-only and queries canonical tables only.
+`tokeninsights view` is interactive-only. By default it opens the TUI into an Implicit View Sync progress state: the same all-harness refresh behavior as `sync --all`, including default normalization and create-if-missing DB lifecycle. After that optional write-before-read step, the TUI opens the database read-only and queries canonical tables only.
 
 `view --no-sync` skips raw ingest and normalization. It preserves read-only viewer behavior and rejects a missing or incompatible database instead of creating or modifying it.
 
 Viewer Dimension Filters remain display constraints. For example, `view --harness pi` refreshes all supported Durable Sources first, then filters the displayed canonical facts to Pi.
 
-Successful Implicit View Sync does not print a pre-launch sync summary. If Implicit View Sync fails, `view` prints the sync summary, returns the sync error, recommends targeted manual refresh with `tokeninsights sync --harness <harness>` followed by `tokeninsights view --no-sync`, and does not launch the TUI.
+The Implicit View Sync progress state shows all supported harnesses in sequential sync order with high-level statuses: `pending`, `discovering`, `syncing`, `skipped`, `synced`, `failed`, `normalizing`, and `loading dashboard`. It must not show source paths, source IDs, project names, or file-level details.
+
+Successful Implicit View Sync does not print a sync summary before rendering the dashboard. If Implicit View Sync fails, `view` exits the TUI, prints the sync summary, returns the sync error, recommends targeted manual refresh with `tokeninsights sync --harness <harness>` followed by `tokeninsights view --no-sync`, and does not render the dashboard table.
 
 The TUI queries canonical tables only:
 
@@ -304,7 +306,7 @@ Must not change silently:
 - default token analytics use only countable canonical token rows;
 - unavailable metric domains must not appear as empty active viewer tabs;
 - cost tracking must stay out of the active product;
-- the TUI opens read-only after any optional pre-view sync, and `view --no-sync` remains a read-only command path.
+- the TUI queries canonical data read-only after any optional Implicit View Sync, and `view --no-sync` remains a read-only command path.
 
 Can evolve with care:
 

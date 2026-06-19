@@ -76,7 +76,7 @@ tokeninsights reset-all --confirm
 
 `view`
 
-Open the interactive terminal UI over canonical token usage. By default, `view` first refreshes all supported Durable Sources and normalizes the results. Use `--no-sync` to skip raw ingest and normalization and open existing canonical data read-only.
+Open the interactive terminal UI over canonical token usage. By default, `view` opens into a sync progress screen, refreshes all supported Durable Sources, and normalizes the results before rendering the dashboard. Use `--no-sync` to skip raw ingest and normalization and open existing canonical data read-only.
 
 ```sh
 tokeninsights view
