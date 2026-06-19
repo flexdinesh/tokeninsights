@@ -27,7 +27,7 @@ go install github.com/flexdinesh/tokeninsights/packages/cli/cmd/tokeninsights@de
 
 ### Sync Data
 
-Read harness artifacts and normalize data from supported harnesses.
+Read harness artifacts and normalize data from supported harnesses. `tokeninsights view` syncs all supported harnesses implicitly by default, so use explicit sync when you want targeted harness refreshes, dry runs, or custom source directories.
 
 ```sh
 # sync all supported harnesses
@@ -49,7 +49,7 @@ tokeninsights sync --all --source-dir /path/to/custom/fixtures
 
 ### Open TUI View
 
-Launch the interactive terminal user interface (TUI) to view the token dashboard. You can pre-filter the data or set time buckets.
+Launch the interactive terminal user interface (TUI) to view the token dashboard. By default, `view` first refreshes all supported Durable Sources and normalizes the results, then opens the dashboard. You can pre-filter the displayed data or set time buckets.
 The token views use short cache labels (`cache R`, `cache W`), and the sessions view includes a derived `ctx used` column that shows the peak prompt-side token load without counting assistant output or reasoning tokens.
 The context view groups by harness, provider, and model, then summarizes Session Peak Context Load across sessions with `avg ctx`, `median ctx`, and `max ctx`.
 Rows with multiple summary values stack them vertically instead of collapsing them to a count.
@@ -57,6 +57,9 @@ Rows with multiple summary values stack them vertically instead of collapsing th
 ```sh
 # open default view (this month, daily buckets)
 tokeninsights view
+
+# open existing canonical data without syncing
+tokeninsights view --no-sync
 
 # view preset date ranges
 tokeninsights view --today
@@ -72,6 +75,8 @@ tokeninsights view --week --provider openai --model gpt-5
 tokeninsights view --harness pi
 
 ```
+
+Viewer filters such as `--harness`, `--provider`, and `--model` only filter displayed canonical facts; they do not limit the implicit sync. If implicit sync fails, refresh unaffected harnesses manually with `tokeninsights sync --harness <harness>`, then open `tokeninsights view --no-sync`.
 
 ### Maintenance & Debugging
 

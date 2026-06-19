@@ -36,6 +36,10 @@ _Avoid_: Pre-aggregated rollup, metric domain
 The largest prompt-side context load observed within a session, counted as input tokens plus cache read tokens plus cache write tokens and excluding output and reasoning tokens.
 _Avoid_: Context used when it could mean total tokens, output tokens, or context window size
 
+**Implicit View Sync**:
+The product behavior where opening the viewer first refreshes all supported Durable Sources so the dashboard reflects newly available canonical token facts. Viewer filters remain display constraints, not source selection.
+_Avoid_: Filtered sync, view-only sync
+
 **Claude Code Harness**:
 The Claude Code command-line coding harness as a token usage source, distinct from the Anthropic provider and Claude model family.
 _Avoid_: Claude as a harness ID

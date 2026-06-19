@@ -36,6 +36,9 @@ func Run(ctx context.Context, args []string, stdout io.Writer, stderr io.Writer,
 	case "reset-all":
 		return runResetAll(args[1:], stdout, stderr)
 	default:
+		if strings.HasPrefix(args[0], "-") {
+			return RunInteractive(ctx, args, stdout, stderr, now)
+		}
 		return fmt.Errorf("unknown command %q\n%w", args[0], ErrUsage)
 	}
 }

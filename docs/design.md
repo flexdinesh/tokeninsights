@@ -55,7 +55,7 @@ TokenInsights V1 is a local Go CLI:
 
 - `sync` ingests durable local harness data into raw tables and normalizes by default.
 - `normalize` rebuilds canonical facts from existing raw facts.
-- `view` opens the interactive terminal UI over canonical data only.
+- `view` runs an implicit all-harness sync by default, then opens the interactive terminal UI over canonical data only.
 - `reset-canonical` clears rebuildable canonical facts and diagnostics.
 - `reset-all` recreates the local database and SQLite sidecars.
 
@@ -240,7 +240,13 @@ Explicit conflict precedence between competing raw facts is not implemented yet.
 
 ## Viewer
 
-`tokeninsights view` is interactive-only and opens the database read-only.
+`tokeninsights view` is interactive-only. By default it first performs Implicit View Sync: the same all-harness refresh behavior as `sync --all`, including default normalization and create-if-missing DB lifecycle. After that optional write-before-read step, the TUI opens the database read-only and queries canonical tables only.
+
+`view --no-sync` skips raw ingest and normalization. It preserves read-only viewer behavior and rejects a missing or incompatible database instead of creating or modifying it.
+
+Viewer Dimension Filters remain display constraints. For example, `view --harness pi` refreshes all supported Durable Sources first, then filters the displayed canonical facts to Pi.
+
+Successful Implicit View Sync does not print a pre-launch sync summary. If Implicit View Sync fails, `view` prints the sync summary, returns the sync error, recommends targeted manual refresh with `tokeninsights sync --harness <harness>` followed by `tokeninsights view --no-sync`, and does not launch the TUI.
 
 The TUI queries canonical tables only:
 
@@ -281,7 +287,7 @@ Cost tracking is not part of TokenInsights and must not appear in viewer columns
 ## DB Lifecycle
 
 - `db.Open` opens existing compatible DBs read-only for view.
-- `db.CreateIfMissing` creates missing DBs from the embedded schema for sync/normalize workflows.
+- `db.CreateIfMissing` creates missing DBs from the embedded schema for sync/normalize workflows and implicit view sync.
 - incompatible schema versions are rejected with a `reset-all --confirm` instruction.
 - `reset-canonical --confirm` deletes canonical token usage, messages, sessions, and normalization diagnostics while keeping raw facts and observations.
 - `reset-all --confirm` removes the DB plus `-wal` and `-shm`, then recreates from schema.
@@ -298,7 +304,7 @@ Must not change silently:
 - default token analytics use only countable canonical token rows;
 - unavailable metric domains must not appear as empty active viewer tabs;
 - cost tracking must stay out of the active product;
-- `view` opens read-only and remains interactive-only.
+- the TUI opens read-only after any optional pre-view sync, and `view --no-sync` remains a read-only command path.
 
 Can evolve with care:
 

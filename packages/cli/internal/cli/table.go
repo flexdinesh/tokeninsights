@@ -13,6 +13,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/db"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/pipeline"
 )
 
 type reloadMsg struct {
@@ -1134,7 +1135,26 @@ func RunInteractive(ctx context.Context, args []string, stdout io.Writer, stderr
 		return err
 	}
 
-	_, err = tea.NewProgram(interactiveModel{
+	if options.noSync {
+		database, err := db.Open(options.dbPath)
+		if err != nil {
+			return err
+		}
+		_ = database.Close()
+	} else {
+		summary, err := pipeline.Sync(ctx, pipeline.SyncOptions{
+			DBPath:    options.dbPath,
+			Harnesses: pipeline.SupportedHarnesses,
+			Normalize: true,
+			Now:       now,
+		})
+		if err != nil {
+			printSummary(stdout, "sync", summary, false)
+			return fmt.Errorf("%w\n\nImplicit view sync failed. To refresh unaffected harnesses manually, run `tokeninsights sync --harness <harness>`, then open the existing canonical data with `tokeninsights view --no-sync`.", err)
+		}
+	}
+
+	return runInteractiveProgram(interactiveModel{
 		ctx:              ctx,
 		options:          options,
 		now:              now,
@@ -1144,7 +1164,11 @@ func RunInteractive(ctx context.Context, args []string, stdout io.Writer, stderr
 		popupCursor:      0,
 		filterSelections: make(map[string]bool),
 		loading:          true,
-	}, tea.WithAltScreen(), tea.WithInput(os.Stdin), tea.WithOutput(stdout)).Run()
+	}, stdout)
+}
+
+var runInteractiveProgram = func(model interactiveModel, stdout io.Writer) error {
+	_, err := tea.NewProgram(model, tea.WithAltScreen(), tea.WithInput(os.Stdin), tea.WithOutput(stdout)).Run()
 	return err
 }
 
