@@ -210,6 +210,26 @@ func TestViewerModelsAggregateByModelOnly(t *testing.T) {
 	}
 }
 
+func TestViewerDimensionsExposeAllSummaryValues(t *testing.T) {
+	database, _ := newTestDB(t)
+	defer database.Close()
+	recordedAt := time.Date(2026, 4, 24, 12, 0, 0, 0, time.Local).UnixMilli()
+	insertCanonicalToken(t, database, recordedAt, "opencode", "ses_1", "openai", "gpt-5", 100, 10, 5, 20, 1, 136)
+	insertCanonicalToken(t, database, recordedAt+1000, "pi", "ses_2", "azure", "gpt-5", 200, 20, 6, 30, 2, 258)
+	insertCanonicalToken(t, database, recordedAt+2000, "codex", "ses_3", "anthropic", "gpt-5", 300, 30, 7, 40, 3, 380)
+
+	rows, err := ViewerModels(context.Background(), database, Filter{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 1 {
+		t.Fatalf("got %d rows, want 1: %+v", len(rows), rows)
+	}
+	if rows[0].Providers != "anthropic, azure, openai" || rows[0].Harnesses != "codex, opencode, pi" {
+		t.Fatalf("unexpected summary values: %+v", rows[0])
+	}
+}
+
 func TestViewerSessionsAggregateByCanonicalSessionOnly(t *testing.T) {
 	database, _ := newTestDB(t)
 	defer database.Close()

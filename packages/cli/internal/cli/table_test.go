@@ -522,6 +522,28 @@ func TestViewColumnWidthsStableAcrossVisibleRowWindows(t *testing.T) {
 	}
 }
 
+func TestVisibleRowsRespectMultilineRowBudget(t *testing.T) {
+	m := interactiveModel{
+		rows: []renderRow{
+			{model: "a", providers: "anthropic, azure, openai", harnesses: "codex", sessions: "1", inputTokens: "1", totalTokens: "1", totalValue: 1},
+			{model: "b", providers: "anthropic, azure, openai", harnesses: "pi", sessions: "1", inputTokens: "1", totalTokens: "1", totalValue: 1},
+		},
+		activeTab:    tabModels,
+		width:        80,
+		height:       8,
+		cachedWidth:  80,
+		perRowHeight: 1,
+	}
+
+	visibleRows := m.visibleRows()
+	if len(visibleRows) != 1 || visibleRows[0].model != "a" {
+		t.Fatalf("got visible rows %+v, want only first multiline row", visibleRows)
+	}
+	if maxOffset := m.maxScrollOffset(); maxOffset != 1 {
+		t.Fatalf("got max scroll offset %d, want 1", maxOffset)
+	}
+}
+
 func TestLoadingAndLoadedHeadersUseStableColumnWidths(t *testing.T) {
 	base := interactiveModel{
 		activeTab: tabModels,
@@ -538,7 +560,7 @@ func TestLoadingAndLoadedHeadersUseStableColumnWidths(t *testing.T) {
 	base.rows = []renderRow{{
 		model:       "gpt-5.5",
 		providers:   "openai, openai-codex",
-		harnesses:   "3 values",
+		harnesses:   "codex, opencode, pi",
 		sessions:    "132",
 		inputTokens: "19M",
 		totalTokens: "227M",

@@ -247,15 +247,75 @@ func (m interactiveModel) tableViewportWidth() int {
 }
 
 func (m interactiveModel) visibleRows() []renderRow {
-	visible := m.maxVisibleRows()
-	if visible <= 0 || len(m.rows) <= visible {
-		return m.rows
+	return m.visibleRowsFrom(m.scrollOffset)
+}
+
+func (m interactiveModel) visibleRowsFrom(offset int) []renderRow {
+	budget := m.maxVisibleRows()
+	if budget <= 0 || len(m.rows) == 0 {
+		return nil
 	}
-	end := m.scrollOffset + visible
-	if end > len(m.rows) {
-		end = len(m.rows)
+	if offset < 0 {
+		offset = 0
 	}
-	return m.rows[m.scrollOffset:end]
+	if offset >= len(m.rows) {
+		offset = len(m.rows) - 1
+	}
+
+	cols := columnsForModeAndTab(m.groupBy, m.activeTab)
+	used := 0
+	end := offset
+	for end < len(m.rows) {
+		rowHeight := renderRowLineCount(m.rows[end], cols)
+		if end > offset && used+rowHeight > budget {
+			break
+		}
+		used += rowHeight
+		end++
+	}
+	return m.rows[offset:end]
+}
+
+func (m interactiveModel) maxScrollOffset() int {
+	if len(m.rows) == 0 {
+		return 0
+	}
+	budget := m.maxVisibleRows()
+	if budget <= 0 {
+		return 0
+	}
+
+	cols := columnsForModeAndTab(m.groupBy, m.activeTab)
+	used := 0
+	offset := len(m.rows)
+	for offset > 0 {
+		rowHeight := renderRowLineCount(m.rows[offset-1], cols)
+		if used+rowHeight > budget && offset < len(m.rows) {
+			break
+		}
+		used += rowHeight
+		offset--
+	}
+	return offset
+}
+
+func (m interactiveModel) clampScrollOffset() interactiveModel {
+	maxOffset := m.maxScrollOffset()
+	if m.scrollOffset < 0 {
+		m.scrollOffset = 0
+	}
+	if m.scrollOffset > maxOffset {
+		m.scrollOffset = maxOffset
+	}
+	return m
+}
+
+func renderRowLineCount(row renderRow, cols []column) int {
+	formatted := formatRenderRows([]renderRow{row}, cols)
+	if len(formatted) == 0 {
+		return 1
+	}
+	return formattedRowHeight(formatted[0])
 }
 
 func (m interactiveModel) maxHorizontalOffset(rows []renderRow) int {
@@ -287,7 +347,7 @@ func (m interactiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.rows = msg.rows
 		m.lastSyncMs = msg.lastSyncMs
-		m.scrollOffset = clampScroll(m.scrollOffset, len(m.rows), m.maxVisibleRows())
+		m = m.clampScrollOffset()
 		m = m.clampHorizontalOffset()
 		return m, nil
 	case filterValuesMsg:
@@ -332,8 +392,8 @@ func (m interactiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m = m.clampHorizontalOffset()
 			return m, nil
 		case tea.KeyDown:
-			visible := m.maxVisibleRows()
-			m.scrollOffset = clampScroll(m.scrollOffset+1, len(m.rows), visible)
+			m.scrollOffset++
+			m = m.clampScrollOffset()
 			m = m.clampHorizontalOffset()
 			return m, nil
 		case tea.KeyRight:
@@ -383,8 +443,8 @@ func (m interactiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "h":
 				return m.openFilterValues(filterHarness)
 			case "j":
-				visible := m.maxVisibleRows()
-				m.scrollOffset = clampScroll(m.scrollOffset+1, len(m.rows), visible)
+				m.scrollOffset++
+				m = m.clampScrollOffset()
 				m = m.clampHorizontalOffset()
 				return m, nil
 			case "k":
@@ -402,7 +462,7 @@ func (m interactiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width = msg.Width
 		m.height = msg.Height
 		m = m.measureHeights()
-		m.scrollOffset = clampScroll(m.scrollOffset, len(m.rows), m.maxVisibleRows())
+		m = m.clampScrollOffset()
 		m = m.clampHorizontalOffset()
 		if m.loading && !m.reloadInFlight {
 			m.reloadInFlight = true
@@ -893,8 +953,9 @@ func (m interactiveModel) View() string {
 	}
 
 	hintText := "tab/shift+tab switch · ↑/↓ j/k scroll · ←/→ scroll · home/end horizontal · d date · g bucket · s sort · p/m/h filters · q quit"
-	if !m.loading && visible > 0 && len(m.rows) > visible {
-		end := m.scrollOffset + visible
+	visibleCount := len(visibleRows)
+	if !m.loading && visibleCount > 0 && len(m.rows) > visibleCount {
+		end := m.scrollOffset + visibleCount
 		if end > len(m.rows) {
 			end = len(m.rows)
 		}

@@ -438,12 +438,14 @@ func renderTableWithReferenceRowsAndSortWidth(rows []renderRow, referenceRows []
 		}
 	}
 	for _, values := range widthFormatted {
-		for i, value := range values {
-			if valueWidth := ansi.StringWidth(value); valueWidth > widths[i] {
-				widths[i] = valueWidth
-			}
-			if maxWidths[i] > 0 && widths[i] > maxWidths[i] {
-				widths[i] = maxWidths[i]
+		for i, cellLines := range values {
+			for _, value := range cellLines {
+				if valueWidth := ansi.StringWidth(value); valueWidth > widths[i] {
+					widths[i] = valueWidth
+				}
+				if maxWidths[i] > 0 && widths[i] > maxWidths[i] {
+					widths[i] = maxWidths[i]
+				}
 			}
 		}
 	}
@@ -459,17 +461,24 @@ func renderTableWithReferenceRowsAndSortWidth(rows []renderRow, referenceRows []
 	lines = append(lines, padStyledLine(headerStyle.Render(strings.Join(header, "  ")), minLineWidth, headerStyle))
 	lines = append(lines, padStyledLine(borderStyle.Render(strings.Join(separator, "  ")), minLineWidth, appSurfaceStyle))
 
+	dataLines := 0
 	for rowIndex, values := range formatted {
-		cells := make([]string, len(cols))
-		for i, value := range values {
-			cells[i] = renderCell(padCell(truncateCell(value, widths[i]), widths[i], cols[i].numeric), cols[i], rowIndex)
+		rowHeight := formattedRowHeight(values)
+		for lineIndex := 0; lineIndex < rowHeight; lineIndex++ {
+			cells := make([]string, len(cols))
+			for i, cellLines := range values {
+				value := cellLine(cellLines, lineIndex)
+				cells[i] = renderCell(padCell(truncateCell(value, widths[i]), widths[i], cols[i].numeric), cols[i], rowIndex)
+			}
+			lines = append(lines, padStyledLine(joinStyledCells(cells, rowIndex), minLineWidth, rowStyle(rowIndex)))
 		}
-		lines = append(lines, padStyledLine(joinStyledCells(cells, rowIndex), minLineWidth, rowStyle(rowIndex)))
+		dataLines += rowHeight
 	}
 	if len(formatted) == 0 {
 		lines = append(lines, padStyledLine(hintStyle.Render(emptyMessage), minLineWidth, hintStyle))
+		dataLines = 1
 	}
-	for dataLines := max(len(formatted), 1); dataLines < minDataRows; dataLines++ {
+	for ; dataLines < minDataRows; dataLines++ {
 		lines = append(lines, padStyledLine("", minLineWidth, appSurfaceStyle))
 	}
 	return strings.Join(lines, "\n") + "\n"
@@ -583,75 +592,126 @@ func cellStyleForColumn(col column) lipgloss.Style {
 	}
 }
 
-func formatRenderRows(rows []renderRow, cols []column) [][]string {
-	formatted := make([][]string, 0, len(rows))
+func formatRenderRows(rows []renderRow, cols []column) [][][]string {
+	formatted := make([][][]string, 0, len(rows))
 	for _, row := range rows {
-		values := make([]string, len(cols))
+		values := make([][]string, len(cols))
 		for i, c := range cols {
+			value := ""
 			switch c.field {
 			case "bucket":
-				values[i] = row.bucket
+				value = row.bucket
 			case "sessions":
-				values[i] = row.sessions
+				value = row.sessions
 			case "latest":
-				values[i] = row.latest
+				value = row.latest
 			case "harness":
-				values[i] = row.harness
+				value = row.harness
 			case "harnesses":
-				values[i] = row.harnesses
+				value = row.harnesses
 			case "day":
-				values[i] = row.day
+				value = row.day
 			case "hour":
-				values[i] = row.hour
+				value = row.hour
 			case "sessionID":
-				values[i] = displaySessionID(row.sessionID)
+				value = displaySessionID(row.sessionID)
 			case "thinkingLevels":
-				values[i] = row.thinkingLevels
+				value = row.thinkingLevels
 			case "provider":
-				values[i] = row.provider
+				value = row.provider
 			case "providers":
-				values[i] = row.providers
+				value = row.providers
 			case "model":
-				values[i] = displayModel(row.model)
+				value = displayModel(row.model)
 			case "models":
-				values[i] = row.models
+				value = row.models
 			case "tpsAvg":
-				values[i] = row.tpsAvg
+				value = row.tpsAvg
 			case "tpsMean":
-				values[i] = row.tpsMean
+				value = row.tpsMean
 			case "tpsMedian":
-				values[i] = row.tpsMedian
+				value = row.tpsMedian
 			case "inputTokens":
-				values[i] = row.inputTokens
+				value = row.inputTokens
 			case "outputTokens":
-				values[i] = row.outputTokens
+				value = row.outputTokens
 			case "reasoningTokens":
-				values[i] = row.reasoningTokens
+				value = row.reasoningTokens
 			case "cacheReadTokens":
-				values[i] = row.cacheReadTokens
+				value = row.cacheReadTokens
 			case "cacheWriteTokens":
-				values[i] = row.cacheWriteTokens
+				value = row.cacheWriteTokens
 			case "contextUsedTokens":
-				values[i] = row.contextUsedTokens
+				value = row.contextUsedTokens
 			case "totalTokens":
-				values[i] = row.totalTokens
+				value = row.totalTokens
 			case "requests":
-				values[i] = row.requests
+				value = row.requests
 			case "retries":
-				values[i] = row.retries
+				value = row.retries
 			case "toolName":
-				values[i] = row.toolName
+				value = row.toolName
 			case "toolCalls":
-				values[i] = row.toolCalls
+				value = row.toolCalls
 			case "toolErrors":
-				values[i] = row.toolErrors
-			default:
-				values[i] = ""
+				value = row.toolErrors
 			}
+			values[i] = formatCellLines(value, c)
 		}
 		formatted = append(formatted, values)
 	}
 	return formatted
+}
+
+func formatCellLines(value string, col column) []string {
+	if isListColumn(col) {
+		return splitSummaryValues(value)
+	}
+	return []string{value}
+}
+
+func splitSummaryValues(value string) []string {
+	if strings.TrimSpace(value) == "" {
+		return []string{""}
+	}
+	parts := strings.Split(value, ",")
+	lines := make([]string, 0, len(parts))
+	for _, part := range parts {
+		trimmed := strings.TrimSpace(part)
+		if trimmed != "" {
+			lines = append(lines, trimmed)
+		}
+	}
+	if len(lines) == 0 {
+		return []string{""}
+	}
+	return lines
+}
+
+func formattedRowHeight(values [][]string) int {
+	height := 1
+	for _, cellLines := range values {
+		if len(cellLines) > height {
+			height = len(cellLines)
+		}
+	}
+	return height
+}
+
+func cellLine(lines []string, index int) string {
+	if index < len(lines) {
+		return lines[index]
+	}
+	return ""
+}
+
+func isListColumn(col column) bool {
+	switch col.field {
+	case "models", "providers", "harnesses":
+		return true
+	default:
+		return false
+	}
 }
 
 func loadingReferenceRows(tab tabMode) []renderRow {

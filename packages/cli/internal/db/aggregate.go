@@ -130,7 +130,7 @@ func viewerBucketExpression(bucket TimeBucket) (string, error) {
 	}
 }
 
-func compactSummary(csv string) string {
+func summaryValues(csv string) string {
 	if strings.TrimSpace(csv) == "" {
 		return ""
 	}
@@ -142,10 +142,7 @@ func compactSummary(csv string) string {
 		}
 	}
 	values := sortedKeys(seen)
-	if len(values) <= 2 {
-		return strings.Join(values, ", ")
-	}
-	return fmt.Sprintf("%d values", len(values))
+	return strings.Join(values, ", ")
 }
 
 func canonicalGroupSelect(g GroupBy) string {
@@ -474,9 +471,9 @@ func viewerDimensions(ctx context.Context, db *sql.DB, f Filter, primaryColumn s
 		case ColHarness:
 			row.Harness = primaryValue
 		}
-		row.Providers = compactSummary(providers)
-		row.Models = compactSummary(models)
-		row.Harnesses = compactSummary(harnesses)
+		row.Providers = summaryValues(providers)
+		row.Models = summaryValues(models)
+		row.Harnesses = summaryValues(harnesses)
 		result = append(result, row)
 	}
 	if err := rows.Err(); err != nil {
@@ -556,9 +553,9 @@ func ViewerSessions(ctx context.Context, db *sql.DB, f Filter) ([]ViewerSessionR
 		); err != nil {
 			return nil, err
 		}
-		row.Harness = compactSummary(harnesses)
-		row.Providers = compactSummary(providers)
-		row.Models = compactSummary(models)
+		row.Harness = summaryValues(harnesses)
+		row.Providers = summaryValues(providers)
+		row.Models = summaryValues(models)
 		result = append(result, row)
 	}
 	if err := rows.Err(); err != nil {
