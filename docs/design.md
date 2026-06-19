@@ -258,14 +258,19 @@ The active viewer surface uses token aggregation tabs:
 | `providers` | provider |
 | `harnesses` | harness |
 | `sessions` | canonical session |
+| `context` | harness, provider, and model |
 
 The token tabs use short cache labels, `cache R` and `cache W`. The sessions tab also exposes a derived `ctx used` column: the maximum prompt-side context load in the group, computed per token fact as input plus cache read plus cache write tokens. It excludes output and reasoning tokens so future context-window percentages can divide by a separate denominator.
+
+The `context` tab compares Session Peak Context Load across harness/provider/model combinations. For each row, the viewer first computes one in-range session peak per canonical session and harness/provider/model combination, then summarizes those peaks as `sessions`, `avg ctx`, `median ctx`, and `max ctx`. Even-count medians average the two middle session peaks and render as integer token counts. The tab uses countable canonical token rows only, includes canonical `unknown` and `maybe-anthropic` values, applies Date Range Filters and Dimension Filters before aggregation, and requires no schema changes.
 
 Date Range Filters choose which canonical facts are included. Supported presets are today, yesterday, this week, this month, this year, and all time; the default is this month. The `tokens` tab additionally uses a Time Bucket of day, week, month, or year, with day as the default and Monday-start local weeks.
 
 Dimension Filters choose included provider, model, and harness values. Session filtering may be provided as a startup filter, but interactive session search/filtering is not part of the active viewer surface.
 
 Interactive shortcuts use `d` for Date Range Filter, `g` for Time Bucket, `s` for sorting, and `p`, `m`, and `h` for provider, model, and harness filters. Horizontal scrolling uses left/right arrows and home/end; `h` is reserved for the harness filter.
+
+The `context` tab sorts by `avg ctx` descending by default and supports sorting by `avg ctx`, `median ctx`, `max ctx`, `sessions`, `harness`, `provider`, and `model`.
 
 Viewer tables are viewport-aware. They use consistent column width rules across Aggregation Tabs, stack multiple model, provider, or harness summary values vertically within a row, truncate long display values, and fall back to horizontal scrolling only when minimum readable widths cannot fit.
 

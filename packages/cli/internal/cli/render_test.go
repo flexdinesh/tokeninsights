@@ -92,6 +92,24 @@ func TestRenderTableSessionsIncludesContextUsed(t *testing.T) {
 	}
 }
 
+func TestRenderTableContextIncludesContextStats(t *testing.T) {
+	output := ansi.Strip(renderTable([]renderRow{{
+		harness:                  "codex",
+		provider:                 "openai",
+		model:                    "gpt-5",
+		sessions:                 "2",
+		averageContextUsedTokens: "143",
+		medianContextUsedTokens:  "143",
+		maxContextUsedTokens:     "232",
+	}}, groupByNone, tabContext))
+
+	for _, expected := range []string{"harness", "provider", "model", "sessions", "avg ctx", "median ctx", "max ctx", "codex", "openai", "gpt-5", "232"} {
+		if !strings.Contains(output, expected) {
+			t.Fatalf("output missing %q:\n%s", expected, output)
+		}
+	}
+}
+
 func TestRenderTableSessionSummariesStackValues(t *testing.T) {
 	output := ansi.Strip(renderTable([]renderRow{{
 		latest:            "2026-04-24 12:00",
