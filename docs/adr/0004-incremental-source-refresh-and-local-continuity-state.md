@@ -1,0 +1,13 @@
+# Incremental source refresh uses local-only continuity state
+
+TokenInsights will treat source refresh optimization as best-effort over the existing sync-first pipeline. Correctness still comes from Durable Source parsing, stable raw fact dedupe, canonical semantic keys, diagnostics, and rebuild/reset paths.
+
+The design separates Syncable Analytics Data from Local-only Continuity Metadata. Raw and canonical usage facts remain metadata-only under the analytics privacy contract, and future cloud export should be canonical-first by default. Source cursors, boundary fingerprints, parser provenance, and other continuity hints are local operational state only; they must not feed viewer tables or future cloud export.
+
+The first implementation uses a simpler Recent Source Refresh phase: skip file-based Durable Sources whose local modification metadata is older than a conservative freshness window before the last successful source refresh, initially 48 hours. Sources inside the window are fully parsed and raw fact dedupe handles repeats. OpenCode SQLite plus Pi, Codex, and Claude Code JSONL sources participate through metadata-safe source keys, parser/collector provenance, file modification time, and file size. This avoids relying on source event timestamps, local calendar dates, or parser-specific byte cursors for the initial performance win.
+
+Adapters own deeper incremental parsing decisions because continuity rules are source-specific. If needed after Recent Source Refresh and the normalization work queue, JSONL adapters can use byte offsets, file size, mtime, and boundary hashes, while OpenCode SQLite can use source-native row ordering such as `(time_created, id)`. If a cursor is absent, stale, unverifiable, or invalidated by parser provenance, the adapter falls back to a full parse. Source refresh state advancement is persisted only after source ingest commits.
+
+Normalization uses a durable work queue rather than repeatedly scanning all raw facts by default. Sync enqueues newly inserted raw facts even when `--no-normalize` is used. Ordinary `normalize` processes pending work, while rebuild paths such as `reset-canonical` mark existing raw facts dirty and reuse the same mechanism. `sync --full-refresh` ignores source refresh state for the requested harness scope without requeueing all existing raw facts, while `reset-canonical` preserves source refresh state and `reset-all` clears it.
+
+This keeps ordinary `tokeninsights view` startup cheap when sources are unchanged, without making incremental state a correctness dependency or weakening the analytics privacy boundary.

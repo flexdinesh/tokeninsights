@@ -27,7 +27,9 @@ go install github.com/flexdinesh/tokeninsights/packages/cli/cmd/tokeninsights@de
 
 ### Sync Data
 
-Read harness artifacts and normalize data from supported harnesses. `tokeninsights view` syncs all supported harnesses implicitly by default, so use explicit sync when you want targeted harness refreshes, dry runs, or custom source directories.
+Read harness artifacts and normalize data from supported harnesses. `tokeninsights view` syncs all supported harnesses implicitly by default, so use explicit sync when you want targeted harness refreshes, dry runs, full refreshes, or custom source directories.
+
+OpenCode SQLite plus Pi, Codex, and Claude Code JSONL sync use Recent Source Refresh: after a successful refresh, old unchanged sources can be skipped on later syncs while recent or changed sources are still parsed. The freshness window is 48 hours before the last successful source refresh. `sync --dry-run` previews those skips without writing to the database, and `sync --full-refresh` ignores source refresh state for the requested harness scope without requeueing all existing raw facts.
 
 ```sh
 # sync all supported harnesses
@@ -37,10 +39,13 @@ tokeninsights sync --all
 tokeninsights sync --harness pi
 
 # other sync options
-## discover and parse files without writing to the database
+## preview refresh work without writing to the database
 tokeninsights sync --all --dry-run
 
-## skip automatic canonical normalization after ingestion
+## ignore source refresh state and parse discovered sources
+tokeninsights sync --all --full-refresh
+
+## skip automatic canonical normalization after ingestion; pending work is saved for a later normalize
 tokeninsights sync --all --no-normalize
 
 ## override default harness source directory
@@ -49,7 +54,7 @@ tokeninsights sync --all --source-dir /path/to/custom/fixtures
 
 ### Open TUI View
 
-Launch the interactive terminal user interface (TUI) to view the token dashboard. By default, `view` opens into a sync progress screen, refreshes all supported Durable Sources, normalizes the results, then renders the dashboard. You can pre-filter the displayed data or set time buckets.
+Launch the interactive terminal user interface (TUI) to view the token dashboard. By default, `view` opens into a sync progress screen, refreshes all supported Durable Sources, processes pending normalization work, then renders the dashboard. You can pre-filter the displayed data or set time buckets.
 The token views use short cache labels (`cache R`, `cache W`), and the sessions view includes a derived `ctx used` column that shows the peak prompt-side token load without counting assistant output or reasoning tokens.
 The context view groups by harness, provider, and model, then summarizes Session Peak Context Load across sessions with `avg ctx`, `median ctx`, and `max ctx`.
 Rows with multiple summary values stack them vertically instead of collapsing them to a count.
@@ -90,13 +95,13 @@ Rebuild canonical facts and diagnostic records from already-ingested raw facts. 
 # Normalize all harnesses
 tokeninsights normalize
 
-# Dry-run normalization to preview canonical changes
+# Dry-run normalization to preview pending canonical work
 tokeninsights normalize --dry-run
 ```
 
 #### Purge Canonical Tables
 
-Purge normalized canonical facts and diagnostics without deleting raw ingested facts.
+Purge normalized canonical facts and diagnostics without deleting raw ingested facts, observations, or source refresh state. Existing raw token facts are requeued so `tokeninsights normalize` can rebuild canonical data.
 
 ```sh
 tokeninsights reset-canonical --confirm
@@ -104,7 +109,7 @@ tokeninsights reset-canonical --confirm
 
 #### Reset Local Database
 
-Completely wipe and recreate the local SQLite database and its sidecars to start fresh.
+Completely wipe and recreate the local SQLite database and its sidecars to start fresh. This clears raw facts, canonical facts, pending normalization work, and source refresh state.
 
 ```sh
 tokeninsights reset-all --confirm

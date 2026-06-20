@@ -72,6 +72,38 @@ CREATE TABLE IF NOT EXISTS raw_observations (
 CREATE INDEX IF NOT EXISTS raw_observations_run_idx ON raw_observations (ingest_run_id);
 CREATE INDEX IF NOT EXISTS raw_observations_fact_idx ON raw_observations (raw_fact_id);
 
+CREATE TABLE IF NOT EXISTS normalization_work_queue (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  raw_fact_id INTEGER NOT NULL,
+  domain TEXT NOT NULL CHECK (domain IN ('token_usage')),
+  enqueued_at_ms INTEGER NOT NULL,
+  FOREIGN KEY (raw_fact_id) REFERENCES raw_token_usage(id) ON DELETE CASCADE,
+  UNIQUE (raw_fact_id, domain)
+);
+
+CREATE INDEX IF NOT EXISTS normalization_work_queue_domain_idx ON normalization_work_queue (domain, id);
+CREATE INDEX IF NOT EXISTS normalization_work_queue_raw_fact_idx ON normalization_work_queue (raw_fact_id);
+
+CREATE TABLE IF NOT EXISTS source_refresh_state (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  harness TEXT NOT NULL CHECK (harness IN ('opencode', 'pi', 'codex', 'claude-code')),
+  source_kind TEXT NOT NULL,
+  source_state_key TEXT NOT NULL,
+  collector TEXT NOT NULL,
+  parser TEXT NOT NULL,
+  last_successful_refresh_at_ms INTEGER NOT NULL,
+  source_mtime_ms INTEGER NOT NULL,
+  source_size_bytes INTEGER NOT NULL,
+  updated_at_ms INTEGER NOT NULL,
+  UNIQUE (harness, source_kind, source_state_key),
+  CHECK (last_successful_refresh_at_ms >= 0),
+  CHECK (source_mtime_ms >= 0),
+  CHECK (source_size_bytes >= 0),
+  CHECK (updated_at_ms >= last_successful_refresh_at_ms)
+);
+
+CREATE INDEX IF NOT EXISTS source_refresh_state_harness_source_idx ON source_refresh_state (harness, source_kind, source_state_key);
+
 CREATE TABLE IF NOT EXISTS canonical_sessions (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   semantic_key TEXT NOT NULL UNIQUE,
@@ -151,4 +183,4 @@ CREATE TABLE IF NOT EXISTS normalization_diagnostics (
 CREATE INDEX IF NOT EXISTS normalization_diagnostics_harness_time_idx ON normalization_diagnostics (harness, recorded_at_ms);
 CREATE INDEX IF NOT EXISTS normalization_diagnostics_code_idx ON normalization_diagnostics (code);
 
-PRAGMA user_version = 5;
+PRAGMA user_version = 7;

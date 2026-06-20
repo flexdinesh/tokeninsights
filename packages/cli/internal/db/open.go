@@ -9,12 +9,15 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"time"
 )
 
 //go:embed schema/schema.sql
 var schemaFS embed.FS
 
 const embeddedSchemaPath = "schema/schema.sql"
+
+const DomainTokenUsage = "token_usage"
 
 func Open(dbPath string) (*sql.DB, error) {
 	return openExisting(dbPath, true)
@@ -91,6 +94,16 @@ func ResetAll(dbPath string) error {
 }
 
 func ResetCanonical(ctx context.Context, db *sql.DB) error {
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_ = tx.Rollback()
+		}
+	}()
 	statements := []string{
 		"DELETE FROM " + TableNormalizationDiagnostics,
 		"DELETE FROM " + TableCanonicalTokenUsage,
@@ -98,10 +111,22 @@ func ResetCanonical(ctx context.Context, db *sql.DB) error {
 		"DELETE FROM " + TableCanonicalSessions,
 	}
 	for _, statement := range statements {
-		if _, err := db.ExecContext(ctx, statement); err != nil {
+		if _, err := tx.ExecContext(ctx, statement); err != nil {
 			return err
 		}
 	}
+	if _, err := tx.ExecContext(ctx, `
+		INSERT OR IGNORE INTO normalization_work_queue (
+			raw_fact_id, domain, enqueued_at_ms
+		)
+		SELECT id, ?, ? FROM raw_token_usage
+	`, DomainTokenUsage, time.Now().UnixMilli()); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	committed = true
 	return nil
 }
 

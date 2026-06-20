@@ -11,6 +11,7 @@ import (
 )
 
 type rawTokenRow struct {
+	WorkID           sql.NullInt64
 	ID               int64
 	RawFactKey       string
 	Harness          Harness
@@ -62,7 +63,7 @@ func Normalize(ctx context.Context, options NormalizeOptions) (Summary, error) {
 			return summary, err
 		}
 		defer database.Close()
-		rows, err := loadRawTokenRows(ctx, database, options.Harnesses)
+		rows, err := loadPendingTokenRows(ctx, database, options.Harnesses)
 		if err != nil {
 			return summary, err
 		}
@@ -82,7 +83,7 @@ func Normalize(ctx context.Context, options NormalizeOptions) (Summary, error) {
 	}
 	defer database.Close()
 
-	rows, err := loadRawTokenRows(ctx, database, options.Harnesses)
+	rows, err := loadPendingTokenRows(ctx, database, options.Harnesses)
 	if err != nil {
 		return summary, err
 	}
@@ -101,6 +102,9 @@ func Normalize(ctx context.Context, options NormalizeOptions) (Summary, error) {
 		if err != nil {
 			return summary, err
 		}
+		if err := completeNormalizationWork(ctx, tx, row); err != nil {
+			return summary, err
+		}
 		summary.Canonical += count
 		summary.Diagnostics += diagnostic
 	}
@@ -111,20 +115,22 @@ func Normalize(ctx context.Context, options NormalizeOptions) (Summary, error) {
 	return summary, nil
 }
 
-func loadRawTokenRows(ctx context.Context, database *sql.DB, harnesses []Harness) ([]rawTokenRow, error) {
+func loadPendingTokenRows(ctx context.Context, database *sql.DB, harnesses []Harness) ([]rawTokenRow, error) {
 	var args []interface{}
-	where := ""
+	where := "WHERE q.domain = ?"
+	args = append(args, db.DomainTokenUsage)
 	if len(harnesses) > 0 {
 		parts := make([]string, len(harnesses))
 		for i, harness := range harnesses {
 			parts[i] = "?"
 			args = append(args, harness)
 		}
-		where = "WHERE r.harness IN (" + strings.Join(parts, ",") + ")"
+		where += " AND r.harness IN (" + strings.Join(parts, ",") + ")"
 	}
 
 	query := `
 		SELECT
+			q.id,
 			r.id, r.raw_fact_key, r.harness, r.source_id, r.observed_at_ms, r.occurred_at_ms,
 			r.session_id, r.message_id, r.provider, r.model, r.usage_scope, r.quality,
 			r.input_tokens, r.output_tokens, r.reasoning_tokens, r.cache_read_tokens, r.cache_write_tokens, r.total_tokens,
@@ -135,9 +141,10 @@ func loadRawTokenRows(ctx context.Context, database *sql.DB, harnesses []Harness
 				ORDER BY ro.id DESC
 				LIMIT 1
 			) AS ingest_run_id
-		FROM raw_token_usage r
+		FROM normalization_work_queue q
+		JOIN raw_token_usage r ON r.id = q.raw_fact_id
 		` + where + `
-		ORDER BY r.id
+		ORDER BY q.id
 	`
 	rows, err := database.QueryContext(ctx, query, args...)
 	if err != nil {
@@ -150,6 +157,7 @@ func loadRawTokenRows(ctx context.Context, database *sql.DB, harnesses []Harness
 		var row rawTokenRow
 		var harness string
 		if err := rows.Scan(
+			&row.WorkID,
 			&row.ID,
 			&row.RawFactKey,
 			&harness,
@@ -176,6 +184,17 @@ func loadRawTokenRows(ctx context.Context, database *sql.DB, harnesses []Harness
 		result = append(result, row)
 	}
 	return result, rows.Err()
+}
+
+func completeNormalizationWork(ctx context.Context, runner sqlRunner, row rawTokenRow) error {
+	if !row.WorkID.Valid {
+		return nil
+	}
+	_, err := runner.ExecContext(ctx, `
+		DELETE FROM normalization_work_queue
+		WHERE id = ?
+	`, row.WorkID.Int64)
+	return err
 }
 
 func normalizeRawTokenRow(ctx context.Context, runner sqlRunner, row rawTokenRow, options NormalizeOptions) (int, int, error) {

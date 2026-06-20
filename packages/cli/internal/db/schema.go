@@ -4,6 +4,8 @@ const (
 	TableIngestRuns               = "ingest_runs"
 	TableRawTokenUsage            = "raw_token_usage"
 	TableRawObservations          = "raw_observations"
+	TableNormalizationWorkQueue   = "normalization_work_queue"
+	TableSourceRefreshState       = "source_refresh_state"
 	TableCanonicalSessions        = "canonical_sessions"
 	TableCanonicalMessages        = "canonical_messages"
 	TableCanonicalTokenUsage      = "canonical_token_usage"
@@ -45,6 +47,13 @@ const (
 	ColMetadataJSON     = "metadata_json"
 	ColIngestRunID      = "ingest_run_id"
 	ColRawFactID        = "raw_fact_id"
+	ColDomain           = "domain"
+	ColEnqueuedAtMs     = "enqueued_at_ms"
+	ColSourceStateKey   = "source_state_key"
+	ColLastRefreshAtMs  = "last_successful_refresh_at_ms"
+	ColSourceMtimeMs    = "source_mtime_ms"
+	ColSourceSizeBytes  = "source_size_bytes"
+	ColUpdatedAtMs      = "updated_at_ms"
 	ColObservationKey   = "observation_key"
 	ColSemanticKey      = "semantic_key"
 	ColFirstSeenAtMs    = "first_seen_at_ms"
@@ -59,4 +68,4 @@ const (
 	ColMessage          = "message"
 )
 
-const SupportedSchemaVersion = 5
+const SupportedSchemaVersion = 7

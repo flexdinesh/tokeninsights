@@ -49,6 +49,7 @@ func runSync(ctx context.Context, args []string, stdout io.Writer, stderr io.Wri
 	var dbPath string
 	var all bool
 	var dryRun bool
+	var fullRefresh bool
 	var noNormalize bool
 	var sourceDir string
 	var harnesses stringList
@@ -56,6 +57,7 @@ func runSync(ctx context.Context, args []string, stdout io.Writer, stderr io.Wri
 	flags.Var(&harnesses, "harness", "harness to sync: opencode, pi, codex, or claude-code")
 	flags.BoolVar(&all, "all", false, "sync all supported harnesses")
 	flags.BoolVar(&dryRun, "dry-run", false, "discover and parse without writing")
+	flags.BoolVar(&fullRefresh, "full-refresh", false, "ignore source refresh state and parse discovered sources")
 	flags.BoolVar(&noNormalize, "no-normalize", false, "skip canonical normalization after raw ingest")
 	flags.StringVar(&sourceDir, "source-dir", "", "override harness source directory")
 	if err := flags.Parse(args); err != nil {
@@ -69,12 +71,13 @@ func runSync(ctx context.Context, args []string, stdout io.Writer, stderr io.Wri
 		return err
 	}
 	summary, err := pipeline.Sync(ctx, pipeline.SyncOptions{
-		DBPath:    strings.TrimSpace(dbPath),
-		Harnesses: selectedHarnesses,
-		DryRun:    dryRun,
-		Normalize: !noNormalize,
-		SourceDir: strings.TrimSpace(sourceDir),
-		Now:       now,
+		DBPath:      strings.TrimSpace(dbPath),
+		Harnesses:   selectedHarnesses,
+		DryRun:      dryRun,
+		FullRefresh: fullRefresh,
+		Normalize:   !noNormalize,
+		SourceDir:   strings.TrimSpace(sourceDir),
+		Now:         now,
 	})
 	printSummary(stdout, "sync", summary, dryRun)
 	if err != nil {

@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"os"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -68,7 +69,18 @@ func Sync(ctx context.Context, options SyncOptions) (Summary, error) {
 		summary.Synced++
 	}
 
+	shouldNormalize := false
 	if options.Normalize && summary.Observations > 0 {
+		shouldNormalize = true
+	} else if options.Normalize {
+		hasPendingWork, err := hasPendingNormalizationWork(ctx, database, options.Harnesses)
+		if err != nil {
+			summary.Errors = append(summary.Errors, err)
+		}
+		shouldNormalize = hasPendingWork
+	}
+
+	if shouldNormalize {
 		reportSyncProgress(options, SyncProgressEvent{Status: SyncProgressNormalizing})
 		normalSummary, err := Normalize(ctx, NormalizeOptions{
 			DBPath:    options.DBPath,
@@ -84,9 +96,36 @@ func Sync(ctx context.Context, options SyncOptions) (Summary, error) {
 	return summary, errors.Join(summary.Errors...)
 }
 
+func hasPendingNormalizationWork(ctx context.Context, database *sql.DB, harnesses []Harness) (bool, error) {
+	query := `
+		SELECT COUNT(*)
+		FROM normalization_work_queue q
+		JOIN raw_token_usage r ON r.id = q.raw_fact_id
+		WHERE q.domain = ?
+	`
+	args := []interface{}{db.DomainTokenUsage}
+	if len(harnesses) > 0 {
+		placeholders := make([]string, 0, len(harnesses))
+		for _, harness := range harnesses {
+			placeholders = append(placeholders, "?")
+			args = append(args, harness)
+		}
+		query += " AND r.harness IN (" + strings.Join(placeholders, ", ") + ")"
+	}
+	var count int
+	if err := database.QueryRowContext(ctx, query, args...).Scan(&count); err != nil {
+		return false, err
+	}
+	return count > 0, nil
+}
+
 func dryRunSync(ctx context.Context, options SyncOptions) (Summary, error) {
 	var summary Summary
 	summary.RequestedHarnesses = len(options.Harnesses)
+	stateDB := openDryRunSourceRefreshDB(options.DBPath)
+	if stateDB != nil {
+		defer stateDB.Close()
+	}
 	for _, harness := range options.Harnesses {
 		adapter, ok := AdapterFor(harness)
 		if !ok {
@@ -104,19 +143,53 @@ func dryRunSync(ctx context.Context, options SyncOptions) (Summary, error) {
 			summary.Skipped++
 			continue
 		}
-		summary.Synced++
+		parsedSources := 0
+		harnessFailed := false
 		for _, source := range sources {
+			if dryRunSourceIsUpToDate(ctx, stateDB, source, options) {
+				continue
+			}
 			facts, diagnostics, err := adapter.Parse(ctx, source, options)
 			if err != nil {
+				harnessFailed = true
 				summary.Failed++
 				summary.Errors = append(summary.Errors, fmt.Errorf("%s parse: %w", harness, err))
 				continue
 			}
+			parsedSources++
 			summary.RawFacts += len(facts)
 			summary.Diagnostics += len(diagnostics)
 		}
+		if parsedSources > 0 {
+			summary.Synced++
+		} else if !harnessFailed {
+			summary.Skipped++
+		}
 	}
 	return summary, errors.Join(summary.Errors...)
+}
+
+func openDryRunSourceRefreshDB(dbPath string) *sql.DB {
+	if _, err := os.Stat(dbPath); err != nil {
+		return nil
+	}
+	database, err := db.Open(dbPath)
+	if err != nil {
+		return nil
+	}
+	return database
+}
+
+func dryRunSourceIsUpToDate(ctx context.Context, database *sql.DB, source Source, options SyncOptions) bool {
+	if database == nil {
+		return false
+	}
+	metadata, ok := sourceRefreshMetadataFor(source)
+	if !ok {
+		return false
+	}
+	skip, err := shouldSkipSourceRefresh(ctx, database, source, options, metadata, ok)
+	return err == nil && skip
 }
 
 func syncHarness(ctx context.Context, database *sql.DB, options SyncOptions, harness Harness) (Summary, error) {
@@ -170,6 +243,24 @@ func ingestSource(ctx context.Context, database *sql.DB, adapter Adapter, option
 	if err != nil {
 		return summary, err
 	}
+	refreshMetadata, hasRefreshMetadata := sourceRefreshMetadataFor(source)
+	skipSource, err := shouldSkipSourceRefresh(ctx, tx, source, options, refreshMetadata, hasRefreshMetadata)
+	if err != nil {
+		return summary, err
+	}
+	if skipSource {
+		if err := upsertSourceRefreshState(ctx, tx, source, options, refreshMetadata, hasRefreshMetadata); err != nil {
+			return summary, err
+		}
+		if err := completeIngestRun(ctx, tx, runDBID, "completed", "", Summary{}, syncNowMs(options.Now)); err != nil {
+			return summary, err
+		}
+		if err := tx.Commit(); err != nil {
+			return summary, err
+		}
+		committed = true
+		return summary, nil
+	}
 	if err := createSourceWriteSavepoint(ctx, tx); err != nil {
 		return summary, err
 	}
@@ -203,6 +294,9 @@ func ingestSource(ctx context.Context, database *sql.DB, adapter Adapter, option
 		return summary, err
 	}
 	if err := releaseSourceWriteSavepoint(ctx, tx); err != nil {
+		return summary, err
+	}
+	if err := upsertSourceRefreshState(ctx, tx, source, options, refreshMetadata, hasRefreshMetadata); err != nil {
 		return summary, err
 	}
 	if err := completeIngestRun(ctx, tx, runDBID, "completed", "", sourceSummary, syncNowMs(options.Now)); err != nil {
@@ -264,6 +358,9 @@ func writeSourceIngest(ctx context.Context, runner sqlRunner, runDBID int64, fac
 		}
 		if inserted {
 			sourceSummary.RawFacts++
+			if err := enqueueNormalizationWork(ctx, runner, rawID, db.DomainTokenUsage, syncNowMs(options.Now)); err != nil {
+				return sourceSummary, err
+			}
 		}
 		observed, err := insertObservation(ctx, runner, runDBID, rawID, fact)
 		if err != nil {
@@ -284,6 +381,15 @@ func writeSourceIngest(ctx context.Context, runner sqlRunner, runDBID int64, fac
 		}
 	}
 	return sourceSummary, nil
+}
+
+func enqueueNormalizationWork(ctx context.Context, runner sqlRunner, rawID int64, domain string, enqueuedAtMs int64) error {
+	_, err := runner.ExecContext(ctx, `
+		INSERT OR IGNORE INTO normalization_work_queue (
+			raw_fact_id, domain, enqueued_at_ms
+		) VALUES (?, ?, ?)
+	`, rawID, domain, enqueuedAtMs)
+	return err
 }
 
 func createSourceWriteSavepoint(ctx context.Context, runner sqlRunner) error {
