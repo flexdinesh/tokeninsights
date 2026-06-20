@@ -54,20 +54,20 @@ Default storage is:
 TokenInsights V1 is a local Go CLI:
 
 - `sync` ingests durable local harness data into raw tables and normalizes by default.
-- `normalize` rebuilds canonical facts from existing raw facts.
+- `normalize` processes pending canonical work from existing raw facts.
 - `view` opens the interactive terminal UI and runs implicit all-harness sync by default before showing canonical data.
-- `reset-canonical` clears rebuildable canonical facts and diagnostics.
+- `reset-canonical` clears rebuildable canonical facts and diagnostics, then requeues raw token facts.
 - `reset-all` recreates the local database and SQLite sidecars.
 
 Realtime plugins and checkpoint plugins are future-compatible concepts, not active product code in this repository. The old direct-write OpenCode and Pi plugin packages are removed from the active workspace.
 
 ## Current Implementation Status
 
-The sync-first canonical path is the active product path. Schema V5, DB lifecycle checks, `sync`, `normalize`, reset commands, canonical token aggregation, and fixture-style pipeline conformance tests are implemented.
+The sync-first canonical path is the active product path. Schema V7, DB lifecycle checks, `sync`, OpenCode/Pi/Codex/Claude Code Recent Source Refresh, pending-work `normalize`, reset commands, canonical token aggregation, and fixture-style pipeline conformance tests are implemented.
 
 Known gaps are part of the current design contract:
 
-- normalization is idempotent, but it currently scans and upserts all matching raw token facts rather than tracking an incremental work queue;
+- Recent Source Refresh is implemented for OpenCode SQLite plus Pi, Codex, and Claude Code JSONL Durable Sources; true intra-source cursors are not implemented;
 - canonical token upserts are deterministic by semantic key, but there is not yet an explicit conflict/precedence model for competing raw facts;
 - diagnostics exist for parser warnings, missing canonical session identity, and some source-level suppressions such as duplicate or stale snapshots, but the full rejected/conflicting/suppressed diagnostic taxonomy is still future work;
 - the viewer is aligned to token aggregation tabs; future metric domains should stay hidden until durable canonical facts exist;
@@ -77,11 +77,15 @@ Known gaps are part of the current design contract:
 
 `packages/schema/schema.sql` is the single source of truth for SQLite table and column definitions. The Go CLI embeds a checked copy at `packages/cli/internal/db/schema/schema.sql`.
 
-Compatibility is gated by `PRAGMA user_version`. The current sync-first schema version is `5`.
+Compatibility is gated by `PRAGMA user_version`. The current sync-first schema version is `7`.
 
 Schema V4 adds the persisted `claude-code` harness value. Existing V3 databases reject that value physically through SQLite `CHECK` constraints, so users must run `reset-all --confirm` rather than relying on an in-place migration.
 
 Schema V5 adds canonical provider provenance through `canonical_token_usage.provider_source`. Existing V4 databases need `reset-all --confirm` because TokenInsights does not perform in-place SQLite migrations.
+
+Schema V6 adds `normalization_work_queue` for pending canonical-domain work. Existing V5 databases need `reset-all --confirm` because TokenInsights does not perform in-place SQLite migrations.
+
+Schema V7 adds `source_refresh_state` for Local-only Continuity Metadata used by Recent Source Refresh. Existing V6 databases need `reset-all --confirm` because TokenInsights does not perform in-place SQLite migrations.
 
 Cross-language/schema validation is handled by:
 
@@ -129,11 +133,42 @@ Important fields:
 
 Raw facts must not store prompt text, assistant text, tool arguments, tool output, request headers, secrets, raw provider payloads, or full source paths.
 
+Raw facts are Syncable Analytics Data, so they must remain metadata-only. Future cloud export should be canonical-first by default rather than exporting raw ingestion facts.
+
 ### `raw_observations`
 
 One row per ingest-run sighting of a raw fact.
 
 Repeated syncs of the same source should not duplicate `raw_token_usage`, but they may append new `raw_observations`.
+
+### Source Refresh State
+
+`source_refresh_state` is best-effort Local-only Continuity Metadata. It exists only to reduce repeated local Durable Source parsing and must not be used for viewer analytics or future cloud export.
+
+Current source state properties:
+
+- keyed by `harness`, `source_kind`, and an adapter-provided metadata-safe source state key;
+- records parser/collector provenance used to decide whether a cursor can be trusted;
+- stores last successful source refresh time, observed source file modification time, and observed source file size;
+- may later store cursor kind and cursor values such as JSONL byte offset, file size, mtime, boundary hashes, or OpenCode SQLite `(time_created, id)`;
+- avoids raw JSONL lines and full source paths unless a specific adapter cannot maintain continuity without them;
+- is cleared by `reset-all --confirm` and preserved by `reset-canonical --confirm`.
+
+If source continuity cannot be trusted, the pipeline must fall back to a full parse. Cursor availability must never be required for correctness.
+
+### Normalization Work Queue
+
+`normalization_work_queue` is Local-only Continuity Metadata for incremental normalization. Work is queued by `raw_fact_id` and canonical domain, initially `token_usage`. A work item means "attempt to normalize this raw fact for this domain." The result may be a canonical row or a normalization diagnostic.
+
+Work queue rules:
+
+- `sync --no-normalize` still enqueues work for newly inserted raw facts;
+- ordinary `normalize` processes pending work rather than scanning all raw facts;
+- `normalize --dry-run` reports pending work by default;
+- work is removed only in the same transaction that writes the canonical fact or diagnostic;
+- missing-session diagnostics complete their work item;
+- `reset-canonical --confirm` marks all existing raw facts dirty so canonical data and diagnostics can be rebuilt from raw facts;
+- `reset-all --confirm` clears the queue with the rest of the database.
 
 ### `canonical_sessions`
 
@@ -185,14 +220,45 @@ Diagnostics must not contain private source content or full paths.
 3. Creates one `ingest_runs` row per source attempt.
 4. Parses candidate raw token facts and parser diagnostics.
 5. Inserts deduplicated `raw_token_usage` rows.
-6. Inserts `raw_observations` for this run.
-7. Records diagnostics.
-8. Marks ingest runs as `completed` or `failed`.
-9. Runs normalization unless `--no-normalize` or `--dry-run` is set.
+6. Enqueues `token_usage` normalization work for newly inserted raw facts.
+7. Inserts `raw_observations` for this run.
+8. Records diagnostics.
+9. Marks ingest runs as `completed` or `failed`.
+10. Runs normalization unless `--no-normalize` or `--dry-run` is set.
 
 Each source ingest is transactional. If a raw fact, observation, or diagnostic write fails after the run is created, raw writes for that source are rolled back and the ingest run is committed as failed with no partial raw fact or observation rows.
 
-`sync --dry-run` discovers and parses sources, reports counts, and writes nothing.
+`sync --dry-run` discovers sources, uses existing source refresh state to preview old unchanged source skips when available, parses sources that would be refreshed, reports counts, and writes nothing.
+
+`sync --full-refresh` ignores source refresh state for the requested harness scope and full-parses discovered sources using the existing parser behavior. Successful source ingest updates source refresh state after commit. Full refresh does not requeue all existing raw facts for canonical rebuild by default; only newly inserted raw facts enqueue pending normalization work.
+
+Source refresh optimization preserves the same correctness behavior while reducing repeated work in phases:
+
+- Phase 1, Recent Source Refresh: skip file-based Durable Sources whose local modification metadata is older than a conservative freshness window before the last successful source refresh, and fully parse sources inside that window;
+- Phase 2, incremental normalization: process only pending normalization work instead of scanning all raw facts;
+- Phase 3, true intra-source cursors: add JSONL byte-offset cursors and OpenCode SQLite row cursors only if Phase 1 and Phase 2 do not make implicit view sync cheap enough.
+
+Phase 1 rules:
+
+- freshness checks use monotonic source metadata such as file modification time, not source event timestamps or local calendar dates;
+- the cutoff should be conservative, initially `last_successful_source_refresh_at_ms - 48h`;
+- sources older than the cutoff may be skipped as up to date;
+- sources at or after the cutoff are parsed from the beginning using existing parser behavior;
+- raw fact dedupe remains the correctness guard for repeated parsing inside the freshness window.
+- OpenCode SQLite plus Pi, Codex, and Claude Code JSONL sources participate in Recent Source Refresh. After a successful source refresh, TokenInsights records metadata-safe source state. Later syncs skip unchanged files older than the 48-hour cutoff, fully parse recent files, and fully parse files whose modification metadata changed.
+- A skipped up-to-date source still creates a completed lightweight ingest run with zero raw facts and zero observations.
+
+Phase 3 rules, if needed:
+
+- adapters decide whether a source can be parsed incrementally;
+- the pipeline persists adapter-returned cursor advancement metadata only after source ingest commits;
+- JSONL adapters should use byte offsets plus file size, mtime, and boundary hashes, falling back to full parse when a file shrinks, rewrites, or cannot be verified;
+- OpenCode SQLite should use source-native row ordering, initially `(time_created, id)` from the `message` table, rather than SQLite file offsets;
+- an incremental run writes observations only for facts actually parsed in that run;
+- an up-to-date source creates a completed lightweight ingest run with zero raw facts and zero observations;
+- cursor invalidation and full-parse fallback should be local-only operational information, not viewer analytics;
+- `sync --dry-run` should use cursor state to preview real sync behavior without writing cursor updates;
+- `sync --full-refresh` ignores cursor or source refresh state for the requested harness scope without requeueing all existing raw facts for canonical rebuild.
 
 `sync --all` attempts all requested harnesses. Successful harness scopes should still normalize when one harness fails, and the command exits non-zero if any requested harness fails.
 
@@ -206,13 +272,20 @@ All harness adapters implement the same interface:
 - discover durable local sources;
 - parse a source into raw token facts and diagnostics.
 
-OpenCode sync parses modern durable SQLite databases named `opencode.db` or `opencode-<channel>.db` from `${XDG_DATA_HOME:-~/.local/share}/opencode`. It reads assistant rows from the `message` table, parses metadata-only token fields from `message.data`, uses message/session IDs when available, and suppresses copied fork or channel rows with deterministic non-private fingerprints.
+The future source-refresh adapter contract should additionally let adapters:
 
-Pi sync parses durable JSONL session files under `~/.pi/agent/sessions`, including one nested project directory level. It uses assistant message usage as exact message-scoped token facts. Session identity comes from the session header when available and may fall back to the filename session suffix.
+- receive prior Local-only Continuity Metadata when present;
+- choose skip, full parse, incremental parse, or up-to-date result;
+- return source refresh state advancement metadata that is safe to persist only after successful source ingest;
+- invalidate stale source refresh state when parser provenance or source continuity checks fail.
 
-Codex sync parses rollout JSONL session files under `${CODEX_HOME:-~/.codex}/sessions`. It uses `event_msg` records with `payload.type == "token_count"` as exact message-scoped token facts. Codex token parsing is stateful per file: `session_meta` provides session/provider state, `turn_context` or `task_started` provides turn/model state, `last_token_usage` provides countable token components, and `total_token_usage` is used only to suppress duplicate or stale cumulative snapshots.
+OpenCode sync parses modern durable SQLite databases named `opencode.db` or `opencode-<channel>.db` from `${XDG_DATA_HOME:-~/.local/share}/opencode`. It reads assistant rows from the `message` table, parses metadata-only token fields from `message.data`, uses message/session IDs when available, and suppresses copied fork or channel rows with deterministic non-private fingerprints. OpenCode SQLite sources participate in Recent Source Refresh using metadata-safe source keys, parser/collector provenance, database file modification time, and database file size; if state is missing, stale, or changed, OpenCode falls back to the existing full table parse. True OpenCode row cursors are not implemented.
 
-Claude Code sync parses JSONL transcript files under `${CLAUDE_CONFIG_DIR:-~/.claude}/projects`. Single-harness `--source-dir` scans the provided directory directly, and `sync --all --source-dir <root>` scans `<root>/claude-code`. It uses assistant message `usage` metadata as derived message-scoped token facts, with the file stem as the fallback session identity and top-level `sessionId` as the parent session identity when present. This attributes sidechain/subagent usage to the user-visible parent session when Claude Code records that parent. Message identity uses `message.id` when present and falls back to the row `uuid`. Streaming duplicate assistant rows are merged within a source by `message.id + requestId`, or by `message.id` when no request ID is present, keeping the maximum token component values. Copied transcript facts are suppressed by logical dedupe keys that do not include full source paths. `cache_read_input_tokens` maps to cache read tokens, `cache_creation_input_tokens` maps to cache write tokens, and raw total tokens remain null unless the source provides a total. Claude Code explicit provider values are preserved with provider source `explicit`. When Claude Code artifacts omit provider metadata, canonical rows use provider `maybe-anthropic` with provider source `inferred`. Model values come from explicit model fields, and missing models canonicalize to `unknown`.
+Pi sync parses durable JSONL session files under `~/.pi/agent/sessions`, including one nested project directory level. It uses assistant message usage as exact message-scoped token facts. Session identity comes from the session header when available and may fall back to the filename session suffix. Pi JSONL sources participate in Recent Source Refresh using metadata-safe source keys, parser/collector provenance, file modification time, and file size; if state is missing, stale, or changed, Pi falls back to the existing full parse.
+
+Codex sync parses rollout JSONL session files under `${CODEX_HOME:-~/.codex}/sessions`. It uses `event_msg` records with `payload.type == "token_count"` as exact message-scoped token facts. Codex token parsing is stateful per file: `session_meta` provides session/provider state, `turn_context` or `task_started` provides turn/model state, `last_token_usage` provides countable token components, and `total_token_usage` is used only to suppress duplicate or stale cumulative snapshots. Codex JSONL sources participate in Recent Source Refresh using metadata-safe source keys, parser/collector provenance, file modification time, and file size; if state is missing, stale, or changed, Codex falls back to the existing full parse.
+
+Claude Code sync parses JSONL transcript files under `${CLAUDE_CONFIG_DIR:-~/.claude}/projects`. Single-harness `--source-dir` scans the provided directory directly, and `sync --all --source-dir <root>` scans `<root>/claude-code`. It uses assistant message `usage` metadata as derived message-scoped token facts, with the file stem as the fallback session identity and top-level `sessionId` as the parent session identity when present. This attributes sidechain/subagent usage to the user-visible parent session when Claude Code records that parent. Message identity uses `message.id` when present and falls back to the row `uuid`. Streaming duplicate assistant rows are merged within a source by `message.id + requestId`, or by `message.id` when no request ID is present, keeping the maximum token component values. Copied transcript facts are suppressed by logical dedupe keys that do not include full source paths. `cache_read_input_tokens` maps to cache read tokens, `cache_creation_input_tokens` maps to cache write tokens, and raw total tokens remain null unless the source provides a total. Claude Code explicit provider values are preserved with provider source `explicit`. When Claude Code artifacts omit provider metadata, canonical rows use provider `maybe-anthropic` with provider source `inferred`. Model values come from explicit model fields, and missing models canonicalize to `unknown`. Claude Code JSONL sources participate in Recent Source Refresh using metadata-safe source keys, parser/collector provenance, file modification time, and file size; if state is missing, stale, or changed, Claude Code falls back to the existing full parse.
 
 Harness-specific source parsing stays behind the adapter interface and feeds the same raw-to-canonical pipeline. Missing provider/model remains null in raw facts. Canonical provider provenance records whether a provider was explicit, inferred, or unknown. Cached input is represented as `cache_read_tokens` where the source exposes it; Codex cached input is subtracted from raw input tokens before canonical aggregation.
 
@@ -232,7 +305,9 @@ Uneven metric coverage is valid. An adapter should produce diagnostics for unava
 
 Normalization must be idempotent: repeated runs should converge on the same canonical identities and must not duplicate canonical facts or diagnostics.
 
-Current normalization is rebuild-capable but not work-queue incremental. It loads all matching raw token facts for the selected harness filter, upserts canonical rows by semantic key, and increments ingest-run canonical/diagnostic counters only for newly inserted canonical facts or diagnostics. Existing canonical rows may be updated deterministically when the same semantic key is seen again.
+Current normalization is work-queue incremental. It loads pending `token_usage` work for the selected harness filter, upserts canonical rows by semantic key, removes completed work in the same transaction, and increments ingest-run canonical/diagnostic counters only for newly inserted canonical facts or diagnostics. Existing canonical rows may be updated deterministically when the same semantic key is requeued by an explicit rebuild path.
+
+Incremental normalization changes the default work selection, not the canonical identity rules. Ordinary normalization processes only pending normalization work, while explicit rebuild paths mark raw facts dirty and then use the same work mechanism. Deterministic updates remain allowed for dirty raw facts.
 
 Explicit conflict precedence between competing raw facts is not implemented yet. Until that model exists, canonical identity is governed by semantic keys and deterministic upsert behavior.
 
@@ -243,6 +318,8 @@ Explicit conflict precedence between competing raw facts is not implemented yet.
 `tokeninsights view` is interactive-only. By default it opens the TUI into an Implicit View Sync progress state: the same all-harness refresh behavior as `sync --all`, including default normalization and create-if-missing DB lifecycle. After that optional write-before-read step, the TUI opens the database read-only and queries canonical tables only.
 
 `view --no-sync` skips raw ingest and normalization. It preserves read-only viewer behavior and rejects a missing or incompatible database instead of creating or modifying it.
+
+Implicit view sync normalizes pre-existing pending work even when sources are up to date, but skips normalization when no work is pending. `view --no-sync` remains read-only and must not process pending work.
 
 Viewer Dimension Filters remain display constraints. For example, `view --harness pi` refreshes all supported Durable Sources first, then filters the displayed canonical facts to Pi.
 
@@ -291,8 +368,8 @@ Cost tracking is not part of TokenInsights and must not appear in viewer columns
 - `db.Open` opens existing compatible DBs read-only for view.
 - `db.CreateIfMissing` creates missing DBs from the embedded schema for sync/normalize workflows and implicit view sync.
 - incompatible schema versions are rejected with a `reset-all --confirm` instruction.
-- `reset-canonical --confirm` deletes canonical token usage, messages, sessions, and normalization diagnostics while keeping raw facts and observations.
-- `reset-all --confirm` removes the DB plus `-wal` and `-shm`, then recreates from schema.
+- `reset-canonical --confirm` deletes canonical token usage, messages, sessions, and normalization diagnostics while keeping raw facts, observations, and source refresh state, then requeues existing raw token facts for canonical rebuild.
+- `reset-all --confirm` removes the DB plus `-wal` and `-shm`, then recreates from schema, clearing source refresh state and pending normalization work.
 
 ## Invariants
 
@@ -303,6 +380,8 @@ Must not change silently:
 - canonical token usage must be session-centric;
 - missing model and unavailable provider must render with canonical fallback values, not cause row loss;
 - raw storage must remain metadata-only and avoid private content;
+- Syncable Analytics Data must exclude prompt text, assistant text, tool arguments, tool output, request headers, secrets, raw provider payloads, and full source paths;
+- Local-only Continuity Metadata must never be used for viewer analytics or future cloud export;
 - default token analytics use only countable canonical token rows;
 - unavailable metric domains must not appear as empty active viewer tabs;
 - cost tracking must stay out of the active product;

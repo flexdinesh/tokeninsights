@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -81,6 +82,38 @@ func insertLoadRowsCanonicalTokenWithCounts(t *testing.T, database *sql.DB, reco
 	`, rawKey+":canonical", recordedAtMs, harness, canonicalSessionID, provider, model, input, output, reasoning, cacheRead, cacheWrite, total, rawID)
 	if err != nil {
 		t.Fatal(err)
+	}
+}
+
+func writeTableTestPiAssistantSession(t *testing.T, path string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	content := strings.Join([]string{
+		`{"type":"session","version":1,"id":"pi_s1","timestamp":"2026-01-01T00:00:00.000Z","cwd":"/redacted/project"}`,
+		`{"type":"message","id":"msg_a","parentId":null,"timestamp":"2026-01-01T00:00:01.000Z","message":{"role":"assistant","content":[],"provider":"anthropic","model":"claude-sonnet-4","usage":{"input":100,"output":50,"cacheRead":0,"cacheWrite":0,"totalTokens":150},"timestamp":1770000001000}}`,
+	}, "\n") + "\n"
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func setTableTestFileModTime(t *testing.T, path string, modTime time.Time) {
+	t.Helper()
+	if err := os.Chtimes(path, modTime, modTime); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func assertTableTestCount(t *testing.T, database *sql.DB, table string, want int) {
+	t.Helper()
+	var got int
+	if err := database.QueryRow("SELECT COUNT(*) FROM " + table).Scan(&got); err != nil {
+		t.Fatal(err)
+	}
+	if got != want {
+		t.Fatalf("%s count = %d, want %d", table, got, want)
 	}
 }
 
@@ -649,6 +682,67 @@ func TestImplicitSyncSuccessTransitionsThroughLoadingDashboardToTableLoading(t *
 	if cmd != nil {
 		t.Fatal("expected animation ticks to stop after sync progress exits")
 	}
+}
+
+func TestImplicitSyncProcessesPendingNormalizationWork(t *testing.T) {
+	ctx := context.Background()
+	sourceRoot := t.TempDir()
+	t.Setenv("HOME", filepath.Join(sourceRoot, "home"))
+	t.Setenv("XDG_DATA_HOME", filepath.Join(sourceRoot, "xdg"))
+	t.Setenv("CODEX_HOME", filepath.Join(sourceRoot, "codex"))
+	t.Setenv("CLAUDE_CONFIG_DIR", filepath.Join(sourceRoot, "claude"))
+	dbPath := filepath.Join(t.TempDir(), "tokeninsights.sqlite")
+	now := time.Date(2026, 4, 24, 15, 0, 0, 0, time.UTC)
+	sourcePath := filepath.Join(sourceRoot, "home", ".pi", "agent", "sessions", "project", "2026-01-01T00-00-00_pi_s1.jsonl")
+	writeTableTestPiAssistantSession(t, sourcePath)
+	setTableTestFileModTime(t, sourcePath, now.Add(-72*time.Hour))
+
+	summary, err := pipeline.Sync(ctx, pipeline.SyncOptions{
+		DBPath:    dbPath,
+		Harnesses: []pipeline.Harness{pipeline.HarnessPi},
+		Normalize: false,
+		Now:       now,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if summary.RawFacts != 1 || summary.Canonical != 0 {
+		t.Fatalf("unexpected setup summary: %+v", summary)
+	}
+
+	messages := make(chan tea.Msg, syncProgressBufferSize())
+	cmd := interactiveModel{
+		ctx: ctx,
+		options: tableOptions{
+			dbPath: dbPath,
+			period: periodMonth,
+		},
+		now: now.Add(time.Hour),
+	}.syncCmd(messages)
+	msg := cmd()
+	if msg != nil {
+		t.Fatalf("sync command returned %T, want nil", msg)
+	}
+	var done syncDoneMsg
+	for queued := range messages {
+		if value, ok := queued.(syncDoneMsg); ok {
+			done = value
+		}
+	}
+	if done.err != nil {
+		t.Fatal(done.err)
+	}
+	if done.summary.Canonical != 1 {
+		t.Fatalf("implicit sync summary = %+v, want canonical work processed", done.summary)
+	}
+
+	database, err := db.OpenWritable(dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	assertTableTestCount(t, database, "canonical_token_usage", 1)
+	assertTableTestCount(t, database, "normalization_work_queue", 0)
 }
 
 func TestImplicitSyncStartsAfterWindowSize(t *testing.T) {

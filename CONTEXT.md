@@ -32,6 +32,14 @@ _Avoid_: Metric tab, domain tab, filter
 A read-only summary of countable canonical token facts for one aggregation tab and the active date range and dimension filters.
 _Avoid_: Pre-aggregated rollup, metric domain
 
+**Syncable Analytics Data**:
+Usage facts, diagnostics, and derived facts governed by the analytics privacy contract; future cloud export should be canonical-first by default.
+_Avoid_: Local cursor data, source continuity state
+
+**Local-only Continuity Metadata**:
+Operational source refresh state used only to resume local Durable Source parsing and never used for viewer analytics or future cloud export.
+_Avoid_: Analytics data, canonical data, syncable data
+
 **Session Peak Context Load**:
 The largest prompt-side context load observed within a session, counted as input tokens plus cache read tokens plus cache write tokens and excluding output and reasoning tokens.
 _Avoid_: Context used when it could mean total tokens, output tokens, or context window size
@@ -39,6 +47,14 @@ _Avoid_: Context used when it could mean total tokens, output tokens, or context
 **Implicit View Sync**:
 The product behavior where opening the viewer refreshes all supported Durable Sources before showing canonical token facts. Viewer filters remain display constraints, not source selection.
 _Avoid_: Filtered sync, view-only sync
+
+**Incremental Source Refresh**:
+A best-effort source refresh that reads newly available usage facts from a Durable Source when prior source continuity can be trusted, while preserving a full-refresh fallback when continuity cannot be trusted.
+_Avoid_: Filtered sync, partial view sync, partial normalize
+
+**Recent Source Refresh**:
+A best-effort source refresh that skips Durable Sources whose local modification metadata shows they have not changed since a conservative freshness window before the last successful source refresh.
+_Avoid_: Date-filtered sync, event-time sync
 
 **Claude Code Harness**:
 The Claude Code command-line coding harness as a token usage source, distinct from the Anthropic provider and Claude model family.

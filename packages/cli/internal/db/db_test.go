@@ -68,6 +68,30 @@ func insertCanonicalToken(t *testing.T, database *sql.DB, recordedAtMs int64, ha
 	}
 }
 
+func insertSourceRefreshState(t *testing.T, database *sql.DB) {
+	t.Helper()
+	_, err := database.Exec(`
+		INSERT INTO source_refresh_state (
+			harness, source_kind, source_state_key, collector, parser,
+			last_successful_refresh_at_ms, source_mtime_ms, source_size_bytes, updated_at_ms
+		) VALUES ('opencode', 'opencode-sqlite', 'state-key', 'collector', 'parser', 1777042800000, 1776783600000, 1024, 1777042800000)
+	`)
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func assertDBCount(t *testing.T, database *sql.DB, table string, want int) {
+	t.Helper()
+	var got int
+	if err := database.QueryRow("SELECT COUNT(*) FROM " + table).Scan(&got); err != nil {
+		t.Fatal(err)
+	}
+	if got != want {
+		t.Fatalf("%s count = %d, want %d", table, got, want)
+	}
+}
+
 func TestCreateIfMissingCreatesCompatibleDB(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "tokeninsights.sqlite")
 	database, created, err := CreateIfMissing(dbPath)
@@ -115,6 +139,7 @@ func TestResetCanonicalKeepsRawFacts(t *testing.T) {
 	defer database.Close()
 	recordedAtMs := time.Date(2026, 4, 24, 12, 0, 0, 0, time.Local).UnixMilli()
 	insertCanonicalToken(t, database, recordedAtMs, "opencode", "ses_1", "openai", "gpt", 100, 10, 5, 20, 1, 136)
+	insertSourceRefreshState(t, database)
 
 	if err := ResetCanonical(context.Background(), database); err != nil {
 		t.Fatal(err)
@@ -134,6 +159,48 @@ func TestResetCanonicalKeepsRawFacts(t *testing.T) {
 	if canonicalCount != 0 {
 		t.Fatalf("got canonical count %d, want 0", canonicalCount)
 	}
+	var workCount int
+	if err := database.QueryRow("SELECT COUNT(*) FROM normalization_work_queue WHERE domain = ?", DomainTokenUsage).Scan(&workCount); err != nil {
+		t.Fatal(err)
+	}
+	if workCount != 1 {
+		t.Fatalf("got normalization work count %d, want 1", workCount)
+	}
+	var sourceStateCount int
+	if err := database.QueryRow("SELECT COUNT(*) FROM source_refresh_state").Scan(&sourceStateCount); err != nil {
+		t.Fatal(err)
+	}
+	if sourceStateCount != 1 {
+		t.Fatalf("got source refresh state count %d, want 1", sourceStateCount)
+	}
+}
+
+func TestResetAllClearsSourceRefreshStateAndNormalizationWork(t *testing.T) {
+	database, dbPath := newTestDB(t)
+	recordedAtMs := time.Date(2026, 4, 24, 12, 0, 0, 0, time.Local).UnixMilli()
+	insertCanonicalToken(t, database, recordedAtMs, "opencode", "ses_1", "openai", "gpt", 100, 10, 5, 20, 1, 136)
+	insertSourceRefreshState(t, database)
+	if _, err := database.Exec(`
+		INSERT OR IGNORE INTO normalization_work_queue (raw_fact_id, domain, enqueued_at_ms)
+		SELECT id, ?, ? FROM raw_token_usage
+	`, DomainTokenUsage, recordedAtMs); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := ResetAll(dbPath); err != nil {
+		t.Fatal(err)
+	}
+	resetDB, err := OpenWritable(dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resetDB.Close()
+	assertDBCount(t, resetDB, "source_refresh_state", 0)
+	assertDBCount(t, resetDB, "normalization_work_queue", 0)
+	assertDBCount(t, resetDB, "raw_token_usage", 0)
 }
 
 func TestAggregateCanonicalDaily(t *testing.T) {

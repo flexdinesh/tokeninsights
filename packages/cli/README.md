@@ -26,29 +26,31 @@ Supported harness IDs:
 opencode
 pi
 codex
+claude-code
 ```
 
 ## Commands
 
 `sync`
 
-Ingest local harness sources into raw tables and normalize to canonical facts by default. `view` runs an implicit all-harness sync before opening, so use explicit sync for targeted harness refreshes, dry runs, no-normalize workflows, or custom source directories.
+Ingest local harness sources into raw tables and normalize pending canonical work by default. `view` runs an implicit all-harness sync before opening, so use explicit sync for targeted harness refreshes, dry runs, full refreshes, no-normalize workflows, or custom source directories.
 
 ```sh
 tokeninsights sync --all
 tokeninsights sync --harness opencode
 tokeninsights sync --harness pi --source-dir /path/to/source-root
 tokeninsights sync --all --dry-run
+tokeninsights sync --all --full-refresh
 tokeninsights sync --all --no-normalize
 ```
 
 When `--source-dir` is provided, sync first looks for a harness subdirectory such as `/path/to/source-root/opencode`; otherwise it scans the provided directory directly.
 
-OpenCode sync reads modern SQLite sources named `opencode.db` or `opencode-<channel>.db`. Pi sync reads JSONL session files from `~/.pi/agent/sessions`, or from a provided Pi source directory. Codex sync reads rollout JSONL session files from `${CODEX_HOME:-~/.codex}/sessions`, parsing structured `event_msg` token-count records.
+OpenCode sync reads modern SQLite sources named `opencode.db` or `opencode-<channel>.db`. Pi sync reads JSONL session files from `~/.pi/agent/sessions`, or from a provided Pi source directory. Codex sync reads rollout JSONL session files from `${CODEX_HOME:-~/.codex}/sessions`, parsing structured `event_msg` token-count records. Claude Code sync reads JSONL transcript files from `${CLAUDE_CONFIG_DIR:-~/.claude}/projects`. After a successful OpenCode SQLite or Pi/Codex/Claude Code JSONL refresh, old unchanged sources can be skipped by Recent Source Refresh; recent or changed sources are still parsed. The freshness window is 48 hours before the last successful source refresh. `sync --dry-run` previews skips without writing, and `sync --full-refresh` ignores source refresh state for the requested harness scope without requeueing existing raw facts for canonical rebuild.
 
 `normalize`
 
-Rebuild canonical facts from existing raw facts.
+Process pending canonical work from existing raw facts. After `reset-canonical`, this rebuilds canonical facts from requeued raw token facts.
 
 ```sh
 tokeninsights normalize
@@ -58,7 +60,7 @@ tokeninsights normalize --dry-run
 
 `reset-canonical`
 
-Delete canonical sessions, messages, token usage, and normalization diagnostics while keeping raw facts and observations.
+Delete canonical sessions, messages, token usage, and normalization diagnostics while keeping raw facts, observations, and source refresh state. Existing raw token facts are requeued for normalization.
 
 ```sh
 tokeninsights reset-canonical
@@ -67,7 +69,7 @@ tokeninsights reset-canonical --confirm
 
 `reset-all`
 
-Delete and recreate the TokenInsights database plus SQLite sidecars.
+Delete and recreate the TokenInsights database plus SQLite sidecars. This clears raw facts, canonical facts, pending normalization work, and source refresh state.
 
 ```sh
 tokeninsights reset-all
@@ -76,7 +78,7 @@ tokeninsights reset-all --confirm
 
 `view`
 
-Open the interactive terminal UI over canonical token usage. By default, `view` opens into a sync progress screen, refreshes all supported Durable Sources, and normalizes the results before rendering the dashboard. Use `--no-sync` to skip raw ingest and normalization and open existing canonical data read-only.
+Open the interactive terminal UI over canonical token usage. By default, `view` opens into a sync progress screen, refreshes all supported Durable Sources, and processes pending normalization work before rendering the dashboard. Use `--no-sync` to skip raw ingest and normalization and open existing canonical data read-only.
 
 ```sh
 tokeninsights view
@@ -105,7 +107,7 @@ The CLI creates a missing database for `sync`, implicit `view` sync, `normalize`
 
 `--no-sync`
 
-Skip the implicit all-harness sync before opening the TUI. This preserves read-only viewing of existing canonical data.
+Skip the implicit all-harness sync before opening the TUI. This preserves read-only viewing of existing canonical data and does not process pending normalization work.
 
 `--today`
 

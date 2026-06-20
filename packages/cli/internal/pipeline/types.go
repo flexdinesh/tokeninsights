@@ -60,15 +60,16 @@ type Diagnostic struct {
 }
 
 type SyncOptions struct {
-	DBPath    string
-	Harnesses []Harness
-	DryRun    bool
-	Normalize bool
-	SourceDir string
-	Collector string
-	Parser    string
-	Now       time.Time
-	Progress  func(SyncProgressEvent)
+	DBPath      string
+	Harnesses   []Harness
+	DryRun      bool
+	FullRefresh bool
+	Normalize   bool
+	SourceDir   string
+	Collector   string
+	Parser      string
+	Now         time.Time
+	Progress    func(SyncProgressEvent)
 }
 
 type SyncProgressStatus string

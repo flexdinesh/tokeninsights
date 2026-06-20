@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"context"
+	"database/sql"
 	"errors"
 	"io"
 	"os"
@@ -13,6 +14,8 @@ import (
 
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/db"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/pipeline"
+
+	_ "modernc.org/sqlite"
 )
 
 func TestViewLaunchesProgressTUIBeforeImplicitSyncCompletes(t *testing.T) {
@@ -142,6 +145,46 @@ func TestViewNoSyncLaunchesTableLoadingWithoutSyncProgress(t *testing.T) {
 	}
 }
 
+func TestViewNoSyncDoesNotProcessPendingNormalizationWork(t *testing.T) {
+	ctx := context.Background()
+	dbPath := filepath.Join(t.TempDir(), "tokeninsights.sqlite")
+	sourceDir := t.TempDir()
+	sourcePath := filepath.Join(sourceDir, "opencode", "opencode.db")
+	now := time.Date(2026, 4, 24, 15, 0, 0, 0, time.UTC)
+	createOpenCodeSQLiteMessagesForCLI(t, sourcePath)
+
+	var stdout bytes.Buffer
+	err := Run(ctx, []string{"sync", "--db-path", dbPath, "--harness", "opencode", "--source-dir", sourceDir, "--no-normalize"}, &stdout, io.Discard, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var launched bool
+	restore := replaceInteractiveProgramRunnerForTest(t, func(model interactiveModel, stdout io.Writer) (interactiveModel, error) {
+		launched = true
+		if model.syncing {
+			t.Fatal("expected --no-sync not to start implicit sync")
+		}
+		return model, nil
+	})
+	defer restore()
+
+	err = Run(ctx, []string{"view", "--db-path", dbPath, "--no-sync"}, io.Discard, io.Discard, now.Add(time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !launched {
+		t.Fatal("expected TUI to launch")
+	}
+	database, err := db.OpenWritable(dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	assertCLIQueryCount(t, database, "SELECT COUNT(*) FROM normalization_work_queue WHERE domain = 'token_usage'", 1)
+	assertCLIQueryCount(t, database, "SELECT COUNT(*) FROM canonical_token_usage", 0)
+}
+
 func TestNoCommandNoSyncUsesViewNoSync(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "missing.sqlite")
 	var launched bool
@@ -196,11 +239,95 @@ func TestViewImplicitSyncFailureExitsTUIAndPrintsRecoveryGuidance(t *testing.T) 
 	}
 }
 
+func TestSyncFullRefreshFlagForcesSourceRefresh(t *testing.T) {
+	ctx := context.Background()
+	dbPath := filepath.Join(t.TempDir(), "tokeninsights.sqlite")
+	sourceDir := t.TempDir()
+	sourcePath := filepath.Join(sourceDir, "opencode", "opencode.db")
+	now := time.Date(2026, 4, 24, 15, 0, 0, 0, time.UTC)
+	createOpenCodeSQLiteMessagesForCLI(t, sourcePath)
+	setFileModTimeForCLI(t, sourcePath, now.Add(-72*time.Hour))
+
+	var stdout bytes.Buffer
+	err := Run(ctx, []string{"sync", "--db-path", dbPath, "--harness", "opencode", "--source-dir", sourceDir}, &stdout, io.Discard, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(stdout.String(), "sync: requested=1 synced=1 skipped=0 failed=0 raw_facts=1 observations=1 canonical=1 diagnostics=0") {
+		t.Fatalf("unexpected first sync output: %q", stdout.String())
+	}
+
+	stdout.Reset()
+	err = Run(ctx, []string{"sync", "--db-path", dbPath, "--harness", "opencode", "--source-dir", sourceDir}, &stdout, io.Discard, now.Add(time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(stdout.String(), "sync: requested=1 synced=0 skipped=1 failed=0 raw_facts=0 observations=0 canonical=0 diagnostics=0") {
+		t.Fatalf("unexpected skipped sync output: %q", stdout.String())
+	}
+
+	stdout.Reset()
+	err = Run(ctx, []string{"sync", "--db-path", dbPath, "--harness", "opencode", "--source-dir", sourceDir, "--full-refresh"}, &stdout, io.Discard, now.Add(2*time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(stdout.String(), "sync: requested=1 synced=1 skipped=0 failed=0 raw_facts=0 observations=1 canonical=0 diagnostics=0") {
+		t.Fatalf("unexpected full-refresh output: %q", stdout.String())
+	}
+}
+
 func replaceInteractiveProgramRunnerForTest(t *testing.T, runner func(interactiveModel, io.Writer) (interactiveModel, error)) func() {
 	t.Helper()
 	previous := runInteractiveProgram
 	runInteractiveProgram = runner
 	return func() {
 		runInteractiveProgram = previous
+	}
+}
+
+func createOpenCodeSQLiteMessagesForCLI(t *testing.T, dbPath string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(dbPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	database, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	if _, err := database.Exec(`
+		CREATE TABLE message (
+			id text PRIMARY KEY,
+			session_id text NOT NULL,
+			time_created integer NOT NULL,
+			time_updated integer NOT NULL,
+			data text NOT NULL
+		)
+	`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.Exec(`
+		INSERT INTO message (id, session_id, time_created, time_updated, data)
+		VALUES (?, ?, ?, ?, ?)
+	`, "m1", "oc_s1", 1770000000000, 1770000000000, `{"role":"assistant","providerID":"openai","modelID":"gpt-5","tokens":{"input":100,"output":50},"time":{"created":1770000000000}}`); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func setFileModTimeForCLI(t *testing.T, path string, modTime time.Time) {
+	t.Helper()
+	if err := os.Chtimes(path, modTime, modTime); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func assertCLIQueryCount(t *testing.T, database *sql.DB, query string, want int) {
+	t.Helper()
+	var got int
+	if err := database.QueryRow(query).Scan(&got); err != nil {
+		t.Fatal(err)
+	}
+	if got != want {
+		t.Fatalf("%s: got %d, want %d", query, got, want)
 	}
 }
