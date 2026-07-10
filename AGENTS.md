@@ -33,10 +33,26 @@ Full architecture, schema contract, pipelines, and invariants are in [`docs/desi
 ## Commands
 
 ```sh
+# Format changed Go files before testing.
+gofmt -w <changed-go-files>
+
 pnpm run check-schema
 pnpm run test
 pnpm run build
 ```
+
+## Verification
+
+- After changing Go code, run `gofmt` on the changed Go files, then run the relevant focused tests and `pnpm run test`.
+- Run `pnpm run build` after tests pass.
+- For manual CLI or TUI verification, print the following project-local command on screen and ask the user to run it and verify the result:
+
+  ```sh
+  ./packages/cli/bin/tokeninsights
+  ```
+
+- Alternatively, run `./packages/cli/bin/tokeninsights` directly in the current shell or PTY and verify it there.
+- Do not request permission to launch or use Ghostty, tmux, iTerm, Terminal, screenshot utilities, or other tools unrelated to this project for verification. Use the built TokenInsights binary only.
 
 ## Agent skills
 

@@ -37,6 +37,16 @@ func TestViewLaunchesProgressTUIBeforeImplicitSyncCompletes(t *testing.T) {
 		if !model.syncing {
 			t.Fatal("expected initial model to show sync progress")
 		}
+		hostname, hostnameErr := os.Hostname()
+		if got, want := model.statusline.value(statuslineHostname), normalizeHostname(hostname, hostnameErr); got != want {
+			t.Fatalf("statusline hostname = %q, want %q", got, want)
+		}
+		if got := model.statusline.value(statuslineDateRange); got != "month" {
+			t.Fatalf("statusline daterange = %q, want month", got)
+		}
+		if got := model.statusline.value(statuslineLastSynced); got != "never" {
+			t.Fatalf("statusline last synced = %q, want never", got)
+		}
 		if _, err := os.Stat(dbPath); !errors.Is(err, os.ErrNotExist) {
 			t.Fatalf("expected db not to exist before TUI launches, stat error = %v", err)
 		}

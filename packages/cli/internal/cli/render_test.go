@@ -188,7 +188,6 @@ func TestViewFrameAndSeparatorsPaintAppBackground(t *testing.T) {
 			{bucket: "2026-06-14", sessions: "1", inputTokens: "35K", outputTokens: "1K", totalTokens: "114K"},
 		},
 		activeTab: tabTokens,
-		period:    periodMonth,
 		width:     100,
 		height:    24,
 		options:   tableOptions{period: periodMonth},
@@ -201,7 +200,7 @@ func TestViewFrameAndSeparatorsPaintAppBackground(t *testing.T) {
 	}
 }
 
-func TestViewTitleRowPaintsFullAppBackground(t *testing.T) {
+func TestViewStatuslineRowPaintsFullAppBackground(t *testing.T) {
 	previousProfile := lipgloss.ColorProfile()
 	lipgloss.SetColorProfile(termenv.TrueColor)
 	t.Cleanup(func() {
@@ -212,21 +211,27 @@ func TestViewTitleRowPaintsFullAppBackground(t *testing.T) {
 		rows: []renderRow{
 			{bucket: "2026-06-14", sessions: "1", inputTokens: "35K", outputTokens: "1K", totalTokens: "114K"},
 		},
-		activeTab: tabTokens,
-		period:    periodAllTime,
-		width:     100,
-		height:    24,
-		options:   tableOptions{period: periodAllTime},
+		activeTab:  tabTokens,
+		statusline: newStatuslineModel("all time", "workstation", 0),
+		width:      100,
+		height:     24,
+		options:    tableOptions{period: periodAllTime},
 	}
 	m = m.measureHeights()
 
 	for _, line := range strings.Split(m.View(), "\n") {
-		if strings.Contains(ansi.Strip(line), "TokenInsights") {
+		plain := ansi.Strip(line)
+		if strings.Contains(plain, "TokenInsights") {
+			for _, expected := range []string{"TokenInsights", "daterange: all time", "hostname: workstation", "lastsynced: never"} {
+				if !strings.Contains(plain, expected) {
+					t.Fatalf("statusline missing %q: %q", expected, plain)
+				}
+			}
 			assertLineCellsHaveBackground(t, line, "48;2;27;27;42")
 			return
 		}
 	}
-	t.Fatal("title row not found")
+	t.Fatal("statusline row not found")
 }
 
 func TestProvidersTableInitialViewportIncludesTotalColumn(t *testing.T) {

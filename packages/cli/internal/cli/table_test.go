@@ -356,7 +356,6 @@ func TestViewDoesNotShowHorizontalScrollWhenTableFitsAfterTruncation(t *testing.
 			totalValue:       366_000_000,
 		}},
 		activeTab: tabProviders,
-		period:    periodAllTime,
 		width:     124,
 		height:    24,
 		options:   tableOptions{period: periodAllTime, sort: sortTokens},
@@ -385,7 +384,6 @@ func TestEndKeyScrollsWhenMinimumTableWidthExceedsViewport(t *testing.T) {
 			totalValue:       366_000_000,
 		}},
 		activeTab: tabProviders,
-		period:    periodAllTime,
 		width:     74,
 		height:    24,
 		options:   tableOptions{period: periodAllTime, sort: sortTokens},
@@ -437,7 +435,6 @@ func TestViewHeightStableAcrossTabReloadRows(t *testing.T) {
 			totalValue:  136,
 		}},
 		activeTab: tabTokens,
-		period:    periodMonth,
 		width:     72,
 		height:    24,
 		options:   tableOptions{period: periodMonth},
@@ -462,22 +459,47 @@ func TestViewHeightStableAcrossTabReloadRows(t *testing.T) {
 		{model: "unknown", providers: "unknown", harnesses: "codex", sessions: "1", inputTokens: "100", totalTokens: "136", totalValue: 136},
 		{model: "llama-4", providers: "meta", harnesses: "opencode", sessions: "1", inputTokens: "100", totalTokens: "136", totalValue: 136},
 	}
-	model, _ = pending.Update(reloadMsg{rows: loadedRows})
+	lastSync := time.Date(2026, 4, 24, 16, 30, 0, 0, time.Local).UnixMilli()
+	model, _ = pending.Update(reloadMsg{rows: loadedRows, lastSyncMs: lastSync})
 	loaded, ok := model.(interactiveModel)
 	if !ok {
 		t.Fatalf("got model %T, want interactiveModel", model)
 	}
 	loadedHeight := lipgloss.Height(loaded.View())
+	loadedSummary, _ := viewSummaryLine(loaded.View())
+	if !strings.Contains(loadedSummary, "rows 6") || !strings.Contains(loadedSummary, "total 816") {
+		t.Fatalf("loaded view missing summary values: %q", loadedSummary)
+	}
 
 	if loadedHeight != pendingHeight {
 		t.Fatalf("view height changed across tab reload: pending=%d loaded=%d", pendingHeight, loadedHeight)
 	}
 }
 
+func TestReloadUpdatesStatuslineLastSync(t *testing.T) {
+	m := interactiveModel{
+		options:    tableOptions{period: periodMonth},
+		statusline: newStatuslineModel("month", "workstation", 0),
+		loading:    true,
+	}
+	lastSync := time.Date(2026, 7, 10, 17, 48, 0, 0, time.Local).UnixMilli()
+
+	model, cmd := m.Update(reloadMsg{lastSyncMs: lastSync})
+	updated, ok := model.(interactiveModel)
+	if !ok {
+		t.Fatalf("got model %T, want interactiveModel", model)
+	}
+	if cmd != nil {
+		t.Fatal("did not expect command")
+	}
+	if got := updated.statusline.value(statuslineLastSynced); got != "2026-07-10 17:48" {
+		t.Fatalf("got last synced %q, want 2026-07-10 17:48", got)
+	}
+}
+
 func TestInitialViewShowsLoadingState(t *testing.T) {
 	m := interactiveModel{
 		activeTab: tabTokens,
-		period:    periodMonth,
 		width:     72,
 		height:    24,
 		options:   tableOptions{period: periodMonth},
@@ -494,10 +516,130 @@ func TestInitialViewShowsLoadingState(t *testing.T) {
 	}
 }
 
+func TestFooterOmitsSummaryAndLastSyncInLoadingAndLoadedStates(t *testing.T) {
+	lastSync := time.Date(2026, 7, 10, 17, 48, 0, 0, time.Local).UnixMilli()
+	tests := []struct {
+		name    string
+		loading bool
+	}{
+		{name: "loading", loading: true},
+		{name: "loaded", loading: false},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			m := interactiveModel{
+				rows:       []renderRow{{totalTokens: "136", totalValue: 136}},
+				activeTab:  tabTokens,
+				statusline: newStatuslineModel("month", "workstation", lastSync),
+				width:      120,
+				height:     24,
+				options:    tableOptions{period: periodMonth},
+				loading:    test.loading,
+				lastSyncMs: lastSync,
+			}
+			m = m.measureHeights()
+			footer := viewHintLine(m.View())
+			if test.loading && !strings.Contains(footer, "loading") {
+				t.Fatalf("loading footer missing loading state: %q", footer)
+			}
+			if strings.Contains(footer, "sync") || strings.Contains(footer, "2026-07-10 17:48") || strings.Contains(footer, "total ") || strings.Contains(footer, "rows ") {
+				t.Fatalf("footer repeated summary or sync metadata: %q", footer)
+			}
+		})
+	}
+}
+
+func TestViewTableSummaryLoadedStates(t *testing.T) {
+	tests := []struct {
+		name        string
+		activeTab   tabMode
+		wantTotal   bool
+		wantSummary string
+	}{
+		{name: "tokens", activeTab: tabTokens, wantTotal: true, wantSummary: "rows 0"},
+		{name: "context", activeTab: tabContext, wantTotal: false, wantSummary: "rows 0"},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			m := interactiveModel{
+				activeTab: test.activeTab,
+				width:     100,
+				height:    24,
+				options:   tableOptions{period: periodMonth},
+			}
+			m = m.measureHeights()
+			summary, _ := viewSummaryLine(m.View())
+			if !strings.Contains(summary, test.wantSummary) {
+				t.Fatalf("summary missing %q: %q", test.wantSummary, summary)
+			}
+			if got := strings.Contains(summary, "total 0"); got != test.wantTotal {
+				t.Fatalf("summary total visibility = %v, want %v: %q", got, test.wantTotal, summary)
+			}
+		})
+	}
+}
+
+func TestTableSummaryPinnedAcrossVerticalScroll(t *testing.T) {
+	rows := make([]renderRow, 8)
+	for i := range rows {
+		rows[i] = renderRow{
+			bucket:      fmt.Sprintf("2026-07-%02d", i+1),
+			totalTokens: formatTokens(int64(i + 1)),
+			totalValue:  int64(i + 1),
+		}
+	}
+	m := interactiveModel{
+		rows:      rows,
+		activeTab: tabTokens,
+		width:     72,
+		height:    20,
+		options:   tableOptions{period: periodMonth},
+	}
+	m = m.measureHeights()
+	firstSummary, firstIndex := viewSummaryLine(m.View())
+
+	m.scrollOffset = m.maxScrollOffset()
+	lastSummary, lastIndex := viewSummaryLine(m.View())
+	if firstSummary != lastSummary || firstIndex != lastIndex {
+		t.Fatalf("summary moved while scrolling:\nfirst %d: %q\nlast  %d: %q", firstIndex, firstSummary, lastIndex, lastSummary)
+	}
+	if !strings.Contains(firstSummary, "rows 8") || !strings.Contains(firstSummary, "total 36") {
+		t.Fatalf("summary does not use all rows: %q", firstSummary)
+	}
+}
+
+func TestTableSummaryIgnoresHorizontalScroll(t *testing.T) {
+	m := interactiveModel{
+		rows: []renderRow{{
+			provider:    "openai",
+			models:      "gpt-5.5, gpt-5.4, gpt-5.3-codex-spark",
+			harnesses:   "codex, opencode, pi",
+			totalTokens: "136",
+			totalValue:  136,
+		}},
+		activeTab: tabProviders,
+		width:     74,
+		height:    24,
+		options:   tableOptions{period: periodMonth},
+	}
+	m = m.measureHeights()
+	firstSummary, firstIndex := viewSummaryLine(m.View())
+	if maxOffset := m.maxHorizontalOffset(m.rows); maxOffset <= 0 {
+		t.Fatal("test fixture did not require horizontal scrolling")
+	} else {
+		m.horizontalOffset = maxOffset
+	}
+	lastSummary, lastIndex := viewSummaryLine(m.View())
+	if firstSummary != lastSummary || firstIndex != lastIndex {
+		t.Fatalf("summary changed during horizontal scroll:\nfirst %d: %q\nlast  %d: %q", firstIndex, firstSummary, lastIndex, lastSummary)
+	}
+}
+
 func TestImplicitSyncProgressViewShowsHarnessStatusIcons(t *testing.T) {
 	m := interactiveModel{
 		activeTab:        tabTokens,
-		period:           periodMonth,
 		width:            80,
 		height:           24,
 		options:          tableOptions{period: periodMonth},
@@ -531,7 +673,6 @@ func TestImplicitSyncProgressUsesAppBackground(t *testing.T) {
 
 	m := interactiveModel{
 		activeTab:        tabTokens,
-		period:           periodMonth,
 		width:            80,
 		height:           24,
 		options:          tableOptions{period: periodMonth},
@@ -557,7 +698,6 @@ func TestImplicitSyncProgressUsesAppBackground(t *testing.T) {
 func TestImplicitSyncProgressUpdatesHarnessStatus(t *testing.T) {
 	m := interactiveModel{
 		activeTab:        tabTokens,
-		period:           periodMonth,
 		width:            80,
 		height:           24,
 		options:          tableOptions{period: periodMonth},
@@ -586,7 +726,6 @@ func TestImplicitSyncProgressUpdatesHarnessStatus(t *testing.T) {
 func TestImplicitSyncProgressRendersTerminalStatusIcons(t *testing.T) {
 	m := interactiveModel{
 		activeTab: tabTokens,
-		period:    periodMonth,
 		width:     80,
 		height:    24,
 		options:   tableOptions{period: periodMonth},
@@ -609,7 +748,6 @@ func TestImplicitSyncProgressRendersTerminalStatusIcons(t *testing.T) {
 func TestImplicitSyncAnimationTickAdvancesWhileSyncing(t *testing.T) {
 	m := interactiveModel{
 		activeTab:        tabTokens,
-		period:           periodMonth,
 		width:            80,
 		height:           24,
 		options:          tableOptions{period: periodMonth},
@@ -633,7 +771,6 @@ func TestImplicitSyncAnimationTickAdvancesWhileSyncing(t *testing.T) {
 func TestImplicitSyncSuccessTransitionsThroughLoadingDashboardToTableLoading(t *testing.T) {
 	m := interactiveModel{
 		activeTab:        tabTokens,
-		period:           periodMonth,
 		width:            80,
 		height:           24,
 		options:          tableOptions{period: periodMonth},
@@ -749,7 +886,6 @@ func TestImplicitSyncStartsAfterWindowSize(t *testing.T) {
 	m := interactiveModel{
 		ctx:              context.Background(),
 		activeTab:        tabTokens,
-		period:           periodMonth,
 		options:          tableOptions{period: periodMonth, dbPath: filepath.Join(t.TempDir(), "tokeninsights.sqlite")},
 		syncing:          true,
 		syncProgressRows: initialSyncProgressRows(),
@@ -788,7 +924,6 @@ func TestViewUsesConsistentPanelBackground(t *testing.T) {
 			totalValue:  114000,
 		}},
 		activeTab: tabTokens,
-		period:    periodMonth,
 		width:     100,
 		height:    24,
 		options:   tableOptions{period: periodMonth},
@@ -807,7 +942,6 @@ func TestViewUsesConsistentPanelBackground(t *testing.T) {
 func TestInitialReloadStartsAfterWindowSize(t *testing.T) {
 	m := interactiveModel{
 		activeTab: tabTokens,
-		period:    periodMonth,
 		options:   tableOptions{period: periodMonth},
 		loading:   true,
 	}
@@ -844,7 +978,6 @@ func TestViewColumnWidthsStableAcrossVisibleRowWindows(t *testing.T) {
 	m := interactiveModel{
 		rows:      rows,
 		activeTab: tabModels,
-		period:    periodMonth,
 		width:     120,
 		height:    24,
 		options:   tableOptions{period: periodMonth},
@@ -889,7 +1022,6 @@ func TestVisibleRowsRespectMultilineRowBudget(t *testing.T) {
 func TestLoadingAndLoadedHeadersUseStableColumnWidths(t *testing.T) {
 	base := interactiveModel{
 		activeTab: tabModels,
-		period:    periodMonth,
 		width:     80,
 		height:    24,
 		options:   tableOptions{period: periodMonth},
@@ -1004,6 +1136,7 @@ func TestDateRangePopupSpaceAppliesSelection(t *testing.T) {
 		popup:       popupDateRange,
 		popupCursor: 1,
 		options:     tableOptions{period: periodMonth},
+		statusline:  newStatuslineModel("month", "workstation", 0),
 	}
 
 	model, cmd := m.handleDateRangePopupKey(tea.KeyMsg{Type: tea.KeySpace})
@@ -1017,9 +1150,36 @@ func TestDateRangePopupSpaceAppliesSelection(t *testing.T) {
 	if updated.options.period != periodYesterday {
 		t.Fatalf("got period %q, want %q", updated.options.period, periodYesterday)
 	}
+	if got := updated.statusline.value(statuslineDateRange); got != "yesterday" {
+		t.Fatalf("got statusline daterange %q, want yesterday", got)
+	}
 	if cmd == nil {
 		t.Fatal("expected reload command")
 	}
+}
+
+func viewHintLine(output string) string {
+	var lines []string
+	found := false
+	for _, line := range strings.Split(ansi.Strip(output), "\n") {
+		if strings.Contains(line, "tab/shift+tab") {
+			found = true
+		}
+		if found {
+			lines = append(lines, line)
+		}
+	}
+	return strings.Join(lines, "\n")
+}
+
+func viewSummaryLine(output string) (string, int) {
+	for index, line := range strings.Split(ansi.Strip(output), "\n") {
+		content := strings.TrimSpace(strings.Trim(line, "│"))
+		if strings.HasPrefix(content, "rows ") {
+			return line, index
+		}
+	}
+	return "", -1
 }
 
 func TestSortPopupSpaceAppliesSelection(t *testing.T) {

@@ -327,6 +327,14 @@ The Implicit View Sync progress state shows all supported harnesses in sequentia
 
 Successful Implicit View Sync does not print a sync summary before rendering the dashboard. If Implicit View Sync fails, `view` exits the TUI, prints the sync summary, returns the sync error, recommends targeted manual refresh with `tokeninsights sync --harness <harness>` followed by `tokeninsights view --no-sync`, and does not render the dashboard table.
 
+The dashboard header is an explicit statusline component with this ordered shape: `TokenInsights · daterange: <range> · hostname: <host> · lastsynced: <time>`. Statusline items have typed identities and are updated from viewer state rather than assembled ad hoc during rendering. Applying a Date Range Filter updates `daterange` immediately; a successful dashboard reload updates `lastsynced` from the latest completed sync. Hostname is resolved once when the viewer model is initialized and falls back to `unknown`; absent sync history renders as `never`. Tab and Dimension Filter changes pass through the same statusline reconciliation boundary so future items can react to viewer state without coupling that logic to the table renderer.
+
+Preset date ranges render as `today`, `yesterday`, `week`, `month`, `year`, or `all time`. Explicit custom bounds render as `from..to`, `from..`, or `..to`. The statusline occupies exactly one physical row. When space is constrained, it shortens and then omits hostname content first, shortens last-sync content next, and truncates date range and the brand only at extreme widths. Separators remain dim, never dangle, and do not split styled terminal sequences.
+
+The table summary is an explicit, pinned, full-width band below the table viewport, separated from data by one blank spacer row. It remains visible and unchanged during vertical and horizontal scrolling because it summarizes the full filtered result set rather than only visible rows. Token-bearing tabs left-align `rows <count> · total <tokens>`; the `context` tab shows only its row count because it has no additive token-total metric. Loading reserves a blank summary row so the table layout does not jump, while a loaded empty token-bearing tab renders `rows 0 · total 0`.
+
+The footer owns shortcuts, loading state, scroll position, and active-filter information. Row count and token total belong only to the table summary, and last sync time belongs only to the statusline.
+
 The TUI queries canonical tables only:
 
 - token totals come from countable `canonical_token_usage` rows;
@@ -406,6 +414,8 @@ Can evolve with care:
 | `packages/cli/internal/cli/commands.go` | command dispatch and thin orchestration |
 | `packages/cli/internal/cli/flags.go` | view flag parsing |
 | `packages/cli/internal/cli/table.go` | interactive TUI model |
+| `packages/cli/internal/cli/statusline.go` | typed dashboard statusline state and width-aware rendering |
+| `packages/cli/internal/cli/table_summary.go` | pinned table summary state and width-aware rendering |
 | `packages/cli/internal/cli/render.go` | table rendering |
 | `packages/cli/internal/db/open.go` | DB open/create/reset/schema lifecycle |
 | `packages/cli/internal/db/schema.go` | Go schema constants |

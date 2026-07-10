@@ -71,7 +71,8 @@ type interactiveModel struct {
 	rows             []renderRow
 	groupBy          groupByMode
 	activeTab        tabMode
-	period           period
+	statusline       statuslineModel
+	tableSummary     tableSummaryModel
 	width            int
 	height           int
 	scrollOffset     int
@@ -151,6 +152,56 @@ func (m interactiveModel) Init() tea.Cmd {
 	return nil
 }
 
+func newInteractiveModel(ctx context.Context, options tableOptions, now time.Time, hostname string) interactiveModel {
+	m := interactiveModel{
+		ctx:              ctx,
+		options:          options,
+		now:              now,
+		groupBy:          groupByNone,
+		activeTab:        tabTokens,
+		popupCursor:      0,
+		filterSelections: make(map[string]bool),
+		loading:          options.noSync,
+		syncing:          !options.noSync,
+		syncProgressRows: initialSyncProgressRows(),
+	}
+	m.statusline = newStatuslineModel(statuslineDateRangeLabel(options), hostname, 0)
+	m.tableSummary = newTableSummaryModel(nil, m.activeTab, m.loading)
+	return m
+}
+
+func (m interactiveModel) reconcileStatusline() interactiveModel {
+	if len(m.statusline.items) == 0 {
+		m.statusline = newStatuslineModel(statuslineDateRangeLabel(m.options), "unknown", m.lastSyncMs)
+		return m
+	}
+	m.statusline = m.statusline.
+		withValue(statuslineDateRange, statuslineDateRangeLabel(m.options)).
+		withValue(statuslineLastSynced, formatLastSync(m.lastSyncMs))
+	return m
+}
+
+func (m interactiveModel) renderStatusline() string {
+	m = m.reconcileStatusline()
+	return m.statusline.View(max(0, m.width-2))
+}
+
+func (m interactiveModel) reconcileTableSummary() interactiveModel {
+	m.tableSummary = newTableSummaryModel(m.rows, m.activeTab, m.loading)
+	return m
+}
+
+func (m interactiveModel) renderTableSummary() string {
+	m = m.reconcileTableSummary()
+	return m.tableSummary.View(m.tableViewportWidth())
+}
+
+func renderTableSection(body string, summary string) string {
+	body = strings.TrimSuffix(body, "\n")
+	spacer := appSurfaceStyle.Render(strings.Repeat(" ", lipgloss.Width(summary)))
+	return tableSectionStyle.Render(lipgloss.JoinVertical(lipgloss.Left, body, spacer, summary))
+}
+
 func (m interactiveModel) reloadCmd() tea.Cmd {
 	return func() tea.Msg {
 		rows, err := loadRows(m.ctx, m.options, m.now, m.groupBy, m.activeTab)
@@ -214,7 +265,7 @@ func (m interactiveModel) measureHeights() interactiveModel {
 		return m
 	}
 
-	title := renderTitle(m.width, m.period)
+	statusline := m.renderStatusline()
 
 	var tabs []string
 	for _, tab := range aggregationTabs {
@@ -235,8 +286,11 @@ func (m interactiveModel) measureHeights() interactiveModel {
 	hint := hintStyle.Render(hintText)
 	hintBox := sectionBorderStyle.Width(m.width - 4).Render(hint)
 
-	emptyTable := tableSectionStyle.Render(renderTableViewport([]renderRow{}, m.groupBy, m.activeTab, m.tableViewportWidth(), 0))
-	contentBase := lipgloss.JoinVertical(lipgloss.Left, title, tabBox, emptyTable, hintBox)
+	emptyTable := renderTableSection(
+		renderTableViewport([]renderRow{}, m.groupBy, m.activeTab, m.tableViewportWidth(), 0),
+		m.renderTableSummary(),
+	)
+	contentBase := lipgloss.JoinVertical(lipgloss.Left, statusline, tabBox, emptyTable, hintBox)
 	baseFull := outerBorderStyle.Width(m.width - 2).Render(contentBase)
 	m.baseHeight = lipgloss.Height(baseFull)
 
@@ -257,8 +311,11 @@ func (m interactiveModel) measureHeights() interactiveModel {
 	}
 
 	// Measure cost of a single data row (no separators).
-	oneRowTable := tableSectionStyle.Render(renderTableViewport([]renderRow{sampleRow}, m.groupBy, m.activeTab, m.tableViewportWidth(), 0))
-	contentOneRow := lipgloss.JoinVertical(lipgloss.Left, title, tabBox, oneRowTable, hintBox)
+	oneRowTable := renderTableSection(
+		renderTableViewport([]renderRow{sampleRow}, m.groupBy, m.activeTab, m.tableViewportWidth(), 0),
+		m.renderTableSummary(),
+	)
+	contentOneRow := lipgloss.JoinVertical(lipgloss.Left, statusline, tabBox, oneRowTable, hintBox)
 	oneRowFull := outerBorderStyle.Width(m.width - 2).Render(contentOneRow)
 	perDataRow := lipgloss.Height(oneRowFull) - m.baseHeight
 	if perDataRow <= 0 {
@@ -423,6 +480,7 @@ func (m interactiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case startDashboardLoadMsg:
 		m.syncing = false
 		m.loading = true
+		m = m.reconcileTableSummary()
 		m.reloadInFlight = true
 		m = m.measureHeights()
 		return m, m.reloadCmd()
@@ -435,6 +493,8 @@ func (m interactiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.rows = msg.rows
 		m.lastSyncMs = msg.lastSyncMs
+		m = m.reconcileStatusline()
+		m = m.reconcileTableSummary()
 		m = m.clampScrollOffset()
 		m = m.clampHorizontalOffset()
 		return m, nil
@@ -462,6 +522,7 @@ func (m interactiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.scrollOffset = 0
 			m.horizontalOffset = 0
 			m.loading = true
+			m = m.reconcileTableSummary()
 			m.reloadInFlight = true
 			m = m.measureHeights()
 			return m, m.reloadCmd()
@@ -470,6 +531,7 @@ func (m interactiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.scrollOffset = 0
 			m.horizontalOffset = 0
 			m.loading = true
+			m = m.reconcileTableSummary()
 			m.reloadInFlight = true
 			m = m.measureHeights()
 			return m, m.reloadCmd()
@@ -508,6 +570,7 @@ func (m interactiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.scrollOffset = 0
 				m.horizontalOffset = 0
 				m.loading = true
+				m = m.reconcileTableSummary()
 				m.reloadInFlight = true
 				m = m.measureHeights()
 				return m, m.reloadCmd()
@@ -721,10 +784,11 @@ func (m interactiveModel) applyDateRangePopup() (tea.Model, tea.Cmd) {
 	m.popup = popupNone
 	if newPeriod != m.options.period {
 		m.options.period = newPeriod
-		m.period = newPeriod
+		m = m.reconcileStatusline()
 		m.scrollOffset = 0
 		m.horizontalOffset = 0
 		m.loading = true
+		m = m.reconcileTableSummary()
 		m.reloadInFlight = true
 		m = m.measureHeights()
 		return m, m.reloadCmd()
@@ -773,6 +837,7 @@ func (m interactiveModel) applyBucketPopup() (tea.Model, tea.Cmd) {
 		m.scrollOffset = 0
 		m.horizontalOffset = 0
 		m.loading = true
+		m = m.reconcileTableSummary()
 		m.reloadInFlight = true
 		m = m.measureHeights()
 		return m, m.reloadCmd()
@@ -823,6 +888,7 @@ func (m interactiveModel) applySortPopup() (tea.Model, tea.Cmd) {
 		m.scrollOffset = 0
 		m.horizontalOffset = 0
 		m.loading = true
+		m = m.reconcileTableSummary()
 		m.reloadInFlight = true
 		m = m.measureHeights()
 		return m, m.reloadCmd()
@@ -906,6 +972,7 @@ func (m interactiveModel) applyFilterValues() (tea.Model, tea.Cmd) {
 	m.scrollOffset = 0
 	m.horizontalOffset = 0
 	m.loading = true
+	m = m.reconcileTableSummary()
 	m.reloadInFlight = true
 	m = m.measureHeights()
 	return m, m.reloadCmd()
@@ -1062,10 +1129,6 @@ func filterDimensionLabel(dimension filterDimension) string {
 	}
 }
 
-func renderTitle(width int, value period) string {
-	return titleStyle.Width(max(0, width-2)).Render(fmt.Sprintf("TokenInsights %s", value))
-}
-
 func (m interactiveModel) View() string {
 	if m.err != nil {
 		return fmt.Sprintf("Error: %v\n", m.err)
@@ -1090,7 +1153,7 @@ func (m interactiveModel) View() string {
 		)
 	}
 
-	title := renderTitle(m.width, m.period)
+	statusline := m.renderStatusline()
 
 	var tabs []string
 	for _, tab := range aggregationTabs {
@@ -1132,9 +1195,7 @@ func (m interactiveModel) View() string {
 		hintText += "  ·  " + filters
 	}
 	if m.loading {
-		hintText += fmt.Sprintf("  ·  loading  ·  sync %s", formatLastSync(m.lastSyncMs))
-	} else {
-		hintText += fmt.Sprintf("  ·  total %s  ·  rows %d  ·  sync %s", formatTokens(totalTokens(m.rows)), len(m.rows), formatLastSync(m.lastSyncMs))
+		hintText += "  ·  loading"
 	}
 	hint := hintStyle.Render(hintText)
 	hintBox := sectionBorderStyle.Width(m.width - 4).Render(hint)
@@ -1145,9 +1206,9 @@ func (m interactiveModel) View() string {
 	} else {
 		body = renderTableViewportWithSort(visibleRows, m.rows, m.groupBy, m.activeTab, selectedSort, viewportWidth, horizontalOffset, visible)
 	}
-	body = tableSectionStyle.Render(body)
+	body = renderTableSection(body, m.renderTableSummary())
 
-	content := lipgloss.JoinVertical(lipgloss.Left, title, tabBox, body, hintBox)
+	content := lipgloss.JoinVertical(lipgloss.Left, statusline, tabBox, body, hintBox)
 	rendered := outerBorderStyle.Width(m.width - 2).Render(content)
 	return renderOnAppSurface(rendered, m.width, m.height)
 }
@@ -1245,21 +1306,6 @@ func activeFiltersLabel(f filters) string {
 		return ""
 	}
 	return "filters: " + strings.Join(parts, " ")
-}
-
-func totalTokens(rows []renderRow) int64 {
-	var total int64
-	for _, row := range rows {
-		total += row.totalValue
-	}
-	return total
-}
-
-func formatLastSync(value int64) string {
-	if value <= 0 {
-		return "never"
-	}
-	return formatLatest(value)
 }
 
 func (m interactiveModel) renderPopup() string {
@@ -1373,19 +1419,9 @@ func RunInteractive(ctx context.Context, args []string, stdout io.Writer, stderr
 		_ = database.Close()
 	}
 
-	finalModel, err := runInteractiveProgram(interactiveModel{
-		ctx:              ctx,
-		options:          options,
-		now:              now,
-		period:           options.period,
-		groupBy:          groupByNone,
-		activeTab:        tabTokens,
-		popupCursor:      0,
-		filterSelections: make(map[string]bool),
-		loading:          options.noSync,
-		syncing:          !options.noSync,
-		syncProgressRows: initialSyncProgressRows(),
-	}, stdout)
+	hostname, hostnameErr := os.Hostname()
+	model := newInteractiveModel(ctx, options, now, normalizeHostname(hostname, hostnameErr))
+	finalModel, err := runInteractiveProgram(model, stdout)
 	if err != nil {
 		return err
 	}
