@@ -67,7 +67,7 @@ The sync-first canonical path is the active product path. Schema V7, DB lifecycl
 
 Known gaps are part of the current design contract:
 
-- Recent Source Refresh is implemented for OpenCode SQLite plus Pi, Codex, and Claude Code JSONL Durable Sources; true intra-source cursors are not implemented;
+- Recent Source Refresh is implemented for OpenCode V1/V2 SQLite plus Pi, Codex, and Claude Code JSONL Durable Sources; true intra-source cursors are not implemented;
 - canonical token upserts are deterministic by semantic key, but there is not yet an explicit conflict/precedence model for competing raw facts;
 - diagnostics exist for parser warnings, missing canonical session identity, and some source-level suppressions such as duplicate or stale snapshots, but the full rejected/conflicting/suppressed diagnostic taxonomy is still future work;
 - the viewer is aligned to token aggregation tabs; future metric domains should stay hidden until durable canonical facts exist;
@@ -253,7 +253,7 @@ Phase 3 rules, if needed:
 - adapters decide whether a source can be parsed incrementally;
 - the pipeline persists adapter-returned cursor advancement metadata only after source ingest commits;
 - JSONL adapters should use byte offsets plus file size, mtime, and boundary hashes, falling back to full parse when a file shrinks, rewrites, or cannot be verified;
-- OpenCode SQLite should use source-native row ordering, initially `(time_created, id)` from the `message` table, rather than SQLite file offsets;
+- OpenCode SQLite should use source-native row ordering, initially `(time_created, id)` from the V1 `message` and V2 `session_message` tables, rather than SQLite file offsets;
 - an incremental run writes observations only for facts actually parsed in that run;
 - an up-to-date source creates a completed lightweight ingest run with zero raw facts and zero observations;
 - cursor invalidation and full-parse fallback should be local-only operational information, not viewer analytics;
@@ -279,7 +279,7 @@ The future source-refresh adapter contract should additionally let adapters:
 - return source refresh state advancement metadata that is safe to persist only after successful source ingest;
 - invalidate stale source refresh state when parser provenance or source continuity checks fail.
 
-OpenCode sync parses modern durable SQLite databases named `opencode.db` or `opencode-<channel>.db` from `${XDG_DATA_HOME:-~/.local/share}/opencode`. It reads assistant rows from the `message` table, parses metadata-only token fields from `message.data`, uses message/session IDs when available, and suppresses copied fork or channel rows with deterministic non-private fingerprints. OpenCode SQLite sources participate in Recent Source Refresh using metadata-safe source keys, parser/collector provenance, database file modification time, and database file size; if state is missing, stale, or changed, OpenCode falls back to the existing full table parse. True OpenCode row cursors are not implemented.
+OpenCode sync parses durable V1 and V2 SQLite databases named `opencode.db` or `opencode-<channel>.db` from `${XDG_DATA_HOME:-~/.local/share}/opencode`. It reads V1 assistant rows from `message.data` and V2 assistant rows from `session_message.data`, maps their message-scoped token, model, provider, and timing metadata, and uses stable row/session IDs. In mixed migrated databases, usable V2 rows take precedence for the same session/message; V1 remains the fallback when the V2 row has no usable token data. Copied fork or channel rows are suppressed with deterministic non-private fingerprints. OpenCode-specific parser provenance forces one automatic reparse when V2 support is introduced; canonical semantic keys prevent analytics duplication. OpenCode SQLite sources participate in Recent Source Refresh using metadata-safe source keys, parser/collector provenance, database file modification time, and database file size; if state is missing, stale, or changed, OpenCode falls back to the existing full table parse. True OpenCode row cursors are not implemented.
 
 Pi sync parses durable JSONL session files under `~/.pi/agent/sessions`, including one nested project directory level. It uses assistant message usage as exact message-scoped token facts. Session identity comes from the session header when available and may fall back to the filename session suffix. Pi JSONL sources participate in Recent Source Refresh using metadata-safe source keys, parser/collector provenance, file modification time, and file size; if state is missing, stale, or changed, Pi falls back to the existing full parse.
 

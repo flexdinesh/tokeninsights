@@ -29,7 +29,7 @@ go install github.com/flexdinesh/tokeninsights/packages/cli/cmd/tokeninsights@de
 
 Read harness artifacts and normalize data from supported harnesses. `tokeninsights view` syncs all supported harnesses implicitly by default, so use explicit sync when you want targeted harness refreshes, dry runs, full refreshes, or custom source directories.
 
-OpenCode SQLite plus Pi, Codex, and Claude Code JSONL sync use Recent Source Refresh: after a successful refresh, old unchanged sources can be skipped on later syncs while recent or changed sources are still parsed. The freshness window is 48 hours before the last successful source refresh. `sync --dry-run` previews those skips without writing to the database, and `sync --full-refresh` ignores source refresh state for the requested harness scope without requeueing all existing raw facts.
+OpenCode V1 and V2 SQLite plus Pi, Codex, and Claude Code JSONL sync use Recent Source Refresh: after a successful refresh, old unchanged sources can be skipped on later syncs while recent or changed sources are still parsed. OpenCode reads V1 `message` rows and V2 `session_message` rows, preferring usable V2 usage when migrated history exists in both tables. The freshness window is 48 hours before the last successful source refresh. `sync --dry-run` previews those skips without writing to the database, and `sync --full-refresh` ignores source refresh state for the requested harness scope without requeueing all existing raw facts.
 
 ```sh
 # sync all supported harnesses

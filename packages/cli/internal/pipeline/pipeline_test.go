@@ -193,7 +193,7 @@ func progressLabels(events []SyncProgressEvent) []string {
 	return labels
 }
 
-func TestOpenCodeSQLiteConformanceFixtureDefinesMessageTokenUsage(t *testing.T) {
+func TestOpenCodeSQLiteConformanceFixtureDefinesV1AndV2MessageTokenUsage(t *testing.T) {
 	fixtureDir := filepath.Join("testdata", "conformance", "opencode-sqlite")
 	ctx := context.Background()
 	dbPath := filepath.Join(t.TempDir(), "tokeninsights.sqlite")
@@ -217,9 +217,9 @@ func TestOpenCodeSQLiteConformanceFixtureDefinesMessageTokenUsage(t *testing.T) 
 	assertSummary(t, summary, Summary{
 		RequestedHarnesses: 1,
 		Synced:             1,
-		RawFacts:           2,
-		Observations:       2,
-		Canonical:          2,
+		RawFacts:           3,
+		Observations:       3,
+		Canonical:          3,
 	})
 
 	database := openTestDB(t, dbPath)
@@ -241,6 +241,90 @@ func TestOpenCodeSQLiteConformanceFixtureDefinesMessageTokenUsage(t *testing.T) 
 		queryDiagnostics(t, database),
 		readExpectedJSON[[]expectedDiagnostic](t, filepath.Join(fixtureDir, "expected", "normalization_diagnostics.json")),
 	)
+}
+
+func TestOpenCodeSQLiteParsesV2OnlyAndClampsNegativeTokens(t *testing.T) {
+	ctx := context.Background()
+	dbPath := filepath.Join(t.TempDir(), "tokeninsights.sqlite")
+	sourceDir := t.TempDir()
+	addOpenCodeSQLiteV2Messages(t, filepath.Join(sourceDir, "opencode", "opencode.db"), openCodeSQLiteV2Message{
+		ID:          "msg_v2",
+		SessionID:   "ses_v2",
+		Type:        "assistant",
+		TimeCreated: 1770000000000,
+		TimeUpdated: 1770000001000,
+		Data:        `{"model":{"providerID":"openai","id":"gpt-5"},"tokens":{"input":100,"output":-5,"reasoning":2,"cache":{"read":3,"write":4}},"time":{"created":1770000000000,"completed":1770000001000}}`,
+	})
+
+	summary, err := Sync(ctx, SyncOptions{
+		DBPath:    dbPath,
+		Harnesses: []Harness{HarnessOpenCode},
+		Normalize: true,
+		SourceDir: sourceDir,
+		Now:       time.Date(2026, 4, 24, 15, 0, 0, 0, time.UTC),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertSummary(t, summary, Summary{
+		RequestedHarnesses: 1,
+		Synced:             1,
+		RawFacts:           1,
+		Observations:       1,
+		Canonical:          1,
+		Diagnostics:        1,
+	})
+
+	database := openTestDB(t, dbPath)
+	defer database.Close()
+	assertSQLCount(t, database, "SELECT COUNT(*) FROM raw_token_usage WHERE session_id = 'ses_v2' AND message_id = 'msg_v2' AND provider = 'openai' AND model = 'gpt-5' AND input_tokens = 100 AND output_tokens = 0 AND reasoning_tokens = 2 AND cache_read_tokens = 3 AND cache_write_tokens = 4", 1)
+	assertSQLCount(t, database, "SELECT COUNT(*) FROM normalization_diagnostics WHERE code = 'opencode_sqlite_negative_tokens'", 1)
+}
+
+func TestOpenCodeSQLiteFallsBackToV1WhenV2OverlapHasNoTokens(t *testing.T) {
+	ctx := context.Background()
+	dbPath := filepath.Join(t.TempDir(), "tokeninsights.sqlite")
+	sourceDir := t.TempDir()
+	sourcePath := filepath.Join(sourceDir, "opencode", "opencode.db")
+	createOpenCodeSQLiteMessages(t, sourcePath, openCodeSQLiteMessage{
+		ID:          "msg_shared",
+		SessionID:   "ses_shared",
+		TimeCreated: 1770000000000,
+		TimeUpdated: 1770000001000,
+		Data:        `{"role":"assistant","providerID":"anthropic","modelID":"claude-sonnet-4","tokens":{"input":80,"output":20},"time":{"created":1770000000000,"completed":1770000001000}}`,
+	})
+	addOpenCodeSQLiteV2Messages(t, sourcePath, openCodeSQLiteV2Message{
+		ID:          "msg_shared",
+		SessionID:   "ses_shared",
+		Type:        "assistant",
+		TimeCreated: 1770000000000,
+		TimeUpdated: 1770000001000,
+		Data:        `{"model":{"providerID":"anthropic","id":"claude-sonnet-4"},"time":{"created":1770000000000}}`,
+	})
+
+	summary, err := Sync(ctx, SyncOptions{
+		DBPath:    dbPath,
+		Harnesses: []Harness{HarnessOpenCode},
+		Normalize: true,
+		SourceDir: sourceDir,
+		Now:       time.Date(2026, 4, 24, 15, 0, 0, 0, time.UTC),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertSummary(t, summary, Summary{
+		RequestedHarnesses: 1,
+		Synced:             1,
+		RawFacts:           1,
+		Observations:       1,
+		Canonical:          1,
+		Diagnostics:        1,
+	})
+
+	database := openTestDB(t, dbPath)
+	defer database.Close()
+	assertSQLCount(t, database, "SELECT COUNT(*) FROM canonical_token_usage WHERE input_tokens = 80 AND output_tokens = 20", 1)
+	assertSQLCount(t, database, "SELECT COUNT(*) FROM normalization_diagnostics WHERE code = 'opencode_sqlite_missing_tokens'", 1)
 }
 
 func TestOpenCodeRecentSourceRefreshSkipsOldUnchangedSource(t *testing.T) {
@@ -398,6 +482,37 @@ func TestOpenCodeRecentSourceRefreshParsesRecentTouchedAndMissingStateSources(t 
 		assertCount(t, database, "raw_token_usage", 1)
 		assertCount(t, database, "raw_observations", 2)
 		assertSQLCount(t, database, "SELECT COUNT(*) FROM source_refresh_state WHERE harness = 'opencode' AND source_kind = 'opencode-sqlite'", 1)
+	})
+
+	t.Run("old-parser", func(t *testing.T) {
+		dbPath := filepath.Join(t.TempDir(), "tokeninsights.sqlite")
+		sourceDir := t.TempDir()
+		sourcePath := writeOpenCodeSourceRefreshFixture(t, sourceDir)
+		setFileModTime(t, sourcePath, now.Add(-72*time.Hour))
+
+		syncOpenCodeSourceRefreshFixture(t, ctx, dbPath, sourceDir, now)
+		database := openTestDB(t, dbPath)
+		defer database.Close()
+		if _, err := database.Exec("UPDATE source_refresh_state SET parser = ? WHERE harness = 'opencode'", defaultParser); err != nil {
+			t.Fatal(err)
+		}
+
+		repeatSummary, err := Sync(ctx, SyncOptions{
+			DBPath:    dbPath,
+			Harnesses: []Harness{HarnessOpenCode},
+			Normalize: true,
+			SourceDir: sourceDir,
+			Now:       now.Add(time.Hour),
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		assertSummary(t, repeatSummary, Summary{
+			RequestedHarnesses: 1,
+			Synced:             1,
+			Observations:       1,
+		})
+		assertSQLCount(t, database, "SELECT COUNT(*) FROM source_refresh_state WHERE harness = 'opencode' AND parser = 'opencode-sqlite-v1-v2'", 1)
 	})
 }
 
@@ -2404,6 +2519,15 @@ type openCodeSQLiteMessage struct {
 	Data        string
 }
 
+type openCodeSQLiteV2Message struct {
+	ID          string
+	SessionID   string
+	Type        string
+	TimeCreated int64
+	TimeUpdated int64
+	Data        string
+}
+
 type failingWriteAdapter struct {
 	facts []RawTokenFact
 }
@@ -2614,6 +2738,39 @@ func createOpenCodeSQLiteMessages(t *testing.T, dbPath string, messages ...openC
 			INSERT INTO message (id, session_id, time_created, time_updated, data)
 			VALUES (?, ?, ?, ?, ?)
 		`, message.ID, message.SessionID, message.TimeCreated, message.TimeUpdated, message.Data); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+func addOpenCodeSQLiteV2Messages(t *testing.T, dbPath string, messages ...openCodeSQLiteV2Message) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(dbPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	database, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	if _, err := database.Exec(`
+		CREATE TABLE session_message (
+			id text PRIMARY KEY,
+			session_id text NOT NULL,
+			type text NOT NULL,
+			seq integer NOT NULL,
+			time_created integer NOT NULL,
+			time_updated integer NOT NULL,
+			data text NOT NULL
+		)
+	`); err != nil {
+		t.Fatal(err)
+	}
+	for index, message := range messages {
+		if _, err := database.Exec(`
+			INSERT INTO session_message (id, session_id, type, seq, time_created, time_updated, data)
+			VALUES (?, ?, ?, ?, ?, ?, ?)
+		`, message.ID, message.SessionID, message.Type, index, message.TimeCreated, message.TimeUpdated, message.Data); err != nil {
 			t.Fatal(err)
 		}
 	}
