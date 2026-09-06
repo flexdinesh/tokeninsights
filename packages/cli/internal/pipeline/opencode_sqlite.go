@@ -25,6 +25,17 @@ type opencodeMessageData struct {
 	Time       *opencodeMessageTimes `json:"time"`
 }
 
+type opencodeV2MessageData struct {
+	Model  *opencodeV2Model      `json:"model"`
+	Tokens *opencodeTokenData    `json:"tokens"`
+	Time   *opencodeMessageTimes `json:"time"`
+}
+
+type opencodeV2Model struct {
+	ID         string `json:"id"`
+	ProviderID string `json:"providerID"`
+}
+
 type opencodeTokenData struct {
 	Input     *int64              `json:"input"`
 	Output    *int64              `json:"output"`
@@ -140,17 +151,49 @@ func (a opencodeSQLiteAdapter) Parse(ctx context.Context, source Source, options
 	}
 	defer database.Close()
 
-	ok, err := sqliteTableExists(ctx, database, "message")
+	v1Exists, err := sqliteTableExists(ctx, database, "message")
 	if err != nil {
 		return nil, nil, err
 	}
-	if !ok {
-		return nil, []Diagnostic{opencodeDiagnostic("opencode_sqlite_missing_message_table", "OpenCode SQLite source has no message table")}, nil
+	v2Exists, err := sqliteTableExists(ctx, database, "session_message")
+	if err != nil {
+		return nil, nil, err
 	}
-	if err := requireSQLiteColumns(ctx, database, "message", []string{"id", "session_id", "time_created", "data"}); err != nil {
-		return nil, []Diagnostic{opencodeDiagnostic("opencode_sqlite_invalid_schema", "OpenCode SQLite message table is missing required columns")}, nil
+	if !v1Exists && !v2Exists {
+		return nil, []Diagnostic{opencodeDiagnostic("opencode_sqlite_missing_message_table", "OpenCode SQLite source has no supported message table")}, nil
 	}
 
+	var facts []RawTokenFact
+	var diagnostics []Diagnostic
+	v2Facts := map[string]bool{}
+	if v2Exists {
+		if err := requireSQLiteColumns(ctx, database, "session_message", []string{"id", "session_id", "type", "time_created", "data"}); err != nil {
+			diagnostics = append(diagnostics, opencodeDiagnostic("opencode_sqlite_invalid_schema", "OpenCode SQLite session_message table is missing required columns"))
+		} else {
+			parsed, parsedDiagnostics, err := a.parseV2Messages(ctx, database, source, options, v2Facts)
+			if err != nil {
+				return nil, nil, err
+			}
+			facts = append(facts, parsed...)
+			diagnostics = append(diagnostics, parsedDiagnostics...)
+		}
+	}
+	if v1Exists {
+		if err := requireSQLiteColumns(ctx, database, "message", []string{"id", "session_id", "time_created", "data"}); err != nil {
+			diagnostics = append(diagnostics, opencodeDiagnostic("opencode_sqlite_invalid_schema", "OpenCode SQLite message table is missing required columns"))
+		} else {
+			parsed, parsedDiagnostics, err := a.parseV1Messages(ctx, database, source, options, v2Facts)
+			if err != nil {
+				return nil, nil, err
+			}
+			facts = append(facts, parsed...)
+			diagnostics = append(diagnostics, parsedDiagnostics...)
+		}
+	}
+	return facts, diagnostics, nil
+}
+
+func (a opencodeSQLiteAdapter) parseV1Messages(ctx context.Context, database *sql.DB, source Source, options SyncOptions, v2Facts map[string]bool) ([]RawTokenFact, []Diagnostic, error) {
 	rows, err := database.QueryContext(ctx, `
 		SELECT id, session_id, time_created, data
 		FROM message
@@ -177,7 +220,48 @@ func (a opencodeSQLiteAdapter) Parse(ctx context.Context, source Source, options
 		fact, rowDiagnostics, ok := a.factFromMessage(source, options, messageID, sessionID, timeCreated, data)
 		diagnostics = append(diagnostics, rowDiagnostics...)
 		if ok {
+			if v2Facts[opencodeLogicalMessageKey(sessionID, messageID)] {
+				continue
+			}
 			facts = append(facts, fact)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, nil, err
+	}
+	return facts, diagnostics, nil
+}
+
+func (a opencodeSQLiteAdapter) parseV2Messages(ctx context.Context, database *sql.DB, source Source, options SyncOptions, v2Facts map[string]bool) ([]RawTokenFact, []Diagnostic, error) {
+	rows, err := database.QueryContext(ctx, `
+		SELECT id, session_id, time_created, data
+		FROM session_message
+		WHERE type = 'assistant'
+		ORDER BY time_created, id
+	`)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer rows.Close()
+
+	var facts []RawTokenFact
+	var diagnostics []Diagnostic
+	for rows.Next() {
+		if ctx.Err() != nil {
+			return nil, nil, ctx.Err()
+		}
+		var messageID string
+		var sessionID sql.NullString
+		var timeCreated sql.NullInt64
+		var data string
+		if err := rows.Scan(&messageID, &sessionID, &timeCreated, &data); err != nil {
+			return nil, nil, err
+		}
+		fact, rowDiagnostics, ok := a.factFromV2Message(source, options, messageID, sessionID, timeCreated, data)
+		diagnostics = append(diagnostics, rowDiagnostics...)
+		if ok {
+			facts = append(facts, fact)
+			v2Facts[opencodeLogicalMessageKey(sessionID, messageID)] = true
 		}
 	}
 	if err := rows.Err(); err != nil {
@@ -238,8 +322,65 @@ func (a opencodeSQLiteAdapter) factFromMessage(source Source, options SyncOption
 		CacheWriteTokens: opencodeCacheWrite(messageData.Tokens),
 		TotalTokens:      nil,
 		MetadataJSON:     nil,
-		DedupeKey:        opencodeDedupeKey(messageData, occurredAt),
+		DedupeKey:        opencodeDedupeKey(messageData.ProviderID, messageData.ModelID, messageData.Tokens, messageData.Time, occurredAt),
 	}, diagnostics, true
+}
+
+func (a opencodeSQLiteAdapter) factFromV2Message(source Source, options SyncOptions, rowMessageID string, rowSessionID sql.NullString, rowTimeCreated sql.NullInt64, rawData string) (RawTokenFact, []Diagnostic, bool) {
+	var messageData opencodeV2MessageData
+	if err := json.Unmarshal([]byte(rawData), &messageData); err != nil {
+		return RawTokenFact{}, []Diagnostic{opencodeDiagnostic("opencode_sqlite_parse_error", "skipped OpenCode V2 assistant message row with invalid JSON data")}, false
+	}
+	if !hasUsableOpenCodeTokens(messageData.Tokens) {
+		return RawTokenFact{}, []Diagnostic{opencodeDiagnostic("opencode_sqlite_missing_tokens", "skipped OpenCode V2 assistant message with no usable token components")}, false
+	}
+	var diagnostics []Diagnostic
+	if clampOpenCodeTokens(messageData.Tokens) {
+		diagnostics = append(diagnostics, opencodeDiagnostic("opencode_sqlite_negative_tokens", "clamped negative OpenCode token components to zero"))
+	}
+	occurredAt := opencodeOccurredAt(messageData.Time, rowTimeCreated)
+	if occurredAt == nil {
+		return RawTokenFact{}, []Diagnostic{opencodeDiagnostic("opencode_sqlite_missing_time", "skipped OpenCode V2 assistant message with no usable created timestamp")}, false
+	}
+
+	sourceID := source.RawSourceID
+	if sourceID == "" {
+		sourceID = source.ID
+	}
+	providerID := ""
+	modelID := ""
+	if messageData.Model != nil {
+		providerID = messageData.Model.ProviderID
+		modelID = messageData.Model.ID
+	}
+
+	return RawTokenFact{
+		Harness:          HarnessOpenCode,
+		SourceID:         sourceID,
+		SourceKind:       source.Kind,
+		Collector:        options.Collector,
+		Parser:           options.Parser,
+		ObservedAtMs:     syncNowMs(options.Now),
+		OccurredAtMs:     occurredAt,
+		SessionID:        stringPtrFromTrimmed(trimSQLString(rowSessionID)),
+		MessageID:        stringPtrFromTrimmed(rowMessageID),
+		Provider:         stringPtrFromTrimmed(providerID),
+		Model:            stringPtrFromTrimmed(modelID),
+		UsageScope:       "message",
+		Quality:          "exact",
+		InputTokens:      messageData.Tokens.Input,
+		OutputTokens:     messageData.Tokens.Output,
+		ReasoningTokens:  defaultZero(messageData.Tokens.Reasoning),
+		CacheReadTokens:  opencodeCacheRead(messageData.Tokens),
+		CacheWriteTokens: opencodeCacheWrite(messageData.Tokens),
+		TotalTokens:      nil,
+		MetadataJSON:     nil,
+		DedupeKey:        opencodeDedupeKey(providerID, modelID, messageData.Tokens, messageData.Time, occurredAt),
+	}, diagnostics, true
+}
+
+func opencodeLogicalMessageKey(sessionID sql.NullString, messageID string) string {
+	return trimSQLString(sessionID) + "\x00" + strings.TrimSpace(messageID)
 }
 
 func isOpenCodeSQLiteDB(path string) bool {
@@ -402,22 +543,22 @@ func opencodeCacheWrite(tokens *opencodeTokenData) *int64 {
 	return tokens.Cache.Write
 }
 
-func opencodeDedupeKey(message opencodeMessageData, occurredAt *int64) string {
+func opencodeDedupeKey(providerID string, modelID string, tokens *opencodeTokenData, times *opencodeMessageTimes, occurredAt *int64) string {
 	completedAt := ""
-	if message.Time != nil && message.Time.Completed != nil {
-		completedAt = fmt.Sprint(*message.Time.Completed)
+	if times != nil && times.Completed != nil {
+		completedAt = fmt.Sprint(*times.Completed)
 	}
 	parts := []string{
 		"opencode-sqlite-message",
 		intPtrValue(occurredAt),
 		completedAt,
-		strings.TrimSpace(message.ProviderID),
-		strings.TrimSpace(message.ModelID),
-		intPtrValue(message.Tokens.Input),
-		intPtrValue(message.Tokens.Output),
-		intPtrValue(message.Tokens.Reasoning),
-		intPtrValue(opencodeCacheRead(message.Tokens)),
-		intPtrValue(opencodeCacheWrite(message.Tokens)),
+		strings.TrimSpace(providerID),
+		strings.TrimSpace(modelID),
+		intPtrValue(tokens.Input),
+		intPtrValue(tokens.Output),
+		intPtrValue(tokens.Reasoning),
+		intPtrValue(opencodeCacheRead(tokens)),
+		intPtrValue(opencodeCacheWrite(tokens)),
 	}
 	return stableHash(strings.Join(parts, "|"))
 }

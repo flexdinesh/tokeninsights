@@ -17,6 +17,16 @@ CREATE TABLE message (
   data text NOT NULL
 );
 
+CREATE TABLE session_message (
+  id text PRIMARY KEY,
+  session_id text NOT NULL,
+  type text NOT NULL,
+  seq integer NOT NULL,
+  time_created integer NOT NULL,
+  time_updated integer NOT NULL,
+  data text NOT NULL
+);
+
 INSERT INTO session (id, project_id, slug, directory, title, version, time_created, time_updated)
 VALUES ('ses_a', 'proj_a', 'private-slug', '/private/project', 'private title', '1.0.0', 1700000000000, 1700000002000);
 
@@ -45,4 +55,26 @@ VALUES (
   1700000002000,
   1700000002000,
   '{"role":"user","tokens":{"input":999,"output":999},"time":{"created":1700000002000}}'
+);
+
+INSERT INTO session_message (id, session_id, type, seq, time_created, time_updated, data)
+VALUES (
+  'msg_a',
+  'ses_a',
+  'assistant',
+  0,
+  1700000000100,
+  1700000000500,
+  '{"agent":"build","model":{"providerID":"anthropic","id":"claude-sonnet-4","variant":"default"},"content":[],"tokens":{"input":101,"output":51,"reasoning":11,"cache":{"read":21,"write":6}},"time":{"created":1700000000000,"completed":1700000000450}}'
+);
+
+INSERT INTO session_message (id, session_id, type, seq, time_created, time_updated, data)
+VALUES (
+  'msg_v2',
+  'ses_a',
+  'assistant',
+  1,
+  1700000003000,
+  1700000003400,
+  '{"agent":"build","model":{"providerID":"openai","id":"gpt-5","variant":"high"},"content":[],"tokens":{"input":200,"output":30,"reasoning":4,"cache":{"read":10,"write":3}},"time":{"created":1700000003000,"completed":1700000003400}}'
 );
