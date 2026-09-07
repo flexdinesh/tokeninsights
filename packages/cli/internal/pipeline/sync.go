@@ -14,8 +14,9 @@ import (
 )
 
 const (
-	defaultCollector = "tokeninsights-sync-go"
-	defaultParser    = "sync-first-v1"
+	defaultCollector       = "tokeninsights-sync-go"
+	defaultParser          = "sync-first-v1"
+	opencodeSQLiteParserV2 = "opencode-sqlite-v1-v2"
 )
 
 var runSequence atomic.Uint64
@@ -127,13 +128,14 @@ func dryRunSync(ctx context.Context, options SyncOptions) (Summary, error) {
 		defer stateDB.Close()
 	}
 	for _, harness := range options.Harnesses {
+		harnessOptions := parserOptionsForHarness(options, harness)
 		adapter, ok := AdapterFor(harness)
 		if !ok {
 			summary.Failed++
 			summary.Errors = append(summary.Errors, fmt.Errorf("unsupported harness %q", harness))
 			continue
 		}
-		sources, err := adapter.Discover(ctx, discoverOptions(options))
+		sources, err := adapter.Discover(ctx, discoverOptions(harnessOptions))
 		if err != nil {
 			summary.Failed++
 			summary.Errors = append(summary.Errors, fmt.Errorf("%s discover: %w", harness, err))
@@ -146,10 +148,10 @@ func dryRunSync(ctx context.Context, options SyncOptions) (Summary, error) {
 		parsedSources := 0
 		harnessFailed := false
 		for _, source := range sources {
-			if dryRunSourceIsUpToDate(ctx, stateDB, source, options) {
+			if dryRunSourceIsUpToDate(ctx, stateDB, source, harnessOptions) {
 				continue
 			}
-			facts, diagnostics, err := adapter.Parse(ctx, source, options)
+			facts, diagnostics, err := adapter.Parse(ctx, source, harnessOptions)
 			if err != nil {
 				harnessFailed = true
 				summary.Failed++
@@ -194,6 +196,7 @@ func dryRunSourceIsUpToDate(ctx context.Context, database *sql.DB, source Source
 
 func syncHarness(ctx context.Context, database *sql.DB, options SyncOptions, harness Harness) (Summary, error) {
 	var summary Summary
+	options = parserOptionsForHarness(options, harness)
 	adapter, ok := AdapterFor(harness)
 	if !ok {
 		return summary, fmt.Errorf("unsupported harness %q", harness)
@@ -217,6 +220,13 @@ func syncHarness(ctx context.Context, database *sql.DB, options SyncOptions, har
 		mergeSummary(&summary, sourceSummary)
 	}
 	return summary, nil
+}
+
+func parserOptionsForHarness(options SyncOptions, harness Harness) SyncOptions {
+	if harness == HarnessOpenCode && options.Parser == defaultParser {
+		options.Parser = opencodeSQLiteParserV2
+	}
+	return options
 }
 
 func reportSyncProgress(options SyncOptions, event SyncProgressEvent) {

@@ -2,13 +2,19 @@
   {
     "harness": "opencode",
     "session_id": "ses_a",
-    "message_id": "assistant_a",
+    "message_id": "msg_a",
     "observed_at_ms": 1777042800000
   },
   {
     "harness": "opencode",
     "session_id": "ses_a",
     "message_id": "msg_b",
+    "observed_at_ms": 1777042800000
+  },
+  {
+    "harness": "opencode",
+    "session_id": "ses_a",
+    "message_id": "msg_v2",
     "observed_at_ms": 1777042800000
   }
 ]

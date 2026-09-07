@@ -3,16 +3,16 @@
     "harness": "opencode",
     "source_kind": "opencode-sqlite",
     "session_id": "ses_a",
-    "message_id": "assistant_a",
+    "message_id": "msg_a",
     "provider": "anthropic",
     "model": "claude-sonnet-4",
     "usage_scope": "message",
     "quality": "exact",
-    "input_tokens": 100,
-    "output_tokens": 50,
-    "reasoning_tokens": 10,
-    "cache_read_tokens": 20,
-    "cache_write_tokens": 5,
+    "input_tokens": 101,
+    "output_tokens": 51,
+    "reasoning_tokens": 11,
+    "cache_read_tokens": 21,
+    "cache_write_tokens": 6,
     "total_tokens": null
   },
   {
@@ -29,6 +29,22 @@
     "reasoning_tokens": 0,
     "cache_read_tokens": 0,
     "cache_write_tokens": 2,
+    "total_tokens": null
+  },
+  {
+    "harness": "opencode",
+    "source_kind": "opencode-sqlite",
+    "session_id": "ses_a",
+    "message_id": "msg_v2",
+    "provider": "openai",
+    "model": "gpt-5",
+    "usage_scope": "message",
+    "quality": "exact",
+    "input_tokens": 200,
+    "output_tokens": 30,
+    "reasoning_tokens": 4,
+    "cache_read_tokens": 10,
+    "cache_write_tokens": 3,
     "total_tokens": null
   }
 ]
