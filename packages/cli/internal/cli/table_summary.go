@@ -6,13 +6,15 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/db"
 )
 
 type tableSummaryModel struct {
-	rowCount   int
-	totalValue int64
-	showTotal  bool
-	loading    bool
+	rowCount      int
+	totalValue    int64
+	showTotal     bool
+	loading       bool
+	sessionCounts db.SessionCounts
 }
 
 const tableSummarySeparator = " · "
@@ -43,13 +45,14 @@ func (summary tableSummaryModel) View(width int) string {
 		return tableSummarySurfaceStyle.Render(strings.Repeat(" ", width))
 	}
 
-	rows := tableSummaryLabelStyle.Render(fmt.Sprintf("rows %d", summary.rowCount))
-	if !summary.showTotal {
-		return padStyledLine(ansi.Cut(rows, 0, width), width, tableSummarySurfaceStyle)
+	parts := []string{
+		tableSummaryLabelStyle.Render(fmt.Sprintf("sessions %d shown / %d synced", summary.sessionCounts.Shown, summary.sessionCounts.Synced)),
+		tableSummaryLabelStyle.Render(fmt.Sprintf("rows %d", summary.rowCount)),
 	}
-
-	total := tableSummaryTotalStyle.Render(fmt.Sprintf("total %s", formatTableSummaryTokens(summary.totalValue)))
-	line := rows + tableSummarySeparatorStyle.Render(tableSummarySeparator) + total
+	if summary.showTotal {
+		parts = append(parts, tableSummaryTotalStyle.Render(fmt.Sprintf("total %s", formatTableSummaryTokens(summary.totalValue))))
+	}
+	line := strings.Join(parts, tableSummarySeparatorStyle.Render(tableSummarySeparator))
 	line = ansi.Cut(line, 0, width)
 	return padStyledLine(line, width, tableSummarySurfaceStyle)
 }

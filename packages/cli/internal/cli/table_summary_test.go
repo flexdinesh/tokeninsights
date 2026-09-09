@@ -6,6 +6,7 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/db"
 	"github.com/muesli/termenv"
 )
 
@@ -14,30 +15,33 @@ func TestTableSummaryRendersFullResultTotals(t *testing.T) {
 		{totalValue: 4_000_000},
 		{totalValue: 9_000_000},
 	}, tabTokens, false)
-	output := summary.View(40)
+	summary.sessionCounts = db.SessionCounts{Shown: 5, Synced: 214}
+	output := summary.View(80)
 	plain := ansi.Strip(output)
 
-	if ansi.StringWidth(output) != 40 {
-		t.Fatalf("summary width = %d, want 40", ansi.StringWidth(output))
+	if ansi.StringWidth(output) != 80 {
+		t.Fatalf("summary width = %d, want 80", ansi.StringWidth(output))
 	}
 	if strings.Contains(output, "\n") {
 		t.Fatalf("summary wrapped: %q", output)
 	}
-	if !strings.HasPrefix(plain, "rows 2 · total 13M") {
+	if !strings.HasPrefix(plain, "sessions 5 shown / 214 synced · rows 2 · total 13M") {
 		t.Fatalf("unexpected summary: %q", plain)
 	}
 }
 
 func TestTableSummaryLoadedEmptyStateShowsZeroes(t *testing.T) {
-	output := ansi.Strip(newTableSummaryModel(nil, tabTokens, false).View(32))
-	if !strings.HasPrefix(output, "rows 0 · total 0") {
+	output := ansi.Strip(newTableSummaryModel(nil, tabTokens, false).View(80))
+	if !strings.HasPrefix(output, "sessions 0 shown / 0 synced · rows 0 · total 0") {
 		t.Fatalf("unexpected empty summary: %q", output)
 	}
 }
 
-func TestTableSummaryContextShowsRowsOnly(t *testing.T) {
-	output := ansi.Strip(newTableSummaryModel([]renderRow{{}, {}}, tabContext, false).View(32))
-	if !strings.HasPrefix(output, "rows 2") {
+func TestTableSummaryContextShowsSessionsAndRowsWithoutTokenTotal(t *testing.T) {
+	summary := newTableSummaryModel([]renderRow{{}, {}}, tabContext, false)
+	summary.sessionCounts = db.SessionCounts{Shown: 1, Synced: 214}
+	output := ansi.Strip(summary.View(80))
+	if !strings.HasPrefix(output, "sessions 1 shown / 214 synced · rows 2") {
 		t.Fatalf("context summary missing rows: %q", output)
 	}
 	if strings.Contains(output, "total") {
@@ -60,6 +64,7 @@ func TestTableSummaryLoadingReservesBlankRow(t *testing.T) {
 
 func TestTableSummaryStaysWithinNarrowWidths(t *testing.T) {
 	summary := newTableSummaryModel([]renderRow{{totalValue: 13_000_000}}, tabTokens, false)
+	summary.sessionCounts = db.SessionCounts{Shown: 5, Synced: 214}
 	for _, width := range []int{20, 10, 3, 1} {
 		output := summary.View(width)
 		if got := ansi.StringWidth(output); got != width {
@@ -68,6 +73,16 @@ func TestTableSummaryStaysWithinNarrowWidths(t *testing.T) {
 		if strings.Contains(output, "\n") {
 			t.Fatalf("width %d wrapped: %q", width, output)
 		}
+	}
+}
+
+func TestTableSummaryKeepsSessionCoverageAheadOfOtherValues(t *testing.T) {
+	summary := newTableSummaryModel(nil, tabTokens, false)
+	summary.sessionCounts = db.SessionCounts{Shown: 0, Synced: 214}
+	want := "sessions 0 shown / 214 synced"
+	output := ansi.Strip(summary.View(ansi.StringWidth(want)))
+	if output != want {
+		t.Fatalf("narrow summary lost session coverage: %q", output)
 	}
 }
 

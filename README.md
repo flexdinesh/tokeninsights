@@ -2,9 +2,7 @@
 
 Local token usage dashboard for OpenCode, Pi, Codex, and Claude Code.
 
-TokenInsights is a sync-first Go CLI. It reads local harness artifacts, normalizes raw facts into canonical token usage data, and opens an interactive terminal usage dashboard.
-
-**Supported harnesses: opencode, pi, codex and claude-code.**
+Open the interactive terminal dashboard to see your usage. TokenInsights automatically refreshes data from your installed coding tools before showing the dashboard—no separate sync command is needed.
 
 ![TokenInsights TUI showing token usage by model](assets/tokeninsights-view-models.png)
 
@@ -13,63 +11,27 @@ TokenInsights is a sync-first Go CLI. It reads local harness artifacts, normaliz
 ### Homebrew
 
 ```sh
-# homebrew
 brew install flexdinesh/tap/tokeninsights
+```
 
-# go (stable)
+### Go
+
+```sh
+# stable release
 go install github.com/flexdinesh/tokeninsights/packages/cli/cmd/tokeninsights@latest
-
-# go (dev branch)
-go install github.com/flexdinesh/tokeninsights/packages/cli/cmd/tokeninsights@dev
 ```
 
-## Usage
+See the [Release Guide](docs/release.md) for version-specific and development installs.
 
-### Sync Data
-
-Read harness artifacts and normalize data from supported harnesses. `tokeninsights view` syncs all supported harnesses implicitly by default, so use explicit sync when you want targeted harness refreshes, dry runs, full refreshes, or custom source directories.
-
-OpenCode V1 and V2 SQLite plus Pi, Codex, and Claude Code JSONL sync use Recent Source Refresh: after a successful refresh, old unchanged sources can be skipped on later syncs while recent or changed sources are still parsed. OpenCode reads V1 `message` rows and V2 `session_message` rows, preferring usable V2 usage when migrated history exists in both tables. The freshness window is 48 hours before the last successful source refresh. `sync --dry-run` previews those skips without writing to the database, and `sync --full-refresh` ignores source refresh state for the requested harness scope without requeueing all existing raw facts.
-
-Local archived history is included when the harness keeps it in a durable source: OpenCode archived sessions remain in SQLite, Codex scans both `sessions` and `archived_sessions`, and Claude Code reads retained local `projects` transcripts regardless of UI/server archive state. Pi has no harness archive. OS trash and cloud-only archives are excluded.
+## Quick Start
 
 ```sh
-# sync all supported harnesses
-tokeninsights sync --all
-
-# sync a specific harness
-tokeninsights sync --harness pi
-
-# other sync options
-## preview refresh work without writing to the database
-tokeninsights sync --all --dry-run
-
-## ignore source refresh state and parse discovered sources
-tokeninsights sync --all --full-refresh
-
-## skip automatic canonical normalization after ingestion; pending work is saved for a later normalize
-tokeninsights sync --all --no-normalize
-
-## override default harness source directory
-tokeninsights sync --all --source-dir /path/to/custom/fixtures
-```
-
-### Open TUI View
-
-Launch the interactive terminal user interface (TUI) to view the token dashboard. By default, `view` opens into a sync progress screen, refreshes all supported Durable Sources, processes pending normalization work, then renders the dashboard. You can pre-filter the displayed data or set time buckets.
-The dashboard statusline shows `TokenInsights · daterange: <range> · hostname: <host> · lastsynced: <time>`. Preset date ranges use their short names (`today`, `yesterday`, `week`, `month`, `year`, or `all time`), while custom bounds render as `from..to`, `from..`, or `..to`. The statusline stays on one terminal row and progressively shortens lower-priority hostname and sync details on narrow terminals. Sync time appears in the statusline rather than the footer.
-The table has a pinned, full-width summary band that stays visible during vertical and horizontal scrolling. After a blank spacer row, it left-aligns the row count and token total for the full filtered result set as `rows <count> · total <tokens>`; the context view shows only its row count. Loading reserves a blank summary row to keep the layout stable, and loaded empty token views show `rows 0 · total 0`. The footer retains shortcuts, scroll position, active filters, and loading state, but no longer repeats row or total values.
-The token views use short cache labels (`cache R`, `cache W`), and the sessions view includes a derived `ctx used` column that shows the peak prompt-side token load without counting assistant output or reasoning tokens.
-The context view groups by harness, provider, and model, then summarizes Session Peak Context Load across sessions with `avg ctx`, `median ctx`, and `max ctx`.
-Rows with multiple summary values stack them vertically instead of collapsing them to a count.
-
-```sh
-# open default view (this month, daily buckets)
 tokeninsights view
+```
 
-# open existing canonical data without syncing
-tokeninsights view --no-sync
+The dashboard opens with this month's usage grouped by day. Running `tokeninsights` without a command does the same thing. Press `q` to quit.
 
+```sh
 # view preset date ranges
 tokeninsights view --today
 tokeninsights view --yesterday
@@ -77,38 +39,122 @@ tokeninsights view --week
 tokeninsights view --month
 tokeninsights view --year
 tokeninsights view --all-time
-
-# filter view data and choose time buckets
-tokeninsights view --month --bucket day
-tokeninsights view --week --provider openai --model gpt-5
-tokeninsights view --harness pi
-
 ```
 
-Viewer filters such as `--harness`, `--provider`, and `--model` only filter displayed canonical facts; they do not limit the implicit sync. The sync progress screen shows high-level harness statuses without source paths or source IDs. If implicit sync fails, the TUI exits; refresh unaffected harnesses manually with `tokeninsights sync --harness <harness>`, then open `tokeninsights view --no-sync`.
+Date ranges use your local time zone. Week, month, and year mean the current calendar period; weeks start on Monday.
+
+## Explore Your Usage
+
+Switch between tokens, models, providers, harnesses, sessions, and context tabs. The header shows the date range, hostname, and last sync time. The pinned summary below the table compares matching sessions with all synced sessions, for example `sessions 5 shown / 214 synced`. It also shows the row count and token total for the full filtered result; the context tab omits the token total.
+
+“Shown” counts distinct sessions matching the current date, provider, model, harness, and session filters, including rows outside the scroll viewport. “Synced” counts all distinct sessions with countable usage in this database across all dates and tools, regardless of those filters. A session used across multiple dates or models is counted once. To compare the default month with all time without changing the data, use the same database:
+
+```sh
+tokeninsights view --no-sync --month --db-path /path/to/tokeninsights.sqlite
+tokeninsights view --no-sync --all-time --db-path /path/to/tokeninsights.sqlite
+```
+
+In the dashboard, press `d` to change the date range. Switching to all time keeps any provider, model, harness, or session filters in place.
+
+Cache columns use `cache R` (read) and `cache W` (write). The sessions tab's `ctx used` column shows peak prompt-side token load, excluding assistant output and reasoning tokens. The context tab compares session peaks by harness, provider, and model using `avg ctx`, `median ctx`, and `max ctx`.
+
+```sh
+# filter by harness, provider, or model
+tokeninsights view --harness pi
+tokeninsights view --week --provider openai --model gpt-5
+
+# group this year's usage by month
+tokeninsights view --year --bucket month
+
+# open previously synced data without refreshing it (read-only)
+tokeninsights view --no-sync
+```
+
+Viewer filters affect displayed data only: `view --harness pi` still refreshes all supported tools. `--no-sync` requires an existing, compatible TokenInsights database.
+
+| Key | Action |
+|-----|--------|
+| Tab / Shift+Tab or 1–6 | Switch tabs |
+| `d` | Choose a date range |
+| `g` | Choose a time bucket |
+| `s` | Change sorting |
+| `p` / `m` / `h` | Filter providers / models / harnesses |
+| ↑ / ↓ or `j` / `k` | Scroll vertically |
+| ← / →, Home / End | Scroll horizontally |
+| `q` | Quit |
+
+See the [CLI reference](packages/cli/README.md) for all flags, including custom date bounds and session filters.
+
+## Local Data
+
+TokenInsights reads local session files and databases. Here, “sync” means importing usage into a local SQLite database, not uploading it to a service. No API keys are needed.
+
+| Tool | Default source |
+|------|----------------|
+| OpenCode | `${XDG_DATA_HOME:-~/.local/share}/opencode/opencode.db` and `opencode-<channel>.db` (V1 and V2) |
+| Pi | `~/.pi/agent/sessions` |
+| Codex | `${CODEX_HOME:-~/.codex}/sessions` and `${CODEX_HOME:-~/.codex}/archived_sessions` |
+| Claude Code | `${CLAUDE_CONFIG_DIR:-~/.claude}/projects` |
+
+The parsers extract token counts, timestamps, model/provider names, and session/message identifiers. Session files may contain conversations; conversation text is not copied into token usage rows.
+
+### Data Coverage
+
+“All time” means all usage imported into this local database, not your provider account's lifetime total. Usage that is no longer available locally or was recorded on another machine is not automatically recovered.
+
+Local archived history is included when the harness keeps it in a durable source: OpenCode archived sessions remain in SQLite, Codex scans both `sessions` and `archived_sessions`, and Claude Code reads retained local `projects` transcripts regardless of UI/server archive state. Pi has no harness archive. OS trash and cloud-only archives are excluded.
+
+### Database Location
+
+The default TokenInsights database is:
+
+```text
+~/.local/share/tokeninsights/tokeninsights.sqlite
+```
+
+Override it with `--db-path` or `TOKENINSIGHTS_DB_PATH`.
+
+## Advanced Usage
+
+### Manual Sync
+
+Use `sync` for targeted refreshes, previews, or custom source directories. Normal viewing handles ingestion and normalization automatically. Subsequent refreshes can skip old, unchanged sources; see the [Design Guide](docs/design.md#sync-pipeline) for refresh behavior.
+
+```sh
+# refresh all supported tools, or just one
+tokeninsights sync --all
+tokeninsights sync --harness pi
+
+# preview without writing to the TokenInsights database
+tokeninsights sync --all --dry-run
+
+# parse all discovered sources, ignoring saved refresh state
+tokeninsights sync --all --full-refresh
+
+# import a custom source directory
+tokeninsights sync --harness pi --source-dir /path/to/pi/sessions
+```
+
+With `sync --all --source-dir /path/to/sources`, put each tool's sources in its own subdirectory: `opencode`, `pi`, `codex`, or `claude-code`. Missing subdirectories are skipped.
+
+If automatic sync fails, the dashboard exits with an error. Refresh unaffected harnesses with `tokeninsights sync --harness <harness>`, then use `tokeninsights view --no-sync` to view available data.
 
 ### Maintenance & Debugging
 
-These commands are primarily used for debugging, diagnostics, or manual database management.
-
-#### Rebuild Canonical Tables
-
-Rebuild canonical facts and diagnostic records from already-ingested raw facts. Typically run automatically by `sync`.
+Process pending normalization work from already-ingested data, for example after `sync --all --no-normalize`:
 
 ```sh
-# Normalize all harnesses
 tokeninsights normalize
-
-# Dry-run normalization to preview pending canonical work
 tokeninsights normalize --dry-run
 ```
 
-#### Purge Canonical Tables
+#### Rebuild Canonical Tables
 
 Purge normalized canonical facts and diagnostics without deleting raw ingested facts, observations, or source refresh state. Existing raw token facts are requeued so `tokeninsights normalize` can rebuild canonical data.
 
 ```sh
 tokeninsights reset-canonical --confirm
+tokeninsights normalize
 ```
 
 #### Reset Local Database
@@ -118,14 +164,6 @@ Completely wipe and recreate the local SQLite database and its sidecars to start
 ```sh
 tokeninsights reset-all --confirm
 ```
-
-### Default Database Path
-
-```text
-~/.local/share/tokeninsights/tokeninsights.sqlite
-```
-
-_You can customize the DB path using the `--db-path` flag or the `TOKENINSIGHTS_DB_PATH` environment variable._
 
 ## Development
 

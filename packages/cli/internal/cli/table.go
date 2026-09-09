@@ -17,9 +17,10 @@ import (
 )
 
 type reloadMsg struct {
-	rows       []renderRow
-	lastSyncMs int64
-	err        error
+	rows          []renderRow
+	lastSyncMs    int64
+	sessionCounts db.SessionCounts
+	err           error
 }
 
 type filterValuesMsg struct {
@@ -73,6 +74,7 @@ type interactiveModel struct {
 	activeTab        tabMode
 	statusline       statuslineModel
 	tableSummary     tableSummaryModel
+	sessionCounts    db.SessionCounts
 	width            int
 	height           int
 	scrollOffset     int
@@ -188,6 +190,7 @@ func (m interactiveModel) renderStatusline() string {
 
 func (m interactiveModel) reconcileTableSummary() interactiveModel {
 	m.tableSummary = newTableSummaryModel(m.rows, m.activeTab, m.loading)
+	m.tableSummary.sessionCounts = m.sessionCounts
 	return m
 }
 
@@ -204,30 +207,32 @@ func renderTableSection(body string, summary string) string {
 
 func (m interactiveModel) reloadCmd() tea.Cmd {
 	return func() tea.Msg {
-		rows, err := loadRows(m.ctx, m.options, m.now, m.groupBy, m.activeTab)
-		if err != nil {
-			return reloadMsg{err: err}
-		}
-		lastSyncMs, err := loadLastCompletedSync(m.ctx, m.options)
-		if err != nil {
-			return reloadMsg{err: err}
-		}
-		return reloadMsg{rows: rows, lastSyncMs: lastSyncMs}
+		return m.loadDashboard()
 	}
 }
 
 func (m interactiveModel) deferredReloadCmd(delay time.Duration) tea.Cmd {
 	return tea.Tick(delay, func(time.Time) tea.Msg {
-		rows, err := loadRows(m.ctx, m.options, m.now, m.groupBy, m.activeTab)
-		if err != nil {
-			return reloadMsg{err: err}
-		}
-		lastSyncMs, err := loadLastCompletedSync(m.ctx, m.options)
-		if err != nil {
-			return reloadMsg{err: err}
-		}
-		return reloadMsg{rows: rows, lastSyncMs: lastSyncMs}
+		return m.loadDashboard()
 	})
+}
+
+func (m interactiveModel) loadDashboard() reloadMsg {
+	rows, err := loadRows(m.ctx, m.options, m.now, m.groupBy, m.activeTab)
+	if err != nil {
+		return reloadMsg{err: err}
+	}
+	database, err := db.Open(m.options.dbPath)
+	if err != nil {
+		return reloadMsg{err: err}
+	}
+	defer database.Close()
+	counts, err := db.ViewerSessionCounts(m.ctx, database, filterFromOptions(m.options, m.now))
+	if err != nil {
+		return reloadMsg{err: err}
+	}
+	lastSyncMs, err := db.LastCompletedSync(m.ctx, database)
+	return reloadMsg{rows: rows, lastSyncMs: lastSyncMs, sessionCounts: counts, err: err}
 }
 
 func (m interactiveModel) filterValuesCmd(dimension filterDimension) tea.Cmd {
@@ -492,6 +497,7 @@ func (m interactiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.rows = msg.rows
+		m.sessionCounts = msg.sessionCounts
 		m.lastSyncMs = msg.lastSyncMs
 		m = m.reconcileStatusline()
 		m = m.reconcileTableSummary()

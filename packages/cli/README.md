@@ -1,6 +1,6 @@
 # tokeninsights
 
-Sync durable local harness data into TokenInsights SQLite and view canonical token usage in an interactive terminal table.
+View local token usage in an interactive terminal table. Run `tokeninsights view` to automatically refresh all supported harnesses and open the dashboard; no separate sync command is needed.
 
 ## Install
 
@@ -44,7 +44,7 @@ tokeninsights sync --all --full-refresh
 tokeninsights sync --all --no-normalize
 ```
 
-When `--source-dir` is provided, sync first looks for a harness subdirectory such as `/path/to/source-root/opencode`; otherwise it scans the provided directory directly.
+With `sync --all --source-dir`, each harness is read only from its own subdirectory, such as `/path/to/source-root/opencode`; missing subdirectories are skipped. Single-harness sync first looks for a matching harness subdirectory, then falls back to scanning the provided directory directly.
 
 OpenCode sync reads modern SQLite sources named `opencode.db` or `opencode-<channel>.db`, including sessions marked archived in those databases. Pi sync reads JSONL session files from `~/.pi/agent/sessions`, or from a provided Pi source directory; Pi has no harness archive and OS trash is excluded. Codex sync reads rollout JSONL session files from `${CODEX_HOME:-~/.codex}/sessions` and `${CODEX_HOME:-~/.codex}/archived_sessions`, parsing structured `event_msg` token-count records. Claude Code sync reads retained local JSONL transcript files from `${CLAUDE_CONFIG_DIR:-~/.claude}/projects` regardless of UI/server archive state; cloud-only archives are excluded. After a successful OpenCode SQLite or Pi/Codex/Claude Code JSONL refresh, old unchanged sources can be skipped by Recent Source Refresh; recent or changed sources are still parsed. The freshness window is 48 hours before the last successful source refresh. `sync --dry-run` previews skips without writing, and `sync --full-refresh` ignores source refresh state for the requested harness scope without requeueing existing raw facts for canonical rebuild.
 
@@ -90,6 +90,10 @@ tokeninsights view --month --provider openai --model gpt-5
 ```
 
 Running `tokeninsights` without a command still opens `view`, including implicit sync. `tokeninsights --no-sync` is equivalent to `tokeninsights view --no-sync`.
+
+Every tab's pinned summary shows `sessions <shown> shown / <synced> synced`, followed by the row count and, except in Context, the filtered token total. `shown` counts distinct sessions matching all active filters across the full result, not just the visible scroll viewport. `synced` counts all distinct sessions with countable canonical usage in this database across all dates and harnesses, ignoring viewer filters. Sessions spanning multiple dates or models are counted once; sessions without countable usage are excluded from both counts.
+
+The default current-month filter can show a small subset of synced sessions. Compare `view --no-sync --month` with `view --no-sync --all-time` using the same `--db-path` to inspect date filtering without changing the database. All time removes the preset date restriction but keeps dimension filters and any explicit custom date bounds.
 
 ## Database
 
@@ -163,7 +167,7 @@ Inclusive local-day upper bound.
 
 ## Interactive Keys
 
-Press `q` to quit. Use tab/shift-tab or number keys 1-5 to switch Aggregation Tabs. Use `d` for Date Range Filter, `g` for Time Bucket, `s` for sort, and `p`, `m`, or `h` for provider, model, or harness filters. Use `up/down` or `j/k` to scroll vertically, `left/right` to scroll horizontally, and `home/end` to jump to the start or end of the horizontal table viewport.
+Press `q` to quit. Use tab/shift-tab or number keys 1-6 to switch Aggregation Tabs. Use `d` for Date Range Filter, `g` for Time Bucket, `s` for sort, and `p`, `m`, or `h` for provider, model, or harness filters. Use `up/down` or `j/k` to scroll vertically, `left/right` to scroll horizontally, and `home/end` to jump to the start or end of the horizontal table viewport.
 
 Tables fit the current terminal width where possible. Summary columns with multiple model, provider, or harness values stack those values vertically within the row instead of collapsing them to a count. Long model, provider, and harness values are truncated in-place; horizontal scrolling is used only when the minimum readable table width is still wider than the viewport.
 
@@ -182,6 +186,6 @@ total
 
 Missing model values are normalized to `unknown`. Missing provider values are normalized to `unknown`, except Claude Code artifact-derived rows, which appear as `maybe-anthropic` with inferred provider provenance.
 
-The active Aggregation Tabs are Tokens, Models, Providers, Harnesses, and Sessions. TPS, request, and tool domains remain future-compatible data domains, but they are not active empty viewer tabs. The Sessions tab also shows derived `ctx used`, the peak prompt-side context load for the session.
+The active Aggregation Tabs are Tokens, Models, Providers, Harnesses, Sessions, and Context. TPS, request, and tool domains remain future-compatible data domains, but they are not active empty viewer tabs. The Sessions tab also shows derived `ctx used`, the peak prompt-side context load for the session. Context groups session peaks by harness, provider, and model, showing `sessions`, `avg ctx`, `median ctx`, and `max ctx`.
 
 Session IDs are shortened in table output. Model names with `/` are shortened to the last path segment where a compact display is needed.

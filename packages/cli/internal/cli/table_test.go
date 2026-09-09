@@ -1175,11 +1175,60 @@ func viewHintLine(output string) string {
 func viewSummaryLine(output string) (string, int) {
 	for index, line := range strings.Split(ansi.Strip(output), "\n") {
 		content := strings.TrimSpace(strings.Trim(line, "│"))
-		if strings.HasPrefix(content, "rows ") {
+		if strings.HasPrefix(content, "sessions ") && strings.Contains(content, " shown / ") {
 			return line, index
 		}
 	}
 	return "", -1
+}
+
+func TestDashboardSessionCoverageAcrossDateFilters(t *testing.T) {
+	database, dbPath := newLoadRowsTestDB(t)
+	defer database.Close()
+	now := time.Date(2026, 9, 9, 12, 0, 0, 0, time.Local)
+	const syncedSessions = 214
+	const monthSessions = 5
+	for i := 0; i < syncedSessions; i++ {
+		recordedAt := now.AddDate(0, -1, 0)
+		if i < monthSessions {
+			recordedAt = now
+		}
+		insertLoadRowsCanonicalToken(t, database, recordedAt.UnixMilli(), "opencode", fmt.Sprintf("session-%d", i), "openai", "model-a")
+	}
+
+	options := tableOptions{dbPath: dbPath, noSync: true, period: periodMonth, bucket: bucketDay}
+	m := newInteractiveModel(context.Background(), options, now, "test-host")
+	m.width, m.height = 100, 24
+	for _, test := range []struct {
+		period period
+		shown  int64
+	}{
+		{periodMonth, monthSessions},
+		{periodAllTime, syncedSessions},
+		{periodYesterday, 0},
+	} {
+		for _, tab := range aggregationTabs {
+			m.options.period = test.period
+			m.activeTab = tab
+			msg := m.loadDashboard()
+			if msg.err != nil {
+				t.Fatal(msg.err)
+			}
+			updated, _ := m.Update(msg)
+			m = updated.(interactiveModel)
+			if m.sessionCounts != (db.SessionCounts{Shown: test.shown, Synced: syncedSessions}) {
+				t.Fatalf("%s / %s: counts = %+v", test.period, tab, m.sessionCounts)
+			}
+			summary := ansi.Strip(m.renderTableSummary())
+			want := fmt.Sprintf("sessions %d shown / %d synced", test.shown, syncedSessions)
+			if !strings.HasPrefix(summary, want) {
+				t.Fatalf("%s / %s: summary = %q, want prefix %q", test.period, tab, summary, want)
+			}
+		}
+	}
+	assertTableTestCount(t, database, "raw_token_usage", syncedSessions)
+	assertTableTestCount(t, database, "canonical_token_usage", syncedSessions)
+	assertTableTestCount(t, database, "ingest_runs", 0)
 }
 
 func TestSortPopupSpaceAppliesSelection(t *testing.T) {
