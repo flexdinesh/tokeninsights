@@ -193,7 +193,7 @@ func progressLabels(events []SyncProgressEvent) []string {
 	return labels
 }
 
-func TestOpenCodeSQLiteConformanceFixtureDefinesV1AndV2MessageTokenUsage(t *testing.T) {
+func TestOpenCodeSQLiteConformanceFixtureIncludesArchivedV1AndV2MessageTokenUsage(t *testing.T) {
 	fixtureDir := filepath.Join("testdata", "conformance", "opencode-sqlite")
 	ctx := context.Background()
 	dbPath := filepath.Join(t.TempDir(), "tokeninsights.sqlite")
@@ -819,6 +819,103 @@ func TestCodexJSONLSyncsTokenCountUsage(t *testing.T) {
 		},
 	})
 	assertSQLCount(t, database, "SELECT COUNT(*) FROM normalization_diagnostics WHERE code = 'codex_jsonl_duplicate_token_snapshot'", 1)
+}
+
+func TestCodexDefaultDiscoverySyncsActiveAndArchivedSessions(t *testing.T) {
+	ctx := context.Background()
+	dbPath := filepath.Join(t.TempDir(), "tokeninsights.sqlite")
+	codexHome := t.TempDir()
+	t.Setenv("CODEX_HOME", codexHome)
+	now := time.Date(2026, 4, 24, 15, 0, 0, 0, time.UTC)
+	writeCodexTokenSession(t,
+		filepath.Join(codexHome, "sessions", "2026", "01", "01", "rollout-2026-01-01T00-00-00-codex_active.jsonl"),
+		"codex_active", "turn_active", "gpt-5.5", 100, 50,
+	)
+	writeCodexTokenSession(t,
+		filepath.Join(codexHome, "archived_sessions", "rollout-2026-01-02T00-00-00-codex_archived.jsonl"),
+		"codex_archived", "turn_archived", "gpt-5.5", 200, 75,
+	)
+
+	summary, err := Sync(ctx, SyncOptions{
+		DBPath:    dbPath,
+		Harnesses: []Harness{HarnessCodex},
+		Normalize: true,
+		Now:       now,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertSummary(t, summary, Summary{
+		RequestedHarnesses: 1,
+		Synced:             1,
+		RawFacts:           2,
+		Observations:       2,
+		Canonical:          2,
+	})
+
+	database := openTestDB(t, dbPath)
+	defer database.Close()
+	assertCount(t, database, "raw_token_usage", 2)
+	assertCount(t, database, "canonical_token_usage", 2)
+	assertSQLCount(t, database, "SELECT COUNT(*) FROM canonical_sessions WHERE session_id IN ('codex_active', 'codex_archived')", 2)
+	assertSQLCount(t, database, "SELECT COALESCE(SUM(total_tokens), 0) FROM canonical_token_usage", 425)
+}
+
+func TestCodexMovingActiveSessionToArchiveDoesNotDuplicateUsage(t *testing.T) {
+	ctx := context.Background()
+	dbPath := filepath.Join(t.TempDir(), "tokeninsights.sqlite")
+	codexHome := t.TempDir()
+	t.Setenv("CODEX_HOME", codexHome)
+	now := time.Date(2026, 4, 24, 15, 0, 0, 0, time.UTC)
+	filename := "rollout-2026-01-01T00-00-00-codex_s1.jsonl"
+	activePath := filepath.Join(codexHome, "sessions", "2026", "01", "01", filename)
+	archivePath := filepath.Join(codexHome, "archived_sessions", filename)
+	writeCodexTokenSession(t, activePath, "codex_s1", "turn_1", "gpt-5.5", 100, 50)
+
+	firstSummary, err := Sync(ctx, SyncOptions{
+		DBPath:    dbPath,
+		Harnesses: []Harness{HarnessCodex},
+		Normalize: true,
+		Now:       now,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertSummary(t, firstSummary, Summary{
+		RequestedHarnesses: 1,
+		Synced:             1,
+		RawFacts:           1,
+		Observations:       1,
+		Canonical:          1,
+	})
+
+	if err := os.MkdirAll(filepath.Dir(archivePath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(activePath, archivePath); err != nil {
+		t.Fatal(err)
+	}
+	secondSummary, err := Sync(ctx, SyncOptions{
+		DBPath:    dbPath,
+		Harnesses: []Harness{HarnessCodex},
+		Normalize: true,
+		Now:       now.Add(time.Hour),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertSummary(t, secondSummary, Summary{
+		RequestedHarnesses: 1,
+		Synced:             1,
+		Observations:       1,
+	})
+
+	database := openTestDB(t, dbPath)
+	defer database.Close()
+	assertCount(t, database, "raw_token_usage", 1)
+	assertCount(t, database, "canonical_token_usage", 1)
+	assertSQLCount(t, database, "SELECT COUNT(*) FROM canonical_sessions WHERE session_id = 'codex_s1'", 1)
+	assertSQLCount(t, database, "SELECT COALESCE(SUM(total_tokens), 0) FROM canonical_token_usage", 150)
 }
 
 func TestClaudeCodeJSONLDryRunDiscoversAndParsesMainSessionTokenUsage(t *testing.T) {
@@ -1982,6 +2079,55 @@ func TestCodexRecentSourceRefreshSkipsOldUnchangedSource(t *testing.T) {
 	assertCount(t, database, "raw_observations", 1)
 	assertCount(t, database, "canonical_token_usage", 1)
 	assertSQLCount(t, database, "SELECT COUNT(*) FROM ingest_runs WHERE status = 'completed' AND raw_fact_count = 0 AND observation_count = 0", 1)
+}
+
+func TestCodexArchivedSessionUsesRecentSourceRefresh(t *testing.T) {
+	ctx := context.Background()
+	dbPath := filepath.Join(t.TempDir(), "tokeninsights.sqlite")
+	codexHome := t.TempDir()
+	t.Setenv("CODEX_HOME", codexHome)
+	now := time.Date(2026, 4, 24, 15, 0, 0, 0, time.UTC)
+	sourcePath := filepath.Join(codexHome, "archived_sessions", "rollout-2026-01-01T00-00-00-codex_s1.jsonl")
+	writeCodexTokenSession(t, sourcePath, "codex_s1", "turn_1", "gpt-5.5", 100, 50)
+	setFileModTime(t, sourcePath, now.Add(-72*time.Hour))
+
+	firstSummary, err := Sync(ctx, SyncOptions{
+		DBPath:    dbPath,
+		Harnesses: []Harness{HarnessCodex},
+		Normalize: true,
+		Now:       now,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertSummary(t, firstSummary, Summary{
+		RequestedHarnesses: 1,
+		Synced:             1,
+		RawFacts:           1,
+		Observations:       1,
+		Canonical:          1,
+	})
+
+	repeatSummary, err := Sync(ctx, SyncOptions{
+		DBPath:    dbPath,
+		Harnesses: []Harness{HarnessCodex},
+		Normalize: true,
+		Now:       now.Add(time.Hour),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertSummary(t, repeatSummary, Summary{
+		RequestedHarnesses: 1,
+		Skipped:            1,
+	})
+
+	database := openTestDB(t, dbPath)
+	defer database.Close()
+	assertCount(t, database, "raw_token_usage", 1)
+	assertCount(t, database, "raw_observations", 1)
+	assertCount(t, database, "canonical_token_usage", 1)
+	assertSQLCount(t, database, "SELECT COUNT(*) FROM source_refresh_state WHERE harness = 'codex' AND source_kind = 'codex-session-jsonl'", 1)
 }
 
 func TestClaudeCodeRecentSourceRefreshSkipsOldUnchangedSource(t *testing.T) {

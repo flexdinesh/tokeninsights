@@ -72,7 +72,10 @@ func (a codexJSONLAdapter) Discover(ctx context.Context, options DiscoverOptions
 			}
 			root = filepath.Join(home, ".codex")
 		}
-		roots = append(roots, filepath.Join(root, "sessions"))
+		roots = append(roots,
+			filepath.Join(root, "sessions"),
+			filepath.Join(root, "archived_sessions"),
+		)
 	}
 
 	var sources []Source
