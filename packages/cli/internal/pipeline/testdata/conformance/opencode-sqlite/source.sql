@@ -6,7 +6,8 @@ CREATE TABLE session (
   title text NOT NULL,
   version text NOT NULL,
   time_created integer NOT NULL,
-  time_updated integer NOT NULL
+  time_updated integer NOT NULL,
+  time_archived integer
 );
 
 CREATE TABLE message (
@@ -27,8 +28,8 @@ CREATE TABLE session_message (
   data text NOT NULL
 );
 
-INSERT INTO session (id, project_id, slug, directory, title, version, time_created, time_updated)
-VALUES ('ses_a', 'proj_a', 'private-slug', '/private/project', 'private title', '1.0.0', 1700000000000, 1700000002000);
+INSERT INTO session (id, project_id, slug, directory, title, version, time_created, time_updated, time_archived)
+VALUES ('ses_a', 'proj_a', 'private-slug', '/private/project', 'private title', '1.0.0', 1700000000000, 1700000002000, 1700000003000);
 
 INSERT INTO message (id, session_id, time_created, time_updated, data)
 VALUES (
