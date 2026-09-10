@@ -6,6 +6,13 @@ import { BucketControl } from './Filters'
 
 const metrics: { key: Sort; label: string }[] = [{ key: 'total', label: 'Total' }, { key: 'input', label: 'Input' }, { key: 'output', label: 'Output' }, { key: 'cacheRead', label: 'Cache read' }, { key: 'cacheWrite', label: 'Cache write' }, { key: 'reasoning', label: 'Reasoning' }]
 
+const axisTick = { fill: 'var(--color-text-muted)', fontSize: 'var(--text-xs)' }
+const tooltipStyle = {
+  background: 'var(--color-surface)', color: 'var(--color-text-primary)',
+  border: 'var(--border-width) solid var(--color-border)', borderRadius: 'var(--radius-md)',
+  padding: 'var(--space-3)', boxShadow: 'var(--shadow-overlay)', fontSize: 'var(--text-xs)',
+}
+
 export function UsageChart({ rows }: { rows: Row[] }) {
   const { state: { query, chartMetric: metric }, dispatch } = useDashboardState()
   const timeline = query.tab === 'tokens' || query.tab === 'sessions'
@@ -22,18 +29,18 @@ export function UsageChart({ rows }: { rows: Row[] }) {
     {rows.length === 0 ? <div className="chart-empty">No usage in this range</div> : <div className="chart-canvas">
       <ResponsiveContainer width="100%" height="100%">
         {timeline ? <AreaChart data={chartRows} margin={{ top: 12, right: 12, left: 0, bottom: 0 }} accessibilityLayer>
-          <defs><linearGradient id="usage-fill" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="var(--accent)" stopOpacity={0.24} /><stop offset="100%" stopColor="var(--accent)" stopOpacity={0.015} /></linearGradient></defs>
-          <CartesianGrid vertical={false} stroke="var(--border)" strokeDasharray="3 5" />
-          <XAxis dataKey="label" tickLine={false} axisLine={false} minTickGap={40} tick={{ fill: 'var(--muted)', fontSize: '0.75rem' }} />
-          <YAxis tickFormatter={formatCount} tickLine={false} axisLine={false} width={60} tick={{ fill: 'var(--muted)', fontSize: '0.75rem' }} />
-          <Tooltip formatter={tooltipFormatter} contentStyle={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '0.6rem', color: 'var(--text)' }} />
-          <Area type="linear" dataKey={metric} name={metrics.find(m => m.key === metric)?.label} stroke="var(--accent)" strokeWidth={2} fill="url(#usage-fill)" isAnimationActive={false} dot={rows.length === 1} />
-        </AreaChart> : <BarChart data={chartRows} margin={{ top: 12, right: 12, left: 0, bottom: 0 }} accessibilityLayer>
-          <CartesianGrid vertical={false} stroke="var(--border)" strokeDasharray="3 5" />
-          <XAxis dataKey="label" tickLine={false} axisLine={false} tickFormatter={v => typeof v === 'string' && v.length > 17 ? `${v.slice(0, 15)}…` : String(v)} tick={{ fill: 'var(--muted)', fontSize: '0.7rem' }} />
-          <YAxis tickFormatter={formatCount} tickLine={false} axisLine={false} width={60} tick={{ fill: 'var(--muted)', fontSize: '0.75rem' }} />
-          <Tooltip formatter={tooltipFormatter} contentStyle={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '0.6rem', color: 'var(--text)' }} />
-          {context ? <><Legend /><Bar dataKey="averageContext" name="Average" fill="var(--accent)" isAnimationActive={false} /><Bar dataKey="medianContext" name="Median" fill="var(--chart-blue)" isAnimationActive={false} /><Bar dataKey="maxContext" name="Maximum" fill="var(--chart-purple)" isAnimationActive={false} /></> : <Bar dataKey="total" name="Total tokens" fill="var(--accent)" radius={[4, 4, 0, 0]} maxBarSize={64} isAnimationActive={false} />}
+          <defs><linearGradient id="usage-fill" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="var(--color-accent)" stopOpacity={0.24} /><stop offset="100%" stopColor="var(--color-accent)" stopOpacity={0.015} /></linearGradient></defs>
+          <CartesianGrid vertical={false} stroke="var(--color-border)" strokeDasharray="3 5" />
+          <XAxis dataKey="label" tickLine={false} axisLine={false} minTickGap={40} tick={axisTick} />
+          <YAxis tickFormatter={formatCount} tickLine={false} axisLine={false} width={60} tick={axisTick} />
+          <Tooltip formatter={tooltipFormatter} contentStyle={tooltipStyle} itemStyle={{ color: 'var(--color-text-primary)' }} />
+          <Area type="linear" dataKey={metric} name={metrics.find(m => m.key === metric)?.label} stroke="var(--color-accent)" strokeWidth={2} fill="url(#usage-fill)" isAnimationActive={false} dot={rows.length === 1} />
+        </AreaChart> : <BarChart data={chartRows} maxBarSize={64} margin={{ top: 12, right: 12, left: 0, bottom: 0 }} accessibilityLayer>
+          <CartesianGrid vertical={false} stroke="var(--color-border)" strokeDasharray="3 5" />
+          <XAxis dataKey="label" tickLine={false} axisLine={false} tickFormatter={v => typeof v === 'string' && v.length > 17 ? `${v.slice(0, 15)}…` : String(v)} tick={axisTick} />
+          <YAxis tickFormatter={formatCount} tickLine={false} axisLine={false} width={60} tick={axisTick} />
+          <Tooltip formatter={tooltipFormatter} contentStyle={tooltipStyle} itemStyle={{ color: 'var(--color-text-primary)' }} />
+          {context ? <><Legend formatter={value => <span className="chart-legend-label">{value}</span>} /><Bar dataKey="averageContext" name="Average" fill="var(--color-accent)" isAnimationActive={false} /><Bar dataKey="medianContext" name="Median" fill="var(--color-chart-secondary)" isAnimationActive={false} /><Bar dataKey="maxContext" name="Maximum" fill="var(--color-chart-tertiary)" isAnimationActive={false} /></> : <Bar dataKey="total" name="Total tokens" fill="var(--color-accent)" radius={[4, 4, 0, 0]} isAnimationActive={false} />}
         </BarChart>}
       </ResponsiveContainer>
     </div>}

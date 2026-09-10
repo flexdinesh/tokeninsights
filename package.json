@@ -14,6 +14,7 @@
     "build:web": "pnpm --filter @tokeninsights/web run build",
     "check-web": "pnpm run build:web && node scripts/check-web.mjs",
     "build:cli": "pnpm run build:web && pnpm --filter @tokeninsights/cli run build",
+    "start:web": "pnpm run build:cli && ./packages/cli/bin/tokeninsights serve",
     "install:cli": "pnpm run build:web && cd packages/cli && go install ./cmd/tokeninsights",
     "build": "pnpm run check-schema && pnpm run build:cli",
     "test": "pnpm run test:scripts && pnpm --filter @tokeninsights/web run test && pnpm --filter @tokeninsights/cli run test"

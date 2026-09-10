@@ -46,7 +46,7 @@ function DashboardShell({ bootstrap }: { bootstrap: Bootstrap }) {
       <div className="brand"><span className="brand-mark"><ChartNoAxesCombined size="1.25em" /></span><span>Token<span className="brand-light">Insights</span></span><span className="local-badge">LOCAL</span></div>
       <div className="header-actions"><span className="host"><span className="status-dot" />{bootstrap.hostname}</span><span className="header-divider" />
         <button className="icon-button" title={`Theme: ${theme}`} aria-label={`Theme: ${theme}. Change theme`} onClick={() => dispatch({ type: 'theme', value: theme === 'system' ? 'light' : theme === 'light' ? 'dark' : 'system' })}>{theme === 'dark' ? <Moon size="1.1em" /> : theme === 'light' ? <Sun size="1.1em" /> : <Monitor size="1.1em" />}</button>
-        <button className="button subtle" disabled={Boolean(running)} onClick={reload}><RefreshCw size="1em" className={analytics.isFetching && enabled ? 'spin' : ''} /><span>Reload data</span></button>
+        <button className="button subtle" aria-label="Reload data" title="Reload data" disabled={Boolean(running)} onClick={reload}><RefreshCw size="1em" className={analytics.isFetching && enabled ? 'spin' : ''} /><span>Reload data</span></button>
         <button className="button primary" disabled={Boolean(running)} onClick={() => sync.mutate()}>{running ? <LoaderCircle size="1em" className="spin" /> : <ArrowDownToLine size="1em" />}<span>{running ? 'Syncing…' : 'Sync now'}</span></button>
       </div>
     </header>
@@ -73,7 +73,7 @@ function SyncProgress({ status }: { status: SyncStatus }) {
   const message = status.phase === 'resetting' ? 'Resetting local usage data for compatibility…'
     : status.phase === 'rebuilding' ? 'Rebuilding usage from all configured local harnesses…'
     : status.phase === 'normalizing' ? 'Normalizing canonical data…' : 'Syncing all supported harnesses…'
-  return <section className="sync-progress panel" role="status" aria-live="polite"><div className="panel-heading"><div><h2><LoaderCircle className="spin" size="1em" />Refreshing local usage</h2><p>{message}</p></div></div><div className="sync-harnesses">{Object.entries(status.harnesses).map(([harness, phase]) => <div key={harness}><span>{phase === 'synced' || phase === 'skipped' ? <Check size="1em" /> : phase === 'failed' ? <CircleAlert size="1em" /> : <span className={`status-dot ${phase === 'pending' ? 'pending' : ''}`} />}{harness}</span><small>{phase}</small></div>)}</div></section>
+  return <section className="sync-progress panel" role="status" aria-live="polite"><div className="panel-heading"><div><h2><LoaderCircle className="spin" size="1em" />Refreshing local usage</h2><p>{message}</p></div></div><div className="sync-harnesses">{Object.entries(status.harnesses).map(([harness, phase]) => <div key={harness} data-phase={phase}><span>{phase === 'synced' || phase === 'skipped' ? <Check size="1em" /> : phase === 'failed' ? <CircleAlert size="1em" /> : <span className={`status-dot ${phase === 'pending' ? 'pending' : ''}`} />}{harness}</span><small>{phase}</small></div>)}</div></section>
 }
 
 function ErrorBanner({ message, onRetry }: { message: string; onRetry: () => void }) {

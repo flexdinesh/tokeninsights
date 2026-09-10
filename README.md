@@ -198,5 +198,6 @@ pnpm run install:cli
 For deeper details, refer to:
 
 - **[Design Guide](docs/design.md)**: Core architecture, SQLite schema definition, data pipelines, and canonical invariants.
+- **[Web Visual Language](DESIGN.md)**: React design principles, semantic tokens, shared components, accessibility, and responsive rules.
 - **[Development Guide](docs/development.md)**: Comprehensive setup, local testing, and package structure details.
 - **[Release Guide](docs/release.md)**: Details on CLI releases, tagging rules, and CI automation workflows.
