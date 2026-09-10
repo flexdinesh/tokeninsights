@@ -62,7 +62,7 @@ func sourceRefreshEnabled(source Source) bool {
 }
 
 func shouldSkipSourceRefresh(ctx context.Context, runner sqlRunner, source Source, options SyncOptions, metadata sourceRefreshMetadata, ok bool) (bool, error) {
-	if options.FullRefresh {
+	if options.FullRefresh || source.AlwaysRefresh {
 		return false, nil
 	}
 	if !ok {

@@ -5,10 +5,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"math"
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -18,7 +20,11 @@ const (
 	maxCodexJSONLLineBytes      = 16 * 1024 * 1024
 )
 
-type codexJSONLAdapter struct{}
+type codexJSONLAdapter struct {
+	metadata map[string]codexSourceMetadata
+	sessions map[string][]Source
+	cache    map[string]codexParseResult
+}
 
 type codexJSONLState struct {
 	filenameSessionID string
@@ -27,7 +33,6 @@ type codexJSONLState struct {
 	provider          *string
 	model             *string
 	turnID            *string
-	previousTotal     *codexTokenCounts
 	pending           []codexPendingFact
 }
 
@@ -40,15 +45,18 @@ type codexTokenCounts struct {
 }
 
 type codexPendingFact struct {
-	fact        RawTokenFact
+	candidate   codexCandidate
 	diagnostics []Diagnostic
 }
 
-func (a codexJSONLAdapter) Harness() Harness {
+func (a *codexJSONLAdapter) Harness() Harness {
 	return HarnessCodex
 }
 
-func (a codexJSONLAdapter) Discover(ctx context.Context, options DiscoverOptions) ([]Source, error) {
+func (a *codexJSONLAdapter) Discover(ctx context.Context, options DiscoverOptions) ([]Source, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	var roots []string
 	sourceDir := strings.TrimSpace(options.SourceDir)
 	if sourceDir != "" {
@@ -122,7 +130,24 @@ func (a codexJSONLAdapter) Discover(ctx context.Context, options DiscoverOptions
 	sort.Slice(sources, func(i int, j int) bool {
 		return sources[i].Path < sources[j].Path
 	})
-	return sources, nil
+	a.metadata = make(map[string]codexSourceMetadata)
+	a.sessions = make(map[string][]Source)
+	a.cache = make(map[string]codexParseResult)
+	for i := range sources {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		metadata, err := codexReadSourceMetadata(ctx, sources[i])
+		if err != nil {
+			return nil, err
+		}
+		sources[i].AlwaysRefresh = metadata.fork
+		a.metadata[sources[i].Path] = metadata
+		if metadata.sessionID != "" {
+			a.sessions[metadata.sessionID] = append(a.sessions[metadata.sessionID], sources[i])
+		}
+	}
+	return sources, ctx.Err()
 }
 
 func (a codexJSONLAdapter) source(path string, root string) Source {
@@ -138,7 +163,7 @@ func (a codexJSONLAdapter) source(path string, root string) Source {
 	}
 }
 
-func (a codexJSONLAdapter) Parse(ctx context.Context, source Source, options SyncOptions) ([]RawTokenFact, []Diagnostic, error) {
+func (a *codexJSONLAdapter) parseCandidates(ctx context.Context, source Source, options SyncOptions) ([]codexCandidate, []Diagnostic, error) {
 	file, err := os.Open(source.Path)
 	if err != nil {
 		return nil, nil, err
@@ -147,7 +172,10 @@ func (a codexJSONLAdapter) Parse(ctx context.Context, source Source, options Syn
 
 	state := codexJSONLState{filenameSessionID: codexSessionIDFromFilename(source.Path)}
 	state.sessionID = state.filenameSessionID
-	var facts []RawTokenFact
+	if metadata, found := a.metadata[source.Path]; found && metadata.sessionID != "" {
+		state.sessionID = metadata.sessionID
+	}
+	var facts []codexCandidate
 	var diagnostics []Diagnostic
 	scanner := bufio.NewScanner(file)
 	scanner.Buffer(make([]byte, 0, 64*1024), maxCodexJSONLLineBytes)
@@ -162,7 +190,9 @@ func (a codexJSONLAdapter) Parse(ctx context.Context, source Source, options Syn
 			continue
 		}
 		var record map[string]interface{}
-		if err := json.Unmarshal([]byte(line), &record); err != nil {
+		decoder := json.NewDecoder(strings.NewReader(line))
+		decoder.UseNumber()
+		if err := decoder.Decode(&record); err != nil || decoder.Decode(new(interface{})) != io.EOF {
 			diagnostics = append(diagnostics, codexDiagnostic("codex_jsonl_parse_error", "skipped unparsable Codex JSONL line"))
 			continue
 		}
@@ -217,6 +247,7 @@ func (state *codexJSONLState) applySessionMeta(record map[string]interface{}) []
 		return diagnostics
 	} else if state.sessionID != *sessionID {
 		diagnostics = append(diagnostics, codexDiagnostic("codex_jsonl_multiple_session_meta", "Codex session file contains multiple session metadata ids"))
+		return diagnostics
 	}
 	if state.provider == nil {
 		state.provider = stringField(payload, "model_provider")
@@ -237,83 +268,76 @@ func (state *codexJSONLState) applyTurnContext(record map[string]interface{}) {
 	}
 }
 
-func (state *codexJSONLState) flushPending(resolved bool) ([]RawTokenFact, []Diagnostic) {
+func (state *codexJSONLState) flushPending(resolved bool) ([]codexCandidate, []Diagnostic) {
 	if len(state.pending) == 0 {
 		return nil, nil
 	}
 	pending := state.pending
 	state.pending = nil
-	facts := make([]RawTokenFact, 0, len(pending))
+	facts := make([]codexCandidate, 0, len(pending))
 	var diagnostics []Diagnostic
 	for _, item := range pending {
 		diagnostics = append(diagnostics, item.diagnostics...)
-		fact := item.fact
+		candidate := item.candidate
 		if resolved {
-			fact.Model = state.model
-			if state.turnID != nil && fact.OccurredAtMs != nil {
-				messageID := codexMessageID(state.turnID, *fact.OccurredAtMs, 0)
-				fact.MessageID = &messageID
+			candidate.fact.Model = state.model
+			if candidate.turnID == nil {
+				candidate.turnID = state.turnID
 			}
+			candidate.setMessageID()
 		} else {
 			diagnostics = append(diagnostics, codexDiagnostic("codex_jsonl_missing_model", "ingested Codex token-count row before model state was resolved"))
 		}
-		facts = append(facts, fact)
+		facts = append(facts, candidate)
 	}
 	return facts, diagnostics
 }
 
-func (a codexJSONLAdapter) factFromEvent(source Source, options SyncOptions, state *codexJSONLState, record map[string]interface{}, lineNumber int) (RawTokenFact, []Diagnostic, bool) {
+func (a *codexJSONLAdapter) factFromEvent(source Source, options SyncOptions, state *codexJSONLState, record map[string]interface{}, lineNumber int) (codexCandidate, []Diagnostic, bool) {
 	payload := nested(record, "payload")
 	if payload == nil {
-		return RawTokenFact{}, nil, false
+		return codexCandidate{}, nil, false
 	}
 	if stringValue(payload, "", "type") == "task_started" {
 		if turnID := stringField(payload, "turn_id"); turnID != nil {
 			state.turnID = turnID
 		}
-		return RawTokenFact{}, nil, false
+		return codexCandidate{}, nil, false
 	}
 	if stringValue(payload, "", "type") != "token_count" {
-		return RawTokenFact{}, nil, false
+		return codexCandidate{}, nil, false
 	}
 	if strings.TrimSpace(state.sessionID) == "" {
-		return RawTokenFact{}, []Diagnostic{codexDiagnostic("codex_jsonl_missing_session", "skipped Codex token-count row with no stable session id")}, false
+		return codexCandidate{}, []Diagnostic{codexDiagnostic("codex_jsonl_missing_session", "skipped Codex token-count row with no stable session id")}, false
 	}
 	occurredAt := codexTimestampString(record, "timestamp")
 	if occurredAt == nil {
-		return RawTokenFact{}, []Diagnostic{codexDiagnostic("codex_jsonl_missing_time", "skipped Codex token-count row with no usable timestamp")}, false
+		return codexCandidate{}, []Diagnostic{codexDiagnostic("codex_jsonl_missing_time", "skipped Codex token-count row with no usable timestamp")}, false
 	}
 	info := nested(payload, "info")
 	if info == nil {
-		return RawTokenFact{}, []Diagnostic{codexDiagnostic("codex_jsonl_missing_tokens", "skipped Codex token-count row with no usable token components")}, false
+		return codexCandidate{}, []Diagnostic{codexDiagnostic("codex_jsonl_missing_tokens", "skipped Codex token-count row with no usable token components")}, false
 	}
 	lastUsage := nested(info, "last_token_usage")
 	if lastUsage == nil {
-		return RawTokenFact{}, []Diagnostic{codexDiagnostic("codex_jsonl_missing_tokens", "skipped Codex token-count row with no usable last token usage")}, false
+		return codexCandidate{}, []Diagnostic{codexDiagnostic("codex_jsonl_missing_tokens", "skipped Codex token-count row with no usable last token usage")}, false
 	}
 	tokens, tokenDiagnostics, ok := codexTokensFromUsage(lastUsage)
 	if !ok {
-		return RawTokenFact{}, tokenDiagnostics, false
+		return codexCandidate{}, tokenDiagnostics, false
 	}
 
 	var diagnostics []Diagnostic
 	diagnostics = append(diagnostics, tokenDiagnostics...)
 	totalUsage := nested(info, "total_token_usage")
+	var cumulativeCounts *codexTokenCounts
 	if totalUsage != nil {
 		cumulative, cumulativeDiagnostics, cumulativeOK := codexTokensFromUsage(totalUsage)
 		diagnostics = append(diagnostics, cumulativeDiagnostics...)
 		if !cumulativeOK {
-			return RawTokenFact{}, diagnostics, false
+			return codexCandidate{}, diagnostics, false
 		}
-		if state.previousTotal != nil && state.previousTotal.equal(cumulative) {
-			diagnostics = append(diagnostics, codexDiagnostic("codex_jsonl_duplicate_token_snapshot", "suppressed duplicate Codex token-count snapshot"))
-			return RawTokenFact{}, diagnostics, false
-		}
-		if state.previousTotal != nil && cumulative.lessThan(*state.previousTotal) {
-			diagnostics = append(diagnostics, codexDiagnostic("codex_jsonl_stale_token_snapshot", "suppressed stale Codex token-count snapshot with regressed cumulative totals"))
-			return RawTokenFact{}, diagnostics, false
-		}
-		state.previousTotal = &cumulative
+		cumulativeCounts = &cumulative
 	} else {
 		diagnostics = append(diagnostics, codexDiagnostic("codex_jsonl_last_without_total", "ingested Codex token-count row without cumulative duplicate protection"))
 	}
@@ -321,8 +345,8 @@ func (a codexJSONLAdapter) factFromEvent(source Source, options SyncOptions, sta
 	if options.Now.IsZero() {
 		nowMs = time.Now().UnixMilli()
 	}
-	messageID := codexMessageID(state.turnID, *occurredAt, lineNumber)
 	sourceID := stableHash("codex-session:" + state.sessionID)
+	sessionID := state.sessionID
 	fact := RawTokenFact{
 		Harness:          HarnessCodex,
 		SourceID:         sourceID,
@@ -331,8 +355,7 @@ func (a codexJSONLAdapter) factFromEvent(source Source, options SyncOptions, sta
 		Parser:           options.Parser,
 		ObservedAtMs:     nowMs,
 		OccurredAtMs:     occurredAt,
-		SessionID:        &state.sessionID,
-		MessageID:        &messageID,
+		SessionID:        &sessionID,
 		Provider:         state.provider,
 		Model:            state.model,
 		UsageScope:       "message",
@@ -344,25 +367,33 @@ func (a codexJSONLAdapter) factFromEvent(source Source, options SyncOptions, sta
 		CacheWriteTokens: nil,
 		TotalTokens:      nil,
 	}
-	if state.model == nil {
-		state.pending = append(state.pending, codexPendingFact{fact: fact, diagnostics: diagnostics})
-		return RawTokenFact{}, nil, false
+	last, lastValid := codexSnapshotFromUsage(lastUsage)
+	total, totalValid := codexSnapshotFromUsage(totalUsage)
+	candidate := codexCandidate{
+		fact: fact, turnID: state.turnID, line: lineNumber,
+		snapshot:    codexSnapshot{Last: last, Total: total},
+		replayValid: lastValid && totalValid, cumulative: cumulativeCounts,
 	}
-	return fact, diagnostics, true
+	candidate.setMessageID()
+	if state.model == nil {
+		state.pending = append(state.pending, codexPendingFact{candidate: candidate, diagnostics: diagnostics})
+		return codexCandidate{}, nil, false
+	}
+	return candidate, diagnostics, true
 }
 
 func codexTokensFromUsage(usage map[string]interface{}) (codexTokenCounts, []Diagnostic, bool) {
 	if hasInvalidCodexToken(usage, "input_tokens", "cached_input_tokens", "cache_read_input_tokens", "output_tokens", "reasoning_output_tokens", "total_tokens") {
 		return codexTokenCounts{}, []Diagnostic{codexDiagnostic("codex_jsonl_invalid_tokens", "skipped Codex token-count row with non-numeric token components")}, false
 	}
-	rawInput := intField(usage, "input_tokens")
-	cacheRead := largerInt(intField(usage, "cached_input_tokens"), intField(usage, "cache_read_input_tokens"))
+	rawInput := codexIntField(usage, "input_tokens")
+	cacheRead := largerInt(codexIntField(usage, "cached_input_tokens"), codexIntField(usage, "cache_read_input_tokens"))
 	counts := codexTokenCounts{
 		input:     rawInput,
-		output:    intField(usage, "output_tokens"),
-		reasoning: intField(usage, "reasoning_output_tokens"),
+		output:    codexIntField(usage, "output_tokens"),
+		reasoning: codexIntField(usage, "reasoning_output_tokens"),
 		cacheRead: cacheRead,
-		total:     intField(usage, "total_tokens"),
+		total:     codexIntField(usage, "total_tokens"),
 	}
 	if counts.input == nil && counts.output == nil && counts.reasoning == nil && counts.cacheRead == nil && counts.total == nil {
 		return codexTokenCounts{}, []Diagnostic{codexDiagnostic("codex_jsonl_missing_tokens", "skipped Codex token-count row with no usable token components")}, false
@@ -390,12 +421,16 @@ func hasInvalidCodexToken(usage map[string]interface{}, names ...string) bool {
 			continue
 		}
 		switch typed := value.(type) {
+		case json.Number:
+			if _, err := typed.Int64(); err != nil {
+				return true
+			}
 		case float64:
-			if math.IsNaN(typed) || math.IsInf(typed, 0) {
+			if math.IsNaN(typed) || math.IsInf(typed, 0) || math.Trunc(typed) != typed || typed >= math.MaxInt64 || typed < math.MinInt64 {
 				return true
 			}
 		case string:
-			if intField(usage, name) == nil {
+			if codexIntField(usage, name) == nil {
 				return true
 			}
 		default:
@@ -403,6 +438,27 @@ func hasInvalidCodexToken(usage map[string]interface{}, names ...string) bool {
 		}
 	}
 	return false
+}
+
+func codexIntField(usage map[string]interface{}, name string) *int64 {
+	switch value := usage[name].(type) {
+	case json.Number:
+		parsed, err := value.Int64()
+		if err == nil {
+			return &parsed
+		}
+	case string:
+		parsed, err := strconv.ParseInt(strings.TrimSpace(value), 10, 64)
+		if err == nil {
+			return &parsed
+		}
+	case float64:
+		if math.Trunc(value) == value && value < math.MaxInt64 && value >= math.MinInt64 {
+			parsed := int64(value)
+			return &parsed
+		}
+	}
+	return nil
 }
 
 func (counts codexTokenCounts) equal(other codexTokenCounts) bool {

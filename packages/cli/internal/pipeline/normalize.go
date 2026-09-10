@@ -57,7 +57,14 @@ type canonicalTokenValues struct {
 
 func Normalize(ctx context.Context, options NormalizeOptions) (Summary, error) {
 	summary := Summary{}
+	compatibility, err := db.InspectCompatibility(ctx, options.DBPath)
+	if err != nil {
+		return summary, err
+	}
 	if options.DryRun {
+		if needsRecovery(compatibility) {
+			return previewSync(ctx, normalizationRecoveryOptions(options), compatibility)
+		}
 		database, err := db.Open(options.DBPath)
 		if err != nil {
 			return summary, err
@@ -77,12 +84,29 @@ func Normalize(ctx context.Context, options NormalizeOptions) (Summary, error) {
 		return summary, nil
 	}
 
+	release, err := db.AcquireWriterLock(ctx, options.DBPath)
+	if err != nil {
+		return summary, recoveryFailure(compatibility, err)
+	}
+	defer release()
+	compatibility, err = db.InspectCompatibility(ctx, options.DBPath)
+	if err != nil {
+		return summary, err
+	}
+	if needsRecovery(compatibility) {
+		return recoverDatabase(ctx, normalizationRecoveryOptions(options), compatibility)
+	}
 	database, _, err := db.CreateIfMissing(options.DBPath)
 	if err != nil {
 		return summary, err
 	}
 	defer database.Close()
+	return normalizePrepared(ctx, database, options)
+}
 
+// normalizePrepared shares the sync caller's connection and writer lock.
+func normalizePrepared(ctx context.Context, database *sql.DB, options NormalizeOptions) (Summary, error) {
+	summary := Summary{}
 	rows, err := loadPendingTokenRows(ctx, database, options.Harnesses)
 	if err != nil {
 		return summary, err

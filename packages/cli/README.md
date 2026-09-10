@@ -48,6 +48,8 @@ With `sync --all --source-dir`, each harness is read only from its own subdirect
 
 OpenCode sync reads modern SQLite sources named `opencode.db` or `opencode-<channel>.db`, including sessions marked archived in those databases. Pi sync reads JSONL session files from `~/.pi/agent/sessions`, or from a provided Pi source directory; Pi has no harness archive and OS trash is excluded. Codex sync reads rollout JSONL session files from `${CODEX_HOME:-~/.codex}/sessions` and `${CODEX_HOME:-~/.codex}/archived_sessions`, parsing structured `event_msg` token-count records. Claude Code sync reads retained local JSONL transcript files from `${CLAUDE_CONFIG_DIR:-~/.claude}/projects` regardless of UI/server archive state; cloud-only archives are excluded. After a successful OpenCode SQLite or Pi/Codex/Claude Code JSONL refresh, old unchanged sources can be skipped by Recent Source Refresh; recent or changed sources are still parsed. The freshness window is 48 hours before the last successful source refresh. `sync --dry-run` previews skips without writing, and `sync --full-refresh` ignores source refresh state for the requested harness scope without requeueing existing raw facts for canonical rebuild.
 
+Codex forks/subagents are reparsed each sync, with linked parent parses cached within the run. Explicit ancestry plus matching turn, provider/model, and complete last/cumulative token metadata identifies replay; rewritten timestamps are not match keys. Verified copies retain the original parent fact identity/time, while uncertain history is retained with diagnostics. Ordinary Codex sources still use Recent Source Refresh. Distinct snapshots use deterministic identity fingerprints, with line identity when cumulative identity is absent.
+
 `normalize`
 
 Process pending canonical work from existing raw facts. After `reset-canonical`, this rebuilds canonical facts from requeued raw token facts.
@@ -62,6 +64,8 @@ tokeninsights normalize --dry-run
 
 Delete canonical sessions, messages, token usage, and normalization diagnostics while keeping raw facts, observations, and source refresh state. Existing raw token facts are requeued for normalization.
 
+Requires compatible data with no unfinished recovery. It cannot repair incompatible raw token semantics or identities.
+
 ```sh
 tokeninsights reset-canonical
 tokeninsights reset-canonical --confirm
@@ -69,7 +73,7 @@ tokeninsights reset-canonical --confirm
 
 `reset-all`
 
-Delete and recreate the TokenInsights database plus SQLite sidecars. This clears raw facts, canonical facts, pending normalization work, and source refresh state.
+Transactionally recreate application tables inside the existing SQLite file. This clears raw facts, canonical facts, pending normalization work, and source refresh state. A subsequent sync imports retained local sources. Explicit reset remains available when source availability changes and previously ambiguous Codex history needs reconciliation.
 
 ```sh
 tokeninsights reset-all
@@ -95,6 +99,23 @@ Every tab's pinned summary shows `sessions <shown> shown / <synced> synced`, fol
 
 The default current-month filter can show a small subset of synced sessions. Compare `view --no-sync --month` with `view --no-sync --all-time` using the same `--db-path` to inspect date filtering without changing the database. All time removes the preset date restriction but keeps dimension filters and any explicit custom date bounds.
 
+`serve`
+
+Serve the embedded React dashboard over IPv4. By default the listener binds `0.0.0.0` and prints three URLs: the primary LAN address (for example `http://10.0.1.151:8765`), `http://localhost:8765`, and `http://0.0.0.0:8765`. LAN discovery excludes Docker/virtual/VPN interface names from the printed list; the wildcard listener still accepts connections on all IPv4 interfaces. If no LAN address is available, only localhost and `0.0.0.0` are printed. Use `--host <ipv4>` to restrict binding to a specific address; then only that address is printed. Default port: `8765`; `--port 0` chooses an available port. Ctrl+C shuts down the server.
+
+```sh
+tokeninsights serve --week
+tokeninsights serve --no-sync --port 8080
+tokeninsights serve --host 10.0.1.151 --week
+tokeninsights serve --month --bucket week --provider openai --harness pi
+```
+
+All viewer arguments below also work with `serve`. They initialize browser filters rather than restricting which harnesses sync. Startup refreshes all supported harnesses with normalization; `--no-sync` skips startup sync and requires an existing compatible, fully recovered database. **Sync now** runs a shared refresh across browser clients; **Reload data** only rereads SQLite. Ordinary sync failures keep the server available for retry or explicitly inspecting existing data. Failed compatibility recovery offers retry and hides **Inspect existing data** until recovery completes.
+
+The web dashboard provides Tokens, Models, Providers, Harnesses, Sessions, and Context views, summary cards, charts, faceted multi-select filters, custom/open-ended dates, session-ID search, column sorting/visibility, pagination, and system/light/dark themes. Date Range Filters and Time Buckets use the server's local timezone and Monday-start weeks. Browser URLs preserve filters, tab, bucket, sorting, and pagination; browser back/forward restores them. **Restore CLI defaults** restores the startup filters.
+
+The Sessions card shows distinct sessions matching the filters alongside all synced sessions. Every table summary leads with `Sessions <shown> shown / <synced> synced`, including Context and empty filtered results. Counts use the same canonical query as the TUI, exclude empty/non-countable-only sessions, and cover every page. The synced count ignores all viewer filters. Context compares in-range session peaks as average, median, and maximum; its table summary shows session coverage and row count without an additive token total.
+
 ## Database
 
 Default path:
@@ -105,7 +126,17 @@ Default path:
 
 Override it with `--db-path` or `TOKENINSIGHTS_DB_PATH`.
 
-The CLI creates a missing database for `sync`, implicit `view` sync, `normalize`, and reset workflows. `view --no-sync` opens the database read-only and rejects missing or incompatible databases with a reset instruction.
+The CLI creates a missing database for `sync`, implicit `view`/`serve` sync, `normalize`, and reset workflows. Fresh databases start current and need no recovery. `view --no-sync` and `serve --no-sync` validate existing data read-only and reject missing, incompatible, or rebuild-pending databases.
+
+### Compatibility Recovery
+
+Schema V8 tracks data generation 1, a durable rebuild-pending marker, and a hash of the recovery source configuration. `database_lifecycle.rebuild_source_key` is NULL when ready and nonempty while pending; full source paths are never stored. Compatibility depends on schema/data contracts, not release version numbers. Normal `sync`, `normalize`, `view`, and `serve` automatically recover recognized older schema/data by transactionally resetting application tables in place, importing all configured local harnesses, and normalizing. Compatible updates preserve data; newer, unknown, or corrupt databases are rejected without automatic deletion.
+
+Recovery notices appear on stderr for `sync`/`normalize`, and as resetting/rebuilding progress in the TUI/web viewer. Missing harness installations are normal skips. A failed rebuild retains partial imports and pending state. Retry with the original `--db-path`, `--source-dir` if used, and source environment settings to resume without resetting again. Default-source recovery can resume through normal dashboard startup or `sync --all`; custom-source recovery requires `sync --all --source-dir <original-root> --db-path <original-database>`. A mismatched source configuration is rejected before data writes. Full paths cannot be recovered from the stored hash. Analytics reads validate compatibility inside their read snapshot and stay unavailable until success. Only retained local sources can reconstruct history.
+
+Targeted default-source commands first recover all default harnesses. `sync --all --source-dir <root>` stays bounded to `<root>/<harness>` during recovery. Single-harness custom-source commands defer recovery without changing the database; use an eligible default-source or all-harness command first. Recovery always normalizes, even before satisfying `--no-normalize`. `--dry-run` previews reset/resume without database writes or stale refresh-state suppression. `--no-sync` never repairs data. Help/version commands never access the database.
+
+Source-scope matching uses normalized configuration: default recovery fingerprints the effective OpenCode, Pi, Codex, and Claude Code roots, including environment overrides; custom all-harness recovery fingerprints the canonical absolute root. Equivalent normalized roots match. Changing roots cannot complete an existing pending rebuild.
 
 ## View Arguments
 

@@ -49,6 +49,15 @@ jobs:
       - name: Build
         run: pnpm run build
 
+      - name: Check embedded web assets
+        run: node scripts/check-web.mjs
+
+      - name: Install test browser
+        run: pnpm --filter @tokeninsights/web exec playwright install --with-deps chromium
+
+      - name: Browser tests
+        run: pnpm run test:web-e2e
+
   package-snapshot:
     name: Package Snapshot
     runs-on: ubuntu-latest

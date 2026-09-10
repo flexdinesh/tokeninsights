@@ -1,0 +1,4 @@
+{"type":"session_meta","payload":{"id":"parent","model_provider":"openai"}}
+{"type":"turn_context","payload":{"turn_id":"turn-parent","model":"gpt-5"}}
+{"timestamp":"2026-01-01T00:00:02Z","type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":10},"total_token_usage":{"input_tokens":10}}}}
+{"timestamp":"2026-01-01T00:00:03Z","type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":20},"total_token_usage":{"input_tokens":30}}}}

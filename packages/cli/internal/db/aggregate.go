@@ -258,7 +258,7 @@ func Aggregate(ctx context.Context, db *sql.DB, f Filter, g GroupBy) ([]Row, err
 	return AggregateTokens(ctx, db, f, g)
 }
 
-func AggregateTokens(ctx context.Context, db *sql.DB, f Filter, g GroupBy) ([]Row, error) {
+func AggregateTokens(ctx context.Context, db Reader, f Filter, g GroupBy) ([]Row, error) {
 	whereClause, args := canonicalWhereClause(f)
 	query := fmt.Sprintf(`
 		SELECT %s,
@@ -315,7 +315,7 @@ func AggregateTokens(ctx context.Context, db *sql.DB, f Filter, g GroupBy) ([]Ro
 	return result, nil
 }
 
-func ViewerTokenBuckets(ctx context.Context, db *sql.DB, f Filter, bucket TimeBucket) ([]ViewerTokenBucketRow, error) {
+func ViewerTokenBuckets(ctx context.Context, db Reader, f Filter, bucket TimeBucket) ([]ViewerTokenBucketRow, error) {
 	bucketExpr, err := viewerBucketExpression(bucket)
 	if err != nil {
 		return nil, err
@@ -388,19 +388,19 @@ func ViewerTokenBuckets(ctx context.Context, db *sql.DB, f Filter, bucket TimeBu
 	return result, nil
 }
 
-func ViewerModels(ctx context.Context, db *sql.DB, f Filter) ([]ViewerDimensionRow, error) {
+func ViewerModels(ctx context.Context, db Reader, f Filter) ([]ViewerDimensionRow, error) {
 	return viewerDimensions(ctx, db, f, ColModel)
 }
 
-func ViewerProviders(ctx context.Context, db *sql.DB, f Filter) ([]ViewerDimensionRow, error) {
+func ViewerProviders(ctx context.Context, db Reader, f Filter) ([]ViewerDimensionRow, error) {
 	return viewerDimensions(ctx, db, f, ColProvider)
 }
 
-func ViewerHarnesses(ctx context.Context, db *sql.DB, f Filter) ([]ViewerDimensionRow, error) {
+func ViewerHarnesses(ctx context.Context, db Reader, f Filter) ([]ViewerDimensionRow, error) {
 	return viewerDimensions(ctx, db, f, ColHarness)
 }
 
-func ViewerContext(ctx context.Context, db *sql.DB, f Filter) ([]ViewerContextRow, error) {
+func ViewerContext(ctx context.Context, db Reader, f Filter) ([]ViewerContextRow, error) {
 	whereClause, args := canonicalWhereClause(f)
 	query := fmt.Sprintf(`
 		WITH per_session AS (
@@ -491,7 +491,7 @@ func ViewerContext(ctx context.Context, db *sql.DB, f Filter) ([]ViewerContextRo
 	return result, nil
 }
 
-func viewerDimensions(ctx context.Context, db *sql.DB, f Filter, primaryColumn string) ([]ViewerDimensionRow, error) {
+func viewerDimensions(ctx context.Context, db Reader, f Filter, primaryColumn string) ([]ViewerDimensionRow, error) {
 	whereClause, args := canonicalWhereClause(f)
 	query := fmt.Sprintf(`
 		SELECT ctu.%s AS primary_value,
@@ -584,7 +584,7 @@ func viewerDimensions(ctx context.Context, db *sql.DB, f Filter, primaryColumn s
 	return result, nil
 }
 
-func ViewerSessions(ctx context.Context, db *sql.DB, f Filter) ([]ViewerSessionRow, error) {
+func ViewerSessions(ctx context.Context, db Reader, f Filter) ([]ViewerSessionRow, error) {
 	whereClause, args := canonicalWhereClause(f)
 	query := fmt.Sprintf(`
 		SELECT MAX(ctu.%s) AS latest_at_ms,

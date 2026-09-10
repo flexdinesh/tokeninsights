@@ -104,6 +104,14 @@ The parsers extract token counts, timestamps, model/provider names, and session/
 
 Local archived history is included when the harness keeps it in a durable source: OpenCode archived sessions remain in SQLite, Codex scans both `sessions` and `archived_sessions`, and Claude Code reads retained local `projects` transcripts regardless of UI/server archive state. Pi has no harness archive. OS trash and cloud-only archives are excluded.
 
+Codex fork/subagent history is counted once when explicit ancestry and matching token metadata identify the original parent facts, even if replay timestamps changed. Uncertain history is retained with diagnostics; missing parent transcripts can limit reconciliation.
+
+### Automatic Compatibility Recovery
+
+Normal sync, normalize, and dashboard startup automatically rebuild recognized older database formats or incompatible token identities from all configured local harnesses. Compatible updates keep existing data. Recovery resets application tables transactionally inside the existing SQLite file, then reimports and normalizes retained sources. Only locally retained history can be reconstructed.
+
+If recovery fails, retry with the same database and source configuration. For default sources, use `tokeninsights sync --all` or reopen the dashboard with the original `--db-path` and source environment settings. For custom sources, repeat `sync --all --source-dir <root> --db-path <database>`. Partial imports are retained and recovery resumes without another reset. A stored hash enforces matching source roots; full paths are not persisted or reconstructed automatically. Mismatched retries are rejected before data writes. `--no-sync` stays read-only and rejects unfinished recovery; `--dry-run` previews recovery without writing. Unknown, corrupt, or newer databases are rejected without automatic deletion.
+
 ### Database Location
 
 The default TokenInsights database is:
@@ -137,7 +145,9 @@ tokeninsights sync --harness pi --source-dir /path/to/pi/sessions
 
 With `sync --all --source-dir /path/to/sources`, put each tool's sources in its own subdirectory: `opencode`, `pi`, `codex`, or `claude-code`. Missing subdirectories are skipped.
 
-If automatic sync fails, the dashboard exits with an error. Refresh unaffected harnesses with `tokeninsights sync --harness <harness>`, then use `tokeninsights view --no-sync` to view available data.
+When compatibility recovery is needed, targeted default-source sync first rebuilds all default harnesses. All-harness custom-root recovery stays within that root. Single-harness custom-root commands defer recovery; run an eligible all-harness command first.
+
+If ordinary automatic sync fails, the terminal dashboard exits with an error. Refresh unaffected harnesses with `tokeninsights sync --harness <harness>`, then use `tokeninsights view --no-sync` to view available data. Unfinished compatibility recovery must complete before viewing data.
 
 ### Maintenance & Debugging
 
@@ -152,6 +162,8 @@ tokeninsights normalize --dry-run
 
 Purge normalized canonical facts and diagnostics without deleting raw ingested facts, observations, or source refresh state. Existing raw token facts are requeued so `tokeninsights normalize` can rebuild canonical data.
 
+This requires compatible, fully recovered data; it cannot repair incompatible raw usage or identities.
+
 ```sh
 tokeninsights reset-canonical --confirm
 tokeninsights normalize
@@ -159,7 +171,7 @@ tokeninsights normalize
 
 #### Reset Local Database
 
-Completely wipe and recreate the local SQLite database and its sidecars to start fresh. This clears raw facts, canonical facts, pending normalization work, and source refresh state.
+Transactionally reset application tables in the existing SQLite file to start fresh. This clears raw facts, canonical facts, pending normalization work, and source refresh state. Explicit reset remains useful when local source availability changes, such as a Codex parent transcript becoming available after ambiguous history was imported.
 
 ```sh
 tokeninsights reset-all --confirm

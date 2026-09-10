@@ -2,6 +2,16 @@ PRAGMA journal_mode = WAL;
 PRAGMA busy_timeout = 5000;
 PRAGMA foreign_keys = ON;
 
+CREATE TABLE IF NOT EXISTS database_lifecycle (
+  id INTEGER PRIMARY KEY CHECK (id = 1),
+  data_generation INTEGER NOT NULL CHECK (data_generation >= 0),
+  rebuild_pending INTEGER NOT NULL CHECK (rebuild_pending IN (0, 1)),
+  rebuild_source_key TEXT,
+  updated_at_ms INTEGER NOT NULL CHECK (updated_at_ms >= 0),
+  CHECK (rebuild_pending != 0 OR rebuild_source_key IS NULL),
+  CHECK (rebuild_pending != 1 OR (rebuild_source_key IS NOT NULL AND length(rebuild_source_key) > 0))
+);
+
 CREATE TABLE IF NOT EXISTS ingest_runs (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   run_id TEXT NOT NULL UNIQUE,
@@ -183,4 +193,4 @@ CREATE TABLE IF NOT EXISTS normalization_diagnostics (
 CREATE INDEX IF NOT EXISTS normalization_diagnostics_harness_time_idx ON normalization_diagnostics (harness, recorded_at_ms);
 CREATE INDEX IF NOT EXISTS normalization_diagnostics_code_idx ON normalization_diagnostics (code);
 
-PRAGMA user_version = 7;
+PRAGMA user_version = 8;

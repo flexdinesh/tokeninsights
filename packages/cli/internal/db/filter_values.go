@@ -2,11 +2,10 @@ package db
 
 import (
 	"context"
-	"database/sql"
 	"sort"
 )
 
-func AvailableProviders(ctx context.Context, db *sql.DB, f Filter) ([]string, error) {
+func AvailableProviders(ctx context.Context, db Reader, f Filter) ([]string, error) {
 	providerFilter := f
 	providerFilter.Providers = nil
 	whereClause, args := canonicalWhereClause(providerFilter)
@@ -36,7 +35,7 @@ func AvailableProviders(ctx context.Context, db *sql.DB, f Filter) ([]string, er
 	return values, rows.Err()
 }
 
-func AvailableModels(ctx context.Context, db *sql.DB, f Filter) ([]string, error) {
+func AvailableModels(ctx context.Context, db Reader, f Filter) ([]string, error) {
 	modelFilter := f
 	modelFilter.Models = nil
 	whereClause, args := canonicalWhereClause(modelFilter)
@@ -66,7 +65,7 @@ func AvailableModels(ctx context.Context, db *sql.DB, f Filter) ([]string, error
 	return values, rows.Err()
 }
 
-func AvailableHarnesses(ctx context.Context, db *sql.DB, f Filter) ([]string, error) {
+func AvailableHarnesses(ctx context.Context, db Reader, f Filter) ([]string, error) {
 	harnessFilter := f
 	harnessFilter.Harnesses = nil
 	whereClause, args := canonicalWhereClause(harnessFilter)
