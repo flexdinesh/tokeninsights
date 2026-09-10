@@ -427,6 +427,8 @@ Dashboard/filter query parameters are `period`, `bucket`, `from`, `to`, repeated
 
 `packages/web` uses React, strict TypeScript, Vite, Radix Popover, TanStack Query/Table, and Recharts. A top-level reducer/provider owns dashboard filters, navigation, sorting, pagination, theme, visible columns, and chart metric. Transient popover/search drafts stay local. Query hooks validate responses at runtime and cancel superseded requests; loading placeholders prevent old results from being mislabeled with new filters. Filters/tab/bucket/sort/page are URL-backed, including browser back/forward and explicitly cleared startup filters. Theme preference persists locally. CSS typography, color, spacing, and radius tokens use browser-scalable rem/em sizing, with responsive layouts, focus styles, accessible controls, and reduced-motion support.
 
+The React visual contract is [`DESIGN.md`](../DESIGN.md), implemented by `packages/web/src/tokens.css` and shared rules in `styles.css`. All Aggregation Tabs share semantic light/dark colors, a 4px-based spacing scale, three radius roles, aligned page/panel insets, and standard/compact controls with larger touch targets. Narrow layouts reflow all six navigation choices into a visible grid and retain accessible names for icon-only actions. Visual changes must follow that contract without changing canonical analytics semantics.
+
 Vite output is checked into `packages/cli/internal/server/static` and embedded using `go:embed`, preserving direct Go installs and offline runtime use. The workspace builds React before Go; CI rebuilds and checks generated assets for drift. Web analytics use the existing canonical contract; schema V8 lifecycle state is local-only and not an analytics dimension.
 
 ## DB Lifecycle

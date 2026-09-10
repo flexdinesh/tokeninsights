@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import * as Popover from '@radix-ui/react-popover'
 import { CalendarDays, Check, ChevronDown, Filter, RotateCcw, Search, X } from 'lucide-react'
 import type { Dimension, Facets, Selection } from '../contracts'
@@ -25,7 +25,7 @@ export function MultiSelect({ label, values, selected, onChange, onSearch, loadi
     <Popover.Trigger className={`filter-button ${selected.length ? 'is-selected' : ''}`}>
       {label}{selected.length > 0 && <span className="count-badge">{selected.length}</span>}<ChevronDown size="1em" />
     </Popover.Trigger>
-    <Popover.Portal><Popover.Content className="popover" sideOffset={8} align="start" aria-label={`${label} filter`} onOpenAutoFocus={event => { event.preventDefault(); searchInput.current?.focus() }}>
+    <Popover.Portal><Popover.Content className="popover" sideOffset={8} collisionPadding={16} align="start" aria-label={`${label} filter`} onOpenAutoFocus={event => { event.preventDefault(); searchInput.current?.focus() }}>
       <div className="popover-heading"><strong>{label}</strong><button className="text-button" onClick={() => onChange([])}>Clear</button></div>
       <label className="search-field"><Search size="1em" /><input ref={searchInput} aria-label={`Search ${label.toLowerCase()}`} placeholder={`Find ${label.toLowerCase()}…`} value={search} onChange={e => { setSearch(e.target.value); onSearch?.(e.target.value) }} /></label>
       <div className="filter-options" aria-busy={loading}>
@@ -43,6 +43,7 @@ export function MultiSelect({ label, values, selected, onChange, onSearch, loadi
 
 function DateFilter() {
   const { state: { query }, dispatch } = useDashboardState()
+  const errorId = useId()
   const [open, setOpen] = useState(false)
   const [from, setFrom] = useState(query.from)
   const [to, setTo] = useState(query.to)
@@ -52,12 +53,12 @@ function DateFilter() {
     <Popover.Trigger className="filter-button date-button"><CalendarDays size="1em" />
       {custom ? `${query.from || 'Beginning'} → ${query.to || 'Now'}` : periods.find(p => p.value === query.period)?.label}<ChevronDown size="1em" />
     </Popover.Trigger>
-    <Popover.Portal><Popover.Content className="popover date-popover" align="end" sideOffset={8} aria-label="Date range">
+    <Popover.Portal><Popover.Content className="popover date-popover" align="end" sideOffset={8} collisionPadding={16} aria-label="Date range">
       <strong>Date range</strong>
       <div className="date-presets">{periods.map(p => <button key={p.value} className={`button ${!custom && query.period === p.value ? 'selected' : ''}`} onClick={() => { dispatch({ type: 'selection', value: { period: p.value, from: '', to: '' } }); setOpen(false) }}>{p.label}</button>)}</div>
-      <div className="date-inputs"><label>From<input aria-label="From date" type="date" value={from} onChange={e => setFrom(e.target.value)} /></label><label>To<input aria-label="To date" type="date" value={to} onChange={e => setTo(e.target.value)} /></label></div>
+      <div className="date-inputs"><label>From<input aria-label="From date" aria-invalid={invalid || undefined} aria-describedby={invalid ? errorId : undefined} type="date" value={from} onChange={e => setFrom(e.target.value)} /></label><label>To<input aria-label="To date" aria-invalid={invalid || undefined} aria-describedby={invalid ? errorId : undefined} type="date" value={to} onChange={e => setTo(e.target.value)} /></label></div>
       <p className="hint">Inclusive dates in the server’s local timezone. Either bound can be empty.</p>
-      {invalid && <p role="alert" className="error-text">From must not be after to.</p>}
+      {invalid && <p id={errorId} role="alert" className="error-text">From must not be after to.</p>}
       <button className="button primary full-width" disabled={invalid || (!from && !to)} onClick={() => { dispatch({ type: 'selection', value: { from, to } }); setOpen(false) }}>Apply range</button>
     </Popover.Content></Popover.Portal>
   </Popover.Root>
