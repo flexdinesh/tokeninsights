@@ -1,0 +1,8 @@
+[
+  {
+    "harness": "codex",
+    "severity": "info",
+    "code": "codex_jsonl_replay_resolved",
+    "message": "matched inherited Codex token usage to original session facts"
+  }
+]

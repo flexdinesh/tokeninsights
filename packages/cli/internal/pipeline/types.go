@@ -14,11 +14,12 @@ const (
 var SupportedHarnesses = []Harness{HarnessOpenCode, HarnessPi, HarnessCodex, HarnessClaudeCode}
 
 type Source struct {
-	Harness     Harness
-	ID          string
-	Kind        string
-	Path        string
-	RawSourceID string
+	Harness       Harness
+	ID            string
+	Kind          string
+	Path          string
+	RawSourceID   string
+	AlwaysRefresh bool
 }
 
 type DiscoverOptions struct {
@@ -75,6 +76,8 @@ type SyncOptions struct {
 type SyncProgressStatus string
 
 const (
+	SyncProgressResetting   SyncProgressStatus = "resetting"
+	SyncProgressRebuilding  SyncProgressStatus = "rebuilding"
 	SyncProgressDiscovering SyncProgressStatus = "discovering"
 	SyncProgressSyncing     SyncProgressStatus = "syncing"
 	SyncProgressSkipped     SyncProgressStatus = "skipped"
@@ -94,9 +97,19 @@ type NormalizeOptions struct {
 	DryRun    bool
 	Harnesses []Harness
 	Now       time.Time
+	Progress  func(SyncProgressEvent)
 }
 
+type RecoveryAction string
+
+const (
+	RecoveryNone   RecoveryAction = ""
+	RecoveryReset  RecoveryAction = "reset"
+	RecoveryResume RecoveryAction = "resume"
+)
+
 type Summary struct {
+	Recovery           RecoveryAction
 	RequestedHarnesses int
 	Synced             int
 	Skipped            int

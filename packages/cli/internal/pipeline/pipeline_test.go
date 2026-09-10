@@ -753,7 +753,7 @@ func TestCodexJSONLSyncsTokenCountUsage(t *testing.T) {
 			Harness:          "codex",
 			SourceKind:       "codex-session-jsonl",
 			SessionID:        stringPointer("codex_s1"),
-			MessageID:        stringPointer("turn_1:1767225602000"),
+			MessageID:        stringPointer("turn_1:1767225602000:ba8879e22ef7bb0f71c1e2132bc23f3f47bca47e389bb3a16b38c44283ddb080"),
 			Provider:         stringPointer("openai"),
 			Model:            stringPointer("gpt-5.5"),
 			UsageScope:       "message",
@@ -769,7 +769,7 @@ func TestCodexJSONLSyncsTokenCountUsage(t *testing.T) {
 			Harness:          "codex",
 			SourceKind:       "codex-session-jsonl",
 			SessionID:        stringPointer("codex_s1"),
-			MessageID:        stringPointer("turn_1:1767225603000"),
+			MessageID:        stringPointer("turn_1:1767225603000:6adc72e86f0b743504a3d09b8f3cfd8301b6ef9d20e04d8821ac2e3eaa8cc721"),
 			Provider:         stringPointer("openai"),
 			Model:            stringPointer("gpt-5.5"),
 			UsageScope:       "message",
@@ -786,7 +786,7 @@ func TestCodexJSONLSyncsTokenCountUsage(t *testing.T) {
 		{
 			Harness:          "codex",
 			SessionID:        "codex_s1",
-			MessageID:        "turn_1:1767225602000",
+			MessageID:        "turn_1:1767225602000:ba8879e22ef7bb0f71c1e2132bc23f3f47bca47e389bb3a16b38c44283ddb080",
 			Provider:         "openai",
 			ProviderSource:   "explicit",
 			Model:            "gpt-5.5",
@@ -803,7 +803,7 @@ func TestCodexJSONLSyncsTokenCountUsage(t *testing.T) {
 		{
 			Harness:          "codex",
 			SessionID:        "codex_s1",
-			MessageID:        "turn_1:1767225603000",
+			MessageID:        "turn_1:1767225603000:6adc72e86f0b743504a3d09b8f3cfd8301b6ef9d20e04d8821ac2e3eaa8cc721",
 			Provider:         "openai",
 			ProviderSource:   "explicit",
 			Model:            "gpt-5.5",
@@ -1147,7 +1147,7 @@ func TestCodexJSONLBackfillsModelForPendingTokenCount(t *testing.T) {
 
 	database := openTestDB(t, dbPath)
 	defer database.Close()
-	assertSQLCount(t, database, "SELECT COUNT(*) FROM raw_token_usage WHERE model = 'gpt-5.5' AND message_id = 'turn_pending:1767225602000'", 1)
+	assertSQLCount(t, database, "SELECT COUNT(*) FROM raw_token_usage WHERE model = 'gpt-5.5' AND message_id = 'turn_pending:1767225602000:b04e11a1cc52d2478b03b78dc3140f463e35c0501217b545803993a358c5a717'", 1)
 	assertSQLCount(t, database, "SELECT COUNT(*) FROM normalization_diagnostics WHERE code = 'codex_jsonl_missing_model'", 0)
 }
 

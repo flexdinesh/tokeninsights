@@ -2,7 +2,7 @@ package cli
 
 import (
 	"context"
-	"database/sql"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -218,20 +218,25 @@ func (m interactiveModel) deferredReloadCmd(delay time.Duration) tea.Cmd {
 }
 
 func (m interactiveModel) loadDashboard() reloadMsg {
-	rows, err := loadRows(m.ctx, m.options, m.now, m.groupBy, m.activeTab)
-	if err != nil {
-		return reloadMsg{err: err}
-	}
 	database, err := db.Open(m.options.dbPath)
 	if err != nil {
 		return reloadMsg{err: err}
 	}
 	defer database.Close()
-	counts, err := db.ViewerSessionCounts(m.ctx, database, filterFromOptions(m.options, m.now))
+	tx, err := db.BeginAnalyticsRead(m.ctx, database)
 	if err != nil {
 		return reloadMsg{err: err}
 	}
-	lastSyncMs, err := db.LastCompletedSync(m.ctx, database)
+	defer tx.Rollback()
+	rows, err := loadRowsFromReader(m.ctx, tx, m.options, m.now, m.groupBy, m.activeTab)
+	if err != nil {
+		return reloadMsg{err: err}
+	}
+	counts, err := db.ViewerSessionCounts(m.ctx, tx, filterFromOptions(m.options, m.now))
+	if err != nil {
+		return reloadMsg{err: err}
+	}
+	lastSyncMs, err := db.LastCompletedSync(m.ctx, tx)
 	return reloadMsg{rows: rows, lastSyncMs: lastSyncMs, sessionCounts: counts, err: err}
 }
 
@@ -1224,6 +1229,12 @@ func (m interactiveModel) renderSyncProgress() string {
 	height := max(1, m.height)
 	title := titleStyle.Render("Syncing data")
 	subtitle := hintStyle.Render("Refreshing all supported harnesses")
+	switch m.syncStatus {
+	case pipeline.SyncProgressResetting:
+		subtitle = hintStyle.Render("Resetting local usage data for compatibility")
+	case pipeline.SyncProgressRebuilding:
+		subtitle = hintStyle.Render("Rebuilding usage from all configured local harnesses")
+	}
 	lines := []string{title, subtitle}
 	rawRows := make([]string, 0, len(m.syncProgressRows)+2)
 	for _, row := range m.syncProgressRows {
@@ -1242,7 +1253,7 @@ func (m interactiveModel) syncProgressStatusIcon(status pipeline.SyncProgressSta
 	switch status {
 	case "", "pending":
 		return syncPendingDots(m.syncFrame)
-	case pipeline.SyncProgressDiscovering, pipeline.SyncProgressSyncing, pipeline.SyncProgressNormalizing, pipeline.SyncProgressLoading:
+	case pipeline.SyncProgressDiscovering, pipeline.SyncProgressSyncing, pipeline.SyncProgressNormalizing, pipeline.SyncProgressLoading, pipeline.SyncProgressResetting, pipeline.SyncProgressRebuilding:
 		return padSyncProgressIcon(syncSpinnerFrame(m.syncFrame))
 	case pipeline.SyncProgressSynced:
 		return padSyncProgressIcon("✓")
@@ -1433,6 +1444,9 @@ func RunInteractive(ctx context.Context, args []string, stdout io.Writer, stderr
 	}
 	if finalModel.syncErr != nil {
 		printSummary(stdout, "sync", finalModel.syncSummary, false)
+		if errors.Is(finalModel.syncErr, db.ErrRebuildPending) || errors.Is(finalModel.syncErr, db.ErrRecoveryRequired) {
+			return fmt.Errorf("%w\n\nUsage recovery is incomplete. Retry `tokeninsights sync --all` with the original --db-path, --source-dir (if used), and source environment settings.", finalModel.syncErr)
+		}
 		return fmt.Errorf("%w\n\nImplicit view sync failed. To refresh unaffected harnesses manually, run `tokeninsights sync --harness <harness>`, then open the existing canonical data with `tokeninsights view --no-sync`.", finalModel.syncErr)
 	}
 	return nil
@@ -1450,22 +1464,7 @@ var runInteractiveProgram = func(model interactiveModel, stdout io.Writer) (inte
 }
 
 func filterFromOptions(options tableOptions, now time.Time) db.Filter {
-	start := periodStart(now, options.period)
-	end := periodEnd(now, options.period)
-	if options.filters.dayFrom != "" || options.filters.dayTo != "" {
-		start = time.Time{}
-		end = time.Time{}
-	}
-	return db.Filter{
-		Start:      start,
-		End:        end,
-		SessionIDs: []string(options.filters.sessionIDs),
-		Providers:  []string(options.filters.providers),
-		Models:     []string(options.filters.models),
-		Harnesses:  []string(options.filters.harnesses),
-		DayFrom:    options.filters.dayFrom,
-		DayTo:      options.filters.dayTo,
-	}
+	return selectionFromOptions(options).Filter(now)
 }
 
 func loadFilterValues(ctx context.Context, options tableOptions, now time.Time, dimension filterDimension) ([]string, error) {
@@ -1474,15 +1473,20 @@ func loadFilterValues(ctx context.Context, options tableOptions, now time.Time, 
 		return nil, err
 	}
 	defer database.Close()
+	tx, err := db.BeginAnalyticsRead(ctx, database)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
 
 	filter := filterFromOptions(options, now)
 	switch dimension {
 	case filterProvider:
-		return db.AvailableProviders(ctx, database, filter)
+		return db.AvailableProviders(ctx, tx, filter)
 	case filterModel:
-		return db.AvailableModels(ctx, database, filter)
+		return db.AvailableModels(ctx, tx, filter)
 	case filterHarness:
-		return db.AvailableHarnesses(ctx, database, filter)
+		return db.AvailableHarnesses(ctx, tx, filter)
 	default:
 		return nil, nil
 	}
@@ -1494,7 +1498,12 @@ func loadLastCompletedSync(ctx context.Context, options tableOptions) (int64, er
 		return 0, err
 	}
 	defer database.Close()
-	return db.LastCompletedSync(ctx, database)
+	tx, err := db.BeginAnalyticsRead(ctx, database)
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback()
+	return db.LastCompletedSync(ctx, tx)
 }
 
 func loadRows(ctx context.Context, options tableOptions, now time.Time, groupBy groupByMode, activeTab tabMode) ([]renderRow, error) {
@@ -1503,7 +1512,15 @@ func loadRows(ctx context.Context, options tableOptions, now time.Time, groupBy 
 		return nil, err
 	}
 	defer database.Close()
+	tx, err := db.BeginAnalyticsRead(ctx, database)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+	return loadRowsFromReader(ctx, tx, options, now, groupBy, activeTab)
+}
 
+func loadRowsFromReader(ctx context.Context, database db.Reader, options tableOptions, now time.Time, groupBy groupByMode, activeTab tabMode) ([]renderRow, error) {
 	f := filterFromOptions(options, now)
 	if activeTab == tabTokens {
 		aggRows, err := db.ViewerTokenBuckets(ctx, database, f, db.TimeBucket(options.bucket))
@@ -1630,6 +1647,7 @@ func loadRows(ctx context.Context, options tableOptions, now time.Time, groupBy 
 	}
 
 	var aggRows []db.Row
+	var err error
 	switch activeTab {
 	default:
 		aggRows, err = db.AggregateTokens(ctx, database, f, g)
@@ -1672,7 +1690,7 @@ func loadRows(ctx context.Context, options tableOptions, now time.Time, groupBy 
 	return result, nil
 }
 
-func loadDimensionRows(ctx context.Context, database *sql.DB, f db.Filter, activeTab tabMode) ([]db.ViewerDimensionRow, error) {
+func loadDimensionRows(ctx context.Context, database db.Reader, f db.Filter, activeTab tabMode) ([]db.ViewerDimensionRow, error) {
 	switch activeTab {
 	case tabModels:
 		return db.ViewerModels(ctx, database, f)

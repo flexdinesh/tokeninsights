@@ -62,35 +62,26 @@ func CreateIfMissing(dbPath string) (*sql.DB, bool, error) {
 }
 
 func ApplySchema(ctx context.Context, db *sql.DB) error {
-	schema, err := schemaFS.ReadFile(embeddedSchemaPath)
-	if err != nil {
-		return fmt.Errorf("read embedded schema: %w", err)
-	}
-	if _, err := db.ExecContext(ctx, string(schema)); err != nil {
-		return fmt.Errorf("apply schema: %w", err)
-	}
-	return verifySchemaVersion(ctx, db)
+	return createSchema(ctx, db)
 }
 
 func ResetAll(dbPath string) error {
-	absPath, err := filepath.Abs(dbPath)
+	ctx := context.Background()
+	release, err := AcquireWriterLock(ctx, dbPath)
 	if err != nil {
 		return err
 	}
-	if err := os.MkdirAll(filepath.Dir(absPath), 0o755); err != nil {
+	defer release()
+	absPath, err := canonicalDBPath(dbPath)
+	if err != nil {
 		return err
-	}
-	for _, path := range sqliteFiles(absPath) {
-		if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
-			return fmt.Errorf("remove %s: %w", path, err)
-		}
 	}
 	db, err := openSQLite(absPath, false)
 	if err != nil {
 		return err
 	}
 	defer db.Close()
-	return ApplySchema(context.Background(), db)
+	return replaceSchema(ctx, db, "")
 }
 
 func ResetCanonical(ctx context.Context, db *sql.DB) error {
@@ -104,6 +95,13 @@ func ResetCanonical(ctx context.Context, db *sql.DB) error {
 			_ = tx.Rollback()
 		}
 	}()
+	state, err := inspectCompatibility(ctx, tx)
+	if err != nil {
+		return err
+	}
+	if err := requireCompatible(state, true); err != nil {
+		return err
+	}
 	statements := []string{
 		"DELETE FROM " + TableNormalizationDiagnostics,
 		"DELETE FROM " + TableCanonicalTokenUsage,
@@ -130,10 +128,6 @@ func ResetCanonical(ctx context.Context, db *sql.DB) error {
 	return nil
 }
 
-func sqliteFiles(dbPath string) []string {
-	return []string{dbPath, dbPath + "-wal", dbPath + "-shm"}
-}
-
 func openExisting(dbPath string, readOnly bool) (*sql.DB, error) {
 	absPath, err := filepath.Abs(dbPath)
 	if err != nil {
@@ -150,11 +144,30 @@ func openExisting(dbPath string, readOnly bool) (*sql.DB, error) {
 		return nil, fmt.Errorf("db path is a directory: %s", absPath)
 	}
 
-	db, err := openSQLite(absPath, readOnly)
+	// Inspect through a read-only connection before opening a writer. Unsupported
+	// databases must not receive schema initialization or connection-level writes.
+	if !readOnly {
+		state, err := inspectPath(context.Background(), absPath, false)
+		if err != nil {
+			return nil, err
+		}
+		if err := requireCompatible(state, false); err != nil {
+			return nil, err
+		}
+	}
+	mode := "rw"
+	if readOnly {
+		mode = "ro"
+	}
+	db, err := openSQLiteMode(context.Background(), absPath, mode)
 	if err != nil {
 		return nil, err
 	}
-	if err := verifySchemaVersion(context.Background(), db); err != nil {
+	state, err := inspectDatabase(context.Background(), db, false)
+	if err == nil {
+		err = requireCompatible(state, readOnly)
+	}
+	if err != nil {
 		_ = db.Close()
 		return nil, err
 	}
@@ -162,10 +175,18 @@ func openExisting(dbPath string, readOnly bool) (*sql.DB, error) {
 }
 
 func openSQLite(absPath string, readOnly bool) (*sql.DB, error) {
+	mode := "rwc"
+	if readOnly {
+		mode = "ro"
+	}
+	return openSQLiteMode(context.Background(), absPath, mode)
+}
+
+func openSQLiteMode(ctx context.Context, absPath, mode string) (*sql.DB, error) {
 	fileURL := url.URL{Scheme: "file", Path: absPath}
 	query := fileURL.Query()
-	if readOnly {
-		query.Set("mode", "ro")
+	query.Set("mode", mode)
+	if mode == "ro" {
 		query.Add("_pragma", "query_only(true)")
 	}
 	query.Add("_pragma", "busy_timeout(5000)")
@@ -176,20 +197,9 @@ func openSQLite(absPath string, readOnly bool) (*sql.DB, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := db.PingContext(context.Background()); err != nil {
+	if err := db.PingContext(ctx); err != nil {
 		_ = db.Close()
 		return nil, fmt.Errorf("db ping failed: %w", err)
 	}
 	return db, nil
-}
-
-func verifySchemaVersion(ctx context.Context, db *sql.DB) error {
-	var version int
-	if err := db.QueryRowContext(ctx, "PRAGMA user_version").Scan(&version); err != nil {
-		return fmt.Errorf("schema version check failed: %w", err)
-	}
-	if version != SupportedSchemaVersion {
-		return fmt.Errorf("unsupported schema version %d (expected %d): run `tokeninsights reset-all --confirm` to recreate the local database", version, SupportedSchemaVersion)
-	}
-	return nil
 }

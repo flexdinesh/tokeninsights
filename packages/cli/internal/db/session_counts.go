@@ -2,7 +2,6 @@ package db
 
 import (
 	"context"
-	"database/sql"
 )
 
 // SessionCounts compares sessions matching the view with all countable sessions
@@ -12,7 +11,7 @@ type SessionCounts struct {
 	Synced int64
 }
 
-func ViewerSessionCounts(ctx context.Context, database *sql.DB, f Filter) (SessionCounts, error) {
+func ViewerSessionCounts(ctx context.Context, database Reader, f Filter) (SessionCounts, error) {
 	where, args := canonicalWhereClause(f)
 	var counts SessionCounts
 	err := database.QueryRowContext(ctx, `

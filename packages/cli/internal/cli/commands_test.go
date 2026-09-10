@@ -5,6 +5,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -246,6 +247,58 @@ func TestViewImplicitSyncFailureExitsTUIAndPrintsRecoveryGuidance(t *testing.T) 
 	}
 	if !strings.Contains(err.Error(), "tokeninsights view --no-sync") {
 		t.Fatalf("error missing no-sync guidance: %v", err)
+	}
+}
+
+func TestViewRecoveryFailureRecommendsSyncInsteadOfReadOnlyView(t *testing.T) {
+	restore := replaceInteractiveProgramRunnerForTest(t, func(model interactiveModel, stdout io.Writer) (interactiveModel, error) {
+		model.syncErr = fmt.Errorf("source failed: %w", db.ErrRebuildPending)
+		return model, nil
+	})
+	defer restore()
+	err := Run(context.Background(), []string{"view", "--db-path", filepath.Join(t.TempDir(), "usage.sqlite")}, io.Discard, io.Discard, time.Now())
+	if !errors.Is(err, db.ErrRebuildPending) || !strings.Contains(err.Error(), "tokeninsights sync --all") || strings.Contains(err.Error(), "--no-sync") {
+		t.Fatalf("expected resumable recovery guidance, got %v", err)
+	}
+}
+
+func TestReadOnlyViewAndCanonicalResetRejectPendingRecovery(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "usage.sqlite")
+	database, _, err := db.CreateIfMissing(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	if _, err := database.Exec("UPDATE database_lifecycle SET rebuild_pending = 1, rebuild_source_key = 'test-scope' WHERE id = 1"); err != nil {
+		t.Fatal(err)
+	}
+	for _, args := range [][]string{{"view", "--no-sync"}, {"reset-canonical", "--confirm"}} {
+		err := Run(context.Background(), append(args, "--db-path", path), io.Discard, io.Discard, time.Now())
+		if !errors.Is(err, db.ErrRebuildPending) {
+			t.Fatalf("%v: expected pending recovery error, got %v", args, err)
+		}
+		assertCLIQueryCount(t, database, "SELECT rebuild_pending FROM database_lifecycle WHERE id = 1", 1)
+	}
+}
+
+func TestRecoverySummaryPreview(t *testing.T) {
+	for _, test := range []struct {
+		action pipeline.RecoveryAction
+		want   string
+	}{{pipeline.RecoveryNone, ""}, {pipeline.RecoveryReset, "would reset"}, {pipeline.RecoveryResume, "would resume"}} {
+		var output bytes.Buffer
+		printSummary(&output, "sync", pipeline.Summary{Recovery: test.action}, true)
+		if !strings.Contains(output.String(), "sync dry-run: requested=") {
+			t.Fatalf("missing normal summary: %s", output.String())
+		}
+		if test.want == "" && strings.Contains(output.String(), "Recovery preview") || test.want != "" && !strings.Contains(output.String(), test.want) {
+			t.Fatalf("unexpected preview: %s", output.String())
+		}
+		output.Reset()
+		printSummary(&output, "sync", pipeline.Summary{Recovery: test.action}, false)
+		if strings.Contains(output.String(), "Recovery preview") {
+			t.Fatalf("non-dry summary included preview: %s", output.String())
+		}
 	}
 }
 

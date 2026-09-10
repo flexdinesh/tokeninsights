@@ -19,7 +19,7 @@ type Filter struct {
 	DayTo      string
 }
 
-func LastCompletedSync(ctx context.Context, db *sql.DB) (int64, error) {
+func LastCompletedSync(ctx context.Context, db Reader) (int64, error) {
 	var value sql.NullInt64
 	if err := db.QueryRowContext(ctx, `
 		SELECT MAX(completed_at_ms)

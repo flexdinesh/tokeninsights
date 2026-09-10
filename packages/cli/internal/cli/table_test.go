@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -661,6 +662,78 @@ func TestImplicitSyncProgressViewShowsHarnessStatusIcons(t *testing.T) {
 	}
 	if strings.Contains(output, "Loading data...") {
 		t.Fatalf("sync progress view rendered table loading state:\n%s", output)
+	}
+}
+
+func TestImplicitSyncRecoveryProgressExplainsActiveWork(t *testing.T) {
+	for _, test := range []struct {
+		status  pipeline.SyncProgressStatus
+		message string
+	}{{pipeline.SyncProgressResetting, "Resetting local usage data for compatibility"}, {pipeline.SyncProgressRebuilding, "Rebuilding usage from all configured local harnesses"}} {
+		m := interactiveModel{width: 80, height: 24, syncing: true, syncProgressRows: initialSyncProgressRows()}
+		m = m.withSyncProgress(pipeline.SyncProgressEvent{Status: test.status})
+		output := ansi.Strip(m.View())
+		if !strings.Contains(output, test.message) || !strings.Contains(output, "|   "+string(test.status)) {
+			t.Fatalf("expected active recovery progress, got %s", output)
+		}
+	}
+}
+
+func TestImplicitSyncRebuildingSurvivesHarnessProgress(t *testing.T) {
+	m := interactiveModel{width: 80, height: 24, syncing: true, syncProgressRows: initialSyncProgressRows()}
+	m = m.withSyncProgress(pipeline.SyncProgressEvent{Status: pipeline.SyncProgressResetting})
+	m = m.withSyncProgress(pipeline.SyncProgressEvent{Status: pipeline.SyncProgressRebuilding})
+	for _, status := range []pipeline.SyncProgressStatus{pipeline.SyncProgressDiscovering, pipeline.SyncProgressSyncing, pipeline.SyncProgressSynced, pipeline.SyncProgressSkipped, pipeline.SyncProgressFailed} {
+		m = m.withSyncProgress(pipeline.SyncProgressEvent{Harness: pipeline.HarnessOpenCode, Status: status})
+		if m.syncStatus != pipeline.SyncProgressRebuilding || m.syncProgressRows[0].status != status {
+			t.Fatalf("harness progress lost recovery phase: %s, %+v", m.syncStatus, m.syncProgressRows)
+		}
+	}
+	m = m.withSyncProgress(pipeline.SyncProgressEvent{Status: pipeline.SyncProgressNormalizing})
+	if m.syncStatus != pipeline.SyncProgressNormalizing {
+		t.Fatalf("global phase did not advance: %s", m.syncStatus)
+	}
+}
+
+func TestTUIReadsUseValidatedSnapshotDuringRecovery(t *testing.T) {
+	writer, path := newLoadRowsTestDB(t)
+	defer writer.Close()
+	now := time.Date(2026, 9, 9, 12, 0, 0, 0, time.Local)
+	insertLoadRowsCanonicalToken(t, writer, now.UnixMilli(), "pi", "session", "provider", "model")
+	reader, err := db.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reader.Close()
+	tx, err := db.BeginAnalyticsRead(context.Background(), reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback()
+	if _, err := writer.Exec("UPDATE database_lifecycle SET rebuild_pending = 1, rebuild_source_key = 'test-scope' WHERE id = 1; DELETE FROM canonical_token_usage"); err != nil {
+		t.Fatal(err)
+	}
+	options := tableOptions{dbPath: path, period: periodMonth, bucket: bucketDay}
+	for _, tab := range []tabMode{tabTokens, tabModels, tabProviders, tabHarnesses, tabSessions, tabContext} {
+		rows, err := loadRowsFromReader(context.Background(), tx, options, now, groupByNone, tab)
+		if err != nil || len(rows) != 1 {
+			t.Fatalf("tab %v lost validated snapshot: rows=%d err=%v", tab, len(rows), err)
+		}
+		if _, err := loadRows(context.Background(), options, now, groupByNone, tab); !errors.Is(err, db.ErrRebuildPending) {
+			t.Fatalf("tab %v fresh read accepted pending recovery: %v", tab, err)
+		}
+	}
+	for _, dimension := range []filterDimension{filterProvider, filterModel, filterHarness} {
+		if _, err := loadFilterValues(context.Background(), options, now, dimension); !errors.Is(err, db.ErrRebuildPending) {
+			t.Fatalf("filter %v accepted pending recovery: %v", dimension, err)
+		}
+	}
+	if _, err := loadLastCompletedSync(context.Background(), options); !errors.Is(err, db.ErrRebuildPending) {
+		t.Fatalf("sync history accepted pending recovery: %v", err)
+	}
+	m := interactiveModel{ctx: context.Background(), options: options, now: now, activeTab: tabTokens}
+	if result := m.loadDashboard(); !errors.Is(result.err, db.ErrRebuildPending) {
+		t.Fatalf("dashboard accepted pending recovery: %v", result.err)
 	}
 }
 

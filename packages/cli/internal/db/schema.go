@@ -1,6 +1,7 @@
 package db
 
 const (
+	TableDatabaseLifecycle        = "database_lifecycle"
 	TableIngestRuns               = "ingest_runs"
 	TableRawTokenUsage            = "raw_token_usage"
 	TableRawObservations          = "raw_observations"
@@ -14,6 +15,9 @@ const (
 
 const (
 	ColID               = "id"
+	ColDataGeneration   = "data_generation"
+	ColRebuildPending   = "rebuild_pending"
+	ColRebuildSourceKey = "rebuild_source_key"
 	ColRunID            = "run_id"
 	ColHarness          = "harness"
 	ColCollector        = "collector"
@@ -68,4 +72,6 @@ const (
 	ColMessage          = "message"
 )
 
-const SupportedSchemaVersion = 7
+const SupportedSchemaVersion = 8
+
+const CurrentDataGeneration = 1

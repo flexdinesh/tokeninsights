@@ -17,6 +17,7 @@ const (
 	defaultCollector       = "tokeninsights-sync-go"
 	defaultParser          = "sync-first-v1"
 	opencodeSQLiteParserV2 = "opencode-sqlite-v1-v2"
+	codexJSONLParserV2     = "codex-jsonl-replay-v2"
 )
 
 var runSequence atomic.Uint64
@@ -27,6 +28,39 @@ type sqlRunner interface {
 }
 
 func Sync(ctx context.Context, options SyncOptions) (Summary, error) {
+	options = defaultSyncOptions(options)
+	if options.DryRun && strings.TrimSpace(options.DBPath) == "" {
+		return dryRunSync(ctx, options)
+	}
+	compatibility, err := db.InspectCompatibility(ctx, options.DBPath)
+	if err != nil {
+		return Summary{}, err
+	}
+	if options.DryRun {
+		return previewSync(ctx, options, compatibility)
+	}
+	if err := validateRecoveryScope(options, compatibility); err != nil {
+		return Summary{}, err
+	}
+	release, err := db.AcquireWriterLock(ctx, options.DBPath)
+	if err != nil {
+		return Summary{}, recoveryFailure(compatibility, err)
+	}
+	defer release()
+	compatibility, err = db.InspectCompatibility(ctx, options.DBPath)
+	if err != nil {
+		return Summary{}, err
+	}
+	if needsRecovery(compatibility) {
+		if err := validateRecoveryScope(options, compatibility); err != nil {
+			return Summary{}, err
+		}
+		return recoverDatabase(ctx, options, compatibility)
+	}
+	return syncPrepared(ctx, options)
+}
+
+func defaultSyncOptions(options SyncOptions) SyncOptions {
 	if options.Collector == "" {
 		options.Collector = defaultCollector
 	}
@@ -36,11 +70,12 @@ func Sync(ctx context.Context, options SyncOptions) (Summary, error) {
 	if options.Normalize && options.DryRun {
 		options.Normalize = false
 	}
+	return options
+}
 
+// syncPrepared runs under the caller's writer lock, including during recovery.
+func syncPrepared(ctx context.Context, options SyncOptions) (Summary, error) {
 	summary := Summary{RequestedHarnesses: len(options.Harnesses)}
-	if options.DryRun {
-		return dryRunSync(ctx, options)
-	}
 
 	database, created, err := db.CreateIfMissing(options.DBPath)
 	if err != nil {
@@ -83,7 +118,7 @@ func Sync(ctx context.Context, options SyncOptions) (Summary, error) {
 
 	if shouldNormalize {
 		reportSyncProgress(options, SyncProgressEvent{Status: SyncProgressNormalizing})
-		normalSummary, err := Normalize(ctx, NormalizeOptions{
+		normalSummary, err := normalizePrepared(ctx, database, NormalizeOptions{
 			DBPath:    options.DBPath,
 			Harnesses: options.Harnesses,
 			Now:       options.Now,
@@ -225,6 +260,9 @@ func syncHarness(ctx context.Context, database *sql.DB, options SyncOptions, har
 func parserOptionsForHarness(options SyncOptions, harness Harness) SyncOptions {
 	if harness == HarnessOpenCode && options.Parser == defaultParser {
 		options.Parser = opencodeSQLiteParserV2
+	}
+	if harness == HarnessCodex && options.Parser == defaultParser {
+		options.Parser = codexJSONLParserV2
 	}
 	return options
 }

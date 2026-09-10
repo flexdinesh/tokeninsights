@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/viewer"
 )
 
 type period string
@@ -85,6 +87,10 @@ type tableOptions struct {
 }
 
 func parseTableOptions(args []string, stderr io.Writer, requirePeriod bool, defaultPeriod period) (tableOptions, error) {
+	return parseViewerOptions(args, stderr, requirePeriod, defaultPeriod, nil)
+}
+
+func parseViewerOptions(args []string, stderr io.Writer, requirePeriod bool, defaultPeriod period, extra func(*flag.FlagSet)) (tableOptions, error) {
 	flags := flag.NewFlagSet("tokeninsights", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 
@@ -99,7 +105,7 @@ func parseTableOptions(args []string, stderr io.Writer, requirePeriod bool, defa
 	var bucket string
 	var queryFilters filters
 	flags.StringVar(&dbPath, "db-path", defaultDBPath(), "path to tokeninsights sqlite db")
-	flags.BoolVar(&noSync, "no-sync", false, "skip implicit sync before opening the TUI")
+	flags.BoolVar(&noSync, "no-sync", false, "skip startup sync before opening the dashboard")
 	flags.BoolVar(&today, "today", false, "show today")
 	flags.BoolVar(&yesterday, "yesterday", false, "show yesterday")
 	flags.BoolVar(&week, "week", false, "show current calendar week (Mon-Sun)")
@@ -113,6 +119,9 @@ func parseTableOptions(args []string, stderr io.Writer, requirePeriod bool, defa
 	flags.Var(&queryFilters.harnesses, "harness", "filter by harness; repeat or comma-separate")
 	flags.StringVar(&queryFilters.dayFrom, "filter-day-from", "", "filter from local day YYYY-MM-DD")
 	flags.StringVar(&queryFilters.dayTo, "filter-day-to", "", "filter to local day YYYY-MM-DD")
+	if extra != nil {
+		extra(flags)
+	}
 
 	if err := flags.Parse(args); err != nil {
 		return tableOptions{}, fmt.Errorf("%v\n%w", err, ErrUsage)
@@ -246,52 +255,11 @@ func selectedBucket(value string) (timeBucket, error) {
 }
 
 func periodStart(now time.Time, selected period) time.Time {
-	local := now.Local()
-
-	switch selected {
-	case periodToday:
-		return time.Date(local.Year(), local.Month(), local.Day(), 0, 0, 0, 0, local.Location())
-	case periodYesterday:
-		yesterday := local.AddDate(0, 0, -1)
-		return time.Date(yesterday.Year(), yesterday.Month(), yesterday.Day(), 0, 0, 0, 0, local.Location())
-	case periodWeek:
-		// Go weekday: Sunday=0, Monday=1, ..., Saturday=6
-		// We want Monday as start of week
-		offset := int(local.Weekday() - time.Monday)
-		if offset < 0 {
-			offset += 7
-		}
-		monday := local.AddDate(0, 0, -offset)
-		return time.Date(monday.Year(), monday.Month(), monday.Day(), 0, 0, 0, 0, local.Location())
-	case periodMonth:
-		return time.Date(local.Year(), local.Month(), 1, 0, 0, 0, 0, local.Location())
-	case periodYear:
-		return time.Date(local.Year(), 1, 1, 0, 0, 0, 0, local.Location())
-	case periodAllTime:
-		return time.Time{}
-	default:
-		return time.Time{}
-	}
+	return viewer.PeriodStart(now, string(selected))
 }
 
 func periodEnd(now time.Time, selected period) time.Time {
-	start := periodStart(now, selected)
-	if start.IsZero() {
-		return time.Time{}
-	}
-
-	switch selected {
-	case periodToday, periodYesterday:
-		return start.AddDate(0, 0, 1)
-	case periodWeek:
-		return start.AddDate(0, 0, 7)
-	case periodMonth:
-		return start.AddDate(0, 1, 0)
-	case periodYear:
-		return start.AddDate(1, 0, 0)
-	default:
-		return time.Time{}
-	}
+	return viewer.PeriodEnd(now, string(selected))
 }
 
 func validateHarnesses(values stringList) error {
@@ -303,4 +271,4 @@ func validateHarnesses(values stringList) error {
 	return nil
 }
 
-var ErrUsage = errors.New("usage: tokeninsights <sync|normalize|reset-canonical|reset-all|view> [options]")
+var ErrUsage = errors.New("usage: tokeninsights <sync|normalize|reset-canonical|reset-all|view|serve> [options]")

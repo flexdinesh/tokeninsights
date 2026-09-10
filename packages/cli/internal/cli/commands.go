@@ -27,6 +27,8 @@ func Run(ctx context.Context, args []string, stdout io.Writer, stderr io.Writer,
 		return nil
 	case "view":
 		return RunInteractive(ctx, args[1:], stdout, stderr, now)
+	case "serve":
+		return runServe(ctx, args[1:], stdout, stderr)
 	case "sync":
 		return runSync(ctx, args[1:], stdout, stderr, now)
 	case "normalize":
@@ -78,6 +80,7 @@ func runSync(ctx context.Context, args []string, stdout io.Writer, stderr io.Wri
 		Normalize:   !noNormalize,
 		SourceDir:   strings.TrimSpace(sourceDir),
 		Now:         now,
+		Progress:    recoveryNotice(stderr),
 	})
 	printSummary(stdout, "sync", summary, dryRun)
 	if err != nil {
@@ -109,6 +112,7 @@ func runNormalize(ctx context.Context, args []string, stdout io.Writer, stderr i
 		DryRun:    dryRun,
 		Harnesses: harnessList(harnesses),
 		Now:       now,
+		Progress:  recoveryNotice(stderr),
 	})
 	printSummary(stdout, "normalize", summary, dryRun)
 	return err
@@ -131,7 +135,21 @@ func runResetCanonical(ctx context.Context, args []string, stdout io.Writer, std
 		fmt.Fprintf(stdout, "Would delete canonical sessions, messages, token usage, and normalization diagnostics from %s. Re-run with --confirm to apply.\n", strings.TrimSpace(dbPath))
 		return nil
 	}
-	database, err := db.OpenWritable(strings.TrimSpace(dbPath))
+	path := strings.TrimSpace(dbPath)
+	release, err := db.AcquireWriterLock(ctx, path)
+	if err != nil {
+		return err
+	}
+	defer release()
+	// Read-only validation rejects incompatible or unfinished recovery data.
+	readOnly, err := db.Open(path)
+	if err != nil {
+		return err
+	}
+	if err := readOnly.Close(); err != nil {
+		return err
+	}
+	database, err := db.OpenWritable(path)
 	if err != nil {
 		return err
 	}
@@ -157,7 +175,7 @@ func runResetAll(args []string, stdout io.Writer, stderr io.Writer) error {
 		return fmt.Errorf("unexpected argument %q\n%w", flags.Arg(0), ErrUsage)
 	}
 	if !confirm {
-		fmt.Fprintf(stdout, "Would delete and recreate %s plus SQLite sidecars. Re-run with --confirm to apply.\n", strings.TrimSpace(dbPath))
+		fmt.Fprintf(stdout, "Would transactionally reset application tables in %s. Re-run with --confirm to apply.\n", strings.TrimSpace(dbPath))
 		return nil
 	}
 	if err := db.ResetAll(strings.TrimSpace(dbPath)); err != nil {
@@ -195,6 +213,12 @@ func printSummary(stdout io.Writer, command string, summary pipeline.Summary, dr
 	prefix := command
 	if dryRun {
 		prefix += " dry-run"
+		switch summary.Recovery {
+		case pipeline.RecoveryReset:
+			fmt.Fprintln(stdout, "Recovery preview: would reset the database and rebuild all configured harnesses.")
+		case pipeline.RecoveryResume:
+			fmt.Fprintln(stdout, "Recovery preview: would resume rebuilding all configured harnesses.")
+		}
 	}
 	fmt.Fprintf(stdout, "%s: requested=%d synced=%d skipped=%d failed=%d raw_facts=%d observations=%d canonical=%d diagnostics=%d\n",
 		prefix,
@@ -209,6 +233,17 @@ func printSummary(stdout io.Writer, command string, summary pipeline.Summary, dr
 	)
 }
 
+func recoveryNotice(stderr io.Writer) func(pipeline.SyncProgressEvent) {
+	return func(event pipeline.SyncProgressEvent) {
+		switch event.Status {
+		case pipeline.SyncProgressResetting:
+			fmt.Fprintln(stderr, "Resetting local usage data for compatibility…")
+		case pipeline.SyncProgressRebuilding:
+			fmt.Fprintln(stderr, "Rebuilding usage from all configured local harnesses…")
+		}
+	}
+}
+
 func usageText() string {
 	return `usage: tokeninsights <command> [options]
 
@@ -217,5 +252,10 @@ commands:
   normalize         rebuild canonical facts from raw facts
   reset-canonical   delete canonical facts and diagnostics
   reset-all         recreate the local database
-  view              open the interactive TUI`
+  view              open the interactive TUI
+  serve             serve the React dashboard over IPv4 (port 8765)
+
+serve: viewer flags plus --host <ipv4> and --port <0-65535>; --no-sync skips startup sync
+  tokeninsights serve --week
+  tokeninsights serve --no-sync --port 8080`
 }
