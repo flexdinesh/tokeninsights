@@ -25,6 +25,15 @@
   --chart-1: oklch(0.58 0.21 255);
   --chart-2: oklch(0.57 0.2 295);
   --chart-3: oklch(0.67 0.16 65);
+  --chart-4: oklch(0.58 0.16 165);
+  --chart-5: oklch(0.6 0.2 25);
+  --chart-6: oklch(0.62 0.18 330);
+  --chart-7: oklch(0.55 0.14 200);
+  --chart-8: oklch(0.63 0.16 125);
+  --chart-9: oklch(0.61 0.15 90);
+  --chart-10: oklch(0.54 0.16 225);
+  --chart-11: oklch(0.58 0.15 355);
+  --chart-12: oklch(0.54 0.11 45);
 
   --font-sans: ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   --font-mono: ui-monospace, 'SFMono-Regular', Consolas, monospace;
@@ -131,6 +140,15 @@
   --chart-1: oklch(0.7 0.17 250);
   --chart-2: oklch(0.72 0.16 300);
   --chart-3: oklch(0.76 0.15 70);
+  --chart-4: oklch(0.72 0.14 165);
+  --chart-5: oklch(0.72 0.18 25);
+  --chart-6: oklch(0.74 0.16 330);
+  --chart-7: oklch(0.72 0.13 200);
+  --chart-8: oklch(0.75 0.14 125);
+  --chart-9: oklch(0.78 0.14 90);
+  --chart-10: oklch(0.7 0.15 225);
+  --chart-11: oklch(0.73 0.14 355);
+  --chart-12: oklch(0.7 0.1 45);
   --color-accent-hover: oklch(0.82 0 0);
   --color-accent-active: oklch(0.98 0 0);
   --shadow-overlay: 0 0.75rem 2rem rgb(0 0 0 / 45%);
@@ -164,6 +182,15 @@
     --chart-1: oklch(0.7 0.17 250);
     --chart-2: oklch(0.72 0.16 300);
     --chart-3: oklch(0.76 0.15 70);
+    --chart-4: oklch(0.72 0.14 165);
+    --chart-5: oklch(0.72 0.18 25);
+    --chart-6: oklch(0.74 0.16 330);
+    --chart-7: oklch(0.72 0.13 200);
+    --chart-8: oklch(0.75 0.14 125);
+    --chart-9: oklch(0.78 0.14 90);
+    --chart-10: oklch(0.7 0.15 225);
+    --chart-11: oklch(0.73 0.14 355);
+    --chart-12: oklch(0.7 0.1 45);
     --color-accent-hover: oklch(0.82 0 0);
     --color-accent-active: oklch(0.98 0 0);
     --shadow-overlay: 0 0.75rem 2rem rgb(0 0 0 / 45%);
@@ -193,6 +220,15 @@
   --color-chart-1: var(--chart-1);
   --color-chart-2: var(--chart-2);
   --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-chart-6: var(--chart-6);
+  --color-chart-7: var(--chart-7);
+  --color-chart-8: var(--chart-8);
+  --color-chart-9: var(--chart-9);
+  --color-chart-10: var(--chart-10);
+  --color-chart-11: var(--chart-11);
+  --color-chart-12: var(--chart-12);
 }
 
 @media (max-width: 75rem) {

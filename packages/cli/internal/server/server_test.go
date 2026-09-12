@@ -250,6 +250,20 @@ func TestAPIValidationFacetsAndAssets(t *testing.T) {
 	}
 }
 
+func TestDashboardRoutesServeEmbeddedApp(t *testing.T) {
+	handler := newApp(context.Background(), Options{}, io.Discard).handler()
+
+	for _, path := range []string{"/tokens", "/models", "/providers", "/harnesses", "/sessions", "/context"} {
+		t.Run(path, func(t *testing.T) {
+			response := httptest.NewRecorder()
+			handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, path+"?period=all", nil))
+			if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), "/assets/") {
+				t.Fatalf("embedded app missing: %d %s", response.Code, response.Body.String())
+			}
+		})
+	}
+}
+
 func TestAPIV1RoutesAndMethods(t *testing.T) {
 	a := newApp(context.Background(), Options{DBPath: fixture(t)}, io.Discard)
 	handler := a.handler()

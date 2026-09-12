@@ -135,6 +135,15 @@ func apiNotFound(w http.ResponseWriter) {
 	apiError(w, http.StatusNotFound, serverapi.ErrorCodeNotFound, "Unknown API route.")
 }
 
+func isDashboardRoute(path string) bool {
+	switch path {
+	case "/tokens", "/models", "/providers", "/harnesses", "/sessions", "/context":
+		return true
+	default:
+		return false
+	}
+}
+
 func (a *app) handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/v1/instance", func(w http.ResponseWriter, r *http.Request) {
@@ -253,6 +262,11 @@ func (a *app) handler() http.Handler {
 			w.Header().Set("Allow", "GET, HEAD")
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return
+		}
+		if isDashboardRoute(r.URL.Path) {
+			r = r.Clone(r.Context())
+			r.URL.Path = "/"
+			r.URL.RawPath = ""
 		}
 		files.ServeHTTP(w, r)
 	})

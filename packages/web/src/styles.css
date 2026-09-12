@@ -535,7 +535,7 @@ textarea[aria-invalid='true'] {
   min-width: 0;
   overflow-x: auto;
 }
-.view-tabs button {
+.view-tabs a {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -543,22 +543,23 @@ textarea[aria-invalid='true'] {
   min-height: var(--control-height);
   border: 0;
   border-bottom: var(--focus-width) solid transparent;
+  border-radius: 0;
   background: transparent;
   padding: var(--space-3) var(--space-4);
   color: var(--color-text-secondary);
   font-size: var(--text-sm);
   white-space: nowrap;
 }
-.view-tabs button:hover {
+.view-tabs a:hover {
   background: var(--color-surface-raised);
   color: var(--color-text-primary);
 }
-.view-tabs button[aria-current] {
+.view-tabs a[aria-current] {
   color: var(--color-accent-text);
   border-color: var(--color-accent);
   font-weight: var(--weight-semibold);
 }
-.view-tabs button:focus-visible {
+.view-tabs a:focus-visible {
   outline-offset: calc(-1 * var(--focus-width));
 }
 .quick-periods,
@@ -965,7 +966,8 @@ tbody tr:hover {
   max-width: var(--reading-width);
 }
 .skeleton-card,
-.skeleton-chart {
+.skeleton-chart,
+.skeleton-table {
   background: var(--color-surface-raised);
   border: var(--border-width) solid var(--color-border);
   border-radius: var(--radius-lg);
@@ -975,6 +977,10 @@ tbody tr:hover {
 }
 .skeleton-chart {
   height: 23rem;
+}
+.skeleton-table {
+  height: 28rem;
+  margin-top: var(--space-6);
 }
 .spin {
   animation: spin var(--duration-spin) linear infinite;
@@ -1023,7 +1029,7 @@ tbody tr:hover {
   .view-tabs {
     width: 100%;
   }
-  .view-tabs button {
+  .view-tabs a {
     flex: 1;
     padding: var(--space-3);
   }
@@ -1080,7 +1086,7 @@ tbody tr:hover {
     overscroll-behavior-inline: contain;
     scrollbar-width: thin;
   }
-  .view-tabs button {
+  .view-tabs a {
     flex: 0 0 auto;
     gap: var(--space-1);
     padding: var(--space-2);

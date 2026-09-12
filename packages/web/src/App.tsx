@@ -1,5 +1,6 @@
 import { lazy, Suspense, useEffect, useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { Link } from '@tanstack/react-router'
 import {
   Activity,
   ArrowDownToLine,
@@ -17,7 +18,7 @@ import {
 } from 'lucide-react'
 import { useAnalytics, useBootstrap, useFacets, useSyncStatus, syncNow } from './api'
 import type { SyncStatus, Tab } from './contracts'
-import { DashboardProvider, useDashboardState } from './state'
+import { DashboardProvider, reduceQuery, searchFromQuery, useDashboardState } from './state'
 import { labels, relativeTime } from './format'
 import { FilterToolbar, QuickPeriods } from './components/Filters'
 import { SummaryCards } from './components/SummaryCards'
@@ -237,6 +238,24 @@ function DashboardShell() {
               </span>
             </div>
           </section>
+          <div className="view-controls">
+            <nav className="view-tabs" aria-label="Analytics views">
+              {tabs.map(({ id, icon: Icon }) => (
+                <Button key={id} variant="ghost" asChild>
+                  <Link
+                    to="/$tab"
+                    params={{ tab: id }}
+                    search={searchFromQuery(reduceQuery(query, { type: 'tab', value: id }))}
+                    activeOptions={{ exact: true, includeSearch: false }}
+                  >
+                    <Icon size="1em" />
+                    {labels[id]}
+                  </Link>
+                </Button>
+              ))}
+            </nav>
+            <QuickPeriods />
+          </div>
           <FilterToolbar
             baseUrl={active.baseUrl}
             facets={facets.data}
@@ -288,37 +307,9 @@ function DashboardShell() {
           {enabled && !data && !analytics.error && <DashboardSkeleton />}
           {enabled && data && (
             <div className="analytics" aria-busy={analytics.isFetching}>
+              <SummaryCards summary={data.summary} />
               {analytics.isPlaceholderData ? (
-                <div className="summary-grid" role="status" aria-label="Updating filtered summary">
-                  {[1, 2, 3, 4, 5].map((n) => (
-                    <Skeleton className="skeleton-card" key={n} />
-                  ))}
-                </div>
-              ) : (
-                <SummaryCards summary={data.summary} />
-              )}
-              <div className="view-controls">
-                <nav className="view-tabs" aria-label="Analytics views">
-                  {tabs.map(({ id, icon: Icon }) => (
-                    <Button
-                      key={id}
-                      variant="ghost"
-                      aria-current={query.tab === id ? 'page' : undefined}
-                      onClick={() => dispatch({ type: 'tab', value: id })}
-                    >
-                      <Icon size="1em" />
-                      {labels[id]}
-                    </Button>
-                  ))}
-                </nav>
-                <QuickPeriods />
-              </div>
-              {analytics.isPlaceholderData ? (
-                <Skeleton
-                  className="skeleton-chart"
-                  role="status"
-                  aria-label="Updating filtered results"
-                />
+                <RouteResultsSkeleton />
               ) : (
                 <>
                   <Suspense
@@ -346,6 +337,15 @@ function DashboardShell() {
           </footer>
         </main>
       )}
+    </div>
+  )
+}
+
+function RouteResultsSkeleton() {
+  return (
+    <div role="status" aria-label="Updating view results">
+      <Skeleton className="skeleton-chart" />
+      <Skeleton className="skeleton-table" />
     </div>
   )
 }

@@ -93,6 +93,8 @@ tokeninsights serve
 
 `serve` hosts the embedded React dashboard and a versioned REST API over the server's canonical SQLite state. The terminal UI does not use this server; `view` reads the same state directly.
 
+The six dashboard views use path routes: `/tokens`, `/models`, `/providers`, `/harnesses`, `/sessions`, and `/context`. Filters, sorting, and pagination live in the URL search parameters, so links are shareable and browser back/forward restores the view. The root route redirects to `/tokens`; legacy `/?tab=<view>` links redirect to the matching path. Route tabs and quick periods sit above the filter toolbar. Changing routes keeps the shared dashboard mounted while only the chart and table load.
+
 The browser starts with the page's own origin as its local source. Its source selector can add any reachable HTTP(S) TokenInsights server, including bare `host:port` values normalized to HTTP. A source is saved only after compatibility validation. Hostname labels, configured sources, and the selected source persist in browser `localStorage` across reloads and server restarts.
 
 Changing source keeps the current date, filters, tab, sorting, and pagination. All reads and **Sync now** target only the selected source; TokenInsights never merges data from multiple sources. If a saved source later fails, it remains selected and the dashboard shows an error with recovery controls. HTTPS pages may be blocked from calling HTTP sources, and invalid or untrusted certificates may block HTTPS sources.

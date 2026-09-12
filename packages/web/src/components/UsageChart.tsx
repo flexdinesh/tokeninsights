@@ -4,6 +4,7 @@ import {
   Bar,
   BarChart,
   CartesianGrid,
+  Cell,
   Legend,
   ResponsiveContainer,
   Tooltip,
@@ -25,6 +26,25 @@ const metrics: { key: Sort; label: string }[] = [
   { key: 'cacheWrite', label: 'Cache write' },
   { key: 'reasoning', label: 'Reasoning' },
 ]
+
+const categoricalColors = [
+  'var(--chart-1)',
+  'var(--chart-2)',
+  'var(--chart-3)',
+  'var(--chart-4)',
+  'var(--chart-5)',
+  'var(--chart-6)',
+  'var(--chart-7)',
+  'var(--chart-8)',
+  'var(--chart-9)',
+  'var(--chart-10)',
+  'var(--chart-11)',
+  'var(--chart-12)',
+]
+
+export function categoricalChartColor(index: number): string {
+  return categoricalColors[index % categoricalColors.length] ?? categoricalColors[0] ?? ''
+}
 
 const axisTick = { fill: 'var(--color-text-muted)', fontSize: 'var(--text-xs)' }
 const tooltipStyle = {
@@ -65,9 +85,10 @@ export function UsageChart({ rows }: { rows: Row[] }) {
         : query.tab === 'harnesses'
           ? 'harnesses'
           : undefined
-  const chartRows = rows.map((r) => ({
+  const chartRows = rows.map((r, index) => ({
     ...r,
     label: context ? `${r.model} · ${r.harness} · ${r.provider}` : r.name,
+    color: categoricalChartColor(index),
   }))
   return (
     <Card className="chart-panel panel" role="region" aria-label={title}>
@@ -214,10 +235,13 @@ export function UsageChart({ rows }: { rows: Row[] }) {
                   <Bar
                     dataKey="total"
                     name="Total tokens"
-                    fill="var(--chart-1)"
                     radius={[4, 4, 0, 0]}
                     isAnimationActive={false}
-                  />
+                  >
+                    {chartRows.map((row) => (
+                      <Cell key={row.key} fill={row.color} />
+                    ))}
+                  </Bar>
                 )}
               </BarChart>
             )}
@@ -226,7 +250,7 @@ export function UsageChart({ rows }: { rows: Row[] }) {
       )}
       {filterDimension && rows.length > 0 && (
         <div className="chart-drilldowns" aria-label="Filter by chart item">
-          {rows.map((row) => (
+          {rows.map((row, index) => (
             <Button
               key={row.key}
               variant="ghost"
@@ -237,7 +261,10 @@ export function UsageChart({ rows }: { rows: Row[] }) {
               }
               title={`Filter ${row.name}`}
             >
-              <span className="legend-dot" />
+              <span
+                className="legend-dot"
+                style={{ backgroundColor: categoricalChartColor(index) }}
+              />
               {row.name}
             </Button>
           ))}

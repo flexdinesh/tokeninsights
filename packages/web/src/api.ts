@@ -8,7 +8,7 @@ import {
   statusSchema,
 } from './contracts'
 import { normalizeBaseUrl } from './sources'
-import { queryParams } from './state'
+import { apiQueryParams } from './state'
 import type { Bootstrap } from './contracts'
 import type { QueryState } from './state'
 
@@ -60,12 +60,23 @@ export const syncNow = (baseUrl: string) =>
   request(baseUrl, '/api/v1/sync', statusSchema, undefined, 'POST')
 
 export function useAnalytics(baseUrl: string, q: QueryState, revision: number, enabled: boolean) {
-  const params = queryParams(q)
-  params.delete('v')
+  const params = apiQueryParams(q)
+  const summaryScope = apiQueryParams(q)
+  for (const key of ['bucket', 'tab', 'sort', 'direction', 'page', 'pageSize']) {
+    summaryScope.delete(key)
+  }
   return useQuery({
-    queryKey: ['usage', baseUrl, params.toString(), revision],
+    queryKey: ['usage', baseUrl, summaryScope.toString(), params.toString(), revision],
     queryFn: ({ signal }) => request(baseUrl, `/api/v1/usage?${params}`, dashboardSchema, signal),
     enabled,
+    placeholderData: (previous, previousQuery) => {
+      const previousKey = previousQuery?.queryKey
+      return previousKey?.[1] === baseUrl &&
+        previousKey[2] === summaryScope.toString() &&
+        previousKey[4] === revision
+        ? previous
+        : undefined
+    },
   })
 }
 
@@ -76,8 +87,7 @@ export function useFacets(
   enabled: boolean,
   search = '',
 ) {
-  const params = queryParams(q)
-  params.delete('v')
+  const params = apiQueryParams(q)
   params.delete('tab')
   params.delete('sort')
   params.delete('direction')

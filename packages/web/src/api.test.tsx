@@ -1,14 +1,21 @@
-import { afterEach, expect, it, vi } from 'vitest'
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import { afterEach, beforeEach, expect, it, vi } from 'vitest'
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { RouterProvider, createMemoryHistory } from '@tanstack/react-router'
 import { useAnalytics } from './api'
-import { App } from './App'
+import { createAppRouter } from './router'
 import { SourceProvider } from './source-context'
 import { createSource, createSourceStore } from './sources'
 import { initialQuery } from './state'
 import type { QueryState } from './state'
 import type { Bootstrap, Dashboard, SyncStatus } from './contracts'
+
+let testRouter = createAppRouter(createMemoryHistory({ initialEntries: ['/tokens'] }))
+
+beforeEach(() => {
+  testRouter = createAppRouter(createMemoryHistory({ initialEntries: ['/tokens'] }))
+})
 
 afterEach(() => {
   cleanup()
@@ -95,7 +102,7 @@ it('uses server defaults on first load', async () => {
   render(
     <QueryClientProvider client={client}>
       <SourceProvider store={store}>
-        <App />
+        <RouterProvider router={testRouter} />
       </SourceProvider>
     </QueryClientProvider>,
   )
@@ -105,8 +112,66 @@ it('uses server defaults on first load', async () => {
   client.clear()
 })
 
+it('removes the final route filter after direct load', async () => {
+  const bootstrap: Bootstrap = {
+    apiVersion: 'v1',
+    serverVersion: 'test',
+    hostname: 'direct-load',
+    timezone: 'UTC',
+    capabilities: ['usage', 'facets', 'sync'],
+    defaults: {
+      period: 'week',
+      bucket: 'day',
+      from: '',
+      to: '',
+      providers: [],
+      models: [],
+      harnesses: [],
+      sessions: [],
+    },
+  }
+  const status: SyncStatus = {
+    phase: 'syncing',
+    running: true,
+    error: '',
+    revision: 1,
+    harnesses: {},
+  }
+  vi.stubGlobal(
+    'fetch',
+    vi.fn<(input: RequestInfo | URL) => Promise<Response>>((input) =>
+      Promise.resolve(
+        new Response(
+          JSON.stringify(requestURL(input).endsWith('/api/v1/instance') ? bootstrap : status),
+          { headers: { 'Content-Type': 'application/json' } },
+        ),
+      ),
+    ),
+  )
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  const store = createSourceStore({ origin: window.location.origin, storage: null })
+  const directRouter = createAppRouter(
+    createMemoryHistory({
+      initialEntries: [
+        '/tokens?v=1&period=week&bucket=day&model=model-a&sort=date&direction=desc&page=1&pageSize=50',
+      ],
+    }),
+  )
+  render(
+    <QueryClientProvider client={client}>
+      <SourceProvider store={store}>
+        <RouterProvider router={directRouter} />
+      </SourceProvider>
+    </QueryClientProvider>,
+  )
+
+  await userEvent.click(await screen.findByRole('button', { name: 'Remove model model-a' }))
+
+  await waitFor(() => expect(directRouter.state.location.href).not.toContain('model=model-a'))
+  client.clear()
+})
+
 it('keeps dashboard filters while switching sources', async () => {
-  history.replaceState(null, '', '/')
   const localUrl = 'http://localhost:3000'
   const remoteUrl = 'http://remote:8765'
   const local: Bootstrap = {
@@ -147,20 +212,26 @@ it('keeps dashboard filters while switching sources', async () => {
   render(
     <QueryClientProvider client={client}>
       <SourceProvider store={store}>
-        <App />
+        <RouterProvider router={testRouter} />
       </SourceProvider>
     </QueryClientProvider>,
   )
   const user = userEvent.setup()
 
-  await user.click(screen.getByRole('button', { name: 'This month' }))
-  await user.click(screen.getByRole('button', { name: 'All time' }))
+  await user.click(await screen.findByRole('button', { name: 'This month' }))
+  await user.click(
+    within(screen.getByRole('dialog', { name: 'Date range' })).getByRole('button', {
+      name: 'All time',
+    }),
+  )
   await user.click(screen.getByRole('button', { name: 'Choose data source' }))
   await user.click(screen.getByRole('button', { name: 'Select remote-machine source' }))
 
   expect(store.getSnapshot().activeUrl).toBe(remoteUrl)
-  expect(screen.getByRole('button', { name: 'All time' })).toBeVisible()
-  expect(window.location.search).toContain('period=all')
+  expect(
+    within(screen.getByLabelText('Quick date ranges')).getByRole('button', { name: 'All time' }),
+  ).toBeVisible()
+  expect(testRouter.state.location.search.period).toBe('all')
   client.clear()
 })
 
@@ -191,7 +262,7 @@ it('keeps an unavailable selected source active with recovery controls', async (
   render(
     <QueryClientProvider client={client}>
       <SourceProvider store={store}>
-        <App />
+        <RouterProvider router={testRouter} />
       </SourceProvider>
     </QueryClientProvider>,
   )
@@ -254,7 +325,7 @@ it.each<{ phase: SyncStatus['phase']; running: boolean; message: string }>([
     render(
       <QueryClientProvider client={client}>
         <SourceProvider>
-          <App />
+          <RouterProvider router={testRouter} />
         </SourceProvider>
       </QueryClientProvider>,
     )
@@ -299,7 +370,7 @@ it('allows explicit inspection after an ordinary sync failure', async () => {
   render(
     <QueryClientProvider client={client}>
       <SourceProvider>
-        <App />
+        <RouterProvider router={testRouter} />
       </SourceProvider>
     </QueryClientProvider>,
   )
@@ -417,5 +488,55 @@ it('isolates cached usage while switching sources', async () => {
     }),
   )
   await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('222'))
+  client.clear()
+})
+
+it('retains valid summaries across views but not filter changes', async () => {
+  let requests = 0
+  vi.stubGlobal(
+    'fetch',
+    vi.fn<typeof fetch>(() => {
+      requests++
+      if (requests === 1) {
+        return Promise.resolve(
+          new Response(JSON.stringify(dashboard(111)), {
+            headers: { 'Content-Type': 'application/json' },
+          }),
+        )
+      }
+      return new Promise<Response>(() => undefined)
+    }),
+  )
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  const query = initialQuery({
+    period: 'week',
+    bucket: 'day',
+    from: '',
+    to: '',
+    providers: [],
+    models: [],
+    harnesses: [],
+    sessions: [],
+  })
+  const view = render(
+    <QueryClientProvider client={client}>
+      <AnalyticsExample query={query} />
+    </QueryClientProvider>,
+  )
+  expect(await screen.findByText('111')).toBeVisible()
+
+  view.rerender(
+    <QueryClientProvider client={client}>
+      <AnalyticsExample query={{ ...query, tab: 'models', sort: 'total' }} />
+    </QueryClientProvider>,
+  )
+  expect(screen.getByRole('status')).toHaveTextContent('111')
+
+  view.rerender(
+    <QueryClientProvider client={client}>
+      <AnalyticsExample query={{ ...query, tab: 'models', sort: 'total', models: ['different'] }} />
+    </QueryClientProvider>,
+  )
+  expect(screen.getByRole('status')).toHaveTextContent('Loading')
   client.clear()
 })

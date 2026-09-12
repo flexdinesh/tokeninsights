@@ -16,8 +16,9 @@ test('startup sync, six views, filtering, history, pagination, and refresh', asy
   for (const tab of ['Models', 'Providers', 'Harnesses', 'Sessions', 'Context', 'Tokens']) {
     await page
       .getByRole('navigation', { name: 'Analytics views' })
-      .getByRole('button', { name: tab, exact: true })
+      .getByRole('link', { name: tab, exact: true })
       .click()
+    await expect(page).toHaveURL(new RegExp(`/${tab.toLowerCase()}\\?`))
     await expect(page.getByRole('region', { name: `${tab} details`, exact: true })).toBeVisible()
     await expect(page.getByLabel('Total tokens: 258,000', { exact: true })).toBeVisible()
     await expect(page.locator('.session-coverage')).toHaveText('Sessions 60 shown / 80 synced')
@@ -42,7 +43,7 @@ test('startup sync, six views, filtering, history, pagination, and refresh', asy
   await expect(page.getByLabel('Total tokens: 258,000', { exact: true })).toBeVisible()
   await page
     .getByRole('navigation', { name: 'Analytics views' })
-    .getByRole('button', { name: 'Sessions', exact: true })
+    .getByRole('link', { name: 'Sessions', exact: true })
     .click()
   await expect(page.locator('tbody tr')).toHaveCount(50)
   await page.getByRole('button', { name: 'Next page' }).click()
@@ -59,6 +60,66 @@ test('startup sync, six views, filtering, history, pagination, and refresh', asy
   await page.getByRole('button', { name: 'All time', exact: true }).click()
   await expect(page.locator('.session-coverage')).toHaveText('Sessions 80 shown / 80 synced')
   await expect(page.getByLabel('Sessions shown: 80', { exact: true })).toBeVisible()
+})
+
+test('path routes keep shared dashboard stable while view data loads', async ({ page }) => {
+  await page.goto('/tokens')
+  await expect(page.getByRole('region', { name: 'Filtered usage summary' })).toBeVisible()
+  await expect(page.locator('.view-controls + .filters')).toBeVisible()
+  const tokensLink = page.getByRole('link', { name: 'Tokens', exact: true })
+  await expect(tokensLink).toHaveAttribute('aria-current', 'page')
+  expect(await tokensLink.evaluate((element) => getComputedStyle(element).borderRadius)).toBe('0px')
+
+  await page.locator('.page-heading').evaluate((element) => {
+    element.dataset.mounted = 'heading'
+  })
+  await page.locator('.view-controls').evaluate((element) => {
+    element.dataset.mounted = 'routes'
+  })
+  await page.getByRole('region', { name: 'Filtered usage summary' }).evaluate((element) => {
+    element.dataset.mounted = 'summary'
+  })
+  await page.route('**/api/v1/usage?*', async (route) => {
+    if (new URL(route.request().url()).searchParams.get('tab') === 'models') {
+      await new Promise((resolve) => setTimeout(resolve, 500))
+    }
+    await route.continue()
+  })
+
+  await page.getByRole('link', { name: 'Models', exact: true }).click()
+  await expect(page).toHaveURL(/\/models\?/)
+  await expect(page.getByRole('status', { name: 'Updating view results' })).toBeVisible()
+  await expect(page.locator('.page-heading[data-mounted="heading"]')).toBeVisible()
+  await expect(page.locator('.view-controls[data-mounted="routes"]')).toBeVisible()
+  await expect(
+    page.locator('[aria-label="Filtered usage summary"][data-mounted="summary"]'),
+  ).toBeVisible()
+  await expect(page.getByRole('region', { name: 'Models details', exact: true })).toBeVisible()
+  const modelBars = page
+    .getByRole('region', { name: 'Usage by model', exact: true })
+    .locator('.recharts-bar-rectangle path')
+  await expect(modelBars).toHaveCount(2)
+  expect(
+    new Set(await modelBars.evaluateAll((bars) => bars.map((bar) => bar.getAttribute('fill'))))
+      .size,
+  ).toBe(2)
+
+  await page.getByRole('link', { name: 'Providers', exact: true }).click()
+  await expect(page.getByRole('region', { name: 'Providers details', exact: true })).toBeVisible()
+  const providerBars = page
+    .getByRole('region', { name: 'Usage by provider', exact: true })
+    .locator('.recharts-bar-rectangle path')
+  await expect(providerBars).toHaveCount(2)
+  expect(
+    new Set(await providerBars.evaluateAll((bars) => bars.map((bar) => bar.getAttribute('fill'))))
+      .size,
+  ).toBe(2)
+
+  await page.goto('/?tab=providers&period=all')
+  await expect(page).toHaveURL(/\/providers\?[^#]*period=all/)
+  await expect(page.getByRole('region', { name: 'Providers details', exact: true })).toBeVisible()
+  await page.reload()
+  await expect(page.getByRole('region', { name: 'Providers details', exact: true })).toBeVisible()
 })
 
 test('themes, keyboard filters, mobile layout, and scalable typography', async ({

@@ -50,7 +50,7 @@ the analytics dashboard into a marketing page or reduce usability for minimalism
 | Focus | `--ring` | Two-pixel keyboard focus indicator. |
 | Failure | `--destructive`, `--destructive-foreground`, `--error-surface` | Failed/destructive meaning and error banners. |
 | Status | `--success`, `--warning` | Completed and caution meanings. |
-| Data series | `--chart-1`, `--chart-2`, `--chart-3` | Chart marks only; independent from actions. |
+| Data series | `--chart-1` through `--chart-12` | Chart marks only; independent from actions. |
 
 Use one solid primary action per action group. Most surfaces remain neutral. Do not
 color every metric or harness. Summary cards have equal visual weight. Selected controls combine accent treatment with a
@@ -63,6 +63,8 @@ Warnings indicate caution, not failure. Errors must not use the warning palette.
 Explicit light/dark and system theme use identical semantic roles. Keep both dark
 definitions in `tokens.css` equivalent; never add component-local theme overrides.
 Use primary/secondary text in tooltips and legends; series colors belong to marks.
+Categorical model, provider, and harness bars use distinct palette colors, repeated
+in their drill-down labels. Category identity remains available as text.
 The existing chart-area fade may communicate area under the line; do not reuse it
 as decoration. Values and series names must also be available in text/table form.
 
@@ -126,8 +128,8 @@ Do not mint a global token for every library coordinate or content-specific widt
 - Use `--reading-width` (42rem) for prose-heavy content; analytics use available width.
 - Header minimum height is `--header-height` (64px). Let it grow when content wraps.
   It may remain sticky, but must stay in document flow. No sidebar is part of the current visual system.
-- Preserve page order: heading/status → filters → sync feedback → summaries →
-  Aggregation Tabs → chart → table/summary → footer.
+- Preserve page order: heading/status → Aggregation Tabs and quick date ranges →
+  filters → sync feedback → summaries → chart → table/summary → footer.
 - Keep the source selector in the header beside source-aware status/actions. It must
   remain reachable when dashboard requests fail; never bury recovery inside failed content.
 - Keep five equal-weight summary cards in one desktop row. Use three columns at
@@ -195,7 +197,8 @@ translated text, long metadata, or enlarged fonts.
 ### Navigation and tables
 
 Aggregation Tabs use text and icons, an accent underline, stronger selected weight,
-and `aria-current`. Quick date ranges and chart metrics use `aria-pressed`.
+and `aria-current`. The underline has square ends with no corner radius. Quick date
+ranges and chart metrics use `aria-pressed`.
 Use navigation semantics rather than adding partial ARIA tab behavior.
 Keep table identities left-aligned and numbers right-aligned. Sort state includes
 direction icons and `aria-sort`. Use subtle row dividers and hover, not alternating

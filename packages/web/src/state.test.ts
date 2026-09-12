@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest'
 import type { Selection } from './contracts'
-import { initialQuery, queryParams, readQuery, reducer } from './state'
+import {
+  initialQuery,
+  parseDashboardSearch,
+  parseDashboardSearchParams,
+  queryFromSearch,
+  reduceQuery,
+  searchFromQuery,
+  stringifyDashboardSearch,
+} from './state'
 
 const defaults: Selection = {
   period: 'week',
@@ -14,46 +22,57 @@ const defaults: Selection = {
 }
 
 describe('dashboard navigation', () => {
-  it('restores CLI defaults only for an unconfigured URL', () => {
-    expect(readQuery(new URLSearchParams(), defaults).providers).toEqual(['openai'])
+  it('restores CLI defaults only for an unconfigured route', () => {
+    expect(queryFromSearch(parseDashboardSearch({}), 'tokens', defaults).providers).toEqual([
+      'openai',
+    ])
     const cleared = { ...initialQuery(defaults), providers: [] }
-    expect(readQuery(queryParams(cleared), defaults).providers).toEqual([])
+    expect(queryFromSearch(searchFromQuery(cleared), 'tokens', defaults).providers).toEqual([])
   })
 
-  it('round-trips multi-selects, open bounds and pagination without losing identifiers', () => {
-    const q = {
+  it('serializes repeated filters and open bounds without losing identifiers', () => {
+    const query = {
       ...initialQuery(defaults),
       models: ['a/b', 'model + 1'],
       sessions: ['session:one'],
       from: '2026-01-01',
       page: 3,
     }
-    expect(readQuery(queryParams(q), defaults)).toEqual(q)
+    const value = stringifyDashboardSearch(searchFromQuery(query))
+    expect(value).toContain('model=a%2Fb&model=model+%2B+1')
+    expect(value).toContain('session=session%3Aone')
+    expect(value).toContain('from=2026-01-01')
+    expect(value).not.toContain('tab=')
+    expect(parseDashboardSearchParams(value).models).toEqual(['a/b', 'model + 1'])
   })
 
-  it('preserves filters across tabs and resets incompatible sorting and pagination', () => {
-    const state = {
-      query: { ...initialQuery(defaults), page: 4 },
-      theme: 'system',
-      hidden: [],
-      chartMetric: 'total',
-    } satisfies Parameters<typeof reducer>[0]
-    const context = reducer(state, { type: 'tab', value: 'context' })
-    expect(context.query).toMatchObject({
+  it('preserves filters across paths and resets incompatible sorting and pagination', () => {
+    const query = { ...initialQuery(defaults), page: 4 }
+    const context = reduceQuery(query, { type: 'tab', value: 'context' })
+    expect(context).toMatchObject({
       providers: ['openai'],
+      tab: 'context',
       page: 1,
       sort: 'averageContext',
       direction: 'desc',
     })
-    const sorted = reducer(context, { type: 'sort', value: 'model' })
-    expect(sorted.query.direction).toBe('asc')
-    expect(reducer(sorted, { type: 'sort', value: 'model' }).query.direction).toBe('desc')
-    expect(reducer(sorted, { type: 'selection', value: { providers: [] } }).query.page).toBe(1)
+    const sorted = reduceQuery(context, { type: 'sort', value: 'model' })
+    expect(sorted.direction).toBe('asc')
+    expect(reduceQuery(sorted, { type: 'sort', value: 'model' }).direction).toBe('desc')
+    expect(reduceQuery(sorted, { type: 'selection', value: { providers: [] } }).page).toBe(1)
   })
 
   it('recovers incompatible bookmarked sorts and unsafe page sizes', () => {
-    expect(
-      readQuery(new URLSearchParams('tab=context&sort=total&pageSize=900'), defaults),
-    ).toMatchObject({ sort: 'averageContext', pageSize: 50 })
+    const search = parseDashboardSearch({ v: 1, sort: 'total', pageSize: 900 })
+    expect(queryFromSearch(search, 'context', defaults)).toMatchObject({
+      sort: 'averageContext',
+      pageSize: 50,
+    })
+  })
+
+  it('recognizes legacy tab query parameters for redirect', () => {
+    expect(parseDashboardSearch({ tab: 'models' }).legacyTab).toBe('models')
+    expect(parseDashboardSearchParams('?tab=providers').legacyTab).toBe('providers')
+    expect(parseDashboardSearch({ tab: 'invalid' }).legacyTab).toBeUndefined()
   })
 })
