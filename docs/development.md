@@ -42,14 +42,20 @@ The shared development and pipeline fixture lives under `packages/cli/testdata/c
 # Recreate .tokeninsights-dev/ and its normalized fixture database
 pnpm run dev:data
 
+# Run the Go REST and Vite dev servers in parallel
+pnpm run dev
+
 # Build, prepare fixture data, and open the all-time TUI without syncing
 pnpm run dev:cli
 
-# Build, prepare fixture data, and serve it on loopback without startup sync
+# Build the Go binary, prepare fixture data, and serve its REST API on loopback
+pnpm run dev:server
+
+# In another shell, run Vite on all IPv4 interfaces with API proxying
 pnpm run dev:web
 ```
 
-`dev:data` copies the sanitized JSONL sources, materializes OpenCode SQLite from reviewable `source.sql`, and writes `.tokeninsights-dev/tokeninsights.sqlite`. The generated directory is ignored and safe to recreate. `pnpm run start:web` remains the normal local-source server command.
+`dev:data` builds only the Go CLI, copies the sanitized JSONL sources, materializes OpenCode SQLite from reviewable `source.sql`, and writes `.tokeninsights-dev/tokeninsights.sqlite`. The generated directory is ignored and safe to recreate. `dev` runs `dev:server` and `dev:web` in parallel. Vite proxies `/api` to `127.0.0.1:8765`. `pnpm run start:web` remains the normal local-source server command.
 
 ## Build Tooling
 

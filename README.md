@@ -233,17 +233,23 @@ pnpm run build
 # Build a deterministic sanitized fixture database for development
 pnpm run dev:data
 
+# Run the Go REST and Vite dev servers in parallel
+pnpm run dev
+
 # Open the TUI against the fixture database
 pnpm run dev:cli
 
-# Serve the web dashboard against the fixture database on all IPv4 interfaces
+# Run the Go REST server against the fixture database
+pnpm run dev:server
+
+# Run the Vite dev server on all IPv4 interfaces
 pnpm run dev:web
 
 # Install the locally compiled CLI binary
 pnpm run install:cli
 ```
 
-The development commands use the shared fixture under `packages/cli/testdata/conformance/sync-first-basic/source/`. It contains compact, harness-native structures for OpenCode, Pi, Codex, and Claude Code, but every value is synthetic. `dev:data` recreates the ignored `.tokeninsights-dev/` directory, materializes the OpenCode SQLite source from reviewable SQL, and writes `.tokeninsights-dev/tokeninsights.sqlite`. Do not commit raw harness databases or transcripts. The existing `pnpm run start:web` remains unchanged and uses normal local sources.
+The development commands use the shared fixture under `packages/cli/testdata/conformance/sync-first-basic/source/`. It contains compact, harness-native structures for OpenCode, Pi, Codex, and Claude Code, but every value is synthetic. `dev:data` recreates the ignored `.tokeninsights-dev/` directory, materializes the OpenCode SQLite source from reviewable SQL, and writes `.tokeninsights-dev/tokeninsights.sqlite`. `dev` runs `dev:server` and `dev:web` in parallel; Vite proxies `/api` to the Go server on `127.0.0.1:8765`. Do not commit raw harness databases or transcripts. The existing `pnpm run start:web` remains unchanged and uses normal local sources.
 
 This is a pnpm monorepo with Go and TypeScript packages. Browser code uses Vite, React, Tailwind CSS, and local shadcn primitives. Node scripts use native, erasable TypeScript on Node 26+. Root tooling lives in the private `@tokeninsights/build-tools` workspace package under `tools/build`; root pnpm commands are stable orchestration aliases. Node and pnpm are needed only for builds, tests, and development. Production is one native Go binary: committed browser assets are embedded with `go:embed`, served by Go, and executed only by the browser. The host running `tokeninsights` needs no JavaScript runtime or `node_modules`.
 
