@@ -50,10 +50,10 @@ test('startup sync, six views, filtering, history, pagination, and refresh', asy
   await expect(page.locator('.results-summary')).toContainText('60 rows')
   await expect(page.locator('.session-coverage')).toHaveText('Sessions 60 shown / 80 synced')
   await expect(page.locator('.results-summary')).toContainText('258K')
-  await page.getByRole('button', { name: 'Sync now', exact: true }).click()
-  await expect(page.getByRole('button', { name: 'Sync now', exact: true })).toBeEnabled()
+  await page.getByRole('button', { name: 'Sync Usage', exact: true }).click()
+  await expect(page.getByRole('button', { name: 'Sync Usage', exact: true })).toBeEnabled()
   await expect(page.getByLabel('Total tokens: 258,000', { exact: true })).toBeVisible()
-  await page.getByRole('button', { name: 'Reload data', exact: true }).click()
+  await page.getByRole('button', { name: 'Reload Data', exact: true }).click()
   await expect(page.getByLabel('Total tokens: 258,000', { exact: true })).toBeVisible()
   expect(errors).toEqual([])
   await page.getByRole('button', { name: 'All time', exact: true }).click()
@@ -68,6 +68,29 @@ test('themes, keyboard filters, mobile layout, and scalable typography', async (
   await expect(page.getByRole('region', { name: 'Filtered usage summary' })).toBeVisible()
   await expect(page.getByRole('region', { name: 'Usage over time', exact: true })).toBeVisible()
   await expect(page.locator('.recharts-surface')).toBeVisible()
+  expect(await page.locator('body').evaluate((element) => getComputedStyle(element).fontSize)).toBe(
+    '15px',
+  )
+  expect(
+    await page
+      .getByRole('heading', { name: 'Usage', exact: true })
+      .evaluate((element) => getComputedStyle(element).fontSize),
+  ).toBe('38px')
+  expect(
+    await page
+      .getByLabel('Total tokens: 258,000', { exact: true })
+      .evaluate((element) => getComputedStyle(element).fontSize),
+  ).toBe('30px')
+  const toolbarControls = [
+    page.getByRole('button', { name: 'Harness', exact: true }),
+    page.getByRole('button', { name: 'This week', exact: true }),
+    page.getByRole('button', { name: 'Restore CLI defaults', exact: true }),
+    page.getByRole('combobox', { name: 'Time bucket', exact: true }),
+  ]
+  const controlHeights = await Promise.all(
+    toolbarControls.map(async (control) => (await control.boundingBox())?.height),
+  )
+  expect(controlHeights).toEqual([32, 32, 32, 32])
   await page.getByRole('button', { name: 'Theme: system. Change theme' }).click()
   await page.getByRole('button', { name: 'Theme: light. Change theme' }).click()
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark')
@@ -80,7 +103,7 @@ test('themes, keyboard filters, mobile layout, and scalable typography', async (
   await page.keyboard.press('Escape')
   await expect(page.getByRole('button', { name: 'Harness', exact: true })).toBeFocused()
   await page.setViewportSize({ width: 390, height: 844 })
-  await expect(page.getByRole('button', { name: 'Sync now', exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Sync Usage', exact: true })).toBeVisible()
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
     true,
   )
@@ -92,11 +115,11 @@ test('themes, keyboard filters, mobile layout, and scalable typography', async (
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
     true,
   )
-  await expect(page.getByRole('button', { name: 'Sync now', exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Sync Usage', exact: true })).toBeVisible()
   await page.evaluate(() => {
     document.documentElement.style.fontSize = ''
   })
-  await page.getByRole('heading', { name: 'Usage overview.' }).click()
+  await page.getByRole('heading', { name: 'Usage', exact: true }).click()
   await page.screenshot({ path: testInfo.outputPath('desktop-dark.png'), fullPage: true })
   await page.getByRole('button', { name: 'Theme: dark. Change theme' }).click()
   await page.getByRole('button', { name: 'Theme: system. Change theme' }).click()
@@ -133,9 +156,9 @@ test('remote source switching, persistence, sync, and later failure', async ({ p
   const remoteSync = page.waitForRequest(
     (request) => request.url() === `${remoteSource}/api/v1/sync` && request.method() === 'POST',
   )
-  await page.getByRole('button', { name: 'Sync now', exact: true }).click()
+  await page.getByRole('button', { name: 'Sync Usage', exact: true }).click()
   await remoteSync
-  await expect(page.getByRole('button', { name: 'Sync now', exact: true })).toBeEnabled()
+  await expect(page.getByRole('button', { name: 'Sync Usage', exact: true })).toBeEnabled()
   await expect(page.getByLabel('Total tokens: 777', { exact: true })).toBeVisible()
 
   await page.getByRole('button', { name: 'Choose data source' }).click()
@@ -174,7 +197,7 @@ test('custom dates, session search, and explicit inspection after sync failure',
   await expect(page.getByRole('heading', { name: 'No matching usage' })).toBeVisible()
   await expect(page.getByLabel('Total tokens: 0', { exact: true })).toBeVisible()
   await expect(page.locator('.session-coverage')).toHaveText('Sessions 0 shown / 80 synced')
-  await page.getByRole('button', { name: 'Clear all', exact: true }).click()
+  await page.getByRole('button', { name: 'Clear All', exact: true }).click()
   await page.getByRole('button', { name: 'Session', exact: true }).click()
   await page.getByRole('textbox', { name: 'Search session' }).fill('059')
   await page.getByRole('checkbox', { name: 'web-session-059', exact: true }).check()
@@ -194,9 +217,9 @@ test('custom dates, session search, and explicit inspection after sync failure',
   )
   await page.reload()
   await expect(
-    page.getByRole('button', { name: 'Inspect existing data', exact: true }),
+    page.getByRole('button', { name: 'Inspect Existing Data', exact: true }),
   ).toBeVisible()
   await expect(page.getByRole('region', { name: 'Filtered usage summary' })).not.toBeVisible()
-  await page.getByRole('button', { name: 'Inspect existing data', exact: true }).click()
+  await page.getByRole('button', { name: 'Inspect Existing Data', exact: true }).click()
   await expect(page.getByLabel('Total tokens: 4,300', { exact: true })).toBeVisible()
 })

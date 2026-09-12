@@ -1,5 +1,6 @@
 import type { Dashboard } from '../contracts'
 import { exactCount, formatCount } from '../format'
+import { Card } from './ui/card'
 
 export function SummaryCards({ summary }: { summary: Dashboard['summary'] }) {
   const cards = [
@@ -37,7 +38,7 @@ export function SummaryCards({ summary }: { summary: Dashboard['summary'] }) {
   return (
     <section className="summary-grid" aria-label="Filtered usage summary">
       {cards.map((card) => (
-        <article key={card.label} className={`summary-card ${card.className}`}>
+        <Card key={card.label} className={`summary-card ${card.className}`}>
           <span className="eyebrow">{card.label}</span>
           <strong
             title={exactCount(card.value)}
@@ -46,7 +47,7 @@ export function SummaryCards({ summary }: { summary: Dashboard['summary'] }) {
             {formatCount(card.value)}
           </strong>
           <span className="card-detail">{card.detail}</span>
-        </article>
+        </Card>
       ))}
     </section>
   )

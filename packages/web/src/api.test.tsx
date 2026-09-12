@@ -259,8 +259,8 @@ it.each<{ phase: SyncStatus['phase']; running: boolean; message: string }>([
       </QueryClientProvider>,
     )
     expect(await screen.findByText(message)).toBeVisible()
-    expect(screen.queryByRole('button', { name: 'Inspect existing data' })).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Retry sync' }) === null).toBe(running)
+    expect(screen.queryByRole('button', { name: 'Inspect Existing Data' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Retry Sync' }) === null).toBe(running)
     expect(fetcher).not.toHaveBeenCalled()
     client.clear()
   },
@@ -303,7 +303,7 @@ it('allows explicit inspection after an ordinary sync failure', async () => {
       </SourceProvider>
     </QueryClientProvider>,
   )
-  expect(await screen.findByRole('button', { name: 'Inspect existing data' })).toBeEnabled()
+  expect(await screen.findByRole('button', { name: 'Inspect Existing Data' })).toBeEnabled()
   client.clear()
 })
 

@@ -25,6 +25,10 @@ import { ResultsTable } from './components/ResultsTable'
 import { SourceSelector } from './components/SourceSelector'
 import { useSources } from './source-context'
 import { createSource } from './sources'
+import { Button } from './components/ui/button'
+import { Skeleton } from './components/ui/skeleton'
+import { Alert, AlertDescription, AlertTitle } from './components/ui/alert'
+import { Card } from './components/ui/card'
 
 const UsageChart = lazy(() =>
   import('./components/UsageChart').then((module) => ({ default: module.UsageChart })),
@@ -78,9 +82,7 @@ function ConnectionScreen({
             <CircleAlert />
             <h1>Couldn’t connect to {active.hostname}</h1>
             <p>{error.message}</p>
-            <button className="button primary" onClick={() => void retry()}>
-              Retry
-            </button>
+            <Button onClick={() => void retry()}>Retry Connection</Button>
           </>
         ) : (
           <>
@@ -161,8 +163,9 @@ function DashboardShell() {
             )}
           />
           <span className="header-divider" />
-          <button
-            className="icon-button"
+          <Button
+            variant="ghost"
+            size="icon"
             title={`Theme: ${theme}`}
             aria-label={`Theme: ${theme}. Change theme`}
             onClick={() =>
@@ -179,29 +182,26 @@ function DashboardShell() {
             ) : (
               <Monitor size="1.1em" />
             )}
-          </button>
-          <button
-            className="button subtle"
-            aria-label="Reload data"
-            title="Reload data"
+          </Button>
+          <Button
+            variant="outline"
+            className="reload-button"
+            aria-label="Reload Data"
+            title="Reload Data"
             disabled={running || !bootstrap}
             onClick={reload}
           >
             <RefreshCw size="1em" className={analytics.isFetching && enabled ? 'spin' : ''} />
-            <span>Reload data</span>
-          </button>
-          <button
-            className="button primary"
-            disabled={running || !bootstrap}
-            onClick={() => sync.mutate()}
-          >
+            <span>Reload Data</span>
+          </Button>
+          <Button disabled={running || !bootstrap} onClick={() => sync.mutate()}>
             {running ? (
               <LoaderCircle size="1em" className="spin" />
             ) : (
               <ArrowDownToLine size="1em" />
             )}
-            <span>{running ? 'Syncing…' : 'Sync now'}</span>
-          </button>
+            <span>{running ? 'Syncing…' : 'Sync Usage'}</span>
+          </Button>
         </div>
       </header>
       {!bootstrap && (
@@ -211,9 +211,7 @@ function DashboardShell() {
               <CircleAlert />
               <h1>Couldn’t connect to {active.hostname}</h1>
               <p>{bootstrapQuery.error.message}</p>
-              <button className="button primary" onClick={() => void bootstrapQuery.refetch()}>
-                Retry
-              </button>
+              <Button onClick={() => void bootstrapQuery.refetch()}>Retry Connection</Button>
             </>
           ) : (
             <>
@@ -227,13 +225,9 @@ function DashboardShell() {
         <main id="dashboard" className="dashboard">
           <section className="page-heading">
             <div>
-              <div className="eyebrow page-kicker">
-                {active.hostname.toUpperCase()} USAGE, IN FOCUS
-              </div>
-              <h1>
-                Usage overview<span className="heading-dot">.</span>
-              </h1>
-              <p>A clearer picture of your coding agents.</p>
+              <div className="eyebrow page-kicker">{active.hostname}</div>
+              <h1>Usage</h1>
+              <p>Token activity across your coding agents.</p>
             </div>
             <div className="heading-status">
               <span className="range-label">{range}</span>
@@ -266,21 +260,21 @@ function DashboardShell() {
           )}
           {status?.running && <SyncProgress status={status} />}
           {status?.error && (
-            <section className="sync-error" role="alert">
+            <Alert className="sync-error" variant="destructive" role="alert">
               <CircleAlert size="1.3em" />
-              <div>
-                <strong>Sync needs attention</strong>
+              <AlertDescription>
+                <AlertTitle>Sync needs attention</AlertTitle>
                 <p>{status.error}</p>
-              </div>
-              <button className="button" onClick={() => sync.mutate()} disabled={running}>
-                Retry sync
-              </button>
+              </AlertDescription>
+              <Button variant="outline" onClick={() => sync.mutate()} disabled={running}>
+                Retry Sync
+              </Button>
               {!enabled && !recoveryFailed && (
-                <button className="button" onClick={() => setInspectedRevision(status.revision)}>
-                  Inspect existing data
-                </button>
+                <Button variant="outline" onClick={() => setInspectedRevision(status.revision)}>
+                  Inspect Existing Data
+                </Button>
               )}
-            </section>
+            </Alert>
           )}
           {enabled && analytics.error && (
             <ErrorBanner message={analytics.error.message} onRetry={reload} />
@@ -297,7 +291,7 @@ function DashboardShell() {
               {analytics.isPlaceholderData ? (
                 <div className="summary-grid" role="status" aria-label="Updating filtered summary">
                   {[1, 2, 3, 4, 5].map((n) => (
-                    <div className="skeleton-card" key={n} />
+                    <Skeleton className="skeleton-card" key={n} />
                   ))}
                 </div>
               ) : (
@@ -306,20 +300,21 @@ function DashboardShell() {
               <div className="view-controls">
                 <nav className="view-tabs" aria-label="Analytics views">
                   {tabs.map(({ id, icon: Icon }) => (
-                    <button
+                    <Button
                       key={id}
+                      variant="ghost"
                       aria-current={query.tab === id ? 'page' : undefined}
                       onClick={() => dispatch({ type: 'tab', value: id })}
                     >
                       <Icon size="1em" />
                       {labels[id]}
-                    </button>
+                    </Button>
                   ))}
                 </nav>
                 <QuickPeriods />
               </div>
               {analytics.isPlaceholderData ? (
-                <div
+                <Skeleton
                   className="skeleton-chart"
                   role="status"
                   aria-label="Updating filtered results"
@@ -328,7 +323,11 @@ function DashboardShell() {
                 <>
                   <Suspense
                     fallback={
-                      <div className="skeleton-chart" role="status" aria-label="Loading chart" />
+                      <Skeleton
+                        className="skeleton-chart"
+                        role="status"
+                        aria-label="Loading chart"
+                      />
                     }
                   >
                     <UsageChart rows={data.chart} />
@@ -361,7 +360,7 @@ function SyncProgress({ status }: { status: SyncStatus }) {
           ? 'Normalizing canonical data…'
           : 'Syncing all supported harnesses…'
   return (
-    <section className="sync-progress panel" role="status" aria-live="polite">
+    <Card className="sync-progress panel" role="status" aria-live="polite">
       <div className="panel-heading">
         <div>
           <h2>
@@ -388,19 +387,19 @@ function SyncProgress({ status }: { status: SyncStatus }) {
           </div>
         ))}
       </div>
-    </section>
+    </Card>
   )
 }
 
 function ErrorBanner({ message, onRetry }: { message: string; onRetry: () => void }) {
   return (
-    <div className="error-banner" role="alert">
+    <Alert className="error-banner" variant="destructive" role="alert">
       <CircleAlert size="1.1em" />
-      <span>{message}</span>
-      <button className="button" onClick={onRetry}>
-        Retry
-      </button>
-    </div>
+      <AlertDescription>{message}</AlertDescription>
+      <Button variant="outline" onClick={onRetry}>
+        Retry Request
+      </Button>
+    </Alert>
   )
 }
 
@@ -409,10 +408,10 @@ function DashboardSkeleton() {
     <div className="dashboard-skeleton" role="status" aria-label="Loading dashboard">
       <div className="summary-grid">
         {[1, 2, 3, 4, 5].map((n) => (
-          <div key={n} className="skeleton-card" />
+          <Skeleton key={n} className="skeleton-card" />
         ))}
       </div>
-      <div className="skeleton-chart" />
+      <Skeleton className="skeleton-chart" />
       <span className="sr-only">Loading dashboard…</span>
     </div>
   )

@@ -4,18 +4,20 @@ This is the visual contract for the React application in `packages/web`, includi
 all six Aggregation Tabs. Read it before changing UI. The architecture and token
 usage semantics remain in [`docs/design.md`](docs/design.md).
 
-**Source of truth:** [`packages/web/src/tokens.css`](packages/web/src/tokens.css).
-Use shared rules in `styles.css` and existing React components before adding styles.
+**Source of truth:** semantic values live in
+[`packages/web/src/tokens.css`](packages/web/src/tokens.css), Tailwind exposes them as
+utilities, and local shadcn primitives live in `packages/web/src/components/ui`.
+Use those primitives and existing feature styles before adding a visual value.
 Token values below are reference sizes at the browser's default 16px root; preserve
 `rem`/`em` sizing and user font preferences.
 
 ## Design direction
 
-- Calm: green-tinted neutrals and generous separation between sections.
+- Calm: neutral surfaces and generous separation between sections.
 - Clear: summary first, visualization second, detailed evidence third.
 - Precise: aligned numbers, explicit labels, predictable controls.
 - Restrained: emerald has a purpose; surfaces carry little decoration.
-- Approachable: system sans typography and modest corner rounding.
+- Approachable: system sans typography and crisp corner rounding.
 - Cohesive: every Aggregation Tab shares the same dashboard structure.
 
 Avoid decorative gradients, glowing cards, excessive pills, nested card stacks,
@@ -37,27 +39,21 @@ the analytics dashboard into a marketing page or reduce usability for minimalism
 
 | Role | Token | Rule |
 | --- | --- | --- |
-| Application canvas | `--color-bg` | Page background; separates functional surfaces. |
-| Primary surface | `--color-surface` | Header, panels, controls, and overlays. |
-| Secondary surface | `--color-surface-raised` | Table headings/summary, neutral hover, segmented-control track, skeletons. “Raised” is a tone, not a shadow. |
-| Primary text | `--color-text-primary` | Headings, values, entered text, important labels. |
-| Secondary text | `--color-text-secondary` | Descriptions, navigation, supporting labels. |
-| Muted text | `--color-text-muted` | Metadata and captions, still readable. Never reduce its opacity. |
-| Divider | `--color-border` | Nonessential panel outlines, separators, table rows. |
-| Control boundary | `--color-border-strong` | Inputs, selects, neutral buttons, selected neutral segments. |
-| Primary accent | `--color-accent` | Primary action, focus ring, active-view underline, primary data series. |
-| Accent interaction | `--color-accent-hover`, `--color-accent-active` | Primary-button hover and press. |
-| Accent text | `--color-accent-text` | Selected labels, links, highlighted total. |
-| Accent surface | `--color-accent-soft` | Selected controls and the single total-summary emphasis. |
-| On accent | `--color-on-accent` | Text/icons on a solid accent button. |
-| Status | `--color-success`, `--color-warning`, `--color-error` | Completed, caution, failed/destructive meanings. |
-| Error surface | `--color-error-soft` | Error banners; pair with error text and a clear recovery action. |
-| Brand | `--color-brand-bg`, `--color-brand-fg` | Existing logo mark only. |
-| Comparison series | `--color-chart-secondary`, `--color-chart-tertiary` | Median and maximum context series; never general UI accents. |
+| Application canvas | `--background` | Page background; separates functional surfaces. |
+| Primary surface | `--card`, `--popover` | Panels and floating layers. |
+| Primary text | `--foreground` | Headings, values, entered text, important labels. |
+| Primary action | `--primary`, `--primary-foreground` | One dominant action per group. |
+| Secondary control | `--secondary`, `--secondary-foreground` | Quiet controls and grouped choices. |
+| Supporting content | `--muted`, `--muted-foreground` | Metadata, captions, table headings, skeletons. |
+| Selection / hover | `--accent`, `--accent-foreground` | Neutral persistent or interactive emphasis. |
+| Divider / input | `--border`, `--input` | Hairlines and stronger control boundaries. |
+| Focus | `--ring` | Two-pixel keyboard focus indicator. |
+| Failure | `--destructive`, `--destructive-foreground`, `--error-surface` | Failed/destructive meaning and error banners. |
+| Status | `--success`, `--warning` | Completed and caution meanings. |
+| Data series | `--chart-1`, `--chart-2`, `--chart-3` | Chart marks only; independent from actions. |
 
 Use one solid primary action per action group. Most surfaces remain neutral. Do not
-color every metric or harness. The total-summary tint is deliberate emphasis, not
-a template for every card. Selected controls combine accent treatment with a
+color every metric or harness. Summary cards have equal visual weight. Selected controls combine accent treatment with a
 border, underline, count, checkmark, or stronger weight.
 
 Status must include text or an icon as well as color. A local-machine dot does not
@@ -77,14 +73,14 @@ Use `--font-sans`, the local system sans stack; no remote font dependency. Use
 
 | Style | Size token | Weight / line height | Use |
 | --- | --- | --- | --- |
-| Page title | `--text-3xl` (40), mobile `--text-2xl` (32) | Semibold / tight | One `h1` per page. |
-| Summary value | `--text-2xl` (32) | Semibold / tight | High-level metric values, not section headings. |
-| Brand | `--text-lg` (18), mobile `--text-base` (16) | Bold + medium / normal | Existing wordmark only. |
-| Section heading | `--text-base` (16) | Semibold / normal | `h2`, chart and table titles. |
-| Subsection heading | `--text-sm` (14) | Semibold / normal | `h3` and local group titles. |
-| Body / controls | `--text-sm` (14) | Regular or medium / normal | Dashboard prose, controls, table identities. |
-| Reading / mobile entry | `--text-base` (16) | Regular / normal | Longer explanatory content and mobile text/date entry. |
-| Label / metadata | `--text-xs` (12) | Medium / regular, normal | Filters, captions, axis labels, numeric cells, status metadata. |
+| Page title | `--text-3xl` (38), mobile `--text-2xl` (30) | Semibold / tight | One `h1` per page. |
+| Summary value | `--text-2xl` (30) | Semibold / tight | High-level metric values, not section headings. |
+| Brand | `--text-lg` (19), mobile `--text-base` (17) | Bold + medium / normal | Existing wordmark only. |
+| Section heading | `--text-base` (17) | Semibold / normal | `h2`, chart and table titles. |
+| Subsection heading | `--text-sm` (15) | Semibold / normal | `h3` and local group titles. |
+| Body / controls | `--text-sm` (15) | Regular or medium / normal | Dashboard prose, controls, table identities. |
+| Reading / mobile entry | `--text-base` (17) | Regular / normal | Longer explanatory content and mobile text/date entry. |
+| Label / metadata | `--text-xs` (13) | Medium / regular, normal | Filters, captions, axis labels, numeric cells, status metadata. |
 
 Use `--leading-tight` only for titles and large values; everything else uses
 `--leading-normal`. Use `--tracking-tight` for titles/values/brand,
@@ -124,18 +120,18 @@ Do not mint a global token for every library coordinate or content-specific widt
 
 ## Layout
 
-- Use the shared `.dashboard` container, capped by `--content-width` (100rem).
-- Share `--page-gutter` between header and content: 32 desktop, 24 at ≤75rem,
+- Use the shared `.dashboard` container, capped by `--content-width` (90rem).
+- Share `--page-gutter` between header and content: 24 desktop,
   16 at ≤38rem. Align header contents with the capped dashboard on ultrawide screens.
 - Use `--reading-width` (42rem) for prose-heavy content; analytics use available width.
-- Header minimum height is `--header-height` (72px). Let it grow when content wraps.
-  It is not a fixed overlay. No sidebar is part of the current visual system.
+- Header minimum height is `--header-height` (64px). Let it grow when content wraps.
+  It may remain sticky, but must stay in document flow. No sidebar is part of the current visual system.
 - Preserve page order: heading/status → filters → sync feedback → summaries →
   Aggregation Tabs → chart → table/summary → footer.
 - Keep the source selector in the header beside source-aware status/actions. It must
   remain reachable when dashboard requests fail; never bury recovery inside failed content.
-- Keep five summary cards in one desktop row; give total modest extra width.
-  Use three columns at ≤55rem and two at ≤38rem, with total spanning two columns.
+- Keep five equal-weight summary cards in one desktop row. Use three columns at
+  ≤55rem and two at ≤38rem.
 - Use flex wrapping for action groups, `minmax(0, 1fr)` for equal grid columns, and
   `min-width: 0` on shrinkable content. Never hide document overflow to conceal bugs.
 - Scroll wide tables inside `.table-scroll`; preserve numeric column readability.
@@ -158,23 +154,27 @@ Do not mint a global token for every library coordinate or content-specific widt
 
 ### Buttons and density
 
-Use `.button`, `.icon-button`, and `.filter-button` as the shared control foundation.
-Primary, neutral, and subtle express action hierarchy; selected is a state, not
-another product-specific variant. Use `.text-button` for low-emphasis local actions.
+Use the local shadcn `Button` as the shared control foundation. Its CVA variants
+express primary, outline, secondary, ghost, and destructive hierarchy; selected is
+a state, not another product-specific variant. Feature classes may control layout,
+not recreate the primitive.
 
-Standard controls have a 36px minimum height (`--control-height`) and 12px horizontal
-padding. Icon buttons are at least square. Compact segments, chips, and text actions
-use 32px (`--control-height-compact`); pagination uses the standard size. Control
-icons use `--icon-size` (16px), independent of caption font size. Keep icon style
-consistent with the existing Lucide outline set. Do not add per-page density modes.
+Control sizes are shared across Button and Select: `sm` is 32px
+(`--control-height-sm`), default is 36px (`--control-height-md`), and `lg` is 40px
+(`--control-height-lg`). Icon variants use the same square dimensions. Use `sm` for
+filter, chart, and segmented toolbars; default for header, form, table, and pagination
+controls. Control icons use `--icon-size` (16px), independent of caption font size.
+Keep icon style consistent with the existing Lucide outline set. Do not add per-page
+density modes.
 
 ### Forms and menus
 
 Use visible labels, shared field borders/radii/heights, and explicit descriptions
 for errors. Search wrappers own the focus ring; do not remove their visible focus.
-Native selects and date inputs retain platform behavior. Checkbox labels provide
-the full clickable row. Reuse `MultiSelect`, `DateFilter`, and Radix Popover for
-filters; retain selected values, search, Escape dismissal, and focus return.
+Date inputs retain platform behavior. Use local shadcn `Input`, `Select`, `Checkbox`,
+and `Popover` primitives for other form controls. Checkbox labels provide the full
+clickable row. Reuse `MultiSelect` and `DateFilter`; retain selected values, search,
+Escape dismissal, and focus return.
 
 The source selector is the browser's persistent server switcher, not a data-merging
 filter. Use a visible hostname as its primary label and the normalized URL as
@@ -186,7 +186,8 @@ dashboard filters and navigation when selection changes.
 
 ### Cards and panels
 
-Use summary cards for overview metrics; `.panel` for chart/table or sync regions.
+Use the local shadcn `Card` for overview metrics and chart/table/sync regions.
+Feature classes may add layout and chart geometry without rebuilding the surface.
 Do not wrap every heading, toolbar, or paragraph in a card. Share panel padding.
 Only total receives accent-surface emphasis. Avoid fixed content heights that clip
 translated text, long metadata, or enlarged fonts.
@@ -237,8 +238,8 @@ literal media-query values because CSS custom properties cannot drive media quer
 - ≤75rem: reduce shared gutters/insets; hide redundant quick date shortcuts while
   keeping the full Date Range Filter.
 - ≤55rem: collapse summary/sync columns; hide secondary header metadata; wrap table tools.
-- ≤38rem: stack heading/status; use a two-column summary grid and a visible 3×2
-  navigation grid so all six views remain discoverable. Stack date entry fields.
+- ≤38rem: stack heading/status; use a two-column summary grid and a horizontally
+  scrollable navigation rail so all six views remain discoverable. Stack date entry fields.
 - At ≤38rem **or** with a coarse pointer, standard and compact targets are at least
   44px tall; icon-only controls are at least 44px wide. Checkbox labels own the target.
 - Allow the header to wrap on very narrow screens. Keep Sync, Reload, and theme
@@ -289,27 +290,21 @@ document together, and review every affected shared component. Do not patch the
 generated assets directly; rebuild the embedded web application. Verify all six
 views, selected filters, empty/loading/error states, popovers, and responsive layouts.
 
-## Consolidation audit (September 2026)
+## Geist-inspired refresh (September 2026)
 
-The starting direction is retained: green neutrals, forest logo, emerald actions,
-large summary numbers, and chart/table panels. Source audit covered `tokens.css`,
-`styles.css`, `App.tsx`, and all four component files; rendered review covered the
-fixture-backed light/dark dashboard and mobile layout.
+Geist is research input, not a dependency. TokenInsights owns its neutral palette,
+system fonts, local shadcn source, and Tailwind theme. The refresh applies these
+decisions:
 
-| Original inconsistency | Consolidation |
-| --- | --- |
-| Light canvas `#f7f9f8`, surface `#fff`, hover `#f0f4f2`, table head `#f8faf9`, stripe `#fcfdfc` | Keep canvas/surface/secondary surface; remove separate header/stripe neutrals. |
-| Accent soft `#edf8f1` vs total `#f1f9f4`; borders `#cce7d6` vs `#cde4d6` | One accent soft surface; selected boundaries use accent text. |
-| One muted color `#687970` for all supporting content; faint control boundary `#b8c9c0` | Explicit secondary/muted text; stronger control border, equivalent dark roles. |
-| Error palette was warning-orange; blue/purple had decorative names | Separate warning/error roles; semantic chart comparison colors. |
-| Eight sizes: 11/12/14/16/18/28/34/40px; chart labels also 11.2px | Six sizes: 12/14/16/18/32/40px; chart axes and metadata share caption. |
-| Optional undeclared Inter; several tracking values from −.045em to .13em | System font stack, three tracking roles, existing 500/600/700 weights and 1.15/1.5 line heights. |
-| Gaps/padding around .3/.35/.4/.45/.55/.6/.65/.7/.8/.85/.9/1.1/1.2/1.3rem | Shared 4px scale; consistent action gaps and panel/table insets. |
-| Page top 2.6rem; gutters 2.5/1.5/1rem; header 4.7rem | 32px top rhythm, shared 32/24/16 gutters, 72px growing header; retain 100rem content cap. |
-| Radii .25/.3/.35/.4/.45/.55/.6/.7rem across badges, controls, tooltip, cards | Three roles: 4/8/12px. |
-| Decorative total-card blur, selected-segment shadow, popover shadow | Remove decorative elevation; one overlay shadow. |
-| Buttons 2.25rem, filters 2.2rem, pagination 1.75rem, selects sized by padding | Shared 36px standard / 32px compact / 44px touch targets. |
-| Existing 75/55/38rem thresholds, clipped sixth mobile tab, hidden Reload label | Retain thresholds; visible mobile navigation and named icon-only Reload. |
+- canonical shadcn semantic color roles in OKLCH;
+- flat neutral surfaces, crisp hairlines, and overlay-only shadow;
+- black/inverse primary actions with independent blue/violet/amber chart series;
+- compact 32px desktop controls and 44px touch targets;
+- equal-weight summary cards and a narrower 90rem dashboard measure;
+- compact utility copy, noun-only analytics tabs, and a scrollable mobile tab rail;
+- local `Button`, `Badge`, `Card`, `Input`, `Skeleton`, `Popover`, `Select`,
+  `Checkbox`, `Alert`, and `Table` primitives using Tailwind utilities and Radix
+  behavior where appropriate.
 
 Comparison bars share the existing 64px maximum width so sparse Context results do
 not expand into oversized blocks. Chart plot coordinates, measured identity-column widths, the 17rem chart viewport,

@@ -14,6 +14,8 @@ import type { Row, Sort } from '../contracts'
 import { exactCount, formatCount } from '../format'
 import { useDashboardState } from '../state'
 import { BucketControl } from './Filters'
+import { Button } from './ui/button'
+import { Card } from './ui/card'
 
 const metrics: { key: Sort; label: string }[] = [
   { key: 'total', label: 'Total' },
@@ -68,7 +70,7 @@ export function UsageChart({ rows }: { rows: Row[] }) {
     label: context ? `${r.model} · ${r.harness} · ${r.provider}` : r.name,
   }))
   return (
-    <section className="chart-panel panel" aria-label={title}>
+    <Card className="chart-panel panel" role="region" aria-label={title}>
       <div className="panel-heading">
         <div>
           <h2>{title}</h2>
@@ -89,13 +91,15 @@ export function UsageChart({ rows }: { rows: Row[] }) {
       {timeline && (
         <div className="chart-metrics" aria-label="Chart metric">
           {metrics.map((m) => (
-            <button
+            <Button
               key={m.key}
+              variant="ghost"
+              size="sm"
               aria-pressed={metric === m.key}
               onClick={() => dispatch({ type: 'chartMetric', value: m.key })}
             >
               {m.label}
-            </button>
+            </Button>
           ))}
         </div>
       )}
@@ -112,8 +116,8 @@ export function UsageChart({ rows }: { rows: Row[] }) {
               >
                 <defs>
                   <linearGradient id="usage-fill" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="var(--color-accent)" stopOpacity={0.24} />
-                    <stop offset="100%" stopColor="var(--color-accent)" stopOpacity={0.015} />
+                    <stop offset="0%" stopColor="var(--chart-1)" stopOpacity={0.24} />
+                    <stop offset="100%" stopColor="var(--chart-1)" stopOpacity={0.015} />
                   </linearGradient>
                 </defs>
                 <CartesianGrid
@@ -144,7 +148,7 @@ export function UsageChart({ rows }: { rows: Row[] }) {
                   type="linear"
                   dataKey={metric}
                   name={metrics.find((m) => m.key === metric)?.label}
-                  stroke="var(--color-accent)"
+                  stroke="var(--chart-1)"
                   strokeWidth={2}
                   fill="url(#usage-fill)"
                   isAnimationActive={false}
@@ -190,7 +194,7 @@ export function UsageChart({ rows }: { rows: Row[] }) {
                     <Bar
                       dataKey="averageContext"
                       name="Average"
-                      fill="var(--color-accent)"
+                      fill="var(--chart-1)"
                       isAnimationActive={false}
                     />
                     <Bar
@@ -210,7 +214,7 @@ export function UsageChart({ rows }: { rows: Row[] }) {
                   <Bar
                     dataKey="total"
                     name="Total tokens"
-                    fill="var(--color-accent)"
+                    fill="var(--chart-1)"
                     radius={[4, 4, 0, 0]}
                     isAnimationActive={false}
                   />
@@ -223,8 +227,10 @@ export function UsageChart({ rows }: { rows: Row[] }) {
       {filterDimension && rows.length > 0 && (
         <div className="chart-drilldowns" aria-label="Filter by chart item">
           {rows.map((row) => (
-            <button
+            <Button
               key={row.key}
+              variant="ghost"
+              size="sm"
               className="chart-filter"
               onClick={() =>
                 dispatch({ type: 'selection', value: { [filterDimension]: [row.name] } })
@@ -233,7 +239,7 @@ export function UsageChart({ rows }: { rows: Row[] }) {
             >
               <span className="legend-dot" />
               {row.name}
-            </button>
+            </Button>
           ))}
         </div>
       )}
@@ -243,6 +249,6 @@ export function UsageChart({ rows }: { rows: Row[] }) {
           selected range.
         </p>
       )}
-    </section>
+    </Card>
   )
 }
