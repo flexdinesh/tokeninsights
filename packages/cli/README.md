@@ -110,9 +110,25 @@ tokeninsights serve --host 10.0.1.151 --week
 tokeninsights serve --month --bucket week --provider openai --harness pi
 ```
 
-All viewer arguments below also work with `serve`. They initialize browser filters rather than restricting which harnesses sync. Startup refreshes all supported harnesses with normalization; `--no-sync` skips startup sync and requires an existing compatible, fully recovered database. **Sync now** runs a shared refresh across browser clients; **Reload data** only rereads SQLite. Ordinary sync failures keep the server available for retry or explicitly inspecting existing data. Failed compatibility recovery offers retry and hides **Inspect existing data** until recovery completes.
+All viewer arguments below also work with `serve`. They initialize browser filters rather than restricting which harnesses sync. Startup refreshes all supported harnesses with normalization; `--no-sync` skips startup sync and requires an existing compatible, fully recovered database. **Sync now** runs a shared refresh across browser clients, including clients using this server as a remote source; **Reload data** only rereads SQLite. Ordinary sync failures keep the server available for retry or explicitly inspecting existing data. Failed compatibility recovery offers retry and hides **Inspect existing data** until recovery completes.
 
 The web dashboard provides Tokens, Models, Providers, Harnesses, Sessions, and Context views, summary cards, charts, faceted multi-select filters, custom/open-ended dates, session-ID search, column sorting/visibility, pagination, and system/light/dark themes. Date Range Filters and Time Buckets use the server's local timezone and Monday-start weeks. Browser URLs preserve filters, tab, bucket, sorting, and pagination; browser back/forward restores them. **Restore CLI defaults** restores the startup filters.
+
+The page origin is the initial local data source. The source selector accepts reachable HTTP(S) TokenInsights servers and normalizes bare `host:port` values to HTTP. It validates compatibility before saving, labels sources by hostname, deduplicates normalized URLs, and persists the list and active selection in browser `localStorage`. Switching sources preserves current viewer state. Requests and query caches are source-specific; sources are selected individually and data is never merged. An unavailable saved source remains selected with an error and recovery controls. Browser mixed-content rules can block HTTP from an HTTPS page, and invalid or untrusted certificates can block HTTPS sources.
+
+The REST server permits unauthenticated `GET`, `POST`, and preflight `OPTIONS` requests from every browser origin without credentials. This enables remote reads and **Sync now**, but any website able to reach the listener can read usage metadata and trigger local ingestion. Use only on trusted networks.
+
+The versioned API has no unversioned compatibility routes:
+
+| Endpoint | Purpose |
+|----------|---------|
+| `GET /api/v1/instance` | Identity, versions, capabilities, timezone, viewer defaults |
+| `GET /api/v1/sync` | Current shared sync state |
+| `POST /api/v1/sync` | Start or join shared sync |
+| `GET /api/v1/usage` | Filtered summary, chart, and paginated rows |
+| `GET /api/v1/usage/facets` | Filter facets and session search |
+
+[`docs/openapi.yaml`](../../docs/openapi.yaml) is the authoritative, repository-only contract and is not served at runtime. `pnpm run generate:api` creates committed Go transport models plus TypeScript types/Zod schemas; `pnpm run check-api` detects contract drift. Direct Go builds use committed generated output and need no Node runtime.
 
 The Sessions card shows distinct sessions matching the filters alongside all synced sessions. Every table summary leads with `Sessions <shown> shown / <synced> synced`, including Context and empty filtered results. Counts use the same canonical query as the TUI, exclude empty/non-countable-only sessions, and cover every page. The synced count ignores all viewer filters. Context compares in-range session peaks as average, median, and maximum; its table summary shows session coverage and row count without an additive token total.
 

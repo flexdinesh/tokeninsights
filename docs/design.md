@@ -37,8 +37,15 @@ Local harness data
         SQLite canonical tables
                   |
                   v
-        tokeninsights view / serve
-        TUI / embedded React dashboard
+       +----------+-----------+
+       |                      |
+       v                      v
+ tokeninsights view   tokeninsights serve
+ direct SQLite read   versioned REST API
+       |                      |
+       v                      v
+ terminal TUI          embedded React UI
+                       local or remote API
 ```
 
 Default storage is:
@@ -55,8 +62,8 @@ TokenInsights V1 is a local Go CLI:
 
 - `sync` ingests durable local harness data into raw tables and normalizes by default.
 - `normalize` processes pending canonical work from existing raw facts.
-- `view` opens the interactive terminal UI and runs implicit all-harness sync by default before showing canonical data.
-- `serve` runs a local HTTP server with an embedded React dashboard, startup all-harness sync, and an explicit web Sync button.
+- `view` opens the interactive terminal UI, runs implicit all-harness sync by default, and reads canonical SQLite data directly without an HTTP server.
+- `serve` runs an HTTP server over the same canonical state, hosts the embedded React dashboard, performs startup all-harness sync, and exposes explicit web Sync through the REST API.
 - `reset-canonical` clears rebuildable canonical facts and diagnostics, then requeues raw token facts.
 - `reset-all` transactionally recreates application tables inside the existing SQLite file.
 
@@ -401,7 +408,7 @@ Cost tracking is not part of TokenInsights and must not appear in viewer columns
 
 ## Web Viewer
 
-`tokeninsights serve` serves the React dashboard and same-origin JSON API from one Go binary. It accepts the viewer's Date Range Filters, Time Bucket, Dimension Filters, session-ID filters, DB-path override, and `--no-sync`, plus `--host` (IPv4 bind address, default `0.0.0.0`) and `--port` (default `8765`, `0` requests an available port). Defaults match `view`: this month and daily buckets. Viewer flag registration and date/filter semantics are shared; browser clients can independently change their initial CLI selections.
+`tokeninsights serve` serves the React dashboard and versioned JSON REST API from one Go binary. The REST boundary reads the server's canonical SQLite state; the TUI continues to read that state directly. `serve` accepts the viewer's Date Range Filters, Time Bucket, Dimension Filters, session-ID filters, DB-path override, and `--no-sync`, plus `--host` (IPv4 bind address, default `0.0.0.0`) and `--port` (default `8765`, `0` requests an available port). Defaults match `view`: this month and daily buckets. Viewer flag registration and date/filter semantics are shared; browser clients can independently change their initial CLI selections.
 
 The default server binds `0.0.0.0` and prints the primary LAN IPv4 URL, localhost URL, and `0.0.0.0` URL, in that order, using the actual bound port. LAN discovery considers active, non-loopback, non-point-to-point IPv4 interfaces, excluding known Docker/virtual/VPN interface names. A UDP route lookup (without sending a datagram) identifies the preferred local source; if that belongs to an eligible LAN interface, it wins. Otherwise selection falls back deterministically by interface name/address. No eligible LAN still permits startup with localhost and wildcard URLs. This filters advertised addresses, not network access: the wildcard listener accepts all IPv4 interfaces. Explicit `--host` binding prints only that address unless it is `0.0.0.0`. IPv6 and invalid bind addresses are rejected. A busy address/port fails clearly. Interrupt/termination cancels sync and request work, shuts down HTTP, and closes the listener.
 
@@ -413,19 +420,29 @@ The web viewer includes all six active Aggregation Tabs and their TUI metrics/so
 
 Token/session charts show chronological Time Buckets. Model/provider/harness charts show the top 12 groups by canonical total tokens, with keyboard-accessible labels that apply the corresponding Dimension Filter. Context charts show the top 12 groups by average Session Peak Context Load, including average, median, and maximum. Charts use canonical totals directly; components do not redefine total-token semantics. Date bounds are inclusive local dates, custom bounds replace the preset, and Monday-start weeks use server-local calendar arithmetic even when the browser is in another timezone.
 
-The API consists of:
+The V1 REST API consists of exactly these endpoints; unversioned `/api/*` routes are not supported:
 
 | Endpoint | Purpose |
 |----------|---------|
-| `GET /api/bootstrap` | CLI filter defaults, hostname, server timezone label |
-| `GET /api/status` | Shared sync phase, per-harness progress, error, completion revision |
-| `POST /api/sync` | Start or join the current all-harness sync job |
-| `GET /api/dashboard` | Summary, chronological/ranked chart, sorted/paginated rows, last sync |
-| `GET /api/filters` | Provider/model/harness facets and bounded session-ID search |
+| `GET /api/v1/instance` | API/server versions, hostname, timezone, capabilities, and initial viewer defaults |
+| `GET /api/v1/sync` | Shared sync phase, per-harness progress, error, and completion revision |
+| `POST /api/v1/sync` | Start or join the server's all-harness sync job; returns HTTP 202 |
+| `GET /api/v1/usage` | Summary, chronological/ranked chart, sorted/paginated rows, and last sync |
+| `GET /api/v1/usage/facets` | Provider/model/harness facets and bounded session-ID search |
 
-Dashboard/filter query parameters are `period`, `bucket`, `from`, `to`, repeated `provider`, `model`, `harness`, and `session`, plus `tab`, `sort`, `direction`, `page`, and `pageSize`. Session lookup adds literal substring `search`, returning at most 100 values. Facet queries apply all other filters while omitting their own Dimension Filter. React retains selected values even when other facets exclude them. API inputs are validated, sort fields allowlisted, and database reads have request deadlines. Unknown API routes return JSON errors. Browser requests use Go's same-origin mutation protection.
+Usage/facet query parameters are `period`, `bucket`, `from`, `to`, repeated `provider`, `model`, `harness`, and `session`, plus `tab`, `sort`, `direction`, `page`, and `pageSize`. Session lookup adds literal substring `search`, returning at most 100 values. Facet queries apply all other filters while omitting their own Dimension Filter. React retains selected values even when other facets exclude them. API inputs are validated, sort fields allowlisted, database reads have request deadlines, and failures use the standard `{ code, message }` JSON body. Unknown API routes also return JSON errors.
 
-`packages/web` uses React, strict TypeScript, Vite, Radix Popover, TanStack Query/Table, and Recharts. A top-level reducer/provider owns dashboard filters, navigation, sorting, pagination, theme, visible columns, and chart metric. Transient popover/search drafts stay local. Query hooks validate responses at runtime and cancel superseded requests; loading placeholders prevent old results from being mislabeled with new filters. Filters/tab/bucket/sort/page are URL-backed, including browser back/forward and explicitly cleared startup filters. Theme preference persists locally. CSS typography, color, spacing, and radius tokens use browser-scalable rem/em sizing, with responsive layouts, focus styles, accessible controls, and reduced-motion support.
+[`docs/openapi.yaml`](openapi.yaml) is the authoritative, repository-only API contract; the server does not expose it at runtime. `pnpm run generate:api` generates committed Go transport models and TypeScript types/Zod schemas. `pnpm run check-api` verifies generated output has not drifted from the contract. Handwritten handlers map canonical query results into generated response models, while browser query hooks validate responses with the generated schemas. Direct Go builds consume committed generated files and do not require Node or code-generation tools.
+
+All V1 API routes permit browser requests from every origin with `Access-Control-Allow-Origin: *`, `GET`, `POST`, and `OPTIONS`; successful preflights return HTTP 204 and credentials are not enabled. There is no authentication. This permits remote **Sync now**, but also lets any website that can reach the server read usage metadata and trigger local ingestion. This configuration is intended only for trusted networks until authentication and tighter origin/host controls exist.
+
+`packages/web` uses React, strict TypeScript, Vite, Radix Popover, TanStack Query/Table, and Recharts. A top-level reducer/provider owns dashboard filters, navigation, sorting, pagination, theme, visible columns, chart metric, and active source. Transient popover/search drafts stay local. The page origin is the initial local source. Users can add any reachable HTTP(S) base URL; bare `host:port` input normalizes to HTTP. A source is saved only after `/api/v1/instance` validates compatibility and required capabilities. Sources use automatic hostname labels, normalized-URL deduplication, and versioned `localStorage` persistence for both the list and active selection; unavailable storage falls back to memory.
+
+Every browser request, including **Sync now**, targets the active source. Query keys include source identity, superseded requests are cancelled, and data from one source is never displayed under another source's hostname. Sources are selected individually and their data is never merged. Switching preserves the current date range, filters, tab, sorting, and pagination, even when the new source returns no rows. Removing the active remote source selects the page-origin source. If a saved source later becomes unavailable or incompatible, it remains selected and the source selector stays usable while the UI shows a clear error and retry/recovery path rather than silently falling back.
+
+Remote reachability still depends on browser networking rules. An HTTPS page generally cannot query a plain-HTTP source because of mixed-content blocking, and invalid or untrusted TLS certificates can block HTTPS sources. CORS does not bypass those checks.
+
+Filters/tab/bucket/sort/page are URL-backed, including browser back/forward and explicitly cleared startup filters. Theme preference persists locally. CSS typography, color, spacing, and radius tokens use browser-scalable rem/em sizing, with responsive layouts, focus styles, accessible controls, and reduced-motion support.
 
 The React visual contract is [`DESIGN.md`](../DESIGN.md), implemented by `packages/web/src/tokens.css` and shared rules in `styles.css`. All Aggregation Tabs share semantic light/dark colors, a 4px-based spacing scale, three radius roles, aligned page/panel insets, and standard/compact controls with larger touch targets. Narrow layouts reflow all six navigation choices into a visible grid and retain accessible names for icon-only actions. Visual changes must follow that contract without changing canonical analytics semantics.
 
@@ -477,14 +494,15 @@ Can evolve with care:
 | `schema/schema.sql` | SQLite schema source of truth |
 | `packages/cli/internal/db/schema/schema.sql` | embedded checked schema copy |
 | `tools/build/src/check-schema.ts` | schema contract validator |
+| `docs/openapi.yaml` | authoritative, repository-only REST API contract |
 | `tools/build/` | private Node 26+ native TypeScript build/test/development tooling package |
 | `packages/cli/cmd/tokeninsights/main.go` | CLI executable entry point |
 | `packages/cli/internal/cli/commands.go` | command dispatch and thin orchestration |
 | `packages/cli/internal/cli/flags.go` | view flag parsing |
 | `packages/cli/internal/cli/serve.go` | web command flags and orchestration |
 | `packages/cli/internal/viewer/filters.go` | shared calendar and filter semantics |
-| `packages/cli/internal/server/` | HTTP lifecycle, sync coordination, analytics API, embedded assets |
-| `packages/web/` | typed React dashboard and design tokens |
+| `packages/cli/internal/server/` | HTTP lifecycle, sync coordination, generated API models, handlers, embedded assets |
+| `packages/web/` | typed multi-source React dashboard, generated API schemas, and design tokens |
 | `packages/cli/internal/cli/table.go` | interactive TUI model |
 | `packages/cli/internal/cli/statusline.go` | typed dashboard statusline state and width-aware rendering |
 | `packages/cli/internal/cli/table_summary.go` | pinned table summary state and width-aware rendering |

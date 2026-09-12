@@ -19,6 +19,8 @@ import (
 
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/db"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/pipeline"
+	serverapi "github.com/flexdinesh/tokeninsights/packages/cli/internal/server/api"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/version"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/viewer"
 )
 
@@ -120,34 +122,58 @@ func writeJSON(w http.ResponseWriter, status int, value interface{}) {
 	_ = json.NewEncoder(w).Encode(value)
 }
 
-func apiError(w http.ResponseWriter, status int, message string) {
-	writeJSON(w, status, struct {
-		Error string `json:"error"`
-	}{message})
+func apiError(w http.ResponseWriter, status int, code serverapi.ErrorCode, message string) {
+	writeJSON(w, status, serverapi.ErrorResponse{Code: code, Message: message})
+}
+
+func apiMethodNotAllowed(w http.ResponseWriter, allow string) {
+	w.Header().Set("Allow", allow)
+	apiError(w, http.StatusMethodNotAllowed, serverapi.ErrorCodeMethodNotAllowed, "Method not allowed.")
+}
+
+func apiNotFound(w http.ResponseWriter) {
+	apiError(w, http.StatusNotFound, serverapi.ErrorCodeNotFound, "Unknown API route.")
 }
 
 func (a *app) handler() http.Handler {
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /api/bootstrap", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/api/v1/instance", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			apiMethodNotAllowed(w, http.MethodGet)
+			return
+		}
 		hostname, err := os.Hostname()
 		if err != nil || hostname == "" {
 			hostname = "unknown"
 		}
-		writeJSON(w, http.StatusOK, struct {
-			Defaults viewer.Selection `json:"defaults"`
-			Hostname string           `json:"hostname"`
-			Timezone string           `json:"timezone"`
-		}{a.options.Defaults, hostname, time.Now().Format("MST -07:00")})
+		writeJSON(w, http.StatusOK, serverapi.InstanceResponse{
+			ApiVersion:    serverapi.V1,
+			ServerVersion: version.Version,
+			Hostname:      hostname,
+			Timezone:      time.Now().Format("MST -07:00"),
+			Capabilities:  []serverapi.Capability{serverapi.Usage, serverapi.Facets, serverapi.Sync},
+			Defaults:      apiSelection(a.options.Defaults),
+		})
 	})
-	mux.HandleFunc("GET /api/status", func(w http.ResponseWriter, r *http.Request) { writeJSON(w, http.StatusOK, a.status()) })
-	mux.HandleFunc("POST /api/sync", func(w http.ResponseWriter, r *http.Request) {
-		a.startSync()
-		writeJSON(w, http.StatusAccepted, a.status())
+	mux.HandleFunc("/api/v1/sync", func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet:
+			writeJSON(w, http.StatusOK, apiSyncState(a.status()))
+		case http.MethodPost:
+			a.startSync()
+			writeJSON(w, http.StatusAccepted, apiSyncState(a.status()))
+		default:
+			apiMethodNotAllowed(w, "GET, POST")
+		}
 	})
-	mux.HandleFunc("GET /api/dashboard", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/api/v1/usage", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			apiMethodNotAllowed(w, http.MethodGet)
+			return
+		}
 		q, err := parseQuery(r.URL.Query())
 		if err != nil {
-			apiError(w, http.StatusBadRequest, err.Error())
+			apiError(w, http.StatusBadRequest, serverapi.ErrorCodeInvalidRequest, err.Error())
 			return
 		}
 		ctx, cancel := context.WithTimeout(r.Context(), queryTimeout)
@@ -157,12 +183,16 @@ func (a *app) handler() http.Handler {
 			a.queryError(w, err)
 			return
 		}
-		writeJSON(w, http.StatusOK, data)
+		writeJSON(w, http.StatusOK, apiDashboard(data))
 	})
-	mux.HandleFunc("GET /api/filters", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/api/v1/usage/facets", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			apiMethodNotAllowed(w, http.MethodGet)
+			return
+		}
 		q, err := parseQuery(r.URL.Query())
 		if err != nil {
-			apiError(w, http.StatusBadRequest, err.Error())
+			apiError(w, http.StatusBadRequest, serverapi.ErrorCodeInvalidRequest, err.Error())
 			return
 		}
 		ctx, cancel := context.WithTimeout(r.Context(), queryTimeout)
@@ -180,23 +210,24 @@ func (a *app) handler() http.Handler {
 		}
 		defer func() { _ = tx.Rollback() }()
 		f := q.Selection.Filter(time.Now())
-		values := map[string][]string{}
-		values["providers"], err = db.AvailableProviders(ctx, tx, f)
+		values := serverapi.UsageFacetsResponse{Providers: []string{}, Models: []string{}, Harnesses: []serverapi.Harness{}, Sessions: []string{}}
+		values.Providers, err = db.AvailableProviders(ctx, tx, f)
 		if err != nil {
 			a.queryError(w, err)
 			return
 		}
-		values["models"], err = db.AvailableModels(ctx, tx, f)
+		values.Models, err = db.AvailableModels(ctx, tx, f)
 		if err != nil {
 			a.queryError(w, err)
 			return
 		}
-		values["harnesses"], err = db.AvailableHarnesses(ctx, tx, f)
+		harnesses, err := db.AvailableHarnesses(ctx, tx, f)
 		if err != nil {
 			a.queryError(w, err)
 			return
 		}
-		values["sessions"], err = db.AvailableSessions(ctx, tx, f, r.URL.Query().Get("search"), sessionOptionLimit)
+		values.Harnesses = apiHarnesses(harnesses)
+		values.Sessions, err = db.AvailableSessions(ctx, tx, f, r.URL.Query().Get("search"), sessionOptionLimit)
 		if err != nil {
 			a.queryError(w, err)
 			return
@@ -205,14 +236,13 @@ func (a *app) handler() http.Handler {
 			a.queryError(w, err)
 			return
 		}
-		for k, v := range values {
-			if v == nil {
-				values[k] = []string{}
-			}
-		}
+		values.Providers = nonNilStrings(values.Providers)
+		values.Models = nonNilStrings(values.Models)
+		values.Sessions = nonNilStrings(values.Sessions)
 		writeJSON(w, http.StatusOK, values)
 	})
-	mux.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) { apiError(w, http.StatusNotFound, "Unknown API route") })
+	mux.HandleFunc("/api", func(w http.ResponseWriter, r *http.Request) { apiNotFound(w) })
+	mux.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) { apiNotFound(w) })
 	static, err := fs.Sub(assets, "static")
 	if err != nil {
 		panic(err)
@@ -226,17 +256,16 @@ func (a *app) handler() http.Handler {
 		}
 		files.ServeHTTP(w, r)
 	})
-	// Same-origin browser requests work on the selected LAN address.
-	return http.NewCrossOriginProtection().Handler(mux)
+	return allowAPIOrigins(mux)
 }
 
 func (a *app) queryError(w http.ResponseWriter, err error) {
 	_, _ = fmt.Fprintf(a.log, "dashboard query failed: %v\n", err)
 	if errors.Is(err, db.ErrRebuildPending) || errors.Is(err, db.ErrRecoveryRequired) {
-		apiError(w, http.StatusServiceUnavailable, "Usage recovery is incomplete. Sync to rebuild local usage data.")
+		apiError(w, http.StatusServiceUnavailable, serverapi.ErrorCodeUnavailable, "Usage recovery is incomplete. Sync to rebuild local usage data.")
 		return
 	}
-	apiError(w, http.StatusServiceUnavailable, "Cannot read dashboard data. Check terminal details, then sync or reload.")
+	apiError(w, http.StatusServiceUnavailable, serverapi.ErrorCodeUnavailable, "Cannot read dashboard data. Check terminal details, then sync or reload.")
 }
 
 func Run(parent context.Context, options Options, stdout, stderr io.Writer) error {

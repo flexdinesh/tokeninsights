@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useMemo, useReducer, useRef } from 'react'
 import type { Dispatch, ReactNode } from 'react'
 import { z } from 'zod'
-import { bucketSchema, periodSchema, sortSchema, tabSchema } from './contracts'
+import { bucketSchema, periodSchema, selectionSchema, sortSchema, tabSchema } from './contracts'
 import type { Selection, Sort, Tab } from './contracts'
 
 export interface QueryState extends Selection {
@@ -150,7 +150,7 @@ export function readQuery(p: URLSearchParams, defaults: Selection): QueryState {
     to: date('to'),
     providers: p.getAll('provider'),
     models: p.getAll('model'),
-    harnesses: p.getAll('harness'),
+    harnesses: selectionSchema.shape.harnesses.catch([]).parse(p.getAll('harness')),
     sessions: p.getAll('session'),
     tab,
     sort,

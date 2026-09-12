@@ -1,4 +1,8 @@
 import { expect, test } from '@playwright/test'
+import { InstanceResponse } from '../src/generated/api'
+
+const localSource = 'http://127.0.0.1:18765'
+const remoteSource = 'http://127.0.0.1:18766'
 
 test('startup sync, six views, filtering, history, pagination, and refresh', async ({ page }) => {
   const errors: string[] = []
@@ -99,6 +103,66 @@ test('themes, keyboard filters, mobile layout, and scalable typography', async (
   await page.screenshot({ path: testInfo.outputPath('desktop-light.png'), fullPage: true })
 })
 
+test('remote source switching, persistence, sync, and later failure', async ({ page }) => {
+  const instanceResponse = await page.request.get(`${remoteSource}/api/v1/instance`)
+  expect(instanceResponse.ok()).toBe(true)
+  const remoteInstance = InstanceResponse.parse(await instanceResponse.json())
+
+  await page.goto('/')
+  await expect(page.getByLabel('Total tokens: 258,000', { exact: true })).toBeVisible()
+  await page.getByRole('button', { name: 'Model', exact: true }).click()
+  await page.getByRole('checkbox', { name: 'model-a', exact: true }).check()
+  await page.getByRole('button', { name: 'Done', exact: true }).click()
+  await expect(page.getByLabel('Total tokens: 129,000', { exact: true })).toBeVisible()
+
+  await page.getByRole('button', { name: 'Choose data source' }).click()
+  await page.getByLabel('Add source').fill('127.0.0.1:18766')
+  await page.getByRole('button', { name: 'Add', exact: true }).click()
+  await expect(page.getByRole('button', { name: 'Choose data source' })).toContainText(
+    remoteInstance.hostname,
+  )
+  await expect(page.getByRole('button', { name: 'Choose data source' })).toContainText(remoteSource)
+  await expect(page).toHaveURL(/model=model-a/)
+  await expect(page.getByLabel('Total tokens: 777', { exact: true })).toBeVisible()
+
+  await page.reload()
+  await expect(page.getByRole('button', { name: 'Choose data source' })).toContainText(remoteSource)
+  await expect(page).toHaveURL(/model=model-a/)
+  await expect(page.getByLabel('Total tokens: 777', { exact: true })).toBeVisible()
+
+  const remoteSync = page.waitForRequest(
+    (request) => request.url() === `${remoteSource}/api/v1/sync` && request.method() === 'POST',
+  )
+  await page.getByRole('button', { name: 'Sync now', exact: true }).click()
+  await remoteSync
+  await expect(page.getByRole('button', { name: 'Sync now', exact: true })).toBeEnabled()
+  await expect(page.getByLabel('Total tokens: 777', { exact: true })).toBeVisible()
+
+  await page.getByRole('button', { name: 'Choose data source' }).click()
+  await page
+    .getByRole('listitem')
+    .filter({ hasText: localSource })
+    .getByRole('button', { name: /Select .* source/ })
+    .click()
+  await expect(page).toHaveURL(/model=model-a/)
+  await expect(page.getByLabel('Total tokens: 129,000', { exact: true })).toBeVisible()
+
+  await page.getByRole('button', { name: 'Choose data source' }).click()
+  await page
+    .getByRole('listitem')
+    .filter({ hasText: remoteSource })
+    .getByRole('button', { name: /Select .* source/ })
+    .click()
+  await expect(page.getByLabel('Total tokens: 777', { exact: true })).toBeVisible()
+
+  await page.route(`${remoteSource}/api/v1/**`, (route) => route.abort('connectionfailed'))
+  await page.reload()
+  await expect(page.getByRole('button', { name: 'Choose data source' })).toContainText(remoteSource)
+  await expect(page.getByRole('heading', { name: /Couldn.t connect to/ })).toBeVisible()
+  await page.getByRole('button', { name: 'Choose data source' }).click()
+  await expect(page.getByRole('listitem').filter({ hasText: remoteSource })).toBeVisible()
+})
+
 test('custom dates, session search, and explicit inspection after sync failure', async ({
   page,
 }) => {
@@ -117,7 +181,7 @@ test('custom dates, session search, and explicit inspection after sync failure',
   await page.getByRole('button', { name: 'Done', exact: true }).click()
   await expect(page.getByLabel('Total tokens: 4,300', { exact: true })).toBeVisible()
   await expect(page.locator('.session-coverage')).toHaveText('Sessions 1 shown / 80 synced')
-  await page.route('**/api/status', (route) =>
+  await page.route('**/api/v1/sync', (route) =>
     route.fulfill({
       json: {
         running: false,

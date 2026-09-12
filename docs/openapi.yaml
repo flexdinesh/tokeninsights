@@ -1,0 +1,543 @@
+openapi: 3.0.3
+info:
+  title: TokenInsights REST API
+  version: 1.0.0
+  description: |
+    Read canonical TokenInsights usage and coordinate ingestion on one server.
+    The API exposes metadata only; it never returns prompt or assistant content.
+tags:
+  - name: Instance
+  - name: Sync
+  - name: Usage
+paths:
+  /api/v1/instance:
+    get:
+      operationId: getInstance
+      summary: Describe this TokenInsights server
+      tags: [Instance]
+      responses:
+        '200':
+          description: Server identity, capabilities, and viewer defaults
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InstanceResponse'
+              example:
+                apiVersion: v1
+                serverVersion: 1.0.0
+                hostname: workstation
+                timezone: AEST +10:00
+                capabilities: [usage, facets, sync]
+                defaults:
+                  period: month
+                  bucket: day
+                  from: ''
+                  to: ''
+                  providers: []
+                  models: []
+                  harnesses: []
+                  sessions: []
+        default:
+          $ref: '#/components/responses/Error'
+  /api/v1/sync:
+    get:
+      operationId: getSync
+      summary: Read shared sync state
+      tags: [Sync]
+      responses:
+        '200':
+          description: Current or most recently completed sync state
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SyncResponse'
+        default:
+          $ref: '#/components/responses/Error'
+    post:
+      operationId: startSync
+      summary: Start or join an all-harness sync
+      description: |
+        Starts an all-harness ingest and normalization job unless one is already
+        running. Concurrent callers observe the same process-wide job.
+      tags: [Sync]
+      responses:
+        '202':
+          description: Sync accepted or existing sync joined
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SyncResponse'
+        default:
+          $ref: '#/components/responses/Error'
+  /api/v1/usage:
+    get:
+      operationId: getUsage
+      summary: Query canonical token usage
+      description: |
+        Returns a sorted, paginated table, complete filtered summary, and chart
+        from one validated read transaction. Date bounds use server-local dates.
+      tags: [Usage]
+      parameters:
+        - $ref: '#/components/parameters/PeriodFilter'
+        - $ref: '#/components/parameters/BucketFilter'
+        - $ref: '#/components/parameters/FromFilter'
+        - $ref: '#/components/parameters/ToFilter'
+        - $ref: '#/components/parameters/ProviderFilter'
+        - $ref: '#/components/parameters/ModelFilter'
+        - $ref: '#/components/parameters/HarnessFilter'
+        - $ref: '#/components/parameters/SessionFilter'
+        - name: tab
+          in: query
+          description: Aggregation shown in table and chart rows.
+          schema:
+            allOf:
+              - $ref: '#/components/schemas/UsageTab'
+            default: tokens
+        - name: sort
+          in: query
+          description: Sort field. Context-only fields are valid only for the context tab.
+          schema:
+            $ref: '#/components/schemas/SortField'
+        - name: direction
+          in: query
+          schema:
+            $ref: '#/components/schemas/SortDirection'
+        - name: page
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: pageSize
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 50
+      responses:
+        '200':
+          description: Canonical usage result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UsageResponse'
+        '400':
+          $ref: '#/components/responses/InvalidRequest'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        default:
+          $ref: '#/components/responses/Error'
+  /api/v1/usage/facets:
+    get:
+      operationId: getUsageFacets
+      summary: Query available usage filters
+      description: |
+        Each facet applies the other active filters while omitting its own.
+        Session search is a case-insensitive literal substring search capped at
+        100 results.
+      tags: [Usage]
+      parameters:
+        - $ref: '#/components/parameters/PeriodFilter'
+        - $ref: '#/components/parameters/BucketFilter'
+        - $ref: '#/components/parameters/FromFilter'
+        - $ref: '#/components/parameters/ToFilter'
+        - $ref: '#/components/parameters/ProviderFilter'
+        - $ref: '#/components/parameters/ModelFilter'
+        - $ref: '#/components/parameters/HarnessFilter'
+        - $ref: '#/components/parameters/SessionFilter'
+        - name: search
+          in: query
+          description: Literal substring used to filter session IDs.
+          schema:
+            type: string
+            default: ''
+      responses:
+        '200':
+          description: Available dimension values
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UsageFacetsResponse'
+              example:
+                providers: [openai]
+                models: [gpt-5]
+                harnesses: [codex]
+                sessions: [session-123]
+        '400':
+          $ref: '#/components/responses/InvalidRequest'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        default:
+          $ref: '#/components/responses/Error'
+components:
+  parameters:
+    PeriodFilter:
+      name: period
+      in: query
+      schema:
+        allOf:
+          - $ref: '#/components/schemas/Period'
+        default: month
+    BucketFilter:
+      name: bucket
+      in: query
+      schema:
+        allOf:
+          - $ref: '#/components/schemas/Bucket'
+        default: day
+    FromFilter:
+      name: from
+      in: query
+      description: Inclusive lower local-date bound; replaces period when supplied.
+      schema:
+        type: string
+        format: date
+        x-go-type: string
+    ToFilter:
+      name: to
+      in: query
+      description: Inclusive upper local-date bound; replaces period when supplied.
+      schema:
+        type: string
+        format: date
+        x-go-type: string
+    ProviderFilter:
+      name: provider
+      in: query
+      description: Provider filter. Repeat the parameter to select multiple values.
+      style: form
+      explode: true
+      schema:
+        type: array
+        items:
+          type: string
+    ModelFilter:
+      name: model
+      in: query
+      description: Model filter. Repeat the parameter to select multiple values.
+      style: form
+      explode: true
+      schema:
+        type: array
+        items:
+          type: string
+    HarnessFilter:
+      name: harness
+      in: query
+      description: Harness filter. Repeat the parameter to select multiple values.
+      style: form
+      explode: true
+      schema:
+        type: array
+        items:
+          $ref: '#/components/schemas/Harness'
+    SessionFilter:
+      name: session
+      in: query
+      description: Session-ID filter. Repeat the parameter to select multiple values.
+      style: form
+      explode: true
+      schema:
+        type: array
+        items:
+          type: string
+  responses:
+    InvalidRequest:
+      description: Invalid query parameters
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            code: invalid_request
+            message: Invalid period.
+    Unavailable:
+      description: Canonical usage cannot currently be read
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            code: unavailable
+            message: Usage recovery is incomplete. Sync to rebuild local usage data.
+    Error:
+      description: Request failed
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+  schemas:
+    ApiVersion:
+      type: string
+      enum: [v1]
+    Capability:
+      type: string
+      enum: [usage, facets, sync]
+    Period:
+      type: string
+      enum: [today, yesterday, week, month, year, all]
+    Bucket:
+      type: string
+      enum: [day, week, month, year]
+    Harness:
+      type: string
+      enum: [opencode, pi, codex, claude-code]
+    UsageTab:
+      type: string
+      enum: [tokens, models, providers, harnesses, sessions, context]
+    SortField:
+      type: string
+      enum:
+        - name
+        - date
+        - total
+        - input
+        - output
+        - reasoning
+        - cacheRead
+        - cacheWrite
+        - sessions
+        - context
+        - averageContext
+        - medianContext
+        - maxContext
+        - harness
+        - provider
+        - model
+    SortDirection:
+      type: string
+      enum: [asc, desc]
+    SyncPhase:
+      type: string
+      enum:
+        - ready
+        - pending
+        - resetting
+        - rebuilding
+        - discovering
+        - syncing
+        - skipped
+        - synced
+        - failed
+        - rebuild_failed
+        - normalizing
+        - loading dashboard
+    HarnessSyncStatus:
+      type: string
+      enum: [pending, discovering, syncing, skipped, synced, failed]
+    ErrorCode:
+      type: string
+      enum: [invalid_request, not_found, method_not_allowed, unavailable, internal_error]
+    Selection:
+      type: object
+      additionalProperties: false
+      required: [period, bucket, from, to, providers, models, harnesses, sessions]
+      properties:
+        period:
+          $ref: '#/components/schemas/Period'
+        bucket:
+          $ref: '#/components/schemas/Bucket'
+        from:
+          description: Inclusive lower local-date bound, or empty when unset.
+          type: string
+        to:
+          description: Inclusive upper local-date bound, or empty when unset.
+          type: string
+        providers:
+          type: array
+          items:
+            type: string
+        models:
+          type: array
+          items:
+            type: string
+        harnesses:
+          type: array
+          items:
+            $ref: '#/components/schemas/Harness'
+        sessions:
+          type: array
+          items:
+            type: string
+    InstanceResponse:
+      type: object
+      additionalProperties: false
+      required: [apiVersion, serverVersion, hostname, timezone, capabilities, defaults]
+      properties:
+        apiVersion:
+          $ref: '#/components/schemas/ApiVersion'
+        serverVersion:
+          type: string
+          minLength: 1
+        hostname:
+          type: string
+          minLength: 1
+        timezone:
+          type: string
+          minLength: 1
+        capabilities:
+          type: array
+          uniqueItems: true
+          items:
+            $ref: '#/components/schemas/Capability'
+        defaults:
+          $ref: '#/components/schemas/Selection'
+    SyncResponse:
+      type: object
+      additionalProperties: false
+      required: [running, phase, harnesses, error, revision]
+      properties:
+        running:
+          type: boolean
+        phase:
+          $ref: '#/components/schemas/SyncPhase'
+        harnesses:
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/HarnessSyncStatus'
+        error:
+          type: string
+        revision:
+          $ref: '#/components/schemas/Count'
+    Count:
+      type: integer
+      format: int64
+      minimum: 0
+      maximum: 9007199254740991
+    UsageRow:
+      type: object
+      additionalProperties: false
+      required:
+        - key
+        - name
+        - harness
+        - provider
+        - model
+        - date
+        - sessions
+        - input
+        - output
+        - reasoning
+        - cacheRead
+        - cacheWrite
+        - total
+        - context
+        - averageContext
+        - medianContext
+        - maxContext
+      properties:
+        key:
+          type: string
+        name:
+          type: string
+        harness:
+          type: string
+        provider:
+          type: string
+        model:
+          type: string
+        date:
+          $ref: '#/components/schemas/Count'
+        sessions:
+          $ref: '#/components/schemas/Count'
+        input:
+          $ref: '#/components/schemas/Count'
+        output:
+          $ref: '#/components/schemas/Count'
+        reasoning:
+          $ref: '#/components/schemas/Count'
+        cacheRead:
+          $ref: '#/components/schemas/Count'
+        cacheWrite:
+          $ref: '#/components/schemas/Count'
+        total:
+          $ref: '#/components/schemas/Count'
+        context:
+          $ref: '#/components/schemas/Count'
+        averageContext:
+          $ref: '#/components/schemas/Count'
+        medianContext:
+          $ref: '#/components/schemas/Count'
+        maxContext:
+          $ref: '#/components/schemas/Count'
+    UsageSummary:
+      type: object
+      additionalProperties: false
+      required: [total, input, output, reasoning, cacheRead, cacheWrite, sessions, syncedSessions]
+      properties:
+        total:
+          $ref: '#/components/schemas/Count'
+        input:
+          $ref: '#/components/schemas/Count'
+        output:
+          $ref: '#/components/schemas/Count'
+        reasoning:
+          $ref: '#/components/schemas/Count'
+        cacheRead:
+          $ref: '#/components/schemas/Count'
+        cacheWrite:
+          $ref: '#/components/schemas/Count'
+        sessions:
+          $ref: '#/components/schemas/Count'
+        syncedSessions:
+          $ref: '#/components/schemas/Count'
+    UsageResponse:
+      type: object
+      additionalProperties: false
+      required: [rows, chart, rowCount, page, pageSize, summary, lastSynced, range]
+      properties:
+        rows:
+          type: array
+          items:
+            $ref: '#/components/schemas/UsageRow'
+        chart:
+          type: array
+          items:
+            $ref: '#/components/schemas/UsageRow'
+        rowCount:
+          $ref: '#/components/schemas/Count'
+        page:
+          type: integer
+          minimum: 1
+        pageSize:
+          type: integer
+          minimum: 1
+          maximum: 200
+        summary:
+          $ref: '#/components/schemas/UsageSummary'
+        lastSynced:
+          $ref: '#/components/schemas/Count'
+        range:
+          type: string
+    UsageFacetsResponse:
+      type: object
+      additionalProperties: false
+      required: [providers, models, harnesses, sessions]
+      properties:
+        providers:
+          type: array
+          items:
+            type: string
+        models:
+          type: array
+          items:
+            type: string
+        harnesses:
+          type: array
+          items:
+            $ref: '#/components/schemas/Harness'
+        sessions:
+          type: array
+          items:
+            type: string
+    ErrorResponse:
+      type: object
+      additionalProperties: false
+      required: [code, message]
+      properties:
+        code:
+          $ref: '#/components/schemas/ErrorCode'
+        message:
+          type: string
+          minLength: 1
