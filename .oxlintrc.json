@@ -1,0 +1,27 @@
+{
+  "plugins": [
+    "eslint",
+    "typescript",
+    "unicorn",
+    "oxc",
+    "react",
+    "jsx-a11y",
+    "vitest",
+    "node",
+    "import"
+  ],
+  "categories": {
+    "correctness": "error",
+    "suspicious": "error",
+    "perf": "error"
+  },
+  "env": {
+    "browser": true,
+    "node": true
+  },
+  "options": {
+    "typeAware": true,
+    "maxWarnings": 0
+  },
+  "ignorePatterns": ["packages/cli/internal/server/static/**"]
+}

@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "build": "go build -o bin/tokeninsights ./cmd/tokeninsights",
+    "lint": "go tool -modfile=golangci-lint.mod golangci-lint run ./...",
     "test": "go test ./..."
   }
 }

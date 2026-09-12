@@ -2,7 +2,14 @@ const compact = new Intl.NumberFormat('en', { notation: 'compact', maximumFracti
 const exact = new Intl.NumberFormat('en')
 export const formatCount = (n: number) => compact.format(n)
 export const exactCount = (n: number) => exact.format(n)
-export const labels = { tokens: 'Tokens', models: 'Models', providers: 'Providers', harnesses: 'Harnesses', sessions: 'Sessions', context: 'Context' }
+export const labels = {
+  tokens: 'Tokens',
+  models: 'Models',
+  providers: 'Providers',
+  harnesses: 'Harnesses',
+  sessions: 'Sessions',
+  context: 'Context',
+}
 export function relativeTime(timestamp: number): string {
   if (!timestamp) return 'Never synced'
   const minutes = Math.max(0, Math.floor((Date.now() - timestamp) / 60000))

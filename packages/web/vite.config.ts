@@ -8,5 +8,9 @@ export default defineConfig({
     emptyOutDir: true,
   },
   server: { proxy: { '/api': 'http://127.0.0.1:8765' } },
-  test: { environment: 'jsdom', setupFiles: ['./src/test-setup.ts'], include: ['src/**/*.test.{ts,tsx}'] },
+  test: {
+    environment: 'jsdom',
+    setupFiles: ['./src/test-setup.ts'],
+    include: ['src/**/*.test.{ts,tsx}'],
+  },
 })

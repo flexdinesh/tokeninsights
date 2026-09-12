@@ -429,7 +429,9 @@ Dashboard/filter query parameters are `period`, `bucket`, `from`, `to`, repeated
 
 The React visual contract is [`DESIGN.md`](../DESIGN.md), implemented by `packages/web/src/tokens.css` and shared rules in `styles.css`. All Aggregation Tabs share semantic light/dark colors, a 4px-based spacing scale, three radius roles, aligned page/panel insets, and standard/compact controls with larger touch targets. Narrow layouts reflow all six navigation choices into a visible grid and retain accessible names for icon-only actions. Visual changes must follow that contract without changing canonical analytics semantics.
 
-Vite output is checked into `packages/cli/internal/server/static` and embedded using `go:embed`, preserving direct Go installs and offline runtime use. The workspace builds React before Go; CI rebuilds and checks generated assets for drift. Node, npm, pnpm, `node_modules`, and repository JavaScript tooling are build-, test-, and development-only. Production is one native Go binary: Go serves embedded browser JavaScript as bytes, the browser executes it, and Go runtime code never invokes a host JavaScript runtime. Web analytics use the existing canonical contract; schema V8 lifecycle state is local-only and not an analytics dimension.
+The pnpm monorepo contains Go production packages and TypeScript development/browser packages. Browser code uses Vite and React. Node scripts use native, erasable TypeScript supported by Node 26+.
+
+Vite output is checked into `packages/cli/internal/server/static` and embedded using `go:embed`, preserving direct Go installs and offline runtime use. The workspace builds React before Go; CI rebuilds and checks generated assets for drift. Node, npm, pnpm, `node_modules`, and repository TypeScript tooling are build-, test-, and development-only. Production is one native Go binary: Go serves embedded browser JavaScript as bytes, the browser executes it, and Go runtime code never invokes a host JavaScript runtime. Web analytics use the existing canonical contract; schema V8 lifecycle state is local-only and not an analytics dimension.
 
 ## DB Lifecycle
 
@@ -475,7 +477,7 @@ Can evolve with care:
 | `schema/schema.sql` | SQLite schema source of truth |
 | `packages/cli/internal/db/schema/schema.sql` | embedded checked schema copy |
 | `tools/build/src/check-schema.ts` | schema contract validator |
-| `tools/build/` | private build/test/development JavaScript tooling package |
+| `tools/build/` | private Node 26+ native TypeScript build/test/development tooling package |
 | `packages/cli/cmd/tokeninsights/main.go` | CLI executable entry point |
 | `packages/cli/internal/cli/commands.go` | command dispatch and thin orchestration |
 | `packages/cli/internal/cli/flags.go` | view flag parsing |
@@ -510,10 +512,14 @@ Can evolve with care:
 Run before schema or pipeline changes are considered done:
 
 ```sh
+pnpm run format:check
+pnpm run lint
 pnpm run check-schema
 pnpm run test
 pnpm run build
 ```
+
+Use `pnpm run format` to apply `gofmt` and Oxfmt. Verification uses `gofmt` checks plus the pinned `golangci-lint` for Go, and Oxfmt plus Oxlint for TypeScript, JavaScript, and React.
 
 Use focused Go tests during iteration:
 

@@ -10,7 +10,17 @@ it('keeps selected values available when other facets remove them, and supports 
   const user = userEvent.setup()
   function Example() {
     const [selected, setSelected] = useState(['unavailable-model'])
-    return <><MultiSelect label="Model" values={['model-a', 'model-b']} selected={selected} onChange={setSelected} /><output>{selected.join(',')}</output></>
+    return (
+      <>
+        <MultiSelect
+          label="Model"
+          values={['model-a', 'model-b']}
+          selected={selected}
+          onChange={setSelected}
+        />
+        <output>{selected.join(',')}</output>
+      </>
+    )
   }
   render(<Example />)
   await user.click(screen.getByRole('button', { name: /Model/ }))

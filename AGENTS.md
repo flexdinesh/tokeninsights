@@ -9,6 +9,7 @@ Full architecture, schema contract, pipelines, and invariants are in [`docs/desi
 ## Agent Rules
 
 - **Minimal, surgical changes**.
+- **pnpm monorepo**. Go packages contain production code. JavaScript ecosystem packages use TypeScript: browser code uses Vite and React; Node scripts use native, erasable TypeScript supported by Node 26+.
 - **Never use `any`** or type assertions (`!`, `as Type`) in TypeScript.
 - **CLI, schema, docs, and tests move together**. When changing storage, schema, events, SQL, aggregation, metric names, table columns, token semantics, or grouping, update the affected CLI code, tests, README, and `docs/design.md` in the same task.
 - **Default DB path** is `~/.local/share/tokeninsights/tokeninsights.sqlite`; overrides use `--db-path` or `TOKENINSIGHTS_DB_PATH`. `TOKENINSIGHTS_RETENTION_DAYS` is not sync-first V1 behavior.
@@ -20,6 +21,7 @@ Full architecture, schema contract, pipelines, and invariants are in [`docs/desi
 - **Raw storage is metadata-only**. Do not store prompt text, assistant text, tool arguments, tool output, request headers, secrets, raw provider payloads, or full source paths.
 - **TPS is first-class**. Keep the TPS tab and `tps avg`, `tps mean`, and `tps median` viewer concepts even when timing data is sparse or unavailable.
 - **Production is Go-only**. Node, npm, pnpm, `node_modules`, and repository JavaScript tooling are build-, test-, and development-only. Direct Go builds and installs from committed source must keep working. The production `tokeninsights` binary must run without a host JavaScript runtime: browser JavaScript is prebuilt, committed, embedded with `go:embed`, served as bytes by Go, and executed only in the browser. Go runtime code must never invoke Node, npm, or pnpm.
+- **Format and lint before verification**. Use `gofmt` and the repository-pinned `golangci-lint` for Go. Use Oxfmt and Oxlint for TypeScript, JavaScript, and React. Run them through the root pnpm scripts.
 - **Write for maintainability**. Do not use magic numbers in calculations for quick fixes that violate code discipline.
 - **Propose refactoring**. When you see an opportunity to refactor to strongly adhere to guidelines and quality, suggest it to the user.
 
@@ -34,8 +36,9 @@ Full architecture, schema contract, pipelines, and invariants are in [`docs/desi
 ## Commands
 
 ```sh
-# Format changed Go files before testing.
-gofmt -w <changed-go-files>
+pnpm run format
+pnpm run format:check
+pnpm run lint
 
 pnpm run check-schema
 pnpm run test
@@ -44,7 +47,7 @@ pnpm run build
 
 ## Verification
 
-- After changing Go code, run `gofmt` on the changed Go files, then run the relevant focused tests and `pnpm run test`.
+- After changing code, run `pnpm run format`, `pnpm run lint`, the relevant focused tests, and `pnpm run test`.
 - Run `pnpm run build` after tests pass.
 - After build-tooling or web-asset changes, build directly from `packages/cli` and verify the resulting binary runs with Node, npm, and pnpm absent from `PATH`.
 - For manual CLI or TUI verification, print the following project-local command on screen and ask the user to run it and verify the result:

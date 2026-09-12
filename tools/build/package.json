@@ -3,15 +3,20 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "engines": {
-    "node": ">=24"
-  },
   "scripts": {
-    "clean": "node src/clean.mjs",
+    "clean": "node src/clean.ts",
     "check:schema": "node src/check-schema.ts",
-    "check:web": "node src/check-web.mjs",
-    "setup-dev-data": "node src/setup-dev-data.mjs",
-    "generate:homebrew": "node src/generate-homebrew-formula.mjs",
-    "test": "node --test test/*.test.mjs"
+    "check:web": "node src/check-web.ts",
+    "setup-dev-data": "node src/setup-dev-data.ts",
+    "generate:homebrew": "node src/generate-homebrew-formula.ts",
+    "test": "node --test test/*.test.ts",
+    "typecheck": "tsc --project tsconfig.json"
+  },
+  "devDependencies": {
+    "@types/node": "26.4.1",
+    "typescript": "^5.9.3"
+  },
+  "engines": {
+    "node": ">=26"
   }
 }

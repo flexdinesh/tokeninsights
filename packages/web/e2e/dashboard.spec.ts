@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test'
 
 test('startup sync, six views, filtering, history, pagination, and refresh', async ({ page }) => {
   const errors: string[] = []
-  page.on('pageerror', error => errors.push(error.message))
+  page.on('pageerror', (error) => errors.push(error.message))
   await page.goto('/')
   await expect(page.getByRole('region', { name: 'Filtered usage summary' })).toBeVisible()
   await expect(page.getByLabel('Total tokens: 258,000', { exact: true })).toBeVisible()
@@ -10,12 +10,17 @@ test('startup sync, six views, filtering, history, pagination, and refresh', asy
   await expect(page.locator('.recharts-surface')).toBeVisible()
   await expect(page.getByRole('button', { name: 'This week', exact: true })).toBeVisible()
   for (const tab of ['Models', 'Providers', 'Harnesses', 'Sessions', 'Context', 'Tokens']) {
-    await page.getByRole('navigation', { name: 'Analytics views' }).getByRole('button', { name: tab, exact: true }).click()
+    await page
+      .getByRole('navigation', { name: 'Analytics views' })
+      .getByRole('button', { name: tab, exact: true })
+      .click()
     await expect(page.getByRole('region', { name: `${tab} details`, exact: true })).toBeVisible()
     await expect(page.getByLabel('Total tokens: 258,000', { exact: true })).toBeVisible()
     await expect(page.locator('.session-coverage')).toHaveText('Sessions 60 shown / 80 synced')
     await expect(page.getByLabel('Sessions shown: 60', { exact: true })).toBeVisible()
-    await expect(page.locator('.sessions-card')).toContainText('80 synced across all dates & harnesses')
+    await expect(page.locator('.sessions-card')).toContainText(
+      '80 synced across all dates & harnesses',
+    )
   }
   await page.getByRole('button', { name: 'Model', exact: true }).click()
   await page.getByRole('checkbox', { name: 'model-a', exact: true }).check()
@@ -31,7 +36,10 @@ test('startup sync, six views, filtering, history, pagination, and refresh', asy
   await expect(page.getByLabel('Total tokens: 129,000', { exact: true })).toBeVisible()
   await page.goForward()
   await expect(page.getByLabel('Total tokens: 258,000', { exact: true })).toBeVisible()
-  await page.getByRole('navigation', { name: 'Analytics views' }).getByRole('button', { name: 'Sessions', exact: true }).click()
+  await page
+    .getByRole('navigation', { name: 'Analytics views' })
+    .getByRole('button', { name: 'Sessions', exact: true })
+    .click()
   await expect(page.locator('tbody tr')).toHaveCount(50)
   await page.getByRole('button', { name: 'Next page' }).click()
   await expect(page.locator('tbody tr')).toHaveCount(10)
@@ -49,7 +57,9 @@ test('startup sync, six views, filtering, history, pagination, and refresh', asy
   await expect(page.getByLabel('Sessions shown: 80', { exact: true })).toBeVisible()
 })
 
-test('themes, keyboard filters, mobile layout, and scalable typography', async ({ page }, testInfo) => {
+test('themes, keyboard filters, mobile layout, and scalable typography', async ({
+  page,
+}, testInfo) => {
   await page.goto('/')
   await expect(page.getByRole('region', { name: 'Filtered usage summary' })).toBeVisible()
   await expect(page.getByRole('region', { name: 'Usage over time', exact: true })).toBeVisible()
@@ -67,13 +77,21 @@ test('themes, keyboard filters, mobile layout, and scalable typography', async (
   await expect(page.getByRole('button', { name: 'Harness', exact: true })).toBeFocused()
   await page.setViewportSize({ width: 390, height: 844 })
   await expect(page.getByRole('button', { name: 'Sync now', exact: true })).toBeVisible()
-  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
+    true,
+  )
   await page.screenshot({ path: testInfo.outputPath('mobile.png'), fullPage: true })
   await page.setViewportSize({ width: 1440, height: 1100 })
-  await page.evaluate(() => { document.documentElement.style.fontSize = '200%' })
-  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
+  await page.evaluate(() => {
+    document.documentElement.style.fontSize = '200%'
+  })
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
+    true,
+  )
   await expect(page.getByRole('button', { name: 'Sync now', exact: true })).toBeVisible()
-  await page.evaluate(() => { document.documentElement.style.fontSize = '' })
+  await page.evaluate(() => {
+    document.documentElement.style.fontSize = ''
+  })
   await page.getByRole('heading', { name: 'Usage overview.' }).click()
   await page.screenshot({ path: testInfo.outputPath('desktop-dark.png'), fullPage: true })
   await page.getByRole('button', { name: 'Theme: dark. Change theme' }).click()
@@ -81,7 +99,9 @@ test('themes, keyboard filters, mobile layout, and scalable typography', async (
   await page.screenshot({ path: testInfo.outputPath('desktop-light.png'), fullPage: true })
 })
 
-test('custom dates, session search, and explicit inspection after sync failure', async ({ page }) => {
+test('custom dates, session search, and explicit inspection after sync failure', async ({
+  page,
+}) => {
   await page.goto('/')
   await expect(page.getByRole('region', { name: 'Filtered usage summary' })).toBeVisible()
   await page.getByRole('button', { name: 'This week', exact: true }).click()
@@ -97,9 +117,21 @@ test('custom dates, session search, and explicit inspection after sync failure',
   await page.getByRole('button', { name: 'Done', exact: true }).click()
   await expect(page.getByLabel('Total tokens: 4,300', { exact: true })).toBeVisible()
   await expect(page.locator('.session-coverage')).toHaveText('Sessions 1 shown / 80 synced')
-  await page.route('**/api/status', route => route.fulfill({ json: { running: false, phase: 'failed', harnesses: { pi: 'failed' }, error: 'Sync failed. See terminal details, retry, or inspect existing data.', revision: 99 } }))
+  await page.route('**/api/status', (route) =>
+    route.fulfill({
+      json: {
+        running: false,
+        phase: 'failed',
+        harnesses: { pi: 'failed' },
+        error: 'Sync failed. See terminal details, retry, or inspect existing data.',
+        revision: 99,
+      },
+    }),
+  )
   await page.reload()
-  await expect(page.getByRole('button', { name: 'Inspect existing data', exact: true })).toBeVisible()
+  await expect(
+    page.getByRole('button', { name: 'Inspect existing data', exact: true }),
+  ).toBeVisible()
   await expect(page.getByRole('region', { name: 'Filtered usage summary' })).not.toBeVisible()
   await page.getByRole('button', { name: 'Inspect existing data', exact: true }).click()
   await expect(page.getByLabel('Total tokens: 4,300', { exact: true })).toBeVisible()

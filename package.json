@@ -3,10 +3,16 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "engines": {
-    "node": ">=24"
-  },
   "scripts": {
+    "format": "pnpm run format:go && pnpm run format:js",
+    "format:go": "gofmt -w $(git ls-files '*.go')",
+    "format:js": "oxfmt package.json pnpm-workspace.yaml packages/cli/package.json packages/web tools/build",
+    "format:check": "pnpm run format:check:go && pnpm run format:check:js",
+    "format:check:go": "test -z \"$(gofmt -l $(git ls-files '*.go'))\"",
+    "format:check:js": "oxfmt --check package.json pnpm-workspace.yaml packages/cli/package.json packages/web tools/build",
+    "lint": "pnpm run lint:go && pnpm run lint:js",
+    "lint:go": "pnpm --filter @tokeninsights/cli run lint",
+    "lint:js": "oxlint packages/web tools/build",
     "clean": "pnpm --filter @tokeninsights/build-tools run clean",
     "check-schema": "pnpm --filter @tokeninsights/build-tools run check:schema",
     "test:scripts": "pnpm --filter @tokeninsights/build-tools run test",
@@ -22,6 +28,14 @@
     "generate:homebrew": "pnpm --filter @tokeninsights/build-tools run generate:homebrew",
     "build": "pnpm run check-schema && pnpm run build:cli",
     "test": "pnpm run test:scripts && pnpm --filter @tokeninsights/web run test && pnpm --filter @tokeninsights/cli run test"
+  },
+  "devDependencies": {
+    "oxfmt": "0.67.0",
+    "oxlint": "1.82.0",
+    "oxlint-tsgolint": "7.0.2001"
+  },
+  "engines": {
+    "node": ">=26"
   },
   "packageManager": "pnpm@11.6.0"
 }

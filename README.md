@@ -179,7 +179,19 @@ tokeninsights reset-all --confirm
 
 ## Development
 
+Development uses pnpm and Node 26+. Go remains independently buildable for production.
+
 ```sh
+# Install workspace dependencies
+pnpm install
+
+# Format all Go and TypeScript/JavaScript/React code
+pnpm run format
+
+# Verify formatting without changes, then lint all code
+pnpm run format:check
+pnpm run lint
+
 # Verify Go embeds and schema synchronization
 pnpm run check-schema
 
@@ -204,7 +216,7 @@ pnpm run install:cli
 
 The development commands use the shared fixture under `packages/cli/testdata/conformance/sync-first-basic/source/`. It contains compact, harness-native structures for OpenCode, Pi, Codex, and Claude Code, but every value is synthetic. `dev:data` recreates the ignored `.tokeninsights-dev/` directory, materializes the OpenCode SQLite source from reviewable SQL, and writes `.tokeninsights-dev/tokeninsights.sqlite`. Do not commit raw harness databases or transcripts. The existing `pnpm run start:web` remains unchanged and uses normal local sources.
 
-Root JavaScript tooling lives in the private `@tokeninsights/build-tools` workspace package under `tools/build`; root pnpm commands are stable orchestration aliases. Node and pnpm are needed only for builds, tests, and development. Production is one native Go binary: committed browser assets are embedded with `go:embed`, served by Go, and executed only by the browser. The host running `tokeninsights` needs no JavaScript runtime or `node_modules`.
+This is a pnpm monorepo with Go and TypeScript packages. Browser code uses Vite and React. Node scripts use native, erasable TypeScript on Node 26+. Root tooling lives in the private `@tokeninsights/build-tools` workspace package under `tools/build`; root pnpm commands are stable orchestration aliases. Node and pnpm are needed only for builds, tests, and development. Production is one native Go binary: committed browser assets are embedded with `go:embed`, served by Go, and executed only by the browser. The host running `tokeninsights` needs no JavaScript runtime or `node_modules`.
 
 ### Important Documentation
 

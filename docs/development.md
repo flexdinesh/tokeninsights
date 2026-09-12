@@ -1,8 +1,18 @@
 # Development
 
+Use Node 26+ and pnpm for monorepo development. Go production builds remain independent of both.
+
 ```bash
 # Check out the repo.
 git clone git@github.com:flexdinesh/tokeninsights.git && cd tokeninsights
+
+# Install workspace dependencies.
+pnpm install
+
+# Format, verify formatting, and lint Go plus TypeScript/React.
+pnpm run format
+pnpm run format:check
+pnpm run lint
 
 # Run tests.
 pnpm run test
@@ -43,7 +53,9 @@ pnpm run dev:web
 
 ## Build Tooling
 
-Root JavaScript tooling is owned by the private `@tokeninsights/build-tools` workspace package in `tools/build`. It handles schema validation, repository cleanup, fixture preparation and safety tests, generated-web checks, and Homebrew formula generation. Root pnpm scripts remain stable, thin orchestration aliases. The language-neutral schema source remains at `schema/schema.sql` outside the package workspace.
+This is a pnpm monorepo containing Go and TypeScript packages. Root Node tooling is owned by the private `@tokeninsights/build-tools` workspace package in `tools/build`. Its scripts use native, erasable TypeScript supported directly by Node 26+. It handles schema validation, repository cleanup, fixture preparation and safety tests, generated-web checks, and Homebrew formula generation. Root pnpm scripts remain stable, thin orchestration aliases. The language-neutral schema source remains at `schema/schema.sql` outside the package workspace.
+
+Formatting uses `gofmt` for Go and Oxfmt for TypeScript, JavaScript, and React. Linting uses the repository-pinned `golangci-lint` for Go and Oxlint for TypeScript, JavaScript, and React. Use `pnpm run format` to write formatting changes, `pnpm run format:check` in verification, and `pnpm run lint` for both language stacks.
 
 Node, npm, pnpm, `node_modules`, and this tooling package are build-, test-, and development-only. Direct Go builds and installs consume committed web assets and require no JavaScript tooling:
 
@@ -57,7 +69,7 @@ The production host runs only the native `tokeninsights` binary. Its embedded br
 
 ## Web Dashboard
 
-React source lives in `packages/web`. The built assets are checked into `packages/cli/internal/server/static` and embedded with `go:embed`, so direct Go builds/installs include the web dashboard without requiring Node at runtime. After frontend edits, run `pnpm run build:web` and include the generated changes. `pnpm run build` and `pnpm run install:cli` build the frontend automatically.
+React source lives in `packages/web` and builds with Vite. The built assets are checked into `packages/cli/internal/server/static` and embedded with `go:embed`, so direct Go builds/installs include the web dashboard without requiring Node at runtime. After frontend edits, run `pnpm run build:web` and include the generated changes. `pnpm run build` and `pnpm run install:cli` build the frontend automatically.
 
 ```sh
 # Build and run the embedded application

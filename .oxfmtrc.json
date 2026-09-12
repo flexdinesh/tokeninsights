@@ -1,0 +1,11 @@
+{
+  "printWidth": 100,
+  "semi": false,
+  "singleQuote": true,
+  "ignorePatterns": [
+    "**/*.md",
+    "**/node_modules/**",
+    "**/testdata/**",
+    "packages/cli/internal/server/static/**"
+  ]
+}
