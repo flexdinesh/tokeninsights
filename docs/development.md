@@ -53,7 +53,7 @@ pnpm run dev:web
 
 ## Build Tooling
 
-This is a pnpm monorepo containing Go and TypeScript packages. Root Node tooling is owned by the private `@tokeninsights/build-tools` workspace package in `tools/build`. Its scripts use native, erasable TypeScript supported directly by Node 26+. It handles schema validation, repository cleanup, fixture preparation and safety tests, generated-web checks, and Homebrew formula generation. Root pnpm scripts remain stable, thin orchestration aliases. The language-neutral schema source remains at `schema/schema.sql` outside the package workspace.
+This is a pnpm monorepo containing Go and TypeScript packages. Root Node tooling is owned by the private `@tokeninsights/build-tools` workspace package in `tools/build`. Its scripts use native, erasable TypeScript supported directly by Node 26+. It handles schema validation, fixture preparation and safety tests, generated-web checks, and Homebrew formula generation. Root pnpm scripts remain stable orchestration commands. The language-neutral schema source remains at `schema/schema.sql` outside the package workspace.
 
 Formatting uses `gofmt` for Go and Oxfmt for TypeScript, JavaScript, and React. Linting uses the repository-pinned `golangci-lint` for Go and Oxlint for TypeScript, JavaScript, and React. Use `pnpm run format` to write formatting changes, `pnpm run format:check` in verification, and `pnpm run lint` for both language stacks.
 

@@ -168,7 +168,7 @@ jobs:
 
       - name: Generate Homebrew formula
         run: |
-          pnpm --filter @tokeninsights/build-tools run generate:homebrew -- \
+          pnpm run generate:homebrew -- \
             --version "${{ steps.tag.outputs.version }}" \
             --tag "${{ steps.tag.outputs.tag }}" \
             --checksums dist/checksums.txt \

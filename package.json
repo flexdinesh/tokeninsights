@@ -4,18 +4,10 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "format": "pnpm run format:go && pnpm run format:js",
-    "format:go": "gofmt -w $(git ls-files '*.go')",
-    "format:js": "oxfmt package.json pnpm-workspace.yaml packages/cli/package.json packages/web tools/build",
-    "format:check": "pnpm run format:check:go && pnpm run format:check:js",
-    "format:check:go": "test -z \"$(gofmt -l $(git ls-files '*.go'))\"",
-    "format:check:js": "oxfmt --check package.json pnpm-workspace.yaml packages/cli/package.json packages/web tools/build",
-    "lint": "pnpm run lint:go && pnpm run lint:js",
-    "lint:go": "pnpm --filter @tokeninsights/cli run lint",
-    "lint:js": "oxlint packages/web tools/build",
-    "clean": "pnpm --filter @tokeninsights/build-tools run clean",
+    "format": "gofmt -w $(git ls-files '*.go') && oxfmt package.json pnpm-workspace.yaml packages/cli/package.json packages/web tools/build",
+    "format:check": "test -z \"$(gofmt -l $(git ls-files '*.go'))\" && oxfmt --check package.json pnpm-workspace.yaml packages/cli/package.json packages/web tools/build",
+    "lint": "pnpm --filter @tokeninsights/cli run lint && oxlint packages/web tools/build",
     "check-schema": "pnpm --filter @tokeninsights/build-tools run check:schema",
-    "test:scripts": "pnpm --filter @tokeninsights/build-tools run test",
     "test:web-e2e": "pnpm --filter @tokeninsights/web run test:e2e",
     "build:web": "pnpm --filter @tokeninsights/web run build",
     "check-web": "pnpm run build:web && pnpm --filter @tokeninsights/build-tools run check:web",
@@ -27,7 +19,7 @@
     "install:cli": "pnpm run build:web && cd packages/cli && go install ./cmd/tokeninsights",
     "generate:homebrew": "pnpm --filter @tokeninsights/build-tools run generate:homebrew",
     "build": "pnpm run check-schema && pnpm run build:cli",
-    "test": "pnpm run test:scripts && pnpm --filter @tokeninsights/web run test && pnpm --filter @tokeninsights/cli run test"
+    "test": "pnpm --filter @tokeninsights/build-tools run typecheck && pnpm --filter @tokeninsights/build-tools run test && pnpm --filter @tokeninsights/web run test && pnpm --filter @tokeninsights/cli run test"
   },
   "devDependencies": {
     "oxfmt": "0.67.0",

@@ -4,7 +4,6 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "clean": "node src/clean.ts",
     "check:schema": "node src/check-schema.ts",
     "check:web": "node src/check-web.ts",
     "setup-dev-data": "node src/setup-dev-data.ts",
