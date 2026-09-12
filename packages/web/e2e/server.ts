@@ -4,16 +4,24 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 
 const tempRoot = process.env.TOKENINSIGHTS_TEST_TMP ?? tmpdir()
-const home = await mkdtemp(join(tempRoot, 'tokeninsights-web-'))
-const sessions = join(home, '.pi/agent/sessions')
-await mkdir(sessions, { recursive: true })
+const localHome = await mkdtemp(join(tempRoot, 'tokeninsights-web-local-'))
+const remoteHome = await mkdtemp(join(tempRoot, 'tokeninsights-web-remote-'))
 const now = new Date()
-for (let index = 0; index < 80; index++) {
-  const session = `web-session-${String(index).padStart(3, '0')}`
-  const model = index % 2 === 0 ? 'model-a' : 'model-b'
-  const provider = index % 2 === 0 ? 'openai' : 'anthropic'
-  const recordedAt = new Date(now)
-  if (index >= 60) recordedAt.setFullYear(now.getFullYear() - 1)
+
+async function writeSession(
+  home: string,
+  index: number,
+  prefix: string,
+  model: string,
+  provider: string,
+  totalTokens: number,
+  cacheRead: number,
+  recordedAt: Date,
+) {
+  const sessions = join(home, '.pi/agent/sessions')
+  await mkdir(sessions, { recursive: true })
+  const session = `${prefix}-${String(index).padStart(3, '0')}`
+  const input = totalTokens - cacheRead - 300
   const records = [
     { type: 'session', version: 1, id: session, timestamp: recordedAt.toISOString() },
     {
@@ -25,7 +33,7 @@ for (let index = 0; index < 80; index++) {
         model,
         provider,
         timestamp: recordedAt.getTime(),
-        usage: { input: 1000, output: 200, cacheRead: 3000, cacheWrite: 100, totalTokens: 4300 },
+        usage: { input, output: 200, cacheRead, cacheWrite: 100, totalTokens },
       },
     },
   ]
@@ -34,37 +42,64 @@ for (let index = 0; index < 80; index++) {
     records.map((record) => JSON.stringify(record)).join('\n'),
   )
 }
-const child = spawn(
-  resolve('../cli/bin/tokeninsights'),
-  [
-    'serve',
-    '--week',
-    '--host',
-    '127.0.0.1',
-    '--port',
-    '18765',
-    '--db-path',
-    join(home, 'usage.sqlite'),
-  ],
-  {
-    stdio: 'inherit',
-    env: {
-      ...process.env,
-      HOME: home,
-      XDG_DATA_HOME: join(home, '.local/share'),
-      CODEX_HOME: join(home, '.codex'),
-      CLAUDE_CONFIG_DIR: join(home, '.claude'),
+
+for (let index = 0; index < 80; index++) {
+  const model = index % 2 === 0 ? 'model-a' : 'model-b'
+  const provider = index % 2 === 0 ? 'openai' : 'anthropic'
+  const recordedAt = new Date(now)
+  if (index >= 60) recordedAt.setFullYear(now.getFullYear() - 1)
+  await writeSession(localHome, index, 'web-session', model, provider, 4300, 3000, recordedAt)
+}
+await writeSession(remoteHome, 0, 'remote-session', 'model-a', 'remote-provider', 777, 0, now)
+
+function startServer(home: string, port: string) {
+  return spawn(
+    resolve('../cli/bin/tokeninsights'),
+    [
+      'serve',
+      '--week',
+      '--host',
+      '127.0.0.1',
+      '--port',
+      port,
+      '--db-path',
+      join(home, 'usage.sqlite'),
+    ],
+    {
+      stdio: 'inherit',
+      env: {
+        ...process.env,
+        HOME: home,
+        XDG_DATA_HOME: join(home, '.local/share'),
+        CODEX_HOME: join(home, '.codex'),
+        CLAUDE_CONFIG_DIR: join(home, '.claude'),
+      },
     },
-  },
-)
-process.on('SIGINT', () => child.kill('SIGINT'))
-process.on('SIGTERM', () => child.kill('SIGTERM'))
-child.on('exit', async (code) => {
-  await rm(home, { recursive: true, force: true })
-  process.exitCode = code ?? 0
-})
-child.on('error', async (error) => {
-  console.error(error)
-  await rm(home, { recursive: true, force: true })
-  process.exitCode = 1
-})
+  )
+}
+
+const children = [startServer(localHome, '18765'), startServer(remoteHome, '18766')]
+let stopping = false
+
+async function stop(code: number) {
+  if (stopping) return
+  stopping = true
+  for (const child of children) child.kill('SIGTERM')
+  await Promise.all([
+    rm(localHome, { recursive: true, force: true }),
+    rm(remoteHome, { recursive: true, force: true }),
+  ])
+  process.exitCode = code
+}
+
+process.on('SIGINT', () => void stop(0))
+process.on('SIGTERM', () => void stop(0))
+for (const child of children) {
+  child.on('exit', (code) => {
+    if (!stopping) void stop(code ?? 1)
+  })
+  child.on('error', (error) => {
+    console.error(error)
+    void stop(1)
+  })
+}

@@ -91,36 +91,36 @@ func parseQuery(values url.Values) (query, error) {
 	return q, nil
 }
 
-// Row is a numeric analytics response, independent of terminal formatting.
+// Row is a numeric analytics result, independent of API transport.
 type Row struct {
-	Key            string `json:"key"`
-	Name           string `json:"name"`
-	Harness        string `json:"harness"`
-	Provider       string `json:"provider"`
-	Model          string `json:"model"`
-	Date           int64  `json:"date"`
-	Sessions       int64  `json:"sessions"`
-	Input          int64  `json:"input"`
-	Output         int64  `json:"output"`
-	Reasoning      int64  `json:"reasoning"`
-	CacheRead      int64  `json:"cacheRead"`
-	CacheWrite     int64  `json:"cacheWrite"`
-	Total          int64  `json:"total"`
-	Context        int64  `json:"context"`
-	AverageContext int64  `json:"averageContext"`
-	MedianContext  int64  `json:"medianContext"`
-	MaxContext     int64  `json:"maxContext"`
+	Key            string
+	Name           string
+	Harness        string
+	Provider       string
+	Model          string
+	Date           int64
+	Sessions       int64
+	Input          int64
+	Output         int64
+	Reasoning      int64
+	CacheRead      int64
+	CacheWrite     int64
+	Total          int64
+	Context        int64
+	AverageContext int64
+	MedianContext  int64
+	MaxContext     int64
 }
 
 type dashboard struct {
-	Rows       []Row               `json:"rows"`
-	Chart      []Row               `json:"chart"`
-	RowCount   int                 `json:"rowCount"`
-	Page       int                 `json:"page"`
-	PageSize   int                 `json:"pageSize"`
-	Summary    db.ViewerSummaryRow `json:"summary"`
-	LastSynced int64               `json:"lastSynced"`
-	Range      string              `json:"range"`
+	Rows       []Row
+	Chart      []Row
+	RowCount   int
+	Page       int
+	PageSize   int
+	Summary    db.ViewerSummaryRow
+	LastSynced int64
+	Range      string
 }
 
 func loadRows(ctx context.Context, reader db.Reader, f db.Filter, q query) ([]Row, error) {

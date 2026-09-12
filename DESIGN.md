@@ -132,6 +132,8 @@ Do not mint a global token for every library coordinate or content-specific widt
   It is not a fixed overlay. No sidebar is part of the current visual system.
 - Preserve page order: heading/status → filters → sync feedback → summaries →
   Aggregation Tabs → chart → table/summary → footer.
+- Keep the source selector in the header beside source-aware status/actions. It must
+  remain reachable when dashboard requests fail; never bury recovery inside failed content.
 - Keep five summary cards in one desktop row; give total modest extra width.
   Use three columns at ≤55rem and two at ≤38rem, with total spanning two columns.
 - Use flex wrapping for action groups, `minmax(0, 1fr)` for equal grid columns, and
@@ -174,6 +176,14 @@ Native selects and date inputs retain platform behavior. Checkbox labels provide
 the full clickable row. Reuse `MultiSelect`, `DateFilter`, and Radix Popover for
 filters; retain selected values, search, Escape dismissal, and focus return.
 
+The source selector is the browser's persistent server switcher, not a data-merging
+filter. Use a visible hostname as its primary label and the normalized URL as
+disambiguating metadata. Its add form accepts HTTP(S) URLs or bare `host:port`, has
+a visible label, describes normalization, associates validation/connection errors
+with the input, and saves only after the source validates. Removing a source needs
+a clear target and must not make the page-origin source removable. Preserve current
+dashboard filters and navigation when selection changes.
+
 ### Cards and panels
 
 Use summary cards for overview metrics; `.panel` for chart/table or sync regions.
@@ -211,6 +221,11 @@ through green alone or replace useful sync detail with a spinner.
 | Loading | Stable placeholders, `aria-busy`/status text, explicit syncing label; never relabel stale metrics as a new filter result. |
 | Error | Error color plus readable message/icon, associated field descriptions, and a usable retry/correction path. |
 
+When the active source is unavailable, keep its hostname selected, keep add/remove
+and source-switch actions enabled, and show a readable retry/recovery path. Never
+silently fall back to another source or present cached data from one source under
+another hostname.
+
 Use `--duration-fast` for color/border transitions. Continuous rotation is reserved
 for active loading. Honor reduced motion; state labels must work without animation.
 
@@ -227,7 +242,9 @@ literal media-query values because CSS custom properties cannot drive media quer
 - At ≤38rem **or** with a coarse pointer, standard and compact targets are at least
   44px tall; icon-only controls are at least 44px wide. Checkbox labels own the target.
 - Allow the header to wrap on very narrow screens. Keep Sync, Reload, and theme
-  actions reachable. Hidden icon-button text still needs an accessible name.
+  actions reachable. Keep the source selector reachable; its trigger may truncate
+  the hostname when the full hostname and URL remain available in the popover.
+  Hidden icon-button text still needs an accessible name.
 - Preserve DOM/reading order. Reflow rather than CSS-ordering unrelated sections.
 - Tables may scroll horizontally; the document must not. Long status/count text
   wraps. Never hide metrics or shrink typography just to force a desktop grid to fit.
@@ -243,6 +260,9 @@ literal media-query values because CSS custom properties cannot drive media quer
   return intact. Never make a hover-only interaction the sole way to access data.
 - Use visible labels where possible and accessible names for icon-only actions.
   Associate validation messages with fields; use `aria-invalid` for invalid inputs.
+- Give the source selector a persistent accessible name, expose its selected source,
+  announce connection validation/failure without moving focus, and return focus after
+  its popover closes or a source is removed.
 - Preserve browser zoom and scalable type. Mobile text/date entry uses readable
   16px-equivalent text. Do not disable zoom in viewport metadata.
 - Desktop targets must exceed the 24px WCAG minimum; use the system's 32/36px sizes.

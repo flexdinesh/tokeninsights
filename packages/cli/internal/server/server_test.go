@@ -20,6 +20,8 @@ import (
 
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/db"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/pipeline"
+	serverapi "github.com/flexdinesh/tokeninsights/packages/cli/internal/server/api"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/version"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/viewer"
 	_ "modernc.org/sqlite"
 )
@@ -194,13 +196,17 @@ func TestAPIValidationFacetsAndAssets(t *testing.T) {
 	handler := a.handler()
 	for _, query := range []string{"period=bad", "bucket=hour", "tab=tps", "from=2026-02-30", "from=2026-10-01&to=2026-09-01", "page=0", "pageSize=201", "direction=bad", "tab=context&sort=total", "sort=sql", "harness=bad"} {
 		w := httptest.NewRecorder()
-		handler.ServeHTTP(w, httptest.NewRequest("GET", "/api/dashboard?"+query, nil))
-		if w.Code != 400 {
-			t.Errorf("%s: %d", query, w.Code)
+		handler.ServeHTTP(w, httptest.NewRequest("GET", "/api/v1/usage?"+query, nil))
+		var responseError serverapi.ErrorResponse
+		if err := json.Unmarshal(w.Body.Bytes(), &responseError); err != nil {
+			t.Fatalf("%s: %v", query, err)
+		}
+		if w.Code != http.StatusBadRequest || responseError.Code != serverapi.ErrorCodeInvalidRequest || responseError.Message == "" {
+			t.Errorf("%s: %d %+v", query, w.Code, responseError)
 		}
 	}
 	w := httptest.NewRecorder()
-	handler.ServeHTTP(w, httptest.NewRequest("GET", "/api/filters?from=2026-09-01&to=2026-09-30&model=absent", nil))
+	handler.ServeHTTP(w, httptest.NewRequest("GET", "/api/v1/usage/facets?from=2026-09-01&to=2026-09-30&model=absent", nil))
 	if w.Code != 200 {
 		t.Fatal(w.Body.String())
 	}
@@ -212,7 +218,7 @@ func TestAPIValidationFacetsAndAssets(t *testing.T) {
 		t.Fatalf("facets must ignore own selection only: %v", facets)
 	}
 	w = httptest.NewRecorder()
-	handler.ServeHTTP(w, httptest.NewRequest("GET", "/api/filters?period=all&search=b", nil))
+	handler.ServeHTTP(w, httptest.NewRequest("GET", "/api/v1/usage/facets?period=all&search=b", nil))
 	if err := json.Unmarshal(w.Body.Bytes(), &facets); err != nil {
 		t.Fatal(err)
 	}
@@ -220,9 +226,13 @@ func TestAPIValidationFacetsAndAssets(t *testing.T) {
 		t.Fatalf("session search: %v", facets)
 	}
 	w = httptest.NewRecorder()
-	handler.ServeHTTP(w, httptest.NewRequest("GET", "/api/bootstrap", nil))
-	if !strings.Contains(w.Body.String(), `"period":"week"`) || strings.Contains(w.Body.String(), a.options.DBPath) {
-		t.Fatal(w.Body.String())
+	handler.ServeHTTP(w, httptest.NewRequest("GET", "/api/v1/instance", nil))
+	var instance serverapi.InstanceResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &instance); err != nil {
+		t.Fatal(err)
+	}
+	if instance.ApiVersion != serverapi.V1 || instance.ServerVersion != version.Version || instance.Defaults.Period != serverapi.PeriodWeek || len(instance.Capabilities) != 3 || strings.Contains(w.Body.String(), a.options.DBPath) {
+		t.Fatalf("instance: %+v", instance)
 	}
 	w = httptest.NewRecorder()
 	handler.ServeHTTP(w, httptest.NewRequest("GET", "/", nil))
@@ -231,8 +241,58 @@ func TestAPIValidationFacetsAndAssets(t *testing.T) {
 	}
 	w = httptest.NewRecorder()
 	handler.ServeHTTP(w, httptest.NewRequest("GET", "/api/missing", nil))
-	if w.Code != 404 || !strings.Contains(w.Header().Get("Content-Type"), "application/json") {
+	var responseError serverapi.ErrorResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &responseError); err != nil {
+		t.Fatal(err)
+	}
+	if w.Code != 404 || responseError.Code != serverapi.ErrorCodeNotFound || responseError.Message == "" || !strings.Contains(w.Header().Get("Content-Type"), "application/json") {
 		t.Fatal("unknown API route must not return HTML")
+	}
+}
+
+func TestAPIV1RoutesAndMethods(t *testing.T) {
+	a := newApp(context.Background(), Options{DBPath: fixture(t)}, io.Discard)
+	handler := a.handler()
+
+	for _, path := range []string{"/api/bootstrap", "/api/status", "/api/sync", "/api/dashboard", "/api/filters", "/api/v1/missing"} {
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, path, nil))
+		var responseError serverapi.ErrorResponse
+		if err := json.Unmarshal(response.Body.Bytes(), &responseError); err != nil {
+			t.Fatalf("%s: %v", path, err)
+		}
+		if response.Code != http.StatusNotFound || responseError.Code != serverapi.ErrorCodeNotFound {
+			t.Fatalf("%s: %d %+v", path, response.Code, responseError)
+		}
+	}
+
+	for _, test := range []struct {
+		path, method, allow string
+	}{
+		{"/api/v1/instance", http.MethodPost, http.MethodGet},
+		{"/api/v1/sync", http.MethodPut, "GET, POST"},
+		{"/api/v1/usage", http.MethodPost, http.MethodGet},
+		{"/api/v1/usage/facets", http.MethodPost, http.MethodGet},
+	} {
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, httptest.NewRequest(test.method, test.path, nil))
+		var responseError serverapi.ErrorResponse
+		if err := json.Unmarshal(response.Body.Bytes(), &responseError); err != nil {
+			t.Fatalf("%s: %v", test.path, err)
+		}
+		if response.Code != http.StatusMethodNotAllowed || response.Header().Get("Allow") != test.allow || responseError.Code != serverapi.ErrorCodeMethodNotAllowed {
+			t.Fatalf("%s: %d allow=%q error=%+v", test.path, response.Code, response.Header().Get("Allow"), responseError)
+		}
+	}
+
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/v1/sync", nil))
+	var status serverapi.SyncResponse
+	if err := json.Unmarshal(response.Body.Bytes(), &status); err != nil {
+		t.Fatal(err)
+	}
+	if response.Code != http.StatusOK || status.Running || status.Phase != serverapi.SyncPhaseReady || status.Harnesses == nil {
+		t.Fatalf("sync: %d %+v", response.Code, status)
 	}
 }
 
@@ -259,7 +319,7 @@ func TestSyncSharedAcrossClientsAndFailureRecovery(t *testing.T) {
 		go func() {
 			defer requests.Done()
 			w := httptest.NewRecorder()
-			a.handler().ServeHTTP(w, httptest.NewRequest("POST", "/api/sync", nil))
+			a.handler().ServeHTTP(w, httptest.NewRequest("POST", "/api/v1/sync", nil))
 			if w.Code != http.StatusAccepted {
 				t.Errorf("status %d", w.Code)
 			}
@@ -368,7 +428,7 @@ func TestAnalyticsRejectPendingRecoveryWithoutMutation(t *testing.T) {
 		t.Fatal(err)
 	}
 	a := newApp(context.Background(), Options{DBPath: path}, io.Discard)
-	for _, endpoint := range []string{"/api/dashboard", "/api/filters"} {
+	for _, endpoint := range []string{"/api/v1/usage", "/api/v1/usage/facets"} {
 		w := httptest.NewRecorder()
 		a.handler().ServeHTTP(w, httptest.NewRequest("GET", endpoint, nil))
 		if w.Code != http.StatusServiceUnavailable || !strings.Contains(w.Body.String(), "Sync to rebuild") || strings.Contains(w.Body.String(), path) {

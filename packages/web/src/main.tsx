@@ -2,6 +2,7 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { App } from './App'
+import { SourceProvider } from './source-context'
 import './styles.css'
 
 const client = new QueryClient({
@@ -14,7 +15,9 @@ if (!root) throw new Error('Application root missing')
 createRoot(root).render(
   <StrictMode>
     <QueryClientProvider client={client}>
-      <App />
+      <SourceProvider>
+        <App />
+      </SourceProvider>
     </QueryClientProvider>
   </StrictMode>,
 )

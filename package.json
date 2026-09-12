@@ -4,10 +4,14 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "format": "gofmt -w $(git ls-files '*.go') && oxfmt package.json pnpm-workspace.yaml packages/cli/package.json packages/web tools/build",
-    "format:check": "test -z \"$(gofmt -l $(git ls-files '*.go'))\" && oxfmt --check package.json pnpm-workspace.yaml packages/cli/package.json packages/web tools/build",
-    "lint": "pnpm --filter @tokeninsights/cli run lint && oxlint packages/web tools/build",
+    "format": "gofmt -w $(git ls-files '*.go') && oxfmt package.json pnpm-workspace.yaml orval.config.ts docs/openapi.yaml packages/cli/package.json packages/web tools/build",
+    "format:check": "test -z \"$(gofmt -l $(git ls-files '*.go'))\" && oxfmt --check package.json pnpm-workspace.yaml orval.config.ts docs/openapi.yaml packages/cli/package.json packages/web tools/build",
+    "lint": "pnpm --filter @tokeninsights/cli run lint && oxlint orval.config.ts packages/web tools/build",
     "check-schema": "pnpm --filter @tokeninsights/build-tools run check:schema",
+    "generate:api:go": "cd packages/cli && go tool oapi-codegen -config internal/server/api/oapi-codegen.yaml ../../docs/openapi.yaml",
+    "generate:api:web": "orval --config orval.config.ts && oxfmt packages/web/src/generated/api.ts",
+    "generate:api": "pnpm run generate:api:go && pnpm run generate:api:web",
+    "check-api": "pnpm --filter @tokeninsights/build-tools run check:api",
     "test:web-e2e": "pnpm --filter @tokeninsights/web run test:e2e",
     "build:web": "pnpm --filter @tokeninsights/web run build",
     "check-web": "pnpm run build:web && pnpm --filter @tokeninsights/build-tools run check:web",
@@ -18,10 +22,11 @@
     "start:web": "pnpm run build:cli && ./packages/cli/bin/tokeninsights serve",
     "install:cli": "pnpm run build:web && cd packages/cli && go install ./cmd/tokeninsights",
     "generate:homebrew": "pnpm --filter @tokeninsights/build-tools run generate:homebrew",
-    "build": "pnpm run check-schema && pnpm run build:cli",
+    "build": "pnpm run check-schema && pnpm run check-api && pnpm run build:cli",
     "test": "pnpm --filter @tokeninsights/build-tools run typecheck && pnpm --filter @tokeninsights/build-tools run test && pnpm --filter @tokeninsights/web run test && pnpm --filter @tokeninsights/cli run test"
   },
   "devDependencies": {
+    "orval": "8.30.0",
     "oxfmt": "0.67.0",
     "oxlint": "1.82.0",
     "oxlint-tsgolint": "7.0.2001"

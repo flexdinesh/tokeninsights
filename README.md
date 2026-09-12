@@ -85,6 +85,32 @@ Viewer filters affect displayed data only: `view --harness pi` still refreshes a
 
 See the [CLI reference](packages/cli/README.md) for all flags, including custom date bounds and session filters.
 
+## Web Dashboard and REST API
+
+```sh
+tokeninsights serve
+```
+
+`serve` hosts the embedded React dashboard and a versioned REST API over the server's canonical SQLite state. The terminal UI does not use this server; `view` reads the same state directly.
+
+The browser starts with the page's own origin as its local source. Its source selector can add any reachable HTTP(S) TokenInsights server, including bare `host:port` values normalized to HTTP. A source is saved only after compatibility validation. Hostname labels, configured sources, and the selected source persist in browser `localStorage` across reloads and server restarts.
+
+Changing source keeps the current date, filters, tab, sorting, and pagination. All reads and **Sync now** target only the selected source; TokenInsights never merges data from multiple sources. If a saved source later fails, it remains selected and the dashboard shows an error with recovery controls. HTTPS pages may be blocked from calling HTTP sources, and invalid or untrusted certificates may block HTTPS sources.
+
+The server allows unauthenticated API requests from every browser origin, without credentials. This enables remote dashboards and remote Sync on a trusted local network, but any website that can reach the server can read usage metadata and trigger ingestion. Do not expose it to an untrusted network.
+
+The API has no unversioned compatibility routes:
+
+| Endpoint | Purpose |
+|----------|---------|
+| `GET /api/v1/instance` | Server identity, versions, capabilities, timezone, and viewer defaults |
+| `GET /api/v1/sync` | Current shared sync state |
+| `POST /api/v1/sync` | Start or join shared sync |
+| `GET /api/v1/usage` | Filtered usage summary, chart, and rows |
+| `GET /api/v1/usage/facets` | Filter facets and session search |
+
+[`docs/openapi.yaml`](docs/openapi.yaml) is the authoritative, repository-only contract. It generates committed Go transport models and TypeScript types/Zod schemas; run `pnpm run generate:api` after contract changes and `pnpm run check-api` to detect drift. The OpenAPI document is not served by the application.
+
 ## Local Data
 
 TokenInsights reads local session files and databases. Here, “sync” means importing usage into a local SQLite database, not uploading it to a service. No API keys are needed.
@@ -192,8 +218,9 @@ pnpm run format
 pnpm run format:check
 pnpm run lint
 
-# Verify Go embeds and schema synchronization
+# Verify Go embeds, schema synchronization, and generated API contracts
 pnpm run check-schema
+pnpm run check-api
 
 # Run all tests across the repository packages
 pnpm run test
