@@ -68,7 +68,7 @@ function ConnectionScreen({
       <header className="app-header">
         <div className="brand">
           <span className="brand-mark">
-            <ChartNoAxesCombined size="1.25em" />
+            <img src="/tokeninsights-logo.png" alt="" />
           </span>
           <span>
             Token<span className="brand-light">Insights</span>
@@ -150,7 +150,7 @@ function DashboardShell() {
       <header className="app-header">
         <div className="brand">
           <span className="brand-mark">
-            <ChartNoAxesCombined size="1.25em" />
+            <img src="/tokeninsights-logo.png" alt="" />
           </span>
           <span>
             Token<span className="brand-light">Insights</span>

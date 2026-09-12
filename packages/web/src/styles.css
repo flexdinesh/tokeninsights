@@ -149,13 +149,14 @@ textarea[aria-invalid='true'] {
   font-weight: var(--weight-medium);
 }
 .brand-mark {
-  display: grid;
-  place-items: center;
   inline-size: var(--space-8);
   block-size: var(--space-8);
-  background: var(--color-brand-bg);
-  color: var(--color-brand-fg);
-  border-radius: var(--radius-md);
+}
+.brand-mark img {
+  display: block;
+  inline-size: 100%;
+  block-size: 100%;
+  object-fit: contain;
 }
 .local-badge {
   font-size: var(--text-xs);

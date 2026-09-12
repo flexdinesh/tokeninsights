@@ -18,7 +18,7 @@
     "build:cli": "pnpm run build:web && pnpm --filter @tokeninsights/cli run build",
     "dev:data": "pnpm run build:cli && pnpm --filter @tokeninsights/build-tools run setup-dev-data",
     "dev:cli": "pnpm run dev:data && ./packages/cli/bin/tokeninsights view --no-sync --all-time --db-path .tokeninsights-dev/tokeninsights.sqlite",
-    "dev:web": "pnpm run dev:data && ./packages/cli/bin/tokeninsights serve --host 127.0.0.1 --no-sync --all-time --db-path .tokeninsights-dev/tokeninsights.sqlite",
+    "dev:web": "pnpm run dev:data && ./packages/cli/bin/tokeninsights serve --host 0.0.0.0 --no-sync --all-time --db-path .tokeninsights-dev/tokeninsights.sqlite",
     "start:web": "pnpm run build:cli && ./packages/cli/bin/tokeninsights serve",
     "install:cli": "pnpm run build:web && cd packages/cli && go install ./cmd/tokeninsights",
     "generate:homebrew": "pnpm --filter @tokeninsights/build-tools run generate:homebrew",
