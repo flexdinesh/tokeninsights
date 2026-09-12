@@ -3,7 +3,6 @@ package cli
 import (
 	"bytes"
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
 	"io"
@@ -15,8 +14,6 @@ import (
 
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/db"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/pipeline"
-
-	_ "modernc.org/sqlite"
 )
 
 func TestViewLaunchesProgressTUIBeforeImplicitSyncCompletes(t *testing.T) {
@@ -68,39 +65,6 @@ func TestViewLaunchesProgressTUIBeforeImplicitSyncCompletes(t *testing.T) {
 	}
 }
 
-func TestNoCommandLaunchesProgressTUIBeforeImplicitSyncCompletes(t *testing.T) {
-	sourceRoot := t.TempDir()
-	t.Setenv("HOME", filepath.Join(sourceRoot, "home"))
-	t.Setenv("XDG_DATA_HOME", filepath.Join(sourceRoot, "xdg"))
-	t.Setenv("CODEX_HOME", filepath.Join(sourceRoot, "codex"))
-	t.Setenv("CLAUDE_CONFIG_DIR", filepath.Join(sourceRoot, "claude"))
-
-	dbPath := filepath.Join(sourceRoot, "xdg", "tokeninsights", "tokeninsights.sqlite")
-	var launched bool
-	restore := replaceInteractiveProgramRunnerForTest(t, func(model interactiveModel, stdout io.Writer) (interactiveModel, error) {
-		launched = true
-		if model.options.dbPath != dbPath {
-			t.Fatalf("interactive dbPath = %q, want %q", model.options.dbPath, dbPath)
-		}
-		if !model.syncing {
-			t.Fatal("expected initial model to show sync progress")
-		}
-		if _, err := os.Stat(dbPath); !errors.Is(err, os.ErrNotExist) {
-			t.Fatalf("expected default db not to exist before TUI launches, stat error = %v", err)
-		}
-		return model, nil
-	})
-	defer restore()
-
-	err := Run(context.Background(), []string{}, io.Discard, io.Discard, time.Date(2026, 6, 19, 10, 0, 0, 0, time.Local))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !launched {
-		t.Fatal("expected TUI to launch")
-	}
-}
-
 func TestViewNoSyncPreservesReadOnlyMissingDBBehavior(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "missing.sqlite")
 	var launched bool
@@ -112,11 +76,8 @@ func TestViewNoSyncPreservesReadOnlyMissingDBBehavior(t *testing.T) {
 
 	var stdout bytes.Buffer
 	err := Run(context.Background(), []string{"view", "--db-path", dbPath, "--no-sync"}, &stdout, io.Discard, time.Date(2026, 6, 19, 10, 0, 0, 0, time.Local))
-	if err == nil {
-		t.Fatal("expected missing db error")
-	}
-	if !strings.Contains(err.Error(), "db not found") {
-		t.Fatalf("unexpected error: %v", err)
+	if err == nil || !strings.Contains(err.Error(), "db not found") {
+		t.Fatalf("expected missing db error, got %v", err)
 	}
 	if launched {
 		t.Fatal("expected TUI not to launch")
@@ -196,27 +157,6 @@ func TestViewNoSyncDoesNotProcessPendingNormalizationWork(t *testing.T) {
 	assertCLIQueryCount(t, database, "SELECT COUNT(*) FROM canonical_token_usage", 0)
 }
 
-func TestNoCommandNoSyncUsesViewNoSync(t *testing.T) {
-	dbPath := filepath.Join(t.TempDir(), "missing.sqlite")
-	var launched bool
-	restore := replaceInteractiveProgramRunnerForTest(t, func(model interactiveModel, stdout io.Writer) (interactiveModel, error) {
-		launched = true
-		return model, nil
-	})
-	defer restore()
-
-	err := Run(context.Background(), []string{"--db-path", dbPath, "--no-sync"}, io.Discard, io.Discard, time.Date(2026, 6, 19, 10, 0, 0, 0, time.Local))
-	if err == nil {
-		t.Fatal("expected missing db error")
-	}
-	if !strings.Contains(err.Error(), "db not found") {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if launched {
-		t.Fatal("expected TUI not to launch")
-	}
-}
-
 func TestViewImplicitSyncFailureExitsTUIAndPrintsRecoveryGuidance(t *testing.T) {
 	dbPath := t.TempDir()
 	var launched bool
@@ -262,7 +202,7 @@ func TestViewRecoveryFailureRecommendsSyncInsteadOfReadOnlyView(t *testing.T) {
 	}
 }
 
-func TestReadOnlyViewAndCanonicalResetRejectPendingRecovery(t *testing.T) {
+func TestReadOnlyViewRejectsPendingRecovery(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "usage.sqlite")
 	database, _, err := db.CreateIfMissing(path)
 	if err != nil {
@@ -272,125 +212,10 @@ func TestReadOnlyViewAndCanonicalResetRejectPendingRecovery(t *testing.T) {
 	if _, err := database.Exec("UPDATE database_lifecycle SET rebuild_pending = 1, rebuild_source_key = 'test-scope' WHERE id = 1"); err != nil {
 		t.Fatal(err)
 	}
-	for _, args := range [][]string{{"view", "--no-sync"}, {"reset-canonical", "--confirm"}} {
-		err := Run(context.Background(), append(args, "--db-path", path), io.Discard, io.Discard, time.Now())
-		if !errors.Is(err, db.ErrRebuildPending) {
-			t.Fatalf("%v: expected pending recovery error, got %v", args, err)
-		}
-		assertCLIQueryCount(t, database, "SELECT rebuild_pending FROM database_lifecycle WHERE id = 1", 1)
-	}
-}
 
-func TestRecoverySummaryPreview(t *testing.T) {
-	for _, test := range []struct {
-		action pipeline.RecoveryAction
-		want   string
-	}{{pipeline.RecoveryNone, ""}, {pipeline.RecoveryReset, "would reset"}, {pipeline.RecoveryResume, "would resume"}} {
-		var output bytes.Buffer
-		printSummary(&output, "sync", pipeline.Summary{Recovery: test.action}, true)
-		if !strings.Contains(output.String(), "sync dry-run: requested=") {
-			t.Fatalf("missing normal summary: %s", output.String())
-		}
-		if test.want == "" && strings.Contains(output.String(), "Recovery preview") || test.want != "" && !strings.Contains(output.String(), test.want) {
-			t.Fatalf("unexpected preview: %s", output.String())
-		}
-		output.Reset()
-		printSummary(&output, "sync", pipeline.Summary{Recovery: test.action}, false)
-		if strings.Contains(output.String(), "Recovery preview") {
-			t.Fatalf("non-dry summary included preview: %s", output.String())
-		}
+	err = Run(context.Background(), []string{"view", "--no-sync", "--db-path", path}, io.Discard, io.Discard, time.Now())
+	if !errors.Is(err, db.ErrRebuildPending) {
+		t.Fatalf("expected pending recovery error, got %v", err)
 	}
-}
-
-func TestSyncFullRefreshFlagForcesSourceRefresh(t *testing.T) {
-	ctx := context.Background()
-	dbPath := filepath.Join(t.TempDir(), "tokeninsights.sqlite")
-	sourceDir := t.TempDir()
-	sourcePath := filepath.Join(sourceDir, "opencode", "opencode.db")
-	now := time.Date(2026, 4, 24, 15, 0, 0, 0, time.UTC)
-	createOpenCodeSQLiteMessagesForCLI(t, sourcePath)
-	setFileModTimeForCLI(t, sourcePath, now.Add(-72*time.Hour))
-
-	var stdout bytes.Buffer
-	err := Run(ctx, []string{"sync", "--db-path", dbPath, "--harness", "opencode", "--source-dir", sourceDir}, &stdout, io.Discard, now)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(stdout.String(), "sync: requested=1 synced=1 skipped=0 failed=0 raw_facts=1 observations=1 canonical=1 diagnostics=0") {
-		t.Fatalf("unexpected first sync output: %q", stdout.String())
-	}
-
-	stdout.Reset()
-	err = Run(ctx, []string{"sync", "--db-path", dbPath, "--harness", "opencode", "--source-dir", sourceDir}, &stdout, io.Discard, now.Add(time.Hour))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(stdout.String(), "sync: requested=1 synced=0 skipped=1 failed=0 raw_facts=0 observations=0 canonical=0 diagnostics=0") {
-		t.Fatalf("unexpected skipped sync output: %q", stdout.String())
-	}
-
-	stdout.Reset()
-	err = Run(ctx, []string{"sync", "--db-path", dbPath, "--harness", "opencode", "--source-dir", sourceDir, "--full-refresh"}, &stdout, io.Discard, now.Add(2*time.Hour))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(stdout.String(), "sync: requested=1 synced=1 skipped=0 failed=0 raw_facts=0 observations=1 canonical=0 diagnostics=0") {
-		t.Fatalf("unexpected full-refresh output: %q", stdout.String())
-	}
-}
-
-func replaceInteractiveProgramRunnerForTest(t *testing.T, runner func(interactiveModel, io.Writer) (interactiveModel, error)) func() {
-	t.Helper()
-	previous := runInteractiveProgram
-	runInteractiveProgram = runner
-	return func() {
-		runInteractiveProgram = previous
-	}
-}
-
-func createOpenCodeSQLiteMessagesForCLI(t *testing.T, dbPath string) {
-	t.Helper()
-	if err := os.MkdirAll(filepath.Dir(dbPath), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	database, err := sql.Open("sqlite", dbPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = database.Close() }()
-	if _, err := database.Exec(`
-		CREATE TABLE message (
-			id text PRIMARY KEY,
-			session_id text NOT NULL,
-			time_created integer NOT NULL,
-			time_updated integer NOT NULL,
-			data text NOT NULL
-		)
-	`); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := database.Exec(`
-		INSERT INTO message (id, session_id, time_created, time_updated, data)
-		VALUES (?, ?, ?, ?, ?)
-	`, "m1", "oc_s1", 1770000000000, 1770000000000, `{"role":"assistant","providerID":"openai","modelID":"gpt-5","tokens":{"input":100,"output":50},"time":{"created":1770000000000}}`); err != nil {
-		t.Fatal(err)
-	}
-}
-
-func setFileModTimeForCLI(t *testing.T, path string, modTime time.Time) {
-	t.Helper()
-	if err := os.Chtimes(path, modTime, modTime); err != nil {
-		t.Fatal(err)
-	}
-}
-
-func assertCLIQueryCount(t *testing.T, database *sql.DB, query string, want int) {
-	t.Helper()
-	var got int
-	if err := database.QueryRow(query).Scan(&got); err != nil {
-		t.Fatal(err)
-	}
-	if got != want {
-		t.Fatalf("%s: got %d, want %d", query, got, want)
-	}
+	assertCLIQueryCount(t, database, "SELECT rebuild_pending FROM database_lifecycle WHERE id = 1", 1)
 }

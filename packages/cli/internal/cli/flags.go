@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -10,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/pipeline"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/viewer"
 )
 
@@ -169,6 +169,19 @@ func parseViewerOptions(args []string, stderr io.Writer, requirePeriod bool, def
 	return tableOptions{dbPath: selectedDBPath, noSync: noSync, period: selected, bucket: selectedBucket, filters: queryFilters}, nil
 }
 
+func selectionFromOptions(options tableOptions) viewer.Selection {
+	return viewer.Selection{
+		Period:    string(options.period),
+		Bucket:    string(options.bucket),
+		From:      options.filters.dayFrom,
+		To:        options.filters.dayTo,
+		Providers: append([]string{}, options.filters.providers...),
+		Models:    append([]string{}, options.filters.models...),
+		Harnesses: append([]string{}, options.filters.harnesses...),
+		Sessions:  append([]string{}, options.filters.sessionIDs...),
+	}
+}
+
 func defaultDBPath() string {
 	envPath := strings.TrimSpace(os.Getenv("TOKENINSIGHTS_DB_PATH"))
 	if envPath != "" {
@@ -267,4 +280,10 @@ func validateHarnesses(values stringList) error {
 	return nil
 }
 
-var ErrUsage = errors.New("usage: tokeninsights <sync|normalize|reset-canonical|reset-all|view|serve> [options]")
+func harnessList(values stringList) []pipeline.Harness {
+	result := make([]pipeline.Harness, 0, len(values))
+	for _, value := range values {
+		result = append(result, pipeline.Harness(value))
+	}
+	return result
+}
