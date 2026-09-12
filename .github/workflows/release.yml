@@ -51,7 +51,7 @@ jobs:
         run: pnpm run build
 
       - name: Check embedded web assets
-        run: node scripts/check-web.mjs
+        run: pnpm --filter @tokeninsights/build-tools run check:web
 
       - name: Install test browser
         run: pnpm --filter @tokeninsights/web exec playwright install --with-deps chromium
@@ -162,7 +162,7 @@ jobs:
 
       - name: Generate Homebrew formula
         run: |
-          node scripts/generate-homebrew-formula.mjs \
+          pnpm --filter @tokeninsights/build-tools run generate:homebrew -- \
             --version "${{ steps.tag.outputs.version }}" \
             --tag "${{ steps.tag.outputs.tag }}" \
             --checksums dist/checksums.txt \

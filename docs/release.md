@@ -39,7 +39,9 @@ Required secret:
 
 The first release is `packages/cli/v0.0.1`.
 
-React assets are committed under `packages/cli/internal/server/static` and embedded in every binary, including Go installs and snapshot archives. CI/release verification rebuilds the frontend and checks for asset drift before packaging. Frontend changes must include regenerated assets (`pnpm run build:web`). End users need no Node.js runtime or separate web files.
+React assets are committed under `packages/cli/internal/server/static` and embedded with `go:embed` in every binary, including Go installs and snapshot archives. CI/release verification rebuilds the frontend and checks for asset drift before packaging. Frontend changes must include regenerated assets (`pnpm run build:web`). The private `@tokeninsights/build-tools` workspace package under `tools/build` owns generated-asset checks and Homebrew formula generation; it is release-time tooling only.
+
+Release artifacts contain only the native Go binary and documentation. Production hosts need no Node.js, npm, pnpm, `node_modules`, repository JavaScript tooling, or separate web files. Go serves the embedded browser JavaScript as bytes; it executes only in the browser, and the Go runtime never invokes a JavaScript runtime.
 
 The tap branch is deterministic per version, such as `tokeninsights-v0.0.1`, so rerunning the release updates the same tap pull request. If the tap pull request cannot be created or updated, the release workflow fails after publishing the GitHub Release so the Homebrew update can be repaired manually.
 

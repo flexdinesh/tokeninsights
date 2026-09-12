@@ -1,0 +1,2 @@
+{"type":"session","id":"fixture-pi-session-one"}
+{"type":"message","id":"fixture-pi-message-one","message":{"role":"assistant","usage":{"input":51,"output":11,"cacheRead":0,"cacheWrite":0,"totalTokens":62},"timestamp":1767225601000}}

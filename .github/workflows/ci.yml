@@ -50,7 +50,7 @@ jobs:
         run: pnpm run build
 
       - name: Check embedded web assets
-        run: node scripts/check-web.mjs
+        run: pnpm --filter @tokeninsights/build-tools run check:web
 
       - name: Install test browser
         run: pnpm --filter @tokeninsights/web exec playwright install --with-deps chromium

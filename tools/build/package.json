@@ -1,0 +1,17 @@
+{
+  "name": "@tokeninsights/build-tools",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "clean": "node src/clean.mjs",
+    "check:schema": "node src/check-schema.ts",
+    "check:web": "node src/check-web.mjs",
+    "setup-dev-data": "node src/setup-dev-data.mjs",
+    "generate:homebrew": "node src/generate-homebrew-formula.mjs",
+    "test": "node --test test/*.test.mjs"
+  }
+}

@@ -189,9 +189,22 @@ pnpm run test
 # Build local binaries
 pnpm run build
 
+# Build a deterministic sanitized fixture database for development
+pnpm run dev:data
+
+# Open the TUI against the fixture database
+pnpm run dev:cli
+
+# Serve the web dashboard against the fixture database on loopback
+pnpm run dev:web
+
 # Install the locally compiled CLI binary
 pnpm run install:cli
 ```
+
+The development commands use the shared fixture under `packages/cli/testdata/conformance/sync-first-basic/source/`. It contains compact, harness-native structures for OpenCode, Pi, Codex, and Claude Code, but every value is synthetic. `dev:data` recreates the ignored `.tokeninsights-dev/` directory, materializes the OpenCode SQLite source from reviewable SQL, and writes `.tokeninsights-dev/tokeninsights.sqlite`. Do not commit raw harness databases or transcripts. The existing `pnpm run start:web` remains unchanged and uses normal local sources.
+
+Root JavaScript tooling lives in the private `@tokeninsights/build-tools` workspace package under `tools/build`; root pnpm commands are stable orchestration aliases. Node and pnpm are needed only for builds, tests, and development. Production is one native Go binary: committed browser assets are embedded with `go:embed`, served by Go, and executed only by the browser. The host running `tokeninsights` needs no JavaScript runtime or `node_modules`.
 
 ### Important Documentation
 
