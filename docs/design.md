@@ -76,7 +76,7 @@ Known gaps are part of the current design contract:
 
 ## Schema Contract
 
-`packages/schema/schema.sql` is the single source of truth for SQLite table and column definitions. The Go CLI embeds a checked copy at `packages/cli/internal/db/schema/schema.sql`.
+`schema/schema.sql` is the single source of truth for SQLite table and column definitions. The Go CLI embeds a checked copy at `packages/cli/internal/db/schema/schema.sql`.
 
 Compatibility is gated by `PRAGMA user_version` plus `database_lifecycle.data_generation`. The current schema version is `8` and data generation is `1`. Release version numbers are not compatibility markers. Bump schema version for structural changes and data generation for breaking token semantics or raw/canonical identity changes requiring reingestion.
 
@@ -93,10 +93,10 @@ Schema V8 adds `database_lifecycle` for local compatibility and resumable rebuil
 Cross-language/schema validation is handled by:
 
 - `pnpm run check-schema`
-- `packages/check-schema/check-schema.ts`
+- `tools/build/src/check-schema.ts`
 - `packages/cli/internal/db/schema_test.go`
 
-Any modification to `packages/schema/schema.sql`, table structures, column definitions, or cross-language schema constants requires explicit user approval before implementation.
+Any modification to `schema/schema.sql`, table structures, column definitions, or cross-language schema constants requires explicit user approval before implementation.
 
 ## Data Model
 
@@ -429,7 +429,7 @@ Dashboard/filter query parameters are `period`, `bucket`, `from`, `to`, repeated
 
 The React visual contract is [`DESIGN.md`](../DESIGN.md), implemented by `packages/web/src/tokens.css` and shared rules in `styles.css`. All Aggregation Tabs share semantic light/dark colors, a 4px-based spacing scale, three radius roles, aligned page/panel insets, and standard/compact controls with larger touch targets. Narrow layouts reflow all six navigation choices into a visible grid and retain accessible names for icon-only actions. Visual changes must follow that contract without changing canonical analytics semantics.
 
-Vite output is checked into `packages/cli/internal/server/static` and embedded using `go:embed`, preserving direct Go installs and offline runtime use. The workspace builds React before Go; CI rebuilds and checks generated assets for drift. Web analytics use the existing canonical contract; schema V8 lifecycle state is local-only and not an analytics dimension.
+Vite output is checked into `packages/cli/internal/server/static` and embedded using `go:embed`, preserving direct Go installs and offline runtime use. The workspace builds React before Go; CI rebuilds and checks generated assets for drift. Node, npm, pnpm, `node_modules`, and repository JavaScript tooling are build-, test-, and development-only. Production is one native Go binary: Go serves embedded browser JavaScript as bytes, the browser executes it, and Go runtime code never invokes a host JavaScript runtime. Web analytics use the existing canonical contract; schema V8 lifecycle state is local-only and not an analytics dimension.
 
 ## DB Lifecycle
 
@@ -449,7 +449,7 @@ Vite output is checked into `packages/cli/internal/server/static` and embedded u
 Must not change silently:
 
 - schema changes require explicit user approval;
-- `packages/schema/schema.sql` remains the table source of truth;
+- `schema/schema.sql` remains the table source of truth;
 - canonical token usage must be session-centric;
 - missing model and unavailable provider must render with canonical fallback values, not cause row loss;
 - raw storage must remain metadata-only and avoid private content;
@@ -472,9 +472,10 @@ Can evolve with care:
 
 | Path | Role |
 |------|------|
-| `packages/schema/schema.sql` | SQLite schema source of truth |
+| `schema/schema.sql` | SQLite schema source of truth |
 | `packages/cli/internal/db/schema/schema.sql` | embedded checked schema copy |
-| `packages/check-schema/check-schema.ts` | schema contract validator |
+| `tools/build/src/check-schema.ts` | schema contract validator |
+| `tools/build/` | private build/test/development JavaScript tooling package |
 | `packages/cli/cmd/tokeninsights/main.go` | CLI executable entry point |
 | `packages/cli/internal/cli/commands.go` | command dispatch and thin orchestration |
 | `packages/cli/internal/cli/flags.go` | view flag parsing |
@@ -501,7 +502,8 @@ Can evolve with care:
 | `packages/cli/internal/pipeline/sync.go` | raw ingest and observation pipeline |
 | `packages/cli/internal/pipeline/normalize.go` | canonical normalization and diagnostics |
 | `packages/cli/internal/pipeline/pipeline_test.go` | fixture-style sync/normalize conformance tests |
-| `packages/cli/internal/pipeline/testdata/conformance/` | language-neutral source and expected-output fixture contract |
+| `packages/cli/testdata/conformance/sync-first-basic/` | shared CLI-owned development and conformance fixture |
+| `packages/cli/internal/pipeline/testdata/conformance/` | pipeline-only conformance fixtures |
 
 ## Testing And Verification
 
@@ -522,5 +524,9 @@ go test ./internal/db
 go test ./...
 ```
 
-Pipeline conformance fixtures live under `packages/cli/internal/pipeline/testdata/conformance/`.
-Fixture sources may include harness-native durable stores, such as synthetic OpenCode SQLite setup SQL, and expected raw, observation, canonical, and diagnostic outputs are JSON so future non-Go writers can reuse the same contract.
+The shared `sync-first-basic` fixture lives under `packages/cli/testdata/conformance/`; pipeline-only conformance fixtures remain under `packages/cli/internal/pipeline/testdata/conformance/`.
+Fixture sources may include harness-native durable stores, such as synthetic OpenCode SQLite setup SQL, and expected raw, observation, canonical, and diagnostic outputs are JSON so future non-Go writers can reuse the shared contract.
+
+`sync-first-basic/source/` is also the shared development source fixture. It contains compact representative OpenCode, Pi, Codex, and Claude Code data, roughly two sessions and two canonical facts per harness. Source structures reflect durable harness formats, but every retained value is synthetic. Fixtures must exclude conversation content, tool arguments/output, request headers, secrets, real user or repository paths, signatures, and other identifying data. Raw local harness databases and transcripts must never be copied into the repository.
+
+`pnpm run dev:data` recreates the ignored `.tokeninsights-dev/` directory, copies the sanitized JSONL sources, materializes OpenCode SQLite from its reviewable `source.sql`, and syncs all harnesses into `.tokeninsights-dev/tokeninsights.sqlite`. `dev:cli` and `dev:web` build and prepare that data before running all-time, no-sync viewers; the web command binds to loopback. `start:web` remains unchanged and uses normal local sources. Web browser tests retain their separate generated 80-session synthetic dataset because pagination requires more rows than the compact shared fixture.

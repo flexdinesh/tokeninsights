@@ -12,19 +12,20 @@ Full architecture, schema contract, pipelines, and invariants are in [`docs/desi
 - **Never use `any`** or type assertions (`!`, `as Type`) in TypeScript.
 - **CLI, schema, docs, and tests move together**. When changing storage, schema, events, SQL, aggregation, metric names, table columns, token semantics, or grouping, update the affected CLI code, tests, README, and `docs/design.md` in the same task.
 - **Default DB path** is `~/.local/share/tokeninsights/tokeninsights.sqlite`; overrides use `--db-path` or `TOKENINSIGHTS_DB_PATH`. `TOKENINSIGHTS_RETENTION_DAYS` is not sync-first V1 behavior.
-- **Schema is the contract**. `packages/schema/schema.sql` is the SQLite source of truth. The Go CLI embeds a checked copy and validates `PRAGMA user_version`.
-- **Schema changes require explicit user approval**. Before modifying `packages/schema/schema.sql`, table structures, column definitions, or any cross-language schema contract, clearly explain the reasons to the user and ask for explicit approval. Never make silent or implicit schema changes — even for non-breaking additions.
+- **Schema is the contract**. `schema/schema.sql` is the SQLite source of truth. The Go CLI embeds a checked copy and validates `PRAGMA user_version`.
+- **Schema changes require explicit user approval**. Before modifying `schema/schema.sql`, table structures, column definitions, or any cross-language schema contract, clearly explain the reasons to the user and ask for explicit approval. Never make silent or implicit schema changes — even for non-breaking additions.
 - **Canonical token usage is session-centric**. Every canonical token row must resolve to a stable `session_id`; raw facts may preserve missing source session IDs as null and normalization must skip unresolved facts with diagnostics.
 - **Prefer durable token data** over estimated stream deltas. `message.part.delta` is live UI only if realtime support returns later.
 - **Missing provider/model handling**: Raw facts preserve source absence as null. Canonical/view model absence becomes `unknown`; provider absence becomes `unknown` except Claude Code artifact-derived rows, which use provider `maybe-anthropic` with `provider_source='inferred'`.
 - **Raw storage is metadata-only**. Do not store prompt text, assistant text, tool arguments, tool output, request headers, secrets, raw provider payloads, or full source paths.
 - **TPS is first-class**. Keep the TPS tab and `tps avg`, `tps mean`, and `tps median` viewer concepts even when timing data is sparse or unavailable.
+- **Production is Go-only**. Node, npm, pnpm, `node_modules`, and repository JavaScript tooling are build-, test-, and development-only. Direct Go builds and installs from committed source must keep working. The production `tokeninsights` binary must run without a host JavaScript runtime: browser JavaScript is prebuilt, committed, embedded with `go:embed`, served as bytes by Go, and executed only in the browser. Go runtime code must never invoke Node, npm, or pnpm.
 - **Write for maintainability**. Do not use magic numbers in calculations for quick fixes that violate code discipline.
 - **Propose refactoring**. When you see an opportunity to refactor to strongly adhere to guidelines and quality, suggest it to the user.
 
 ## Change Checklist
 
-- Schema changed? Get explicit approval first, then update `packages/schema/schema.sql`, `packages/cli/internal/db/schema/schema.sql`, and `packages/cli/internal/db/schema.go`; run `pnpm run check-schema`.
+- Schema changed? Get explicit approval first, then update `schema/schema.sql`, `packages/cli/internal/db/schema/schema.sql`, and `packages/cli/internal/db/schema.go`; run `pnpm run check-schema`.
 - Token semantics changed? Update pipeline normalization, CLI query structs, SQL, aggregation, rendering, tests, README, and `docs/design.md`.
 - CLI query columns changed? Update scan order, aggregation, rendering, tests, README, and `docs/design.md`.
 - Grouping changed? Update sorting and table alignment tests.
@@ -45,6 +46,7 @@ pnpm run build
 
 - After changing Go code, run `gofmt` on the changed Go files, then run the relevant focused tests and `pnpm run test`.
 - Run `pnpm run build` after tests pass.
+- After build-tooling or web-asset changes, build directly from `packages/cli` and verify the resulting binary runs with Node, npm, and pnpm absent from `PATH`.
 - For manual CLI or TUI verification, print the following project-local command on screen and ask the user to run it and verify the result:
 
   ```sh

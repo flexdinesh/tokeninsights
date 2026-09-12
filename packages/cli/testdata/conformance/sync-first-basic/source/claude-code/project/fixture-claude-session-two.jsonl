@@ -1,0 +1,1 @@
+{"type":"assistant","requestId":"fixture-claude-request-two","timestamp":"2026-01-02T00:00:04.000Z","sessionId":"fixture-claude-session-two","message":{"id":"fixture-claude-message-two","role":"assistant","provider":"fixture-provider-zeta","model":"fixture-model-eta","usage":{"input_tokens":44,"output_tokens":16,"cache_read_input_tokens":5,"cache_creation_input_tokens":1}}}

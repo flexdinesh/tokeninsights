@@ -7,20 +7,21 @@
     "node": ">=24"
   },
   "scripts": {
-    "clean": "node scripts/clean.mjs",
-    "check-schema": "pnpm --filter check-schema run check-schema",
-    "test:scripts": "node --test scripts/*.test.mjs",
+    "clean": "pnpm --filter @tokeninsights/build-tools run clean",
+    "check-schema": "pnpm --filter @tokeninsights/build-tools run check:schema",
+    "test:scripts": "pnpm --filter @tokeninsights/build-tools run test",
     "test:web-e2e": "pnpm --filter @tokeninsights/web run test:e2e",
     "build:web": "pnpm --filter @tokeninsights/web run build",
-    "check-web": "pnpm run build:web && node scripts/check-web.mjs",
+    "check-web": "pnpm run build:web && pnpm --filter @tokeninsights/build-tools run check:web",
     "build:cli": "pnpm run build:web && pnpm --filter @tokeninsights/cli run build",
+    "dev:data": "pnpm run build:cli && pnpm --filter @tokeninsights/build-tools run setup-dev-data",
+    "dev:cli": "pnpm run dev:data && ./packages/cli/bin/tokeninsights view --no-sync --all-time --db-path .tokeninsights-dev/tokeninsights.sqlite",
+    "dev:web": "pnpm run dev:data && ./packages/cli/bin/tokeninsights serve --host 127.0.0.1 --no-sync --all-time --db-path .tokeninsights-dev/tokeninsights.sqlite",
     "start:web": "pnpm run build:cli && ./packages/cli/bin/tokeninsights serve",
     "install:cli": "pnpm run build:web && cd packages/cli && go install ./cmd/tokeninsights",
+    "generate:homebrew": "pnpm --filter @tokeninsights/build-tools run generate:homebrew",
     "build": "pnpm run check-schema && pnpm run build:cli",
     "test": "pnpm run test:scripts && pnpm --filter @tokeninsights/web run test && pnpm --filter @tokeninsights/cli run test"
-  },
-  "devDependencies": {
-    "esbuild": "^0.25.0"
   },
   "packageManager": "pnpm@11.6.0"
 }

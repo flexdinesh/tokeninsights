@@ -1,0 +1,50 @@
+[
+  {
+    "harness": "claude-code",
+    "session_id": "fixture-claude-session-one",
+    "message_id": "fixture-claude-message-one",
+    "observed_at_ms": 1777042800000
+  },
+  {
+    "harness": "claude-code",
+    "session_id": "fixture-claude-session-two",
+    "message_id": "fixture-claude-message-two",
+    "observed_at_ms": 1777042800000
+  },
+  {
+    "harness": "codex",
+    "session_id": "fixture-codex-session-one",
+    "message_id": "fixture-codex-turn-one:1767225602000:d813c5ef4067bd36d01c910904034e676d44424a3fafd6d3f8958a6196ab8807",
+    "observed_at_ms": 1777042800000
+  },
+  {
+    "harness": "codex",
+    "session_id": "fixture-codex-session-two",
+    "message_id": "fixture-codex-turn-two:1767312002000:73bcc94278c4384b0265aac7e0324ecc1ac26e09de2bcebba6fd394908e6fb91",
+    "observed_at_ms": 1777042800000
+  },
+  {
+    "harness": "opencode",
+    "session_id": "fixture-oc-session-v1",
+    "message_id": "fixture-oc-message-v1",
+    "observed_at_ms": 1777042800000
+  },
+  {
+    "harness": "opencode",
+    "session_id": "fixture-oc-session-v2",
+    "message_id": "fixture-oc-message-v2",
+    "observed_at_ms": 1777042800000
+  },
+  {
+    "harness": "pi",
+    "session_id": "fixture-pi-session-one",
+    "message_id": "fixture-pi-message-one",
+    "observed_at_ms": 1777042800000
+  },
+  {
+    "harness": "pi",
+    "session_id": "fixture-pi-session-two",
+    "message_id": "fixture-pi-message-two",
+    "observed_at_ms": 1777042800000
+  }
+]

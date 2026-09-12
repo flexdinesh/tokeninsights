@@ -69,13 +69,13 @@ type expectedDiagnostic struct {
 }
 
 func TestConformanceFixtureDefinesRawCanonicalAndDiagnostics(t *testing.T) {
-	assertConformanceFixture(t, syncFirstBasicFixtureDir(), Summary{
+	assertConformanceFixture(t, syncFirstBasicFixtureDir(t), Summary{
 		RequestedHarnesses: 4,
 		Synced:             4,
-		RawFacts:           4,
-		Observations:       4,
-		Canonical:          4,
-		Diagnostics:        1,
+		RawFacts:           8,
+		Observations:       8,
+		Canonical:          8,
+		Diagnostics:        2,
 	})
 }
 
@@ -134,7 +134,7 @@ func TestSyncReportsSuccessfulHarnessAndNormalizationProgress(t *testing.T) {
 	ctx := context.Background()
 	dbPath := filepath.Join(t.TempDir(), "tokeninsights.sqlite")
 	sourceDir := filepath.Join(t.TempDir(), "source")
-	copyFixtureDir(t, filepath.Join(syncFirstBasicFixtureDir(), "source"), sourceDir)
+	copyFixtureDir(t, filepath.Join(syncFirstBasicFixtureDir(t), "source"), sourceDir)
 	materializeOpenCodeSQLiteSource(t, sourceDir)
 	var events []SyncProgressEvent
 
@@ -154,10 +154,10 @@ func TestSyncReportsSuccessfulHarnessAndNormalizationProgress(t *testing.T) {
 	assertSummary(t, summary, Summary{
 		RequestedHarnesses: 4,
 		Synced:             4,
-		RawFacts:           4,
-		Observations:       4,
-		Canonical:          4,
-		Diagnostics:        1,
+		RawFacts:           8,
+		Observations:       8,
+		Canonical:          8,
+		Diagnostics:        2,
 	})
 
 	got := progressLabels(events)
@@ -1579,8 +1579,13 @@ func assertSummary(t *testing.T, got Summary, want Summary) {
 	}
 }
 
-func syncFirstBasicFixtureDir() string {
-	return filepath.Join("testdata", "conformance", "sync-first-basic")
+func syncFirstBasicFixtureDir(t *testing.T) string {
+	t.Helper()
+	_, filename, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatal("resolve pipeline test path")
+	}
+	return filepath.Clean(filepath.Join(filepath.Dir(filename), "..", "..", "testdata", "conformance", "sync-first-basic"))
 }
 
 func TestSyncAndNormalizeHarnessFixtures(t *testing.T) {
@@ -1588,7 +1593,7 @@ func TestSyncAndNormalizeHarnessFixtures(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "tokeninsights.sqlite")
 	sourceDir := t.TempDir()
 	now := time.Date(2026, 4, 24, 15, 0, 0, 0, time.UTC)
-	copyFixtureDir(t, filepath.Join(syncFirstBasicFixtureDir(), "source"), sourceDir)
+	copyFixtureDir(t, filepath.Join(syncFirstBasicFixtureDir(t), "source"), sourceDir)
 	materializeOpenCodeSQLiteSource(t, sourceDir)
 
 	summary, err := Sync(ctx, SyncOptions{
@@ -1601,18 +1606,19 @@ func TestSyncAndNormalizeHarnessFixtures(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if summary.RequestedHarnesses != 4 || summary.Synced != 4 || summary.RawFacts != 4 || summary.Observations != 4 || summary.Canonical != 4 || summary.Diagnostics != 1 {
+	if summary.RequestedHarnesses != 4 || summary.Synced != 4 || summary.RawFacts != 8 || summary.Observations != 8 || summary.Canonical != 8 || summary.Diagnostics != 2 {
 		t.Fatalf("unexpected summary: %+v", summary)
 	}
 
 	database := openTestDB(t, dbPath)
 	defer database.Close()
-	assertCount(t, database, "raw_token_usage", 4)
-	assertCount(t, database, "raw_observations", 4)
-	assertCount(t, database, "canonical_sessions", 4)
-	assertCount(t, database, "canonical_token_usage", 4)
-	assertSQLCount(t, database, "SELECT COUNT(*) FROM ingest_runs WHERE status = 'completed' AND raw_fact_count = 1 AND observation_count = 1 AND canonical_count = 1 AND diagnostic_count = 0", 3)
-	assertSQLCount(t, database, "SELECT COUNT(*) FROM ingest_runs WHERE status = 'completed' AND raw_fact_count = 1 AND observation_count = 1 AND canonical_count = 1 AND diagnostic_count = 1", 1)
+	assertCount(t, database, "raw_token_usage", 8)
+	assertCount(t, database, "raw_observations", 8)
+	assertCount(t, database, "canonical_sessions", 8)
+	assertCount(t, database, "canonical_token_usage", 8)
+	assertSQLCount(t, database, "SELECT COUNT(*) FROM ingest_runs WHERE status = 'completed' AND raw_fact_count = 2 AND observation_count = 2 AND canonical_count = 2 AND diagnostic_count = 0", 1)
+	assertSQLCount(t, database, "SELECT COUNT(*) FROM ingest_runs WHERE status = 'completed' AND raw_fact_count = 1 AND observation_count = 1 AND canonical_count = 1 AND diagnostic_count = 0", 4)
+	assertSQLCount(t, database, "SELECT COUNT(*) FROM ingest_runs WHERE status = 'completed' AND raw_fact_count = 1 AND observation_count = 1 AND canonical_count = 1 AND diagnostic_count = 1", 2)
 	assertSQLCount(t, database, "SELECT COUNT(*) FROM raw_token_usage WHERE harness = 'pi' AND provider IS NULL AND model IS NULL", 1)
 	assertSQLCount(t, database, "SELECT COUNT(*) FROM canonical_token_usage WHERE harness = 'pi' AND provider = 'unknown' AND model = 'unknown'", 1)
 
@@ -1626,16 +1632,18 @@ func TestSyncAndNormalizeHarnessFixtures(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if secondSummary.RawFacts != 0 || secondSummary.Observations != 4 || secondSummary.Canonical != 0 || secondSummary.Diagnostics != 1 {
+	if secondSummary.RawFacts != 0 || secondSummary.Observations != 8 || secondSummary.Canonical != 0 || secondSummary.Diagnostics != 2 {
 		t.Fatalf("unexpected repeat summary: %+v", secondSummary)
 	}
-	assertCount(t, database, "raw_token_usage", 4)
-	assertCount(t, database, "raw_observations", 8)
-	assertCount(t, database, "canonical_token_usage", 4)
-	assertSQLCount(t, database, "SELECT COUNT(*) FROM ingest_runs WHERE status = 'completed' AND raw_fact_count = 1 AND observation_count = 1 AND canonical_count = 1 AND diagnostic_count = 0", 3)
-	assertSQLCount(t, database, "SELECT COUNT(*) FROM ingest_runs WHERE status = 'completed' AND raw_fact_count = 1 AND observation_count = 1 AND canonical_count = 1 AND diagnostic_count = 1", 1)
-	assertSQLCount(t, database, "SELECT COUNT(*) FROM ingest_runs WHERE status = 'completed' AND raw_fact_count = 0 AND observation_count = 1 AND canonical_count = 0 AND diagnostic_count = 0", 3)
-	assertSQLCount(t, database, "SELECT COUNT(*) FROM ingest_runs WHERE status = 'completed' AND raw_fact_count = 0 AND observation_count = 1 AND canonical_count = 0 AND diagnostic_count = 1", 1)
+	assertCount(t, database, "raw_token_usage", 8)
+	assertCount(t, database, "raw_observations", 16)
+	assertCount(t, database, "canonical_token_usage", 8)
+	assertSQLCount(t, database, "SELECT COUNT(*) FROM ingest_runs WHERE status = 'completed' AND raw_fact_count = 2 AND observation_count = 2 AND canonical_count = 2 AND diagnostic_count = 0", 1)
+	assertSQLCount(t, database, "SELECT COUNT(*) FROM ingest_runs WHERE status = 'completed' AND raw_fact_count = 1 AND observation_count = 1 AND canonical_count = 1 AND diagnostic_count = 0", 4)
+	assertSQLCount(t, database, "SELECT COUNT(*) FROM ingest_runs WHERE status = 'completed' AND raw_fact_count = 1 AND observation_count = 1 AND canonical_count = 1 AND diagnostic_count = 1", 2)
+	assertSQLCount(t, database, "SELECT COUNT(*) FROM ingest_runs WHERE status = 'completed' AND raw_fact_count = 0 AND observation_count = 2 AND canonical_count = 0 AND diagnostic_count = 0", 1)
+	assertSQLCount(t, database, "SELECT COUNT(*) FROM ingest_runs WHERE status = 'completed' AND raw_fact_count = 0 AND observation_count = 1 AND canonical_count = 0 AND diagnostic_count = 0", 4)
+	assertSQLCount(t, database, "SELECT COUNT(*) FROM ingest_runs WHERE status = 'completed' AND raw_fact_count = 0 AND observation_count = 1 AND canonical_count = 0 AND diagnostic_count = 1", 2)
 
 	normalizeSummary, err := Normalize(ctx, NormalizeOptions{DBPath: dbPath, Now: now})
 	if err != nil {
@@ -1644,11 +1652,13 @@ func TestSyncAndNormalizeHarnessFixtures(t *testing.T) {
 	if normalizeSummary.Canonical != 0 || normalizeSummary.Diagnostics != 0 {
 		t.Fatalf("unexpected normalize diagnostics: %+v", normalizeSummary)
 	}
-	assertCount(t, database, "canonical_token_usage", 4)
-	assertSQLCount(t, database, "SELECT COUNT(*) FROM ingest_runs WHERE status = 'completed' AND raw_fact_count = 1 AND observation_count = 1 AND canonical_count = 1 AND diagnostic_count = 0", 3)
-	assertSQLCount(t, database, "SELECT COUNT(*) FROM ingest_runs WHERE status = 'completed' AND raw_fact_count = 1 AND observation_count = 1 AND canonical_count = 1 AND diagnostic_count = 1", 1)
-	assertSQLCount(t, database, "SELECT COUNT(*) FROM ingest_runs WHERE status = 'completed' AND raw_fact_count = 0 AND observation_count = 1 AND canonical_count = 0 AND diagnostic_count = 0", 3)
-	assertSQLCount(t, database, "SELECT COUNT(*) FROM ingest_runs WHERE status = 'completed' AND raw_fact_count = 0 AND observation_count = 1 AND canonical_count = 0 AND diagnostic_count = 1", 1)
+	assertCount(t, database, "canonical_token_usage", 8)
+	assertSQLCount(t, database, "SELECT COUNT(*) FROM ingest_runs WHERE status = 'completed' AND raw_fact_count = 2 AND observation_count = 2 AND canonical_count = 2 AND diagnostic_count = 0", 1)
+	assertSQLCount(t, database, "SELECT COUNT(*) FROM ingest_runs WHERE status = 'completed' AND raw_fact_count = 1 AND observation_count = 1 AND canonical_count = 1 AND diagnostic_count = 0", 4)
+	assertSQLCount(t, database, "SELECT COUNT(*) FROM ingest_runs WHERE status = 'completed' AND raw_fact_count = 1 AND observation_count = 1 AND canonical_count = 1 AND diagnostic_count = 1", 2)
+	assertSQLCount(t, database, "SELECT COUNT(*) FROM ingest_runs WHERE status = 'completed' AND raw_fact_count = 0 AND observation_count = 2 AND canonical_count = 0 AND diagnostic_count = 0", 1)
+	assertSQLCount(t, database, "SELECT COUNT(*) FROM ingest_runs WHERE status = 'completed' AND raw_fact_count = 0 AND observation_count = 1 AND canonical_count = 0 AND diagnostic_count = 0", 4)
+	assertSQLCount(t, database, "SELECT COUNT(*) FROM ingest_runs WHERE status = 'completed' AND raw_fact_count = 0 AND observation_count = 1 AND canonical_count = 0 AND diagnostic_count = 1", 2)
 }
 
 func TestSyncNoNormalizeLeavesPendingTokenUsageWorkForNormalize(t *testing.T) {

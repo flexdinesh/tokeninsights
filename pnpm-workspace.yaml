@@ -1,7 +1,7 @@
 packages:
   - "packages/cli"
-  - "packages/check-schema"
   - "packages/web"
+  - "tools/build"
 injectWorkspacePackages: true
 allowBuilds:
   '@google/genai': true
