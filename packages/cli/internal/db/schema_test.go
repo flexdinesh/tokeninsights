@@ -16,7 +16,7 @@ func TestSchemaContract(t *testing.T) {
 	_, testFile, _, _ := runtime.Caller(0)
 	testDir := filepath.Dir(testFile)
 
-	schemaSQLPath := filepath.Join(testDir, "../../../", "schema", "schema.sql")
+	schemaSQLPath := filepath.Join(testDir, "../../../../", "schema", "schema.sql")
 	schemaGoPath := filepath.Join(testDir, "schema.go")
 
 	sqlBytes, err := os.ReadFile(schemaSQLPath)
