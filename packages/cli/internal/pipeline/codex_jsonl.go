@@ -168,7 +168,7 @@ func (a *codexJSONLAdapter) parseCandidates(ctx context.Context, source Source, 
 	if err != nil {
 		return nil, nil, err
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	state := codexJSONLState{filenameSessionID: codexSessionIDFromFilename(source.Path)}
 	state.sessionID = state.filenameSessionID

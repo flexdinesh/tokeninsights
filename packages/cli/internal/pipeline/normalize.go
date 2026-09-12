@@ -69,7 +69,7 @@ func Normalize(ctx context.Context, options NormalizeOptions) (Summary, error) {
 		if err != nil {
 			return summary, err
 		}
-		defer database.Close()
+		defer func() { _ = database.Close() }()
 		rows, err := loadPendingTokenRows(ctx, database, options.Harnesses)
 		if err != nil {
 			return summary, err
@@ -100,7 +100,7 @@ func Normalize(ctx context.Context, options NormalizeOptions) (Summary, error) {
 	if err != nil {
 		return summary, err
 	}
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 	return normalizePrepared(ctx, database, options)
 }
 
@@ -174,8 +174,7 @@ func loadPendingTokenRows(ctx context.Context, database *sql.DB, harnesses []Har
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-
+	defer func() { _ = rows.Close() }()
 	var result []rawTokenRow
 	for rows.Next() {
 		var row rawTokenRow

@@ -355,26 +355,11 @@ func renderTableViewportWithSort(rows []renderRow, referenceRows []renderRow, g 
 	return horizontalViewport(renderTableWithReferenceRowsAndSortWidth(rows, referenceRows, g, tab, sort, width, minDataRows, "No rows match the current scope."), horizontalOffset, width)
 }
 
-func renderLoadingTableViewport(g groupByMode, tab tabMode, width int, minDataRows int) string {
-	if width <= 0 {
-		return ""
-	}
-	return horizontalViewport(renderTableWithReferenceRowsWidth(nil, loadingReferenceRows(tab), g, tab, width, minDataRows, "Loading data..."), 0, width)
-}
-
 func renderLoadingTableViewportWithSort(g groupByMode, tab tabMode, sort sortMode, width int, minDataRows int) string {
 	if width <= 0 {
 		return ""
 	}
 	return horizontalViewport(renderTableWithReferenceRowsAndSortWidth(nil, loadingReferenceRows(tab), g, tab, sort, width, minDataRows, "Loading data..."), 0, width)
-}
-
-func renderTableWidth(rows []renderRow, g groupByMode, tab tabMode) int {
-	return lipgloss.Width(renderTable(rows, g, tab))
-}
-
-func renderTableWidthWithSort(rows []renderRow, g groupByMode, tab tabMode, sort sortMode) int {
-	return lipgloss.Width(renderTableWithReferenceRowsAndSort(rows, rows, g, tab, sort, 0, "No rows match the current scope."))
 }
 
 func renderTableWidthWithSortAndViewport(rows []renderRow, g groupByMode, tab tabMode, sort sortMode, width int) int {

@@ -297,7 +297,7 @@ func AggregateTokens(ctx context.Context, db Reader, f Filter, g GroupBy) ([]Row
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var result []Row
 	for rows.Next() {
@@ -361,7 +361,7 @@ func ViewerTokenBuckets(ctx context.Context, db Reader, f Filter, bucket TimeBuc
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var result []ViewerTokenBucketRow
 	for rows.Next() {
@@ -466,7 +466,7 @@ func ViewerContext(ctx context.Context, db Reader, f Filter) ([]ViewerContextRow
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var result []ViewerContextRow
 	for rows.Next() {
@@ -539,7 +539,7 @@ func viewerDimensions(ctx context.Context, db Reader, f Filter, primaryColumn st
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var result []ViewerDimensionRow
 	for rows.Next() {
@@ -631,7 +631,7 @@ func ViewerSessions(ctx context.Context, db Reader, f Filter) ([]ViewerSessionRo
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var result []ViewerSessionRow
 	for rows.Next() {

@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useReducer, useRef } from 'react'
+import { createContext, useContext, useEffect, useMemo, useReducer, useRef } from 'react'
 import type { Dispatch, ReactNode } from 'react'
 import { z } from 'zod'
 import { bucketSchema, periodSchema, sortSchema, tabSchema } from './contracts'
@@ -91,6 +91,8 @@ export function reducer(state: State, action: Action): State {
       }
     case 'chartMetric':
       return { ...state, chartMetric: action.value }
+    default:
+      return state
   }
 }
 
@@ -211,9 +213,8 @@ export function DashboardProvider({
       /* Preferences still work without storage. */
     }
   }, [state.theme])
-  return (
-    <StateContext.Provider value={{ state, dispatch, defaults }}>{children}</StateContext.Provider>
-  )
+  const value = useMemo(() => ({ state, dispatch, defaults }), [state, defaults])
+  return <StateContext.Provider value={value}>{children}</StateContext.Provider>
 }
 
 export function useDashboardState() {

@@ -42,7 +42,7 @@ func AvailableSessions(ctx context.Context, reader Reader, f Filter, search stri
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	result := []string{}
 	for rows.Next() {
 		var s string

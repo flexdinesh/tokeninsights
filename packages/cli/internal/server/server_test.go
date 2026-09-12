@@ -31,7 +31,7 @@ func fixture(t *testing.T) string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 	facts := []struct {
 		day, harness, session, provider, model                 string
 		input, output, cacheRead, cacheWrite, total, countable int64
@@ -178,7 +178,7 @@ func TestDashboardSessionCoverageAcrossBucketsAndDates(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	database.Close()
+	_ = database.Close()
 	q, err := parseQuery(url.Values{"period": {"all"}})
 	if err != nil {
 		t.Fatal(err)
@@ -363,7 +363,7 @@ func TestAnalyticsRejectPendingRecoveryWithoutMutation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 	if _, err := database.Exec("UPDATE database_lifecycle SET rebuild_pending = 1, rebuild_source_key = 'test-scope' WHERE id = 1"); err != nil {
 		t.Fatal(err)
 	}
@@ -398,10 +398,10 @@ func TestListenerURLAndShutdown(t *testing.T) {
 	}
 	conflict, err := net.Listen("tcp4", listener.Addr().String())
 	if err == nil {
-		conflict.Close()
+		_ = conflict.Close()
 		t.Fatal("expected occupied port")
 	}
-	listener.Close()
+	_ = listener.Close()
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	var output bytes.Buffer

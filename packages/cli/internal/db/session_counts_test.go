@@ -8,7 +8,7 @@ import (
 
 func TestViewerSessionCounts(t *testing.T) {
 	database, _ := newTestDB(t)
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 	ctx := context.Background()
 	counts, err := ViewerSessionCounts(ctx, database, Filter{})
 	if err != nil || counts != (SessionCounts{}) {

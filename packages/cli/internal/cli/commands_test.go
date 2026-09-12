@@ -191,7 +191,7 @@ func TestViewNoSyncDoesNotProcessPendingNormalizationWork(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 	assertCLIQueryCount(t, database, "SELECT COUNT(*) FROM normalization_work_queue WHERE domain = 'token_usage'", 1)
 	assertCLIQueryCount(t, database, "SELECT COUNT(*) FROM canonical_token_usage", 0)
 }
@@ -268,7 +268,7 @@ func TestReadOnlyViewAndCanonicalResetRejectPendingRecovery(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 	if _, err := database.Exec("UPDATE database_lifecycle SET rebuild_pending = 1, rebuild_source_key = 'test-scope' WHERE id = 1"); err != nil {
 		t.Fatal(err)
 	}
@@ -357,7 +357,7 @@ func createOpenCodeSQLiteMessagesForCLI(t *testing.T, dbPath string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 	if _, err := database.Exec(`
 		CREATE TABLE message (
 			id text PRIMARY KEY,

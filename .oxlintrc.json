@@ -23,5 +23,20 @@
     "typeAware": true,
     "maxWarnings": 0
   },
+  "rules": {
+    "import/no-unassigned-import": [
+      "error",
+      { "allow": ["**/*.css", "@testing-library/jest-dom/vitest"] }
+    ],
+    "jsx-a11y/no-noninteractive-tabindex": ["error", { "roles": ["tabpanel", "region"] }],
+    "jsx-a11y/prefer-tag-over-role": "off",
+    "react/react-in-jsx-scope": "off"
+  },
+  "overrides": [
+    {
+      "files": ["packages/web/e2e/**/*.ts"],
+      "rules": { "eslint/no-await-in-loop": "off" }
+    }
+  ],
   "ignorePatterns": ["packages/cli/internal/server/static/**"]
 }

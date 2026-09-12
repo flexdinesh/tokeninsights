@@ -81,7 +81,7 @@ func syncPrepared(ctx context.Context, options SyncOptions) (Summary, error) {
 	if err != nil {
 		return summary, err
 	}
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 	if created {
 		summary.Skipped = 0
 	}
@@ -160,7 +160,7 @@ func dryRunSync(ctx context.Context, options SyncOptions) (Summary, error) {
 	summary.RequestedHarnesses = len(options.Harnesses)
 	stateDB := openDryRunSourceRefreshDB(options.DBPath)
 	if stateDB != nil {
-		defer stateDB.Close()
+		defer func() { _ = stateDB.Close() }()
 	}
 	for _, harness := range options.Harnesses {
 		harnessOptions := parserOptionsForHarness(options, harness)

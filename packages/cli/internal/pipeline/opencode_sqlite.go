@@ -149,8 +149,7 @@ func (a opencodeSQLiteAdapter) Parse(ctx context.Context, source Source, options
 	if err != nil {
 		return nil, nil, err
 	}
-	defer database.Close()
-
+	defer func() { _ = database.Close() }()
 	v1Exists, err := sqliteTableExists(ctx, database, "message")
 	if err != nil {
 		return nil, nil, err
@@ -202,8 +201,7 @@ func (a opencodeSQLiteAdapter) parseV1Messages(ctx context.Context, database *sq
 	if err != nil {
 		return nil, nil, err
 	}
-	defer rows.Close()
-
+	defer func() { _ = rows.Close() }()
 	var facts []RawTokenFact
 	var diagnostics []Diagnostic
 	for rows.Next() {
@@ -242,8 +240,7 @@ func (a opencodeSQLiteAdapter) parseV2Messages(ctx context.Context, database *sq
 	if err != nil {
 		return nil, nil, err
 	}
-	defer rows.Close()
-
+	defer func() { _ = rows.Close() }()
 	var facts []RawTokenFact
 	var diagnostics []Diagnostic
 	for rows.Next() {
@@ -439,8 +436,7 @@ func requireSQLiteColumns(ctx context.Context, database *sql.DB, table string, c
 	if err != nil {
 		return err
 	}
-	defer rows.Close()
-
+	defer func() { _ = rows.Close() }()
 	found := map[string]bool{}
 	for rows.Next() {
 		var cid int

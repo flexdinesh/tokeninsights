@@ -222,12 +222,12 @@ func (m interactiveModel) loadDashboard() reloadMsg {
 	if err != nil {
 		return reloadMsg{err: err}
 	}
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 	tx, err := db.BeginAnalyticsRead(m.ctx, database)
 	if err != nil {
 		return reloadMsg{err: err}
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	rows, err := loadRowsFromReader(m.ctx, tx, m.options, m.now, m.groupBy, m.activeTab)
 	if err != nil {
 		return reloadMsg{err: err}
@@ -336,23 +336,6 @@ func (m interactiveModel) measureHeights() interactiveModel {
 	m.cachedWidth = m.width
 
 	return m
-}
-
-func clampScroll(offset int, totalRows int, visible int) int {
-	if totalRows <= 0 || visible <= 0 {
-		return 0
-	}
-	maxOffset := totalRows - visible
-	if maxOffset < 0 {
-		return 0
-	}
-	if offset < 0 {
-		return 0
-	}
-	if offset > maxOffset {
-		return maxOffset
-	}
-	return offset
 }
 
 func clampHorizontalScroll(offset int, contentWidth int, viewportWidth int) int {
@@ -1107,17 +1090,6 @@ var (
 			Background(lipgloss.Color(panelBackgroundColor))
 )
 
-func groupByLabel(g groupByMode) string {
-	switch g {
-	case groupBySession:
-		return "session"
-	case groupByHour:
-		return "hour"
-	default:
-		return "day"
-	}
-}
-
 func periodLabel(value period) string {
 	switch value {
 	case periodAllTime:
@@ -1445,9 +1417,9 @@ func RunInteractive(ctx context.Context, args []string, stdout io.Writer, stderr
 	if finalModel.syncErr != nil {
 		printSummary(stdout, "sync", finalModel.syncSummary, false)
 		if errors.Is(finalModel.syncErr, db.ErrRebuildPending) || errors.Is(finalModel.syncErr, db.ErrRecoveryRequired) {
-			return fmt.Errorf("%w\n\nUsage recovery is incomplete. Retry `tokeninsights sync --all` with the original --db-path, --source-dir (if used), and source environment settings.", finalModel.syncErr)
+			return fmt.Errorf("%w\n\nusage recovery is incomplete; retry `tokeninsights sync --all` with the original --db-path, --source-dir (if used), and source environment settings", finalModel.syncErr)
 		}
-		return fmt.Errorf("%w\n\nImplicit view sync failed. To refresh unaffected harnesses manually, run `tokeninsights sync --harness <harness>`, then open the existing canonical data with `tokeninsights view --no-sync`.", finalModel.syncErr)
+		return fmt.Errorf("%w\n\nimplicit view sync failed; to refresh unaffected harnesses manually, run `tokeninsights sync --harness <harness>`, then open the existing canonical data with `tokeninsights view --no-sync`", finalModel.syncErr)
 	}
 	return nil
 }
@@ -1472,12 +1444,12 @@ func loadFilterValues(ctx context.Context, options tableOptions, now time.Time, 
 	if err != nil {
 		return nil, err
 	}
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 	tx, err := db.BeginAnalyticsRead(ctx, database)
 	if err != nil {
 		return nil, err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	filter := filterFromOptions(options, now)
 	switch dimension {
@@ -1497,12 +1469,12 @@ func loadLastCompletedSync(ctx context.Context, options tableOptions) (int64, er
 	if err != nil {
 		return 0, err
 	}
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 	tx, err := db.BeginAnalyticsRead(ctx, database)
 	if err != nil {
 		return 0, err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	return db.LastCompletedSync(ctx, tx)
 }
 
@@ -1511,12 +1483,12 @@ func loadRows(ctx context.Context, options tableOptions, now time.Time, groupBy 
 	if err != nil {
 		return nil, err
 	}
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 	tx, err := db.BeginAnalyticsRead(ctx, database)
 	if err != nil {
 		return nil, err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	return loadRowsFromReader(ctx, tx, options, now, groupBy, activeTab)
 }
 

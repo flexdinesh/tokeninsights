@@ -20,7 +20,7 @@ func AvailableProviders(ctx context.Context, db Reader, f Filter) ([]string, err
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var values []string
 	for rows.Next() {
@@ -50,7 +50,7 @@ func AvailableModels(ctx context.Context, db Reader, f Filter) ([]string, error)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var values []string
 	for rows.Next() {
@@ -80,7 +80,7 @@ func AvailableHarnesses(ctx context.Context, db Reader, f Filter) ([]string, err
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var values []string
 	for rows.Next() {

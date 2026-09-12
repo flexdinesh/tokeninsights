@@ -258,10 +258,6 @@ func periodStart(now time.Time, selected period) time.Time {
 	return viewer.PeriodStart(now, string(selected))
 }
 
-func periodEnd(now time.Time, selected period) time.Time {
-	return viewer.PeriodEnd(now, string(selected))
-}
-
 func validateHarnesses(values stringList) error {
 	for _, value := range values {
 		if value != "opencode" && value != "pi" && value != "codex" && value != "claude-code" {

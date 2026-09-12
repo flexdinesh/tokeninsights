@@ -40,7 +40,6 @@ export function SummaryCards({ summary }: { summary: Dashboard['summary'] }) {
         <article key={card.label} className={`summary-card ${card.className}`}>
           <span className="eyebrow">{card.label}</span>
           <strong
-            tabIndex={0}
             title={exactCount(card.value)}
             aria-label={`${card.label}: ${exactCount(card.value)}`}
           >

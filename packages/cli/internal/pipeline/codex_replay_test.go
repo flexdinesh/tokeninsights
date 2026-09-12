@@ -581,7 +581,7 @@ func TestCodexReplayRepeatSyncAndDeferredNormalize(t *testing.T) {
 				t.Fatal(err)
 			}
 			database := openTestDB(t, options.DBPath)
-			defer database.Close()
+			defer func() { _ = database.Close() }()
 			assertSQLCount(t, database, "SELECT COUNT(*) FROM raw_token_usage", 3)
 			if !normalize {
 				assertSQLCount(t, database, "SELECT COUNT(*) FROM canonical_token_usage", 0)
@@ -625,7 +625,7 @@ func TestCodexReplaySkippedParentStillSuppliesOriginals(t *testing.T) {
 		t.Fatal(err)
 	}
 	database := openTestDB(t, options.DBPath)
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 	assertSQLCount(t, database, "SELECT COUNT(*) FROM raw_token_usage", 2)
 	assertSQLCount(t, database, "SELECT SUM(total_tokens) FROM canonical_token_usage", 17)
 	options.Now = options.Now.Add(time.Hour)

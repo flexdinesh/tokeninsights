@@ -102,7 +102,7 @@ func (a *app) startSync() {
 		a.state.Phase = "ready"
 		if err != nil {
 			// Pipeline errors can contain local paths; details belong in the terminal.
-			fmt.Fprintf(a.log, "sync failed: %v\n", err)
+			_, _ = fmt.Fprintf(a.log, "sync failed: %v\n", err)
 			a.state.Error = "Sync failed. See terminal details, retry, or inspect existing data."
 			a.state.Phase = "failed"
 			if errors.Is(err, db.ErrRebuildPending) || errors.Is(err, db.ErrRecoveryRequired) {
@@ -172,13 +172,13 @@ func (a *app) handler() http.Handler {
 			a.queryError(w, err)
 			return
 		}
-		defer database.Close()
+		defer func() { _ = database.Close() }()
 		tx, err := db.BeginAnalyticsRead(ctx, database)
 		if err != nil {
 			a.queryError(w, err)
 			return
 		}
-		defer tx.Rollback()
+		defer func() { _ = tx.Rollback() }()
 		f := q.Selection.Filter(time.Now())
 		values := map[string][]string{}
 		values["providers"], err = db.AvailableProviders(ctx, tx, f)
@@ -231,7 +231,7 @@ func (a *app) handler() http.Handler {
 }
 
 func (a *app) queryError(w http.ResponseWriter, err error) {
-	fmt.Fprintf(a.log, "dashboard query failed: %v\n", err)
+	_, _ = fmt.Fprintf(a.log, "dashboard query failed: %v\n", err)
 	if errors.Is(err, db.ErrRebuildPending) || errors.Is(err, db.ErrRecoveryRequired) {
 		apiError(w, http.StatusServiceUnavailable, "Usage recovery is incomplete. Sync to rebuild local usage data.")
 		return
@@ -247,13 +247,15 @@ func Run(parent context.Context, options Options, stdout, stderr io.Writer) erro
 		if err != nil {
 			return err
 		}
-		database.Close()
+		if err := database.Close(); err != nil {
+			return err
+		}
 	}
 	listener, err := listen(options.Host, options.Port)
 	if err != nil {
 		return err
 	}
-	defer listener.Close()
+	defer func() { _ = listener.Close() }()
 	host, port, err := net.SplitHostPort(listener.Addr().String())
 	if err != nil {
 		return err
@@ -263,13 +265,19 @@ func Run(parent context.Context, options Options, stdout, stderr io.Writer) erro
 		var lanErr error
 		lan, lanErr = primaryLANIPv4()
 		if lanErr != nil {
-			fmt.Fprintf(stderr, "LAN URL unavailable: %v\n", lanErr)
+			if _, err := fmt.Fprintf(stderr, "LAN URL unavailable: %v\n", lanErr); err != nil {
+				return err
+			}
 		}
 	}
 	for _, address := range displayURLs(host, port, lan) {
-		fmt.Fprintln(stdout, address)
+		if _, err := fmt.Fprintln(stdout, address); err != nil {
+			return err
+		}
 	}
-	fmt.Fprintln(stdout, "Press Ctrl+C to stop.")
+	if _, err := fmt.Fprintln(stdout, "Press Ctrl+C to stop."); err != nil {
+		return err
+	}
 	a := newApp(ctx, options, stderr)
 	if !options.NoSync {
 		a.startSync()

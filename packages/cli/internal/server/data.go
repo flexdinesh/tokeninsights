@@ -252,12 +252,12 @@ func loadDashboard(ctx context.Context, path string, q query, now time.Time) (da
 	if err != nil {
 		return result, err
 	}
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 	tx, err := db.BeginAnalyticsRead(ctx, database)
 	if err != nil {
 		return result, err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	f := q.Selection.Filter(now)
 	rows, err := loadRows(ctx, tx, f, q)
 	if err != nil {

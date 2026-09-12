@@ -130,7 +130,7 @@ func (a piJSONLAdapter) Parse(ctx context.Context, source Source, options SyncOp
 	if err != nil {
 		return nil, nil, err
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	session := piJSONLSessionFile{filenameSessionID: piSessionIDFromFilename(source.Path)}
 	session.sessionID = session.filenameSessionID

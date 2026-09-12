@@ -98,7 +98,7 @@ func TestCreateIfMissingCreatesCompatibleDB(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 	if !created {
 		t.Fatal("expected created=true")
 	}
@@ -136,7 +136,7 @@ func TestOpenRejectsIncompatibleDB(t *testing.T) {
 
 func TestResetCanonicalKeepsRawFacts(t *testing.T) {
 	database, _ := newTestDB(t)
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 	recordedAtMs := time.Date(2026, 4, 24, 12, 0, 0, 0, time.Local).UnixMilli()
 	insertCanonicalToken(t, database, recordedAtMs, "opencode", "ses_1", "openai", "gpt", 100, 10, 5, 20, 1, 136)
 	insertSourceRefreshState(t, database)
@@ -197,7 +197,7 @@ func TestResetAllClearsSourceRefreshStateAndNormalizationWork(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer resetDB.Close()
+	defer func() { _ = resetDB.Close() }()
 	assertDBCount(t, resetDB, "source_refresh_state", 0)
 	assertDBCount(t, resetDB, "normalization_work_queue", 0)
 	assertDBCount(t, resetDB, "raw_token_usage", 0)
@@ -205,7 +205,7 @@ func TestResetAllClearsSourceRefreshStateAndNormalizationWork(t *testing.T) {
 
 func TestAggregateCanonicalDaily(t *testing.T) {
 	database, _ := newTestDB(t)
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 	day := time.Date(2026, 4, 24, 12, 0, 0, 0, time.Local).UnixMilli()
 	older := time.Date(2026, 4, 23, 12, 0, 0, 0, time.Local).UnixMilli()
 	insertCanonicalToken(t, database, older, "pi", "ses_1", "anthropic", "claude", 10, 5, 1, 2, 3, 21)
@@ -231,7 +231,7 @@ func TestAggregateCanonicalDaily(t *testing.T) {
 
 func TestViewerTokenBucketsAggregateByWeekWithSessionCounts(t *testing.T) {
 	database, _ := newTestDB(t)
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 	monday := time.Date(2026, 4, 20, 9, 0, 0, 0, time.Local).UnixMilli()
 	friday := time.Date(2026, 4, 24, 12, 0, 0, 0, time.Local).UnixMilli()
 	nextMonday := time.Date(2026, 4, 27, 12, 0, 0, 0, time.Local).UnixMilli()
@@ -256,7 +256,7 @@ func TestViewerTokenBucketsAggregateByWeekWithSessionCounts(t *testing.T) {
 
 func TestViewerModelsAggregateByModelOnly(t *testing.T) {
 	database, _ := newTestDB(t)
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 	recordedAt := time.Date(2026, 4, 24, 12, 0, 0, 0, time.Local).UnixMilli()
 	insertCanonicalToken(t, database, recordedAt, "opencode", "ses_1", "openai", "gpt-5", 100, 10, 5, 20, 1, 136)
 	insertCanonicalToken(t, database, recordedAt+1000, "pi", "ses_2", "azure", "gpt-5", 200, 20, 6, 30, 2, 258)
@@ -279,7 +279,7 @@ func TestViewerModelsAggregateByModelOnly(t *testing.T) {
 
 func TestViewerContextAggregatesSessionPeakContextLoadByHarnessProviderModel(t *testing.T) {
 	database, _ := newTestDB(t)
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 	recordedAt := time.Date(2026, 4, 24, 12, 0, 0, 0, time.Local).UnixMilli()
 	insertCanonicalToken(t, database, recordedAt, "codex", "ses_1", "openai", "gpt-5", 100, 10, 5, 20, 1, 136)
 	insertCanonicalToken(t, database, recordedAt+1000, "codex", "ses_1", "openai", "gpt-5", 200, 20, 6, 30, 2, 258)
@@ -305,7 +305,7 @@ func TestViewerContextAggregatesSessionPeakContextLoadByHarnessProviderModel(t *
 
 func TestViewerContextAppliesFiltersBeforeSessionPeakContextLoad(t *testing.T) {
 	database, _ := newTestDB(t)
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 	inRange := time.Date(2026, 4, 24, 12, 0, 0, 0, time.Local)
 	outOfRange := time.Date(2026, 4, 23, 12, 0, 0, 0, time.Local)
 	insertCanonicalToken(t, database, outOfRange.UnixMilli(), "codex", "ses_1", "openai", "gpt-5", 1000, 10, 5, 0, 0, 1015)
@@ -333,7 +333,7 @@ func TestViewerContextAppliesFiltersBeforeSessionPeakContextLoad(t *testing.T) {
 
 func TestViewerDimensionsExposeAllSummaryValues(t *testing.T) {
 	database, _ := newTestDB(t)
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 	recordedAt := time.Date(2026, 4, 24, 12, 0, 0, 0, time.Local).UnixMilli()
 	insertCanonicalToken(t, database, recordedAt, "opencode", "ses_1", "openai", "gpt-5", 100, 10, 5, 20, 1, 136)
 	insertCanonicalToken(t, database, recordedAt+1000, "pi", "ses_2", "azure", "gpt-5", 200, 20, 6, 30, 2, 258)
@@ -353,7 +353,7 @@ func TestViewerDimensionsExposeAllSummaryValues(t *testing.T) {
 
 func TestViewerSessionsAggregateByCanonicalSessionOnly(t *testing.T) {
 	database, _ := newTestDB(t)
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 	recordedAt := time.Date(2026, 4, 24, 12, 0, 0, 0, time.Local).UnixMilli()
 	insertCanonicalToken(t, database, recordedAt, "opencode", "ses_1", "openai", "gpt-5", 100, 10, 5, 20, 1, 136)
 	insertCanonicalToken(t, database, recordedAt+1000, "opencode", "ses_1", "anthropic", "claude", 200, 20, 6, 30, 2, 258)
@@ -372,7 +372,7 @@ func TestViewerSessionsAggregateByCanonicalSessionOnly(t *testing.T) {
 
 func TestAggregateNonTokenDomainsEmptyWithCanonicalTokens(t *testing.T) {
 	database, _ := newTestDB(t)
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 	day := time.Date(2026, 4, 24, 12, 0, 0, 0, time.Local).UnixMilli()
 	insertCanonicalToken(t, database, day, "opencode", "ses_1", "openai", "gpt", 100, 10, 5, 20, 1, 136)
 
@@ -401,7 +401,7 @@ func TestAggregateNonTokenDomainsEmptyWithCanonicalTokens(t *testing.T) {
 
 func TestAggregateCanonicalSessionAndFilters(t *testing.T) {
 	database, _ := newTestDB(t)
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 	day := time.Date(2026, 4, 24, 12, 0, 0, 0, time.Local).UnixMilli()
 	insertCanonicalToken(t, database, day, "opencode", "ses_1", "openai", "gpt", 100, 10, 5, 20, 1, 136)
 	insertCanonicalToken(t, database, day, "codex", "ses_2", "openai", "gpt", 200, 20, 10, 40, 2, 272)
@@ -433,7 +433,7 @@ func TestAggregateCanonicalSessionAndFilters(t *testing.T) {
 
 func TestEventsFilterCanonicalRows(t *testing.T) {
 	database, _ := newTestDB(t)
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 	day := time.Date(2026, 4, 24, 12, 0, 0, 0, time.Local).UnixMilli()
 	insertCanonicalToken(t, database, day, "opencode", "ses_1", "openai", "gpt", 100, 10, 5, 20, 1, 136)
 	insertCanonicalToken(t, database, day, "pi", "ses_2", "anthropic", "claude", 200, 20, 6, 30, 2, 258)

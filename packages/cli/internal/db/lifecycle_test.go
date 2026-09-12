@@ -61,7 +61,7 @@ func TestLifecycleMissingAndFresh(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 	if !created {
 		t.Fatal("fresh database not created")
 	}
@@ -90,21 +90,21 @@ func TestRecoveryLegacySchemas(t *testing.T) {
 				t.Fatal(err)
 			}
 			execLifecycleSQL(t, database, legacySchema(t, version))
-			database.Close()
+			_ = database.Close()
 			if got := inspectLifecycle(t, path); got != (Compatibility{Exists: true, ResetRequired: true}) {
 				t.Fatalf("legacy compatibility: %+v", got)
 			}
 			for _, open := range []func(string) (*sql.DB, error){Open, OpenWritable} {
 				if database, err := open(path); !errors.Is(err, ErrRecoveryRequired) {
 					if database != nil {
-						database.Close()
+						_ = database.Close()
 					}
 					t.Fatalf("legacy open error = %v", err)
 				}
 			}
 			if database, _, err := CreateIfMissing(path); !errors.Is(err, ErrRecoveryRequired) {
 				if database != nil {
-					database.Close()
+					_ = database.Close()
 				}
 				t.Fatalf("legacy create error = %v", err)
 			}
@@ -118,7 +118,7 @@ func TestRecoveryLegacySchemas(t *testing.T) {
 
 func TestRecoveryGenerationAndResume(t *testing.T) {
 	database, path := newTestDB(t)
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 	insertCanonicalToken(t, database, 1000, "codex", "old", "openai", "gpt", 10, 2, 0, 0, 0, 12)
 	execLifecycleSQL(t, database, "UPDATE database_lifecycle SET data_generation = 0")
 	if !inspectLifecycle(t, path).ResetRequired {
@@ -129,7 +129,7 @@ func TestRecoveryGenerationAndResume(t *testing.T) {
 	assertDBCount(t, database, TableRawTokenUsage, 0)
 	if opened, err := Open(path); !errors.Is(err, ErrRebuildPending) {
 		if opened != nil {
-			opened.Close()
+			_ = opened.Close()
 		}
 		t.Fatalf("pending analytics error = %v", err)
 	}
@@ -137,7 +137,7 @@ func TestRecoveryGenerationAndResume(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer prepared.Close()
+	defer func() { _ = prepared.Close() }()
 	if created {
 		t.Fatal("pending database recreated")
 	}
@@ -164,7 +164,7 @@ func TestRecoveryGenerationAndResume(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer reader.Close()
+	defer func() { _ = reader.Close() }()
 	assertDBCount(t, reader, TableCanonicalTokenUsage, 1)
 	recoverLifecycle(t, path)
 	assertDBCount(t, reader, TableCanonicalTokenUsage, 1)
@@ -180,7 +180,7 @@ func TestRecoveryRefusesUnsafeFilesWithoutChangingContents(t *testing.T) {
 			case "newer-generation":
 				execLifecycleSQL(t, database, fmt.Sprintf("UPDATE database_lifecycle SET data_generation = %d", CurrentDataGeneration+1))
 			case "foreign", "foreign-current-version":
-				database.Close()
+				_ = database.Close()
 				path = filepath.Join(t.TempDir(), "foreign.sqlite")
 				var err error
 				database, err = openSQLite(path, false)
@@ -198,7 +198,7 @@ func TestRecoveryRefusesUnsafeFilesWithoutChangingContents(t *testing.T) {
 			case "missing-singleton":
 				execLifecycleSQL(t, database, "DELETE FROM database_lifecycle")
 			}
-			database.Close()
+			_ = database.Close()
 			if kind == "corrupt" {
 				if err := os.WriteFile(path, []byte("not a SQLite database"), 0o600); err != nil {
 					t.Fatal(err)
@@ -213,12 +213,12 @@ func TestRecoveryRefusesUnsafeFilesWithoutChangingContents(t *testing.T) {
 			}
 			for _, open := range []func(string) (*sql.DB, error){Open, OpenWritable} {
 				if database, err := open(path); err == nil {
-					database.Close()
+					_ = database.Close()
 					t.Fatal("unsafe database opened")
 				}
 			}
 			if database, _, err := CreateIfMissing(path); err == nil {
-				database.Close()
+				_ = database.Close()
 				t.Fatal("unsafe database accepted by create")
 			}
 			release, err := AcquireWriterLock(context.Background(), path)
@@ -244,14 +244,14 @@ func TestResetRollbackPreservesOldDataAndLifecycle(t *testing.T) {
 	for _, failDDL := range []bool{false, true} {
 		t.Run(fmt.Sprintf("ddl-error-%t", failDDL), func(t *testing.T) {
 			database, path := newTestDB(t)
-			defer database.Close()
+			defer func() { _ = database.Close() }()
 			insertCanonicalToken(t, database, 1000, "codex", "old", "openai", "gpt", 10, 2, 0, 0, 0, 12)
 			execLifecycleSQL(t, database, "UPDATE database_lifecycle SET data_generation = 0, updated_at_ms = 123")
 			conn, err := database.Conn(context.Background())
 			if err != nil {
 				t.Fatal(err)
 			}
-			defer conn.Close()
+			defer func() { _ = conn.Close() }()
 			if _, err := conn.ExecContext(context.Background(), "PRAGMA foreign_keys = OFF"); err != nil {
 				t.Fatal(err)
 			}
@@ -288,7 +288,7 @@ func TestResetRollbackPreservesOldDataAndLifecycle(t *testing.T) {
 
 func TestResetAllPreservesLiveReaderSnapshotAndInode(t *testing.T) {
 	database, path := newTestDB(t)
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 	insertCanonicalToken(t, database, 1000, "codex", "old", "openai", "gpt", 10, 2, 0, 0, 0, 12)
 	markLifecyclePending(t, database)
 	before, err := os.Stat(path)
@@ -299,7 +299,7 @@ func TestResetAllPreservesLiveReaderSnapshotAndInode(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	var count int
 	if err := tx.QueryRow("SELECT COUNT(*) FROM canonical_token_usage").Scan(&count); err != nil || count != 1 {
 		t.Fatalf("old reader: %d, %v", count, err)
@@ -326,7 +326,7 @@ func TestResetAllPreservesLiveReaderSnapshotAndInode(t *testing.T) {
 
 func TestResetCanonicalPreservesLifecycleAndRejectsPending(t *testing.T) {
 	database, path := newTestDB(t)
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 	insertCanonicalToken(t, database, 1000, "codex", "old", "openai", "gpt", 10, 2, 0, 0, 0, 12)
 	execLifecycleSQL(t, database, "UPDATE database_lifecycle SET updated_at_ms = 123")
 	if err := ResetCanonical(context.Background(), database); err != nil {
@@ -354,7 +354,7 @@ func TestResetCanonicalPreservesLifecycleAndRejectsPending(t *testing.T) {
 
 func TestApplySchemaDoesNotBlessMissingLifecycle(t *testing.T) {
 	database, path := newTestDB(t)
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 	execLifecycleSQL(t, database, "DELETE FROM database_lifecycle")
 	if err := ApplySchema(context.Background(), database); err == nil {
 		t.Fatal("ApplySchema blessed a missing lifecycle row")
@@ -367,7 +367,7 @@ func TestApplySchemaDoesNotBlessMissingLifecycle(t *testing.T) {
 
 func TestCurrentLifecycleAllowsAdditionalTriggers(t *testing.T) {
 	database, path := newTestDB(t)
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 	execLifecycleSQL(t, database, `
 		CREATE TRIGGER reject_raw_insert BEFORE INSERT ON raw_token_usage
 		BEGIN SELECT RAISE(ABORT, 'injected ingest failure'); END
@@ -386,7 +386,7 @@ func TestCurrentLifecycleAllowsAdditionalTriggers(t *testing.T) {
 			t.Fatal(err)
 		}
 		assertDBCount(t, writer, TableRawTokenUsage, 0)
-		writer.Close()
+		_ = writer.Close()
 		reader, err := Open(path)
 		if pending {
 			if !errors.Is(err, ErrRebuildPending) {
@@ -395,7 +395,7 @@ func TestCurrentLifecycleAllowsAdditionalTriggers(t *testing.T) {
 		} else if err != nil {
 			t.Fatal(err)
 		} else {
-			reader.Close()
+			_ = reader.Close()
 		}
 	}
 	_, err := database.Exec(`
@@ -418,7 +418,7 @@ func TestLifecycleSourceKeyConstraints(t *testing.T) {
 	} {
 		t.Run(values, func(t *testing.T) {
 			database, path := newTestDB(t)
-			defer database.Close()
+			defer func() { _ = database.Close() }()
 			statement := "UPDATE database_lifecycle SET " + values
 			if _, err := database.Exec(statement); err == nil {
 				t.Fatal("invalid source state accepted by schema")
@@ -440,7 +440,7 @@ func TestLifecycleSourceKeyConstraints(t *testing.T) {
 
 func TestRecoverySourceScopeMustMatch(t *testing.T) {
 	database, path := newTestDB(t)
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 	release, err := AcquireWriterLock(context.Background(), path)
 	if err != nil {
 		t.Fatal(err)
@@ -497,24 +497,24 @@ func TestRecoverySourceScopeMustMatch(t *testing.T) {
 
 func TestBeginAnalyticsReadRejectsRecoveryAfterOpen(t *testing.T) {
 	database, path := newTestDB(t)
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 	reader, err := Open(path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer reader.Close()
+	defer func() { _ = reader.Close() }()
 	reader.SetMaxOpenConns(1)
 	execLifecycleSQL(t, database, "UPDATE database_lifecycle SET data_generation = 0")
 	if tx, err := BeginAnalyticsRead(context.Background(), reader); !errors.Is(err, ErrRecoveryRequired) {
 		if tx != nil {
-			tx.Rollback()
+			_ = tx.Rollback()
 		}
 		t.Fatalf("incompatible analytics transaction = %v", err)
 	}
 	recoverLifecycle(t, path)
 	if tx, err := BeginAnalyticsRead(context.Background(), reader); !errors.Is(err, ErrRebuildPending) {
 		if tx != nil {
-			tx.Rollback()
+			_ = tx.Rollback()
 		}
 		t.Fatalf("pending analytics transaction = %v", err)
 	}
@@ -528,23 +528,23 @@ func TestBeginAnalyticsReadRejectsRecoveryAfterOpen(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	tx.Rollback()
+	_ = tx.Rollback()
 }
 
 func TestBeginAnalyticsReadPinsSnapshotAcrossRecovery(t *testing.T) {
 	database, path := newTestDB(t)
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 	insertCanonicalToken(t, database, 1000, "codex", "ready", "openai", "gpt", 10, 2, 0, 0, 0, 12)
 	reader, err := Open(path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer reader.Close()
+	defer func() { _ = reader.Close() }()
 	tx, err := BeginAnalyticsRead(context.Background(), reader)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	// No analytics query yet: lifecycle validation itself must pin the snapshot.
 	execLifecycleSQL(t, database, "UPDATE database_lifecycle SET data_generation = 0")
 	recoverLifecycle(t, path)

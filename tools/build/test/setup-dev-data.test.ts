@@ -17,7 +17,7 @@ const fixtureRelativePath = join(
   'source',
 )
 
-test('materializes deterministic development sources and removes stale output', async () => {
+void test('materializes deterministic development sources and removes stale output', async () => {
   const configuredWorkspaceRoot = await createWorkspace()
   const outputDir = resolve(configuredWorkspaceRoot, '.tokeninsights-dev')
   const stalePath = join(outputDir, 'stale.txt')
@@ -56,7 +56,7 @@ test('materializes deterministic development sources and removes stale output', 
     ...fixtureFiles.filter((path) => path.endsWith('.jsonl')).map((path) => join('source', path)),
     join('source', 'opencode', 'opencode.db'),
     'tokeninsights.sqlite',
-  ].sort()
+  ].toSorted()
   assert.deepEqual(firstFiles, expectedFiles)
 
   await writeFile(join(outputDir, 'stale-again.txt'), 'stale')
@@ -97,5 +97,5 @@ async function relativeFiles(root: string): Promise<string[]> {
   return entries
     .filter((entry) => entry.isFile())
     .map((entry) => join(entry.parentPath, entry.name).slice(root.length + 1))
-    .sort()
+    .toSorted()
 }

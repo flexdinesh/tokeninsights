@@ -67,7 +67,7 @@ func TestWriterLockAliasesAndCancellation(t *testing.T) {
 
 func TestWriterLockDatabaseSymlink(t *testing.T) {
 	database, path := newTestDB(t)
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 	alias := filepath.Join(t.TempDir(), "linked.sqlite")
 	if err := os.Symlink(path, alias); err != nil {
 		t.Fatal(err)
@@ -89,7 +89,7 @@ func TestWriterLockDatabaseSymlink(t *testing.T) {
 
 func TestResetAllOwnsWriterLock(t *testing.T) {
 	database, path := newTestDB(t)
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 	insertCanonicalToken(t, database, 1000, "codex", "old", "openai", "gpt", 10, 2, 0, 0, 0, 12)
 	release, err := AcquireWriterLock(context.Background(), path)
 	if err != nil {
@@ -142,7 +142,7 @@ func TestWriterLockSubprocessCrashRelease(t *testing.T) {
 	if err := command.Start(); err != nil {
 		t.Fatal(err)
 	}
-	defer command.Process.Kill()
+	defer func() { _ = command.Process.Kill() }()
 	scanner := bufio.NewScanner(stdout)
 	if !scanner.Scan() || scanner.Text() != "locked" {
 		t.Fatalf("child lock handshake failed: %v", scanner.Err())

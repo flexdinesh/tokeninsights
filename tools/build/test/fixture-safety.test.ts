@@ -75,30 +75,32 @@ const allowedNumbers = new Set([
   100, 101, 105, 129, 202, 1767225601000, 1767225602000, 1767312001000, 1767312002000,
 ])
 
-test('shared fixture has only allowlisted public-safe source records', async () => {
+void test('shared fixture has only allowlisted public-safe source records', async () => {
   const paths = await listFiles(fixtureDir)
-  const relativePaths = paths.map((path) => relative(fixtureDir, path)).sort()
+  const relativePaths = paths.map((path) => relative(fixtureDir, path)).toSorted()
   assert.deepEqual(relativePaths, expectedFiles)
 
-  for (const path of paths) {
-    const contents = await readFile(path, 'utf8')
-    assertPublicSafeText(`${relative(fixtureDir, path)}\n${contents}`)
-    if (!path.endsWith('.jsonl')) {
-      continue
-    }
+  await Promise.all(
+    paths.map(async (path) => {
+      const contents = await readFile(path, 'utf8')
+      assertPublicSafeText(`${relative(fixtureDir, path)}\n${contents}`)
+      if (!path.endsWith('.jsonl')) {
+        return
+      }
 
-    const harness = relative(fixtureDir, path).split('/')[0]
-    const lines = contents.trim().split('\n')
-    assert.ok(lines.length > 0, `${path}: empty JSONL fixture`)
-    for (const [index, line] of lines.entries()) {
-      const record = parseJSON(line)
-      validateRecord(harness, record, `${path}:${index + 1}`)
-      validateValues(record, `${path}:${index + 1}`)
-    }
-  }
+      const harness = relative(fixtureDir, path).split('/')[0]
+      const lines = contents.trim().split('\n')
+      assert.ok(lines.length > 0, `${path}: empty JSONL fixture`)
+      for (const [index, line] of lines.entries()) {
+        const record = parseJSON(line)
+        validateRecord(harness, record, `${path}:${index + 1}`)
+        validateValues(record, `${path}:${index + 1}`)
+      }
+    }),
+  )
 })
 
-test('OpenCode SQL materializes only allowlisted metadata rows', async () => {
+void test('OpenCode SQL materializes only allowlisted metadata rows', async () => {
   const sql = await readFile(join(fixtureDir, 'opencode', 'source.sql'), 'utf8')
   assertPublicSafeText(sql)
 
@@ -175,7 +177,7 @@ test('OpenCode SQL materializes only allowlisted metadata rows', async () => {
   }
 })
 
-test('fixture safety scan rejects representative sensitive data', () => {
+void test('fixture safety scan rejects representative sensitive data', () => {
   for (const value of [
     'owner@example.com',
     '/home/owner/private-project',
@@ -209,7 +211,7 @@ function validateRecord(harness: string, record: unknown, context: string): void
 }
 
 function validatePi(record: unknown, context: string): void {
-  assertShape(record, ['type'], [], context)
+  assertObject(record, context)
   if (record.type === 'session') {
     assertShape(record, ['type', 'id'], [], context)
     return
@@ -226,7 +228,7 @@ function validatePi(record: unknown, context: string): void {
 }
 
 function validateCodex(record: unknown, context: string): void {
-  assertShape(record, ['type'], [], context)
+  assertObject(record, context)
   if (record.type === 'session_meta') {
     assertShape(record, ['type', 'payload'], [], context)
     assertShape(record.payload, ['id', 'model_provider'], [], context)
@@ -298,18 +300,22 @@ function assertShape(
   optional: readonly string[],
   context: string,
 ): asserts value is Record<string, unknown> {
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
-    assert.fail(`${context}: expected object`)
-  }
-  const actual = Object.keys(value).sort()
-  const allowed = [...required, ...optional]
+  assertObject(value, context)
+  const actual = Object.keys(value).toSorted()
+  const allowed = new Set([...required, ...optional])
   assert.deepEqual(
-    actual.filter((key) => !allowed.includes(key)),
+    actual.filter((key) => !allowed.has(key)),
     [],
     `${context}: unexpected fields`,
   )
   for (const key of required) {
     assert.ok(Object.hasOwn(value, key), `${context}: missing ${key}`)
+  }
+}
+
+function assertObject(value: unknown, context: string): asserts value is Record<string, unknown> {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    assert.fail(`${context}: expected object`)
   }
 }
 
@@ -391,16 +397,13 @@ function withoutData(row: Record<string, SQLOutputValue>): Record<string, SQLOut
 
 async function listFiles(dir: string): Promise<string[]> {
   const entries = await readdir(dir, { withFileTypes: true })
-  const files: string[] = []
-  for (const entry of entries) {
-    const path = join(dir, entry.name)
-    if (entry.isDirectory()) {
-      files.push(...(await listFiles(path)))
-    } else if (entry.isFile()) {
-      files.push(path)
-    } else {
-      assert.fail(`${path}: only regular files allowed`)
-    }
-  }
-  return files
+  const files = await Promise.all(
+    entries.map(async (entry) => {
+      const path = join(dir, entry.name)
+      if (entry.isDirectory()) return listFiles(path)
+      if (entry.isFile()) return [path]
+      return assert.fail(`${path}: only regular files allowed`)
+    }),
+  )
+  return files.flat()
 }

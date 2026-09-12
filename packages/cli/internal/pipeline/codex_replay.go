@@ -148,7 +148,7 @@ func codexReadSourceMetadata(ctx context.Context, source Source) (codexSourceMet
 		// must instead stop discovery and optional ancestry parsing immediately.
 		return metadata, ctx.Err()
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 	scanner := bufio.NewScanner(file)
 	scanner.Buffer(make([]byte, 0, 64*1024), maxCodexJSONLLineBytes)
 	for {

@@ -42,7 +42,7 @@ func primaryLANIPv4() (string, error) {
 	var preferred netip.Addr
 	if conn, err := net.DialTimeout("udp4", routeProbeAddress, time.Second); err == nil {
 		address, err := netip.ParseAddrPort(conn.LocalAddr().String())
-		conn.Close()
+		_ = conn.Close()
 		if err == nil {
 			preferred = address.Addr().Unmap()
 		}

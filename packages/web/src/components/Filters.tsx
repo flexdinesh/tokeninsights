@@ -39,6 +39,7 @@ export function MultiSelect({
   const [search, setSearch] = useState('')
   const searchInput = useRef<HTMLInputElement>(null)
   const options = [...new Set([...selected, ...values])]
+    // oxlint-disable-next-line unicorn/no-array-sort -- This array is freshly created.
     .sort()
     .filter((v) => v.toLowerCase().includes(search.toLowerCase()))
   return (

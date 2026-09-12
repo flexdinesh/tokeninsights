@@ -223,8 +223,7 @@ func TestOpenCodeSQLiteConformanceFixtureIncludesArchivedV1AndV2MessageTokenUsag
 	})
 
 	database := openTestDB(t, dbPath)
-	defer database.Close()
-
+	defer func() { _ = database.Close() }()
 	assertEqualJSON(t,
 		queryRawTokenUsage(t, database),
 		readExpectedJSON[[]expectedRawTokenUsage](t, filepath.Join(fixtureDir, "expected", "raw_token_usage.json")),
@@ -276,7 +275,7 @@ func TestOpenCodeSQLiteParsesV2OnlyAndClampsNegativeTokens(t *testing.T) {
 	})
 
 	database := openTestDB(t, dbPath)
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 	assertSQLCount(t, database, "SELECT COUNT(*) FROM raw_token_usage WHERE session_id = 'ses_v2' AND message_id = 'msg_v2' AND provider = 'openai' AND model = 'gpt-5' AND input_tokens = 100 AND output_tokens = 0 AND reasoning_tokens = 2 AND cache_read_tokens = 3 AND cache_write_tokens = 4", 1)
 	assertSQLCount(t, database, "SELECT COUNT(*) FROM normalization_diagnostics WHERE code = 'opencode_sqlite_negative_tokens'", 1)
 }
@@ -322,7 +321,7 @@ func TestOpenCodeSQLiteFallsBackToV1WhenV2OverlapHasNoTokens(t *testing.T) {
 	})
 
 	database := openTestDB(t, dbPath)
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 	assertSQLCount(t, database, "SELECT COUNT(*) FROM canonical_token_usage WHERE input_tokens = 80 AND output_tokens = 20", 1)
 	assertSQLCount(t, database, "SELECT COUNT(*) FROM normalization_diagnostics WHERE code = 'opencode_sqlite_missing_tokens'", 1)
 }
@@ -361,7 +360,7 @@ func TestOpenCodeRecentSourceRefreshSkipsOldUnchangedSource(t *testing.T) {
 	})
 
 	database := openTestDB(t, dbPath)
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 	assertSQLCount(t, database, "SELECT COUNT(*) FROM source_refresh_state WHERE harness = 'opencode' AND source_kind = 'opencode-sqlite'", 1)
 
 	repeatSummary, err := Sync(ctx, SyncOptions{
@@ -412,7 +411,7 @@ func TestOpenCodeRecentSourceRefreshParsesRecentTouchedAndMissingStateSources(t 
 		})
 
 		database := openTestDB(t, dbPath)
-		defer database.Close()
+		defer func() { _ = database.Close() }()
 		assertCount(t, database, "raw_token_usage", 1)
 		assertCount(t, database, "raw_observations", 2)
 		assertCount(t, database, "canonical_token_usage", 1)
@@ -444,7 +443,7 @@ func TestOpenCodeRecentSourceRefreshParsesRecentTouchedAndMissingStateSources(t 
 		})
 
 		database := openTestDB(t, dbPath)
-		defer database.Close()
+		defer func() { _ = database.Close() }()
 		assertCount(t, database, "raw_token_usage", 1)
 		assertCount(t, database, "raw_observations", 2)
 		assertCount(t, database, "canonical_token_usage", 1)
@@ -459,7 +458,7 @@ func TestOpenCodeRecentSourceRefreshParsesRecentTouchedAndMissingStateSources(t 
 
 		syncOpenCodeSourceRefreshFixture(t, ctx, dbPath, sourceDir, now)
 		database := openTestDB(t, dbPath)
-		defer database.Close()
+		defer func() { _ = database.Close() }()
 		if _, err := database.Exec("DELETE FROM source_refresh_state"); err != nil {
 			t.Fatal(err)
 		}
@@ -492,7 +491,7 @@ func TestOpenCodeRecentSourceRefreshParsesRecentTouchedAndMissingStateSources(t 
 
 		syncOpenCodeSourceRefreshFixture(t, ctx, dbPath, sourceDir, now)
 		database := openTestDB(t, dbPath)
-		defer database.Close()
+		defer func() { _ = database.Close() }()
 		if _, err := database.Exec("UPDATE source_refresh_state SET parser = ? WHERE harness = 'opencode'", defaultParser); err != nil {
 			t.Fatal(err)
 		}
@@ -542,7 +541,7 @@ func TestOpenCodeRecentSourceRefreshDryRunPreviewsSkipWithoutWriting(t *testing.
 	})
 
 	database := openTestDB(t, dbPath)
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 	assertCount(t, database, "ingest_runs", 1)
 	assertCount(t, database, "raw_token_usage", 1)
 	assertCount(t, database, "raw_observations", 1)
@@ -592,7 +591,7 @@ func TestSyncFullRefreshIgnoresSourceRefreshStateWithoutRequeueingRawFacts(t *te
 	})
 
 	database := openTestDB(t, dbPath)
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 	assertCount(t, database, "raw_token_usage", 1)
 	assertCount(t, database, "raw_observations", 2)
 	assertCount(t, database, "canonical_token_usage", 1)
@@ -638,7 +637,7 @@ func TestOpenCodeRecentSourceRefreshPreservesInvalidSchemaDiagnostics(t *testing
 	})
 
 	tokenInsightsDB := openTestDB(t, dbPath)
-	defer tokenInsightsDB.Close()
+	defer func() { _ = tokenInsightsDB.Close() }()
 	assertSQLCount(t, tokenInsightsDB, "SELECT COUNT(*) FROM normalization_diagnostics WHERE code = 'opencode_sqlite_missing_message_table'", 1)
 	assertSQLCount(t, tokenInsightsDB, "SELECT COUNT(*) FROM source_refresh_state WHERE harness = 'opencode' AND source_kind = 'opencode-sqlite'", 1)
 }
@@ -674,7 +673,7 @@ func TestPiJSONLSyncsAssistantMessageTokenUsage(t *testing.T) {
 	})
 
 	database := openTestDB(t, dbPath)
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 	assertEqualJSON(t, queryRawTokenUsage(t, database), []expectedRawTokenUsage{
 		{
 			Harness:          "pi",
@@ -747,7 +746,7 @@ func TestCodexJSONLSyncsTokenCountUsage(t *testing.T) {
 	})
 
 	database := openTestDB(t, dbPath)
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 	assertEqualJSON(t, queryRawTokenUsage(t, database), []expectedRawTokenUsage{
 		{
 			Harness:          "codex",
@@ -854,7 +853,7 @@ func TestCodexDefaultDiscoverySyncsActiveAndArchivedSessions(t *testing.T) {
 	})
 
 	database := openTestDB(t, dbPath)
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 	assertCount(t, database, "raw_token_usage", 2)
 	assertCount(t, database, "canonical_token_usage", 2)
 	assertSQLCount(t, database, "SELECT COUNT(*) FROM canonical_sessions WHERE session_id IN ('codex_active', 'codex_archived')", 2)
@@ -911,7 +910,7 @@ func TestCodexMovingActiveSessionToArchiveDoesNotDuplicateUsage(t *testing.T) {
 	})
 
 	database := openTestDB(t, dbPath)
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 	assertCount(t, database, "raw_token_usage", 1)
 	assertCount(t, database, "canonical_token_usage", 1)
 	assertSQLCount(t, database, "SELECT COUNT(*) FROM canonical_sessions WHERE session_id = 'codex_s1'", 1)
@@ -972,7 +971,7 @@ func TestClaudeCodeJSONLSyncsMainSessionTokenUsage(t *testing.T) {
 	})
 
 	database := openTestDB(t, dbPath)
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 	assertEqualJSON(t, queryRawTokenUsage(t, database), []expectedRawTokenUsage{
 		{
 			Harness:          "claude-code",
@@ -1075,7 +1074,7 @@ func TestClaudeCodeJSONLAttributesSidechainUsageToParentSession(t *testing.T) {
 	})
 
 	database := openTestDB(t, dbPath)
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 	assertSQLCount(t, database, "SELECT COUNT(*) FROM canonical_sessions WHERE session_id = 'parent_session'", 1)
 	assertSQLCount(t, database, "SELECT COUNT(*) FROM canonical_sessions WHERE session_id = 'agent-sidechain'", 0)
 	assertSQLCount(t, database, "SELECT COUNT(*) FROM canonical_token_usage ctu INNER JOIN canonical_sessions cs ON cs.id = ctu.session_id WHERE cs.session_id = 'parent_session'", 2)
@@ -1110,7 +1109,7 @@ func TestClaudeCodeJSONLSuppressesCopiedTranscriptFacts(t *testing.T) {
 	})
 
 	database := openTestDB(t, dbPath)
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 	assertCount(t, database, "raw_token_usage", 1)
 	assertCount(t, database, "canonical_token_usage", 1)
 	assertSQLCount(t, database, "SELECT COUNT(*) FROM normalization_diagnostics WHERE code = 'claude_code_jsonl_duplicate_suppressed'", 1)
@@ -1146,7 +1145,7 @@ func TestCodexJSONLBackfillsModelForPendingTokenCount(t *testing.T) {
 	})
 
 	database := openTestDB(t, dbPath)
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 	assertSQLCount(t, database, "SELECT COUNT(*) FROM raw_token_usage WHERE model = 'gpt-5.5' AND message_id = 'turn_pending:1767225602000:b04e11a1cc52d2478b03b78dc3140f463e35c0501217b545803993a358c5a717'", 1)
 	assertSQLCount(t, database, "SELECT COUNT(*) FROM normalization_diagnostics WHERE code = 'codex_jsonl_missing_model'", 0)
 }
@@ -1183,7 +1182,7 @@ func TestCodexJSONLSkipsRegressedCumulativeSnapshot(t *testing.T) {
 	})
 
 	database := openTestDB(t, dbPath)
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 	assertSQLCount(t, database, "SELECT COUNT(*) FROM normalization_diagnostics WHERE code = 'codex_jsonl_stale_token_snapshot'", 1)
 }
 
@@ -1216,7 +1215,7 @@ func TestPiJSONLUsesFilenameSessionFallbackWhenHeaderIsMissing(t *testing.T) {
 	})
 
 	database := openTestDB(t, dbPath)
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 	assertSQLCount(t, database, "SELECT COUNT(*) FROM canonical_sessions WHERE session_id = 'pi_fallback'", 1)
 	assertSQLCount(t, database, "SELECT COUNT(*) FROM canonical_token_usage WHERE provider = 'unknown' AND model = 'unknown'", 1)
 	assertSQLCount(t, database, "SELECT COUNT(*) FROM normalization_diagnostics WHERE code = 'pi_jsonl_missing_session_header'", 1)
@@ -1249,7 +1248,7 @@ func TestPiJSONLPrefersHeaderSessionWhenFilenameDiffers(t *testing.T) {
 	})
 
 	database := openTestDB(t, dbPath)
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 	assertSQLCount(t, database, "SELECT COUNT(*) FROM canonical_sessions WHERE session_id = 'header_session'", 1)
 	assertSQLCount(t, database, "SELECT COUNT(*) FROM canonical_sessions WHERE session_id = 'filename_session'", 0)
 	assertSQLCount(t, database, "SELECT COUNT(*) FROM normalization_diagnostics WHERE code = 'pi_jsonl_session_id_mismatch'", 1)
@@ -1282,7 +1281,7 @@ func TestPiJSONLDiscoveryIgnoresNestedSessionFilesBelowWorkspace(t *testing.T) {
 	})
 
 	database := openTestDB(t, dbPath)
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 	assertSQLCount(t, database, "SELECT COUNT(*) FROM canonical_sessions WHERE session_id = 'pi_s1'", 1)
 	assertSQLCount(t, database, "SELECT COUNT(*) FROM canonical_sessions WHERE session_id = 'pi_s2'", 0)
 }
@@ -1314,7 +1313,7 @@ func TestPiJSONLCopiedSessionFilesDedupeByLogicalSessionSource(t *testing.T) {
 	})
 
 	database := openTestDB(t, dbPath)
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 	assertCount(t, database, "raw_token_usage", 1)
 	assertCount(t, database, "raw_observations", 2)
 	assertCount(t, database, "canonical_token_usage", 1)
@@ -1353,7 +1352,7 @@ func TestPiJSONLEmitsDiagnosticsForInvalidRowsAndIngestsUsableWarnings(t *testin
 	})
 
 	database := openTestDB(t, dbPath)
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 	assertSQLCount(t, database, "SELECT COUNT(*) FROM raw_token_usage WHERE input_tokens = 0 AND output_tokens = 5 AND total_tokens = 0", 1)
 	assertSQLCount(t, database, "SELECT COUNT(*) FROM normalization_diagnostics WHERE code = 'pi_jsonl_parse_error'", 1)
 	assertSQLCount(t, database, "SELECT COUNT(*) FROM normalization_diagnostics WHERE code = 'pi_jsonl_missing_message_id'", 1)
@@ -1403,7 +1402,7 @@ func TestOpenCodeSQLiteSuppressesDuplicateChannelRows(t *testing.T) {
 	})
 
 	database := openTestDB(t, dbPath)
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 	assertCount(t, database, "raw_token_usage", 1)
 	assertCount(t, database, "canonical_token_usage", 1)
 	assertSQLCount(t, database, "SELECT COUNT(*) FROM normalization_diagnostics WHERE code = 'opencode_sqlite_duplicate_suppressed'", 1)
@@ -1442,7 +1441,7 @@ func TestOpenCodeSQLiteClampsNegativeTokenComponents(t *testing.T) {
 	})
 
 	database := openTestDB(t, dbPath)
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 	assertSQLCount(t, database, "SELECT COUNT(*) FROM raw_token_usage WHERE input_tokens = 0 AND output_tokens = 50 AND reasoning_tokens = 0 AND cache_read_tokens = 0 AND cache_write_tokens = 5", 1)
 	assertSQLCount(t, database, "SELECT COUNT(*) FROM canonical_token_usage WHERE input_tokens = 0 AND output_tokens = 50 AND reasoning_tokens = 0 AND cache_read_tokens = 0 AND cache_write_tokens = 5 AND total_tokens = 55", 1)
 	assertSQLCount(t, database, "SELECT COUNT(*) FROM normalization_diagnostics WHERE code = 'opencode_sqlite_negative_tokens'", 1)
@@ -1478,7 +1477,7 @@ func TestSyncWithWallClockNowCompletesIngestRun(t *testing.T) {
 	})
 
 	database := openTestDB(t, dbPath)
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 	assertSQLCount(t, database, "SELECT COUNT(*) FROM ingest_runs WHERE status = 'completed' AND completed_at_ms >= started_at_ms", 1)
 }
 
@@ -1545,8 +1544,7 @@ func assertConformanceFixture(t *testing.T, fixtureDir string, wantSummary Summa
 	assertSummary(t, summary, wantSummary)
 
 	database := openTestDB(t, dbPath)
-	defer database.Close()
-
+	defer func() { _ = database.Close() }()
 	assertEqualJSON(t,
 		queryRawTokenUsage(t, database),
 		readExpectedJSON[[]expectedRawTokenUsage](t, filepath.Join(fixtureDir, "expected", "raw_token_usage.json")),
@@ -1611,7 +1609,7 @@ func TestSyncAndNormalizeHarnessFixtures(t *testing.T) {
 	}
 
 	database := openTestDB(t, dbPath)
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 	assertCount(t, database, "raw_token_usage", 8)
 	assertCount(t, database, "raw_observations", 8)
 	assertCount(t, database, "canonical_sessions", 8)
@@ -1686,7 +1684,7 @@ func TestSyncNoNormalizeLeavesPendingTokenUsageWorkForNormalize(t *testing.T) {
 	})
 
 	database := openTestDB(t, dbPath)
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 	assertCount(t, database, "raw_token_usage", 1)
 	assertCount(t, database, "canonical_token_usage", 0)
 	assertSQLCount(t, database, "SELECT COUNT(*) FROM normalization_work_queue WHERE domain = 'token_usage'", 1)
@@ -1759,7 +1757,7 @@ func TestPiRecentSourceRefreshSkipsOldUnchangedSource(t *testing.T) {
 	})
 
 	database := openTestDB(t, dbPath)
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 	assertSQLCount(t, database, "SELECT COUNT(*) FROM source_refresh_state WHERE harness = 'pi' AND source_kind = 'pi-session-jsonl'", 1)
 
 	repeatSummary, err := Sync(ctx, SyncOptions{
@@ -1827,7 +1825,7 @@ func TestPiRecentSourceRefreshParsesRecentUnchangedSource(t *testing.T) {
 	})
 
 	database := openTestDB(t, dbPath)
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 	assertCount(t, database, "raw_token_usage", 1)
 	assertCount(t, database, "raw_observations", 2)
 	assertCount(t, database, "canonical_token_usage", 1)
@@ -1880,7 +1878,7 @@ func TestPiRecentSourceRefreshParsesTouchedOldSource(t *testing.T) {
 	})
 
 	database := openTestDB(t, dbPath)
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 	assertCount(t, database, "raw_token_usage", 1)
 	assertCount(t, database, "raw_observations", 2)
 	assertCount(t, database, "canonical_token_usage", 1)
@@ -1915,7 +1913,7 @@ func TestPiRecentSourceRefreshParsesOldSourceWhenStateIsMissing(t *testing.T) {
 	})
 
 	database := openTestDB(t, dbPath)
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 	if _, err := database.Exec("DELETE FROM source_refresh_state"); err != nil {
 		t.Fatal(err)
 	}
@@ -1984,7 +1982,7 @@ func TestPiRecentSourceRefreshDryRunPreviewsSkipWithoutWriting(t *testing.T) {
 	})
 
 	database := openTestDB(t, dbPath)
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 	assertCount(t, database, "ingest_runs", 1)
 	assertCount(t, database, "raw_token_usage", 1)
 	assertCount(t, database, "raw_observations", 1)
@@ -2034,7 +2032,7 @@ func TestPiRecentSourceRefreshNormalizesPendingWorkWhenSourceIsSkipped(t *testin
 	})
 
 	database := openTestDB(t, dbPath)
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 	assertCount(t, database, "canonical_token_usage", 1)
 	assertSQLCount(t, database, "SELECT COUNT(*) FROM normalization_work_queue WHERE domain = 'token_usage'", 0)
 	assertSQLCount(t, database, "SELECT COUNT(*) FROM ingest_runs WHERE status = 'completed' AND raw_fact_count = 0 AND observation_count = 0", 1)
@@ -2068,7 +2066,7 @@ func TestCodexRecentSourceRefreshSkipsOldUnchangedSource(t *testing.T) {
 	})
 
 	database := openTestDB(t, dbPath)
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 	assertSQLCount(t, database, "SELECT COUNT(*) FROM source_refresh_state WHERE harness = 'codex' AND source_kind = 'codex-session-jsonl'", 1)
 
 	repeatSummary, err := Sync(ctx, SyncOptions{
@@ -2133,7 +2131,7 @@ func TestCodexArchivedSessionUsesRecentSourceRefresh(t *testing.T) {
 	})
 
 	database := openTestDB(t, dbPath)
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 	assertCount(t, database, "raw_token_usage", 1)
 	assertCount(t, database, "raw_observations", 1)
 	assertCount(t, database, "canonical_token_usage", 1)
@@ -2169,7 +2167,7 @@ func TestClaudeCodeRecentSourceRefreshSkipsOldUnchangedSource(t *testing.T) {
 	})
 
 	database := openTestDB(t, dbPath)
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 	assertSQLCount(t, database, "SELECT COUNT(*) FROM source_refresh_state WHERE harness = 'claude-code' AND source_kind = 'claude-code-session-jsonl'", 1)
 
 	repeatSummary, err := Sync(ctx, SyncOptions{
@@ -2227,7 +2225,7 @@ func TestJSONLRecentSourceRefreshParsesRecentTouchedAndMissingStateSources(t *te
 			})
 
 			database := openTestDB(t, dbPath)
-			defer database.Close()
+			defer func() { _ = database.Close() }()
 			assertCount(t, database, "raw_token_usage", 1)
 			assertCount(t, database, "raw_observations", 2)
 			assertCount(t, database, "canonical_token_usage", 1)
@@ -2261,7 +2259,7 @@ func TestJSONLRecentSourceRefreshParsesRecentTouchedAndMissingStateSources(t *te
 			})
 
 			database := openTestDB(t, dbPath)
-			defer database.Close()
+			defer func() { _ = database.Close() }()
 			assertCount(t, database, "raw_token_usage", 1)
 			assertCount(t, database, "raw_observations", 2)
 			assertCount(t, database, "canonical_token_usage", 1)
@@ -2277,7 +2275,7 @@ func TestJSONLRecentSourceRefreshParsesRecentTouchedAndMissingStateSources(t *te
 
 			syncJSONLRecentSourceRefreshFixture(t, ctx, dbPath, sourceDir, testCase, now)
 			database := openTestDB(t, dbPath)
-			defer database.Close()
+			defer func() { _ = database.Close() }()
 			if _, err := database.Exec("DELETE FROM source_refresh_state"); err != nil {
 				t.Fatal(err)
 			}
@@ -2339,7 +2337,7 @@ func TestJSONLRecentSourceRefreshDryRunPreviewsSkipWithoutWriting(t *testing.T) 
 			})
 
 			database := openTestDB(t, dbPath)
-			defer database.Close()
+			defer func() { _ = database.Close() }()
 			assertCount(t, database, "ingest_runs", 1)
 			assertCount(t, database, "raw_token_usage", 1)
 			assertCount(t, database, "raw_observations", 1)
@@ -2374,7 +2372,7 @@ func TestResetCanonicalRequeuesRawTokenUsageForNormalize(t *testing.T) {
 	})
 
 	database := openTestDB(t, dbPath)
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 	assertCount(t, database, "canonical_token_usage", 1)
 	assertSQLCount(t, database, "SELECT COUNT(*) FROM normalization_work_queue WHERE domain = 'token_usage'", 0)
 
@@ -2453,7 +2451,7 @@ func TestSyncAllSourceDirUsesHarnessSubdirectoriesOnly(t *testing.T) {
 	}
 
 	database := openTestDB(t, dbPath)
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 	assertSQLCount(t, database, "SELECT COUNT(*) FROM raw_token_usage WHERE harness = 'opencode'", 1)
 	assertSQLCount(t, database, "SELECT COUNT(*) FROM raw_token_usage WHERE harness IN ('pi', 'codex', 'claude-code')", 0)
 	assertSQLCount(t, database, "SELECT COUNT(*) FROM canonical_token_usage WHERE harness = 'opencode'", 1)
@@ -2488,7 +2486,7 @@ func TestSyncSingleHarnessSourceDirScansDirectoryDirectly(t *testing.T) {
 	}
 
 	database := openTestDB(t, dbPath)
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 	assertSQLCount(t, database, "SELECT COUNT(*) FROM raw_token_usage WHERE harness = 'opencode'", 1)
 	assertSQLCount(t, database, "SELECT COUNT(*) FROM canonical_token_usage WHERE harness = 'opencode'", 1)
 }
@@ -2521,7 +2519,7 @@ func TestMissingSessionWritesDiagnosticOnly(t *testing.T) {
 	}
 
 	database := openTestDB(t, dbPath)
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 	assertCount(t, database, "raw_token_usage", 1)
 	assertCount(t, database, "canonical_token_usage", 0)
 	assertSQLCount(t, database, "SELECT COUNT(*) FROM normalization_diagnostics WHERE code = 'missing_session'", 1)
@@ -2582,7 +2580,7 @@ func TestSyncAllPartialSuccessNormalizesSuccessfulHarnesses(t *testing.T) {
 	}
 
 	database := openTestDB(t, dbPath)
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 	assertSQLCount(t, database, "SELECT COUNT(*) FROM ingest_runs WHERE status = 'failed'", 1)
 	assertCount(t, database, "raw_token_usage", 2)
 	assertCount(t, database, "canonical_token_usage", 2)
@@ -2596,8 +2594,7 @@ func TestSourceIngestWriteFailureRollsBackSource(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer database.Close()
-
+	defer func() { _ = database.Close() }()
 	occurredAt := int64(1770000000000)
 	sessionID := "rollback_s1"
 	provider := "openai"
@@ -2847,7 +2844,7 @@ func createSQLiteFixtureDB(t *testing.T, dbPath string, sqlPath string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 	statements, err := os.ReadFile(sqlPath)
 	if err != nil {
 		t.Fatal(err)
@@ -2877,7 +2874,7 @@ func createOpenCodeSQLiteMessages(t *testing.T, dbPath string, messages ...openC
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 	if _, err := database.Exec(`
 		CREATE TABLE message (
 			id text PRIMARY KEY,
@@ -2908,7 +2905,7 @@ func addOpenCodeSQLiteV2Messages(t *testing.T, dbPath string, messages ...openCo
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 	if _, err := database.Exec(`
 		CREATE TABLE session_message (
 			id text PRIMARY KEY,
@@ -3027,8 +3024,7 @@ func queryRawTokenUsage(t *testing.T, database *sql.DB) []expectedRawTokenUsage 
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer rows.Close()
-
+	defer func() { _ = rows.Close() }()
 	result := []expectedRawTokenUsage{}
 	for rows.Next() {
 		var row expectedRawTokenUsage
@@ -3092,8 +3088,7 @@ func queryCanonicalTokenUsage(t *testing.T, database *sql.DB) []expectedCanonica
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer rows.Close()
-
+	defer func() { _ = rows.Close() }()
 	result := []expectedCanonicalTokenUsage{}
 	for rows.Next() {
 		var row expectedCanonicalTokenUsage
@@ -3135,8 +3130,7 @@ func queryRawObservations(t *testing.T, database *sql.DB) []expectedRawObservati
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer rows.Close()
-
+	defer func() { _ = rows.Close() }()
 	result := []expectedRawObservation{}
 	for rows.Next() {
 		var row expectedRawObservation
@@ -3165,8 +3159,7 @@ func queryDiagnostics(t *testing.T, database *sql.DB) []expectedDiagnostic {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer rows.Close()
-
+	defer func() { _ = rows.Close() }()
 	result := []expectedDiagnostic{}
 	for rows.Next() {
 		var row expectedDiagnostic

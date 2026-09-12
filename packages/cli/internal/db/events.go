@@ -58,15 +58,6 @@ func placeholders(n int) string {
 	return strings.Join(parts, ",")
 }
 
-func buildFilterArgs(f Filter) ([]interface{}, []string) {
-	whereClause, args := canonicalWhereClause(f)
-	trimmed := strings.TrimPrefix(whereClause, "WHERE ")
-	if trimmed == "" {
-		return args, nil
-	}
-	return args, []string{trimmed}
-}
-
 func Events(ctx context.Context, db *sql.DB, f Filter) ([]Event, error) {
 	whereClause, args := canonicalWhereClause(f)
 	query := fmt.Sprintf(`
@@ -98,7 +89,7 @@ func Events(ctx context.Context, db *sql.DB, f Filter) ([]Event, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var events []Event
 	for rows.Next() {

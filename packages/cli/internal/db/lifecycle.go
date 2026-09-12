@@ -45,7 +45,7 @@ func inspectPath(ctx context.Context, path string, checkIntegrity bool) (Compati
 	if err != nil {
 		return Compatibility{Exists: true}, err
 	}
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 	return inspectDatabase(ctx, database, checkIntegrity)
 }
 
@@ -54,7 +54,7 @@ func inspectDatabase(ctx context.Context, database *sql.DB, checkIntegrity bool)
 	if err != nil {
 		return Compatibility{Exists: true}, err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	state, err := inspectCompatibility(ctx, tx)
 	if err != nil || !checkIntegrity || !state.ResetRequired {
 		return state, err
@@ -196,20 +196,20 @@ func recognizeSchema(ctx context.Context, reader Reader, version int) error {
 	for rows.Next() {
 		var kind, name string
 		if err := rows.Scan(&kind, &name); err != nil {
-			rows.Close()
+			_ = rows.Close()
 			return err
 		}
 		if kind == "trigger" && version == SupportedSchemaVersion {
 			continue
 		}
 		if kind != "table" || (required[name] == "" && optional[name] == "") {
-			rows.Close()
+			_ = rows.Close()
 			return unrecognizedDatabase(version)
 		}
 		tables[name] = true
 	}
 	err = rows.Err()
-	rows.Close()
+	_ = rows.Close()
 	if err != nil {
 		return err
 	}
@@ -228,7 +228,7 @@ func recognizeSchema(ctx context.Context, reader Reader, version int) error {
 		if err != nil {
 			return unrecognizedDatabase(version)
 		}
-		rows.Close()
+		_ = rows.Close()
 	}
 	return nil
 }
@@ -271,7 +271,7 @@ func ResetForRecovery(ctx context.Context, path string, sourceKey string) error 
 	if err != nil {
 		return err
 	}
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 	return replaceSchema(ctx, database, sourceKey)
 }
 
@@ -289,7 +289,7 @@ func CompleteRecovery(ctx context.Context, database *sql.DB) error {
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	state, err := inspectCompatibility(ctx, tx)
 	if err != nil {
 		return err

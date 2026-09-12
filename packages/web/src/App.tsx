@@ -147,17 +147,13 @@ function DashboardShell({ bootstrap }: { bootstrap: Bootstrap }) {
             className="button subtle"
             aria-label="Reload data"
             title="Reload data"
-            disabled={Boolean(running)}
+            disabled={running}
             onClick={reload}
           >
             <RefreshCw size="1em" className={analytics.isFetching && enabled ? 'spin' : ''} />
             <span>Reload data</span>
           </button>
-          <button
-            className="button primary"
-            disabled={Boolean(running)}
-            onClick={() => sync.mutate()}
-          >
+          <button className="button primary" disabled={running} onClick={() => sync.mutate()}>
             {running ? (
               <LoaderCircle size="1em" className="spin" />
             ) : (
@@ -202,7 +198,7 @@ function DashboardShell({ bootstrap }: { bootstrap: Bootstrap }) {
               <strong>Sync needs attention</strong>
               <p>{status.error}</p>
             </div>
-            <button className="button" onClick={() => sync.mutate()} disabled={Boolean(running)}>
+            <button className="button" onClick={() => sync.mutate()} disabled={running}>
               Retry sync
             </button>
             {!enabled && !recoveryFailed && (

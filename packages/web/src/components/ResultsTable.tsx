@@ -1,4 +1,5 @@
 import { useMemo } from 'react'
+import type { ReactNode } from 'react'
 import * as Popover from '@radix-ui/react-popover'
 import {
   ArrowDown,
@@ -70,6 +71,38 @@ function identityDetail(row: Row, tab: Tab): string {
   ].join(' · ')
 }
 
+function renderCell(row: Row, spec: Column, tab: Tab): ReactNode {
+  const value = row[spec.id]
+  if (spec.id === 'date')
+    return (
+      <time title={new Date(row.date).toISOString()} dateTime={new Date(row.date).toISOString()}>
+        {new Date(row.date).toLocaleDateString()}
+      </time>
+    )
+  if (spec.numeric && typeof value === 'number')
+    return (
+      <span className="numeric-value" title={exactCount(value)}>
+        {formatCount(value)}
+      </span>
+    )
+  if (spec.id === 'name')
+    return (
+      <div className="identity-cell">
+        <span className="identity-name" title={String(value)}>
+          {String(value)}
+        </span>
+        <span className="identity-detail" title={identityDetail(row, tab)}>
+          {identityDetail(row, tab)}
+        </span>
+      </div>
+    )
+  return (
+    <span className="dimension-value" title={String(value)}>
+      {String(value)}
+    </span>
+  )
+}
+
 export function ResultsTable({ data }: { data: Dashboard }) {
   const {
     state: { query, hidden },
@@ -82,46 +115,14 @@ export function ResultsTable({ data }: { data: Dashboard }) {
         id: spec.id,
         accessorFn: (row) => row[spec.id],
         header: spec.label,
-        cell: ({ row }) => {
-          const value = row.original[spec.id]
-          if (spec.id === 'date')
-            return (
-              <time
-                title={new Date(row.original.date).toISOString()}
-                dateTime={new Date(row.original.date).toISOString()}
-              >
-                {new Date(row.original.date).toLocaleDateString()}
-              </time>
-            )
-          if (spec.numeric && typeof value === 'number')
-            return (
-              <span className="numeric-value" tabIndex={0} title={exactCount(value)}>
-                {formatCount(value)}
-              </span>
-            )
-          if (spec.id === 'name')
-            return (
-              <div className="identity-cell">
-                <span className="identity-name" title={String(value)}>
-                  {String(value)}
-                </span>
-                <span className="identity-detail" title={identityDetail(row.original, query.tab)}>
-                  {identityDetail(row.original, query.tab)}
-                </span>
-              </div>
-            )
-          return (
-            <span className="dimension-value" title={String(value)}>
-              {String(value)}
-            </span>
-          )
-        },
+        cell: ({ row }) => renderCell(row.original, spec, query.tab),
       })),
     [specs, query.tab],
   )
   const visibility = Object.fromEntries(
     specs.map((s) => [s.id, !hidden.includes(s.id) || s.id === 'name']),
   )
+  // oxlint-disable-next-line react/incompatible-library -- TanStack Table intentionally owns its memoized model.
   const table = useReactTable({
     data: data.rows,
     columns,
@@ -205,7 +206,7 @@ export function ResultsTable({ data }: { data: Dashboard }) {
           </Popover.Root>
         </div>
       </div>
-      <div className="table-scroll" tabIndex={0} aria-label="Scrollable results">
+      <div className="table-scroll" role="region" tabIndex={0} aria-label="Scrollable results">
         <table>
           <thead>
             {table.getHeaderGroups().map((group) => (

@@ -70,28 +70,30 @@ function assertControlledOutput(configuredWorkspaceRoot: string, outputDir: stri
 }
 
 async function copyJSONLFixtures(fixtureDir: string, sourceDir: string): Promise<void> {
-  for (const path of await listFiles(fixtureDir)) {
-    if (!path.endsWith('.jsonl')) {
-      continue
-    }
-    const destination = join(sourceDir, relative(fixtureDir, path))
-    await mkdir(dirname(destination), { recursive: true })
-    await copyFile(path, destination)
-  }
+  const paths = await listFiles(fixtureDir)
+  await Promise.all(
+    paths
+      .filter((path) => path.endsWith('.jsonl'))
+      .map(async (path) => {
+        const destination = join(sourceDir, relative(fixtureDir, path))
+        await mkdir(dirname(destination), { recursive: true })
+        await copyFile(path, destination)
+      }),
+  )
 }
 
 async function listFiles(dir: string): Promise<string[]> {
   const entries = await readdir(dir, { withFileTypes: true })
-  const files: string[] = []
-  for (const entry of entries) {
-    const path = join(dir, entry.name)
-    if (entry.isDirectory()) {
-      files.push(...(await listFiles(path)))
-    } else if (entry.isFile()) {
-      files.push(path)
-    }
-  }
-  return files
+  const files = await Promise.all(
+    entries.map(async (entry) => {
+      const path = join(dir, entry.name)
+      if (entry.isDirectory()) {
+        return listFiles(path)
+      }
+      return entry.isFile() ? [path] : []
+    }),
+  )
+  return files.flat()
 }
 
 async function materializeOpenCode(fixtureDir: string, sourceDir: string): Promise<void> {

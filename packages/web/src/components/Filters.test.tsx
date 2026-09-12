@@ -6,22 +6,23 @@ import { MultiSelect } from './Filters'
 
 afterEach(cleanup)
 
+function Example() {
+  const [selected, setSelected] = useState(['unavailable-model'])
+  return (
+    <>
+      <MultiSelect
+        label="Model"
+        values={['model-a', 'model-b']}
+        selected={selected}
+        onChange={setSelected}
+      />
+      <output>{selected.join(',')}</output>
+    </>
+  )
+}
+
 it('keeps selected values available when other facets remove them, and supports search and clearing', async () => {
   const user = userEvent.setup()
-  function Example() {
-    const [selected, setSelected] = useState(['unavailable-model'])
-    return (
-      <>
-        <MultiSelect
-          label="Model"
-          values={['model-a', 'model-b']}
-          selected={selected}
-          onChange={setSelected}
-        />
-        <output>{selected.join(',')}</output>
-      </>
-    )
-  }
   render(<Example />)
   await user.click(screen.getByRole('button', { name: /Model/ }))
   expect(screen.getByRole('checkbox', { name: 'unavailable-model' })).toBeChecked()

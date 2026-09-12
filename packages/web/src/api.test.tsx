@@ -12,6 +12,16 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
+function requestURL(input: RequestInfo | URL): string {
+  if (typeof input === 'string') return input
+  return input instanceof URL ? input.href : input.url
+}
+
+function AnalyticsExample({ query }: { query: QueryState }) {
+  const data = useAnalytics(query, 0, true)
+  return <output>{data.data ? data.data.summary.total : 'Loading'}</output>
+}
+
 it.each([
   { phase: 'resetting', running: true, message: 'Resetting local usage data for compatibility…' },
   {
@@ -63,7 +73,7 @@ it.each([
     )
     expect(await screen.findByText(message)).toBeVisible()
     expect(screen.queryByRole('button', { name: 'Inspect existing data' })).not.toBeInTheDocument()
-    if (!running) expect(screen.getByRole('button', { name: 'Retry sync' })).toBeEnabled()
+    expect(screen.queryByRole('button', { name: 'Retry sync' }) === null).toBe(running)
     expect(fetcher).not.toHaveBeenCalled()
     client.clear()
   },
@@ -109,7 +119,7 @@ it('cancels obsolete filter requests and only renders the current result', async
   let aborted = false
   const fetcher = vi.fn<(input: RequestInfo | URL, init?: RequestInit) => Promise<Response>>(
     (input, init) => {
-      if (String(input).includes('model=old'))
+      if (requestURL(input).includes('model=old'))
         return new Promise((_resolve, reject) => {
           init?.signal?.addEventListener('abort', () => {
             aborted = true
@@ -152,19 +162,15 @@ it('cancels obsolete filter requests and only renders the current result', async
     harnesses: [],
     sessions: [],
   })
-  function Example({ query }: { query: QueryState }) {
-    const data = useAnalytics(query, 0, true)
-    return <output>{data.data ? data.data.summary.total : 'Loading'}</output>
-  }
   const view = render(
     <QueryClientProvider client={client}>
-      <Example query={base} />
+      <AnalyticsExample query={base} />
     </QueryClientProvider>,
   )
   await waitFor(() => expect(fetcher).toHaveBeenCalledTimes(1))
   view.rerender(
     <QueryClientProvider client={client}>
-      <Example query={{ ...base, models: ['new'] }} />
+      <AnalyticsExample query={{ ...base, models: ['new'] }} />
     </QueryClientProvider>,
   )
   await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('123'))

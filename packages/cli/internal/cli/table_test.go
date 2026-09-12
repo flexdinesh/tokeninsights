@@ -120,7 +120,7 @@ func assertTableTestCount(t *testing.T, database *sql.DB, table string, want int
 
 func TestLoadRowsTokenTabUsesCanonicalTokens(t *testing.T) {
 	database, dbPath := newLoadRowsTestDB(t)
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 	recordedAt := time.Date(2026, 4, 24, 12, 0, 0, 0, time.Local)
 	insertLoadRowsCanonicalToken(t, database, recordedAt.UnixMilli(), "opencode", "ses_1", "openai", "gpt-5")
 
@@ -141,7 +141,7 @@ func TestLoadRowsTokenTabUsesCanonicalTokens(t *testing.T) {
 
 func TestLoadRowsSessionTabIncludesContextUsed(t *testing.T) {
 	database, dbPath := newLoadRowsTestDB(t)
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 	recordedAt := time.Date(2026, 4, 24, 12, 0, 0, 0, time.Local)
 	insertLoadRowsCanonicalToken(t, database, recordedAt.UnixMilli(), "opencode", "ses_1", "openai", "gpt-5")
 
@@ -159,7 +159,7 @@ func TestLoadRowsSessionTabIncludesContextUsed(t *testing.T) {
 
 func TestLoadRowsTokenTabUsesTimeBucket(t *testing.T) {
 	database, dbPath := newLoadRowsTestDB(t)
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 	now := time.Date(2026, 4, 30, 12, 0, 0, 0, time.Local)
 	insertLoadRowsCanonicalToken(t, database, time.Date(2026, 4, 20, 9, 0, 0, 0, time.Local).UnixMilli(), "opencode", "ses_1", "openai", "gpt-5")
 	insertLoadRowsCanonicalToken(t, database, time.Date(2026, 4, 24, 9, 0, 0, 0, time.Local).UnixMilli(), "pi", "ses_2", "anthropic", "claude")
@@ -178,7 +178,7 @@ func TestLoadRowsTokenTabUsesTimeBucket(t *testing.T) {
 
 func TestLoadRowsYesterdayPeriodExcludesToday(t *testing.T) {
 	database, dbPath := newLoadRowsTestDB(t)
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 	now := time.Date(2026, 4, 24, 12, 0, 0, 0, time.Local)
 	insertLoadRowsCanonicalToken(t, database, now.AddDate(0, 0, -1).UnixMilli(), "opencode", "ses_1", "openai", "gpt-5")
 	insertLoadRowsCanonicalToken(t, database, now.UnixMilli(), "pi", "ses_2", "anthropic", "claude")
@@ -197,7 +197,7 @@ func TestLoadRowsYesterdayPeriodExcludesToday(t *testing.T) {
 
 func TestLoadRowsCustomDayBoundsOverridePreset(t *testing.T) {
 	database, dbPath := newLoadRowsTestDB(t)
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 	now := time.Date(2026, 4, 24, 12, 0, 0, 0, time.Local)
 	insertLoadRowsCanonicalToken(t, database, time.Date(2026, 3, 15, 12, 0, 0, 0, time.Local).UnixMilli(), "opencode", "ses_1", "openai", "gpt-5")
 	insertLoadRowsCanonicalToken(t, database, now.UnixMilli(), "pi", "ses_2", "anthropic", "claude")
@@ -224,7 +224,7 @@ func TestLoadRowsCustomDayBoundsOverridePreset(t *testing.T) {
 
 func TestLoadRowsModelTabAggregatesByModel(t *testing.T) {
 	database, dbPath := newLoadRowsTestDB(t)
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 	recordedAt := time.Date(2026, 4, 24, 12, 0, 0, 0, time.Local)
 	insertLoadRowsCanonicalToken(t, database, recordedAt.UnixMilli(), "opencode", "ses_1", "openai", "gpt-5")
 	insertLoadRowsCanonicalToken(t, database, recordedAt.Add(time.Second).UnixMilli(), "pi", "ses_2", "azure", "gpt-5")
@@ -243,7 +243,7 @@ func TestLoadRowsModelTabAggregatesByModel(t *testing.T) {
 
 func TestLoadRowsContextTabShowsSessionPeakContextLoadStats(t *testing.T) {
 	database, dbPath := newLoadRowsTestDB(t)
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 	recordedAt := time.Date(2026, 4, 24, 12, 0, 0, 0, time.Local)
 	insertLoadRowsCanonicalTokenWithCounts(t, database, recordedAt.UnixMilli(), "codex", "ses_1", "openai", "gpt-5", 100, 10, 5, 20, 1, 136)
 	insertLoadRowsCanonicalTokenWithCounts(t, database, recordedAt.Add(time.Second).UnixMilli(), "codex", "ses_1", "openai", "gpt-5", 200, 20, 6, 30, 2, 258)
@@ -697,19 +697,19 @@ func TestImplicitSyncRebuildingSurvivesHarnessProgress(t *testing.T) {
 
 func TestTUIReadsUseValidatedSnapshotDuringRecovery(t *testing.T) {
 	writer, path := newLoadRowsTestDB(t)
-	defer writer.Close()
+	defer func() { _ = writer.Close() }()
 	now := time.Date(2026, 9, 9, 12, 0, 0, 0, time.Local)
 	insertLoadRowsCanonicalToken(t, writer, now.UnixMilli(), "pi", "session", "provider", "model")
 	reader, err := db.Open(path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer reader.Close()
+	defer func() { _ = reader.Close() }()
 	tx, err := db.BeginAnalyticsRead(context.Background(), reader)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	if _, err := writer.Exec("UPDATE database_lifecycle SET rebuild_pending = 1, rebuild_source_key = 'test-scope' WHERE id = 1; DELETE FROM canonical_token_usage"); err != nil {
 		t.Fatal(err)
 	}
@@ -950,7 +950,7 @@ func TestImplicitSyncProcessesPendingNormalizationWork(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 	assertTableTestCount(t, database, "canonical_token_usage", 1)
 	assertTableTestCount(t, database, "normalization_work_queue", 0)
 }
@@ -1257,7 +1257,7 @@ func viewSummaryLine(output string) (string, int) {
 
 func TestDashboardSessionCoverageAcrossDateFilters(t *testing.T) {
 	database, dbPath := newLoadRowsTestDB(t)
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 	now := time.Date(2026, 9, 9, 12, 0, 0, 0, time.Local)
 	const syncedSessions = 214
 	const monthSessions = 5

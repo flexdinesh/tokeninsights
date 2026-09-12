@@ -176,7 +176,7 @@ func recoverDatabase(ctx context.Context, options SyncOptions, compatibility db.
 	if err != nil {
 		return summary, errors.Join(db.ErrRebuildPending, err)
 	}
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 	if err := db.CompleteRecovery(ctx, database); err != nil {
 		return summary, errors.Join(db.ErrRebuildPending, err)
 	}

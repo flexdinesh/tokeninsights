@@ -15,7 +15,7 @@ interface FormulaWorkspace {
   outputPath: string
 }
 
-test('generates a tokeninsights Homebrew formula from release checksums', async () => {
+void test('generates a tokeninsights Homebrew formula from release checksums', async () => {
   const workspace = await createFormulaWorkspace()
 
   await writeChecksums(workspace.checksumsPath, completeChecksums())
@@ -50,7 +50,7 @@ test('generates a tokeninsights Homebrew formula from release checksums', async 
   assert.match(formula, /assert_match "tokeninsights #\{version\}"/)
 })
 
-test('fails when a release archive checksum is missing', async () => {
+void test('fails when a release archive checksum is missing', async () => {
   const workspace = await createFormulaWorkspace()
   const checksums = completeChecksums().filter((line) => !line.includes('linux_arm64'))
   await writeChecksums(workspace.checksumsPath, checksums)
@@ -61,7 +61,7 @@ test('fails when a release archive checksum is missing', async () => {
   )
 })
 
-test('accepts a forwarded pnpm argument separator', async () => {
+void test('accepts a forwarded pnpm argument separator', async () => {
   const workspace = await createFormulaWorkspace()
   await writeChecksums(workspace.checksumsPath, completeChecksums())
 
@@ -70,7 +70,7 @@ test('accepts a forwarded pnpm argument separator', async () => {
   assert.match(await readFile(workspace.outputPath, 'utf8'), /version "0\.0\.7"/)
 })
 
-test('generates a formula with valid Ruby syntax', async (t) => {
+void test('generates a formula with valid Ruby syntax', async (t) => {
   try {
     await execFileAsync('ruby', ['-v'])
   } catch {

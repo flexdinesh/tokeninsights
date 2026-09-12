@@ -28,7 +28,7 @@ func createSchema(ctx context.Context, database *sql.DB) error {
 	if err != nil {
 		return err
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 	empty, err := schemaEmpty(ctx, conn)
 	if err != nil {
 		return err
@@ -51,7 +51,7 @@ func createSchema(ctx context.Context, database *sql.DB) error {
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	empty, err = schemaEmpty(ctx, tx)
 	if err != nil {
 		return err
@@ -83,7 +83,7 @@ func replaceSchema(ctx context.Context, database *sql.DB, sourceKey string) erro
 	if err != nil {
 		return err
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 	if sourceKey != "" {
 		state, err := inspectCompatibility(ctx, conn)
 		if err != nil {
@@ -108,12 +108,14 @@ func replaceSchema(ctx context.Context, database *sql.DB, sourceKey string) erro
 	if _, err := conn.ExecContext(ctx, "PRAGMA foreign_keys = OFF"); err != nil {
 		return err
 	}
-	defer conn.ExecContext(context.Background(), "PRAGMA foreign_keys = ON")
+	defer func() {
+		_, _ = conn.ExecContext(context.Background(), "PRAGMA foreign_keys = ON")
+	}()
 	tx, err := conn.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	if sourceKey != "" {
 		state, err := inspectCompatibility(ctx, tx)
 		if err != nil {
@@ -143,13 +145,13 @@ func replaceSchemaTx(ctx context.Context, tx *sql.Tx, body string, sourceKey str
 	for rows.Next() {
 		var kind, name string
 		if err := rows.Scan(&kind, &name); err != nil {
-			rows.Close()
+			_ = rows.Close()
 			return err
 		}
 		statements = append(statements, "DROP "+strings.ToUpper(kind)+" IF EXISTS \""+strings.ReplaceAll(name, "\"", "\"\"")+"\"")
 	}
 	err = rows.Err()
-	rows.Close()
+	_ = rows.Close()
 	if err != nil {
 		return err
 	}

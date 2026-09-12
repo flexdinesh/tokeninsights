@@ -20,11 +20,11 @@ func Run(ctx context.Context, args []string, stdout io.Writer, stderr io.Writer,
 
 	switch args[0] {
 	case "help", "--help", "-h":
-		fmt.Fprintln(stdout, usageText())
-		return nil
+		_, err := fmt.Fprintln(stdout, usageText())
+		return err
 	case "--version", "version":
-		fmt.Fprintln(stdout, version.String())
-		return nil
+		_, err := fmt.Fprintln(stdout, version.String())
+		return err
 	case "view":
 		return RunInteractive(ctx, args[1:], stdout, stderr, now)
 	case "serve":
@@ -132,8 +132,8 @@ func runResetCanonical(ctx context.Context, args []string, stdout io.Writer, std
 		return fmt.Errorf("unexpected argument %q\n%w", flags.Arg(0), ErrUsage)
 	}
 	if !confirm {
-		fmt.Fprintf(stdout, "Would delete canonical sessions, messages, token usage, and normalization diagnostics from %s. Re-run with --confirm to apply.\n", strings.TrimSpace(dbPath))
-		return nil
+		_, err := fmt.Fprintf(stdout, "Would delete canonical sessions, messages, token usage, and normalization diagnostics from %s. Re-run with --confirm to apply.\n", strings.TrimSpace(dbPath))
+		return err
 	}
 	path := strings.TrimSpace(dbPath)
 	release, err := db.AcquireWriterLock(ctx, path)
@@ -153,12 +153,12 @@ func runResetCanonical(ctx context.Context, args []string, stdout io.Writer, std
 	if err != nil {
 		return err
 	}
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 	if err := db.ResetCanonical(ctx, database); err != nil {
 		return err
 	}
-	fmt.Fprintln(stdout, "reset-canonical complete")
-	return nil
+	_, err = fmt.Fprintln(stdout, "reset-canonical complete")
+	return err
 }
 
 func runResetAll(args []string, stdout io.Writer, stderr io.Writer) error {
@@ -175,14 +175,14 @@ func runResetAll(args []string, stdout io.Writer, stderr io.Writer) error {
 		return fmt.Errorf("unexpected argument %q\n%w", flags.Arg(0), ErrUsage)
 	}
 	if !confirm {
-		fmt.Fprintf(stdout, "Would transactionally reset application tables in %s. Re-run with --confirm to apply.\n", strings.TrimSpace(dbPath))
-		return nil
+		_, err := fmt.Fprintf(stdout, "Would transactionally reset application tables in %s. Re-run with --confirm to apply.\n", strings.TrimSpace(dbPath))
+		return err
 	}
 	if err := db.ResetAll(strings.TrimSpace(dbPath)); err != nil {
 		return err
 	}
-	fmt.Fprintln(stdout, "reset-all complete")
-	return nil
+	_, err := fmt.Fprintln(stdout, "reset-all complete")
+	return err
 }
 
 func syncHarnesses(all bool, values stringList) ([]pipeline.Harness, error) {
@@ -215,12 +215,12 @@ func printSummary(stdout io.Writer, command string, summary pipeline.Summary, dr
 		prefix += " dry-run"
 		switch summary.Recovery {
 		case pipeline.RecoveryReset:
-			fmt.Fprintln(stdout, "Recovery preview: would reset the database and rebuild all configured harnesses.")
+			_, _ = fmt.Fprintln(stdout, "Recovery preview: would reset the database and rebuild all configured harnesses.")
 		case pipeline.RecoveryResume:
-			fmt.Fprintln(stdout, "Recovery preview: would resume rebuilding all configured harnesses.")
+			_, _ = fmt.Fprintln(stdout, "Recovery preview: would resume rebuilding all configured harnesses.")
 		}
 	}
-	fmt.Fprintf(stdout, "%s: requested=%d synced=%d skipped=%d failed=%d raw_facts=%d observations=%d canonical=%d diagnostics=%d\n",
+	_, _ = fmt.Fprintf(stdout, "%s: requested=%d synced=%d skipped=%d failed=%d raw_facts=%d observations=%d canonical=%d diagnostics=%d\n",
 		prefix,
 		summary.RequestedHarnesses,
 		summary.Synced,
@@ -237,9 +237,9 @@ func recoveryNotice(stderr io.Writer) func(pipeline.SyncProgressEvent) {
 	return func(event pipeline.SyncProgressEvent) {
 		switch event.Status {
 		case pipeline.SyncProgressResetting:
-			fmt.Fprintln(stderr, "Resetting local usage data for compatibility…")
+			_, _ = fmt.Fprintln(stderr, "Resetting local usage data for compatibility…")
 		case pipeline.SyncProgressRebuilding:
-			fmt.Fprintln(stderr, "Rebuilding usage from all configured local harnesses…")
+			_, _ = fmt.Fprintln(stderr, "Rebuilding usage from all configured local harnesses…")
 		}
 	}
 }

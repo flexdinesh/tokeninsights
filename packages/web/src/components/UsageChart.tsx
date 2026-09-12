@@ -35,6 +35,14 @@ const tooltipStyle = {
   fontSize: 'var(--text-xs)',
 }
 
+function tooltipFormatter(value: unknown): string {
+  return typeof value === 'number' ? exactCount(value) : String(value)
+}
+
+function legendFormatter(value: string | number) {
+  return <span className="chart-legend-label">{value}</span>
+}
+
 export function UsageChart({ rows }: { rows: Row[] }) {
   const {
     state: { query, chartMetric: metric },
@@ -55,8 +63,6 @@ export function UsageChart({ rows }: { rows: Row[] }) {
         : query.tab === 'harnesses'
           ? 'harnesses'
           : undefined
-  const tooltipFormatter = (value: unknown) =>
-    typeof value === 'number' ? exactCount(value) : String(value)
   const chartRows = rows.map((r) => ({
     ...r,
     label: context ? `${r.model} · ${r.harness} · ${r.provider}` : r.name,
@@ -180,9 +186,7 @@ export function UsageChart({ rows }: { rows: Row[] }) {
                 />
                 {context ? (
                   <>
-                    <Legend
-                      formatter={(value) => <span className="chart-legend-label">{value}</span>}
-                    />
+                    <Legend formatter={legendFormatter} />
                     <Bar
                       dataKey="averageContext"
                       name="Average"

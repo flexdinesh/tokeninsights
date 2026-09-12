@@ -73,7 +73,7 @@ func TestRecoveryLegacySchemaRebuildsWithinAllHarnessOverride(t *testing.T) {
 		t.Fatalf("expected schema recovery, got %+v", summary)
 	}
 	database := openTestDB(t, path)
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 	assertSQLCount(t, database, "SELECT SUM(total_tokens) FROM canonical_token_usage", 7)
 	assertSQLCount(t, database, "SELECT COUNT(*) FROM canonical_sessions WHERE session_id = 'excluded'", 0)
 }
@@ -131,7 +131,7 @@ func TestRecoveryRetriesFailedHarnessWithoutErasingProgress(t *testing.T) {
 	}
 	if database, err := db.Open(path); !errors.Is(err, db.ErrRebuildPending) {
 		if database != nil {
-			database.Close()
+			_ = database.Close()
 		}
 		t.Fatalf("pending recovery analytics error = %v", err)
 	}
@@ -144,7 +144,7 @@ func TestRecoveryRetriesFailedHarnessWithoutErasingProgress(t *testing.T) {
 	if err := database.QueryRow("SELECT id FROM raw_token_usage WHERE session_id = 'pi'").Scan(&originalRawID); err != nil {
 		t.Fatal(err)
 	}
-	database.Close()
+	_ = database.Close()
 	// Remove both files: the successful import must survive retry even if its
 	// durable source is no longer available. A second reset would lose it.
 	if err := os.Remove(brokenSource); err != nil {
@@ -161,7 +161,7 @@ func TestRecoveryRetriesFailedHarnessWithoutErasingProgress(t *testing.T) {
 		t.Fatalf("expected resume, got %+v", summary)
 	}
 	database = openTestDB(t, path)
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 	assertSQLCount(t, database, "SELECT SUM(total_tokens) FROM canonical_token_usage", 12)
 	assertSQLCount(t, database, "SELECT id FROM raw_token_usage WHERE session_id = 'pi'", originalRawID)
 	assertSQLCount(t, database, "SELECT rebuild_pending FROM database_lifecycle", 0)
@@ -179,7 +179,7 @@ func TestRecoveryNormalizeRebuildsInsteadOfReusingOldFacts(t *testing.T) {
 		t.Fatalf("normalize recovery = %+v", summary)
 	}
 	database := openTestDB(t, path)
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 	assertSQLCount(t, database, "SELECT SUM(total_tokens) FROM canonical_token_usage", 9)
 	assertSQLCount(t, database, "SELECT COUNT(*) FROM normalization_work_queue", 0)
 }
@@ -198,7 +198,7 @@ func TestRecoveryNormalizationFailureResumesPendingWork(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		defer database.Close()
+		defer func() { _ = database.Close() }()
 		if _, err := database.Exec("CREATE TRIGGER fail_normalization BEFORE INSERT ON canonical_token_usage BEGIN SELECT RAISE(FAIL, 'test normalization failure'); END"); err != nil {
 			t.Fatal(err)
 		}
@@ -215,7 +215,7 @@ func TestRecoveryNormalizationFailureResumesPendingWork(t *testing.T) {
 	if _, err := database.Exec("DROP TRIGGER fail_normalization"); err != nil {
 		t.Fatal(err)
 	}
-	database.Close()
+	_ = database.Close()
 	options.Progress = nil
 	summary, err := Sync(ctx, options)
 	if err != nil {
@@ -225,7 +225,7 @@ func TestRecoveryNormalizationFailureResumesPendingWork(t *testing.T) {
 		t.Fatalf("expected normalization resume, got %+v", summary)
 	}
 	database = openTestDB(t, path)
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 	assertSQLCount(t, database, "SELECT SUM(total_tokens) FROM canonical_token_usage", 11)
 	assertSQLCount(t, database, "SELECT COUNT(*) FROM normalization_work_queue", 0)
 }
@@ -267,7 +267,7 @@ func TestRecoveryConcurrentSyncsResetOnlyOnce(t *testing.T) {
 		t.Fatalf("concurrent syncs performed %d resets, want 1", resets)
 	}
 	database := openTestDB(t, path)
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 	assertSQLCount(t, database, "SELECT SUM(total_tokens) FROM canonical_token_usage", 8)
 }
 
@@ -280,7 +280,7 @@ func TestRecoveryRejectsNewerGenerationWithoutResetting(t *testing.T) {
 	if _, err := database.Exec("UPDATE database_lifecycle SET data_generation = ?", db.CurrentDataGeneration+1); err != nil {
 		t.Fatal(err)
 	}
-	database.Close()
+	_ = database.Close()
 	before := recoverySnapshot(t, path)
 	for _, dryRun := range []bool{false, true} {
 		if _, err := Sync(context.Background(), SyncOptions{DBPath: path, Harnesses: SupportedHarnesses, DryRun: dryRun}); err == nil {
@@ -329,7 +329,7 @@ func TestRecoveryRetriesRequireOriginalCustomRoot(t *testing.T) {
 		t.Fatalf("original normalized scope did not resume: %+v", summary)
 	}
 	database := openTestDB(t, path)
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 	assertSQLCount(t, database, "SELECT SUM(total_tokens) FROM canonical_token_usage", 13)
 	assertSQLCount(t, database, "SELECT COUNT(*) FROM database_lifecycle WHERE rebuild_source_key IS NULL AND rebuild_pending = 0", 1)
 }
@@ -376,7 +376,7 @@ func TestRecoveryLockFailuresPreserveCompatibilityClassification(t *testing.T) {
 					if _, err := database.Exec("UPDATE database_lifecycle SET data_generation = ?, rebuild_pending = 1, rebuild_source_key = ?", db.CurrentDataGeneration, key); err != nil {
 						t.Fatal(err)
 					}
-					database.Close()
+					_ = database.Close()
 					expected = db.ErrRebuildPending
 				}
 				release, err := db.AcquireWriterLock(context.Background(), path)
@@ -421,7 +421,7 @@ func recoveryOldDatabase(t *testing.T, legacySchema bool) string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 	statement := "UPDATE database_lifecycle SET data_generation = 0"
 	if legacySchema {
 		statement = "DROP TABLE database_lifecycle; PRAGMA user_version = 7"
@@ -443,7 +443,7 @@ func recoverySnapshot(t *testing.T, path string) recoveryDatabaseSnapshot {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 	var snapshot recoveryDatabaseSnapshot
 	for _, query := range []string{
 		"PRAGMA user_version",

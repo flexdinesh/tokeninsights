@@ -115,7 +115,7 @@ func (a claudeCodeJSONLAdapter) Parse(ctx context.Context, source Source, option
 	if err != nil {
 		return nil, nil, err
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	sessionID := claudeCodeSessionIDFromFilename(source.Path)
 	var facts []RawTokenFact

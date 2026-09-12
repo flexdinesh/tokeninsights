@@ -58,7 +58,7 @@ func TestWildcardListenerAndDisplayedURLs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer listener.Close()
+	defer func() { _ = listener.Close() }()
 	host, port, err := net.SplitHostPort(listener.Addr().String())
 	if err != nil {
 		t.Fatal(err)
@@ -70,7 +70,7 @@ func TestWildcardListenerAndDisplayedURLs(t *testing.T) {
 	if err != nil {
 		t.Fatalf("localhost must be reachable: %v", err)
 	}
-	connection.Close()
+	_ = connection.Close()
 	want := []string{"http://10.0.1.151:" + port, "http://localhost:" + port, "http://0.0.0.0:" + port}
 	if got := displayURLs(host, port, "10.0.1.151"); !reflect.DeepEqual(got, want) {
 		t.Fatalf("URLs = %v, want %v", got, want)

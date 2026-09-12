@@ -88,12 +88,11 @@ async function generateFormula({ version, tag, checksums }: FormulaOptions): Pro
     if (!sha256) {
       throw new Error(`missing checksum for ${artifact}`)
     }
-    return {
-      ...target,
+    return Object.assign({}, target, {
       artifact,
       sha256,
       url: `https://github.com/${owner}/${repo}/releases/download/${encodedTag}/${artifact}`,
-    }
+    })
   })
 
   const archiveByKey = new Map<string, Archive>(
