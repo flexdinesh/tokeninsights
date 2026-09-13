@@ -67,7 +67,10 @@ export function useAnalytics(baseUrl: string, q: QueryState, revision: number, e
   }
   return useQuery({
     queryKey: ['usage', baseUrl, summaryScope.toString(), params.toString(), revision],
-    queryFn: ({ signal }) => request(baseUrl, `/api/v1/usage?${params}`, dashboardSchema, signal),
+    queryFn: async ({ signal }) => ({
+      dashboard: await request(baseUrl, `/api/v1/usage?${params}`, dashboardSchema, signal),
+      tab: q.tab,
+    }),
     enabled,
     placeholderData: (previous, previousQuery) => {
       const previousKey = previousQuery?.queryKey

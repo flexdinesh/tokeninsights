@@ -131,7 +131,8 @@ function DashboardShell() {
     void client.invalidateQueries({ queryKey: ['instance', active.baseUrl] })
   }
   const running = status?.running || sync.isPending
-  const data = analytics.data
+  const data = analytics.data?.dashboard
+  const resultsMatchView = analytics.data?.tab === query.tab
   return (
     <div className="app-shell">
       <a href="#dashboard" className="skip-link">
@@ -281,10 +282,15 @@ function DashboardShell() {
           {enabled && data && (
             <div className="analytics" aria-busy={analytics.isFetching}>
               <SummaryCards summary={data.summary} />
-              {analytics.isPlaceholderData ? (
+              {analytics.isPlaceholderData && !resultsMatchView ? (
                 <RouteResultsSkeleton />
               ) : (
                 <>
+                  {analytics.isPlaceholderData && (
+                    <span className="sr-only" role="status" aria-label="Updating view results">
+                      Updating view results
+                    </span>
+                  )}
                   <Suspense
                     fallback={
                       <Skeleton
