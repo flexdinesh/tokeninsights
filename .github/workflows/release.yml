@@ -171,8 +171,8 @@ jobs:
           pnpm run generate:homebrew -- \
             --version "${{ steps.tag.outputs.version }}" \
             --tag "${{ steps.tag.outputs.tag }}" \
-            --checksums dist/checksums.txt \
-            --output homebrew-tap/Formula/tokeninsights.rb
+            --checksums "${{ github.workspace }}/dist/checksums.txt" \
+            --output "${{ github.workspace }}/homebrew-tap/Formula/tokeninsights.rb"
 
       - name: Validate Homebrew formula syntax
         run: ruby -c homebrew-tap/Formula/tokeninsights.rb
