@@ -36,7 +36,11 @@ function AnalyticsExample({
   baseUrl?: string
 }) {
   const data = useAnalytics(baseUrl, query, 0, true)
-  return <output>{data.data ? data.data.summary.total : 'Loading'}</output>
+  return (
+    <output data-tab={data.data?.tab} data-placeholder={data.isPlaceholderData}>
+      {data.data ? data.data.dashboard.summary.total : 'Loading'}
+    </output>
+  )
 }
 
 function dashboard(total: number): Dashboard {
@@ -491,7 +495,7 @@ it('isolates cached usage while switching sources', async () => {
   client.clear()
 })
 
-it('retains valid summaries across views but not filter changes', async () => {
+it('retains current results for sorting and valid summaries across views', async () => {
   let requests = 0
   vi.stubGlobal(
     'fetch',
@@ -524,6 +528,14 @@ it('retains valid summaries across views but not filter changes', async () => {
     </QueryClientProvider>,
   )
   expect(await screen.findByText('111')).toBeVisible()
+
+  view.rerender(
+    <QueryClientProvider client={client}>
+      <AnalyticsExample query={{ ...query, sort: 'total' }} />
+    </QueryClientProvider>,
+  )
+  expect(screen.getByRole('status')).toHaveAttribute('data-tab', 'tokens')
+  expect(screen.getByRole('status')).toHaveAttribute('data-placeholder', 'true')
 
   view.rerender(
     <QueryClientProvider client={client}>

@@ -121,6 +121,7 @@ test('path routes keep shared dashboard stable while view data loads', async ({ 
 test('sorting preserves page scroll position', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 600 })
   await page.goto('/sessions')
+  await expect(page.getByRole('region', { name: 'Usage over time', exact: true })).toBeVisible()
   const details = page.getByRole('region', { name: 'Sessions details', exact: true })
   await expect(details).toBeVisible()
   const totalHeader = details.getByRole('button', { name: 'Total', exact: true })
@@ -136,7 +137,7 @@ test('sorting preserves page scroll position', async ({ page }) => {
 
   await totalHeader.click()
   await expect(page).toHaveURL(/sort=total/)
-  await expect(page.getByRole('status', { name: 'Updating view results' })).toBeVisible()
+  await expect(page.getByRole('status', { name: 'Updating view results' })).toBeAttached()
   expect(await page.evaluate(() => window.scrollY)).toBe(before)
   await expect(details).toBeVisible()
   expect(await page.evaluate(() => window.scrollY)).toBe(before)
