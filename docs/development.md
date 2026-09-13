@@ -14,6 +14,10 @@ pnpm run format
 pnpm run format:check
 pnpm run lint
 
+# Validate schema and generated API contracts.
+pnpm run check-schema
+pnpm run check-api
+
 # Run tests.
 pnpm run test
 
@@ -110,3 +114,10 @@ automation.
 ```bash
 git commit -m "docs: update readme [skip ci]"
 ```
+
+## Reference
+
+- [Design and architecture](design.md)
+- [CLI reference](../packages/cli/README.md)
+- [OpenAPI contract](openapi.yaml)
+- [Release guide](release.md)
