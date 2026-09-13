@@ -404,9 +404,18 @@ func codexTokensFromUsage(usage map[string]interface{}) (codexTokenCounts, []Dia
 	clampToken(counts.reasoning, &clamped)
 	clampToken(counts.cacheRead, &clamped)
 	clampToken(counts.total, &clamped)
+	if counts.reasoning != nil {
+		if counts.output == nil || *counts.reasoning > *counts.output {
+			return codexTokenCounts{}, []Diagnostic{codexDiagnostic("codex_jsonl_invalid_reasoning", "skipped Codex token-count row whose reasoning tokens exceeded inclusive output tokens")}, false
+		}
+		*counts.output -= *counts.reasoning
+	}
 	if counts.input != nil && counts.cacheRead != nil {
 		*counts.input -= *counts.cacheRead
 		clampToken(counts.input, &clamped)
+	}
+	if _, ok := tokenComponentSum(counts.input, counts.output, counts.reasoning, counts.cacheRead); !ok {
+		return codexTokenCounts{}, []Diagnostic{codexDiagnostic("codex_jsonl_invalid_tokens", "skipped Codex token-count row whose token total exceeds the supported range")}, false
 	}
 	if clamped {
 		return counts, []Diagnostic{codexDiagnostic("codex_jsonl_negative_tokens", "clamped negative Codex token components to zero")}, true

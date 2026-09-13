@@ -59,6 +59,55 @@ func TestRecoveryTargetedSyncRebuildsAllDefaultsOnce(t *testing.T) {
 	}
 }
 
+func TestTokenSemanticGenerationRebuildsEveryHarnessWithoutDuplicates(t *testing.T) {
+	ctx := context.Background()
+	dbPath := filepath.Join(t.TempDir(), "tokeninsights.sqlite")
+	sourceDir := filepath.Join(t.TempDir(), "source")
+	copyFixtureDir(t, filepath.Join(syncFirstBasicFixtureDir(t), "source"), sourceDir)
+	materializeOpenCodeSQLiteSource(t, sourceDir)
+	options := SyncOptions{
+		DBPath: dbPath, Harnesses: SupportedHarnesses, Normalize: true, SourceDir: sourceDir,
+		Now: time.Date(2026, 6, 19, 10, 0, 0, 0, time.UTC),
+	}
+	if _, err := Sync(ctx, options); err != nil {
+		t.Fatal(err)
+	}
+
+	database := openTestDB(t, dbPath)
+	if _, err := database.Exec(`
+		UPDATE raw_token_usage SET parser = 'obsolete-token-semantics';
+		UPDATE canonical_token_usage SET total_tokens = total_tokens + 1000;
+		UPDATE database_lifecycle SET data_generation = 1;
+	`); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	options.Now = options.Now.Add(time.Hour)
+	summary, err := Sync(ctx, options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if summary.Recovery != RecoveryReset {
+		t.Fatalf("recovery = %q, want %q", summary.Recovery, RecoveryReset)
+	}
+	database = openTestDB(t, dbPath)
+	defer func() { _ = database.Close() }()
+	assertCount(t, database, "raw_token_usage", 8)
+	assertCount(t, database, "canonical_token_usage", 8)
+	assertSQLCount(t, database, "SELECT COUNT(*) FROM raw_token_usage WHERE parser = 'obsolete-token-semantics'", 0)
+	for harness, parser := range map[Harness]string{
+		HarnessOpenCode:   opencodeSQLiteParserV2,
+		HarnessPi:         piJSONLParserV2,
+		HarnessCodex:      codexJSONLParserV3,
+		HarnessClaudeCode: claudeCodeJSONLParserV2,
+	} {
+		assertSQLCount(t, database, "SELECT COUNT(*) FROM raw_token_usage WHERE harness = '"+string(harness)+"' AND parser = '"+parser+"'", 2)
+	}
+}
+
 func TestRecoveryLegacySchemaRebuildsWithinAllHarnessOverride(t *testing.T) {
 	root := recoveryDefaultRoots(t)
 	writePiAssistantSession(t, filepath.Join(root, "home", ".pi", "agent", "sessions", "date_excluded.jsonl"), "excluded", "excluded", 999, 0)

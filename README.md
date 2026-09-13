@@ -56,7 +56,7 @@ tokeninsights view --no-sync --all-time --db-path /path/to/tokeninsights.sqlite
 
 In the dashboard, press `d` to change the date range. Switching to all time keeps any provider, model, harness, or session filters in place.
 
-Cache columns use `cache R` (read) and `cache W` (write). The sessions tab's `ctx used` column shows peak prompt-side token load, excluding assistant output and reasoning tokens. The context tab compares session peaks by harness, provider, and model using `avg ctx`, `median ctx`, and `max ctx`.
+Cache columns use `cache R` (read) and `cache W` (write). Input excludes cache tokens, output excludes separately reported reasoning tokens, and total counts each component once. The sessions tab's `ctx used` column shows peak prompt-side token load, excluding assistant output and reasoning tokens. The context tab compares session peaks by harness, provider, and model using `avg ctx`, `median ctx`, and `max ctx`.
 
 ```sh
 # filter by harness, provider, or model

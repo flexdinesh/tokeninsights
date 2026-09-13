@@ -14,13 +14,13 @@
   {
     "harness": "codex",
     "session_id": "fixture-codex-session-one",
-    "message_id": "fixture-codex-turn-one:1767225602000:d813c5ef4067bd36d01c910904034e676d44424a3fafd6d3f8958a6196ab8807",
+    "message_id": "fixture-codex-turn-one:1767225602000:8bd676c48d74edfe8038615ff002ad4febdd3f0755dba99f2d797cc6033472f3",
     "observed_at_ms": 1777042800000
   },
   {
     "harness": "codex",
     "session_id": "fixture-codex-session-two",
-    "message_id": "fixture-codex-turn-two:1767312002000:73bcc94278c4384b0265aac7e0324ecc1ac26e09de2bcebba6fd394908e6fb91",
+    "message_id": "fixture-codex-turn-two:1767312002000:51e1e4f923548d356342f66e467689ac43e55ead50f76aa1cdd612787e7fff28",
     "observed_at_ms": 1777042800000
   },
   {

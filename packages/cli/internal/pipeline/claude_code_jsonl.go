@@ -3,7 +3,6 @@ package pipeline
 import (
 	"bufio"
 	"context"
-	"encoding/json"
 	"os"
 	"path/filepath"
 	"sort"
@@ -119,6 +118,7 @@ func (a claudeCodeJSONLAdapter) Parse(ctx context.Context, source Source, option
 
 	sessionID := claudeCodeSessionIDFromFilename(source.Path)
 	var facts []RawTokenFact
+	var requestIDs []*string
 	var diagnostics []Diagnostic
 	mergedFactIndexes := map[string]int{}
 	scanner := bufio.NewScanner(file)
@@ -132,7 +132,7 @@ func (a claudeCodeJSONLAdapter) Parse(ctx context.Context, source Source, option
 			continue
 		}
 		var record map[string]interface{}
-		if err := json.Unmarshal([]byte(line), &record); err != nil {
+		if err := decodeJSONRecord(line, &record); err != nil {
 			diagnostics = append(diagnostics, claudeCodeDiagnostic("claude_code_jsonl_parse_error", "skipped unparsable Claude Code JSONL line", "warning"))
 			continue
 		}
@@ -142,6 +142,7 @@ func (a claudeCodeJSONLAdapter) Parse(ctx context.Context, source Source, option
 			mergeKey := claudeCodeStreamingMergeKey(record)
 			if mergeKey == "" {
 				facts = append(facts, fact)
+				requestIDs = append(requestIDs, stringField(record, "requestId", "request_id"))
 				continue
 			}
 			if index, exists := mergedFactIndexes[mergeKey]; exists {
@@ -150,11 +151,21 @@ func (a claudeCodeJSONLAdapter) Parse(ctx context.Context, source Source, option
 			}
 			mergedFactIndexes[mergeKey] = len(facts)
 			facts = append(facts, fact)
+			requestIDs = append(requestIDs, stringField(record, "requestId", "request_id"))
 		}
 	}
 	if err := scanner.Err(); err != nil {
 		return nil, nil, err
 	}
+	finalFacts := make([]RawTokenFact, 0, len(facts))
+	for index := range facts {
+		factDiagnostics, ok := finalizeClaudeCodeFact(&facts[index], requestIDs[index])
+		diagnostics = append(diagnostics, factDiagnostics...)
+		if ok {
+			finalFacts = append(finalFacts, facts[index])
+		}
+	}
+	facts = finalFacts
 	if len(facts) > 0 {
 		diagnostics = append(diagnostics, claudeCodeDiagnostic("claude_code_jsonl_transcript_derived", "Claude Code token usage was derived from local JSONL transcript data", "info"))
 	}
@@ -210,32 +221,48 @@ func (a claudeCodeJSONLAdapter) factFromRecord(source Source, options SyncOption
 		Quality:          "derived",
 		InputTokens:      tokens.input,
 		OutputTokens:     tokens.output,
-		ReasoningTokens:  nil,
+		ReasoningTokens:  tokens.reasoning,
 		CacheReadTokens:  tokens.cacheRead,
 		CacheWriteTokens: tokens.cacheWrite,
 		TotalTokens:      tokens.total,
-		DedupeKey:        claudeCodeFactDedupeKey(sessionID, messageID, stringField(record, "requestId", "request_id"), occurredAt, tokens),
 	}, tokenDiagnostics, true
 }
 
 type claudeCodeTokenCounts struct {
 	input      *int64
 	output     *int64
+	reasoning  *int64
 	cacheRead  *int64
 	cacheWrite *int64
 	total      *int64
 }
 
 func claudeCodeTokensFromUsage(usage map[string]interface{}) (claudeCodeTokenCounts, []Diagnostic, bool) {
+	outputDetails := nested(usage, "output_tokens_details")
+	if hasInvalidIntegerField(usage, "input_tokens", "output_tokens", "cache_read_input_tokens", "cache_creation_input_tokens", "total_tokens") ||
+		hasInvalidIntegerField(outputDetails, "thinking_tokens", "reasoning_tokens") {
+		return claudeCodeTokenCounts{}, []Diagnostic{claudeCodeDiagnostic("claude_code_jsonl_invalid_tokens", "skipped Claude Code assistant token row with non-integer token components", "warning")}, false
+	}
 	counts := claudeCodeTokenCounts{
 		input:      intField(usage, "input_tokens"),
 		output:     intField(usage, "output_tokens"),
+		reasoning:  intField(outputDetails, "thinking_tokens", "reasoning_tokens"),
 		cacheRead:  intField(usage, "cache_read_input_tokens"),
 		cacheWrite: intField(usage, "cache_creation_input_tokens"),
 		total:      intField(usage, "total_tokens"),
 	}
-	if counts.input == nil && counts.output == nil && counts.cacheRead == nil && counts.cacheWrite == nil && counts.total == nil {
+	if counts.input == nil && counts.output == nil && counts.reasoning == nil && counts.cacheRead == nil && counts.cacheWrite == nil && counts.total == nil {
 		return claudeCodeTokenCounts{}, []Diagnostic{claudeCodeDiagnostic("claude_code_jsonl_missing_tokens", "skipped Claude Code assistant token row with no usable token components", "warning")}, false
+	}
+	clamped := false
+	clampToken(counts.input, &clamped)
+	clampToken(counts.output, &clamped)
+	clampToken(counts.reasoning, &clamped)
+	clampToken(counts.cacheRead, &clamped)
+	clampToken(counts.cacheWrite, &clamped)
+	clampToken(counts.total, &clamped)
+	if clamped {
+		return counts, []Diagnostic{claudeCodeDiagnostic("claude_code_jsonl_negative_tokens", "clamped negative Claude Code token components to zero", "warning")}, true
 	}
 	return counts, nil, true
 }
@@ -274,6 +301,32 @@ func mergeClaudeCodeStreamingFact(existing *RawTokenFact, next RawTokenFact) {
 	}
 }
 
+func finalizeClaudeCodeFact(fact *RawTokenFact, requestID *string) ([]Diagnostic, bool) {
+	var diagnostics []Diagnostic
+	if fact.ReasoningTokens != nil {
+		if fact.OutputTokens == nil || *fact.ReasoningTokens > *fact.OutputTokens {
+			fact.ReasoningTokens = nil
+			diagnostics = append(diagnostics, claudeCodeDiagnostic("claude_code_jsonl_invalid_reasoning", "ignored Claude Code reasoning tokens that exceeded inclusive output tokens", "warning"))
+		} else {
+			nonReasoningOutput := *fact.OutputTokens - *fact.ReasoningTokens
+			fact.OutputTokens = &nonReasoningOutput
+		}
+	}
+	componentTotal, ok := tokenComponentSum(fact.InputTokens, fact.OutputTokens, fact.ReasoningTokens, fact.CacheReadTokens, fact.CacheWriteTokens)
+	if !ok {
+		return []Diagnostic{claudeCodeDiagnostic("claude_code_jsonl_invalid_tokens", "skipped Claude Code assistant token row whose token total exceeds the supported range", "warning")}, false
+	}
+	if fact.TotalTokens != nil && *fact.TotalTokens != componentTotal {
+		fact.TotalTokens = nil
+		diagnostics = append(diagnostics, claudeCodeDiagnostic("claude_code_jsonl_inconsistent_total", "ignored Claude Code total_tokens that did not equal the token component sum", "warning"))
+	}
+	fact.DedupeKey = claudeCodeFactDedupeKey(*fact.SessionID, fact.MessageID, requestID, fact.OccurredAtMs, claudeCodeTokenCounts{
+		input: fact.InputTokens, output: fact.OutputTokens, reasoning: fact.ReasoningTokens,
+		cacheRead: fact.CacheReadTokens, cacheWrite: fact.CacheWriteTokens, total: fact.TotalTokens,
+	})
+	return diagnostics, true
+}
+
 func maxIntPointer(left *int64, right *int64) *int64 {
 	if left == nil {
 		return right
@@ -293,6 +346,7 @@ func claudeCodeFactDedupeKey(sessionID string, messageID *string, requestID *str
 		int64ValueOrZero(occurredAt),
 		int64ValueOrZero(tokens.input),
 		int64ValueOrZero(tokens.output),
+		int64ValueOrZero(tokens.reasoning),
 		int64ValueOrZero(tokens.cacheRead),
 		int64ValueOrZero(tokens.cacheWrite),
 		int64ValueOrZero(tokens.total),

@@ -51,7 +51,7 @@ func codexReplayDiscover(t *testing.T, root string) (*codexJSONLAdapter, map[str
 
 func codexReplayParse(t *testing.T, a *codexJSONLAdapter, source Source) ([]RawTokenFact, []Diagnostic) {
 	t.Helper()
-	facts, diagnostics, err := a.Parse(context.Background(), source, SyncOptions{Parser: codexJSONLParserV2, Collector: "fixture", Now: time.Unix(1, 0)})
+	facts, diagnostics, err := a.Parse(context.Background(), source, SyncOptions{Parser: codexJSONLParserV3, Collector: "fixture", Now: time.Unix(1, 0)})
 	if err != nil {
 		t.Fatal(err)
 	}

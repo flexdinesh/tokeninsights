@@ -4,8 +4,12 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"fmt"
+	"encoding/json"
+	"errors"
+	"io"
+	"math"
 	"path/filepath"
+	"strconv"
 	"strings"
 )
 
@@ -84,20 +88,71 @@ func intField(record map[string]interface{}, names ...string) *int64 {
 			continue
 		}
 		switch typed := value.(type) {
+		case json.Number:
+			result, err := typed.Int64()
+			if err == nil {
+				return &result
+			}
 		case float64:
+			if math.IsNaN(typed) || math.IsInf(typed, 0) || math.Trunc(typed) != typed || typed >= math.MaxInt64 || typed < math.MinInt64 {
+				return nil
+			}
 			result := int64(typed)
 			return &result
 		case int64:
 			result := typed
 			return &result
 		case string:
-			var result int64
-			if _, err := fmt.Sscanf(strings.TrimSpace(typed), "%d", &result); err == nil {
+			result, err := strconv.ParseInt(strings.TrimSpace(typed), 10, 64)
+			if err == nil {
 				return &result
 			}
 		}
+		return nil
 	}
 	return nil
+}
+
+func decodeJSONRecord(line string, record *map[string]interface{}) error {
+	decoder := json.NewDecoder(strings.NewReader(line))
+	decoder.UseNumber()
+	if err := decoder.Decode(record); err != nil {
+		return err
+	}
+	if err := decoder.Decode(new(interface{})); err != io.EOF {
+		if err != nil {
+			return err
+		}
+		return errors.New("multiple JSON values")
+	}
+	return nil
+}
+
+func tokenComponentSum(values ...*int64) (int64, bool) {
+	var total int64
+	for _, value := range values {
+		if value == nil {
+			continue
+		}
+		if *value < 0 {
+			return 0, false
+		}
+		if *value > math.MaxInt64-total {
+			return 0, false
+		}
+		total += *value
+	}
+	return total, true
+}
+
+func hasInvalidIntegerField(record map[string]interface{}, names ...string) bool {
+	for _, name := range names {
+		value, ok := record[name]
+		if ok && value != nil && intField(record, name) == nil {
+			return true
+		}
+	}
+	return false
 }
 
 func stableHash(value string) string {
