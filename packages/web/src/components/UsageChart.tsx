@@ -104,26 +104,26 @@ export function UsageChart({ rows }: { rows: Row[] }) {
           </p>
         </div>
         {timeline ? (
-          <BucketControl />
+          <div className="chart-controls">
+            <div className="chart-metrics" aria-label="Chart metric">
+              {metrics.map((m) => (
+                <Button
+                  key={m.key}
+                  variant="ghost"
+                  size="sm"
+                  aria-pressed={metric === m.key}
+                  onClick={() => dispatch({ type: 'chartMetric', value: m.key })}
+                >
+                  {m.label}
+                </Button>
+              ))}
+            </div>
+            <BucketControl />
+          </div>
         ) : (
           <span className="eyebrow">{context ? 'Prompt-side tokens' : 'Countable tokens'}</span>
         )}
       </div>
-      {timeline && (
-        <div className="chart-metrics" aria-label="Chart metric">
-          {metrics.map((m) => (
-            <Button
-              key={m.key}
-              variant="ghost"
-              size="sm"
-              aria-pressed={metric === m.key}
-              onClick={() => dispatch({ type: 'chartMetric', value: m.key })}
-            >
-              {m.label}
-            </Button>
-          ))}
-        </div>
-      )}
       {rows.length === 0 ? (
         <div className="chart-empty">No usage in this range</div>
       ) : (
