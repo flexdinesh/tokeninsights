@@ -758,7 +758,7 @@ func TestCodexJSONLSyncsTokenCountUsage(t *testing.T) {
 			UsageScope:       "message",
 			Quality:          "exact",
 			InputTokens:      intPointer(80),
-			OutputTokens:     intPointer(50),
+			OutputTokens:     intPointer(40),
 			ReasoningTokens:  intPointer(10),
 			CacheReadTokens:  intPointer(20),
 			CacheWriteTokens: nil,
@@ -793,11 +793,11 @@ func TestCodexJSONLSyncsTokenCountUsage(t *testing.T) {
 			Quality:          "exact",
 			IsCountable:      1,
 			InputTokens:      80,
-			OutputTokens:     50,
+			OutputTokens:     40,
 			ReasoningTokens:  10,
 			CacheReadTokens:  20,
 			CacheWriteTokens: 0,
-			TotalTokens:      160,
+			TotalTokens:      150,
 		},
 		{
 			Harness:          "codex",
@@ -1348,15 +1348,16 @@ func TestPiJSONLEmitsDiagnosticsForInvalidRowsAndIngestsUsableWarnings(t *testin
 		RawFacts:           1,
 		Observations:       1,
 		Canonical:          1,
-		Diagnostics:        5,
+		Diagnostics:        6,
 	})
 
 	database := openTestDB(t, dbPath)
 	defer func() { _ = database.Close() }()
-	assertSQLCount(t, database, "SELECT COUNT(*) FROM raw_token_usage WHERE input_tokens = 0 AND output_tokens = 5 AND total_tokens = 0", 1)
+	assertSQLCount(t, database, "SELECT COUNT(*) FROM raw_token_usage WHERE input_tokens = 0 AND output_tokens = 5 AND total_tokens IS NULL", 1)
 	assertSQLCount(t, database, "SELECT COUNT(*) FROM normalization_diagnostics WHERE code = 'pi_jsonl_parse_error'", 1)
 	assertSQLCount(t, database, "SELECT COUNT(*) FROM normalization_diagnostics WHERE code = 'pi_jsonl_missing_message_id'", 1)
 	assertSQLCount(t, database, "SELECT COUNT(*) FROM normalization_diagnostics WHERE code = 'pi_jsonl_negative_tokens'", 1)
+	assertSQLCount(t, database, "SELECT COUNT(*) FROM normalization_diagnostics WHERE code = 'pi_jsonl_inconsistent_total'", 1)
 	assertSQLCount(t, database, "SELECT COUNT(*) FROM normalization_diagnostics WHERE code = 'pi_jsonl_invalid_tokens'", 1)
 	assertSQLCount(t, database, "SELECT COUNT(*) FROM normalization_diagnostics WHERE code = 'pi_jsonl_missing_time'", 1)
 }

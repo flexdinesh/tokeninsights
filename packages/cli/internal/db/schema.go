@@ -74,4 +74,4 @@ const (
 
 const SupportedSchemaVersion = 8
 
-const CurrentDataGeneration = 1
+const CurrentDataGeneration = 2

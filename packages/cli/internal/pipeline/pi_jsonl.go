@@ -3,8 +3,6 @@ package pipeline
 import (
 	"bufio"
 	"context"
-	"encoding/json"
-	"math"
 	"os"
 	"path/filepath"
 	"strings"
@@ -147,7 +145,7 @@ func (a piJSONLAdapter) Parse(ctx context.Context, source Source, options SyncOp
 			continue
 		}
 		var record map[string]interface{}
-		if err := json.Unmarshal([]byte(line), &record); err != nil {
+		if err := decodeJSONRecord(line, &record); err != nil {
 			diagnostics = append(diagnostics, piDiagnostic("pi_jsonl_parse_error", "skipped unparsable Pi JSONL line"))
 			continue
 		}
@@ -232,7 +230,7 @@ func (a piJSONLAdapter) factFromRecord(source Source, options SyncOptions, sessi
 		Quality:          "exact",
 		InputTokens:      tokens.input,
 		OutputTokens:     tokens.output,
-		ReasoningTokens:  nil,
+		ReasoningTokens:  tokens.reasoning,
 		CacheReadTokens:  tokens.cacheRead,
 		CacheWriteTokens: tokens.cacheWrite,
 		TotalTokens:      tokens.total,
@@ -242,57 +240,66 @@ func (a piJSONLAdapter) factFromRecord(source Source, options SyncOptions, sessi
 type piTokenCounts struct {
 	input      *int64
 	output     *int64
+	reasoning  *int64
 	cacheRead  *int64
 	cacheWrite *int64
 	total      *int64
 }
 
 func piTokensFromUsage(usage map[string]interface{}) (piTokenCounts, []Diagnostic, bool) {
+	if hasInvalidIntegerField(usage, "input", "output", "reasoning", "cacheRead", "cacheWrite", "totalTokens") {
+		return piTokenCounts{}, []Diagnostic{piDiagnostic("pi_jsonl_invalid_tokens", "skipped Pi assistant token row with non-integer token components")}, false
+	}
 	counts := piTokenCounts{
 		input:      intField(usage, "input"),
 		output:     intField(usage, "output"),
+		reasoning:  intField(usage, "reasoning"),
 		cacheRead:  intField(usage, "cacheRead"),
 		cacheWrite: intField(usage, "cacheWrite"),
 		total:      intField(usage, "totalTokens"),
 	}
-	if counts.input == nil && counts.output == nil && counts.cacheRead == nil && counts.cacheWrite == nil && counts.total == nil {
+	if counts.input == nil && counts.output == nil && counts.reasoning == nil && counts.cacheRead == nil && counts.cacheWrite == nil && counts.total == nil {
 		return piTokenCounts{}, []Diagnostic{piDiagnostic("pi_jsonl_missing_tokens", "skipped Pi assistant token row with no usable token components")}, false
-	}
-	if hasInvalidPiToken(usage, "input", "output", "cacheRead", "cacheWrite", "totalTokens") {
-		return piTokenCounts{}, []Diagnostic{piDiagnostic("pi_jsonl_invalid_tokens", "skipped Pi assistant token row with non-numeric token components")}, false
 	}
 	clamped := false
 	clampToken(counts.input, &clamped)
 	clampToken(counts.output, &clamped)
+	clampToken(counts.reasoning, &clamped)
 	clampToken(counts.cacheRead, &clamped)
 	clampToken(counts.cacheWrite, &clamped)
 	clampToken(counts.total, &clamped)
+	var diagnostics []Diagnostic
 	if clamped {
-		return counts, []Diagnostic{piDiagnostic("pi_jsonl_negative_tokens", "clamped negative Pi token components to zero")}, true
+		diagnostics = append(diagnostics, piDiagnostic("pi_jsonl_negative_tokens", "clamped negative Pi token components to zero"))
 	}
-	return counts, nil, true
-}
 
-func hasInvalidPiToken(usage map[string]interface{}, names ...string) bool {
-	for _, name := range names {
-		value, ok := usage[name]
-		if !ok {
-			continue
-		}
-		switch typed := value.(type) {
-		case float64:
-			if math.IsNaN(typed) || math.IsInf(typed, 0) {
-				return true
-			}
-		case string:
-			if intField(usage, name) == nil {
-				return true
-			}
-		default:
-			return true
+	componentTotal, totalOK := tokenComponentSum(counts.input, counts.output, counts.cacheRead, counts.cacheWrite)
+	if !totalOK {
+		return piTokenCounts{}, []Diagnostic{piDiagnostic("pi_jsonl_invalid_tokens", "skipped Pi assistant token row whose token total exceeds the supported range")}, false
+	}
+	if counts.total != nil && *counts.total != componentTotal {
+		cacheTotal, cacheOK := tokenComponentSum(counts.cacheRead, counts.cacheWrite)
+		inclusiveTotal, inclusiveOK := tokenComponentSum(counts.input, counts.output)
+		if cacheOK && inclusiveOK && cacheTotal > 0 && counts.input != nil && *counts.input >= cacheTotal && *counts.total == inclusiveTotal {
+			adjusted := *counts.input - cacheTotal
+			counts.input = &adjusted
+			diagnostics = append(diagnostics, piDiagnostic("pi_jsonl_inclusive_input_tokens", "subtracted cached tokens from legacy Pi input tokens"))
+		} else {
+			counts.total = nil
+			diagnostics = append(diagnostics, piDiagnostic("pi_jsonl_inconsistent_total", "ignored Pi totalTokens that did not equal the token component sum"))
 		}
 	}
-	return false
+
+	if counts.reasoning != nil {
+		if counts.output == nil || *counts.reasoning > *counts.output {
+			counts.reasoning = nil
+			diagnostics = append(diagnostics, piDiagnostic("pi_jsonl_invalid_reasoning", "ignored Pi reasoning tokens that exceeded inclusive output tokens"))
+		} else {
+			nonReasoningOutput := *counts.output - *counts.reasoning
+			counts.output = &nonReasoningOutput
+		}
+	}
+	return counts, diagnostics, true
 }
 
 func clampToken(value *int64, clamped *bool) {

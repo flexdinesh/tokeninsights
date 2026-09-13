@@ -72,7 +72,7 @@ const allowedStructuralStrings = new Set([
 
 const allowedNumbers = new Set([
   0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 16, 18, 20, 21, 30, 32, 40, 44, 51, 62, 70, 72, 90,
-  100, 101, 105, 129, 202, 1767225601000, 1767225602000, 1767312001000, 1767312002000,
+  100, 101, 120, 202, 1767225601000, 1767225602000, 1767312001000, 1767312002000,
 ])
 
 void test('shared fixture has only allowlisted public-safe source records', async () => {

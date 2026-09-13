@@ -14,10 +14,14 @@ import (
 )
 
 const (
-	defaultCollector       = "tokeninsights-sync-go"
-	defaultParser          = "sync-first-v1"
-	opencodeSQLiteParserV2 = "opencode-sqlite-v1-v2"
-	codexJSONLParserV2     = "codex-jsonl-replay-v2"
+	// Any parser change that can alter emitted facts or identity must also bump
+	// db.CurrentDataGeneration so recovery replaces, rather than mixes, raw data.
+	defaultCollector        = "tokeninsights-sync-go"
+	defaultParser           = "sync-first-v1"
+	opencodeSQLiteParserV2  = "opencode-sqlite-v1-v2"
+	piJSONLParserV2         = "pi-jsonl-token-semantics-v2"
+	codexJSONLParserV3      = "codex-jsonl-replay-v3"
+	claudeCodeJSONLParserV2 = "claude-code-jsonl-token-semantics-v2"
 )
 
 var runSequence atomic.Uint64
@@ -261,8 +265,14 @@ func parserOptionsForHarness(options SyncOptions, harness Harness) SyncOptions {
 	if harness == HarnessOpenCode && options.Parser == defaultParser {
 		options.Parser = opencodeSQLiteParserV2
 	}
+	if harness == HarnessPi && options.Parser == defaultParser {
+		options.Parser = piJSONLParserV2
+	}
 	if harness == HarnessCodex && options.Parser == defaultParser {
-		options.Parser = codexJSONLParserV2
+		options.Parser = codexJSONLParserV3
+	}
+	if harness == HarnessClaudeCode && options.Parser == defaultParser {
+		options.Parser = claudeCodeJSONLParserV2
 	}
 	return options
 }

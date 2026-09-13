@@ -17,7 +17,6 @@ const opencodeSQLiteSourceKind = "opencode-sqlite"
 type opencodeSQLiteAdapter struct{}
 
 type opencodeMessageData struct {
-	ID         string                `json:"id"`
 	Role       string                `json:"role"`
 	ModelID    string                `json:"modelID"`
 	ProviderID string                `json:"providerID"`
@@ -282,6 +281,9 @@ func (a opencodeSQLiteAdapter) factFromMessage(source Source, options SyncOption
 	if clampOpenCodeTokens(messageData.Tokens) {
 		diagnostics = append(diagnostics, opencodeDiagnostic("opencode_sqlite_negative_tokens", "clamped negative OpenCode token components to zero"))
 	}
+	if _, ok := openCodeTokenTotal(messageData.Tokens); !ok {
+		return RawTokenFact{}, []Diagnostic{opencodeDiagnostic("opencode_sqlite_invalid_tokens", "skipped OpenCode assistant message whose token total exceeds the supported range")}, false
+	}
 
 	occurredAt := opencodeOccurredAt(messageData.Time, rowTimeCreated)
 	if occurredAt == nil {
@@ -293,11 +295,6 @@ func (a opencodeSQLiteAdapter) factFromMessage(source Source, options SyncOption
 		sourceID = source.ID
 	}
 	sessionID := trimSQLString(rowSessionID)
-	factMessageID := strings.TrimSpace(messageData.ID)
-	if factMessageID == "" {
-		factMessageID = strings.TrimSpace(rowMessageID)
-	}
-
 	return RawTokenFact{
 		Harness:          HarnessOpenCode,
 		SourceID:         sourceID,
@@ -307,7 +304,7 @@ func (a opencodeSQLiteAdapter) factFromMessage(source Source, options SyncOption
 		ObservedAtMs:     syncNowMs(options.Now),
 		OccurredAtMs:     occurredAt,
 		SessionID:        stringPtrFromTrimmed(sessionID),
-		MessageID:        stringPtrFromTrimmed(factMessageID),
+		MessageID:        stringPtrFromTrimmed(rowMessageID),
 		Provider:         stringPtrFromTrimmed(messageData.ProviderID),
 		Model:            stringPtrFromTrimmed(messageData.ModelID),
 		UsageScope:       "message",
@@ -334,6 +331,9 @@ func (a opencodeSQLiteAdapter) factFromV2Message(source Source, options SyncOpti
 	var diagnostics []Diagnostic
 	if clampOpenCodeTokens(messageData.Tokens) {
 		diagnostics = append(diagnostics, opencodeDiagnostic("opencode_sqlite_negative_tokens", "clamped negative OpenCode token components to zero"))
+	}
+	if _, ok := openCodeTokenTotal(messageData.Tokens); !ok {
+		return RawTokenFact{}, []Diagnostic{opencodeDiagnostic("opencode_sqlite_invalid_tokens", "skipped OpenCode V2 assistant message whose token total exceeds the supported range")}, false
 	}
 	occurredAt := opencodeOccurredAt(messageData.Time, rowTimeCreated)
 	if occurredAt == nil {
@@ -482,6 +482,10 @@ func clampOpenCodeTokens(tokens *opencodeTokenData) bool {
 		clamped = clampInt(tokens.Cache.Write) || clamped
 	}
 	return clamped
+}
+
+func openCodeTokenTotal(tokens *opencodeTokenData) (int64, bool) {
+	return tokenComponentSum(tokens.Input, tokens.Output, tokens.Reasoning, opencodeCacheRead(tokens), opencodeCacheWrite(tokens))
 }
 
 func clampInt(value *int64) bool {
