@@ -70,9 +70,6 @@ test('path routes keep shared dashboard stable while view data loads', async ({ 
   await expect(tokensLink).toHaveAttribute('aria-current', 'page')
   expect(await tokensLink.evaluate((element) => getComputedStyle(element).borderRadius)).toBe('0px')
 
-  await page.locator('.page-heading').evaluate((element) => {
-    element.dataset.mounted = 'heading'
-  })
   await page.locator('.view-controls').evaluate((element) => {
     element.dataset.mounted = 'routes'
   })
@@ -89,7 +86,6 @@ test('path routes keep shared dashboard stable while view data loads', async ({ 
   await page.getByRole('link', { name: 'Models', exact: true }).click()
   await expect(page).toHaveURL(/\/models\?/)
   await expect(page.getByRole('status', { name: 'Updating view results' })).toBeVisible()
-  await expect(page.locator('.page-heading[data-mounted="heading"]')).toBeVisible()
   await expect(page.locator('.view-controls[data-mounted="routes"]')).toBeVisible()
   await expect(
     page.locator('[aria-label="Filtered usage summary"][data-mounted="summary"]'),
@@ -122,6 +118,30 @@ test('path routes keep shared dashboard stable while view data loads', async ({ 
   await expect(page.getByRole('region', { name: 'Providers details', exact: true })).toBeVisible()
 })
 
+test('sorting preserves page scroll position', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 600 })
+  await page.goto('/sessions')
+  const details = page.getByRole('region', { name: 'Sessions details', exact: true })
+  await expect(details).toBeVisible()
+  const totalHeader = details.getByRole('button', { name: 'Total', exact: true })
+  await totalHeader.scrollIntoViewIfNeeded()
+  const before = await page.evaluate(() => window.scrollY)
+  expect(before).toBeGreaterThan(0)
+  await page.route('**/api/v1/usage?*', async (route) => {
+    if (new URL(route.request().url()).searchParams.get('sort') === 'total') {
+      await new Promise((resolve) => setTimeout(resolve, 500))
+    }
+    await route.continue()
+  })
+
+  await totalHeader.click()
+  await expect(page).toHaveURL(/sort=total/)
+  await expect(page.getByRole('status', { name: 'Updating view results' })).toBeVisible()
+  expect(await page.evaluate(() => window.scrollY)).toBe(before)
+  await expect(details).toBeVisible()
+  expect(await page.evaluate(() => window.scrollY)).toBe(before)
+})
+
 test('themes, keyboard filters, mobile layout, and scalable typography', async ({
   page,
 }, testInfo) => {
@@ -132,11 +152,7 @@ test('themes, keyboard filters, mobile layout, and scalable typography', async (
   expect(await page.locator('body').evaluate((element) => getComputedStyle(element).fontSize)).toBe(
     '15px',
   )
-  expect(
-    await page
-      .getByRole('heading', { name: 'Usage', exact: true })
-      .evaluate((element) => getComputedStyle(element).fontSize),
-  ).toBe('38px')
+  await expect(page.getByRole('heading', { name: 'Token usage', exact: true })).toBeAttached()
   expect(
     await page
       .getByLabel('Total tokens: 258,000', { exact: true })
@@ -180,7 +196,6 @@ test('themes, keyboard filters, mobile layout, and scalable typography', async (
   await page.evaluate(() => {
     document.documentElement.style.fontSize = ''
   })
-  await page.getByRole('heading', { name: 'Usage', exact: true }).click()
   await page.screenshot({ path: testInfo.outputPath('desktop-dark.png'), fullPage: true })
   await page.getByRole('button', { name: 'Theme: dark. Change theme' }).click()
   await page.getByRole('button', { name: 'Theme: system. Change theme' }).click()

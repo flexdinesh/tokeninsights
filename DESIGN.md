@@ -82,7 +82,7 @@ Use `--font-sans`, the local system sans stack; no remote font dependency. Use
 | Subsection heading | `--text-sm` (15) | Semibold / normal | `h3` and local group titles. |
 | Body / controls | `--text-sm` (15) | Regular or medium / normal | Dashboard prose, controls, table identities. |
 | Reading / mobile entry | `--text-base` (17) | Regular / normal | Longer explanatory content and mobile text/date entry. |
-| Label / metadata | `--text-xs` (13) | Medium / regular, normal | Filters, captions, axis labels, numeric cells, status metadata. |
+| Label / metadata | `--text-xs` (13) | Medium / regular, normal | Filters, captions, axis labels, status metadata. |
 
 Use `--leading-tight` only for titles and large values; everything else uses
 `--leading-normal`. Use `--tracking-tight` for titles/values/brand,
@@ -105,9 +105,9 @@ Use the 4px-based scale: `--space-1/2/3/4/6/8/12/16` → 4/8/12/16/24/32/48/64.
 | Label to input; heading to caption | `--space-1` |
 | Icon to label; related actions; heading to body | `--space-2` |
 | Filter rows, card/grid gaps, field groups | `--space-3` |
-| Form/overlay inset; panel-heading vertical inset | `--space-4` |
+| Form/overlay inset; panel-heading vertical inset | `--space-4`; compact chart heading `--space-3` |
 | Between filters, chart, and table | `--space-6` |
-| After page heading and summary group | `--space-8` (heading may use `--space-6` on mobile) |
+| After summary group | `--space-6` |
 | Empty-state vertical breathing room | `--space-12` |
 | Card/panel horizontal inset | `--panel-padding`: 24 desktop, 16 at ≤75rem |
 
@@ -128,12 +128,12 @@ Do not mint a global token for every library coordinate or content-specific widt
 - Use `--reading-width` (42rem) for prose-heavy content; analytics use available width.
 - Header minimum height is `--header-height` (64px). Let it grow when content wraps.
   It may remain sticky, but must stay in document flow. No sidebar is part of the current visual system.
-- Preserve page order: heading/status → Aggregation Tabs and quick date ranges →
-  filters → sync feedback → summaries → chart → table/summary → footer.
+- Preserve page order: Aggregation Tabs and quick date ranges → filters → sync
+  feedback → summaries → chart → table/summary → footer.
 - Keep the source selector in the header beside source-aware status/actions. It must
   remain reachable when dashboard requests fail; never bury recovery inside failed content.
-- Keep five equal-weight summary cards in one desktop row. Use three columns at
-  ≤55rem and two at ≤38rem.
+- Keep five equal-weight, compact summary cards in one desktop row. Use three columns
+  at ≤55rem and two at ≤38rem. Summary cards use `--space-4` inset.
 - Use flex wrapping for action groups, `minmax(0, 1fr)` for equal grid columns, and
   `min-width: 0` on shrinkable content. Never hide document overflow to conceal bugs.
 - Scroll wide tables inside `.table-scroll`; preserve numeric column readability.
@@ -145,7 +145,7 @@ Do not mint a global token for every library coordinate or content-specific widt
 ## Borders, radii, and elevation
 
 - `--radius-sm` (4px): badges, chips, segmented choices, checkbox-option hover.
-- `--radius-md` (8px): buttons, fields, logo mark, tooltips.
+- `--radius-md` (8px): buttons, fields, tooltips.
 - `--radius-lg` (12px): panels, summary cards, popovers, alerts.
 - Circular status marks use 50%; do not turn ordinary controls into pills.
 - Use `--border-width` for rules; `--focus-width` for focus/active-view indicators.
@@ -310,6 +310,6 @@ decisions:
   behavior where appropriate.
 
 Comparison bars share the existing 64px maximum width so sparse Context results do
-not expand into oversized blocks. Chart plot coordinates, measured identity-column widths, the 17rem chart viewport,
+not expand into oversized blocks. Chart plot coordinates, measured identity-column widths, the 14rem chart viewport,
 35rem table scroll cap, and Radix anchor positioning remain local functional geometry.
 Their values are not invitations to add new spacing or typography scales.

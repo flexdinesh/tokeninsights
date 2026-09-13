@@ -359,6 +359,7 @@ export function DashboardProvider({
         to: '/$tab',
         params: { tab: next.tab },
         search: searchFromQuery(next),
+        resetScroll: false,
       })
     },
     [navigate, query],

@@ -19,7 +19,7 @@ import {
 import { useAnalytics, useBootstrap, useFacets, useSyncStatus, syncNow } from './api'
 import type { SyncStatus, Tab } from './contracts'
 import { DashboardProvider, reduceQuery, searchFromQuery, useDashboardState } from './state'
-import { labels, relativeTime } from './format'
+import { labels } from './format'
 import { FilterToolbar, QuickPeriods } from './components/Filters'
 import { SummaryCards } from './components/SummaryCards'
 import { ResultsTable } from './components/ResultsTable'
@@ -68,9 +68,6 @@ function ConnectionScreen({
     <div className="app-shell">
       <header className="app-header">
         <div className="brand">
-          <span className="brand-mark">
-            <img src="/tokeninsights-logo.png" alt="" />
-          </span>
           <span>
             Token<span className="brand-light">Insights</span>
           </span>
@@ -135,14 +132,6 @@ function DashboardShell() {
   }
   const running = status?.running || sync.isPending
   const data = analytics.data
-  const custom = query.from || query.to
-  const range = custom
-    ? `${query.from || 'Beginning'} → ${query.to || 'Now'}`
-    : query.period === 'all'
-      ? 'All time'
-      : query.period === 'today' || query.period === 'yesterday'
-        ? query.period
-        : `This ${query.period}`
   return (
     <div className="app-shell">
       <a href="#dashboard" className="skip-link">
@@ -150,9 +139,6 @@ function DashboardShell() {
       </a>
       <header className="app-header">
         <div className="brand">
-          <span className="brand-mark">
-            <img src="/tokeninsights-logo.png" alt="" />
-          </span>
           <span>
             Token<span className="brand-light">Insights</span>
           </span>
@@ -224,20 +210,7 @@ function DashboardShell() {
       )}
       {bootstrap && (
         <main id="dashboard" className="dashboard">
-          <section className="page-heading">
-            <div>
-              <div className="eyebrow page-kicker">{active.hostname}</div>
-              <h1>Usage</h1>
-              <p>Token activity across your coding agents.</p>
-            </div>
-            <div className="heading-status">
-              <span className="range-label">{range}</span>
-              <span title={data?.lastSynced ? new Date(data.lastSynced).toISOString() : undefined}>
-                {data ? relativeTime(data.lastSynced) : 'Loading sync history…'}{' '}
-                <span className="muted">· {bootstrap.timezone}</span>
-              </span>
-            </div>
-          </section>
+          <h1 className="sr-only">Token usage</h1>
           <div className="view-controls">
             <nav className="view-tabs" aria-label="Analytics views">
               {tabs.map(({ id, icon: Icon }) => (
