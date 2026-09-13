@@ -2,9 +2,9 @@
 
 TokenInsights is a local token usage dashboard for OpenCode, Pi, Codex, and Claude Code. It parses local session files, stores usage metadata in SQLite, and presents it in a terminal or browser dashboard. Both dashboards refresh supported local sources on startup.
 
-| Terminal UI                                                               | Web UI                                                                               |
-| ------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
-| ![TokenInsights terminal dashboard](assets/tokeninsights-view-models.png) | ![TokenInsights browser dashboard in light mode](assets/tokeninsights-web-light.png) |
+| Web                                                                                  | TUI                                                                       |
+| ------------------------------------------------------------------------------------ | ------------------------------------------------------------------------- |
+| ![TokenInsights browser dashboard in light mode](assets/tokeninsights-web-light.png) | ![TokenInsights terminal dashboard](assets/tokeninsights-view-models.png) |
 
 ## Install
 
