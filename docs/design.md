@@ -69,6 +69,22 @@ TokenInsights V1 is a local Go CLI:
 
 Realtime plugins and checkpoint plugins are future-compatible concepts, not active product code in this repository. The old direct-write OpenCode and Pi plugin packages are removed from the active workspace.
 
+## Code And Process Boundaries
+
+The repository is a polyglot monorepo with one Go module and a pnpm workspace. The Go module is the native product and release unit; pnpm coordinates build-, test-, and development-only TypeScript tooling and the browser application.
+
+Go dependency direction is:
+
+```text
+commands and transports -> application semantics -> pipeline and database
+```
+
+Protocol handlers must not become the reusable application boundary. Future transports such as MCP should share protocol-independent analytics and sync behavior with the REST server rather than call REST internally or duplicate database queries. Multiple commands that share one release lifecycle should remain in the existing Go module. A second Go module and root `go.work` become appropriate only when a component needs an independent dependency or release lifecycle.
+
+SQLite is the durable state boundary. In-memory HTTP sync status is process-local. Before adding another process that can trigger sync, choose a single write/job owner or define explicit cross-process coordination; separate processes must not present independent state for the same logical job.
+
+The OpenAPI document and SQLite schema remain language-neutral contracts. Deployable browser applications may share narrowly scoped workspace packages such as UI primitives or API clients after a second consumer exists; generic shared packages and application-feature coupling should be avoided.
+
 ## Current Implementation Status
 
 The sync-first canonical path is the active product path. Schema V8, automatic schema/data compatibility recovery, `sync`, OpenCode/Pi/Codex/Claude Code Recent Source Refresh, pending-work `normalize`, reset commands, canonical token aggregation, and fixture-style pipeline conformance tests are implemented.
@@ -555,4 +571,4 @@ Fixture sources may include harness-native durable stores, such as synthetic Ope
 
 `sync-first-basic/source/` is also the shared development source fixture. It contains compact representative OpenCode, Pi, Codex, and Claude Code data, roughly two sessions and two canonical facts per harness. Source structures reflect durable harness formats, but every retained value is synthetic. Fixtures must exclude conversation content, tool arguments/output, request headers, secrets, real user or repository paths, signatures, and other identifying data. Raw local harness databases and transcripts must never be copied into the repository.
 
-`pnpm run dev:data` builds the Go CLI without rebuilding web assets, recreates the ignored `.tokeninsights-dev/` directory, copies the sanitized JSONL sources, materializes OpenCode SQLite from its reviewable `source.sql`, and syncs all harnesses into `.tokeninsights-dev/tokeninsights.sqlite`. `dev:cli` builds and prepares that data before opening the all-time, no-sync TUI. `dev:server` builds and prepares the same data before running the Go REST server on loopback. `dev:web` runs Vite directly, binds to all IPv4 interfaces, and proxies `/api` to the Go server at `127.0.0.1:8765`. `dev` runs both server commands in parallel. `start:web` remains unchanged and uses normal local sources. Web browser tests retain their separate generated 80-session synthetic dataset because pagination requires more rows than the compact shared fixture.
+`pnpm run dev:data` builds the Go CLI without rebuilding web assets, recreates the ignored `.tokeninsights-dev/` directory, copies the sanitized JSONL sources, materializes OpenCode SQLite from its reviewable `source.sql`, and syncs all harnesses into `.tokeninsights-dev/tokeninsights.sqlite`. `dev:cli` builds and prepares that data before opening the all-time, no-sync TUI. `dev:server` builds and prepares the same data before running the Go REST server on loopback. `dev:web` runs Vite directly, binds to all IPv4 interfaces, and proxies `/api` to the Go server at `127.0.0.1:8765`. `dev:web:mock` runs Vite independently with contract-validated Mock Service Worker responses and requires no Go process or local harness data. `dev` runs both real server commands in parallel. `start:web` remains unchanged and uses normal local sources. Web browser tests retain their separate generated 80-session synthetic dataset because pagination requires more rows than the compact shared fixture.

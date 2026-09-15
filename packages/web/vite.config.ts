@@ -9,7 +9,7 @@ export default defineConfig({
     alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) },
   },
   build: {
-    outDir: '../cli/internal/server/static',
+    outDir: 'dist',
     emptyOutDir: true,
   },
   server: { proxy: { '/api': 'http://127.0.0.1:8765' } },

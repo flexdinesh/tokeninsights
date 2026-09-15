@@ -6,6 +6,11 @@ import { router } from './router'
 import { SourceProvider } from './source-context'
 import './styles.css'
 
+if (import.meta.env.MODE === 'mock') {
+  const { worker } = await import('./mocks/browser')
+  await worker.start({ onUnhandledRequest: 'bypass' })
+}
+
 const client = new QueryClient({
   defaultOptions: {
     queries: { retry: 1, staleTime: 15_000, gcTime: 60_000, refetchOnWindowFocus: true },

@@ -6,6 +6,7 @@
     "**/*.md",
     "**/node_modules/**",
     "**/testdata/**",
-    "packages/cli/internal/server/static/**"
+    "packages/cli/internal/server/static/**",
+    "packages/web/public/mockServiceWorker.js"
   ]
 }
