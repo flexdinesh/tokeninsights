@@ -483,8 +483,8 @@ func TestListenerURLAndShutdown(t *testing.T) {
 		t.Fatal(err)
 	}
 	lines := strings.Split(strings.TrimSpace(output.String()), "\n")
-	if len(lines) != 2 || !strings.HasPrefix(lines[0], "http://127.0.0.1:") {
-		t.Fatalf("expected a single bound URL: %s", output.String())
+	if len(lines) != 5 || !strings.HasPrefix(lines[2], "  url:  http://127.0.0.1:") || lines[4] != "  ctrl-c to stop." {
+		t.Fatalf("unexpected startup output: %s", output.String())
 	}
 	if err := Run(context.Background(), Options{DBPath: filepath.Join(t.TempDir(), "missing.sqlite"), NoSync: true}, io.Discard, io.Discard); err == nil {
 		t.Fatal("--no-sync must reject a missing database")

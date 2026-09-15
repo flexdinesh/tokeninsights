@@ -28,7 +28,7 @@ go install github.com/flexdinesh/tokeninsights/packages/cli/cmd/tokeninsights@la
 tokeninsights serve
 ```
 
-Open the URL printed in the terminal. The default port is `8765`.
+Open the URL printed in the terminal. The server binds to localhost on port `8765` by default. Use `--host <ipv4>` to make it reachable through another interface and `--port <port>` to choose another port.
 
 ### Terminal UI
 
@@ -59,7 +59,7 @@ It parses local session data into a local SQLite database, then queries that dat
 
 The default database is `~/.local/share/tokeninsights/tokeninsights.sqlite`. Override it with `--db-path` or `TOKENINSIGHTS_DB_PATH`.
 
-The web server makes usage metadata available to clients that can reach it. Use `tokeninsights serve --host 127.0.0.1` to restrict binding the server to `0.0.0.0`.
+The web server makes usage metadata available to clients that can reach it. Its default localhost binding limits access to this machine. Only use `--host` with a trusted network address.
 
 ## Development
 
