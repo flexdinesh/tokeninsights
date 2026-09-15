@@ -1,120 +1,112 @@
 # Development
 
-Use Node 26+ and pnpm for monorepo development. Go production builds remain independent of both.
+TokenInsights is a pnpm monorepo with a Go CLI and a Vite/React browser application. Use Node 26+, pnpm 11+, and Go 1.26+.
 
-```bash
-# Check out the repo.
-git clone git@github.com:flexdinesh/tokeninsights.git && cd tokeninsights
+## Setup
 
-# Install workspace dependencies.
+```sh
+git clone git@github.com:flexdinesh/tokeninsights.git
+cd tokeninsights
 pnpm install
+```
 
-# Format, verify formatting, and lint Go plus TypeScript/React.
-pnpm run format
-pnpm run format:check
-pnpm run lint
+## Commands
 
-# Validate schema and generated API contracts.
-pnpm run check-schema
-pnpm run check-api
+Run commands from the repository root unless noted otherwise.
 
-# Run tests.
-pnpm run test
+### Local development
 
-# Build the binary.
-pnpm run build
+| Purpose | Command |
+| --- | --- |
+| Install workspace dependencies | `pnpm install` |
+| Run Go API and hot-reloading web app | `pnpm run dev` |
+| Recreate sanitized fixture data | `pnpm run dev:data` |
+| Open TUI with fixture data | `pnpm run dev:cli` |
+| Run Go API with fixture data | `pnpm run dev:server` |
+| Run hot-reloading web app against Go API | `pnpm run dev:web` |
+| Run web app with synthetic API responses | `pnpm run dev:web:mock` |
+| Build frontend into Go and run final setup | `pnpm run start:web` |
 
-# Install the local CLI build as a binary.
+### Verification and generation
+
+| Purpose | Command |
+| --- | --- |
+| Format files | `pnpm run format` |
+| Check formatting | `pnpm run format:check` |
+| Lint Go and TypeScript | `pnpm run lint` |
+| Run all tests | `pnpm run test` |
+| Validate SQLite schema copies | `pnpm run check-schema` |
+| Validate generated API files | `pnpm run check-api` |
+| Regenerate API files | `pnpm run generate:api` |
+| Build and sync embedded web assets | `pnpm run build:web` |
+| Check committed web assets | `pnpm run check-web` |
+| Run browser end-to-end tests | `pnpm run test:web-e2e` |
+| Run all checks and build production binary | `pnpm run build` |
+
+Install Chromium once before the browser end-to-end tests:
+
+```sh
+pnpm --filter @tokeninsights/web exec playwright install chromium
+```
+
+### Local CLI installation
+
+Build the frontend, embed it in Go, and install `tokeninsights` into Go's binary directory:
+
+```sh
 pnpm run install:cli
 ```
 
-The Go CLI lives in `packages/cli`. Equivalent direct Go commands are:
+If `tokeninsights` is not found, add Go's binary directory to `PATH`. For Fish:
 
-```bash
+```fish
+fish_add_path (go env GOPATH)/bin
+```
+
+Verify the installed CLI and embedded browser application:
+
+```sh
+command -v tokeninsights
+tokeninsights --version
+tokeninsights serve
+```
+
+### Direct Go commands
+
+Committed web assets let Go build and install without Node or pnpm:
+
+```sh
 cd packages/cli
-
 go test ./...
 go build -o bin/tokeninsights ./cmd/tokeninsights
 go install ./cmd/tokeninsights
 ```
 
+Direct Go commands use the currently committed embedded web assets. Use `pnpm run install:cli` when frontend changes must be included.
+
 ## Fixture Data
 
-The shared development and pipeline fixture lives under `packages/cli/testdata/conformance/sync-first-basic/source/`. It keeps compact, harness-native durable source shapes for OpenCode, Pi, Codex, and Claude Code—roughly two sessions per harness—while using synthetic IDs, timestamps, token counts, providers, models, and paths. It excludes conversation text, tool payloads, credentials, request data, user paths, and other identifying values. Never commit raw local harness databases or transcripts.
+The shared fixture is under `packages/cli/testdata/conformance/sync-first-basic/source/`. It contains compact, synthetic source data for all supported harnesses and excludes conversations, tool payloads, credentials, request data, user paths, and identifying values. Never commit raw local harness databases or transcripts.
 
-```sh
-# Recreate .tokeninsights-dev/ and its normalized fixture database
-pnpm run dev:data
-
-# Run the Go REST and Vite dev servers in parallel
-pnpm run dev
-
-# Build, prepare fixture data, and open the all-time TUI without syncing
-pnpm run dev:cli
-
-# Build the Go binary, prepare fixture data, and serve its REST API on loopback
-pnpm run dev:server
-
-# In another shell, run Vite on all IPv4 interfaces with API proxying
-pnpm run dev:web
-
-# Run Vite independently with synthetic REST responses
-pnpm run dev:web:mock
-```
-
-`dev:data` builds only the Go CLI, copies the sanitized JSONL sources, materializes OpenCode SQLite from reviewable `source.sql`, and writes `.tokeninsights-dev/tokeninsights.sqlite`. The generated directory is ignored and safe to recreate. `dev` runs `dev:server` and `dev:web` in parallel. Vite proxies `/api` to `127.0.0.1:8765`. `dev:web:mock` intercepts the versioned REST API in the browser with contract-validated synthetic responses, including all dashboard views, facets, pagination, and sync progress. It does not start Go or read local harness data. `pnpm run start:web` remains the normal local-source server command.
+`dev:data` recreates the ignored `.tokeninsights-dev/` directory and its normalized database. `dev` runs the fixture-backed Go server and Vite together. Vite proxies `/api` to `127.0.0.1:8765`. `dev:web:mock` runs without Go or local harness data.
 
 ## Build Tooling
 
-This is a pnpm monorepo containing Go and TypeScript packages. Root Node tooling is owned by the private `@tokeninsights/build-tools` workspace package in `tools/build`. Its scripts use native, erasable TypeScript supported directly by Node 26+. It handles schema validation, fixture preparation and safety tests, generated-web checks, and Homebrew formula generation. Root pnpm scripts remain stable orchestration commands. The language-neutral schema source remains at `schema/schema.sql` outside the package workspace.
+The private `@tokeninsights/build-tools` workspace under `tools/build` owns schema validation, fixture preparation and safety checks, embedded-web checks, and Homebrew formula generation. Root pnpm scripts are the stable entry points.
 
-Formatting uses `gofmt` for Go and Oxfmt for TypeScript, JavaScript, and React. Linting uses the repository-pinned `golangci-lint` for Go and Oxlint for TypeScript, JavaScript, and React. Use `pnpm run format` to write formatting changes, `pnpm run format:check` in verification, and `pnpm run lint` for both language stacks.
-
-Node, npm, pnpm, `node_modules`, and this tooling package are build-, test-, and development-only. Direct Go builds and installs consume committed web assets and require no JavaScript tooling:
-
-```sh
-cd packages/cli
-go build -o bin/tokeninsights ./cmd/tokeninsights
-go install ./cmd/tokeninsights
-```
-
-The production host runs only the native `tokeninsights` binary. Its embedded browser JavaScript is served as static bytes by Go and executes only in the browser; Go runtime code must not invoke Node, npm, or pnpm.
+Go uses `gofmt` and the repository-pinned `golangci-lint`. TypeScript, JavaScript, and React use Oxfmt and Oxlint. Node tooling is development-only; the production `tokeninsights` binary does not require a JavaScript runtime.
 
 ## Web Dashboard
 
-React source lives in `packages/web` and builds with Vite. Vite stages output in ignored `packages/web/dist`; `pnpm run build:web` then refreshes the checked `packages/cli/internal/server/static` copy embedded with `go:embed`. This keeps the web package from writing directly into Go source while preserving direct Go builds and installs without Node. After frontend edits, run `pnpm run build:web` and include the generated changes. `pnpm run build` and `pnpm run install:cli` build the frontend automatically.
+React source lives in `packages/web`. Vite stages output in ignored `packages/web/dist`; the build tooling copies it to committed `packages/cli/internal/server/static` assets for `go:embed`.
+
+Go tests cover aggregation, API behavior, sync coordination, assets, listener lifecycle, and date boundaries. React tests cover URL state, filtering, and cancelled requests. Browser tests launch the built binary with isolated synthetic data and verify the full dashboard.
+
+## Skipping CI
+
+Use `[skip ci]` only for a deliberate docs-only commit that should skip GitHub Actions:
 
 ```sh
-# Build and run the embedded application
-pnpm run build
-./packages/cli/bin/tokeninsights serve --week
-
-# For hot reload, optionally restrict the API to loopback
-./packages/cli/bin/tokeninsights serve --host 127.0.0.1 --week
-
-# Hot-reloading frontend (in another shell; proxies API to 127.0.0.1:8765)
-pnpm --filter @tokeninsights/web run dev
-
-# Focused frontend tests and type checking
-pnpm --filter @tokeninsights/web run test
-
-# Browser tests against the built binary, with isolated synthetic data
-pnpm --filter @tokeninsights/web exec playwright install chromium
-pnpm run test:web-e2e
-
-# Verify committed web assets match a fresh staged build without modifying them
-pnpm run check-web
-```
-
-Go HTTP tests cover canonical aggregation, pagination, facets, shared sync jobs, asset serving, listener lifecycle, and date boundaries. React tests cover URL state, multi-select interactions, and cancellation of obsolete filter requests. `pnpm run test` runs both suites. After building, `pnpm run test:web-e2e` launches the built binary with a separate generated 80-session synthetic dataset and verifies startup/manual sync, all six views, filters/back navigation, pagination, failure inspection, themes, narrow layouts, keyboard navigation, and 200% font scaling. The larger E2E dataset is retained because the compact shared fixture cannot exercise pagination. CI and release workflows run these browser checks too.
-
-## Skipping Actions
-
-`[skip ci]` can be used as a temporary escape hatch when a commit should skip
-GitHub Actions, such as a docs-only change that should not run release
-automation.
-
-```bash
 git commit -m "docs: update readme [skip ci]"
 ```
 

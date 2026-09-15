@@ -1,6 +1,6 @@
 # TokenInsights
 
-TokenInsights is a local token usage dashboard for OpenCode, Pi, Codex, and Claude Code. It parses local session files, stores usage metadata in SQLite, and presents it in a terminal or browser dashboard. Both dashboards refresh supported local sources on startup.
+TokenInsights is a local token usage dashboard for OpenCode, Pi, Codex, and Claude Code. It reads durable local session data and presents usage in terminal and browser dashboards.
 
 | Web                                                                                  | TUI                                                                       |
 | ------------------------------------------------------------------------------------ | ------------------------------------------------------------------------- |
@@ -8,59 +8,54 @@ TokenInsights is a local token usage dashboard for OpenCode, Pi, Codex, and Clau
 
 ## Install
 
-### Homebrew
+With Homebrew:
 
 ```sh
 brew install flexdinesh/tap/tokeninsights
 ```
 
-### Go
+With Go:
 
 ```sh
 go install github.com/flexdinesh/tokeninsights/packages/cli/cmd/tokeninsights@latest
 ```
 
-## Usage
+## Run
 
-### Web UI
+Open the browser dashboard:
 
 ```sh
 tokeninsights serve
 ```
 
-Open the URL printed in the terminal. The server binds to localhost on port `8765` by default. Use `--host <ipv4>` to make it reachable through another interface and `--port <port>` to choose another port.
-
-### Terminal UI
+Open the terminal dashboard:
 
 ```sh
-# Current month
-tokeninsights view
-
-# Preset periods
-tokeninsights view --today
-tokeninsights view --week
-tokeninsights view --all-time
-
-# Filters can be combined
-tokeninsights view --week --harness codex
-tokeninsights view --provider openai --model gpt-5
-tokeninsights view --session-id <session-id>
-tokeninsights view --year --bucket month
-tokeninsights view --filter-day-from 2026-09-01 --filter-day-to 2026-09-30
+tokeninsights
 ```
 
-Supported periods are `--today`, `--yesterday`, `--week`, `--month`, `--year`, and `--all-time`. See the [CLI reference](packages/cli/README.md) for every command and option.
+Both refresh supported local sources on startup. The browser server listens at `http://localhost:8765` by default. Use `--host <ipv4>` to bind another interface or `--port <port>` to choose another port.
 
-## Data Use
+Common filters:
 
-All data stays in your machine. TokenInsights does not upload usage data or send it to an external service.
+```sh
+tokeninsights view --today
+tokeninsights view --week --harness codex
+tokeninsights view --provider openai --model gpt-5
+tokeninsights view --all-time
+```
 
-It parses local session data into a local SQLite database, then queries that database for the TUI and web dashboard. It stores usage metadata such as token counts, timestamps, models, providers, and session identifiers—not prompts, responses, tool arguments, or tool output.
+Supported periods are `--today`, `--yesterday`, `--week`, `--month`, `--year`, and `--all-time`. See the [CLI reference](packages/cli/README.md) for all commands and options.
+
+## Privacy
+
+TokenInsights keeps data on your machine. It stores usage metadata such as token counts, timestamps, models, providers, and session identifiers—not prompts, responses, tool arguments, or tool output.
 
 The default database is `~/.local/share/tokeninsights/tokeninsights.sqlite`. Override it with `--db-path` or `TOKENINSIGHTS_DB_PATH`.
 
-The web server makes usage metadata available to clients that can reach it. Its default localhost binding limits access to this machine. Only use `--host` with a trusted network address.
+The web server exposes usage metadata to clients that can reach it. Its default localhost binding limits access to this machine. Only use `--host` with a trusted network address.
 
-## Development
+## Documentation
 
-See [Development](docs/development.md) for setup, fixture data, tests, builds, and web development.
+- [CLI reference](packages/cli/README.md)
+- [Development guide](docs/development.md)
