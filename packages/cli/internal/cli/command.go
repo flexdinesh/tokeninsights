@@ -5,12 +5,14 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"strings"
 	"time"
 )
 
 type commandInvocation struct {
 	context context.Context
+	stdin   io.Reader
 	stdout  io.Writer
 	stderr  io.Writer
 	now     time.Time
@@ -36,7 +38,7 @@ var commands = []commandSpec{
 }
 
 func Run(ctx context.Context, args []string, stdout io.Writer, stderr io.Writer, now time.Time) error {
-	invocation := commandInvocation{context: ctx, stdout: stdout, stderr: stderr, now: now}
+	invocation := commandInvocation{context: ctx, stdin: os.Stdin, stdout: stdout, stderr: stderr, now: now}
 	if len(args) == 0 {
 		return viewCommand.run(invocation, nil)
 	}

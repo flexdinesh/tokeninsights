@@ -103,7 +103,7 @@ The default current-month filter can show a small subset of synced sessions. Com
 
 `serve`
 
-Serve the embedded React dashboard over IPv4. By default the listener binds `0.0.0.0` and prints three URLs: the primary LAN address (for example `http://10.0.1.151:8765`), `http://localhost:8765`, and `http://0.0.0.0:8765`. LAN discovery excludes Docker/virtual/VPN interface names from the printed list; the wildcard listener still accepts connections on all IPv4 interfaces. If no LAN address is available, only localhost and `0.0.0.0` are printed. Use `--host <ipv4>` to restrict binding to a specific address; then only that address is printed. Default port: `8765`; `--port 0` chooses an available port. Ctrl+C shuts down the server.
+Serve the embedded React dashboard over IPv4. By default the listener binds to localhost and prints `http://localhost:8765`. Use `--host <ipv4>` to bind to that address. Default port: `8765`; `--port 0` chooses an available port. If the default port is busy, interactive startup identifies its listening process and offers to send it `SIGTERM` before retrying. An explicitly passed busy port fails without a prompt. Ctrl+C shuts down the server.
 
 ```sh
 tokeninsights serve --week
