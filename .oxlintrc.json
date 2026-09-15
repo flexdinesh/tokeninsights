@@ -38,5 +38,8 @@
       "rules": { "eslint/no-await-in-loop": "off" }
     }
   ],
-  "ignorePatterns": ["packages/cli/internal/server/static/**"]
+  "ignorePatterns": [
+    "packages/cli/internal/server/static/**",
+    "packages/web/public/mockServiceWorker.js"
+  ]
 }

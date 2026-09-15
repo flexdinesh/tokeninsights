@@ -7,6 +7,7 @@
     "check:api": "node src/check-api.ts",
     "check:schema": "node src/check-schema.ts",
     "check:web": "node src/check-web.ts",
+    "sync:web": "node src/sync-web-assets.ts",
     "setup-dev-data": "node src/setup-dev-data.ts",
     "generate:homebrew": "node src/generate-homebrew-formula.ts",
     "test": "node --test test/*.test.ts",

@@ -57,9 +57,12 @@ pnpm run dev:server
 
 # In another shell, run Vite on all IPv4 interfaces with API proxying
 pnpm run dev:web
+
+# Run Vite independently with synthetic REST responses
+pnpm run dev:web:mock
 ```
 
-`dev:data` builds only the Go CLI, copies the sanitized JSONL sources, materializes OpenCode SQLite from reviewable `source.sql`, and writes `.tokeninsights-dev/tokeninsights.sqlite`. The generated directory is ignored and safe to recreate. `dev` runs `dev:server` and `dev:web` in parallel. Vite proxies `/api` to `127.0.0.1:8765`. `pnpm run start:web` remains the normal local-source server command.
+`dev:data` builds only the Go CLI, copies the sanitized JSONL sources, materializes OpenCode SQLite from reviewable `source.sql`, and writes `.tokeninsights-dev/tokeninsights.sqlite`. The generated directory is ignored and safe to recreate. `dev` runs `dev:server` and `dev:web` in parallel. Vite proxies `/api` to `127.0.0.1:8765`. `dev:web:mock` intercepts the versioned REST API in the browser with contract-validated synthetic responses, including all dashboard views, facets, pagination, and sync progress. It does not start Go or read local harness data. `pnpm run start:web` remains the normal local-source server command.
 
 ## Build Tooling
 
@@ -79,7 +82,7 @@ The production host runs only the native `tokeninsights` binary. Its embedded br
 
 ## Web Dashboard
 
-React source lives in `packages/web` and builds with Vite. The built assets are checked into `packages/cli/internal/server/static` and embedded with `go:embed`, so direct Go builds/installs include the web dashboard without requiring Node at runtime. After frontend edits, run `pnpm run build:web` and include the generated changes. `pnpm run build` and `pnpm run install:cli` build the frontend automatically.
+React source lives in `packages/web` and builds with Vite. Vite stages output in ignored `packages/web/dist`; `pnpm run build:web` then refreshes the checked `packages/cli/internal/server/static` copy embedded with `go:embed`. This keeps the web package from writing directly into Go source while preserving direct Go builds and installs without Node. After frontend edits, run `pnpm run build:web` and include the generated changes. `pnpm run build` and `pnpm run install:cli` build the frontend automatically.
 
 ```sh
 # Build and run the embedded application
@@ -99,7 +102,7 @@ pnpm --filter @tokeninsights/web run test
 pnpm --filter @tokeninsights/web exec playwright install chromium
 pnpm run test:web-e2e
 
-# Verify committed web assets match source (requires a clean asset directory)
+# Verify committed web assets match a fresh staged build without modifying them
 pnpm run check-web
 ```
 
