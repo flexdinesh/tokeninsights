@@ -33,7 +33,7 @@ Required secret:
 - `HOMEBREW_TAP_TOKEN`: fine-grained token with contents write and pull request write access to `flexdinesh/homebrew-tap`.
 
 1. Merge the release-ready code to `main`.
-2. Run the **Release TokenInsights CLI** workflow from GitHub Actions.
+2. Run the **Release** workflow from GitHub Actions.
 3. The workflow creates the next patch tag in the configured release series, builds archives, writes `checksums.txt`, and publishes a GitHub Release.
 4. The workflow generates `Formula/tokeninsights.rb` from the local release checksums and opens or updates a pull request against `flexdinesh/homebrew-tap`.
 
