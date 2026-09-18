@@ -34,10 +34,12 @@ Required secret:
 
 1. Merge the release-ready code to `main`.
 2. Run the **Release TokenInsights CLI** workflow from GitHub Actions.
-3. The workflow creates the next `packages/cli/v0.0.x` tag, builds archives, writes `checksums.txt`, and publishes a GitHub Release.
+3. The workflow creates the next patch tag in the configured release series, builds archives, writes `checksums.txt`, and publishes a GitHub Release.
 4. The workflow generates `Formula/tokeninsights.rb` from the local release checksums and opens or updates a pull request against `flexdinesh/homebrew-tap`.
 
-The first release is `packages/cli/v0.0.1`.
+`.release-version` contains the active `major.minor` release series. It is currently `0.1`, so the next release is `packages/cli/v0.1.0`. A rerun from the same commit reuses that commit's existing tag.
+
+To begin a new minor or major series, change `.release-version`. For example, changing it to `0.2` makes the next release `packages/cli/v0.2.0`; changing it to `1.0` makes the next release `packages/cli/v1.0.0`. Later releases automatically increment that series' patch number.
 
 React assets are committed under `packages/cli/internal/server/static` and embedded with `go:embed` in every binary, including Go installs and snapshot archives. CI/release verification rebuilds the frontend and checks for asset drift before packaging. Frontend changes must include regenerated assets (`pnpm run build:web`). The private `@tokeninsights/build-tools` workspace package under `tools/build` owns generated-asset checks and Homebrew formula generation; it is release-time tooling only.
 
