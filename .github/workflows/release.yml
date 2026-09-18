@@ -65,7 +65,7 @@ jobs:
       - name: Browser tests
         run: pnpm run test:web-e2e
 
-      - name: Select release tag
+      - name: Select release version
         id: tag
         shell: bash
         run: |
@@ -74,18 +74,15 @@ jobs:
           git fetch --tags --force
 
           tag_prefix="packages/cli/v"
-          current="$(git tag --points-at HEAD -l "${tag_prefix}0.0.*" --sort=-v:refname | head -n 1)"
-          if [[ -n "${current}" ]]; then
-            tag="${current}"
+          tag="$(cd packages/cli && go run ./tools/release-version)"
+          if tag_commit="$(git rev-list -n 1 "${tag}" 2>/dev/null)"; then
+            head_commit="$(git rev-parse HEAD)"
+            if [[ "${tag_commit}" != "${head_commit}" ]]; then
+              echo "${tag} points to ${tag_commit}, not current main ${head_commit}" >&2
+              exit 1
+            fi
             create="false"
           else
-            latest="$(git tag -l "${tag_prefix}0.0.*" --sort=-v:refname | head -n 1)"
-            if [[ -z "${latest}" ]]; then
-              tag="${tag_prefix}0.0.1"
-            else
-              patch="${latest##*.}"
-              tag="${tag_prefix}0.0.$((patch + 1))"
-            fi
             create="true"
           fi
 
