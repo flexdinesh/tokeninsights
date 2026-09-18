@@ -279,7 +279,7 @@ func TestClampHorizontalScroll(t *testing.T) {
 
 func TestTableViewportWidthAlignsWithSectionContent(t *testing.T) {
 	m := interactiveModel{width: 100}
-	if got, want := m.tableViewportWidth(), 96; got != want {
+	if got, want := m.tableViewportWidth(), 98; got != want {
 		t.Fatalf("got viewport width %d, want %d", got, want)
 	}
 }
@@ -480,7 +480,7 @@ func TestViewHeightStableAcrossTabReloadRows(t *testing.T) {
 func TestReloadUpdatesStatuslineLastSync(t *testing.T) {
 	m := interactiveModel{
 		options:    tableOptions{period: periodMonth},
-		statusline: newStatuslineModel("month", "workstation", 0),
+		statusline: newStatuslineModel("month", "day", "tokens", "workstation", 0),
 		loading:    true,
 	}
 	lastSync := time.Date(2026, 7, 10, 17, 48, 0, 0, time.Local).UnixMilli()
@@ -532,7 +532,7 @@ func TestFooterOmitsSummaryAndLastSyncInLoadingAndLoadedStates(t *testing.T) {
 			m := interactiveModel{
 				rows:       []renderRow{{totalTokens: "136", totalValue: 136}},
 				activeTab:  tabTokens,
-				statusline: newStatuslineModel("month", "workstation", lastSync),
+				statusline: newStatuslineModel("month", "day", "tokens", "workstation", lastSync),
 				width:      120,
 				height:     24,
 				options:    tableOptions{period: periodMonth},
@@ -738,12 +738,6 @@ func TestTUIReadsUseValidatedSnapshotDuringRecovery(t *testing.T) {
 }
 
 func TestImplicitSyncProgressUsesAppBackground(t *testing.T) {
-	previousProfile := lipgloss.ColorProfile()
-	lipgloss.SetColorProfile(termenv.TrueColor)
-	t.Cleanup(func() {
-		lipgloss.SetColorProfile(previousProfile)
-	})
-
 	m := interactiveModel{
 		activeTab:        tabTokens,
 		width:            80,
@@ -754,17 +748,16 @@ func TestImplicitSyncProgressUsesAppBackground(t *testing.T) {
 	}
 
 	output := m.View()
-	if strings.Contains(output, "\x1b[48;2;23;23;31m") {
-		t.Fatalf("sync progress view contains darker panel background:\n%q", output)
+	if strings.Contains(output, "48;2;") {
+		t.Fatalf("sync progress should leave terminal background transparent:\n%q", output)
 	}
-	if !strings.Contains(output, "\x1b[48;2;27;27;42m.   OpenCode") {
-		t.Fatalf("sync progress row is not painted on app background:\n%q", output)
+	if !strings.Contains(ansi.Strip(output), "OpenCode") {
+		t.Fatalf("sync progress missing harness row:\n%q", output)
 	}
 	for _, line := range strings.Split(output, "\n") {
 		if width := ansi.StringWidth(line); width != 80 {
 			t.Fatalf("sync progress line width = %d, want 80 for %q", width, line)
 		}
-		assertLineCellsHaveBackground(t, line, "48;2;27;27;42")
 	}
 }
 
@@ -997,18 +990,165 @@ func TestViewUsesConsistentPanelBackground(t *testing.T) {
 			totalValue:  114000,
 		}},
 		activeTab: tabTokens,
-		width:     100,
-		height:    24,
-		options:   tableOptions{period: periodMonth},
+		width:     130,
+		height:    30,
+		options:   tableOptions{period: periodMonth, bucket: bucketDay},
 	}
 	m = m.measureHeights()
 
 	output := m.View()
-	if strings.Contains(output, "\x1b[48;2;23;23;31m") {
-		t.Fatalf("view contains darker panel background:\n%q", output)
+	plain := ansi.Strip(output)
+	if !strings.Contains(plain, "2026-06-14") {
+		t.Fatalf("view missing table row:\n%q", output)
 	}
-	if !strings.Contains(output, "\x1b[48;2;27;27;42m") {
-		t.Fatalf("view missing app background:\n%q", output)
+	if !strings.Contains(output, "48;2;") && !strings.Contains(output, "48;5;") {
+		t.Fatalf("active tab pill should paint background:\n%q", output)
+	}
+	focused := false
+	for _, line := range strings.Split(output, "\n") {
+		if strings.Contains(ansi.Strip(line), "2026-06-14") {
+			if !strings.Contains(line, "48;2;") && !strings.Contains(line, "48;5;") {
+				t.Fatalf("focused row should paint selection background:\n%q", line)
+			}
+			focused = true
+		}
+	}
+	if !focused {
+		t.Fatalf("focused row not found:\n%q", output)
+	}
+	lines := strings.Split(plain, "\n")
+	statusIdx, tabIdx := -1, -1
+	for i, line := range lines {
+		if statusIdx < 0 && strings.Contains(line, "TokenInsights") {
+			statusIdx = i
+		}
+		if strings.Contains(line, "1 tokens") {
+			tabIdx = i
+		}
+	}
+	if statusIdx < 0 || tabIdx < 0 {
+		t.Fatalf("missing status or tab strip:\n%s", plain)
+	}
+	if tabIdx-statusIdx < 2 {
+		t.Fatalf("want blank breathing room between statusline and tabs:\n%s", plain)
+	}
+	if tabIdx+1 >= len(lines) || strings.TrimSpace(lines[tabIdx+1]) != "" {
+		t.Fatalf("want blank line after tab strip:\n%s", plain)
+	}
+	if !strings.Contains(lines[tabIdx], "bucket: day") || !strings.Contains(lines[tabIdx], "sort: date") {
+		t.Fatalf("want full live bucket/sort meta right-aligned on tab row:\n%s", plain)
+	}
+	if strings.Contains(lines[tabIdx], "TokenInsights") {
+		t.Fatalf("tab row should show view meta, brand lives in statusline:\n%s", plain)
+	}
+	summaryIdx := -1
+	for i, line := range lines {
+		if strings.Contains(line, "rows ") && strings.Contains(line, "sessions ") {
+			summaryIdx = i
+		}
+	}
+	if summaryIdx <= 0 || strings.TrimSpace(lines[summaryIdx-1]) != "" {
+		t.Fatalf("want blank breathing room above summary:\n%s", plain)
+	}
+	if !strings.Contains(plain, "p provider") || !strings.Contains(plain, "1-6 tabs") {
+		t.Fatalf("want two-line footer with filter keys:\n%s", plain)
+	}
+}
+
+func TestCursorMovesWithinViewportWithoutScrolling(t *testing.T) {
+	previousProfile := lipgloss.ColorProfile()
+	lipgloss.SetColorProfile(termenv.TrueColor)
+	t.Cleanup(func() {
+		lipgloss.SetColorProfile(previousProfile)
+	})
+
+	m := interactiveModel{
+		rows: []renderRow{
+			{bucket: "2026-06-14", sessions: "1", inputTokens: "1", totalTokens: "1"},
+			{bucket: "2026-06-13", sessions: "2", inputTokens: "2", totalTokens: "2"},
+			{bucket: "2026-06-12", sessions: "3", inputTokens: "3", totalTokens: "3"},
+		},
+		activeTab: tabTokens,
+		width:     130,
+		height:    30,
+		options:   tableOptions{period: periodMonth, bucket: bucketDay},
+	}
+	m = m.measureHeights()
+
+	model, _ := m.Update(tea.KeyMsg{Type: tea.KeyDown})
+	updated, ok := model.(interactiveModel)
+	if !ok {
+		t.Fatalf("got model %T, want interactiveModel", model)
+	}
+	if updated.cursor != 1 {
+		t.Fatalf("got cursor %d, want 1", updated.cursor)
+	}
+	if updated.scrollOffset != 0 {
+		t.Fatalf("got scrollOffset %d, want 0", updated.scrollOffset)
+	}
+
+	output := updated.View()
+	for _, line := range strings.Split(output, "\n") {
+		plain := ansi.Strip(line)
+		if strings.Contains(plain, "2026-06-13") && !strings.Contains(line, "48;5;") && !strings.Contains(line, "48;2;") {
+			t.Fatalf("cursor row missing selection background:\n%q", line)
+		}
+		if strings.Contains(plain, "2026-06-14") && (strings.Contains(line, "48;5;") || strings.Contains(line, "48;2;")) {
+			t.Fatalf("previous row should lose selection:\n%q", line)
+		}
+	}
+
+	top, _ := m.Update(tea.KeyMsg{Type: tea.KeyUp})
+	if got := top.(interactiveModel).cursor; got != 0 {
+		t.Fatalf("up at top moved cursor to %d, want 0", got)
+	}
+}
+
+func TestCursorScrollsWindowAtBottomEdge(t *testing.T) {
+	rows := make([]renderRow, 5)
+	for i := range rows {
+		rows[i] = renderRow{bucket: "2026-06-1" + string(rune('0'+i)), sessions: "1", inputTokens: "1", totalTokens: "1"}
+	}
+	m := interactiveModel{
+		rows:      rows,
+		activeTab: tabTokens,
+		width:     130,
+		height:    15,
+		options:   tableOptions{period: periodMonth, bucket: bucketDay},
+	}
+	m = m.measureHeights()
+
+	updated := m
+	for i := 0; i < 4; i++ {
+		model, _ := updated.Update(tea.KeyMsg{Type: tea.KeyDown})
+		updated, _ = model.(interactiveModel)
+	}
+	if updated.cursor != 4 {
+		t.Fatalf("got cursor %d, want 4", updated.cursor)
+	}
+	visible := updated.visibleRows()
+	if len(visible) == 0 || visible[len(visible)-1].bucket != rows[4].bucket {
+		t.Fatalf("cursor row not visible: %+v", visible)
+	}
+}
+
+func TestReloadResetsCursorToTop(t *testing.T) {
+	m := interactiveModel{
+		rows:         []renderRow{{bucket: "a"}, {bucket: "b"}},
+		cursor:       1,
+		scrollOffset: 1,
+		activeTab:    tabTokens,
+		width:        130,
+		height:       30,
+		options:      tableOptions{period: periodMonth, bucket: bucketDay},
+	}
+	model, _ := m.Update(reloadMsg{rows: []renderRow{{bucket: "c"}}})
+	updated, ok := model.(interactiveModel)
+	if !ok {
+		t.Fatalf("got model %T, want interactiveModel", model)
+	}
+	if updated.cursor != 0 || updated.scrollOffset != 0 {
+		t.Fatalf("got cursor %d scroll %d, want 0 0", updated.cursor, updated.scrollOffset)
 	}
 }
 
@@ -1209,7 +1349,7 @@ func TestDateRangePopupSpaceAppliesSelection(t *testing.T) {
 		popup:       popupDateRange,
 		popupCursor: 1,
 		options:     tableOptions{period: periodMonth},
-		statusline:  newStatuslineModel("month", "workstation", 0),
+		statusline:  newStatuslineModel("month", "day", "tokens", "workstation", 0),
 	}
 
 	model, cmd := m.handleDateRangePopupKey(tea.KeyMsg{Type: tea.KeySpace})
@@ -1235,7 +1375,7 @@ func viewHintLine(output string) string {
 	var lines []string
 	found := false
 	for _, line := range strings.Split(ansi.Strip(output), "\n") {
-		if strings.Contains(line, "tab/shift+tab") {
+		if strings.Contains(line, "tab switch view") {
 			found = true
 		}
 		if found {

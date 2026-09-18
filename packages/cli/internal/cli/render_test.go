@@ -3,7 +3,6 @@ package cli
 import (
 	"strings"
 	"testing"
-	"unicode/utf8"
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
@@ -141,13 +140,7 @@ func TestRenderTableEmptyState(t *testing.T) {
 	}
 }
 
-func TestRenderTableViewportUsesStripedDataBackgrounds(t *testing.T) {
-	previousProfile := lipgloss.ColorProfile()
-	lipgloss.SetColorProfile(termenv.TrueColor)
-	t.Cleanup(func() {
-		lipgloss.SetColorProfile(previousProfile)
-	})
-
+func TestRenderTableViewportUsesRestrainedBackgrounds(t *testing.T) {
 	output := renderTableViewportWithSort([]renderRow{
 		{bucket: "2026-06-14", sessions: "1", inputTokens: "35K", outputTokens: "1K", totalTokens: "114K"},
 		{bucket: "2026-06-13", sessions: "38", inputTokens: "6M", outputTokens: "510K", totalTokens: "79M"},
@@ -159,30 +152,54 @@ func TestRenderTableViewportUsesStripedDataBackgrounds(t *testing.T) {
 		}
 	}
 
-	if !strings.Contains(output, "\x1b[48;2;27;27;42m") {
-		t.Fatalf("table viewport missing app background:\n%q", output)
+	if strings.Contains(output, "\x1b[48;2;27;27;42m") || strings.Contains(output, "\x1b[48;2;36;36;44m") {
+		t.Fatalf("table viewport should not force app/stripe backgrounds:\n%q", output)
 	}
-	if !strings.Contains(output, "\x1b[48;2;36;36;44m") {
-		t.Fatalf("table viewport missing alternate row background:\n%q", output)
-	}
-	lines := strings.Split(strings.TrimSuffix(output, "\n"), "\n")
-	for _, line := range lines {
-		switch {
-		case strings.Contains(ansi.Strip(line), "2026-06-14"):
-			assertLineCellsHaveBackground(t, line, "48;2;27;27;42")
-		case strings.Contains(ansi.Strip(line), "2026-06-13"):
-			assertLineCellsHaveBackground(t, line, "48;2;36;36;44")
-		}
+	if strings.Contains(output, "48;2;") {
+		t.Fatalf("table viewport should leave terminal background transparent:\n%q", output)
 	}
 }
 
-func TestViewFrameAndSeparatorsPaintAppBackground(t *testing.T) {
+func TestRenderTableFocusRowPaintsSelectionOnly(t *testing.T) {
 	previousProfile := lipgloss.ColorProfile()
 	lipgloss.SetColorProfile(termenv.TrueColor)
 	t.Cleanup(func() {
 		lipgloss.SetColorProfile(previousProfile)
 	})
 
+	rows := []renderRow{
+		{bucket: "2026-06-14", sessions: "1", inputTokens: "35K", outputTokens: "1K", totalTokens: "114K"},
+		{bucket: "2026-06-13", sessions: "38", inputTokens: "6M", outputTokens: "510K", totalTokens: "79M"},
+	}
+	output := renderTableViewportWithSortAndFocus(rows, nil, groupByNone, tabTokens, sortDate, 80, 0, 4, 0)
+
+	focused := false
+	for _, line := range strings.Split(strings.TrimSuffix(output, "\n"), "\n") {
+		plain := ansi.Strip(line)
+		switch {
+		case strings.Contains(plain, "2026-06-14"):
+			if !strings.Contains(line, "48;2;") && !strings.Contains(line, "48;5;") {
+				t.Fatalf("focused row missing selection background:\n%q", line)
+			}
+			focused = true
+		case strings.Contains(plain, "2026-06-13"):
+			if strings.Contains(line, "48;2;") || strings.Contains(line, "48;5;") {
+				t.Fatalf("unfocused row should stay transparent:\n%q", line)
+			}
+		}
+	}
+	if !focused {
+		t.Fatalf("focused row not found:\n%q", output)
+	}
+}
+
+func TestTableHeaderUsesAccentForeground(t *testing.T) {
+	if got := headerStyle.GetForeground(); got != themeAccent {
+		t.Fatalf("header foreground = %v, want accent", got)
+	}
+}
+
+func TestViewFrameUsesFlatDividersWithoutOuterBorder(t *testing.T) {
 	m := interactiveModel{
 		rows: []renderRow{
 			{bucket: "2026-06-14", sessions: "1", inputTokens: "35K", outputTokens: "1K", totalTokens: "114K"},
@@ -195,39 +212,38 @@ func TestViewFrameAndSeparatorsPaintAppBackground(t *testing.T) {
 	m = m.measureHeights()
 
 	output := m.View()
-	for _, line := range strings.Split(output, "\n") {
-		assertStyledRunesHaveBackground(t, line, "╭╮╰╯│─", "48;2;27;27;42")
+	if strings.Contains(output, "╭") || strings.Contains(output, "╰") {
+		t.Fatalf("view should not render outer rounded border:\n%s", ansi.Strip(output))
+	}
+	if !strings.Contains(ansi.Strip(output), "─") {
+		t.Fatalf("view should render flat divider:\n%s", ansi.Strip(output))
 	}
 }
 
-func TestViewStatuslineRowPaintsFullAppBackground(t *testing.T) {
-	previousProfile := lipgloss.ColorProfile()
-	lipgloss.SetColorProfile(termenv.TrueColor)
-	t.Cleanup(func() {
-		lipgloss.SetColorProfile(previousProfile)
-	})
-
+func TestViewStatuslineRowLeavesBackgroundTransparent(t *testing.T) {
 	m := interactiveModel{
 		rows: []renderRow{
 			{bucket: "2026-06-14", sessions: "1", inputTokens: "35K", outputTokens: "1K", totalTokens: "114K"},
 		},
 		activeTab:  tabTokens,
-		statusline: newStatuslineModel("all time", "workstation", 0),
+		statusline: newStatuslineModel("all time", "day", "date", "workstation", 0),
 		width:      100,
 		height:     24,
-		options:    tableOptions{period: periodAllTime},
+		options:    tableOptions{period: periodAllTime, bucket: bucketDay},
 	}
 	m = m.measureHeights()
 
 	for _, line := range strings.Split(m.View(), "\n") {
 		plain := ansi.Strip(line)
 		if strings.Contains(plain, "TokenInsights") {
-			for _, expected := range []string{"TokenInsights", "daterange: all time", "hostname: workstation", "lastsynced: never"} {
+			for _, expected := range []string{"TokenInsights", "daterange: all time", "bucket: day", "sort: date", "hostname:", "lastsynced: never"} {
 				if !strings.Contains(plain, expected) {
 					t.Fatalf("statusline missing %q: %q", expected, plain)
 				}
 			}
-			assertLineCellsHaveBackground(t, line, "48;2;27;27;42")
+			if strings.Contains(line, "48;2;") {
+				t.Fatalf("statusline should not force background: %q", line)
+			}
 			return
 		}
 	}
@@ -253,40 +269,6 @@ func TestProvidersTableInitialViewportIncludesTotalColumn(t *testing.T) {
 	header := tableHeaderLine(output, "provider")
 	if !strings.Contains(header, "cache R") || !strings.Contains(header, "cache W") || !strings.Contains(header, "total") {
 		t.Fatalf("providers table initial viewport missing cache R, cache W, or total column:\n%s", output)
-	}
-}
-
-func assertLineCellsHaveBackground(t *testing.T, line string, background string) {
-	t.Helper()
-
-	hasBackground := false
-	for i := 0; i < len(line); {
-		if line[i] == '\x1b' {
-			end := strings.IndexByte(line[i:], 'm')
-			if end < 0 {
-				i++
-				continue
-			}
-			sequence := line[i+2 : i+end]
-			if sequence == "0" {
-				hasBackground = false
-			} else if strings.Contains(sequence, background) {
-				hasBackground = true
-			} else if strings.Contains(sequence, "49") {
-				hasBackground = false
-			}
-			i += end + 1
-			continue
-		}
-
-		_, size := rune(line[i]), 1
-		if line[i] >= 0x80 {
-			_, size = utf8.DecodeRuneInString(line[i:])
-		}
-		if !hasBackground {
-			t.Fatalf("cell is missing app background in line %q", line)
-		}
-		i += size
 	}
 }
 
@@ -317,39 +299,5 @@ func TestProvidersTableStacksLongListsBeforeHorizontalOverflow(t *testing.T) {
 	}
 	if strings.Contains(output, "gpt-5.5, gpt-5.4") {
 		t.Fatalf("providers table rendered long list on one line:\n%s", output)
-	}
-}
-
-func assertStyledRunesHaveBackground(t *testing.T, line string, runes string, background string) {
-	t.Helper()
-
-	hasBackground := false
-	for i := 0; i < len(line); {
-		if line[i] == '\x1b' {
-			end := strings.IndexByte(line[i:], 'm')
-			if end < 0 {
-				i++
-				continue
-			}
-			sequence := line[i+2 : i+end]
-			if sequence == "0" {
-				hasBackground = false
-			} else if strings.Contains(sequence, background) {
-				hasBackground = true
-			} else if strings.Contains(sequence, "49") {
-				hasBackground = false
-			}
-			i += end + 1
-			continue
-		}
-
-		r, size := rune(line[i]), 1
-		if r >= 0x80 {
-			r, size = utf8.DecodeRuneInString(line[i:])
-		}
-		if strings.ContainsRune(runes, r) && !hasBackground {
-			t.Fatalf("rune %q is missing app background in line %q", r, line)
-		}
-		i += size
 	}
 }

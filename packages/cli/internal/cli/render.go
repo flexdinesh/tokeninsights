@@ -66,14 +66,7 @@ const (
 	listColumnMaxWidth     = 36
 )
 
-const (
-	appBackgroundColor   = "#1b1b2a"
-	panelBackgroundColor = appBackgroundColor
-	rowStripeColor       = "#24242c"
-	tableSeparatorColor  = "#565766"
-	outerBorderColor     = "#4a4b59"
-	sectionBorderColor   = "#3d3e49"
-)
+// TUI colors and styles live in theme.go as semantic tokens.
 
 func columnsForModeAndTab(g groupByMode, t tabMode) []column {
 	switch t {
@@ -289,81 +282,32 @@ func formatLatest(value int64) string {
 	return time.UnixMilli(value).Local().Format("2006-01-02 15:04")
 }
 
-var (
-	titleStyle = lipgloss.NewStyle().
-			Bold(true).
-			Foreground(lipgloss.Color("212")).
-			Background(lipgloss.Color(appBackgroundColor))
-	hintStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("241")).
-			Background(lipgloss.Color(panelBackgroundColor))
-	headerStyle = lipgloss.NewStyle().
-			Bold(true).
-			Foreground(lipgloss.Color("86")).
-			Background(lipgloss.Color(appBackgroundColor))
-
-	dimensionStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("87"))
-	textCellStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("252"))
-	mutedCellStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
-	inputStyle       = lipgloss.NewStyle().Foreground(lipgloss.Color("113"))
-	outputStyle      = lipgloss.NewStyle().Foreground(lipgloss.Color("203"))
-	reasoningStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("176"))
-	cacheReadStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("75"))
-	cacheWriteStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("179"))
-	contextUsedStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("81"))
-	totalStyle       = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("157"))
-	appSurfaceStyle  = lipgloss.NewStyle().Background(lipgloss.Color(appBackgroundColor))
-	rowOddStyle      = appSurfaceStyle
-	rowEvenStyle     = lipgloss.NewStyle().Background(lipgloss.Color(rowStripeColor))
-
-	borderStyle      = lipgloss.NewStyle().Foreground(lipgloss.Color(tableSeparatorColor)).Background(lipgloss.Color(appBackgroundColor))
-	outerBorderStyle = lipgloss.NewStyle().
-				Border(lipgloss.RoundedBorder()).
-				BorderForeground(lipgloss.Color(outerBorderColor)).
-				BorderBackground(lipgloss.Color(appBackgroundColor)).
-				Background(lipgloss.Color(appBackgroundColor))
-	sectionBorderStyle = lipgloss.NewStyle().
-				Border(lipgloss.RoundedBorder()).
-				BorderForeground(lipgloss.Color(sectionBorderColor)).
-				BorderBackground(lipgloss.Color(panelBackgroundColor)).
-				Background(lipgloss.Color(panelBackgroundColor))
-)
+// Styles live in theme.go.
 
 func renderTable(rows []renderRow, g groupByMode, tab tabMode) string {
 	return renderTableWithWidth(rows, g, tab, 0)
 }
 
-func renderTableViewport(rows []renderRow, g groupByMode, tab tabMode, width int, horizontalOffset int) string {
-	return renderTableViewportWithRows(rows, g, tab, width, horizontalOffset, 0)
-}
-
-func renderTableViewportWithRows(rows []renderRow, g groupByMode, tab tabMode, width int, horizontalOffset int, minDataRows int) string {
-	return renderTableViewportWithReferenceRows(rows, rows, g, tab, width, horizontalOffset, minDataRows)
-}
-
-func renderTableViewportWithReferenceRows(rows []renderRow, referenceRows []renderRow, g groupByMode, tab tabMode, width int, horizontalOffset int, minDataRows int) string {
-	if width <= 0 {
-		return ""
-	}
-	return horizontalViewport(renderTableWithReferenceRowsWidth(rows, referenceRows, g, tab, width, minDataRows, "No rows match the current scope."), horizontalOffset, width)
-}
-
 func renderTableViewportWithSort(rows []renderRow, referenceRows []renderRow, g groupByMode, tab tabMode, sort sortMode, width int, horizontalOffset int, minDataRows int) string {
+	return renderTableViewportWithSortAndFocus(rows, referenceRows, g, tab, sort, width, horizontalOffset, minDataRows, -1)
+}
+
+func renderTableViewportWithSortAndFocus(rows []renderRow, referenceRows []renderRow, g groupByMode, tab tabMode, sort sortMode, width int, horizontalOffset int, minDataRows int, focusIndex int) string {
 	if width <= 0 {
 		return ""
 	}
-	return horizontalViewport(renderTableWithReferenceRowsAndSortWidth(rows, referenceRows, g, tab, sort, width, minDataRows, "No rows match the current scope."), horizontalOffset, width)
+	return horizontalViewport(renderTableWithReferenceRowsAndSortWidth(rows, referenceRows, g, tab, sort, width, minDataRows, "No rows match the current scope.", focusIndex), horizontalOffset, width)
 }
 
 func renderLoadingTableViewportWithSort(g groupByMode, tab tabMode, sort sortMode, width int, minDataRows int) string {
 	if width <= 0 {
 		return ""
 	}
-	return horizontalViewport(renderTableWithReferenceRowsAndSortWidth(nil, loadingReferenceRows(tab), g, tab, sort, width, minDataRows, "Loading data..."), 0, width)
+	return horizontalViewport(renderTableWithReferenceRowsAndSortWidth(nil, loadingReferenceRows(tab), g, tab, sort, width, minDataRows, "Loading data...", -1), 0, width)
 }
 
 func renderTableWidthWithSortAndViewport(rows []renderRow, g groupByMode, tab tabMode, sort sortMode, width int) int {
-	return lipgloss.Width(renderTableWithReferenceRowsAndSortWidth(rows, rows, g, tab, sort, width, 0, "No rows match the current scope."))
+	return lipgloss.Width(renderTableWithReferenceRowsAndSortWidth(rows, rows, g, tab, sort, width, 0, "No rows match the current scope.", -1))
 }
 
 func horizontalViewport(value string, horizontalOffset int, width int) string {
@@ -412,14 +356,10 @@ func renderTableWithReferenceRows(rows []renderRow, referenceRows []renderRow, g
 }
 
 func renderTableWithReferenceRowsAndSort(rows []renderRow, referenceRows []renderRow, g groupByMode, tab tabMode, sort sortMode, minDataRows int, emptyMessage string) string {
-	return renderTableWithReferenceRowsAndSortWidth(rows, referenceRows, g, tab, sort, 0, minDataRows, emptyMessage)
+	return renderTableWithReferenceRowsAndSortWidth(rows, referenceRows, g, tab, sort, 0, minDataRows, emptyMessage, -1)
 }
 
-func renderTableWithReferenceRowsWidth(rows []renderRow, referenceRows []renderRow, g groupByMode, tab tabMode, minLineWidth int, minDataRows int, emptyMessage string) string {
-	return renderTableWithReferenceRowsAndSortWidth(rows, referenceRows, g, tab, "", minLineWidth, minDataRows, emptyMessage)
-}
-
-func renderTableWithReferenceRowsAndSortWidth(rows []renderRow, referenceRows []renderRow, g groupByMode, tab tabMode, sort sortMode, minLineWidth int, minDataRows int, emptyMessage string) string {
+func renderTableWithReferenceRowsAndSortWidth(rows []renderRow, referenceRows []renderRow, g groupByMode, tab tabMode, sort sortMode, minLineWidth int, minDataRows int, emptyMessage string, focusIndex int) string {
 	cols := columnsForModeAndTab(g, tab)
 
 	formatted := formatRenderRows(rows, cols)
@@ -459,24 +399,25 @@ func renderTableWithReferenceRowsAndSortWidth(rows []renderRow, referenceRows []
 
 	var lines []string
 	header := make([]string, len(cols))
-	separator := make([]string, len(cols))
 	for i := range cols {
 		header[i] = padCell(truncateCell(headerLabels[i], widths[i]), widths[i], false)
-		separator[i] = strings.Repeat("─", widths[i])
 	}
 	lines = append(lines, padStyledLine(headerStyle.Render(strings.Join(header, "  ")), minLineWidth, headerStyle))
-	lines = append(lines, padStyledLine(borderStyle.Render(strings.Join(separator, "  ")), minLineWidth, appSurfaceStyle))
 
 	dataLines := 0
 	for rowIndex, values := range formatted {
+		base := rowStyle(rowIndex)
+		if rowIndex == focusIndex {
+			base = selectedRowStyle
+		}
 		rowHeight := formattedRowHeight(values)
 		for lineIndex := 0; lineIndex < rowHeight; lineIndex++ {
 			cells := make([]string, len(cols))
 			for i, cellLines := range values {
 				value := cellLine(cellLines, lineIndex)
-				cells[i] = renderCell(padCell(truncateCell(value, widths[i]), widths[i], cols[i].numeric), cols[i], rowIndex)
+				cells[i] = renderCell(padCell(truncateCell(value, widths[i]), widths[i], cols[i].numeric), cols[i], base)
 			}
-			lines = append(lines, padStyledLine(joinStyledCells(cells, rowIndex), minLineWidth, rowStyle(rowIndex)))
+			lines = append(lines, padStyledLine(joinStyledCells(cells, base), minLineWidth, base))
 		}
 		dataLines += rowHeight
 	}
@@ -508,7 +449,6 @@ func renderOnAppSurface(value string, width int, height int) string {
 		lipgloss.Left,
 		lipgloss.Top,
 		value,
-		lipgloss.WithWhitespaceBackground(lipgloss.Color(appBackgroundColor)),
 	)
 }
 
@@ -570,20 +510,17 @@ func rowNameField(tab tabMode) string {
 	}
 }
 
-func renderCell(value string, col column, rowIndex int) string {
-	style := cellStyleForColumn(col).Inherit(rowStyle(rowIndex))
+func renderCell(value string, col column, base lipgloss.Style) string {
+	style := cellStyleForColumn(col).Inherit(base)
 	return style.Render(value)
 }
 
-func joinStyledCells(cells []string, rowIndex int) string {
-	gap := rowStyle(rowIndex).Render("  ")
+func joinStyledCells(cells []string, base lipgloss.Style) string {
+	gap := base.Render("  ")
 	return strings.Join(cells, gap)
 }
 
 func rowStyle(rowIndex int) lipgloss.Style {
-	if rowIndex%2 == 1 {
-		return rowEvenStyle
-	}
 	return rowOddStyle
 }
 
@@ -593,20 +530,12 @@ func cellStyleForColumn(col column) lipgloss.Style {
 		return dimensionStyle
 	case "models", "providers", "harnesses", "sessions":
 		return mutedCellStyle
-	case "inputTokens":
-		return inputStyle
-	case "outputTokens":
-		return outputStyle
-	case "reasoningTokens":
-		return reasoningStyle
-	case "cacheReadTokens":
-		return cacheReadStyle
-	case "cacheWriteTokens":
-		return cacheWriteStyle
 	case "contextUsedTokens", "averageContextUsedTokens", "medianContextUsedTokens", "maxContextUsedTokens":
 		return contextUsedStyle
 	case "totalTokens":
 		return totalStyle
+	case "inputTokens", "outputTokens", "reasoningTokens", "cacheReadTokens", "cacheWriteTokens":
+		return metricStyle
 	default:
 		return textCellStyle
 	}

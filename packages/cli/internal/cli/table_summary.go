@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/db"
 )
@@ -72,17 +71,4 @@ func totalTokens(rows []renderRow) int64 {
 	return total
 }
 
-var (
-	tableSummarySurfaceStyle = lipgloss.NewStyle().
-					Background(lipgloss.Color(rowStripeColor))
-	tableSummaryLabelStyle = lipgloss.NewStyle().
-				Foreground(lipgloss.Color("245")).
-				Background(lipgloss.Color(rowStripeColor))
-	tableSummaryTotalStyle = lipgloss.NewStyle().
-				Bold(true).
-				Foreground(lipgloss.Color("157")).
-				Background(lipgloss.Color(rowStripeColor))
-	tableSummarySeparatorStyle = lipgloss.NewStyle().
-					Foreground(lipgloss.Color("241")).
-					Background(lipgloss.Color(rowStripeColor))
-)
+// Table summary styles live in theme.go.

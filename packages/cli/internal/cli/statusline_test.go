@@ -6,22 +6,21 @@ import (
 	"testing"
 	"time"
 
-	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
 )
 
 func TestStatuslineRendersOrderedItems(t *testing.T) {
 	lastSync := time.Date(2026, 7, 10, 17, 48, 0, 0, time.Local).UnixMilli()
-	statusline := newStatuslineModel("month", "workstation", lastSync)
-	output := strings.TrimRight(ansi.Strip(statusline.View(120)), " ")
-	want := "TokenInsights · daterange: month · hostname: workstation · lastsynced: 2026-07-10 17:48"
+	statusline := newStatuslineModel("month", "day", "tokens", "workstation", lastSync)
+	output := strings.TrimRight(ansi.Strip(statusline.View(140)), " ")
+	want := "TokenInsights · daterange: month · bucket: day · sort: tokens · hostname: workstation · lastsynced: 2026-07-10 17:48"
 	if output != want {
 		t.Fatalf("got statusline %q, want %q", output, want)
 	}
 }
 
 func TestStatuslineWithValueReturnsUpdatedCopy(t *testing.T) {
-	statusline := newStatuslineModel("month", "workstation", 0)
+	statusline := newStatuslineModel("month", "day", "tokens", "workstation", 0)
 	updated := statusline.withValue(statuslineDateRange, "yesterday")
 
 	if got := statusline.value(statuslineDateRange); got != "month" {
@@ -85,29 +84,22 @@ func TestFormatLastSync(t *testing.T) {
 }
 
 func TestStatuslineUsesExistingDistinctPaletteColors(t *testing.T) {
-	tests := []struct {
-		id   statuslineItemID
-		want lipgloss.Color
-	}{
-		{id: statuslineBrand, want: lipgloss.Color("212")},
-		{id: statuslineDateRange, want: lipgloss.Color("86")},
-		{id: statuslineHostname, want: lipgloss.Color("113")},
-		{id: statuslineLastSynced, want: lipgloss.Color("179")},
+	if got := statuslineStyle(statuslineBrand).GetForeground(); got != themeBrand {
+		t.Fatalf("brand foreground is %v, want brand", got)
 	}
-
-	for _, test := range tests {
-		if got := statuslineStyle(test.id).GetForeground(); got != test.want {
-			t.Fatalf("item %d foreground is %v, want %v", test.id, got, test.want)
+	for _, id := range []statuslineItemID{statuslineDateRange, statuslineBucket, statuslineSort, statuslineHostname, statuslineLastSynced} {
+		if got := statuslineStyle(id).GetForeground(); got != themeMuted {
+			t.Fatalf("item %d foreground is %v, want muted", id, got)
 		}
 	}
-	if got := statuslineSeparatorStyle.GetForeground(); got != lipgloss.Color("241") {
-		t.Fatalf("separator foreground is %v, want 241", got)
+	if got := statuslineSeparatorStyle.GetForeground(); got != themeFaint {
+		t.Fatalf("separator foreground is %v, want faint", got)
 	}
 }
 
 func TestStatuslineFitsSingleRowWithoutDanglingSeparators(t *testing.T) {
 	lastSync := time.Date(2026, 7, 10, 17, 48, 0, 0, time.Local).UnixMilli()
-	statusline := newStatuslineModel("month", "a-very-long-workstation-hostname", lastSync)
+	statusline := newStatuslineModel("month", "day", "tokens", "a-very-long-workstation-hostname", lastSync)
 
 	for _, width := range []int{120, 80, 60, 40, 20, 8, 3} {
 		output := statusline.View(width)
@@ -126,7 +118,7 @@ func TestStatuslineFitsSingleRowWithoutDanglingSeparators(t *testing.T) {
 
 func TestStatuslineTruncatesHostnameBeforeLastSync(t *testing.T) {
 	lastSync := time.Date(2026, 7, 10, 17, 48, 0, 0, time.Local).UnixMilli()
-	statusline := newStatuslineModel("month", "a-very-long-workstation-hostname", lastSync)
+	statusline := newStatuslineModel("month", "day", "tokens", "a-very-long-workstation-hostname", lastSync)
 	withoutHostname := removeStatuslineItem(append([]statuslineItem(nil), statusline.items...), statuslineHostname)
 	width := statuslineItemsWidth(withoutHostname)
 	output := strings.TrimSpace(ansi.Strip(statusline.View(width)))

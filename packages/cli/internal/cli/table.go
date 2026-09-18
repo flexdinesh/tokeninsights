@@ -9,6 +9,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/db"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/pipeline"
 )
@@ -75,6 +76,7 @@ type interactiveModel struct {
 	width            int
 	height           int
 	scrollOffset     int
+	cursor           int
 	horizontalOffset int
 	popup            popupMode
 	popupCursor      int
@@ -164,18 +166,20 @@ func newInteractiveModel(ctx context.Context, options tableOptions, now time.Tim
 		syncing:          !options.noSync,
 		syncProgressRows: initialSyncProgressRows(),
 	}
-	m.statusline = newStatuslineModel(statuslineDateRangeLabel(options), hostname, 0)
+	m.statusline = newStatuslineModel(statuslineDateRangeLabel(options), string(options.bucket), string(activeSort(tabTokens, options.sort)), hostname, 0)
 	m.tableSummary = newTableSummaryModel(nil, m.activeTab, m.loading)
 	return m
 }
 
 func (m interactiveModel) reconcileStatusline() interactiveModel {
 	if len(m.statusline.items) == 0 {
-		m.statusline = newStatuslineModel(statuslineDateRangeLabel(m.options), "unknown", m.lastSyncMs)
+		m.statusline = newStatuslineModel(statuslineDateRangeLabel(m.options), string(m.options.bucket), string(activeSort(m.activeTab, m.options.sort)), "unknown", m.lastSyncMs)
 		return m
 	}
 	m.statusline = m.statusline.
 		withValue(statuslineDateRange, statuslineDateRangeLabel(m.options)).
+		withValue(statuslineBucket, string(m.options.bucket)).
+		withValue(statuslineSort, string(activeSort(m.activeTab, m.options.sort))).
 		withValue(statuslineLastSynced, formatLastSync(m.lastSyncMs))
 	return m
 }
@@ -198,8 +202,7 @@ func (m interactiveModel) renderTableSummary() string {
 
 func renderTableSection(body string, summary string) string {
 	body = strings.TrimSuffix(body, "\n")
-	spacer := appSurfaceStyle.Render(strings.Repeat(" ", lipgloss.Width(summary)))
-	return tableSectionStyle.Render(lipgloss.JoinVertical(lipgloss.Left, body, spacer, summary))
+	return tableSectionStyle.Render(lipgloss.JoinVertical(lipgloss.Left, body, "", summary))
 }
 
 func (m interactiveModel) reloadCmd() tea.Cmd {
@@ -244,94 +247,21 @@ func (m interactiveModel) filterValuesCmd(dimension filterDimension) tea.Cmd {
 	}
 }
 
-const minVisibleRows = 5
-const sectionHorizontalInset = 1
-
 func (m interactiveModel) maxVisibleRows() int {
 	if m.height <= 0 {
 		return 0
 	}
-	if m.width == m.cachedWidth && m.perRowHeight > 0 {
-		available := m.height - m.baseHeight
-		if available <= 0 {
-			return minVisibleRows
-		}
-		// Leave a 3-row safety margin so dynamic content doesn't push the table
-		// over the terminal edge and cause the view to jump during scroll.
-		maxRows := max(0, available-3) / m.perRowHeight
-		return max(minVisibleRows, maxRows)
+	available := m.height - tuiChromeHeight
+	if available <= 0 {
+		return tuiMinVisibleLines
 	}
-	if m.groupBy == groupByHour {
-		return max(minVisibleRows, (m.height-14)/3)
-	}
-	return max(minVisibleRows, (m.height-14)/2)
+	return max(tuiMinVisibleLines, available)
 }
 
 func (m interactiveModel) measureHeights() interactiveModel {
-	if m.width <= 0 {
-		return m
-	}
-
-	statusline := m.renderStatusline()
-
-	var tabs []string
-	for _, tab := range aggregationTabs {
-		label := tab.String()
-		if tab == m.activeTab {
-			tabs = append(tabs, activeTabStyle.Render(label))
-		} else {
-			tabs = append(tabs, inactiveTabStyle.Render(label))
-		}
-	}
-	tabBar := lipgloss.JoinHorizontal(lipgloss.Top, tabs...)
-	tabBox := sectionBorderStyle.Width(m.width - 4).Render(tabBar)
-
-	hintText := "tab/shift+tab switch · ↑/↓ j/k scroll · ←/→ scroll · home/end horizontal · d date · g bucket · s sort · p/m/h filters · q quit  ·  99999-99999 of 99999  ·  x 99999/99999"
-	if filters := activeFiltersLabel(m.options.filters); filters != "" {
-		hintText += "  ·  " + filters
-	}
-	hint := hintStyle.Render(hintText)
-	hintBox := sectionBorderStyle.Width(m.width - 4).Render(hint)
-
-	emptyTable := renderTableSection(
-		renderTableViewport([]renderRow{}, m.groupBy, m.activeTab, m.tableViewportWidth(), 0),
-		m.renderTableSummary(),
-	)
-	contentBase := lipgloss.JoinVertical(lipgloss.Left, statusline, tabBox, emptyTable, hintBox)
-	baseFull := outerBorderStyle.Width(m.width - 2).Render(contentBase)
-	m.baseHeight = lipgloss.Height(baseFull)
-
-	sampleRow := renderRow{
-		day: "2006-01-01", harness: "oc", provider: "openai", model: "gpt-4o",
-		inputTokens: "1000", outputTokens: "100", reasoningTokens: "10",
-		cacheReadTokens: "5", cacheWriteTokens: "1", contextUsedTokens: "1006", totalTokens: "1116",
-		averageContextUsedTokens: "1006", medianContextUsedTokens: "1006", maxContextUsedTokens: "1006",
-		tpsAvg: "12.34", tpsMean: "56.78", tpsMedian: "45.67",
-		requests: "3", retries: "1", toolName: "bash", toolCalls: "5", toolErrors: "1",
-	}
-	if m.groupBy == groupByHour {
-		sampleRow.hour = "12:00"
-	}
-	if m.groupBy == groupBySession {
-		sampleRow.sessionID = "sess_12345678"
-		sampleRow.thinkingLevels = "low"
-	}
-
-	// Measure cost of a single data row (no separators).
-	oneRowTable := renderTableSection(
-		renderTableViewport([]renderRow{sampleRow}, m.groupBy, m.activeTab, m.tableViewportWidth(), 0),
-		m.renderTableSummary(),
-	)
-	contentOneRow := lipgloss.JoinVertical(lipgloss.Left, statusline, tabBox, oneRowTable, hintBox)
-	oneRowFull := outerBorderStyle.Width(m.width - 2).Render(contentOneRow)
-	perDataRow := lipgloss.Height(oneRowFull) - m.baseHeight
-	if perDataRow <= 0 {
-		perDataRow = 1
-	}
-
-	m.perRowHeight = perDataRow
+	m.baseHeight = tuiChromeHeight
+	m.perRowHeight = 1
 	m.cachedWidth = m.width
-
 	return m
 }
 
@@ -350,7 +280,7 @@ func clampHorizontalScroll(offset int, contentWidth int, viewportWidth int) int 
 }
 
 func (m interactiveModel) tableViewportWidth() int {
-	return max(0, m.width-2-(sectionHorizontalInset*2))
+	return max(0, m.width-2)
 }
 
 func (m interactiveModel) visibleRows() []renderRow {
@@ -415,6 +345,51 @@ func (m interactiveModel) clampScrollOffset() interactiveModel {
 		m.scrollOffset = maxOffset
 	}
 	return m
+}
+
+func (m interactiveModel) resetRowPosition() interactiveModel {
+	m.scrollOffset = 0
+	m.cursor = 0
+	return m
+}
+
+func (m interactiveModel) clampCursor() interactiveModel {
+	if len(m.rows) == 0 {
+		m.cursor = 0
+		return m
+	}
+	if m.cursor < 0 {
+		m.cursor = 0
+	}
+	if m.cursor >= len(m.rows) {
+		m.cursor = len(m.rows) - 1
+	}
+	return m
+}
+
+func (m interactiveModel) ensureCursorVisible() interactiveModel {
+	m = m.clampCursor()
+	if m.cursor < m.scrollOffset {
+		m.scrollOffset = m.cursor
+	}
+	for i := 0; i < len(m.rows); i++ {
+		if m.cursor < m.scrollOffset+len(m.visibleRowsFrom(m.scrollOffset)) {
+			break
+		}
+		m.scrollOffset++
+	}
+	return m.clampScrollOffset()
+}
+
+func (m interactiveModel) moveCursor(delta int) interactiveModel {
+	if len(m.rows) == 0 {
+		return m
+	}
+	m = m.clampCursor()
+	m.cursor += delta
+	m = m.clampCursor()
+	m = m.ensureCursorVisible()
+	return m.clampHorizontalOffset()
 }
 
 func renderRowLineCount(row renderRow, cols []column) int {
@@ -486,7 +461,7 @@ func (m interactiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.lastSyncMs = msg.lastSyncMs
 		m = m.reconcileStatusline()
 		m = m.reconcileTableSummary()
-		m = m.clampScrollOffset()
+		m = m.resetRowPosition()
 		m = m.clampHorizontalOffset()
 		return m, nil
 	case filterValuesMsg:
@@ -510,7 +485,7 @@ func (m interactiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch msg.Type {
 		case tea.KeyTab:
 			m.activeTab = nextAggregationTab(m.activeTab, 1)
-			m.scrollOffset = 0
+			m = m.resetRowPosition()
 			m.horizontalOffset = 0
 			m.loading = true
 			m = m.reconcileTableSummary()
@@ -519,7 +494,7 @@ func (m interactiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, m.reloadCmd()
 		case tea.KeyShiftTab:
 			m.activeTab = nextAggregationTab(m.activeTab, -1)
-			m.scrollOffset = 0
+			m = m.resetRowPosition()
 			m.horizontalOffset = 0
 			m.loading = true
 			m = m.reconcileTableSummary()
@@ -527,15 +502,10 @@ func (m interactiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m = m.measureHeights()
 			return m, m.reloadCmd()
 		case tea.KeyUp:
-			if m.scrollOffset > 0 {
-				m.scrollOffset--
-			}
-			m = m.clampHorizontalOffset()
+			m = m.moveCursor(-1)
 			return m, nil
 		case tea.KeyDown:
-			m.scrollOffset++
-			m = m.clampScrollOffset()
-			m = m.clampHorizontalOffset()
+			m = m.moveCursor(1)
 			return m, nil
 		case tea.KeyRight:
 			m.horizontalOffset = clampHorizontalScroll(m.horizontalOffset+1, m.tableContentWidth(m.rows), m.tableViewportWidth())
@@ -558,7 +528,7 @@ func (m interactiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "1", "2", "3", "4", "5", "6":
 				index := int(msg.Runes[0] - '1')
 				m.activeTab = aggregationTabs[index]
-				m.scrollOffset = 0
+				m = m.resetRowPosition()
 				m.horizontalOffset = 0
 				m.loading = true
 				m = m.reconcileTableSummary()
@@ -585,15 +555,10 @@ func (m interactiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "h":
 				return m.openFilterValues(filterHarness)
 			case "j":
-				m.scrollOffset++
-				m = m.clampScrollOffset()
-				m = m.clampHorizontalOffset()
+				m = m.moveCursor(1)
 				return m, nil
 			case "k":
-				if m.scrollOffset > 0 {
-					m.scrollOffset--
-				}
-				m = m.clampHorizontalOffset()
+				m = m.moveCursor(-1)
 				return m, nil
 			case "l":
 				m.horizontalOffset = clampHorizontalScroll(m.horizontalOffset+1, m.tableContentWidth(m.rows), m.tableViewportWidth())
@@ -605,6 +570,7 @@ func (m interactiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.height = msg.Height
 		m = m.measureHeights()
 		m = m.clampScrollOffset()
+		m = m.ensureCursorVisible()
 		m = m.clampHorizontalOffset()
 		if m.syncing && !m.syncInFlight {
 			syncMessages := make(chan tea.Msg, syncProgressBufferSize())
@@ -776,7 +742,7 @@ func (m interactiveModel) applyDateRangePopup() (tea.Model, tea.Cmd) {
 	if newPeriod != m.options.period {
 		m.options.period = newPeriod
 		m = m.reconcileStatusline()
-		m.scrollOffset = 0
+		m = m.resetRowPosition()
 		m.horizontalOffset = 0
 		m.loading = true
 		m = m.reconcileTableSummary()
@@ -825,7 +791,7 @@ func (m interactiveModel) applyBucketPopup() (tea.Model, tea.Cmd) {
 	m.popup = popupNone
 	if newBucket != m.options.bucket {
 		m.options.bucket = newBucket
-		m.scrollOffset = 0
+		m = m.resetRowPosition()
 		m.horizontalOffset = 0
 		m.loading = true
 		m = m.reconcileTableSummary()
@@ -876,7 +842,7 @@ func (m interactiveModel) applySortPopup() (tea.Model, tea.Cmd) {
 	m.popup = popupNone
 	if newSort != m.options.sort {
 		m.options.sort = newSort
-		m.scrollOffset = 0
+		m = m.resetRowPosition()
 		m.horizontalOffset = 0
 		m.loading = true
 		m = m.reconcileTableSummary()
@@ -960,7 +926,7 @@ func (m interactiveModel) applyFilterValues() (tea.Model, tea.Cmd) {
 		m.options.filters.harnesses = stringList(selected)
 	}
 	m.popup = popupNone
-	m.scrollOffset = 0
+	m = m.resetRowPosition()
 	m.horizontalOffset = 0
 	m.loading = true
 	m = m.reconcileTableSummary()
@@ -1051,41 +1017,7 @@ func mergeSortedValues(a []string, b []string) []string {
 	return result
 }
 
-var (
-	activeTabStyle = lipgloss.NewStyle().
-			Bold(true).
-			Foreground(lipgloss.Color("230")).
-			Background(lipgloss.Color("63")).
-			Padding(0, 2)
-
-	inactiveTabStyle = lipgloss.NewStyle().
-				Foreground(lipgloss.Color("245")).
-				Background(lipgloss.Color(panelBackgroundColor)).
-				Padding(0, 2)
-
-	tableSectionStyle = lipgloss.NewStyle().
-				Background(lipgloss.Color(appBackgroundColor)).
-				Padding(0, sectionHorizontalInset)
-
-	popupStyle = lipgloss.NewStyle().
-			Border(lipgloss.RoundedBorder()).
-			BorderForeground(lipgloss.Color("212")).
-			BorderBackground(lipgloss.Color(panelBackgroundColor)).
-			Background(lipgloss.Color(panelBackgroundColor)).
-			Padding(1, 2)
-
-	popupTitleStyle = lipgloss.NewStyle().
-			Bold(true).
-			Foreground(lipgloss.Color("212")).
-			Background(lipgloss.Color(panelBackgroundColor))
-	popupCursorStyle = lipgloss.NewStyle().
-				Bold(true).
-				Foreground(lipgloss.Color("63")).
-				Background(lipgloss.Color(panelBackgroundColor))
-	popupItemStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("252")).
-			Background(lipgloss.Color(panelBackgroundColor))
-)
+// Tab, section, and popup styles live in theme.go.
 
 func periodLabel(value period) string {
 	switch value {
@@ -1126,7 +1058,6 @@ func (m interactiveModel) View() string {
 				lipgloss.Center,
 				lipgloss.Center,
 				m.renderPopup(),
-				lipgloss.WithWhitespaceBackground(lipgloss.Color(appBackgroundColor)),
 			),
 			m.width,
 			m.height,
@@ -1136,16 +1067,18 @@ func (m interactiveModel) View() string {
 	statusline := m.renderStatusline()
 
 	var tabs []string
-	for _, tab := range aggregationTabs {
-		label := tab.String()
+	for i, tab := range aggregationTabs {
+		label := fmt.Sprintf("%d %s", i+1, tab.String())
 		if tab == m.activeTab {
 			tabs = append(tabs, activeTabStyle.Render(label))
 		} else {
 			tabs = append(tabs, inactiveTabStyle.Render(label))
 		}
 	}
-	tabBar := lipgloss.JoinHorizontal(lipgloss.Top, tabs...)
-	tabBox := sectionBorderStyle.Width(m.width - 4).Render(tabBar)
+	tabBar := strings.Join(tabs, tabGapStyle.Render(" "))
+	tabMeta := renderTabMeta(m.options.bucket, activeSort(m.activeTab, m.options.sort))
+	tabStrip := tabBarStyle.Render(renderTabsWithMeta(tabBar, tabMeta, max(0, m.width-2)))
+	footerDivider := dividerStyle.Render(strings.Repeat("─", max(0, m.width)))
 
 	visible := m.maxVisibleRows()
 	visibleRows := m.visibleRows()
@@ -1159,38 +1092,107 @@ func (m interactiveModel) View() string {
 		horizontalOffset = clampHorizontalScroll(m.horizontalOffset, contentWidth, viewportWidth)
 	}
 
-	hintText := "tab/shift+tab switch · ↑/↓ j/k scroll · ←/→ scroll · home/end horizontal · d date · g bucket · s sort · p/m/h filters · q quit"
+	keysNav := "tab switch view · ↑/↓ j/k scroll · ←/→ scroll · 1-6 tabs · q quit"
+	keysFilter := "d date · g bucket · s sort · p provider · m model · h harness"
+	positionText := ""
 	visibleCount := len(visibleRows)
 	if !m.loading && visibleCount > 0 && len(m.rows) > visibleCount {
 		end := m.scrollOffset + visibleCount
 		if end > len(m.rows) {
 			end = len(m.rows)
 		}
-		hintText += fmt.Sprintf("  ·  %5d-%5d of %5d", m.scrollOffset+1, end, len(m.rows))
+		positionText = fmt.Sprintf("%d-%d of %d", m.scrollOffset+1, end, len(m.rows))
 	}
 	if maxHorizontal > 0 {
-		hintText += fmt.Sprintf("  ·  x %5d/%5d", horizontalOffset+1, maxHorizontal+1)
-	}
-	if filters := activeFiltersLabel(m.options.filters); filters != "" {
-		hintText += "  ·  " + filters
+		if positionText != "" {
+			positionText += " · "
+		}
+		positionText += fmt.Sprintf("x %d/%d", horizontalOffset+1, maxHorizontal+1)
 	}
 	if m.loading {
-		hintText += "  ·  loading"
+		if positionText != "" {
+			positionText += " · "
+		}
+		positionText += "loading"
 	}
-	hint := hintStyle.Render(hintText)
-	hintBox := sectionBorderStyle.Width(m.width - 4).Render(hint)
+	footer := lipgloss.JoinVertical(lipgloss.Left,
+		renderFooterLine(keysNav, positionText, m.width),
+		renderFooterLine(keysFilter, activeFiltersLabel(m.options.filters), m.width),
+	)
 
 	var body string
+	focusRow := -1
 	if m.loading {
 		body = renderLoadingTableViewportWithSort(m.groupBy, m.activeTab, selectedSort, viewportWidth, visible)
 	} else {
-		body = renderTableViewportWithSort(visibleRows, m.rows, m.groupBy, m.activeTab, selectedSort, viewportWidth, horizontalOffset, visible)
+		if focus := m.cursor - m.scrollOffset; focus >= 0 && focus < len(visibleRows) {
+			focusRow = focus
+		}
+		body = renderTableViewportWithSortAndFocus(visibleRows, m.rows, m.groupBy, m.activeTab, selectedSort, viewportWidth, horizontalOffset, visible, focusRow)
 	}
 	body = renderTableSection(body, m.renderTableSummary())
 
-	content := lipgloss.JoinVertical(lipgloss.Left, statusline, tabBox, body, hintBox)
-	rendered := outerBorderStyle.Width(m.width - 2).Render(content)
-	return renderOnAppSurface(rendered, m.width, m.height)
+	content := lipgloss.JoinVertical(
+		lipgloss.Left,
+		statusline,
+		"",
+		tabStrip,
+		"",
+		body,
+		"",
+		footerDivider,
+		footer,
+	)
+	return renderOnAppSurface(content, m.width, m.height)
+}
+
+func renderFooterLine(left string, right string, width int) string {
+	if width <= 0 {
+		return ""
+	}
+	if right == "" {
+		return footerStyle.Render(truncateCell(left, width))
+	}
+	gap := " · "
+	available := width - len(gap) - len(right)
+	if available < 0 {
+		return footerDimStyle.Render(truncateCell(right, width))
+	}
+	left = truncateCell(left, available)
+	line := left + gap + right
+	if len(line) < width {
+		line += strings.Repeat(" ", width-len(line))
+	}
+	return footerStyle.Render(line)
+}
+
+func renderTabMeta(bucket timeBucket, sort sortMode) string {
+	parts := []string{}
+	if value := strings.TrimSpace(string(bucket)); value != "" {
+		parts = append(parts, "bucket: "+value)
+	}
+	if value := strings.TrimSpace(string(sort)); value != "" {
+		parts = append(parts, "sort: "+value)
+	}
+	if len(parts) == 0 {
+		return ""
+	}
+	return statuslineItemStyle.Render(strings.Join(parts, " · "))
+}
+
+func renderTabsWithMeta(tabs string, meta string, width int) string {
+	if width <= 0 {
+		return ""
+	}
+	if ansi.StringWidth(meta) == 0 {
+		return tabs
+	}
+	tabsWidth := ansi.StringWidth(tabs)
+	metaWidth := ansi.StringWidth(meta)
+	if tabsWidth+1+metaWidth > width {
+		return tabs
+	}
+	return tabs + strings.Repeat(" ", width-tabsWidth-metaWidth) + meta
 }
 
 func (m interactiveModel) renderSyncProgress() string {
@@ -1207,11 +1209,10 @@ func (m interactiveModel) renderSyncProgress() string {
 	lines := []string{title, subtitle}
 	rawRows := make([]string, 0, len(m.syncProgressRows)+2)
 	for _, row := range m.syncProgressRows {
-		rawRow := fmt.Sprintf("%s %-12s", m.syncProgressStatusIcon(row.status), row.label)
-		rawRows = append(rawRows, appSurfaceStyle.Render(rawRow))
+		rawRows = append(rawRows, fmt.Sprintf("%s %-12s", m.syncProgressStatusIcon(row.status), row.label))
 	}
 	if m.syncStatus != "" {
-		rawRows = append(rawRows, "", appSurfaceStyle.Render(fmt.Sprintf("%s %s", m.syncProgressStatusIcon(m.syncStatus), m.syncStatus)))
+		rawRows = append(rawRows, "", fmt.Sprintf("%s %s", m.syncProgressStatusIcon(m.syncStatus), m.syncStatus))
 	}
 	lines = append(lines, "")
 	lines = append(lines, rawRows...)
@@ -1221,17 +1222,17 @@ func (m interactiveModel) renderSyncProgress() string {
 func (m interactiveModel) syncProgressStatusIcon(status pipeline.SyncProgressStatus) string {
 	switch status {
 	case "", "pending":
-		return syncPendingDots(m.syncFrame)
+		return syncSkipStyle.Render(padSyncProgressIcon(syncPendingDots(m.syncFrame)))
 	case pipeline.SyncProgressDiscovering, pipeline.SyncProgressSyncing, pipeline.SyncProgressNormalizing, pipeline.SyncProgressLoading, pipeline.SyncProgressResetting, pipeline.SyncProgressRebuilding:
-		return padSyncProgressIcon(syncSpinnerFrame(m.syncFrame))
+		return syncBusyStyle.Render(padSyncProgressIcon(syncSpinnerFrame(m.syncFrame)))
 	case pipeline.SyncProgressSynced:
-		return padSyncProgressIcon("✓")
+		return syncOKStyle.Render(padSyncProgressIcon("✓"))
 	case pipeline.SyncProgressSkipped:
-		return padSyncProgressIcon("-")
+		return syncSkipStyle.Render(padSyncProgressIcon("-"))
 	case pipeline.SyncProgressFailed:
-		return padSyncProgressIcon("✗")
+		return syncFailStyle.Render(padSyncProgressIcon("✗"))
 	default:
-		return padSyncProgressIcon("?")
+		return syncSkipStyle.Render(padSyncProgressIcon("?"))
 	}
 }
 
@@ -1267,12 +1268,12 @@ func renderSyncProgressOnAppSurface(lines []string, width int, height int) strin
 	for row := 0; row < height; row++ {
 		contentIndex := row - topPadding
 		if contentIndex < 0 || contentIndex >= len(lines) {
-			rendered = append(rendered, appSurfaceStyle.Render(strings.Repeat(" ", width)))
+			rendered = append(rendered, strings.Repeat(" ", width))
 			continue
 		}
 		line := lines[contentIndex]
 		rightPadding := max(0, width-leftPadding-lipgloss.Width(line))
-		rendered = append(rendered, appSurfaceStyle.Render(strings.Repeat(" ", leftPadding))+line+appSurfaceStyle.Render(strings.Repeat(" ", rightPadding)))
+		rendered = append(rendered, strings.Repeat(" ", leftPadding)+line+strings.Repeat(" ", rightPadding))
 	}
 	return strings.Join(rendered, "\n")
 }
@@ -1316,13 +1317,13 @@ func (m interactiveModel) renderDateRangePopup() string {
 		cursor := "  "
 		style := popupItemStyle
 		if i == m.popupCursor {
-			cursor = "> "
+			cursor = "› "
 			style = popupCursorStyle
 		}
 		options = append(options, style.Render(cursor+periodLabel(opt)))
 	}
 	body := lipgloss.JoinVertical(lipgloss.Left, options...)
-	help := hintStyle.Render("space/enter = select · esc = close")
+	help := hintStyle.Render("space/enter select · esc close")
 	return popupStyle.Render(lipgloss.JoinVertical(lipgloss.Left, title, "", body, "", help))
 }
 
@@ -1333,13 +1334,13 @@ func (m interactiveModel) renderBucketPopup() string {
 		cursor := "  "
 		style := popupItemStyle
 		if i == m.popupCursor {
-			cursor = "> "
+			cursor = "› "
 			style = popupCursorStyle
 		}
 		options = append(options, style.Render(cursor+string(opt)))
 	}
 	body := lipgloss.JoinVertical(lipgloss.Left, options...)
-	help := hintStyle.Render("space/enter = select · esc = close")
+	help := hintStyle.Render("space/enter select · esc close")
 	return popupStyle.Render(lipgloss.JoinVertical(lipgloss.Left, title, "", body, "", help))
 }
 
@@ -1351,13 +1352,13 @@ func (m interactiveModel) renderSortPopup() string {
 		cursor := "  "
 		style := popupItemStyle
 		if i == m.popupCursor {
-			cursor = "> "
+			cursor = "› "
 			style = popupCursorStyle
 		}
 		options = append(options, style.Render(cursor+string(opt)))
 	}
 	body := lipgloss.JoinVertical(lipgloss.Left, options...)
-	help := hintStyle.Render("space/enter = select · esc = close")
+	help := hintStyle.Render("space/enter select · esc close")
 	return popupStyle.Render(lipgloss.JoinVertical(lipgloss.Left, title, "", body, "", help))
 }
 
@@ -1376,18 +1377,18 @@ func (m interactiveModel) renderFilterValuesPopup() string {
 			cursor := "  "
 			style := popupItemStyle
 			if i == m.popupCursor {
-				cursor = "> "
+				cursor = "› "
 				style = popupCursorStyle
 			}
-			checked := "[ ] "
+			checked := "○ "
 			if m.filterSelections[value] {
-				checked = "[x] "
+				checked = "● "
 			}
 			options = append(options, style.Render(cursor+checked+value))
 		}
 		body = lipgloss.JoinVertical(lipgloss.Left, options...)
 	}
-	help := hintStyle.Render("space = select · enter = apply · esc = close without applying")
+	help := hintStyle.Render("space select · enter apply · esc close")
 	return popupStyle.Render(lipgloss.JoinVertical(lipgloss.Left, title, "", body, "", help))
 }
 

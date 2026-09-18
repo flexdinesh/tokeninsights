@@ -4,10 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/db"
-	"github.com/muesli/termenv"
 )
 
 func TestTableSummaryRendersFullResultTotals(t *testing.T) {
@@ -87,24 +85,20 @@ func TestTableSummaryKeepsSessionCoverageAheadOfOtherValues(t *testing.T) {
 }
 
 func TestTableSummaryUsesExistingPalette(t *testing.T) {
-	if got := tableSummaryLabelStyle.GetForeground(); got != lipgloss.Color("245") {
-		t.Fatalf("row label foreground = %v, want 245", got)
+	if got := tableSummaryLabelStyle.GetForeground(); got != themeMuted {
+		t.Fatalf("row label foreground = %v, want muted", got)
 	}
-	if got := tableSummaryTotalStyle.GetForeground(); got != lipgloss.Color("157") {
-		t.Fatalf("total foreground = %v, want 157", got)
+	if got := tableSummaryTotalStyle.GetForeground(); got != themeTotal {
+		t.Fatalf("total foreground = %v, want total", got)
 	}
-	if got := tableSummarySurfaceStyle.GetBackground(); got != lipgloss.Color(rowStripeColor) {
-		t.Fatalf("summary background = %v, want %s", got, rowStripeColor)
+	if got := tableSummarySeparatorStyle.GetForeground(); got != themeFaint {
+		t.Fatalf("separator foreground = %v, want faint", got)
 	}
 }
 
-func TestTableSummaryPaintsFullStripeBackground(t *testing.T) {
-	previousProfile := lipgloss.ColorProfile()
-	lipgloss.SetColorProfile(termenv.TrueColor)
-	t.Cleanup(func() {
-		lipgloss.SetColorProfile(previousProfile)
-	})
-
+func TestTableSummaryLeavesTerminalBackgroundTransparent(t *testing.T) {
 	output := newTableSummaryModel([]renderRow{{totalValue: 136}}, tabTokens, false).View(40)
-	assertLineCellsHaveBackground(t, output, "48;2;36;36;44")
+	if strings.Contains(output, "48;2;") {
+		t.Fatalf("summary should not force background:\n%q", output)
+	}
 }
