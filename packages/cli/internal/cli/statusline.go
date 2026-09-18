@@ -13,6 +13,8 @@ type statuslineItemID int
 const (
 	statuslineBrand statuslineItemID = iota
 	statuslineDateRange
+	statuslineBucket
+	statuslineSort
 	statuslineHostname
 	statuslineLastSynced
 )
@@ -36,10 +38,12 @@ type statuslineModel struct {
 	items []statuslineItem
 }
 
-func newStatuslineModel(dateRange string, hostname string, lastSyncMs int64) statuslineModel {
+func newStatuslineModel(dateRange string, bucket string, sort string, hostname string, lastSyncMs int64) statuslineModel {
 	return statuslineModel{items: []statuslineItem{
 		{id: statuslineBrand, value: "TokenInsights"},
 		{id: statuslineDateRange, label: "daterange", value: dateRange},
+		{id: statuslineBucket, label: "bucket", value: bucket},
+		{id: statuslineSort, label: "sort", value: sort},
 		{id: statuslineHostname, label: "hostname", value: hostname},
 		{id: statuslineLastSynced, label: "lastsynced", value: formatLastSync(lastSyncMs)},
 	}}
@@ -96,6 +100,24 @@ func fitStatuslineItems(items []statuslineItem, width int) []statuslineItem {
 		return items
 	}
 	items = removeStatuslineItem(items, statuslineLastSynced)
+	if statuslineItemsWidth(items) <= width {
+		return items
+	}
+
+	items = shrinkStatuslineValue(items, statuslineBucket, width)
+	if statuslineItemsWidth(items) <= width {
+		return items
+	}
+	items = removeStatuslineItem(items, statuslineBucket)
+	if statuslineItemsWidth(items) <= width {
+		return items
+	}
+
+	items = shrinkStatuslineValue(items, statuslineSort, width)
+	if statuslineItemsWidth(items) <= width {
+		return items
+	}
+	items = removeStatuslineItem(items, statuslineSort)
 	if statuslineItemsWidth(items) <= width {
 		return items
 	}
@@ -177,14 +199,8 @@ func statuslineStyle(id statuslineItemID) lipgloss.Style {
 	switch id {
 	case statuslineBrand:
 		return statuslineBrandStyle
-	case statuslineDateRange:
-		return statuslineDateRangeStyle
-	case statuslineHostname:
-		return statuslineHostnameStyle
-	case statuslineLastSynced:
-		return statuslineLastSyncedStyle
 	default:
-		return statuslineSeparatorStyle
+		return statuslineItemStyle
 	}
 }
 
@@ -221,23 +237,4 @@ func formatLastSync(value int64) string {
 	return formatLatest(value)
 }
 
-var (
-	statuslineSurfaceStyle = lipgloss.NewStyle().
-				Background(lipgloss.Color(appBackgroundColor))
-	statuslineBrandStyle = lipgloss.NewStyle().
-				Bold(true).
-				Foreground(lipgloss.Color("212")).
-				Background(lipgloss.Color(appBackgroundColor))
-	statuslineDateRangeStyle = lipgloss.NewStyle().
-					Foreground(lipgloss.Color("86")).
-					Background(lipgloss.Color(appBackgroundColor))
-	statuslineHostnameStyle = lipgloss.NewStyle().
-				Foreground(lipgloss.Color("113")).
-				Background(lipgloss.Color(appBackgroundColor))
-	statuslineLastSyncedStyle = lipgloss.NewStyle().
-					Foreground(lipgloss.Color("179")).
-					Background(lipgloss.Color(appBackgroundColor))
-	statuslineSeparatorStyle = lipgloss.NewStyle().
-					Foreground(lipgloss.Color("241")).
-					Background(lipgloss.Color(appBackgroundColor))
-)
+// Statusline styles live in theme.go.
