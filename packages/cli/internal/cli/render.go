@@ -511,7 +511,7 @@ func rowNameField(tab tabMode) string {
 }
 
 func renderCell(value string, col column, base lipgloss.Style) string {
-	style := cellStyleForColumn(col).Inherit(base)
+	style := base.Inherit(cellStyleForColumn(col))
 	return style.Render(value)
 }
 
