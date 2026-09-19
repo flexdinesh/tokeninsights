@@ -193,6 +193,31 @@ func TestRenderTableFocusRowPaintsSelectionOnly(t *testing.T) {
 	}
 }
 
+func TestRenderCellSelectionOverridesSemanticForeground(t *testing.T) {
+	previousProfile := lipgloss.ColorProfile()
+	lipgloss.SetColorProfile(termenv.TrueColor)
+	t.Cleanup(func() {
+		lipgloss.SetColorProfile(previousProfile)
+	})
+
+	tests := []struct {
+		name  string
+		field string
+		want  string
+	}{
+		{name: "muted", field: "models", want: selectedRowStyle.Render("value")},
+		{name: "bold", field: "totalTokens", want: selectedRowStyle.Bold(true).Render("value")},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			got := renderCell("value", column{field: test.field}, selectedRowStyle)
+			if got != test.want {
+				t.Fatalf("selected cell = %q, want %q", got, test.want)
+			}
+		})
+	}
+}
+
 func TestTableHeaderUsesAccentForeground(t *testing.T) {
 	if got := headerStyle.GetForeground(); got != themeAccent {
 		t.Fatalf("header foreground = %v, want accent", got)
