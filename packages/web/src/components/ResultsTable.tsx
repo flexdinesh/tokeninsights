@@ -50,7 +50,14 @@ function columnsFor(tab: Tab): Column[] {
     ]
   const first: Column = {
     id: 'name',
-    label: tab === 'tokens' ? 'Period' : tab === 'sessions' ? 'Session' : labels[tab].slice(0, -1),
+    label:
+      tab === 'tokens'
+        ? 'Period'
+        : tab === 'sessions'
+          ? 'Session'
+          : tab === 'harnesses'
+            ? 'Harness'
+            : labels[tab].slice(0, -1),
   }
   return [
     first,

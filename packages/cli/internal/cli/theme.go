@@ -5,28 +5,28 @@ import (
 )
 
 // TUI visual tokens. Semantic roles only; no feature-specific colors.
-// Backgrounds stay transparent so light/dark terminals own the canvas.
+// Ordinary surfaces inherit the terminal background. Only selection uses a fill.
 
 const (
 	tuiColGap          = 2
-	tuiChromeHeight    = 12
-	tuiMinVisibleLines = 5
+	tuiMinVisibleLines = 1
 )
 
 var (
-	themeBrand  = lipgloss.AdaptiveColor{Light: "5", Dark: "212"}
-	themeAccent = lipgloss.AdaptiveColor{Light: "4", Dark: "81"}
-	themeMuted  = lipgloss.AdaptiveColor{Light: "242", Dark: "241"}
-	themeFaint  = lipgloss.AdaptiveColor{Light: "249", Dark: "238"}
-	themeText   = lipgloss.AdaptiveColor{Light: "0", Dark: "252"}
-	themeTotal  = lipgloss.AdaptiveColor{Light: "28", Dark: "157"}
-	themeDanger = lipgloss.AdaptiveColor{Light: "1", Dark: "203"}
+	themeInverse = lipgloss.AdaptiveColor{Light: "#FFFFFF", Dark: "#1C1C24"}
+	themeBrand   = lipgloss.AdaptiveColor{Light: "#292B32", Dark: "#E7E7EE"}
+	themeAccent  = lipgloss.AdaptiveColor{Light: "#17669D", Dark: "#80CFFF"}
+	themeMuted   = lipgloss.AdaptiveColor{Light: "#60636F", Dark: "#AAAAB7"}
+	themeFaint   = lipgloss.AdaptiveColor{Light: "#A0A2AD", Dark: "#525460"}
+	themeText    = lipgloss.AdaptiveColor{Light: "#292B32", Dark: "#E7E7EE"}
+	themeTotal   = lipgloss.AdaptiveColor{Light: "#A2306C", Dark: "#F49AC2"}
+	themeDanger  = lipgloss.AdaptiveColor{Light: "#9C3530", Dark: "#F0A39B"}
 
-	themeTabActiveBg = lipgloss.AdaptiveColor{Light: "5", Dark: "212"}
-	themeTabActiveFg = lipgloss.AdaptiveColor{Light: "255", Dark: "232"}
+	themeTabActiveBg = themeAccent
+	themeTabActiveFg = themeInverse
 
-	themeSelectedBg = lipgloss.AdaptiveColor{Light: "4", Dark: "63"}
-	themeSelectedFg = lipgloss.AdaptiveColor{Light: "255", Dark: "230"}
+	themeSelectedBg = lipgloss.AdaptiveColor{Light: "#DFEAF3", Dark: "#273D4D"}
+	themeSelectedFg = themeText
 )
 
 var (
@@ -41,7 +41,7 @@ var (
 	contextUsedStyle = lipgloss.NewStyle().Bold(true).Foreground(themeText)
 	totalStyle       = lipgloss.NewStyle().Bold(true).Foreground(themeTotal)
 
-	appSurfaceStyle  = lipgloss.NewStyle()
+	appSurfaceStyle  = lipgloss.NewStyle().Foreground(themeText)
 	rowOddStyle      = lipgloss.NewStyle()
 	selectedRowStyle = lipgloss.NewStyle().
 				Foreground(themeSelectedFg).
@@ -55,27 +55,13 @@ var (
 			Bold(true).
 			Foreground(themeTabActiveFg).
 			Background(themeTabActiveBg).
-			Padding(0, 2)
+			Padding(0, 1)
 	inactiveTabStyle = lipgloss.NewStyle().
 				Foreground(themeText).
-				Padding(0, 2)
-	tabBarStyle = lipgloss.NewStyle().
-			Padding(0, 1)
-	tabGapStyle = lipgloss.NewStyle().
-			Padding(0, 1)
-
-	tableSectionStyle = lipgloss.NewStyle().Padding(0, 1)
-
-	popupStyle = lipgloss.NewStyle().
-			Border(lipgloss.RoundedBorder()).
-			BorderForeground(themeFaint).
-			Padding(1, 2)
+				Padding(0, 1)
 	popupTitleStyle = lipgloss.NewStyle().
 			Bold(true).
 			Foreground(themeText)
-	popupCursorStyle = lipgloss.NewStyle().
-				Bold(true).
-				Foreground(themeAccent)
 	popupItemStyle = lipgloss.NewStyle().Foreground(themeText)
 
 	statuslineSurfaceStyle   = lipgloss.NewStyle().Bold(false)

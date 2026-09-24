@@ -180,9 +180,11 @@ type renderRow struct {
 	outputTokens             string
 	outputValue              int64
 	reasoningTokens          string
+	reasoningValue           int64
 	cacheReadTokens          string
 	cacheReadValue           int64
 	cacheWriteTokens         string
+	cacheWriteValue          int64
 	contextUsedTokens        string
 	contextUsedValue         int64
 	averageContextUsedTokens string
@@ -443,13 +445,24 @@ func renderOnAppSurface(value string, width int, height int) string {
 	if width <= 0 || height <= 0 {
 		return appSurfaceStyle.Render(value)
 	}
-	return lipgloss.Place(
-		width,
-		height,
-		lipgloss.Left,
-		lipgloss.Top,
-		value,
-	)
+	lines := strings.Split(value, "\n")
+	result := make([]string, height)
+	for i := range result {
+		line := ""
+		if i < len(lines) {
+			line = ansi.Cut(lines[i], 0, width)
+		}
+		result[i] = paintSurfaceLine(line, width, appSurfaceStyle)
+	}
+	return strings.Join(result, "\n")
+}
+
+// Nested cell styles reset ANSI attributes. Restore the enclosing surface after
+// each reset so terminal-default colors cannot leave gaps between styled cells.
+func paintSurfaceLine(value string, width int, style lipgloss.Style) string {
+	prefix, _, _ := strings.Cut(style.Render("X"), "X")
+	value = strings.ReplaceAll(value, "\x1b[0m", "\x1b[0m"+prefix)
+	return style.Width(width).Render(value)
 }
 
 func headerLabel(col column, tab tabMode, sort sortMode) string {

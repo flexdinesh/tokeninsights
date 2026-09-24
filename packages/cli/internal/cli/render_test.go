@@ -155,9 +155,6 @@ func TestRenderTableViewportUsesRestrainedBackgrounds(t *testing.T) {
 	if strings.Contains(output, "\x1b[48;2;27;27;42m") || strings.Contains(output, "\x1b[48;2;36;36;44m") {
 		t.Fatalf("table viewport should not force app/stripe backgrounds:\n%q", output)
 	}
-	if strings.Contains(output, "48;2;") {
-		t.Fatalf("table viewport should leave terminal background transparent:\n%q", output)
-	}
 }
 
 func TestRenderTableFocusRowPaintsSelectionOnly(t *testing.T) {
@@ -245,7 +242,7 @@ func TestViewFrameUsesFlatDividersWithoutOuterBorder(t *testing.T) {
 	}
 }
 
-func TestViewStatuslineRowLeavesBackgroundTransparent(t *testing.T) {
+func TestViewSeparatesMachineStatusFromScopeControls(t *testing.T) {
 	m := interactiveModel{
 		rows: []renderRow{
 			{bucket: "2026-06-14", sessions: "1", inputTokens: "35K", outputTokens: "1K", totalTokens: "114K"},
@@ -261,13 +258,15 @@ func TestViewStatuslineRowLeavesBackgroundTransparent(t *testing.T) {
 	for _, line := range strings.Split(m.View(), "\n") {
 		plain := ansi.Strip(line)
 		if strings.Contains(plain, "TokenInsights") {
-			for _, expected := range []string{"TokenInsights", "daterange: all time", "bucket: day", "sort: date", "hostname:", "lastsynced: never"} {
+			for _, expected := range []string{"TokenInsights", "host: workstation", "synced: never"} {
 				if !strings.Contains(plain, expected) {
 					t.Fatalf("statusline missing %q: %q", expected, plain)
 				}
 			}
-			if strings.Contains(line, "48;2;") {
-				t.Fatalf("statusline should not force background: %q", line)
+			for _, scope := range []string{"d Date all time", "g Bucket day", "s Sort date"} {
+				if !strings.Contains(ansi.Strip(m.View()), scope) {
+					t.Fatalf("missing scope control %s", scope)
+				}
 			}
 			return
 		}

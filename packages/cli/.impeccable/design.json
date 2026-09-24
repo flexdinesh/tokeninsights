@@ -1,0 +1,128 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-09-24T03:31:28+00:00",
+  "title": "Design System: TokenInsights Terminal",
+  "extensions": {
+    "typographyMeta": {
+      "body": {
+        "displayName": "Terminal regular",
+        "purpose": "One cell grid; font family and size controlled by the terminal."
+      },
+      "emphasis": {
+        "displayName": "Terminal bold",
+        "purpose": "ANSI emphasis for navigation, headings and measurements."
+      }
+    },
+    "shadows": [],
+    "motion": [
+      {
+        "name": "sync-progress-frame",
+        "value": "120ms",
+        "purpose": "Real sync activity only; pending dots and ASCII spinner."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "roomy-height",
+        "value": "30 terminal rows"
+      },
+      {
+        "name": "readout-min-height",
+        "value": "24 terminal rows"
+      },
+      {
+        "name": "readout-min-width",
+        "value": "72 content cells"
+      },
+      {
+        "name": "compact-readout-labels",
+        "value": "below 96 content cells"
+      },
+      {
+        "name": "compact-tab-labels",
+        "value": "below 72 terminal cells"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Numbered navigation",
+      "kind": "nav",
+      "refersTo": "active-tab-dark",
+      "description": "Six views; active item uses sky blue inverse fill, bold and brackets. Light counterpart: active-tab-light. One-cell horizontal padding; 1\u20136 or Tab / Shift+Tab."
+    },
+    {
+      "name": "Scope controls",
+      "kind": "custom",
+      "description": "Sky blue bold keys and neutral labels with three-cell gaps; muted active-filter row beneath."
+    },
+    {
+      "name": "Token readout strip",
+      "kind": "custom",
+      "refersTo": "readout-dark",
+      "description": "Transparent four-row strip with equal blank insets above and below; six filtered-result measurements, labels above values. Total uses pink. Light counterpart: readout-light. Context replaces sums with explanatory text."
+    },
+    {
+      "name": "Focused table row",
+      "kind": "custom",
+      "refersTo": "selected-row-dark",
+      "description": "Selected fill with leading >; right-aligned numbers and left-aligned dimensions. Light counterpart: selected-row-light. Arrow keys and j/k move focus; horizontal scrolling exposes columns."
+    },
+    {
+      "name": "Scope drawer",
+      "kind": "custom",
+      "refersTo": "drawer-dark",
+      "description": "Transparent right overlay starts at row index 2, maximum 44 cells wide, one-cell vertical divider and two-cell inset. Light counterpart: drawer-light. > marks focus; * current single choice; [ ]/[x] multiselect. Enter Apply; Escape Cancel."
+    },
+    {
+      "name": "Coverage and shortcuts",
+      "kind": "custom",
+      "description": "Four footer rows reserve spacer, session coverage, rule and shortcuts. Row/horizontal position remains visible; hints compact to Filters, Help and Quit when needed."
+    },
+    {
+      "name": "Recovery state",
+      "kind": "custom",
+      "description": "In-table loading, empty and query-failure text preserve the canvas. Empty scope offers date/filter recovery; errors offer Retry; no synced sessions offers a sync command."
+    }
+  ],
+  "narrative": {
+    "northStar": "Instrument desk",
+    "overview": "A precision measurement desk for local usky blue. Quiet canvas, clear readouts and a\nbroad table make comparisons immediate. Sky blue marks interaction; pink marks\ntotals. The terminal owns font choice, font size and cell geometry.\n\nThis contract covers the Go terminal renderer under `internal/cli/`. The\nrepository-root `DESIGN.md` governs the separate browser interface. Tokens here\ndescribe terminal cells, rows and ANSI emphasis, not browser CSS dimensions.\nThe light and dark palettes follow terminal theme detection.",
+    "keyCharacteristics": [
+      "Full-screen measurement surface with restrained rules.",
+      "Spacious readouts above a dense, aligned table.",
+      "Explicit keyboard focus and persistent scope and coverage.",
+      "Flat panels; immediate transitions."
+    ],
+    "rules": [
+      {
+        "name": "The Redundant Focus Rule",
+        "body": "Pair selection color with text markers: brackets around the active tab, `>` on the focused row, and explicit drawer selection marks.",
+        "section": "colors"
+      },
+      {
+        "name": "The Terminal Type Rule",
+        "body": "Preserve the user's cell grid and font settings; establish hierarchy through emphasis and alignment.",
+        "section": "typography"
+      },
+      {
+        "name": "The Flat Desk Rule",
+        "body": "Use whitespace and sparse rules to separate surfaces; keep the table free of decorative containers.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "**Do** preserve the terminal background and use adaptive foreground colors.",
+      "**Do** preserve text markers alongside semantic color.",
+      "**Do** keep filtered readouts, visible rows and session coverage distinct.",
+      "**Do** retain keyboard access and scrolling when space contracts.",
+      "**Do** show recovery actions within empty and failed states."
+    ],
+    "donts": [
+      "**Don't** sum Session Peak Context Load into a total.",
+      "**Don't** derive totals from abbreviated cell text or the visible viewport.",
+      "**Don't** impose browser type scales, pixel breakpoints or font choices.",
+      "**Don't** add decorative shadows, rounded cards or animation to this flat desk."
+    ]
+  }
+}

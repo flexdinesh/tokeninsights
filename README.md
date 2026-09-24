@@ -4,7 +4,7 @@ TokenInsights is a local token usage dashboard for OpenCode, Pi, Codex, and Clau
 
 | Web                                                                                  | TUI                                                                       |
 | ------------------------------------------------------------------------------------ | ------------------------------------------------------------------------- |
-| ![TokenInsights browser dashboard in light mode](assets/tokeninsights-web-light.png) | ![TokenInsights terminal dashboard](assets/tokeninsights-view-models.png) |
+| ![TokenInsights browser dashboard with synthetic demo data](assets/tokeninsights-web-light.png) | ![TokenInsights terminal dashboard with synthetic fixture data](assets/tokeninsights-view-models.png) |
 
 ## Install
 
@@ -24,6 +24,10 @@ go install github.com/flexdinesh/tokeninsights/packages/cli/cmd/tokeninsights@la
 
 Open the browser dashboard:
 
+The Signal Studio layout pairs a compact static usage summary with a wide chart,
+sky-and-slate light/dark themes, and filters in a desktop side rail or compact
+mobile disclosure.
+
 ```sh
 tokeninsights serve
 ```
@@ -33,6 +37,9 @@ Open the terminal dashboard:
 ```sh
 tokeninsights
 ```
+
+The terminal dashboard uses a full-width table, filtered token readouts, and a
+light/dark Instrument desk theme. Press `f` for the filter drawer or `?` for keys.
 
 Both refresh supported local sources on startup. The browser server listens at `http://localhost:8765` by default. Use `--host <ipv4>` to bind another interface or `--port <port>` to choose another port.
 

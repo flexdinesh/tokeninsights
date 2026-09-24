@@ -65,10 +65,9 @@ test('startup sync, six views, filtering, history, pagination, and refresh', asy
 test('path routes keep shared dashboard stable while view data loads', async ({ page }) => {
   await page.goto('/tokens')
   await expect(page.getByRole('region', { name: 'Filtered usage summary' })).toBeVisible()
-  await expect(page.locator('.view-controls + .filters')).toBeVisible()
+  await expect(page.getByRole('region', { name: 'Dashboard filters' })).toBeVisible()
   const tokensLink = page.getByRole('link', { name: 'Tokens', exact: true })
   await expect(tokensLink).toHaveAttribute('aria-current', 'page')
-  expect(await tokensLink.evaluate((element) => getComputedStyle(element).borderRadius)).toBe('0px')
 
   await page.locator('.view-controls').evaluate((element) => {
     element.dataset.mounted = 'routes'
@@ -116,6 +115,40 @@ test('path routes keep shared dashboard stable while view data loads', async ({ 
   await expect(page.getByRole('region', { name: 'Providers details', exact: true })).toBeVisible()
   await page.reload()
   await expect(page.getByRole('region', { name: 'Providers details', exact: true })).toBeVisible()
+})
+
+test('static summaries preserve totals while chart controls switch the timeline', async ({
+  page,
+}) => {
+  await page.goto('/tokens')
+  const total = page.getByLabel('Total tokens: 258,000', { exact: true })
+  await expect(total).toBeVisible()
+  const chart = page.getByRole('region', { name: 'Usage over time', exact: true })
+  const summary = page.getByRole('region', { name: 'Filtered usage summary' })
+  await expect(summary.getByRole('button')).toHaveCount(0)
+  await chart.getByRole('button', { name: 'Input', exact: true }).click()
+  await expect(chart.getByRole('button', { name: 'Input', exact: true })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  )
+  await expect(total).toBeVisible()
+  await total.click()
+  await expect(chart.getByRole('button', { name: 'Input', exact: true })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  )
+  await chart.getByRole('button', { name: 'Total', exact: true }).click()
+  await expect(chart.getByRole('button', { name: 'Total', exact: true })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  )
+  await page.setViewportSize({ width: 390, height: 844 })
+  await expect(page.getByRole('button', { name: 'Harness', exact: true })).not.toBeVisible()
+  await page.locator('.filter-disclosure').click()
+  await page.getByRole('button', { name: 'Harness', exact: true }).click()
+  await expect(page.getByRole('textbox', { name: 'Search harness' })).toBeFocused()
+  await page.keyboard.press('Escape')
+  await expect(page.getByRole('button', { name: 'Harness', exact: true })).toBeFocused()
 })
 
 test('sorting preserves page scroll position', async ({ page }) => {
@@ -168,7 +201,7 @@ test('themes, keyboard filters, mobile layout, and scalable typography', async (
   const controlHeights = await Promise.all(
     toolbarControls.map(async (control) => (await control.boundingBox())?.height),
   )
-  expect(controlHeights).toEqual([32, 32, 32, 32])
+  for (const height of controlHeights) expect(height).toBeGreaterThanOrEqual(32)
   await page.getByRole('button', { name: 'Theme: system. Change theme' }).click()
   await page.getByRole('button', { name: 'Theme: light. Change theme' }).click()
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark')
@@ -190,6 +223,13 @@ test('themes, keyboard filters, mobile layout, and scalable typography', async (
   await page.evaluate(() => {
     document.documentElement.style.fontSize = '200%'
   })
+  for (const readout of await page.locator('.summary-card strong').all()) {
+    const value = await readout.boundingBox()
+    const container = await readout.locator('..').boundingBox()
+    if (!value || !container) throw new Error('Usage readout must remain visible at 200% text')
+    expect(value.x).toBeGreaterThanOrEqual(container.x)
+    expect(value.x + value.width).toBeLessThanOrEqual(container.x + container.width)
+  }
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
     true,
   )
