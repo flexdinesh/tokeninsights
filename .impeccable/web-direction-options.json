@@ -1,0 +1,431 @@
+{
+  "title": "TokenInsights: a new web direction",
+  "question": "Usage first. Sky + pink throughout. Compare the layouts, choose a direction, or ask for a fresh set.",
+  "options": [
+    {
+      "id": "assigned",
+      "label": "Usage Atlas",
+      "kicker": "THE ROLL",
+      "lineage": "Statistical atlases and data-map legends",
+      "thesis": "One continuous view of your usage, with the chart as the main event.",
+      "palette": [
+        "#F5F8FC",
+        "#172C43",
+        "#67C7F5",
+        "#E982B6"
+      ],
+      "materials": [
+        "Cool white field",
+        "Navy typography",
+        "Sky chart ink and pink totals"
+      ],
+      "viewport": "A slim view index anchors a wide chart; its total and component legend sit beside it, with a precise results table below.",
+      "risk": "Its open layout needs careful small-screen reflow to keep filters close.",
+      "raised": [
+        {
+          "from": "Reference edition",
+          "raise": "Align chart scales, metric labels, and table columns to a disciplined shared grid."
+        },
+        {
+          "from": "Linked usage cards",
+          "raise": "Keep selected scope visible and preserve navigation state across every view."
+        },
+        {
+          "from": "Exposure bench",
+          "raise": "Make loading, updating, and ready states unmistakable without decorative delay."
+        },
+        {
+          "from": "Label system",
+          "raise": "Give headings, totals, and controls distinct typographic roles at every size."
+        },
+        {
+          "from": "Living numerals",
+          "raise": "Let the current usage measure establish the first read with decisive scale."
+        }
+      ],
+      "comp": ".impeccable/mocks/decision/web-atlas.webp",
+      "wireframe": {
+        "cols": 12,
+        "rows": 10,
+        "regions": [
+          {
+            "label": "Views",
+            "x": 0,
+            "y": 0,
+            "w": 2,
+            "h": 10,
+            "accent": false
+          },
+          {
+            "label": "Date + filter scope",
+            "x": 2,
+            "y": 0,
+            "w": 10,
+            "h": 1,
+            "accent": false
+          },
+          {
+            "label": "Total + legend",
+            "x": 2,
+            "y": 1,
+            "w": 3,
+            "h": 5,
+            "accent": true
+          },
+          {
+            "label": "Usage chart",
+            "x": 5,
+            "y": 1,
+            "w": 7,
+            "h": 5,
+            "accent": true
+          },
+          {
+            "label": "Comparison table",
+            "x": 2,
+            "y": 6,
+            "w": 10,
+            "h": 3,
+            "accent": false
+          },
+          {
+            "label": "Source + coverage",
+            "x": 2,
+            "y": 9,
+            "w": 10,
+            "h": 1,
+            "accent": false
+          }
+        ]
+      }
+    },
+    {
+      "id": "model-pick",
+      "label": "Signal Studio",
+      "kicker": "IMPECCABLE’S PICK",
+      "lineage": "Audio workstations and meter bridges",
+      "thesis": "A playful measurement workspace with controls arranged around the signal.",
+      "palette": [
+        "#EFF5FA",
+        "#1D2A3B",
+        "#74CFFA",
+        "#EC95C3"
+      ],
+      "materials": [
+        "Pale blue work surface",
+        "Soft rectangular controls",
+        "Clear numeric meters"
+      ],
+      "viewport": "A horizontal view bar sits above an integrated metric strip and wide plot, with filters in a right-hand control rail.",
+      "risk": "Familiar to developer-tool users; more recognisable dashboard structure than Atlas.",
+      "comp": ".impeccable/mocks/decision/web-studio.webp",
+      "wireframe": {
+        "cols": 12,
+        "rows": 10,
+        "regions": [
+          {
+            "label": "Views + source",
+            "x": 0,
+            "y": 0,
+            "w": 12,
+            "h": 1,
+            "accent": false
+          },
+          {
+            "label": "Usage meters",
+            "x": 0,
+            "y": 1,
+            "w": 9,
+            "h": 2,
+            "accent": true
+          },
+          {
+            "label": "Scope controls",
+            "x": 9,
+            "y": 1,
+            "w": 3,
+            "h": 9,
+            "accent": false
+          },
+          {
+            "label": "Usage chart",
+            "x": 0,
+            "y": 3,
+            "w": 9,
+            "h": 4,
+            "accent": true
+          },
+          {
+            "label": "Comparison table",
+            "x": 0,
+            "y": 7,
+            "w": 9,
+            "h": 3,
+            "accent": false
+          }
+        ]
+      }
+    },
+    {
+      "id": "digital-design-canon-warm-consumer-app-surface",
+      "label": "Soft Focus",
+      "verdict": "competitive",
+      "lineage": "Friendly consumer application surfaces",
+      "thesis": "A spacious, approachable usage overview with rounded surfaces and easy controls.",
+      "palette": [
+        "#FCF3F8",
+        "#FFFFFF",
+        "#176FA5",
+        "#ECC0D8"
+      ],
+      "materials": [
+        "Blush ground",
+        "White rounded panels",
+        "Sky action controls"
+      ],
+      "viewport": "One generous usage panel leads to component rows and a comparison panel; a persistent bottom bar carries the six views.",
+      "risk": "Lower density means more scrolling on wide analytics and tables.",
+      "case": "Matches Atlas for at-a-glance clarity; less familiar to developers working through many filters.",
+      "comp": ".impeccable/mocks/decision/web-soft-focus.webp",
+      "hero": "https://impeccable.style/worlds/cards/digital-design-canon-warm-consumer-app-surface-hero.webp",
+      "board": "https://impeccable.style/worlds/cards/digital-design-canon-warm-consumer-app-surface.webp",
+      "wireframe": {
+        "cols": 12,
+        "rows": 10,
+        "regions": [
+          {
+            "label": "Source + date",
+            "x": 0,
+            "y": 0,
+            "w": 12,
+            "h": 1,
+            "accent": false
+          },
+          {
+            "label": "Usage overview + plot",
+            "x": 1,
+            "y": 1,
+            "w": 10,
+            "h": 4,
+            "accent": true
+          },
+          {
+            "label": "Token components",
+            "x": 1,
+            "y": 5,
+            "w": 10,
+            "h": 2,
+            "accent": false
+          },
+          {
+            "label": "Comparison table",
+            "x": 1,
+            "y": 7,
+            "w": 10,
+            "h": 2,
+            "accent": false
+          },
+          {
+            "label": "Persistent view navigation",
+            "x": 0,
+            "y": 9,
+            "w": 12,
+            "h": 1,
+            "accent": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "rw-centre-rail-reference-setting",
+      "label": "Reference edition",
+      "verdict": "declined",
+      "lineage": "Reference edition",
+      "thesis": "A measured spread places usage and its definitions around a central key rail.",
+      "palette": [
+        "#F5F8FC",
+        "#172C43",
+        "#67C7F5",
+        "#E982B6"
+      ],
+      "materials": [
+        "Sky + pink adaptation",
+        "Stable readable data"
+      ],
+      "viewport": "Twin columns, a sky key rail, pink total markers, generous annotation margins.",
+      "risk": "Its small book-like measures make wide analytics harder to scan.",
+      "case": "Developers identify less with typeset editions; the central rail splits the primary usage read.",
+      "kept": "Align chart scales, metric labels, and table columns to a disciplined shared grid.",
+      "hero": "https://impeccable.style/worlds/cards/rw-centre-rail-reference-setting-hero.webp",
+      "board": "https://impeccable.style/worlds/cards/rw-centre-rail-reference-setting.webp"
+    },
+    {
+      "id": "medium-native-hypercard-stack-shoebox",
+      "label": "Linked usage cards",
+      "verdict": "declined",
+      "lineage": "Linked usage cards",
+      "thesis": "Each usage view becomes a deep-linked card in a browsable stack.",
+      "palette": [
+        "#F5F8FC",
+        "#172C43",
+        "#67C7F5",
+        "#E982B6"
+      ],
+      "materials": [
+        "Sky + pink adaptation",
+        "Stable readable data"
+      ],
+      "viewport": "A total card, visible previous/next navigation, and sky buttons on pink-edged sheets.",
+      "risk": "Card-by-card navigation can hide useful comparisons.",
+      "case": "Card browsing is less familiar for analytics; separate cards obscure the overall usage pattern.",
+      "kept": "Keep selected scope visible and preserve navigation state across every view.",
+      "hero": "https://impeccable.style/worlds/cards/medium-native-hypercard-stack-shoebox-hero.webp",
+      "board": "https://impeccable.style/worlds/cards/medium-native-hypercard-stack-shoebox.webp"
+    },
+    {
+      "id": "signals-instruments-darkroom-safelight-bay",
+      "label": "Exposure bench",
+      "verdict": "declined",
+      "lineage": "Exposure bench",
+      "thesis": "Usage moves through clear stages from summary to filtered detail.",
+      "palette": [
+        "#F5F8FC",
+        "#172C43",
+        "#67C7F5",
+        "#E982B6"
+      ],
+      "materials": [
+        "Sky + pink adaptation",
+        "Stable readable data"
+      ],
+      "viewport": "A sky-washed overview station, pink readout, then chart and table stations.",
+      "risk": "Sequential stations slow down direct comparison.",
+      "case": "The developer audience has little attachment to darkroom rituals; a fixed sequence impedes flexible filters.",
+      "kept": "Make loading, updating, and ready states unmistakable without decorative delay.",
+      "hero": "https://impeccable.style/worlds/cards/signals-instruments-darkroom-safelight-bay-hero.webp",
+      "board": "https://impeccable.style/worlds/cards/signals-instruments-darkroom-safelight-bay.webp"
+    },
+    {
+      "id": "textiles-weave-drape-fashion-industrial-quote-grammar",
+      "label": "Label system",
+      "verdict": "declined",
+      "lineage": "Label system",
+      "thesis": "Bold label plates turn usage dimensions into immediate wayfinding.",
+      "palette": [
+        "#F5F8FC",
+        "#172C43",
+        "#67C7F5",
+        "#E982B6"
+      ],
+      "materials": [
+        "Sky + pink adaptation",
+        "Stable readable data"
+      ],
+      "viewport": "Large navy tab labels, sky selection plates, pink total labels, squared result regions.",
+      "risk": "Oversized labels and stripes can crowd out data.",
+      "case": "Fashion labelling has weaker audience relevance; quotation and warning-like marks add reading noise.",
+      "kept": "Give headings, totals, and controls distinct typographic roles at every size.",
+      "hero": "https://impeccable.style/worlds/cards/textiles-weave-drape-fashion-industrial-quote-grammar-hero.webp",
+      "board": "https://impeccable.style/worlds/cards/textiles-weave-drape-fashion-industrial-quote-grammar.webp"
+    },
+    {
+      "id": "dream-surreal-impossible-worlds-alphabet-storm",
+      "label": "Living numerals",
+      "verdict": "declined",
+      "lineage": "Living numerals",
+      "thesis": "A typographic field lets the selected usage measure dominate the canvas.",
+      "palette": [
+        "#F5F8FC",
+        "#172C43",
+        "#67C7F5",
+        "#E982B6"
+      ],
+      "materials": [
+        "Sky + pink adaptation",
+        "Stable readable data"
+      ],
+      "viewport": "Large stable numbers lead to a sky chart, with pink marking the active measure.",
+      "risk": "Expressive transitions can distract from precise comparison.",
+      "case": "Typographic spectacle offers less identification and clarity than stable measurement graphics.",
+      "kept": "Let the current usage measure establish the first read with decisive scale.",
+      "hero": "https://impeccable.style/worlds/cards/dream-surreal-impossible-worlds-alphabet-storm-hero.webp",
+      "board": "https://impeccable.style/worlds/cards/dream-surreal-impossible-worlds-alphabet-storm.webp"
+    }
+  ],
+  "reroll": {
+    "registers": [
+      "safer",
+      "bolder"
+    ]
+  },
+  "buildPath": {
+    "value": "code",
+    "toggle": true
+  },
+  "canon": true,
+  "canonCard": {
+    "label": "Classic analytics",
+    "thesis": "The familiar analytics layout, carefully rebuilt in sky + pink.",
+    "palette": [
+      "#F5F8FC",
+      "#172C43",
+      "#67C7F5",
+      "#E982B6"
+    ],
+    "materials": [
+      "Neutral panels",
+      "Conventional metric cards",
+      "Compact toolbars"
+    ],
+    "viewport": "Top tabs and filters, five summary cards, chart, then table.",
+    "risk": "Polished but structurally close to the current UI.",
+    "comp": ".impeccable/mocks/decision/web-canon.webp",
+    "wireframe": {
+      "cols": 12,
+      "rows": 10,
+      "regions": [
+        {
+          "label": "Header",
+          "x": 0,
+          "y": 0,
+          "w": 12,
+          "h": 1,
+          "accent": false
+        },
+        {
+          "label": "Tabs + filters",
+          "x": 0,
+          "y": 1,
+          "w": 12,
+          "h": 2,
+          "accent": false
+        },
+        {
+          "label": "Summary cards",
+          "x": 0,
+          "y": 3,
+          "w": 12,
+          "h": 2,
+          "accent": true
+        },
+        {
+          "label": "Chart",
+          "x": 0,
+          "y": 5,
+          "w": 12,
+          "h": 3,
+          "accent": false
+        },
+        {
+          "label": "Table",
+          "x": 0,
+          "y": 8,
+          "w": 12,
+          "h": 2,
+          "accent": false
+        }
+      ]
+    }
+  },
+  "steer": true
+}

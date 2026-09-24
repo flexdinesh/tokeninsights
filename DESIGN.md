@@ -1,315 +1,401 @@
-# TokenInsights web visual language
+---
+name: "TokenInsights — Signal Studio"
+description: "Browser measurement workspace with sky selection and neutral readouts."
+colors:
+  background: "#eef4f9"
+  dark-background: "#101b2c"
+  foreground: "#1c3048"
+  dark-foreground: "#e5eff8"
+  card: "#ffffff"
+  dark-card: "#17263a"
+  popover: "#ffffff"
+  dark-popover: "#1c2e45"
+  primary: "#12628f"
+  dark-primary: "#83cefa"
+  primary-foreground: "#ffffff"
+  dark-primary-foreground: "#10273b"
+  secondary: "#e7f0f8"
+  dark-secondary: "#20344c"
+  secondary-foreground: "#304c67"
+  dark-secondary-foreground: "#d4e3f0"
+  muted: "#e7f0f8"
+  dark-muted: "#20344c"
+  muted-foreground: "#55687e"
+  dark-muted-foreground: "#adbdd0"
+  accent: "#ddeffc"
+  dark-accent: "#263f59"
+  accent-foreground: "#105d8b"
+  dark-accent-foreground: "#9bdafd"
+  destructive: "oklch(0.56 0.22 27)"
+  dark-destructive: "oklch(0.68 0.19 23)"
+  destructive-foreground: "oklch(0.985 0 0)"
+  dark-destructive-foreground: "oklch(0.985 0 0)"
+  border: "#d9e3ed"
+  dark-border: "#31455d"
+  input: "#8298ae"
+  dark-input: "#68819c"
+  ring: "#12628f"
+  dark-ring: "#83cefa"
+  success: "oklch(0.49 0.14 155)"
+  dark-success: "oklch(0.72 0.16 155)"
+  warning: "oklch(0.55 0.14 75)"
+  dark-warning: "oklch(0.78 0.15 80)"
+  error-surface: "oklch(0.96 0.025 25)"
+  dark-error-surface: "oklch(0.2 0.04 25)"
+  chart-1: "#147cab"
+  dark-chart-1: "#66c6f1"
+  chart-2: "#677d99"
+  dark-chart-2: "#9aacc4"
+  chart-3: "oklch(0.67 0.16 65)"
+  dark-chart-3: "oklch(0.76 0.15 70)"
+  chart-4: "oklch(0.58 0.16 165)"
+  dark-chart-4: "oklch(0.72 0.14 165)"
+  chart-5: "oklch(0.6 0.2 25)"
+  dark-chart-5: "oklch(0.72 0.18 25)"
+  chart-6: "oklch(0.62 0.18 330)"
+  dark-chart-6: "oklch(0.74 0.16 330)"
+  chart-7: "oklch(0.55 0.14 200)"
+  dark-chart-7: "oklch(0.72 0.13 200)"
+  chart-8: "oklch(0.63 0.16 125)"
+  dark-chart-8: "oklch(0.75 0.14 125)"
+  chart-9: "oklch(0.61 0.15 90)"
+  dark-chart-9: "oklch(0.78 0.14 90)"
+  chart-10: "oklch(0.54 0.16 225)"
+  dark-chart-10: "oklch(0.7 0.15 225)"
+  chart-11: "oklch(0.58 0.15 355)"
+  dark-chart-11: "oklch(0.73 0.14 355)"
+  chart-12: "oklch(0.54 0.11 45)"
+  dark-chart-12: "oklch(0.7 0.1 45)"
+  rail-surface: "#e5eef6"
+  dark-rail-surface: "#152238"
+typography:
+  readout:
+    fontFamily: "ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
+    fontSize: "1.875rem"
+    fontWeight: 600
+    lineHeight: 1.15
+    letterSpacing: "-0.035em"
+  headline:
+    fontFamily: "ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
+    fontSize: "2.25rem"
+    fontWeight: 600
+    lineHeight: 1.15
+    letterSpacing: "-0.035em"
+  metric:
+    fontFamily: "ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
+    fontSize: "1.5rem"
+    fontWeight: 600
+    lineHeight: 1.15
+    letterSpacing: "-0.035em"
+  title:
+    fontFamily: "ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
+    fontSize: "1.1875rem"
+    fontWeight: 600
+    lineHeight: 1.5
+    letterSpacing: "-0.015em"
+  section:
+    fontFamily: "ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
+    fontSize: "1.0625rem"
+    fontWeight: 600
+    lineHeight: 1.5
+    letterSpacing: "-0.015em"
+  body:
+    fontFamily: "ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
+    fontSize: "0.9375rem"
+    fontWeight: 400
+    lineHeight: 1.5
+  label:
+    fontFamily: "ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
+    fontSize: "0.8125rem"
+    fontWeight: 500
+    lineHeight: 1.5
+  numeric:
+    fontFamily: "ui-monospace, 'SFMono-Regular', Consolas, monospace"
+    fontSize: "0.9375rem"
+    fontWeight: 400
+    lineHeight: 1.5
+rounded:
+  sm: "0.25rem"
+  md: "0.5rem"
+  lg: "1rem"
+spacing:
+  1: "0.25rem"
+  2: "0.5rem"
+  3: "0.75rem"
+  4: "1rem"
+  6: "1.5rem"
+  8: "2rem"
+  12: "3rem"
+  16: "4rem"
+components:
+  button-primary:
+    backgroundColor: "{colors.primary}"
+    textColor: "{colors.primary-foreground}"
+    rounded: "{rounded.md}"
+    padding: "0.375rem 0.75rem"
+    height: "2.25rem"
+  button-outline:
+    backgroundColor: "{colors.background}"
+    textColor: "{colors.foreground}"
+    rounded: "{rounded.md}"
+    padding: "0.375rem 0.75rem"
+    height: "2.25rem"
+  button-secondary:
+    backgroundColor: "{colors.secondary}"
+    textColor: "{colors.secondary-foreground}"
+    rounded: "{rounded.md}"
+    padding: "0.375rem 0.75rem"
+    height: "2.25rem"
+  button-ghost:
+    backgroundColor: "transparent"
+    textColor: "{colors.foreground}"
+    rounded: "{rounded.md}"
+    padding: "0.375rem 0.75rem"
+    height: "2.25rem"
+  button-destructive:
+    backgroundColor: "{colors.destructive}"
+    textColor: "{colors.destructive-foreground}"
+    rounded: "{rounded.md}"
+    padding: "0.375rem 0.75rem"
+    height: "2.25rem"
+  input-text:
+    backgroundColor: "{colors.card}"
+    textColor: "{colors.foreground}"
+    rounded: "{rounded.md}"
+    padding: "0.25rem 0.75rem"
+    height: "2.25rem"
+  navigation-selected:
+    backgroundColor: "{colors.card}"
+    textColor: "{colors.accent-foreground}"
+    rounded: "{rounded.sm}"
+    padding: "0.5rem 1rem"
+  filter-chip:
+    backgroundColor: "{colors.accent}"
+    textColor: "{colors.accent-foreground}"
+    rounded: "{rounded.sm}"
+    padding: "0.25rem 0.5rem"
+    height: "2rem"
+  card:
+    backgroundColor: "{colors.card}"
+    textColor: "{colors.foreground}"
+    rounded: "{rounded.lg}"
+  total-readout:
+    backgroundColor: "transparent"
+    textColor: "{colors.foreground}"
+    padding: "0"
+---
 
-This is the visual contract for the React application in `packages/web`, including
-all six Aggregation Tabs. Read it before changing UI. The architecture and token
-usage semantics remain in [`docs/design.md`](docs/design.md).
+# Design System: TokenInsights
 
-**Source of truth:** semantic values live in
-[`packages/web/src/tokens.css`](packages/web/src/tokens.css), Tailwind exposes them as
-utilities, and local shadcn primitives live in `packages/web/src/components/ui`.
-Use those primitives and existing feature styles before adding a visual value.
-Token values below are reference sizes at the browser's default 16px root; preserve
-`rem`/`em` sizing and user font preferences.
+## Overview
 
-## Design direction
+**Creative North Star: "Signal Studio"**
 
-- Calm: neutral surfaces and generous separation between sections.
-- Clear: summary first, visualization second, detailed evidence third.
-- Precise: aligned numbers, explicit labels, predictable controls.
-- Restrained: emerald has a purpose; surfaces carry little decoration.
-- Approachable: system sans typography and crisp corner rounding.
-- Cohesive: every Aggregation Tab shares the same dashboard structure.
+Signal Studio treats usage as a coordinated bank of readouts and a plot. Pale blue surroundings, a white instrument surface, navy readouts and sky controls make dense measurements approachable. Dark mode preserves those roles on ink-blue surfaces.
 
-Avoid decorative gradients, glowing cards, excessive pills, nested card stacks,
-decorative shadows, faint essential text, and page-specific palettes. Do not turn
-the analytics dashboard into a marketing page or reduce usability for minimalism.
+This is an Operate interface: readable local system typography, tabular numerals, restrained motion, and explicit control states support repeated inspection. Use the existing TokenInsights logo and embedded assets; the browser must work offline without remote fonts.
 
-## Design principles
+This contract covers `packages/web`. Architecture and token semantics remain in
+[docs/design.md](docs/design.md); terminal styling remains in
+[packages/cli/DESIGN.md](packages/cli/DESIGN.md). The normative implementation is
+[packages/web/src/tokens.css](packages/web/src/tokens.css), shared styles, and local
+UI primitives. Frontmatter records light roles plus `dark-` counterparts; code
+switches the same CSS roles for explicit or system dark mode.
 
-1. Consistency over novelty. Meaningful differences earn variants; incidental ones do not.
-2. Hierarchy before decoration. Use placement, size, weight, and whitespace first.
-3. Spacing communicates grouping. Related controls sit closer than separate sections.
-4. Semantic colors over arbitrary colors. Components must work in both themes.
-5. Reuse shared components and styles before creating another implementation.
-6. Keep analytics dense but readable. Never squeeze labels or targets to fit more data.
-7. Responsive layouts preserve order, meaning, and access to every view.
-8. Styling must not change filtering, aggregation, token semantics, or sync behavior.
+**Key Characteristics:**
 
-## Color
+- One shared instrument surface for readouts and chart.
+- Sky selection; neutral readouts; quiet blue surfaces.
+- Readable tables, scalable type, and visible keyboard focus.
+- Flat surfaces with rounded edges; depth reserved for overlays.
 
-| Role | Token | Rule |
-| --- | --- | --- |
-| Application canvas | `--background` | Page background; separates functional surfaces. |
-| Primary surface | `--card`, `--popover` | Panels and floating layers. |
-| Primary text | `--foreground` | Headings, values, entered text, important labels. |
-| Primary action | `--primary`, `--primary-foreground` | One dominant action per group. |
-| Secondary control | `--secondary`, `--secondary-foreground` | Quiet controls and grouped choices. |
-| Supporting content | `--muted`, `--muted-foreground` | Metadata, captions, table headings, skeletons. |
-| Selection / hover | `--accent`, `--accent-foreground` | Neutral persistent or interactive emphasis. |
-| Divider / input | `--border`, `--input` | Hairlines and stronger control boundaries. |
-| Focus | `--ring` | Two-pixel keyboard focus indicator. |
-| Failure | `--destructive`, `--destructive-foreground`, `--error-surface` | Failed/destructive meaning and error banners. |
-| Status | `--success`, `--warning` | Completed and caution meanings. |
-| Data series | `--chart-1` through `--chart-12` | Chart marks only; independent from actions. |
+## Colors
 
-Use one solid primary action per action group. Most surfaces remain neutral. Do not
-color every metric or harness. Summary cards have equal visual weight. Selected controls combine accent treatment with a
-border, underline, count, checkmark, or stronger weight.
+Cool blue neutrals support clear sky interactions and calm, consistent readouts.
 
-Status must include text or an icon as well as color. A local-machine dot does not
-prove successful sync; the explicit sync label/progress owns that information.
-Warnings indicate caution, not failure. Errors must not use the warning palette.
+### Primary
 
-Explicit light/dark and system theme use identical semantic roles. Keep both dark
-definitions in `tokens.css` equivalent; never add component-local theme overrides.
-Use primary/secondary text in tooltips and legends; series colors belong to marks.
-Categorical model, provider, and harness bars use distinct palette colors, repeated
-in their drill-down labels. Category identity remains available as text.
-The existing chart-area fade may communicate area under the line; do not reuse it
-as decoration. Values and series names must also be available in text/table form.
+- **Sky ink** (`primary`, `accent-foreground`, `ring`): primary buttons,
+  selected controls, sort emphasis, and keyboard focus.
+- **Pale sky** (`accent`): chart controls and active filters.
+- **Plot sky** (`chart-1`): the principal timeline series, separate from action ink.
+
+### Secondary
+
+- **Slate blue** (`chart-2`): the secondary data series. Readout values use
+  the foreground color; total emphasis comes from type size, not a separate hue.
+
+### Tertiary
+
+- `chart-3` through `chart-12` distinguish categories and context comparisons.
+  Preserve text identities and matching drill-down marks.
+- `success`, `warning`, `destructive`, and `error-surface` retain status
+  meanings. Pair status color with a label or icon.
+
+### Neutral
+
+- **Blue workspace** (`background`) surrounds the **instrument surface**
+  (`card`); `rail-surface` groups navigation and filters.
+- **Navy text** (`foreground`) carries main values and labels;
+  `secondary-foreground` and `muted-foreground` carry supporting information.
+- `border` separates regions; `input` provides stronger control boundaries.
+  `popover` supplies floating surfaces, including the raised dark treatment.
+
+**The Signal Roles Rule.** Sky identifies controls and the principal plotted series. Category colors identify chart marks and their corresponding text labels, not unrelated controls.
 
 ## Typography
 
-Use `--font-sans`, the local system sans stack; no remote font dependency. Use
-`--font-mono` only for dense numeric table cells or identifiers that need it.
+**Interface Font:** the local `font-sans` system stack.
+**Numeric Font:** `font-mono` for dense numeric table cells.
 
-| Style | Size token | Weight / line height | Use |
-| --- | --- | --- | --- |
-| Page title | `--text-3xl` (38), mobile `--text-2xl` (30) | Semibold / tight | One `h1` per page. |
-| Summary value | `--text-2xl` (30) | Semibold / tight | High-level metric values, not section headings. |
-| Brand | `--text-lg` (19), mobile `--text-base` (17) | Bold + medium / normal | Existing wordmark only. |
-| Section heading | `--text-base` (17) | Semibold / normal | `h2`, chart and table titles. |
-| Subsection heading | `--text-sm` (15) | Semibold / normal | `h3` and local group titles. |
-| Body / controls | `--text-sm` (15) | Regular or medium / normal | Dashboard prose, controls, table identities. |
-| Reading / mobile entry | `--text-base` (17) | Regular / normal | Longer explanatory content and mobile text/date entry. |
-| Label / metadata | `--text-xs` (13) | Medium / regular, normal | Filters, captions, axis labels, status metadata. |
+System UI typography is intentional for this Operate surface. No remote font or
+decorative display face is required. The frontmatter records the observed role
+ramp; use the corresponding `text-*`, weight, leading, and tracking tokens.
 
-Use `--leading-tight` only for titles and large values; everything else uses
-`--leading-normal`. Use `--tracking-tight` for titles/values/brand,
-`--tracking-heading` for section headings, and `--tracking-label` only for short
-uppercase kickers or the LOCAL badge. Body and ordinary labels use normal tracking.
-Weights come from `--weight-medium`, `--weight-semibold`, `--weight-bold`, or the
-regular default. Do not rely on browser-default heading margins or weights.
+- **Readout:** total quantity; other metrics use the metric role.
+- **Headline:** page title, reduced to the metric size on narrow screens.
+- **Title:** chart title and brand scale; the brand uses weight 650 with its
+  secondary word at 500.
+- **Section:** table and ordinary section headings; also readable mobile entry.
+- **Body:** controls, descriptions, table identities.
+- **Label:** metadata, filters, axes, and supporting readout explanations.
 
-Use tabular numerals for metrics, counters, and tables. Right-align numeric columns.
-Do not shrink metadata below `--text-xs`. Long identities may truncate when their
-full value remains available; supporting descriptions may wrap. Add a new type
-style only for a distinct semantic role that weight, color, and spacing cannot express.
-
-## Spacing
-
-Use the 4px-based scale: `--space-1/2/3/4/6/8/12/16` → 4/8/12/16/24/32/48/64.
-
-| Relationship | Rule |
-| --- | --- |
-| Label to input; heading to caption | `--space-1` |
-| Icon to label; related actions; heading to body | `--space-2` |
-| Filter rows, card/grid gaps, field groups | `--space-3` |
-| Form/overlay inset; panel-heading vertical inset | `--space-4`; compact chart heading `--space-3` |
-| Between filters, chart, and table | `--space-6` |
-| After summary group | `--space-6` |
-| Empty-state vertical breathing room | `--space-12` |
-| Card/panel horizontal inset | `--panel-padding`: 24 desktop, 16 at ≤75rem |
-
-Align panel titles, metric controls, notes, and table edges to the same panel inset.
-Use padding inside a component, gap between siblings, and margins at section
-boundaries. Avoid stacking multiple margins to approximate the scale.
-
-Exceptions are for geometry, not general spacing: one-pixel rules, focus offsets,
-circles, measured table-column limits, chart-library pixel coordinates, and
-Radix's 8px anchor offset and 16px viewport collision inset. Document an exception's purpose where introduced.
-Do not mint a global token for every library coordinate or content-specific width.
+**The Readable Measurement Rule.** Use tabular numerals for readouts and right-aligned numeric columns. Reflow the workspace before reducing type; retain the user's root font size.
 
 ## Layout
 
-- Use the shared `.dashboard` container, capped by `--content-width` (90rem).
-- Share `--page-gutter` between header and content: 24 desktop,
-  16 at ≤38rem. Align header contents with the capped dashboard on ultrawide screens.
-- Use `--reading-width` (42rem) for prose-heavy content; analytics use available width.
-- Header minimum height is `--header-height` (64px). Let it grow when content wraps.
-  It may remain sticky, but must stay in document flow. No sidebar is part of the current visual system.
-- Preserve page order: Aggregation Tabs and quick date ranges → filters → sync
-  feedback → summaries → chart → table/summary → footer.
-- Keep the source selector in the header beside source-aware status/actions. It must
-  remain reachable when dashboard requests fail; never bury recovery inside failed content.
-- Keep five equal-weight, compact summary cards in one desktop row. Use three columns
-  at ≤55rem and two at ≤38rem. Summary cards use `--space-4` inset.
-- Use flex wrapping for action groups, `minmax(0, 1fr)` for equal grid columns, and
-  `min-width: 0` on shrinkable content. Never hide document overflow to conceal bugs.
-- Scroll wide tables inside `.table-scroll`; preserve numeric column readability.
-  Table headers are sticky inside that viewport; full-result summaries remain outside it.
-- Use normal flow for page content. Reserve absolute positioning for genuine
-  overlays/accessibility utilities. Use `--layer-sticky`, `--layer-popover`, and
-  `--layer-skip-link`; do not escalate arbitrary z-index values.
+The dashboard caps at 100rem with shared header/content alignment. Page gutters
+are 2rem, reducing to 1.5rem at 75rem viewport width and 1rem at 38rem.
+Panel inset is 1.5rem, reducing to 1rem at 75rem. Use the frontmatter spacing
+scale for grouping; local chart and table geometry may remain component-specific.
 
-## Borders, radii, and elevation
+Desktop composition: source/action header, page heading and quick dates, view
+navigation, then results left and filters right. The results contain a shared
+readout/chart surface followed by the table. The filter rail is 17rem, reducing
+to 15rem at 75rem. The gap is 1.5rem, then 1rem.
 
-- `--radius-sm` (4px): badges, chips, segmented choices, checkbox-option hover.
-- `--radius-md` (8px): buttons, fields, tooltips.
-- `--radius-lg` (12px): panels, summary cards, popovers, alerts.
-- Circular status marks use 50%; do not turn ordinary controls into pills.
-- Use `--border-width` for rules; `--focus-width` for focus/active-view indicators.
-- Use `--shadow-overlay` only for overlays/tooltips. Cards and selected segments
-  have no shadow. Distinguish sections with whitespace before adding a border/card.
+The named dashboard container stacks filters above results at 65rem of available
+container width. Its disclosure becomes visible there. The React disclosure's
+initial open state and resize defaults use viewport `matchMedia('(min-width:
+65rem)')`; this is distinct from the CSS container threshold. Preserve manual
+disclosure interaction between threshold crossings.
+
+The readout bank starts with a 1.25fr total and four equal remaining columns.
+At 45rem of readout-container width it becomes two columns with total spanning
+both. Container queries respond to enlarged root text as well as narrow space;
+keep this reflow at 200% root font size.
+
+At 55rem viewport width, navigation expands and sync cards become two columns.
+At 38rem, header controls use two rows; quick dates span the width; navigation
+scrolls horizontally; filter dimensions form two columns; date fields stack.
+Touch/coarse-pointer control sizes rise to 2.75rem. Preserve every view and action.
+
+The desktop header is sticky and remains in flow; the narrow header is relative.
+Tables scroll within their own region (35rem maximum height), with sticky headings
+and an independent full-result summary. The chart viewport is 17rem; automatic
+Y-axis width, a 48px category-axis height, wrapping controls, and an HTML
+context legend outside the SVG preserve enlarged-text readability. Do not turn
+these plotting dimensions into global spacing tokens.
+
+## Elevation & Depth
+
+Surface tone, whitespace, and fine rules provide hierarchy. Readouts and chart
+share one flat instrument surface. Navigation selection uses a surface and border;
+filters use a quiet tinted rail. Overlays and chart tooltips alone use
+`shadow-overlay`; its theme-specific values live in the sidecar.
+
+**The Flat Instrument Rule.** Resting surfaces use tone and hairlines. Reserve the shared shadow for overlays and chart tooltips.
+
+State colors transition over 150ms; active sync rotates over 1.2s. Popovers use the
+existing primitive's fade/scale entry and exit. Charts do not animate their data.
+Reduced-motion preferences disable animation and transitions.
+
+## Shapes
+
+Small corners belong to compact controls, chips, badges, and navigation items;
+medium corners to fields and regular controls; large corners to instrument,
+table, filter, and overlay surfaces. Readouts are plain text groups without
+individual surfaces or selection borders. Status dots remain circular.
+
+Rules are 0.0625rem; focus strokes are 0.125rem. Focus
+offset is 0.125rem, inset where a clipped viewport requires it. Avoid arbitrary
+pills, new shadow styles, or nested card borders without a functional reason.
 
 ## Components
 
-### Buttons and density
+### Buttons
 
-Use the local shadcn `Button` as the shared control foundation. Its CVA variants
-express primary, outline, secondary, ghost, and destructive hierarchy; selected is
-a state, not another product-specific variant. Feature classes may control layout,
-not recreate the primitive.
+Use the shared Button variants: primary, outline, secondary, ghost, destructive.
+The regular control minimum height is 2.25rem; compact is 2rem; large is 2.5rem.
+Frontmatter component heights describe these minima, not clipping heights.
+Compact controls have small corners; regular controls have medium corners.
+Primary/destructive hover reduces fill opacity to 90%; secondary uses 80%;
+outline and ghost use the sky accent surface. Keyboard focus uses sky rings;
+disabled controls use native disabled behavior and 50% opacity. No hover movement.
 
-Control sizes are shared across Button and Select: `sm` is 32px
-(`--control-height-sm`), default is 36px (`--control-height-md`), and `lg` is 40px
-(`--control-height-lg`). Icon variants use the same square dimensions. Use `sm` for
-filter, chart, and segmented toolbars; default for header, form, table, and pagination
-controls. Control icons use `--icon-size` (16px), independent of caption font size.
-Keep icon style consistent with the existing Lucide outline set. Do not add per-page
-density modes.
+### Inputs and overlays
 
-### Forms and menus
+Keep visible labels, shared field borders, native date behavior, and associated
+validation messages. Search wrappers own their focus outline. Multiselect rows
+include checkboxes with full labels; maintain search, Escape dismissal, and focus
+return. Popovers use a 22rem target width, available-height scrolling, 8px anchor
+offset, and 16px collision clearance. Source selection remains in the header with
+hostname and URL disambiguation, plus reachable add/remove/recovery controls.
 
-Use visible labels, shared field borders/radii/heights, and explicit descriptions
-for errors. Search wrappers own the focus ring; do not remove their visible focus.
-Date inputs retain platform behavior. Use local shadcn `Input`, `Select`, `Checkbox`,
-and `Popover` primitives for other form controls. Checkbox labels provide the full
-clickable row. Reuse `MultiSelect` and `DateFilter`; retain selected values, search,
-Escape dismissal, and focus return.
+### Navigation and chips
 
-The source selector is the browser's persistent server switcher, not a data-merging
-filter. Use a visible hostname as its primary label and the normalized URL as
-disambiguating metadata. Its add form accepts HTTP(S) URLs or bare `host:port`, has
-a visible label, describes normalization, associates validation/connection errors
-with the input, and saves only after the source validates. Removing a source needs
-a clear target and must not make the page-origin source removable. Preserve current
-dashboard filters and navigation when selection changes.
+View links sit in a rounded tinted track; active links combine a white or dark
+card surface, border, sky text, stronger weight, and `aria-current`.
+Quick dates and chart metrics expose `aria-pressed`. Filter chips use sky ink,
+tint, a border, a clear dimension/value label, and a remove action. Category
+identity and selection must remain understandable without color.
 
-### Cards and panels
+### Instrument readouts
 
-Use the local shadcn `Card` for overview metrics and chart/table/sync regions.
-Feature classes may add layout and chart geometry without rebuilding the surface.
-Do not wrap every heading, toolbar, or paragraph in a card. Share panel padding.
-Only total receives accent-surface emphasis. Avoid fixed content heights that clip
-translated text, long metadata, or enlarged fonts.
+Five static readouts belong to one compact bank above the plot. Total uses
+1.875rem type and the other values use 1.5rem. Each text group has a 0.25rem gap
+and no internal padding; the bank supplies shared spacing. All views use the
+same informational treatment, with no click, hover, tooltip, or selection state.
+Chart metric selection belongs exclusively to the chart toolbar.
 
-### Navigation and tables
+Readout values use tabular numerals, abbreviated display, and exact accessible
+values. Supporting token composition and full synced-session coverage may wrap.
+Narrow screens hide the total's short explanatory detail but retain the value and
+label. Do not make absent metrics look interactive.
 
-Aggregation Tabs use text and icons, an accent underline, stronger selected weight,
-and `aria-current`. The underline has square ends with no corner radius. Quick date
-ranges and chart metrics use `aria-pressed`.
-Use navigation semantics rather than adding partial ARIA tab behavior.
-Keep table identities left-aligned and numbers right-aligned. Sort state includes
-direction icons and `aria-sort`. Use subtle row dividers and hover, not alternating
-near-white shades. Keep summaries independent of pagination and scrolling.
+### Charts and tables
 
-### Overlays and status
+Keep timeline sky ink and its quantity-bearing area fade. Categorical marks use
+distinct series colors repeated in drill-down labels. Context comparisons retain
+their HTML legend below the SVG. Axis and tooltip text use readable semantic text
+colors; charts supplement exact tables.
 
-Popovers use `--popover-width`, at least 16px viewport clearance, available-height scrolling,
-surface background, and overlay shadow. A future modal must use an accessible
-dialog primitive with a name, focus containment/return, and deliberate dismissal;
-do not build a second ad hoc overlay system. There is no modal component today.
-Feedback includes a readable message and recovery action. Do not imply completion
-through green alone or replace useful sync detail with a spinner.
+Tables use left-aligned identities, right-aligned numeric values, subtle dividers,
+and a quiet hover surface. Sort state includes direction and `aria-sort`.
+Wrapping controls, column selection, pagination, and full-filter summaries remain
+accessible independently of horizontal scrolling.
 
-## Interaction states
+### Feedback
 
-| State | Expectation |
-| --- | --- |
-| Hover | Neutral surface change or text emphasis; primary uses accent hover. Never move layout. |
-| Focus | Visible 2px accent outline with 2px offset. Inset rings in clipped table/tab viewports. Keep a ring around search wrappers. |
-| Active / pressed | Primary uses accent active; standard controls emphasize their boundary. No scale/bounce effects. |
-| Selected | Persistent border/underline, weight/check/count, and appropriate ARIA state. Must survive hover. |
-| Disabled | Native disabled behavior, default cursor, `--opacity-disabled`; no hover response. |
-| Loading | Stable placeholders, `aria-busy`/status text, explicit syncing label; never relabel stale metrics as a new filter result. |
-| Error | Error color plus readable message/icon, associated field descriptions, and a usable retry/correction path. |
+Preserve explicit loading, empty, sync, and error text with usable recovery.
+Skeletons retain region structure; errors use error surfaces and messages.
+An unavailable source remains selected until the user changes it; never label
+another source's data with that hostname.
 
-When the active source is unavailable, keep its hostname selected, keep add/remove
-and source-switch actions enabled, and show a readable retry/recovery path. Never
-silently fall back to another source or present cached data from one source under
-another hostname.
+## Do's and Don'ts
 
-Use `--duration-fast` for color/border transitions. Continuous rotation is reserved
-for active loading. Honor reduced motion; state labels must work without animation.
+### Do:
 
-## Responsive design
+- Do reuse semantic tokens and local shadcn primitives in both themes.
+- Do keep the source selector and recovery actions reachable when requests fail.
+- Do preserve readable type, wrapping labels, visible focus, and 44px-equivalent touch targets.
+- Do keep exact values, session coverage, and chart meaning available as text.
+- Do retain the existing logo and offline font/assets behavior.
 
-Keep the existing content-driven thresholds: **75rem / 55rem / 38rem**. These are
-literal media-query values because CSS custom properties cannot drive media queries.
+### Don't:
 
-- ≤75rem: reduce shared gutters/insets; hide redundant quick date shortcuts while
-  keeping the full Date Range Filter.
-- ≤55rem: collapse summary/sync columns; hide secondary header metadata; wrap table tools.
-- ≤38rem: stack heading/status; use a two-column summary grid and a horizontally
-  scrollable navigation rail so all six views remain discoverable. Stack date entry fields.
-- At ≤38rem **or** with a coarse pointer, standard and compact targets are at least
-  44px tall; icon-only controls are at least 44px wide. Checkbox labels own the target.
-- Allow the header to wrap on very narrow screens. Keep Sync, Reload, and theme
-  actions reachable. Keep the source selector reachable; its trigger may truncate
-  the hostname when the full hostname and URL remain available in the popover.
-  Hidden icon-button text still needs an accessible name.
-- Preserve DOM/reading order. Reflow rather than CSS-ordering unrelated sections.
-- Tables may scroll horizontally; the document must not. Long status/count text
-  wraps. Never hide metrics or shrink typography just to force a desktop grid to fit.
-- Check 320px and 390px widths, tablet, desktop, ultrawide alignment, and enlarged text.
-
-## Accessibility
-
-- Meet WCAG AA: at least 4.5:1 for ordinary text, 3:1 for large text, and 3:1 for
-  necessary control boundaries, focus indicators, and meaningful chart marks.
-  Decorative panel dividers need not carry control-level contrast.
-- Check actual foreground/background pairs in light, dark, hover, and selected states.
-- Keep keyboard navigation, skip link, focus visibility, Escape dismissal, and focus
-  return intact. Never make a hover-only interaction the sole way to access data.
-- Use visible labels where possible and accessible names for icon-only actions.
-  Associate validation messages with fields; use `aria-invalid` for invalid inputs.
-- Give the source selector a persistent accessible name, expose its selected source,
-  announce connection validation/failure without moving focus, and return focus after
-  its popover closes or a source is removed.
-- Preserve browser zoom and scalable type. Mobile text/date entry uses readable
-  16px-equivalent text. Do not disable zoom in viewport metadata.
-- Desktop targets must exceed the 24px WCAG minimum; use the system's 32/36px sizes.
-  Small-screen/coarse-pointer targets use 44px minimums.
-- Communicate selection, sorting, loading, success, and error without color alone.
-  Charts supplement the exact table data and keyboard-accessible filter labels.
-
-## Rules for future UI work
-
-> Do not introduce a new color, font size, spacing value, radius, shadow, or component
-> variant unless the existing system cannot express the required design meaning.
-
-Before introducing a visual value or pattern, ask:
-
-1. Does a token already exist?
-2. Does an existing component/shared style solve this?
-3. Is this a new visual pattern?
-4. Is the difference meaningful or incidental?
-5. Does it remain coherent on mobile, with long data, and at enlarged text sizes?
-6. Does it follow `DESIGN.md`, both themes, and keyboard interaction rules?
-
-If an addition is necessary, explain the semantic role, update tokens and this
-document together, and review every affected shared component. Do not patch the
-generated assets directly; rebuild the embedded web application. Verify all six
-views, selected filters, empty/loading/error states, popovers, and responsive layouts.
-
-## Geist-inspired refresh (September 2026)
-
-Geist is research input, not a dependency. TokenInsights owns its neutral palette,
-system fonts, local shadcn source, and Tailwind theme. The refresh applies these
-decisions:
-
-- canonical shadcn semantic color roles in OKLCH;
-- flat neutral surfaces, crisp hairlines, and overlay-only shadow;
-- black/inverse primary actions with independent blue/violet/amber chart series;
-- compact 32px desktop controls and 44px touch targets;
-- equal-weight summary cards and a narrower 90rem dashboard measure;
-- compact utility copy, noun-only analytics tabs, and a scrollable mobile tab rail;
-- local `Button`, `Badge`, `Card`, `Input`, `Skeleton`, `Popover`, `Select`,
-  `Checkbox`, `Alert`, and `Table` primitives using Tailwind utilities and Radix
-  behavior where appropriate.
-
-Comparison bars share the existing 64px maximum width so sparse Context results do
-not expand into oversized blocks. Chart plot coordinates, measured identity-column widths, the 14rem chart viewport,
-35rem table scroll cap, and Radix anchor positioning remain local functional geometry.
-Their values are not invitations to add new spacing or typography scales.
+- Don't reintroduce equal-weight standalone summary cards or a black/inverse primary palette.
+- Don't make summary readouts interactive; chart metric selection belongs to the chart toolbar.
+- Don't shrink typography or conceal document overflow to fit a desktop grid.
+- Don't use decorative meters, glowing cards, or ornamental gradients; the chart-area fade represents plotted quantity.
+- Don't let styling change token semantics, filtering, sync scope, or source identity.

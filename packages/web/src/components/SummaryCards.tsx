@@ -1,9 +1,13 @@
 import type { Dashboard } from '../contracts'
 import { exactCount, formatCount } from '../format'
-import { Card } from './ui/card'
 
 export function SummaryCards({ summary }: { summary: Dashboard['summary'] }) {
-  const cards = [
+  const cards: {
+    label: string
+    value: number
+    detail: string
+    className: string
+  }[] = [
     {
       label: 'Total tokens',
       value: summary.total,
@@ -38,16 +42,13 @@ export function SummaryCards({ summary }: { summary: Dashboard['summary'] }) {
   return (
     <section className="summary-grid" aria-label="Filtered usage summary">
       {cards.map((card) => (
-        <Card key={card.label} className={`summary-card ${card.className}`}>
-          <span className="eyebrow">{card.label}</span>
-          <strong
-            title={exactCount(card.value)}
-            aria-label={`${card.label}: ${exactCount(card.value)}`}
-          >
+        <div key={card.label} className={`summary-card ${card.className}`}>
+          <span className="metric-label">{card.label}</span>
+          <strong aria-label={`${card.label}: ${exactCount(card.value)}`}>
             {formatCount(card.value)}
           </strong>
           <span className="card-detail">{card.detail}</span>
-        </Card>
+        </div>
       ))}
     </section>
   )

@@ -68,6 +68,7 @@ function ConnectionScreen({
     <div className="app-shell">
       <header className="app-header">
         <div className="brand">
+          <img src="/tokeninsights-logo.png" alt="" className="brand-mark" />
           <span>
             Token<span className="brand-light">Insights</span>
           </span>
@@ -140,6 +141,7 @@ function DashboardShell() {
       </a>
       <header className="app-header">
         <div className="brand">
+          <img src="/tokeninsights-logo.png" alt="" className="brand-mark" />
           <span>
             Token<span className="brand-light">Insights</span>
           </span>
@@ -154,6 +156,7 @@ function DashboardShell() {
           <Button
             variant="ghost"
             size="icon"
+            className="theme-button"
             title={`Theme: ${theme}`}
             aria-label={`Theme: ${theme}. Change theme`}
             onClick={() =>
@@ -182,7 +185,11 @@ function DashboardShell() {
             <RefreshCw size="1em" className={analytics.isFetching && enabled ? 'spin' : ''} />
             <span>Reload Data</span>
           </Button>
-          <Button disabled={running || !bootstrap} onClick={() => sync.mutate()}>
+          <Button
+            className="sync-button"
+            disabled={running || !bootstrap}
+            onClick={() => sync.mutate()}
+          >
             {running ? (
               <LoaderCircle size="1em" className="spin" />
             ) : (
@@ -211,7 +218,13 @@ function DashboardShell() {
       )}
       {bootstrap && (
         <main id="dashboard" className="dashboard">
-          <h1 className="sr-only">Token usage</h1>
+          <div className="dashboard-heading">
+            <div>
+              <h1>Token usage</h1>
+              <p>Your usage, in perspective.</p>
+            </div>
+            <QuickPeriods />
+          </div>
           <div className="view-controls">
             <nav className="view-tabs" aria-label="Analytics views">
               {tabs.map(({ id, icon: Icon }) => (
@@ -228,85 +241,96 @@ function DashboardShell() {
                 </Button>
               ))}
             </nav>
-            <QuickPeriods />
           </div>
-          <FilterToolbar
-            baseUrl={active.baseUrl}
-            facets={facets.data}
-            revision={revision}
-            enabled={enabled}
-          />
-          {(bootstrapQuery.error || statusQuery.error || sync.error) && (
-            <ErrorBanner
-              message={
-                bootstrapQuery.error?.message ??
-                statusQuery.error?.message ??
-                sync.error?.message ??
-                'Request failed'
-              }
-              onRetry={() => {
-                if (bootstrapQuery.error) void bootstrapQuery.refetch()
-                else if (sync.error) sync.mutate()
-                else void statusQuery.refetch()
-              }}
+          <div className="studio-layout">
+            <FilterToolbar
+              baseUrl={active.baseUrl}
+              facets={facets.data}
+              revision={revision}
+              enabled={enabled}
             />
-          )}
-          {status?.running && <SyncProgress status={status} />}
-          {status?.error && (
-            <Alert className="sync-error" variant="destructive" role="alert">
-              <CircleAlert size="1.3em" />
-              <AlertDescription>
-                <AlertTitle>Sync needs attention</AlertTitle>
-                <p>{status.error}</p>
-              </AlertDescription>
-              <Button variant="outline" onClick={() => sync.mutate()} disabled={running}>
-                Retry Sync
-              </Button>
-              {!enabled && !recoveryFailed && (
-                <Button variant="outline" onClick={() => setInspectedRevision(status.revision)}>
-                  Inspect Existing Data
-                </Button>
+            <div className="studio-results">
+              {(bootstrapQuery.error || statusQuery.error || sync.error) && (
+                <ErrorBanner
+                  message={
+                    bootstrapQuery.error?.message ??
+                    statusQuery.error?.message ??
+                    sync.error?.message ??
+                    'Request failed'
+                  }
+                  onRetry={() => {
+                    if (bootstrapQuery.error) void bootstrapQuery.refetch()
+                    else if (sync.error) sync.mutate()
+                    else void statusQuery.refetch()
+                  }}
+                />
               )}
-            </Alert>
-          )}
-          {enabled && analytics.error && (
-            <ErrorBanner message={analytics.error.message} onRetry={reload} />
-          )}
-          {enabled && facets.error && (
-            <ErrorBanner
-              message="Filter values couldn’t load."
-              onRetry={() => void facets.refetch()}
-            />
-          )}
-          {enabled && !data && !analytics.error && <DashboardSkeleton />}
-          {enabled && data && (
-            <div className="analytics" aria-busy={analytics.isFetching}>
-              <SummaryCards summary={data.summary} />
-              {analytics.isPlaceholderData && !resultsMatchView ? (
-                <RouteResultsSkeleton />
-              ) : (
-                <>
-                  {analytics.isPlaceholderData && (
-                    <span className="sr-only" role="status" aria-label="Updating view results">
-                      Updating view results
-                    </span>
+              {status?.running && <SyncProgress status={status} />}
+              {status?.error && (
+                <Alert className="sync-error" variant="destructive" role="alert">
+                  <CircleAlert size="1.3em" />
+                  <AlertDescription>
+                    <AlertTitle>Sync needs attention</AlertTitle>
+                    <p>{status.error}</p>
+                  </AlertDescription>
+                  <Button variant="outline" onClick={() => sync.mutate()} disabled={running}>
+                    Retry Sync
+                  </Button>
+                  {!enabled && !recoveryFailed && (
+                    <Button variant="outline" onClick={() => setInspectedRevision(status.revision)}>
+                      Inspect Existing Data
+                    </Button>
                   )}
-                  <Suspense
-                    fallback={
-                      <Skeleton
-                        className="skeleton-chart"
-                        role="status"
-                        aria-label="Loading chart"
-                      />
-                    }
-                  >
-                    <UsageChart rows={data.chart} />
-                  </Suspense>
-                  <ResultsTable data={data} />
-                </>
+                </Alert>
+              )}
+              {enabled && analytics.error && (
+                <ErrorBanner message={analytics.error.message} onRetry={reload} />
+              )}
+              {enabled && facets.error && (
+                <ErrorBanner
+                  message="Filter values couldn’t load."
+                  onRetry={() => void facets.refetch()}
+                />
+              )}
+              {enabled && !data && !analytics.error && <DashboardSkeleton />}
+              {enabled && data && (
+                <div className="analytics" aria-busy={analytics.isFetching}>
+                  <div className="usage-workbench">
+                    <SummaryCards summary={data.summary} />
+                    {analytics.isPlaceholderData && !resultsMatchView ? (
+                      <RouteResultsSkeleton />
+                    ) : (
+                      <>
+                        {analytics.isPlaceholderData && (
+                          <span
+                            className="sr-only"
+                            role="status"
+                            aria-label="Updating view results"
+                          >
+                            Updating view results
+                          </span>
+                        )}
+                        <Suspense
+                          fallback={
+                            <Skeleton
+                              className="skeleton-chart"
+                              role="status"
+                              aria-label="Loading chart"
+                            />
+                          }
+                        >
+                          <UsageChart rows={data.chart} />
+                        </Suspense>
+                      </>
+                    )}
+                  </div>
+                  {(!analytics.isPlaceholderData || resultsMatchView) && (
+                    <ResultsTable data={data} />
+                  )}
+                </div>
               )}
             </div>
-          )}
+          </div>
           <footer className="app-footer">
             <span>
               <span className="status-dot" />

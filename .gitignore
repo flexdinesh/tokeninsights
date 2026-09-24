@@ -7,3 +7,6 @@ packages/cli/bin/
 packages/web/test-results/
 packages/web/playwright-report/
 packages/web/dist/
+packages/cli/.impeccable/review/
+.impeccable/review/
+.playwright-mcp/

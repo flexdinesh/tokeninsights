@@ -5,7 +5,6 @@ import {
   BarChart,
   CartesianGrid,
   Cell,
-  Legend,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -61,9 +60,13 @@ function tooltipFormatter(value: unknown): string {
   return typeof value === 'number' ? exactCount(value) : String(value)
 }
 
-function legendFormatter(value: string | number) {
-  return <span className="chart-legend-label">{value}</span>
-}
+// Leave room for a full tick line when users enlarge text to 200%.
+const categoryAxisHeight = 48
+const contextLegend = [
+  { label: 'Average', color: 'var(--chart-1)' },
+  { label: 'Median', color: 'var(--chart-2)' },
+  { label: 'Maximum', color: 'var(--chart-3)' },
+]
 
 export function UsageChart({ rows }: { rows: Row[] }) {
   const {
@@ -76,7 +79,9 @@ export function UsageChart({ rows }: { rows: Row[] }) {
     ? 'Usage over time'
     : context
       ? 'Session peak context'
-      : `Usage by ${query.tab.slice(0, -1)}`
+      : query.tab === 'harnesses'
+        ? 'Usage by harness'
+        : `Usage by ${query.tab.slice(0, -1)}`
   const filterDimension =
     query.tab === 'models'
       ? 'models'
@@ -151,13 +156,14 @@ export function UsageChart({ rows }: { rows: Row[] }) {
                   tickLine={false}
                   axisLine={false}
                   minTickGap={40}
+                  height={categoryAxisHeight}
                   tick={axisTick}
                 />
                 <YAxis
                   tickFormatter={formatCount}
                   tickLine={false}
                   axisLine={false}
-                  width={60}
+                  width="auto"
                   tick={axisTick}
                 />
                 <Tooltip
@@ -190,6 +196,8 @@ export function UsageChart({ rows }: { rows: Row[] }) {
                 />
                 <XAxis
                   dataKey="label"
+                  height={categoryAxisHeight}
+                  minTickGap={40}
                   tickLine={false}
                   axisLine={false}
                   tickFormatter={(v) =>
@@ -201,7 +209,7 @@ export function UsageChart({ rows }: { rows: Row[] }) {
                   tickFormatter={formatCount}
                   tickLine={false}
                   axisLine={false}
-                  width={60}
+                  width="auto"
                   tick={axisTick}
                 />
                 <Tooltip
@@ -211,7 +219,6 @@ export function UsageChart({ rows }: { rows: Row[] }) {
                 />
                 {context ? (
                   <>
-                    <Legend formatter={legendFormatter} />
                     <Bar
                       dataKey="averageContext"
                       name="Average"
@@ -269,6 +276,16 @@ export function UsageChart({ rows }: { rows: Row[] }) {
             </Button>
           ))}
         </div>
+      )}
+      {context && (
+        <ul className="context-legend" aria-label="Context chart legend">
+          {contextLegend.map(({ label, color }) => (
+            <li key={label}>
+              <span className="legend-dot" style={{ backgroundColor: color }} />
+              {label}
+            </li>
+          ))}
+        </ul>
       )}
       {context && (
         <p className="chart-note">

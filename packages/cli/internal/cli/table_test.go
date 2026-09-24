@@ -655,10 +655,8 @@ func TestImplicitSyncProgressViewShowsHarnessStatusIcons(t *testing.T) {
 			t.Fatalf("sync progress view missing %q:\n%s", want, output)
 		}
 	}
-	for _, status := range []string{"pending", "discovering", "syncing", "synced", "skipped", "failed"} {
-		if strings.Contains(stripped, status) {
-			t.Fatalf("sync progress row rendered status text %q:\n%s", status, stripped)
-		}
+	if !strings.Contains(stripped, "pending") {
+		t.Fatalf("sync progress must name pending state independently of color: %s", stripped)
 	}
 	if strings.Contains(output, "Loading data...") {
 		t.Fatalf("sync progress view rendered table loading state:\n%s", output)
@@ -748,9 +746,6 @@ func TestImplicitSyncProgressUsesAppBackground(t *testing.T) {
 	}
 
 	output := m.View()
-	if strings.Contains(output, "48;2;") {
-		t.Fatalf("sync progress should leave terminal background transparent:\n%q", output)
-	}
 	if !strings.Contains(ansi.Strip(output), "OpenCode") {
 		t.Fatalf("sync progress missing harness row:\n%q", output)
 	}
@@ -784,8 +779,8 @@ func TestImplicitSyncProgressUpdatesHarnessStatus(t *testing.T) {
 	if !strings.Contains(output, "|   OpenCode") {
 		t.Fatalf("sync progress view missing updated status icon:\n%s", output)
 	}
-	if strings.Contains(ansi.Strip(output), "discovering") {
-		t.Fatalf("sync progress view rendered status text:\n%s", output)
+	if !strings.Contains(ansi.Strip(output), "discovering") {
+		t.Fatalf("sync progress view missing status text:\n%s", output)
 	}
 }
 
@@ -1035,8 +1030,8 @@ func TestViewUsesConsistentPanelBackground(t *testing.T) {
 	if tabIdx+1 >= len(lines) || strings.TrimSpace(lines[tabIdx+1]) != "" {
 		t.Fatalf("want blank line after tab strip:\n%s", plain)
 	}
-	if !strings.Contains(lines[tabIdx], "bucket: day") || !strings.Contains(lines[tabIdx], "sort: date") {
-		t.Fatalf("want full live bucket/sort meta right-aligned on tab row:\n%s", plain)
+	if !strings.Contains(plain, "g Bucket day") || !strings.Contains(plain, "s Sort date") {
+		t.Fatalf("want live bucket/sort controls above the metrics:\n%s", plain)
 	}
 	if strings.Contains(lines[tabIdx], "TokenInsights") {
 		t.Fatalf("tab row should show view meta, brand lives in statusline:\n%s", plain)
@@ -1050,8 +1045,8 @@ func TestViewUsesConsistentPanelBackground(t *testing.T) {
 	if summaryIdx <= 0 || strings.TrimSpace(lines[summaryIdx-1]) != "" {
 		t.Fatalf("want blank breathing room above summary:\n%s", plain)
 	}
-	if !strings.Contains(plain, "p provider") || !strings.Contains(plain, "1-6 tabs") {
-		t.Fatalf("want two-line footer with filter keys:\n%s", plain)
+	if !strings.Contains(plain, "f Filters") || !strings.Contains(plain, "? Help") || !strings.Contains(plain, "q Quit") {
+		t.Fatalf("want concise footer with filters, help and quit:\n%s", plain)
 	}
 }
 
@@ -1093,7 +1088,7 @@ func TestCursorMovesWithinViewportWithoutScrolling(t *testing.T) {
 		if strings.Contains(plain, "2026-06-13") && !strings.Contains(line, "48;5;") && !strings.Contains(line, "48;2;") {
 			t.Fatalf("cursor row missing selection background:\n%q", line)
 		}
-		if strings.Contains(plain, "2026-06-14") && (strings.Contains(line, "48;5;") || strings.Contains(line, "48;2;")) {
+		if strings.Contains(plain, "2026-06-14") && strings.HasPrefix(plain, ">") {
 			t.Fatalf("previous row should lose selection:\n%q", line)
 		}
 	}
@@ -1375,7 +1370,7 @@ func viewHintLine(output string) string {
 	var lines []string
 	found := false
 	for _, line := range strings.Split(ansi.Strip(output), "\n") {
-		if strings.Contains(line, "tab switch view") {
+		if strings.Contains(line, "tab Views") {
 			found = true
 		}
 		if found {
@@ -1473,7 +1468,7 @@ func TestContextSortPopupShowsContextSortOptions(t *testing.T) {
 		popup:     popupSort,
 	}
 
-	output := ansi.Strip(m.renderSortPopup())
+	output := ansi.Strip(m.renderDrawerContent(44, 35))
 	for _, expected := range []string{"avg ctx", "median ctx", "max ctx", "sessions", "harness", "provider", "model"} {
 		if !strings.Contains(output, expected) {
 			t.Fatalf("context sort popup missing %q:\n%s", expected, output)
@@ -1506,7 +1501,7 @@ func TestHarnessShortcutOpensValueSelection(t *testing.T) {
 	}
 }
 
-func TestNoReloadShortcut(t *testing.T) {
+func TestReloadShortcutKeepsScopeAndStartsRead(t *testing.T) {
 	m := interactiveModel{}
 
 	model, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("r")})
@@ -1517,8 +1512,8 @@ func TestNoReloadShortcut(t *testing.T) {
 	if updated.popup != popupNone || updated.activeTab != tabTokens || updated.horizontalOffset != 0 || updated.scrollOffset != 0 {
 		t.Fatalf("model changed on reload shortcut: %+v", updated)
 	}
-	if cmd != nil {
-		t.Fatal("did not expect command")
+	if cmd == nil || !updated.loading || !updated.reloadInFlight {
+		t.Fatal("expected a read-only dashboard reload")
 	}
 }
 
