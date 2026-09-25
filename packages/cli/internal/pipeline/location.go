@@ -77,14 +77,22 @@ func (resolver *locationResolver) inspect(ctx context.Context, path string) gitL
 	}
 	result := gitLocation{}
 	if info, err := os.Stat(path); err == nil && info.IsDir() {
-		result.root = gitValue(ctx, path, "rev-parse", "--show-toplevel")
-		if result.root != "" {
-			result.commonDir = gitValue(ctx, path, "rev-parse", "--path-format=absolute", "--git-common-dir")
-			result.remote = gitValue(ctx, path, "config", "--get", "remote.origin.url")
-			if result.remote == "" {
-				remotes := strings.Fields(gitValue(ctx, path, "remote"))
-				if len(remotes) == 1 {
-					result.remote = gitValue(ctx, path, "config", "--get", "remote."+remotes[0]+".url")
+		paths := strings.SplitN(gitValue(ctx, path, "rev-parse", "--show-toplevel", "--path-format=absolute", "--git-common-dir"), "\n", 2)
+		if len(paths) == 2 && paths[0] != "" {
+			result.root, result.commonDir = paths[0], paths[1]
+			remotes := map[string]string{}
+			for _, line := range strings.Split(gitValue(ctx, path, "config", "--get-regexp", `^remote\..*\.url$`), "\n") {
+				key, value, ok := strings.Cut(line, " ")
+				if !ok || value == "" {
+					continue
+				}
+				name := strings.TrimSuffix(strings.TrimPrefix(key, "remote."), ".url")
+				remotes[name] = value
+			}
+			result.remote = remotes["origin"]
+			if result.remote == "" && len(remotes) == 1 {
+				for _, remote := range remotes {
+					result.remote = remote
 				}
 			}
 		}

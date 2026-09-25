@@ -130,6 +130,30 @@ CREATE TABLE IF NOT EXISTS source_refresh_state (
 
 CREATE INDEX IF NOT EXISTS source_refresh_state_harness_source_idx ON source_refresh_state (harness, source_kind, source_state_key);
 
+CREATE TABLE IF NOT EXISTS normalization_rule_state (
+  harness TEXT PRIMARY KEY CHECK (harness IN ('opencode', 'pi', 'codex', 'claude-code')),
+  rule_signature TEXT NOT NULL,
+  updated_at_ms INTEGER NOT NULL CHECK (updated_at_ms >= 0)
+);
+
+CREATE TABLE IF NOT EXISTS source_cursor_state (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  harness TEXT NOT NULL CHECK (harness IN ('opencode', 'pi', 'codex', 'claude-code')),
+  source_kind TEXT NOT NULL,
+  source_state_key TEXT NOT NULL,
+  collector TEXT NOT NULL,
+  parser TEXT NOT NULL,
+  cursor_kind TEXT NOT NULL,
+  byte_offset INTEGER NOT NULL CHECK (byte_offset >= 0),
+  source_mtime_ms INTEGER NOT NULL CHECK (source_mtime_ms >= 0),
+  source_size_bytes INTEGER NOT NULL CHECK (source_size_bytes >= byte_offset),
+  prefix_hash TEXT NOT NULL,
+  boundary_hash TEXT NOT NULL,
+  location_fingerprint TEXT NOT NULL,
+  updated_at_ms INTEGER NOT NULL CHECK (updated_at_ms >= 0),
+  UNIQUE (harness, source_kind, source_state_key)
+);
+
 CREATE TABLE IF NOT EXISTS canonical_sessions (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   semantic_key TEXT NOT NULL UNIQUE,
@@ -212,4 +236,4 @@ CREATE TABLE IF NOT EXISTS normalization_diagnostics (
 CREATE INDEX IF NOT EXISTS normalization_diagnostics_harness_time_idx ON normalization_diagnostics (harness, recorded_at_ms);
 CREATE INDEX IF NOT EXISTS normalization_diagnostics_code_idx ON normalization_diagnostics (code);
 
-PRAGMA user_version = 10;
+PRAGMA user_version = 12;

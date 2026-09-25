@@ -116,6 +116,76 @@ it('uses server defaults on first load', async () => {
   client.clear()
 })
 
+it('shows saved usage while ordinary sync runs', async () => {
+  const baseUrl = window.location.origin
+  const bootstrap: Bootstrap = {
+    apiVersion: 'v1',
+    serverVersion: 'test',
+    hostname: 'local',
+    timezone: 'UTC',
+    capabilities: ['usage', 'facets', 'sync'],
+    defaults: {
+      period: 'month',
+      bucket: 'day',
+      from: '',
+      to: '',
+      providers: [],
+      models: [],
+      harnesses: [],
+      sessions: [],
+    },
+  }
+  const status: SyncStatus = {
+    phase: 'syncing',
+    running: true,
+    error: '',
+    revision: 1,
+    harnesses: {},
+  }
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false, staleTime: Infinity } },
+  })
+  client.setQueryData(['instance', baseUrl], bootstrap)
+  client.setQueryData(['sync', baseUrl], status)
+  const fetcher = vi.fn<(input: RequestInfo | URL) => Promise<Response>>((input) => {
+    const path = requestURL(input)
+    const body = path.includes('/usage/facets')
+      ? {
+          providers: [],
+          models: [],
+          harnesses: [],
+          sessions: [],
+          repositories: [],
+          directories: [],
+        }
+      : path.includes('/usage?')
+        ? { ...dashboard(123), lastSynced: 1000 }
+        : status
+    return Promise.resolve(
+      new Response(JSON.stringify(body), { headers: { 'Content-Type': 'application/json' } }),
+    )
+  })
+  vi.stubGlobal('fetch', fetcher)
+  render(
+    <QueryClientProvider client={client}>
+      <SourceProvider>
+        <RouterProvider router={testRouter} />
+      </SourceProvider>
+    </QueryClientProvider>,
+  )
+
+  expect(
+    await screen.findByText('Saved usage remains available while this runs.', { exact: false }),
+  ).toBeVisible()
+  await waitFor(() =>
+    expect(fetcher.mock.calls.some(([input]) => requestURL(input).includes('/api/v1/usage?'))).toBe(
+      true,
+    ),
+  )
+  expect(await screen.findByLabelText('Total tokens: 123')).toBeVisible()
+  client.clear()
+})
+
 it('removes the final route filter after direct load', async () => {
   const bootstrap: Bootstrap = {
     apiVersion: 'v1',

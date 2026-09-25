@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"slices"
+	"sort"
 	"strings"
 	"time"
 
@@ -70,6 +71,40 @@ var modelPrefixes = map[string]string{
 	"fireworks": "accounts/fireworks/models/",
 }
 
+// Bump when identifier logic changes outside providerAliases or modelPrefixes.
+const normalizationRuleRevision = "canonical-identifiers-v1"
+
+func normalizationRuleSignature(harness Harness) string {
+	parts := []string{normalizationRuleRevision, string(harness)}
+	for source, canonical := range providerAliases[harness] {
+		parts = append(parts, "provider:"+source+"="+canonical)
+	}
+	for provider, prefix := range modelPrefixes {
+		parts = append(parts, "model:"+provider+"="+prefix)
+	}
+	sort.Strings(parts[2:])
+	return stableHash(strings.Join(parts, "\x00"))
+}
+
+func staleNormalizationRules(ctx context.Context, database *sql.DB, harnesses []Harness) ([]Harness, error) {
+	if len(harnesses) == 0 {
+		harnesses = SupportedHarnesses
+	}
+	var stale []Harness
+	for _, harness := range harnesses {
+		var signature string
+		err := database.QueryRowContext(ctx, "SELECT rule_signature FROM normalization_rule_state WHERE harness = ?", harness).Scan(&signature)
+		if err == sql.ErrNoRows || (err == nil && signature != normalizationRuleSignature(harness)) {
+			stale = append(stale, harness)
+			continue
+		}
+		if err != nil {
+			return nil, err
+		}
+	}
+	return stale, nil
+}
+
 func Normalize(ctx context.Context, options NormalizeOptions) (Summary, error) {
 	summary := Summary{}
 	compatibility, err := db.InspectCompatibility(ctx, options.DBPath)
@@ -108,6 +143,15 @@ func Normalize(ctx context.Context, options NormalizeOptions) (Summary, error) {
 	if err != nil {
 		return summary, err
 	}
+	if compatibility.MigrationRequired {
+		if err := db.UpgradeMetadata(ctx, options.DBPath); err != nil {
+			return summary, err
+		}
+		compatibility, err = db.InspectCompatibility(ctx, options.DBPath)
+		if err != nil {
+			return summary, err
+		}
+	}
 	if needsRecovery(compatibility) {
 		return recoverDatabase(ctx, normalizationRecoveryOptions(options), compatibility)
 	}
@@ -125,6 +169,13 @@ func normalizePrepared(ctx context.Context, database *sql.DB, options NormalizeO
 	rows, err := loadPendingTokenRows(ctx, database, options.Harnesses)
 	if err != nil {
 		return summary, err
+	}
+	staleHarnesses, err := staleNormalizationRules(ctx, database, options.Harnesses)
+	if err != nil {
+		return summary, err
+	}
+	if len(rows) == 0 && len(staleHarnesses) == 0 {
+		return summary, nil
 	}
 	tx, err := database.BeginTx(ctx, nil)
 	if err != nil {
@@ -147,8 +198,19 @@ func normalizePrepared(ctx context.Context, database *sql.DB, options NormalizeO
 		summary.Canonical += count
 		summary.Diagnostics += diagnostic
 	}
-	if err := refreshCanonicalIdentifiers(ctx, tx, options.Harnesses); err != nil {
-		return summary, err
+	if len(staleHarnesses) > 0 {
+		if err := refreshCanonicalIdentifiers(ctx, tx, staleHarnesses); err != nil {
+			return summary, err
+		}
+		for _, harness := range staleHarnesses {
+			if _, err := tx.ExecContext(ctx, `
+				INSERT INTO normalization_rule_state (harness, rule_signature, updated_at_ms)
+				VALUES (?, ?, ?)
+				ON CONFLICT (harness) DO UPDATE SET rule_signature = excluded.rule_signature, updated_at_ms = excluded.updated_at_ms
+			`, harness, normalizationRuleSignature(harness), syncNowMs(options.Now)); err != nil {
+				return summary, err
+			}
+		}
 	}
 	if err := tx.Commit(); err != nil {
 		return summary, err

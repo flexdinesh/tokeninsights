@@ -449,8 +449,8 @@ func TestSyncKeepsRebuildingPhaseDuringHarnessProgress(t *testing.T) {
 		opts.Progress(pipeline.SyncProgressEvent{Harness: pipeline.HarnessCodex, Status: pipeline.SyncProgressSynced})
 		opts.Progress(pipeline.SyncProgressEvent{Harness: pipeline.HarnessClaudeCode, Status: pipeline.SyncProgressSkipped})
 		opts.Progress(pipeline.SyncProgressEvent{Status: pipeline.SyncProgressNormalizing})
-		if status := a.status(); status.Phase != "normalizing" {
-			t.Errorf("global normalization did not advance phase: %+v", status)
+		if status := a.status(); status.Phase != "rebuilding" {
+			t.Errorf("normalization exposed pending recovery: %+v", status)
 		}
 		return pipeline.Summary{}, nil
 	}

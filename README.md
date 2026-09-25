@@ -43,7 +43,9 @@ tokeninsights
 The terminal dashboard uses a full-width table, filtered token readouts, and a
 light/dark Instrument desk theme. Press `f` for the filter drawer or `?` for keys.
 
-Both refresh supported local sources on startup. The browser server listens at `http://localhost:8765` by default. Use `--host <ipv4>` to bind another interface or `--port <port>` to choose another port.
+Both refresh supported local sources on startup. When compatible usage already exists, the dashboards show it while sync runs, then reload it on completion. First sync and compatibility recovery show progress until data is ready. The browser server listens at `http://localhost:8765` by default. Use `--host <ipv4>` to bind another interface or `--port <port>` to choose another port.
+
+Repeated syncs skip unchanged sources after a successful ingest, including recent OpenCode, Codex, and Claude Code sources. OpenCode checks parser-relevant SQLite rows, so unrelated database writes do not reparse messages. Eligible Pi session files use a verified byte cursor to parse only appended records. Normalization skips identifier refresh when its rule marker is current. Changed sources retain full parsing where incremental replay is unsafe. The V11-to-V12 metadata upgrade preserves existing usage; older incompatible upgrades rebuild from retained source artifacts.
 
 Common filters:
 

@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"path/filepath"
 	"strings"
 	"time"
 )
@@ -60,6 +61,47 @@ func createSchema(ctx context.Context, database *sql.DB) error {
 		return errors.New("database changed during schema creation; retry sync")
 	}
 	if err := initializeSchema(ctx, tx, body, ""); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+// UpgradeMetadata adds the V12 rule marker without replacing source or usage data.
+// The caller holds the database writer lock.
+func UpgradeMetadata(ctx context.Context, path string) error {
+	state, err := InspectCompatibility(ctx, path)
+	if err != nil || !state.MigrationRequired {
+		return err
+	}
+	absPath, err := filepath.Abs(path)
+	if err != nil {
+		return err
+	}
+	database, err := openSQLiteMode(ctx, absPath, "rw")
+	if err != nil {
+		return err
+	}
+	defer func() { _ = database.Close() }()
+	tx, err := database.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	state, err = inspectCompatibility(ctx, tx)
+	if err != nil {
+		return err
+	}
+	if !state.MigrationRequired {
+		return requireCompatible(state, false)
+	}
+	if _, err := tx.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS normalization_rule_state (
+		harness TEXT PRIMARY KEY CHECK (harness IN ('opencode', 'pi', 'codex', 'claude-code')),
+		rule_signature TEXT NOT NULL,
+		updated_at_ms INTEGER NOT NULL CHECK (updated_at_ms >= 0)
+	)`); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, "PRAGMA user_version = 12"); err != nil {
 		return err
 	}
 	return tx.Commit()

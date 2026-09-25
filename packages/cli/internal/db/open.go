@@ -103,6 +103,7 @@ func ResetCanonical(ctx context.Context, db *sql.DB) error {
 		return err
 	}
 	statements := []string{
+		"DELETE FROM " + TableNormalizationRuleState,
 		"DELETE FROM " + TableNormalizationDiagnostics,
 		"DELETE FROM " + TableCanonicalTokenUsage,
 		"DELETE FROM " + TableCanonicalMessages,

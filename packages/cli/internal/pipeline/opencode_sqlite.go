@@ -16,6 +16,11 @@ const opencodeSQLiteSourceKind = "opencode-sqlite"
 
 type opencodeSQLiteAdapter struct{}
 
+type openCodeReader interface {
+	QueryContext(context.Context, string, ...interface{}) (*sql.Rows, error)
+	QueryRowContext(context.Context, string, ...interface{}) *sql.Row
+}
+
 type opencodeMessageData struct {
 	Role       string                `json:"role"`
 	ModelID    string                `json:"modelID"`
@@ -149,11 +154,16 @@ func (a opencodeSQLiteAdapter) Parse(ctx context.Context, source Source, options
 		return nil, nil, err
 	}
 	defer func() { _ = database.Close() }()
-	v1Exists, err := sqliteTableExists(ctx, database, "message")
+	tx, err := database.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
 	if err != nil {
 		return nil, nil, err
 	}
-	v2Exists, err := sqliteTableExists(ctx, database, "session_message")
+	defer func() { _ = tx.Rollback() }()
+	v1Exists, err := sqliteTableExists(ctx, tx, "message")
+	if err != nil {
+		return nil, nil, err
+	}
+	v2Exists, err := sqliteTableExists(ctx, tx, "session_message")
 	if err != nil {
 		return nil, nil, err
 	}
@@ -165,10 +175,10 @@ func (a opencodeSQLiteAdapter) Parse(ctx context.Context, source Source, options
 	var diagnostics []Diagnostic
 	v2Facts := map[string]bool{}
 	if v2Exists {
-		if err := requireSQLiteColumns(ctx, database, "session_message", []string{"id", "session_id", "type", "time_created", "data"}); err != nil {
+		if err := requireSQLiteColumns(ctx, tx, "session_message", []string{"id", "session_id", "type", "time_created", "data"}); err != nil {
 			diagnostics = append(diagnostics, opencodeDiagnostic("opencode_sqlite_invalid_schema", "OpenCode SQLite session_message table is missing required columns"))
 		} else {
-			parsed, parsedDiagnostics, err := a.parseV2Messages(ctx, database, source, options, v2Facts)
+			parsed, parsedDiagnostics, err := a.parseV2Messages(ctx, tx, source, options, v2Facts)
 			if err != nil {
 				return nil, nil, err
 			}
@@ -177,10 +187,10 @@ func (a opencodeSQLiteAdapter) Parse(ctx context.Context, source Source, options
 		}
 	}
 	if v1Exists {
-		if err := requireSQLiteColumns(ctx, database, "message", []string{"id", "session_id", "time_created", "data"}); err != nil {
+		if err := requireSQLiteColumns(ctx, tx, "message", []string{"id", "session_id", "time_created", "data"}); err != nil {
 			diagnostics = append(diagnostics, opencodeDiagnostic("opencode_sqlite_invalid_schema", "OpenCode SQLite message table is missing required columns"))
 		} else {
-			parsed, parsedDiagnostics, err := a.parseV1Messages(ctx, database, source, options, v2Facts)
+			parsed, parsedDiagnostics, err := a.parseV1Messages(ctx, tx, source, options, v2Facts)
 			if err != nil {
 				return nil, nil, err
 			}
@@ -188,7 +198,7 @@ func (a opencodeSQLiteAdapter) Parse(ctx context.Context, source Source, options
 			diagnostics = append(diagnostics, parsedDiagnostics...)
 		}
 	}
-	if err := attachOpenCodeLocations(ctx, database, options, facts); err != nil {
+	if err := attachOpenCodeLocations(ctx, tx, options, facts); err != nil {
 		return nil, nil, err
 	}
 	return facts, diagnostics, nil
@@ -199,7 +209,7 @@ type openCodeSessionLocation struct {
 	projectID string
 }
 
-func attachOpenCodeLocations(ctx context.Context, database *sql.DB, options SyncOptions, facts []RawTokenFact) error {
+func attachOpenCodeLocations(ctx context.Context, database openCodeReader, options SyncOptions, facts []RawTokenFact) error {
 	if len(facts) == 0 {
 		return nil
 	}
@@ -259,7 +269,7 @@ func attachOpenCodeLocations(ctx context.Context, database *sql.DB, options Sync
 	return nil
 }
 
-func (a opencodeSQLiteAdapter) parseV1Messages(ctx context.Context, database *sql.DB, source Source, options SyncOptions, v2Facts map[string]bool) ([]RawTokenFact, []Diagnostic, error) {
+func (a opencodeSQLiteAdapter) parseV1Messages(ctx context.Context, database openCodeReader, source Source, options SyncOptions, v2Facts map[string]bool) ([]RawTokenFact, []Diagnostic, error) {
 	rows, err := database.QueryContext(ctx, `
 		SELECT id, session_id, time_created, data
 		FROM message
@@ -297,7 +307,7 @@ func (a opencodeSQLiteAdapter) parseV1Messages(ctx context.Context, database *sq
 	return facts, diagnostics, nil
 }
 
-func (a opencodeSQLiteAdapter) parseV2Messages(ctx context.Context, database *sql.DB, source Source, options SyncOptions, v2Facts map[string]bool) ([]RawTokenFact, []Diagnostic, error) {
+func (a opencodeSQLiteAdapter) parseV2Messages(ctx context.Context, database openCodeReader, source Source, options SyncOptions, v2Facts map[string]bool) ([]RawTokenFact, []Diagnostic, error) {
 	rows, err := database.QueryContext(ctx, `
 		SELECT id, session_id, time_created, data
 		FROM session_message
@@ -483,7 +493,7 @@ func openReadOnlySQLite(path string) (*sql.DB, error) {
 	return sql.Open("sqlite", fileURL.String())
 }
 
-func sqliteTableExists(ctx context.Context, database *sql.DB, table string) (bool, error) {
+func sqliteTableExists(ctx context.Context, database openCodeReader, table string) (bool, error) {
 	var name string
 	err := database.QueryRowContext(ctx, `
 		SELECT name
@@ -499,7 +509,7 @@ func sqliteTableExists(ctx context.Context, database *sql.DB, table string) (boo
 	return false, err
 }
 
-func requireSQLiteColumns(ctx context.Context, database *sql.DB, table string, columns []string) error {
+func requireSQLiteColumns(ctx context.Context, database openCodeReader, table string, columns []string) error {
 	rows, err := database.QueryContext(ctx, "PRAGMA table_info("+table+")")
 	if err != nil {
 		return err

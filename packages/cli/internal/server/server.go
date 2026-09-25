@@ -92,7 +92,7 @@ func (a *app) startSync() {
 		_, err := a.syncer(a.ctx, pipeline.SyncOptions{DBPath: a.options.DBPath, Harnesses: pipeline.SupportedHarnesses, Normalize: true, Now: time.Now(), Progress: func(e pipeline.SyncProgressEvent) {
 			a.mu.Lock()
 			defer a.mu.Unlock()
-			if e.Harness == "" || a.state.Phase != string(pipeline.SyncProgressRebuilding) {
+			if a.state.Phase != string(pipeline.SyncProgressRebuilding) {
 				a.state.Phase = string(e.Status)
 			}
 			if e.Harness != "" {
@@ -109,7 +109,7 @@ func (a *app) startSync() {
 			_, _ = fmt.Fprintf(a.log, "%ssync failed: %v\n", logIndent, err)
 			a.state.Error = "Sync failed. See terminal details, retry, or inspect existing data."
 			a.state.Phase = "failed"
-			if errors.Is(err, db.ErrRebuildPending) || errors.Is(err, db.ErrRecoveryRequired) {
+			if errors.Is(err, db.ErrRebuildPending) || errors.Is(err, db.ErrRecoveryRequired) || errors.Is(err, db.ErrMetadataUpgradeRequired) {
 				a.state.Error = "Usage recovery is incomplete. Retry sync with the original source configuration and database. See terminal details."
 				a.state.Phase = "rebuild_failed"
 			}
@@ -285,6 +285,10 @@ func (a *app) handler() http.Handler {
 
 func (a *app) queryError(w http.ResponseWriter, err error) {
 	_, _ = fmt.Fprintf(a.log, "%sdashboard query failed: %v\n", logIndent, err)
+	if errors.Is(err, db.ErrMetadataUpgradeRequired) {
+		apiError(w, http.StatusServiceUnavailable, serverapi.ErrorCodeUnavailable, "Usage metadata upgrade is pending. Retry sync.")
+		return
+	}
 	if errors.Is(err, db.ErrRebuildPending) || errors.Is(err, db.ErrRecoveryRequired) {
 		apiError(w, http.StatusServiceUnavailable, serverapi.ErrorCodeUnavailable, "Usage recovery is incomplete. Sync to rebuild local usage data.")
 		return

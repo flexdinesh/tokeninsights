@@ -62,7 +62,7 @@ TokenInsights V1 is a local Go CLI:
 
 - `sync` ingests durable local harness data into raw tables and normalizes by default.
 - `normalize` processes pending canonical work from existing raw facts.
-- `view` opens the interactive terminal UI, runs implicit all-harness sync by default, and reads canonical SQLite data directly without an HTTP server.
+- `view` opens the interactive terminal UI, runs implicit all-harness sync by default, and reads canonical SQLite data directly without an HTTP server. Compatible saved usage remains available during sync; first sync and recovery show progress.
 - `serve` runs an HTTP server over the same canonical state, hosts the embedded React dashboard, performs startup all-harness sync, and exposes explicit web Sync through the REST API.
 - `reset-canonical` clears rebuildable canonical facts and diagnostics, then requeues raw token facts.
 - `reset-all` transactionally recreates application tables inside the existing SQLite file.
@@ -87,11 +87,11 @@ The OpenAPI document and SQLite schema remain language-neutral contracts. Deploy
 
 ## Current Implementation Status
 
-The sync-first canonical path is the active product path. Schema V10, automatic schema/data compatibility recovery, `sync`, OpenCode/Pi/Codex/Claude Code Recent Source Refresh, pending-work `normalize`, reset commands, canonical token aggregation, optional fact-level location attribution, and fixture-style pipeline conformance tests are implemented.
+The sync-first canonical path is the active product path. Schema V12, automatic schema/data compatibility recovery, `sync`, OpenCode/Pi/Codex/Claude Code Recent Source Refresh, same-version unchanged-source reuse, Pi JSONL byte cursors, pending-work `normalize`, reset commands, canonical token aggregation, optional fact-level location attribution, and fixture-style pipeline conformance tests are implemented.
 
 Known gaps are part of the current design contract:
 
-- Recent Source Refresh is implemented for OpenCode V1/V2 SQLite plus Pi, Codex, and Claude Code JSONL Durable Sources; true intra-source cursors are not implemented;
+- Recent Source Refresh is implemented for OpenCode V1/V2 SQLite plus Pi, Codex, and Claude Code JSONL Durable Sources; byte cursors cover eligible Pi files, while changed OpenCode, Codex, and Claude Code sources still fully parse;
 - canonical token upserts are deterministic by semantic key, but there is not yet an explicit conflict/precedence model for competing raw facts;
 - diagnostics exist for parser warnings, missing canonical session identity, and some source-level suppressions such as duplicate or stale snapshots, but the full rejected/conflicting/suppressed diagnostic taxonomy is still future work;
 - the viewer is aligned to token aggregation tabs; future metric domains should stay hidden until durable canonical facts exist;
@@ -101,7 +101,7 @@ Known gaps are part of the current design contract:
 
 `schema/schema.sql` is the single source of truth for SQLite table and column definitions. The Go CLI embeds a checked copy at `packages/cli/internal/db/schema/schema.sql`.
 
-Compatibility is gated by `PRAGMA user_version` plus `database_lifecycle.data_generation`. The current schema version is `10` and data generation is `5`. Release version numbers are not compatibility markers. Bump schema version for structural changes and data generation for breaking token semantics or raw/canonical identity changes requiring reingestion.
+Compatibility is gated by `PRAGMA user_version` plus `database_lifecycle.data_generation`. The current schema version is `12` and data generation is `5`. Release version numbers are not compatibility markers. Bump schema version for structural changes and data generation for breaking token semantics or raw/canonical identity changes requiring reingestion.
 
 Schema V4 adds the persisted `claude-code` harness value. Existing V3 databases reject that value physically through SQLite `CHECK` constraints.
 
@@ -114,6 +114,10 @@ Schema V7 adds `source_refresh_state` for Local-only Continuity Metadata used by
 Schema V8 adds `database_lifecycle` for local compatibility and resumable rebuild state. Recognized older schema/data now recover automatically through a transactional in-place application-table reset and all-harness normalized reingestion. This supersedes the former manual `reset-all` upgrade requirement; it is not a row-preserving schema migration.
 
 Schema V10 retains optional `usage_locations` metadata and `location_id` on raw and canonical token facts, with only repository and directory identities. Data generation 3 introduced location attribution; generation 4 refreshed display paths; generation 5 removes worktree and branch attribution. Each upgrade triggers a full reset and resync. The database is reconstructable from retained source artifacts; usage whose artifacts were deleted may disappear after recovery. Sync checks recorded source directories against current Git metadata when those directories exist. A path reused by a different repository can therefore attribute older facts to the checkout present at sync time; provenance records the origin of repository values.
+
+Schema V11 adds `source_cursor_state` for verified Pi JSONL byte offsets and same-version source fingerprints. Upgrading from V10 uses the existing full reset and resync recovery, so usage whose original source artifacts are gone may disappear.
+
+Schema V12 adds per-harness `normalization_rule_state`. V11 databases upgrade transactionally without deleting raw or canonical usage; normalization then refreshes identifier rules once. Older incompatible schemas retain reset and resync recovery.
 
 Cross-language/schema validation is handled by:
 
@@ -190,9 +194,10 @@ Current source state properties:
 - keyed by `harness`, `source_kind`, and an adapter-provided metadata-safe source state key;
 - records parser/collector provenance used to decide whether a cursor can be trusted;
 - stores last successful source refresh time, observed source file modification time, and observed source file size;
-- may later store cursor kind and cursor values such as JSONL byte offset, file size, mtime, boundary hashes, or OpenCode SQLite `(time_created, id)`;
 - avoids raw JSONL lines and full source paths unless a specific adapter cannot maintain continuity without them;
 - is cleared by `reset-all --confirm` and preserved by `reset-canonical --confirm`.
+
+`source_cursor_state` is separate Local-only Continuity Metadata. Eligible Pi files persist a byte offset, file size, mtime, parser/collector identity, hashes of the processed prefix and prior boundary, and a hashed location fingerprint. Ordinary Codex and Claude Code sources persist a full content fingerprint and current location fingerprint. OpenCode hashes parser-relevant V1/V2 message rows and table definitions in a consistent SQLite read snapshot; its location fingerprint binds each session ID to current directory/repository attribution. Unrelated SQLite writes and WAL checkpoints do not invalidate the OpenCode marker. No path or transcript content is stored. Markers advance only in the source ingest transaction after parsing and raw writes succeed. A changed prefix, changed checkout attribution, same-size rewrite, truncation, nonterminated line, changed parser/collector, or uncertain Pi session header causes a full parse. Codex fork replay and changed Claude Code streaming copies or mutable OpenCode rows remain on full parsing.
 
 If source continuity cannot be trusted, the pipeline must fall back to a full parse. Cursor availability must never be required for correctness.
 
@@ -277,26 +282,26 @@ Identifier rules apply while writing canonical facts. Normal sync and `normalize
 Source refresh optimization preserves the same correctness behavior while reducing repeated work in phases:
 
 - Phase 1, Recent Source Refresh: skip file-based Durable Sources whose local modification metadata is older than a conservative freshness window before the last successful source refresh, and fully parse sources inside that window;
-- Phase 2, incremental normalization: process only pending normalization work instead of scanning all raw facts;
-- Phase 3, true intra-source cursors: add JSONL byte-offset cursors and OpenCode SQLite row cursors only if Phase 1 and Phase 2 do not make implicit view sync cheap enough.
+- Phase 2, incremental normalization: process pending work and refresh canonical identifiers once per rule signature;
+- Phase 3, source continuity: Pi JSONL byte-offset cursors are active for eligible files; other adapters skip verified unchanged sources but need source-specific continuity proofs before incremental changed-source parsing.
 
 Phase 1 rules:
 
 - freshness checks use monotonic source metadata such as file modification time, not source event timestamps or local calendar dates;
 - the cutoff should be conservative, initially `last_successful_source_refresh_at_ms - 48h`;
 - sources older than the cutoff may be skipped as up to date;
-- sources at or after the cutoff are parsed from the beginning using existing parser behavior;
+- sources at or after the cutoff are parsed from the beginning unless an eligible Pi cursor proves an unchanged prefix or a non-Pi fingerprint proves unchanged content and location attribution;
 - raw fact dedupe remains the correctness guard for repeated parsing inside the freshness window.
-- OpenCode SQLite plus Pi, Codex, and Claude Code JSONL sources participate in Recent Source Refresh. After a successful source refresh, TokenInsights records metadata-safe source state. Later syncs skip unchanged files older than the 48-hour cutoff, fully parse recent files, and fully parse files whose modification metadata changed.
+- OpenCode SQLite plus Pi, Codex, and Claude Code JSONL sources participate in Recent Source Refresh. After a successful source refresh, TokenInsights records metadata-safe source state. Later syncs skip unchanged Pi files older than the 48-hour cutoff. Pi cursor-eligible recent files skip unchanged bytes or parse appended bytes. OpenCode, ordinary Codex, and Claude Code sources skip when their content and current location attribution match their successful marker, regardless of the 48-hour window. Changed files fully parse.
 - Codex fork/subagent sources always reparse, because linked parent history affects replay resolution. Ancestor parses are cached within each sync; ordinary Codex sources retain Recent Source Refresh.
 - A skipped up-to-date source still creates a completed lightweight ingest run with zero raw facts and zero observations.
 
-Phase 3 rules, if needed:
+Phase 3 rules:
 
 - adapters decide whether a source can be parsed incrementally;
-- the pipeline persists adapter-returned cursor advancement metadata only after source ingest commits;
+- the pipeline commits cursor advancement atomically with successful source ingest;
 - JSONL adapters should use byte offsets plus file size, mtime, and boundary hashes, falling back to full parse when a file shrinks, rewrites, or cannot be verified;
-- OpenCode SQLite should use source-native row ordering, initially `(time_created, id)` from the V1 `message` and V2 `session_message` tables, rather than SQLite file offsets;
+- OpenCode SQLite would need source-native row ordering plus a way to detect updates to prior rows before a cursor could replace full parsing;
 - an incremental run writes observations only for facts actually parsed in that run;
 - an up-to-date source creates a completed lightweight ingest run with zero raw facts and zero observations;
 - cursor invalidation and full-parse fallback should be local-only operational information, not viewer analytics;
@@ -326,7 +331,7 @@ The future source-refresh adapter contract should additionally let adapters:
 - return source refresh state advancement metadata that is safe to persist only after successful source ingest;
 - invalidate stale source refresh state when parser provenance or source continuity checks fail.
 
-OpenCode sync parses durable V1 and V2 SQLite databases named `opencode.db` or `opencode-<channel>.db` from `${XDG_DATA_HOME:-~/.local/share}/opencode`. Sessions marked archived remain in these databases and are included. It reads V1 assistant rows from `message.data` and V2 assistant rows from `session_message.data`, maps their message-scoped token, model, provider, and timing metadata, and uses stable row/session IDs. The SQLite row ID is authoritative in both layouts; embedded V1 JSON IDs cannot split one migrated message into two canonical identities. OpenCode's stored input excludes cache tokens and its stored output excludes reasoning, so the five components are directly additive. Component sums that exceed SQLite's signed integer range are rejected with a diagnostic. In mixed migrated databases, usable V2 rows take precedence for the same session/message; V1 remains the fallback when the V2 row has no usable token data. Copied fork or channel rows are suppressed with deterministic non-private fingerprints. OpenCode-specific parser provenance forces one automatic reparse when V2 support is introduced; canonical semantic keys prevent analytics duplication. OpenCode SQLite sources participate in Recent Source Refresh using metadata-safe source keys, parser/collector provenance, database file modification time, and database file size; if state is missing, stale, or changed, OpenCode falls back to the existing full table parse. True OpenCode row cursors are not implemented.
+OpenCode sync parses durable V1 and V2 SQLite databases named `opencode.db` or `opencode-<channel>.db` from `${XDG_DATA_HOME:-~/.local/share}/opencode`. Sessions marked archived remain in these databases and are included. It reads V1 assistant rows from `message.data` and V2 assistant rows from `session_message.data`, maps their message-scoped token, model, provider, and timing metadata, and uses stable row/session IDs. The SQLite row ID is authoritative in both layouts; embedded V1 JSON IDs cannot split one migrated message into two canonical identities. OpenCode's stored input excludes cache tokens and its stored output excludes reasoning, so the five components are directly additive. Component sums that exceed SQLite's signed integer range are rejected with a diagnostic. In mixed migrated databases, usable V2 rows take precedence for the same session/message; V1 remains the fallback when the V2 row has no usable token data. Copied fork or channel rows are suppressed with deterministic non-private fingerprints. OpenCode-specific parser provenance forces one automatic reparse when V2 support is introduced; canonical semantic keys prevent analytics duplication. A successful logical fingerprint of message rows and session attribution skips later unchanged parses, including when unrelated tables or WAL files change. Missing or changed markers fall back to the full table parse. True OpenCode row cursors are not implemented.
 
 Pi sync parses durable JSONL session files under `~/.pi/agent/sessions`, including one nested project directory level. Pi has no harness-owned archive; sessions moved to OS trash are outside the durable-source boundary and are not parsed. It uses assistant message usage as exact message-scoped token facts. Current Pi input excludes cache tokens, while reasoning is an optional subset of output; the adapter subtracts reasoning from output. For legacy rows whose total proves input still includes cache, it subtracts cache read/write from input. A source `totalTokens` is retained only when it equals the normalized component sum; otherwise canonical total falls back to the components with a diagnostic. Session identity comes from the session header when available and may fall back to the filename session suffix. Pi JSONL sources participate in Recent Source Refresh using metadata-safe source keys, parser/collector provenance, file modification time, and file size; if state is missing, stale, or changed, Pi falls back to the existing full parse.
 
@@ -366,7 +371,7 @@ Normalization must be idempotent: repeated runs should converge on the same cano
 
 Current normalization is work-queue incremental. It loads pending `token_usage` work for the selected harness filter, upserts canonical rows by semantic key, removes completed work in the same transaction, and increments ingest-run canonical/diagnostic counters only for newly inserted canonical facts or diagnostics. Existing canonical rows may be updated deterministically when the same semantic key is requeued by an explicit rebuild path.
 
-Incremental normalization changes the default raw-fact work selection, not the canonical identity rules. Ordinary normalization processes pending raw-fact work and refreshes existing canonical provider/model identifiers; explicit rebuild paths mark raw facts dirty and then use the same work mechanism. Deterministic updates remain allowed for dirty raw facts.
+Incremental normalization processes pending raw-fact work. A per-harness signature of current provider/model rules triggers one refresh of existing canonical identifiers when missing or changed; matching signatures with no pending work return before a write transaction. Rule markers commit with normalization, and `reset-canonical` clears them. Explicit rebuild paths mark raw facts dirty and use the same work mechanism. Deterministic updates remain allowed for dirty raw facts.
 
 Explicit conflict precedence between competing raw facts is not implemented yet. Until that model exists, canonical identity is governed by semantic keys and deterministic upsert behavior.
 
@@ -378,7 +383,7 @@ Explicit conflict precedence between competing raw facts is not implemented yet.
 
 `view --no-sync` skips raw ingest and normalization. It preserves read-only viewer behavior and rejects a missing, incompatible, or rebuild-pending database instead of creating or modifying it.
 
-Implicit view sync normalizes pre-existing pending work even when sources are up to date. With no pending work, it still refreshes canonical provider/model identifiers using current code-defined rules. `view --no-sync` remains read-only and must not process pending work.
+Implicit view sync normalizes pre-existing pending work even when sources are up to date. With no pending work and current rule markers, normalization performs no writes. `view --no-sync` remains read-only and must not process pending work.
 
 Viewer Dimension Filters remain display constraints. For example, `view --harness pi` refreshes all supported Durable Sources first, then filters the displayed canonical facts to Pi.
 
@@ -442,9 +447,9 @@ Cost tracking is not part of TokenInsights and must not appear in viewer columns
 
 The default server binds `127.0.0.1` and prints a colored, indented startup summary containing the TokenInsights version, machine hostname, and `http://localhost:<port>` URL. Explicit `--host` binding uses and prints only that IPv4 address; `0.0.0.0` remains available when deliberately requested. IPv6 and invalid bind addresses are rejected. When the omitted default port is busy, interactive startup identifies listeners with `lsof`, asks before sending `SIGTERM`, waits up to five seconds for release, and then starts the server. An explicitly passed busy port fails without prompting. Interrupt/termination cancels sync and request work, shuts down HTTP, and closes the listener.
 
-Startup serves the UI immediately and runs the existing all-harness sync/normalization pipeline, including automatic compatibility recovery. The web UI shows metadata-only per-harness progress and explains resetting/rebuilding phases. `serve --no-sync` validates an existing compatible, fully recovered DB and skips startup writes; **Sync now** remains enabled. Sync requests share one process-wide job, independent of client filters. **Reload data** rereads canonical data without ingest. An ordinary sync failure leaves the server available with retry and an explicit **Inspect existing data** action. Recovery-required or rebuild-pending failures use status phase `rebuild_failed`, offer retry, and hide inspection. Dashboard/filter reads reject incompatible/pending data with HTTP 503. Detailed errors stay in terminal logs, while HTTP errors omit source paths.
+Startup serves the UI immediately and runs the existing all-harness sync/normalization pipeline, including automatic compatibility recovery. Compatible committed usage remains queryable during ordinary sync, with a visible progress state; first sync shows loading until usage exists. The web UI shows metadata-only per-harness progress and explains resetting/rebuilding phases. `serve --no-sync` validates an existing compatible, fully recovered DB and skips startup writes; **Sync now** remains enabled. Sync requests share one process-wide job, independent of client filters. **Reload data** rereads canonical data without ingest. An ordinary sync failure leaves the server available with retry and an explicit **Inspect existing data** action. Recovery-required or rebuild-pending failures use status phase `rebuild_failed`, offer retry, and hide inspection. Dashboard/filter reads reject incompatible/pending data with HTTP 503. Detailed errors stay in terminal logs, while HTTP errors omit source paths.
 
-During recovery, harness-specific progress updates leave the global `rebuilding` phase intact; global normalization/completion advances it. Dashboard and filter reads validate lifecycle inside the transaction that reads analytics using `db.BeginAnalyticsRead`, closing the gap between preliminary open validation and the read snapshot. Recovery retry must preserve source configuration; a custom-root pending rebuild must be resumed from the CLI with the original `--source-dir` and `--db-path`.
+During recovery, progress leaves the global `rebuilding` phase intact until completion, including normalization. Dashboard and filter reads validate lifecycle inside the transaction that reads analytics using `db.BeginAnalyticsRead`, closing the gap between preliminary open validation and the read snapshot. Recovery retry must preserve source configuration; a custom-root pending rebuild must be resumed from the CLI with the original `--source-dir` and `--db-path`.
 
 The web viewer includes all seven active Aggregation Tabs and their TUI metrics/sort concepts. TanStack Router maps them to `/tokens`, `/models`, `/providers`, `/harnesses`, `/sessions`, `/context`, and `/repo`; `/` redirects to `/tokens`, and legacy `/?tab=<view>` URLs redirect to the matching path. Direct loads of those paths serve the embedded React application, while unknown `/api/*` paths remain JSON 404s. Tables support ascending/descending sorting, column visibility, adjustable column widths, and pagination (default 50, maximum 200 rows per API page). Comma-separated harness, provider, and model summaries display one value per line in table rows, matching the TUI; their API values and sort semantics stay unchanged. Column widths are local viewer state; dragging a header edge or using its keyboard separator changes layout without changing query or analytics data. Canonical grouping happens in existing Go/SQLite viewer queries, then the server sorts and slices grouped rows. Each dashboard response reads its rows, chart data, full-result summary, and last completed sync in one read-only database transaction. Summary session counts use the TUI's shared `ViewerSessionCounts` query: API `summary.sessions` is the distinct shown count and `summary.syncedSessions` is the all-dates/all-harnesses count ignoring every viewer filter. Empty canonical sessions and non-countable-only sessions are excluded. The Sessions card labels its filtered count as **Sessions shown** with the synced denominator underneath. Every table summary leads with `Sessions <shown> shown / <synced> synced`, including Context and empty filtered results, followed by row count and applicable token total. Table summaries remain independent of pagination; Context has no additive token-total summary. Loading placeholders omit stale coverage until the new filtered response arrives.
 
@@ -509,7 +514,7 @@ Must not change silently:
 - default token analytics use only countable canonical token rows;
 - unavailable metric domains must not appear as empty active viewer tabs;
 - cost tracking must stay out of the active product;
-- the TUI queries canonical data read-only after any optional Implicit View Sync, and `view --no-sync` remains a read-only command path.
+- the TUI queries canonical data read-only during and after optional Implicit View Sync, and `view --no-sync` remains a read-only command path.
 
 Can evolve with care:
 
