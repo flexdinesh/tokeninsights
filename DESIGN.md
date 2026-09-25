@@ -372,6 +372,11 @@ colors; charts supplement exact tables.
 
 Tables use left-aligned identities, right-aligned numeric values, subtle dividers,
 and a quiet hover surface. Sort state includes direction and `aria-sort`.
+Harness, provider, and model summaries show one value per line in table cells and
+row identity details.
+Column edges have drag handles for width adjustment, with keyboard arrow steps and
+Home or double-click to restore the default width. Wider tables scroll within the
+table region.
 Wrapping controls, column selection, pagination, and full-filter summaries remain
 accessible independently of horizontal scrolling.
 

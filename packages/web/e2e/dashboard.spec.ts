@@ -4,6 +4,48 @@ import { InstanceResponse } from '../src/generated/api'
 const localSource = 'http://127.0.0.1:18765'
 const remoteSource = 'http://127.0.0.1:18766'
 
+test('table columns resize by drag and keyboard without sorting', async ({ page }) => {
+  await page.goto('/tokens')
+  const details = page.getByRole('region', { name: 'Tokens details', exact: true })
+  const header = details.getByRole('columnheader', { name: 'Input' })
+  const resize = details.getByRole('separator', { name: 'Resize Input column' })
+  await expect(resize).toHaveAttribute('aria-valuenow', '128')
+
+  await resize.focus()
+  await page.keyboard.press('ArrowRight')
+  await expect(resize).toHaveAttribute('aria-valuenow', '144')
+  await page.keyboard.press('Home')
+  await expect(resize).toHaveAttribute('aria-valuenow', '128')
+
+  const before = await header.boundingBox()
+  const handle = await resize.boundingBox()
+  expect(before).not.toBeNull()
+  expect(handle).not.toBeNull()
+  if (!before || !handle) return
+  const startX = handle.x + handle.width / 2
+  const y = handle.y + handle.height / 2
+  await page.mouse.move(startX, y)
+  await page.mouse.down()
+  await page.mouse.move(startX + 80, y, { steps: 4 })
+  await page.mouse.up()
+
+  await expect(resize).toHaveAttribute('aria-valuenow', '208')
+  const after = await header.boundingBox()
+  expect(after?.width).toBeGreaterThan(before.width + 70)
+  await expect(header).toHaveAttribute('aria-sort', 'none')
+  await resize.dblclick()
+  await expect(resize).toHaveAttribute('aria-valuenow', '128')
+
+  await page.setViewportSize({ width: 390, height: 844 })
+  const scrollsHorizontally = await details
+    .locator('.table-scroll')
+    .evaluate((element) => element.scrollWidth > element.clientWidth)
+  expect(scrollsHorizontally).toBe(true)
+  await resize.focus()
+  await page.keyboard.press('ArrowRight')
+  await expect(resize).toHaveAttribute('aria-valuenow', '144')
+})
+
 test('startup sync, seven views, filtering, history, pagination, and refresh', async ({ page }) => {
   const errors: string[] = []
   page.on('pageerror', (error) => errors.push(error.message))
@@ -26,6 +68,12 @@ test('startup sync, seven views, filtering, history, pagination, and refresh', a
     await expect(page.locator('.sessions-card')).toContainText(
       '80 synced across all dates & harnesses',
     )
+    if (tab === 'Harnesses') {
+      const details = page.getByRole('region', { name: 'Harnesses details', exact: true })
+      await expect(
+        details.locator('tbody tr').first().locator('.identity-detail > span'),
+      ).toHaveText(['anthropic', 'openai', 'model-a', 'model-b'])
+    }
     if (tab === 'Repo') {
       const details = page.getByRole('region', { name: 'Repo details', exact: true })
       await expect(page.getByRole('combobox', { name: 'Group by location' })).toBeVisible()
@@ -40,9 +88,19 @@ test('startup sync, seven views, filtering, history, pagination, and refresh', a
         await expect(details.getByRole('columnheader', { name: column, exact: true })).toBeVisible()
       }
       const totalRow = details.locator('tbody tr').first()
-      await expect(totalRow).toContainText('anthropic, openai')
-      await expect(totalRow).toContainText('pi')
-      await expect(totalRow).toContainText('model-a, model-b')
+      const providers = totalRow.locator('td').nth(1).locator('.dimension-values > span')
+      await expect(providers).toHaveText(['anthropic', 'openai'])
+      await expect(totalRow.locator('td').nth(2).locator('.dimension-values > span')).toHaveText([
+        'pi',
+      ])
+      await expect(totalRow.locator('td').nth(3).locator('.dimension-values > span')).toHaveText([
+        'model-a',
+        'model-b',
+      ])
+      const providerLines = await providers.evaluateAll((items) =>
+        items.map((item) => item.getBoundingClientRect().top),
+      )
+      expect(providerLines[1]).toBeGreaterThan(providerLines[0] ?? 0)
       await expect(totalRow.getByText('~/workspace/project-0')).toBeHidden()
       await expect(totalRow.getByText('Some usage has no recorded directory')).toHaveCount(0)
       await totalRow.getByRole('button', { name: 'Show directories' }).click()

@@ -29,6 +29,10 @@ interface Column {
   label: string
   numeric?: boolean
 }
+const resizeStep = 16
+const minColumnSize = 112
+const maxColumnSize = 480
+
 const tokenColumns: Column[] = [
   { id: 'total', label: 'Total', numeric: true },
   { id: 'input', label: 'Input', numeric: true },
@@ -82,12 +86,19 @@ function columnsFor(tab: Tab): Column[] {
   ]
 }
 
-function identityDetail(row: Row, tab: Tab): string {
-  if (tab === 'tokens') return ''
+function summaryLines(value: string): string[] {
+  return value
+    .split(',')
+    .map((part) => part.trim())
+    .filter(Boolean)
+}
+
+function identityDetails(row: Row, tab: Tab): string[] {
+  if (tab === 'tokens') return []
   if (tab === 'repo')
     return row.repositoryName !== 'unknown' && row.repositoryName !== row.locationName
-      ? row.repositoryName
-      : ''
+      ? [row.repositoryName]
+      : []
   return [
     ...new Set(
       [
@@ -96,7 +107,7 @@ function identityDetail(row: Row, tab: Tab): string {
         tab !== 'models' ? row.model : '',
       ].filter(Boolean),
     ),
-  ].join(' · ')
+  ].flatMap(summaryLines)
 }
 
 export function UnknownLocation({
@@ -172,16 +183,28 @@ function renderCell(row: Row, spec: Column, tab: Tab): ReactNode {
         hasUnknownDirectory={row.hasUnknownDirectory}
       />
     )
-  if (spec.id === 'name')
+  if (spec.id === 'name') {
+    const details = identityDetails(row, tab)
     return (
       <div className="identity-cell">
         <span className="identity-name" title={String(value)}>
           {String(value)}
         </span>
-        <span className="identity-detail" title={identityDetail(row, tab)}>
-          {identityDetail(row, tab)}
+        <span className="identity-detail">
+          {details.map((detail) => (
+            <span key={detail}>{detail}</span>
+          ))}
         </span>
       </div>
+    )
+  }
+  if (spec.id === 'harness' || spec.id === 'provider' || spec.id === 'model')
+    return (
+      <span className="dimension-values">
+        {summaryLines(String(value)).map((line) => (
+          <span key={line}>{line}</span>
+        ))}
+      </span>
     )
   return (
     <span className="dimension-value" title={String(value)}>
@@ -204,6 +227,9 @@ export function ResultsTable({ data }: { data: Dashboard }) {
         accessorFn: (row) => row[spec.id],
         header: spec.label,
         cell: ({ row }) => renderCell(row.original, spec, query.tab),
+        size: spec.id === 'name' ? (query.tab === 'repo' ? 256 : 224) : spec.numeric ? 128 : 160,
+        minSize: spec.id === 'name' ? 176 : spec.numeric ? minColumnSize : 128,
+        maxSize: maxColumnSize,
       })),
     [specs, query.tab],
   )
@@ -217,6 +243,7 @@ export function ResultsTable({ data }: { data: Dashboard }) {
     getCoreRowModel: getCoreRowModel(),
     manualSorting: true,
     manualPagination: true,
+    columnResizeMode: 'onChange',
     getRowId: (row) => row.key,
     state: { columnVisibility: visibility },
   })
@@ -298,7 +325,15 @@ export function ResultsTable({ data }: { data: Dashboard }) {
         </div>
       </div>
       <div className="table-scroll" role="region" tabIndex={0} aria-label="Scrollable results">
-        <Table>
+        <Table
+          className="resizable-table"
+          style={{ width: table.getTotalSize(), minWidth: '100%' }}
+        >
+          <colgroup>
+            {table.getVisibleLeafColumns().map((column) => (
+              <col key={column.id} style={{ width: column.getSize() }} />
+            ))}
+          </colgroup>
           <TableHeader>
             {table.getHeaderGroups().map((group) => (
               <TableRow key={group.id}>
@@ -311,6 +346,7 @@ export function ResultsTable({ data }: { data: Dashboard }) {
                     <TableHead
                       key={header.id}
                       className={spec.numeric ? 'numeric' : ''}
+                      aria-label={spec.label}
                       aria-sort={
                         active ? (query.direction === 'asc' ? 'ascending' : 'descending') : 'none'
                       }
@@ -331,6 +367,40 @@ export function ResultsTable({ data }: { data: Dashboard }) {
                           <ArrowUpDown size="0.9em" className="sort-hint" />
                         )}
                       </Button>
+                      <div
+                        className={`column-resize-handle${header.column.getIsResizing() ? ' resizing' : ''}`}
+                        role="separator"
+                        tabIndex={0}
+                        aria-label={`Resize ${spec.label} column`}
+                        aria-orientation="vertical"
+                        aria-valuemin={header.column.columnDef.minSize}
+                        aria-valuemax={header.column.columnDef.maxSize}
+                        aria-valuenow={header.column.getSize()}
+                        title="Drag to resize; double-click to reset"
+                        onMouseDown={header.getResizeHandler()}
+                        onTouchStart={header.getResizeHandler()}
+                        onDoubleClick={() => header.column.resetSize()}
+                        onKeyDown={(event) => {
+                          if (event.key === 'Home') {
+                            event.preventDefault()
+                            header.column.resetSize()
+                          } else if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+                            event.preventDefault()
+                            const direction = event.key === 'ArrowRight' ? 1 : -1
+                            const size = Math.min(
+                              maxColumnSize,
+                              Math.max(
+                                header.column.columnDef.minSize ?? minColumnSize,
+                                header.column.getSize() + direction * resizeStep,
+                              ),
+                            )
+                            table.setColumnSizing((current) => ({
+                              ...current,
+                              [header.column.id]: size,
+                            }))
+                          }
+                        }}
+                      />
                     </TableHead>
                   )
                 })}
