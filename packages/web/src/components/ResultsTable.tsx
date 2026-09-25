@@ -1,4 +1,4 @@
-import { useId, useMemo } from 'react'
+import { useId, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 import {
   ArrowDown,
@@ -6,6 +6,7 @@ import {
   ArrowUpDown,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
   Columns3,
   Copy,
 } from 'lucide-react'
@@ -48,6 +49,16 @@ function columnsFor(tab: Tab): Column[] {
       { id: 'medianContext', label: 'Median ctx', numeric: true },
       { id: 'maxContext', label: 'Max ctx', numeric: true },
     ]
+  if (tab === 'repo') {
+    return [
+      { id: 'name', label: 'Location' },
+      { id: 'provider', label: 'Providers' },
+      { id: 'harness', label: 'Harnesses' },
+      { id: 'model', label: 'Models' },
+      { id: 'sessions', label: 'Sessions', numeric: true },
+      ...tokenColumns,
+    ]
+  }
   const first: Column = {
     id: 'name',
     label:
@@ -73,6 +84,10 @@ function columnsFor(tab: Tab): Column[] {
 
 function identityDetail(row: Row, tab: Tab): string {
   if (tab === 'tokens') return ''
+  if (tab === 'repo')
+    return row.repositoryName !== 'unknown' && row.repositoryName !== row.locationName
+      ? row.repositoryName
+      : ''
   return [
     ...new Set(
       [
@@ -82,6 +97,58 @@ function identityDetail(row: Row, tab: Tab): string {
       ].filter(Boolean),
     ),
   ].join(' · ')
+}
+
+export function UnknownLocation({
+  directories,
+  hasUnknownDirectory,
+}: {
+  directories: string[]
+  hasUnknownDirectory: boolean
+}) {
+  const [expanded, setExpanded] = useState(false)
+  const listId = useId()
+
+  return (
+    <div className="identity-cell">
+      <div className="repo-location-line">
+        <span className="identity-name">unknown</span>
+        {directories.length > 0 && (
+          <button
+            type="button"
+            className="repo-directory-toggle"
+            aria-expanded={expanded}
+            aria-controls={listId}
+            onClick={() => setExpanded((value) => !value)}
+          >
+            {expanded ? 'Hide directories' : 'Show directories'}
+            <ChevronDown size="1em" aria-hidden="true" className={expanded ? 'expanded' : ''} />
+          </button>
+        )}
+      </div>
+      {directories.length > 0 && (
+        <ul
+          className="repo-directory-list"
+          id={listId}
+          aria-label="Recorded directories"
+          hidden={!expanded}
+        >
+          {directories.map((directory) => (
+            <li key={directory} className="repo-directory-path" title={directory}>
+              {directory}
+            </li>
+          ))}
+        </ul>
+      )}
+      {hasUnknownDirectory && (expanded || directories.length === 0) && (
+        <span className="identity-detail">
+          {directories.length > 0
+            ? 'Some usage has no recorded directory'
+            : 'No recorded directory'}
+        </span>
+      )}
+    </div>
+  )
 }
 
 function renderCell(row: Row, spec: Column, tab: Tab): ReactNode {
@@ -97,6 +164,13 @@ function renderCell(row: Row, spec: Column, tab: Tab): ReactNode {
       <span className="numeric-value" title={exactCount(value)}>
         {formatCount(value)}
       </span>
+    )
+  if (spec.id === 'name' && tab === 'repo' && row.locationKey === 'unknown')
+    return (
+      <UnknownLocation
+        directories={row.directoryNames}
+        hasUnknownDirectory={row.hasUnknownDirectory}
+      />
     )
   if (spec.id === 'name')
     return (
@@ -158,10 +232,14 @@ export function ResultsTable({ data }: { data: Dashboard }) {
           { id: 'context', label: 'Ctx used' },
         ]
   return (
-    <Card className="table-panel panel" role="region" aria-label={`${labels[query.tab]} details`}>
+    <Card
+      className={`table-panel panel${query.tab === 'repo' ? ' repo-table-panel' : ''}`}
+      role="region"
+      aria-label={`${labels[query.tab]} details`}
+    >
       <div className="panel-heading">
         <div className="table-title">
-          <h2>{labels[query.tab]} breakdown</h2>
+          <h2>{query.tab === 'repo' ? 'Repo totals' : `${labels[query.tab]} breakdown`}</h2>
           <Badge>{exactCount(data.rowCount)}</Badge>
         </div>
         <div className="table-controls">

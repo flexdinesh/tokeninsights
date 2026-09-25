@@ -28,27 +28,29 @@ type DiscoverOptions struct {
 }
 
 type RawTokenFact struct {
-	Harness          Harness
-	SourceID         string
-	SourceKind       string
-	Collector        string
-	Parser           string
-	ObservedAtMs     int64
-	OccurredAtMs     *int64
-	SessionID        *string
-	MessageID        *string
-	Provider         *string
-	Model            *string
-	UsageScope       string
-	Quality          string
-	InputTokens      *int64
-	OutputTokens     *int64
-	ReasoningTokens  *int64
-	CacheReadTokens  *int64
-	CacheWriteTokens *int64
-	TotalTokens      *int64
-	MetadataJSON     *string
-	DedupeKey        string
+	Harness           Harness
+	SourceID          string
+	SourceKind        string
+	Collector         string
+	Parser            string
+	ObservedAtMs      int64
+	OccurredAtMs      *int64
+	SessionID         *string
+	MessageID         *string
+	Provider          *string
+	Model             *string
+	UsageScope        string
+	Quality           string
+	InputTokens       *int64
+	OutputTokens      *int64
+	ReasoningTokens   *int64
+	CacheReadTokens   *int64
+	CacheWriteTokens  *int64
+	TotalTokens       *int64
+	MetadataJSON      *string
+	Location          *Location
+	locationConflicts string
+	DedupeKey         string
 }
 
 type Diagnostic struct {
@@ -61,16 +63,17 @@ type Diagnostic struct {
 }
 
 type SyncOptions struct {
-	DBPath      string
-	Harnesses   []Harness
-	DryRun      bool
-	FullRefresh bool
-	Normalize   bool
-	SourceDir   string
-	Collector   string
-	Parser      string
-	Now         time.Time
-	Progress    func(SyncProgressEvent)
+	DBPath           string
+	Harnesses        []Harness
+	DryRun           bool
+	FullRefresh      bool
+	Normalize        bool
+	SourceDir        string
+	Collector        string
+	Parser           string
+	Now              time.Time
+	Progress         func(SyncProgressEvent)
+	locationResolver *locationResolver
 }
 
 type SyncProgressStatus string

@@ -188,7 +188,75 @@ func (a opencodeSQLiteAdapter) Parse(ctx context.Context, source Source, options
 			diagnostics = append(diagnostics, parsedDiagnostics...)
 		}
 	}
+	if err := attachOpenCodeLocations(ctx, database, options, facts); err != nil {
+		return nil, nil, err
+	}
 	return facts, diagnostics, nil
+}
+
+type openCodeSessionLocation struct {
+	directory string
+	projectID string
+}
+
+func attachOpenCodeLocations(ctx context.Context, database *sql.DB, options SyncOptions, facts []RawTokenFact) error {
+	if len(facts) == 0 {
+		return nil
+	}
+	if err := requireSQLiteColumns(ctx, database, "session", []string{"id", "directory", "project_id"}); err != nil {
+		return nil
+	}
+	gitProjects := map[string]bool{}
+	if err := requireSQLiteColumns(ctx, database, "project", []string{"id", "vcs"}); err == nil {
+		rows, err := database.QueryContext(ctx, "SELECT id FROM project WHERE vcs = 'git'")
+		if err != nil {
+			return err
+		}
+		for rows.Next() {
+			var id string
+			if err := rows.Scan(&id); err != nil {
+				_ = rows.Close()
+				return err
+			}
+			gitProjects[id] = true
+		}
+		if err := rows.Err(); err != nil {
+			_ = rows.Close()
+			return err
+		}
+		_ = rows.Close()
+	}
+	rows, err := database.QueryContext(ctx, "SELECT id, directory, project_id FROM session")
+	if err != nil {
+		return err
+	}
+	sessions := map[string]openCodeSessionLocation{}
+	for rows.Next() {
+		var id string
+		var directory, projectID sql.NullString
+		if err := rows.Scan(&id, &directory, &projectID); err != nil {
+			_ = rows.Close()
+			return err
+		}
+		project := ""
+		if gitProjects[projectID.String] {
+			project = projectID.String
+		}
+		sessions[id] = openCodeSessionLocation{directory: directory.String, projectID: project}
+	}
+	if err := rows.Err(); err != nil {
+		_ = rows.Close()
+		return err
+	}
+	_ = rows.Close()
+	for index := range facts {
+		if facts[index].SessionID == nil {
+			continue
+		}
+		session := sessions[*facts[index].SessionID]
+		facts[index].Location, _ = resolveFactLocation(ctx, options, session.directory, "", session.projectID)
+	}
+	return nil
 }
 
 func (a opencodeSQLiteAdapter) parseV1Messages(ctx context.Context, database *sql.DB, source Source, options SyncOptions, v2Facts map[string]bool) ([]RawTokenFact, []Diagnostic, error) {

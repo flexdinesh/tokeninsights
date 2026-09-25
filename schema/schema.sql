@@ -34,6 +34,19 @@ CREATE TABLE IF NOT EXISTS ingest_runs (
 CREATE INDEX IF NOT EXISTS ingest_runs_harness_time_idx ON ingest_runs (harness, started_at_ms);
 CREATE INDEX IF NOT EXISTS ingest_runs_status_time_idx ON ingest_runs (status, started_at_ms);
 
+CREATE TABLE IF NOT EXISTS usage_locations (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  semantic_key TEXT NOT NULL UNIQUE,
+  directory_key TEXT,
+  directory_name TEXT,
+  repository_key TEXT,
+  repository_name TEXT,
+  repository_source TEXT
+);
+
+CREATE INDEX IF NOT EXISTS usage_locations_repository_idx ON usage_locations (repository_key);
+CREATE INDEX IF NOT EXISTS usage_locations_directory_idx ON usage_locations (directory_key);
+
 CREATE TABLE IF NOT EXISTS raw_token_usage (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   raw_fact_key TEXT NOT NULL UNIQUE,
@@ -57,12 +70,15 @@ CREATE TABLE IF NOT EXISTS raw_token_usage (
   cache_write_tokens INTEGER,
   total_tokens INTEGER,
   metadata_json TEXT,
+  location_id INTEGER,
+  location_conflicts TEXT,
   CHECK (input_tokens IS NULL OR input_tokens >= 0),
   CHECK (output_tokens IS NULL OR output_tokens >= 0),
   CHECK (reasoning_tokens IS NULL OR reasoning_tokens >= 0),
   CHECK (cache_read_tokens IS NULL OR cache_read_tokens >= 0),
   CHECK (cache_write_tokens IS NULL OR cache_write_tokens >= 0),
-  CHECK (total_tokens IS NULL OR total_tokens >= 0)
+  CHECK (total_tokens IS NULL OR total_tokens >= 0),
+  FOREIGN KEY (location_id) REFERENCES usage_locations(id)
 );
 
 CREATE INDEX IF NOT EXISTS raw_token_usage_harness_source_idx ON raw_token_usage (harness, source_id);
@@ -163,10 +179,12 @@ CREATE TABLE IF NOT EXISTS canonical_token_usage (
   total_tokens INTEGER NOT NULL DEFAULT 0 CHECK (total_tokens >= 0),
   primary_raw_fact_id INTEGER NOT NULL,
   ingest_run_id INTEGER,
+  location_id INTEGER,
   FOREIGN KEY (session_id) REFERENCES canonical_sessions(id) ON DELETE CASCADE,
   FOREIGN KEY (message_id) REFERENCES canonical_messages(id) ON DELETE SET NULL,
   FOREIGN KEY (primary_raw_fact_id) REFERENCES raw_token_usage(id) ON DELETE RESTRICT,
-  FOREIGN KEY (ingest_run_id) REFERENCES ingest_runs(id) ON DELETE SET NULL
+  FOREIGN KEY (ingest_run_id) REFERENCES ingest_runs(id) ON DELETE SET NULL,
+  FOREIGN KEY (location_id) REFERENCES usage_locations(id)
 );
 
 CREATE INDEX IF NOT EXISTS canonical_token_usage_time_idx ON canonical_token_usage (recorded_at_ms);
@@ -174,6 +192,7 @@ CREATE INDEX IF NOT EXISTS canonical_token_usage_session_time_idx ON canonical_t
 CREATE INDEX IF NOT EXISTS canonical_token_usage_harness_time_idx ON canonical_token_usage (harness, recorded_at_ms);
 CREATE INDEX IF NOT EXISTS canonical_token_usage_provider_model_time_idx ON canonical_token_usage (provider, model, recorded_at_ms);
 CREATE INDEX IF NOT EXISTS canonical_token_usage_countable_time_idx ON canonical_token_usage (is_countable, recorded_at_ms);
+CREATE INDEX IF NOT EXISTS canonical_token_usage_location_time_idx ON canonical_token_usage (location_id, recorded_at_ms);
 
 CREATE TABLE IF NOT EXISTS normalization_diagnostics (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -193,4 +212,4 @@ CREATE TABLE IF NOT EXISTS normalization_diagnostics (
 CREATE INDEX IF NOT EXISTS normalization_diagnostics_harness_time_idx ON normalization_diagnostics (harness, recorded_at_ms);
 CREATE INDEX IF NOT EXISTS normalization_diagnostics_code_idx ON normalization_diagnostics (code);
 
-PRAGMA user_version = 8;
+PRAGMA user_version = 10;

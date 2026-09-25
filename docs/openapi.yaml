@@ -86,6 +86,8 @@ paths:
         - $ref: '#/components/parameters/ModelFilter'
         - $ref: '#/components/parameters/HarnessFilter'
         - $ref: '#/components/parameters/SessionFilter'
+        - $ref: '#/components/parameters/RepositoryFilter'
+        - $ref: '#/components/parameters/DirectoryFilter'
         - name: tab
           in: query
           description: Aggregation shown in table and chart rows.
@@ -93,6 +95,11 @@ paths:
             allOf:
               - $ref: '#/components/schemas/UsageTab'
             default: tokens
+        - name: locationGroup
+          in: query
+          description: Repo-tab grouping by repository or directory.
+          schema:
+            $ref: '#/components/schemas/LocationGroup'
         - name: sort
           in: query
           description: Sort field. Context-only fields are valid only for the context tab.
@@ -146,6 +153,8 @@ paths:
         - $ref: '#/components/parameters/ModelFilter'
         - $ref: '#/components/parameters/HarnessFilter'
         - $ref: '#/components/parameters/SessionFilter'
+        - $ref: '#/components/parameters/RepositoryFilter'
+        - $ref: '#/components/parameters/DirectoryFilter'
         - name: search
           in: query
           description: Literal substring used to filter session IDs.
@@ -164,6 +173,8 @@ paths:
                 models: [gpt-5]
                 harnesses: [codex]
                 sessions: [session-123]
+                repositories: []
+                directories: []
         '400':
           $ref: '#/components/responses/InvalidRequest'
         '503':
@@ -242,6 +253,26 @@ components:
         type: array
         items:
           type: string
+    RepositoryFilter:
+      name: repository
+      in: query
+      description: Repo-tab stable repository key; repeat for multiple values. The key unknown selects missing values.
+      style: form
+      explode: true
+      schema:
+        type: array
+        items:
+          type: string
+    DirectoryFilter:
+      name: directory
+      in: query
+      description: Repo-tab stable directory key; repeat for multiple values. The key unknown selects missing values.
+      style: form
+      explode: true
+      schema:
+        type: array
+        items:
+          type: string
   responses:
     InvalidRequest:
       description: Invalid query parameters
@@ -285,7 +316,10 @@ components:
       enum: [opencode, pi, codex, claude-code]
     UsageTab:
       type: string
-      enum: [tokens, models, providers, harnesses, sessions, context]
+      enum: [tokens, models, providers, harnesses, sessions, context, repo]
+    LocationGroup:
+      type: string
+      enum: [repository, directory]
     SortField:
       type: string
       enum:
@@ -426,6 +460,12 @@ components:
         - averageContext
         - medianContext
         - maxContext
+        - locationKey
+        - locationName
+        - directoryNames
+        - hasUnknownDirectory
+        - repositoryKey
+        - repositoryName
       properties:
         key:
           type: string
@@ -461,6 +501,23 @@ components:
           $ref: '#/components/schemas/Count'
         maxContext:
           $ref: '#/components/schemas/Count'
+        locationKey:
+          type: string
+        locationName:
+          type: string
+          description: Display name; directory values may be sanitized or full local paths.
+        directoryNames:
+          type: array
+          items:
+            type: string
+          description: Distinct recorded directories contributing to this row, sorted by display name. Empty outside Repo rows.
+        hasUnknownDirectory:
+          type: boolean
+          description: Whether any contributing fact lacks a recorded directory. False outside Repo rows.
+        repositoryKey:
+          type: string
+        repositoryName:
+          type: string
     UsageSummary:
       type: object
       additionalProperties: false
@@ -513,7 +570,7 @@ components:
     UsageFacetsResponse:
       type: object
       additionalProperties: false
-      required: [providers, models, harnesses, sessions]
+      required: [providers, models, harnesses, sessions, repositories, directories]
       properties:
         providers:
           type: array
@@ -531,6 +588,24 @@ components:
           type: array
           items:
             type: string
+        repositories:
+          type: array
+          items:
+            $ref: '#/components/schemas/LocationOption'
+        directories:
+          type: array
+          items:
+            $ref: '#/components/schemas/LocationOption'
+    LocationOption:
+      type: object
+      additionalProperties: false
+      required: [key, name]
+      properties:
+        key:
+          type: string
+        name:
+          type: string
+          description: Display name; directory values may be sanitized or full local paths.
     ErrorResponse:
       type: object
       additionalProperties: false

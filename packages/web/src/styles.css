@@ -493,6 +493,12 @@ textarea[aria-invalid='true'] {
   align-items: center;
   margin-bottom: var(--space-6);
 }
+.repo-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
 .view-tabs {
   display: flex;
   align-items: center;
@@ -731,6 +737,10 @@ th:last-child,
 td:last-child {
   padding-right: var(--panel-padding);
 }
+.repo-table-panel th:first-child,
+.repo-table-panel td:first-child {
+  min-width: 16rem;
+}
 th button {
   display: inline-flex;
   align-items: center;
@@ -792,6 +802,58 @@ tbody tr:hover {
 }
 .identity-detail:empty {
   display: none;
+}
+.repo-location-line {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  column-gap: var(--space-2);
+}
+.repo-directory-list {
+  display: grid;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0 0 0 var(--space-2);
+  border-inline-start: var(--border-width) solid var(--color-border);
+  list-style: none;
+}
+.repo-directory-list[hidden] {
+  display: none;
+}
+.repo-directory-path {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+  overflow-wrap: anywhere;
+}
+.repo-directory-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-block-size: 2.75rem;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-accent-text);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-medium);
+  cursor: pointer;
+}
+.repo-directory-toggle:hover {
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+}
+.repo-directory-toggle svg {
+  transition: transform 180ms ease-out;
+}
+.repo-directory-toggle svg.expanded {
+  transform: rotate(180deg);
+}
+@media (prefers-reduced-motion: reduce) {
+  .repo-directory-toggle svg {
+    transition: none;
+  }
 }
 .dimension-value {
   display: inline-block;

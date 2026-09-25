@@ -136,7 +136,7 @@ func (a claudeCodeJSONLAdapter) Parse(ctx context.Context, source Source, option
 			diagnostics = append(diagnostics, claudeCodeDiagnostic("claude_code_jsonl_parse_error", "skipped unparsable Claude Code JSONL line", "warning"))
 			continue
 		}
-		fact, rowDiagnostics, ok := a.factFromRecord(source, options, sessionID, record)
+		fact, rowDiagnostics, ok := a.factFromRecord(ctx, source, options, sessionID, record)
 		diagnostics = append(diagnostics, rowDiagnostics...)
 		if ok {
 			mergeKey := claudeCodeStreamingMergeKey(record)
@@ -146,7 +146,9 @@ func (a claudeCodeJSONLAdapter) Parse(ctx context.Context, source Source, option
 				continue
 			}
 			if index, exists := mergedFactIndexes[mergeKey]; exists {
-				mergeClaudeCodeStreamingFact(&facts[index], fact)
+				if mergeClaudeCodeStreamingFact(&facts[index], fact) {
+					diagnostics = append(diagnostics, claudeCodeDiagnostic("location_conflict", "conflicting location evidence in Claude Code streaming copies; affected grouping is unknown", "warning"))
+				}
 				continue
 			}
 			mergedFactIndexes[mergeKey] = len(facts)
@@ -172,7 +174,7 @@ func (a claudeCodeJSONLAdapter) Parse(ctx context.Context, source Source, option
 	return facts, diagnostics, nil
 }
 
-func (a claudeCodeJSONLAdapter) factFromRecord(source Source, options SyncOptions, fallbackSessionID string, record map[string]interface{}) (RawTokenFact, []Diagnostic, bool) {
+func (a claudeCodeJSONLAdapter) factFromRecord(ctx context.Context, source Source, options SyncOptions, fallbackSessionID string, record map[string]interface{}) (RawTokenFact, []Diagnostic, bool) {
 	if stringValue(record, "", "type") != "assistant" {
 		return RawTokenFact{}, nil, false
 	}
@@ -205,6 +207,7 @@ func (a claudeCodeJSONLAdapter) factFromRecord(source Source, options SyncOption
 	if messageID == nil {
 		messageID = stringField(record, "uuid")
 	}
+	location, _ := resolveFactLocation(ctx, options, stringValue(record, "", "cwd"), "", "")
 	return RawTokenFact{
 		Harness:          HarnessClaudeCode,
 		SourceID:         stableHash("claude-code-session:" + sessionID),
@@ -225,6 +228,7 @@ func (a claudeCodeJSONLAdapter) factFromRecord(source Source, options SyncOption
 		CacheReadTokens:  tokens.cacheRead,
 		CacheWriteTokens: tokens.cacheWrite,
 		TotalTokens:      tokens.total,
+		Location:         location,
 	}, tokenDiagnostics, true
 }
 
@@ -283,7 +287,7 @@ func claudeCodeStreamingMergeKey(record map[string]interface{}) string {
 	return *messageID + "|" + *requestID
 }
 
-func mergeClaudeCodeStreamingFact(existing *RawTokenFact, next RawTokenFact) {
+func mergeClaudeCodeStreamingFact(existing *RawTokenFact, next RawTokenFact) bool {
 	existing.InputTokens = maxIntPointer(existing.InputTokens, next.InputTokens)
 	existing.OutputTokens = maxIntPointer(existing.OutputTokens, next.OutputTokens)
 	existing.ReasoningTokens = maxIntPointer(existing.ReasoningTokens, next.ReasoningTokens)
@@ -299,6 +303,10 @@ func mergeClaudeCodeStreamingFact(existing *RawTokenFact, next RawTokenFact) {
 	if existing.Model == nil {
 		existing.Model = next.Model
 	}
+	location, conflicts, _, conflict := mergeLocations(existing.Location, next.Location, existing.locationConflicts)
+	existing.Location = location
+	existing.locationConflicts = conflicts
+	return conflict
 }
 
 func finalizeClaudeCodeFact(fact *RawTokenFact, requestID *string) ([]Diagnostic, bool) {

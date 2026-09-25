@@ -9,4 +9,5 @@ export const labels = {
   harnesses: 'Harnesses',
   sessions: 'Sessions',
   context: 'Context',
+  repo: 'Repo',
 }

@@ -40,6 +40,18 @@ export const mockFacets: Facets = facetsSchema.parse({
     'mock-opencode-session',
     'mock-pi-session',
   ],
+  repositories: [
+    { key: 'repo-1', name: 'tokeninsights' },
+    { key: 'unknown', name: 'unknown' },
+  ],
+  directories: [
+    { key: 'directory-1', name: '~/workspace/tokeninsights/main' },
+    { key: 'directory-2', name: '~/workspace/client-a' },
+    { key: 'directory-3', name: '~/workspace/client-b' },
+    { key: 'directory-4', name: '~/workspace/scratch' },
+    { key: 'directory-5', name: '~/workspace/tools' },
+    { key: 'unknown', name: 'unknown' },
+  ],
 })
 
 function row(values: Partial<Row>): Row {
@@ -61,6 +73,12 @@ function row(values: Partial<Row>): Row {
     averageContext: 0,
     medianContext: 0,
     maxContext: 0,
+    locationKey: '',
+    locationName: '',
+    directoryNames: [],
+    hasUnknownDirectory: false,
+    repositoryKey: '',
+    repositoryName: '',
     ...values,
   })
 }
@@ -201,9 +219,52 @@ const rowsByTab: Record<Tab, Row[]> = {
       maxContext: 89_000,
     }),
   ],
+  repo: [
+    row({
+      key: 'repo-1\u0000',
+      name: 'tokeninsights',
+      locationKey: 'repo-1',
+      locationName: 'tokeninsights',
+      repositoryKey: 'repo-1',
+      repositoryName: 'tokeninsights',
+      provider: 'anthropic, openai',
+      harness: 'codex, pi',
+      model: 'claude-sonnet-4-5, gpt-5',
+      sessions: 3,
+      total: 560_000,
+    }),
+    row({
+      key: 'unknown\u0000',
+      name: 'unknown',
+      locationKey: 'unknown',
+      locationName: 'unknown',
+      repositoryKey: 'unknown',
+      repositoryName: 'unknown',
+      directoryNames: [
+        '~/workspace/client-a',
+        '~/workspace/client-b',
+        '~/workspace/scratch',
+        '~/workspace/tools',
+      ],
+      hasUnknownDirectory: true,
+      provider: 'openai',
+      harness: 'opencode',
+      model: 'gpt-5-mini',
+      sessions: 1,
+      total: 87_000,
+    }),
+  ],
 }
 
-export const mockTabs: Tab[] = ['tokens', 'models', 'providers', 'harnesses', 'sessions', 'context']
+export const mockTabs: Tab[] = [
+  'tokens',
+  'models',
+  'providers',
+  'harnesses',
+  'sessions',
+  'context',
+  'repo',
+]
 
 function positiveInteger(value: string | null, fallback: number, maximum: number): number {
   if (value === null) return fallback

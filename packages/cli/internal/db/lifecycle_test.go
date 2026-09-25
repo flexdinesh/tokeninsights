@@ -573,11 +573,22 @@ func legacySchema(t *testing.T, version int) string {
 	}
 	var statements []string
 	for _, statement := range strings.Split(string(schema), ";") {
-		if strings.Contains(statement, "database_lifecycle") ||
+		if (version < 8 && strings.Contains(statement, "database_lifecycle")) ||
 			(version < 6 && strings.Contains(statement, "normalization_work_queue")) ||
 			(version < 7 && strings.Contains(statement, "source_refresh_state")) ||
+			(version < 9 && (strings.Contains(statement, "CREATE TABLE IF NOT EXISTS usage_locations") ||
+				strings.Contains(statement, "CREATE INDEX IF NOT EXISTS usage_locations_") ||
+				strings.Contains(statement, "canonical_token_usage_location_time_idx"))) ||
 			strings.Contains(statement, "user_version") {
 			continue
+		}
+		if version < 9 {
+			statement = strings.ReplaceAll(statement, "  location_id INTEGER,\n", "")
+			statement = strings.ReplaceAll(statement, "  location_conflicts TEXT,\n", "")
+			statement = strings.ReplaceAll(statement, ",\n  FOREIGN KEY (location_id) REFERENCES usage_locations(id)", "")
+		}
+		if version == 9 && strings.Contains(statement, "CREATE TABLE IF NOT EXISTS usage_locations") {
+			statement = strings.Replace(statement, "  repository_source TEXT", "  repository_source TEXT,\n  worktree_key TEXT,\n  worktree_name TEXT,\n  worktree_source TEXT,\n  branch_key TEXT,\n  branch_value_key TEXT,\n  branch_name TEXT,\n  branch_source TEXT", 1)
 		}
 		if version == 3 {
 			statement = strings.ReplaceAll(statement, ", 'claude-code'", "")
@@ -592,6 +603,9 @@ func legacySchema(t *testing.T, version int) string {
 			statement = strings.Join(lines, "\n")
 		}
 		statements = append(statements, statement)
+	}
+	if version >= 8 {
+		statements = append(statements, "INSERT INTO database_lifecycle (id, data_generation, rebuild_pending, updated_at_ms) VALUES (1, 2, 0, 0)")
 	}
 	return strings.Join(statements, ";") + fmt.Sprintf("; PRAGMA user_version = %d;", version)
 }

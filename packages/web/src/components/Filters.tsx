@@ -16,6 +16,13 @@ const dimensions: { key: Dimension; label: string }[] = [
   { key: 'models', label: 'Model' },
   { key: 'sessions', label: 'Session' },
 ]
+const locationDimensions: {
+  key: 'repositories' | 'directories'
+  label: string
+}[] = [
+  { key: 'repositories', label: 'Repository' },
+  { key: 'directories', label: 'Directory' },
+]
 const periods: { value: Selection['period']; label: string }[] = [
   { value: 'today', label: 'Today' },
   { value: 'yesterday', label: 'Yesterday' },
@@ -32,21 +39,35 @@ export function MultiSelect({
   onChange,
   onSearch,
   loading = false,
+  missingName,
 }: {
   label: string
-  values: string[]
+  values: (string | { key: string; name: string })[]
   selected: string[]
   onChange: (values: string[]) => void
   onSearch?: (search: string) => void
   loading?: boolean
+  missingName?: string
 }) {
   const [search, setSearch] = useState('')
   const searchId = useId()
   const searchInput = useRef<HTMLInputElement>(null)
-  const options = [...new Set([...selected, ...values])]
+  const known = values.map((value) =>
+    typeof value === 'string' ? { key: value, name: value } : value,
+  )
+  const fallbackName = (key: string) => (key === 'unknown' ? 'unknown' : (missingName ?? key))
+  const options = [
+    ...known,
+    ...selected
+      .filter((key) => !known.some((value) => value.key === key))
+      .map((key) => ({ key, name: fallbackName(key) })),
+  ]
     // oxlint-disable-next-line unicorn/no-array-sort -- This array is freshly created.
-    .sort()
-    .filter((v) => v.toLowerCase().includes(search.toLowerCase()))
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .filter((value) => value.name.toLowerCase().includes(search.toLowerCase()))
+  const selectedNames = selected.map(
+    (key) => known.find((value) => value.key === key)?.name ?? fallbackName(key),
+  )
   return (
     <Popover>
       <PopoverTrigger asChild>
@@ -60,7 +81,7 @@ export function MultiSelect({
           {selected.length > 0 && <span className="count-badge">{selected.length}</span>}
           <ChevronDown size="1em" />
           <span className="filter-selection" aria-hidden="true">
-            {selected.length ? selected.join(', ') : 'All'}
+            {selected.length ? selectedNames.join(', ') : 'All'}
           </span>
         </Button>
       </PopoverTrigger>
@@ -94,19 +115,19 @@ export function MultiSelect({
         </label>
         <div className="filter-options" aria-busy={loading}>
           {options.map((value, index) => (
-            <label className="check-option" key={value} htmlFor={`${searchId}-${index}`}>
+            <label className="check-option" key={value.key} htmlFor={`${searchId}-${index}`}>
               <Checkbox
                 id={`${searchId}-${index}`}
-                checked={selected.includes(value)}
+                checked={selected.includes(value.key)}
                 onCheckedChange={() =>
                   onChange(
-                    selected.includes(value)
-                      ? selected.filter((v) => v !== value)
-                      : [...selected, value],
+                    selected.includes(value.key)
+                      ? selected.filter((v) => v !== value.key)
+                      : [...selected, value.key],
                   )
                 }
               />
-              <span title={value}>{value}</span>
+              <span title={value.name}>{value.name}</span>
             </label>
           ))}
           {options.length === 0 && (
@@ -253,7 +274,9 @@ export function FilterToolbar({
   }, [search])
   const sessionFacets = useFacets(baseUrl, query, revision, enabled && debounced !== '', debounced)
   const hasFilters =
-    dimensions.some((d) => query[d.key].length > 0) || Boolean(query.from || query.to)
+    dimensions.some((d) => query[d.key].length > 0) ||
+    (query.tab === 'repo' && locationDimensions.some((d) => query[d.key].length > 0)) ||
+    Boolean(query.from || query.to)
   return (
     <section className="filters" aria-label="Dashboard filters">
       <details open={expanded} onToggle={(event) => setExpanded(event.currentTarget.open)}>
@@ -273,7 +296,7 @@ export function FilterToolbar({
               size="icon-sm"
               title="Restore CLI defaults"
               aria-label="Restore CLI defaults"
-              onClick={() => dispatch({ type: 'selection', value: defaults })}
+              onClick={() => dispatch({ type: 'reset', value: defaults })}
             >
               <RotateCcw size="1.1em" />
             </Button>
@@ -298,6 +321,19 @@ export function FilterToolbar({
                   loading={d.key === 'sessions' && sessionFacets.isFetching}
                 />
               ))}
+              {query.tab === 'repo' &&
+                locationDimensions.map((d) => (
+                  <MultiSelect
+                    key={d.key}
+                    label={d.label}
+                    selected={query[d.key]}
+                    values={facets?.[d.key] ?? []}
+                    missingName={`${d.label} (unavailable)`}
+                    onChange={(values) =>
+                      dispatch({ type: 'locations', value: { [d.key]: values } })
+                    }
+                  />
+                ))}
             </div>
           </div>
           {hasFilters && (
@@ -325,6 +361,35 @@ export function FilterToolbar({
                   </Button>
                 )),
               )}
+              {query.tab === 'repo' &&
+                locationDimensions.flatMap((d) =>
+                  query[d.key].map((value) => {
+                    const name =
+                      facets?.[d.key].find((option) => option.key === value)?.name ??
+                      (value === 'unknown' ? 'unknown' : `${d.label} (unavailable)`)
+                    return (
+                      <Button
+                        key={`${d.key}:${value}`}
+                        variant="secondary"
+                        size="sm"
+                        className="filter-chip"
+                        onClick={() =>
+                          dispatch({
+                            type: 'locations',
+                            value: { [d.key]: query[d.key].filter((key) => key !== value) },
+                          })
+                        }
+                        aria-label={`Remove ${d.label.toLowerCase()} ${name}`}
+                      >
+                        <span className="muted">{d.label}</span>
+                        <span className="chip-value" title={name}>
+                          {name}
+                        </span>
+                        <X size="0.9em" />
+                      </Button>
+                    )
+                  }),
+                )}
               {(query.from || query.to) && (
                 <Button
                   variant="secondary"
@@ -340,26 +405,15 @@ export function FilterToolbar({
                 variant="ghost"
                 size="sm"
                 className="text-button"
-                onClick={() =>
-                  dispatch({
-                    type: 'selection',
-                    value: {
-                      providers: [],
-                      models: [],
-                      harnesses: [],
-                      sessions: [],
-                      from: '',
-                      to: '',
-                    },
-                  })
-                }
+                onClick={() => dispatch({ type: 'clearFilters' })}
               >
                 Clear All
               </Button>
             </div>
           )}
           <p className="filter-note">
-            Filters apply to every view. Sync always refreshes all supported harnesses.
+            Date and usage filters apply to every view. Location filters apply only to Repo. Sync
+            always refreshes all supported harnesses.
           </p>
         </div>
       </details>

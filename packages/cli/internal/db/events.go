@@ -9,14 +9,16 @@ import (
 )
 
 type Filter struct {
-	Start      time.Time
-	End        time.Time
-	SessionIDs []string
-	Providers  []string
-	Models     []string
-	Harnesses  []string
-	DayFrom    string
-	DayTo      string
+	Start          time.Time
+	End            time.Time
+	SessionIDs     []string
+	Providers      []string
+	Models         []string
+	Harnesses      []string
+	RepositoryKeys []string
+	DirectoryKeys  []string
+	DayFrom        string
+	DayTo          string
 }
 
 func LastCompletedSync(ctx context.Context, db Reader) (int64, error) {

@@ -24,6 +24,7 @@ type reloadMsg struct {
 type filterValuesMsg struct {
 	dimension filterDimension
 	values    []string
+	keys      map[string]string
 	err       error
 }
 
@@ -50,6 +51,7 @@ const (
 	popupFilterValues
 	popupFilters
 	popupHelp
+	popupRepoGroup
 )
 
 type groupByMode string
@@ -66,6 +68,8 @@ const (
 	filterProvider filterDimension = iota
 	filterModel
 	filterHarness
+	filterRepository
+	filterDirectory
 )
 
 type interactiveModel struct {
@@ -85,6 +89,7 @@ type interactiveModel struct {
 	filterDimension  filterDimension
 	filterValues     []string
 	filterSelections map[string]bool
+	filterValueKeys  map[string]string
 	filterLoading    bool
 	filterErr        error
 	ctx              context.Context
@@ -113,7 +118,8 @@ type syncProgressRow struct {
 	status  pipeline.SyncProgressStatus
 }
 
-var aggregationTabs = []tabMode{tabTokens, tabModels, tabProviders, tabHarnesses, tabSessions, tabContext}
+var aggregationTabs = []tabMode{tabTokens, tabModels, tabProviders, tabHarnesses, tabSessions, tabContext, tabRepo}
+var repoGroupOptions = []db.RepoGroup{db.RepoGroupRepository, db.RepoGroupDirectory}
 var dateRangeOptions = []period{periodToday, periodYesterday, periodWeek, periodMonth, periodYear, periodAllTime}
 var bucketOptions = []timeBucket{bucketDay, bucketWeek, bucketMonth, bucketYear}
 var defaultSortOptions = []sortMode{sortDate, sortTokens, sortInput, sortOutput, sortCacheRead, sortName}
@@ -156,6 +162,9 @@ func (m interactiveModel) Init() tea.Cmd {
 }
 
 func newInteractiveModel(ctx context.Context, options tableOptions, now time.Time, hostname string) interactiveModel {
+	if options.repoGroup == "" {
+		options.repoGroup = db.RepoGroupRepository
+	}
 	m := interactiveModel{
 		ctx:              ctx,
 		options:          options,
@@ -242,7 +251,11 @@ func (m interactiveModel) loadDashboard() reloadMsg {
 	if err != nil {
 		return reloadMsg{err: err}
 	}
-	counts, err := db.ViewerSessionCounts(m.ctx, tx, filterFromOptions(m.options, m.now))
+	countsFilter := filterFromOptions(m.options, m.now)
+	if m.activeTab == tabRepo {
+		countsFilter = repoFilterFromOptions(m.options, m.now)
+	}
+	counts, err := db.ViewerSessionCounts(m.ctx, tx, countsFilter)
 	if err != nil {
 		return reloadMsg{err: err}
 	}
@@ -252,6 +265,10 @@ func (m interactiveModel) loadDashboard() reloadMsg {
 
 func (m interactiveModel) filterValuesCmd(dimension filterDimension) tea.Cmd {
 	return func() tea.Msg {
+		if dimension >= filterRepository {
+			values, keys, err := loadLocationFilterValues(m.ctx, m.options, m.now, dimension)
+			return filterValuesMsg{dimension: dimension, values: values, keys: keys, err: err}
+		}
 		values, err := loadFilterValues(m.ctx, m.options, m.now, dimension)
 		return filterValuesMsg{dimension: dimension, values: values, err: err}
 	}
@@ -481,8 +498,21 @@ func (m interactiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		current := m.currentFilterValues(m.filterDimension)
-		m.filterValues = mergeSortedValues(msg.values, current)
-		m.filterSelections = selectedValuesMap(current)
+		m.filterValueKeys = msg.keys
+		if m.filterDimension >= filterRepository {
+			m.filterValues = msg.values
+			m.filterSelections = make(map[string]bool)
+			for _, value := range msg.values {
+				for _, selected := range current {
+					if msg.keys[value] == selected {
+						m.filterSelections[value] = true
+					}
+				}
+			}
+		} else {
+			m.filterValues = mergeSortedValues(msg.values, current)
+			m.filterSelections = selectedValuesMap(current)
+		}
 		m.popupCursor = clampPopupCursor(m.popupCursor, len(m.filterValues))
 		return m, nil
 	case tea.KeyMsg:
@@ -545,7 +575,7 @@ func (m interactiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			switch string(msg.Runes) {
 			case "q":
 				return m, tea.Quit
-			case "1", "2", "3", "4", "5", "6":
+			case "1", "2", "3", "4", "5", "6", "7":
 				index := int(msg.Runes[0] - '1')
 				m.activeTab = aggregationTabs[index]
 				m = m.resetRowPosition()
@@ -572,6 +602,11 @@ func (m interactiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.popupCursor = indexOfPeriod(m.options.period)
 				return m, nil
 			case "g":
+				if m.activeTab == tabRepo {
+					m.popup = popupRepoGroup
+					m.popupCursor = indexOfRepoGroup(m.options.repoGroup)
+					return m, nil
+				}
 				m.popup = popupBucket
 				m.popupCursor = indexOfBucket(m.options.bucket)
 				return m, nil
@@ -732,9 +767,42 @@ func (m interactiveModel) handlePopupKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.handleSortPopupKey(msg)
 	case popupFilterValues:
 		return m.handleFilterValuesKey(msg)
+	case popupRepoGroup:
+		return m.handleRepoPopupKey(msg)
 	default:
 		return m, nil
 	}
+}
+
+func indexOfRepoGroup(value db.RepoGroup) int {
+	for i, option := range repoGroupOptions {
+		if option == value {
+			return i
+		}
+	}
+	return 0
+}
+
+func (m interactiveModel) handleRepoPopupKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	count := len(repoGroupOptions)
+	switch msg.String() {
+	case "esc", "q":
+		m.popup = popupNone
+		return m, nil
+	case "up", "k":
+		m.popupCursor = movePopupCursor(m.popupCursor, count, -1)
+	case "down", "j":
+		m.popupCursor = movePopupCursor(m.popupCursor, count, 1)
+	case "enter", " ":
+		m.options.repoGroup = repoGroupOptions[m.popupCursor]
+		m.popup = popupNone
+		m = m.resetRowPosition()
+		m.horizontalOffset = 0
+		m.loading, m.reloadInFlight = true, true
+		m = m.reconcileTableSummary()
+		return m, m.reloadCmd()
+	}
+	return m, nil
 }
 
 func (m interactiveModel) handleDateRangePopupKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
@@ -890,10 +958,14 @@ func (m interactiveModel) applySortPopup() (tea.Model, tea.Cmd) {
 }
 
 func (m interactiveModel) openFilterValues(dimension filterDimension) (tea.Model, tea.Cmd) {
+	if dimension >= filterRepository && m.activeTab != tabRepo {
+		return m, nil
+	}
 	m.filterDimension = dimension
 	m.popup = popupFilterValues
 	m.popupCursor = 0
 	m.filterValues = nil
+	m.filterValueKeys = nil
 	m.filterSelections = selectedValuesMap(m.currentFilterValues(m.filterDimension))
 	m.filterLoading = true
 	m.filterErr = nil
@@ -953,6 +1025,15 @@ func (m interactiveModel) applyFilterValues() (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	selected := selectedValues(m.filterValues, m.filterSelections)
+	if m.filterDimension >= filterRepository {
+		keys := make([]string, 0, len(selected))
+		for _, value := range selected {
+			if key, ok := m.filterValueKeys[value]; ok {
+				keys = append(keys, key)
+			}
+		}
+		selected = keys
+	}
 	switch m.filterDimension {
 	case filterProvider:
 		m.options.filters.providers = stringList(selected)
@@ -960,6 +1041,10 @@ func (m interactiveModel) applyFilterValues() (tea.Model, tea.Cmd) {
 		m.options.filters.models = stringList(selected)
 	case filterHarness:
 		m.options.filters.harnesses = stringList(selected)
+	case filterRepository:
+		m.options.filters.repositories = stringList(selected)
+	case filterDirectory:
+		m.options.filters.directories = stringList(selected)
 	}
 	m.popup = popupNone
 	m = m.resetRowPosition()
@@ -1010,6 +1095,10 @@ func (m interactiveModel) currentFilterValues(dimension filterDimension) []strin
 		return []string(m.options.filters.models)
 	case filterHarness:
 		return []string(m.options.filters.harnesses)
+	case filterRepository:
+		return []string(m.options.filters.repositories)
+	case filterDirectory:
+		return []string(m.options.filters.directories)
 	default:
 		return nil
 	}
@@ -1072,6 +1161,10 @@ func filterDimensionLabel(dimension filterDimension) string {
 		return "model"
 	case filterHarness:
 		return "harness"
+	case filterRepository:
+		return "repository"
+	case filterDirectory:
+		return "directory"
 	default:
 		return ""
 	}
@@ -1211,8 +1304,77 @@ func activeFiltersLabel(f filters) string {
 	return "filters: " + strings.Join(parts, " ")
 }
 
+func activeRepoFiltersLabel(f filters) string {
+	var parts []string
+	for _, facet := range []struct {
+		name   string
+		values stringList
+	}{
+		{"repository", f.repositories}, {"directory", f.directories},
+	} {
+		if len(facet.values) > 0 {
+			parts = append(parts, fmt.Sprintf("%s=%d selected", facet.name, len(facet.values)))
+		}
+	}
+	if len(parts) == 0 {
+		return ""
+	}
+	return " · " + strings.Join(parts, " · ")
+}
+
 func filterFromOptions(options tableOptions, now time.Time) db.Filter {
 	return selectionFromOptions(options).Filter(now)
+}
+
+func repoFilterFromOptions(options tableOptions, now time.Time) db.Filter {
+	f := filterFromOptions(options, now)
+	f.RepositoryKeys = []string(options.filters.repositories)
+	f.DirectoryKeys = []string(options.filters.directories)
+	return f
+}
+
+func loadLocationFilterValues(ctx context.Context, options tableOptions, now time.Time, dimension filterDimension) ([]string, map[string]string, error) {
+	database, err := db.Open(options.dbPath)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer func() { _ = database.Close() }()
+	tx, err := db.BeginAnalyticsRead(ctx, database)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer func() { _ = tx.Rollback() }()
+	facets, err := db.AvailableLocations(ctx, tx, repoFilterFromOptions(options, now))
+	if err != nil {
+		return nil, nil, err
+	}
+	var source []db.LocationOption
+	switch dimension {
+	case filterRepository:
+		source = facets.Repositories
+	case filterDirectory:
+		source = facets.Directories
+	}
+	values, keys := locationFilterLabels(source)
+	return values, keys, nil
+}
+
+func locationFilterLabels(source []db.LocationOption) ([]string, map[string]string) {
+	values := make([]string, 0, len(source))
+	keys := make(map[string]string, len(source))
+	for _, option := range source {
+		base := db.LocationDisplayName(option)
+		label := base
+		for suffix := 2; ; suffix++ {
+			if _, exists := keys[label]; !exists {
+				break
+			}
+			label = fmt.Sprintf("%s (%d)", base, suffix)
+		}
+		values = append(values, label)
+		keys[label] = option.Key
+	}
+	return values, keys
 }
 
 func loadFilterValues(ctx context.Context, options tableOptions, now time.Time, dimension filterDimension) ([]string, error) {
@@ -1270,6 +1432,34 @@ func loadRows(ctx context.Context, options tableOptions, now time.Time, groupBy 
 
 func loadRowsFromReader(ctx context.Context, database db.Reader, options tableOptions, now time.Time, groupBy groupByMode, activeTab tabMode) ([]renderRow, error) {
 	f := filterFromOptions(options, now)
+	if activeTab == tabRepo {
+		group := options.repoGroup
+		if group == "" {
+			group = db.RepoGroupRepository
+		}
+		rows, err := db.ViewerRepoGroups(ctx, database, repoFilterFromOptions(options, now), group)
+		if err != nil {
+			return nil, err
+		}
+		result := make([]renderRow, len(rows))
+		for i, row := range rows {
+			name := db.LocationDisplayName(db.LocationOption{Key: row.Key, Name: row.Name})
+			result[i] = renderRow{
+				location:  name,
+				providers: row.Providers, harnesses: row.Harnesses, models: row.Models,
+				sessions: formatTokens(row.SessionCount), sessionsValue: row.SessionCount,
+				inputTokens: formatTokens(row.InputTokens), inputValue: row.InputTokens,
+				outputTokens: formatTokens(row.OutputTokens), outputValue: row.OutputTokens,
+				reasoningTokens: formatTokens(row.ReasoningTokens), reasoningValue: row.ReasoningTokens,
+				cacheReadTokens: formatTokens(row.CacheReadTokens), cacheReadValue: row.CacheReadTokens,
+				cacheWriteTokens: formatTokens(row.CacheWriteTokens), cacheWriteValue: row.CacheWriteTokens,
+				totalTokens: formatTokens(row.TotalTokens), totalValue: row.TotalTokens,
+				latestValue: row.LatestAtMs,
+			}
+		}
+		sortRenderRows(result, activeTab, options.sort)
+		return result, nil
+	}
 	if activeTab == tabTokens {
 		aggRows, err := db.ViewerTokenBuckets(ctx, database, f, db.TimeBucket(options.bucket))
 		if err != nil {
@@ -1552,6 +1742,8 @@ func rowName(row renderRow, activeTab tabMode) string {
 		return row.sessionID
 	case tabContext:
 		return row.harness + "\x00" + row.provider + "\x00" + row.model
+	case tabRepo:
+		return row.location
 	default:
 		return row.bucket
 	}

@@ -13,11 +13,13 @@ import {
   LoaderCircle,
   Monitor,
   Moon,
+  GitBranch,
   RefreshCw,
   Sun,
 } from 'lucide-react'
 import { useAnalytics, useBootstrap, useFacets, useSyncStatus, syncNow } from './api'
 import type { SyncStatus, Tab } from './contracts'
+import { locationGroupSchema } from './contracts'
 import { DashboardProvider, reduceQuery, searchFromQuery, useDashboardState } from './state'
 import { labels } from './format'
 import { FilterToolbar, QuickPeriods } from './components/Filters'
@@ -30,6 +32,13 @@ import { Button } from './components/ui/button'
 import { Skeleton } from './components/ui/skeleton'
 import { Alert, AlertDescription, AlertTitle } from './components/ui/alert'
 import { Card } from './components/ui/card'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from './components/ui/select'
 
 const UsageChart = lazy(() =>
   import('./components/UsageChart').then((module) => ({ default: module.UsageChart })),
@@ -42,6 +51,7 @@ const tabs: { id: Tab; icon: typeof Activity }[] = [
   { id: 'harnesses', icon: Command },
   { id: 'sessions', icon: ChartNoAxesCombined },
   { id: 'context', icon: Layers3 },
+  { id: 'repo', icon: GitBranch },
 ]
 
 export function App() {
@@ -133,7 +143,9 @@ function DashboardShell() {
   }
   const running = status?.running || sync.isPending
   const data = analytics.data?.dashboard
-  const resultsMatchView = analytics.data?.tab === query.tab
+  const resultsMatchView =
+    analytics.data?.tab === query.tab &&
+    (query.tab !== 'repo' || analytics.data?.locationGroup === query.locationGroup)
   return (
     <div className="app-shell">
       <a href="#dashboard" className="skip-link">
@@ -242,6 +254,31 @@ function DashboardShell() {
               ))}
             </nav>
           </div>
+          {query.tab === 'repo' && (
+            <div className="repo-controls" aria-label="Repo view options">
+              <div className="bucket-control">
+                <span>Group by</span>
+                <Select
+                  value={query.locationGroup}
+                  onValueChange={(value) => {
+                    const parsed = locationGroupSchema.safeParse(value)
+                    if (parsed.success) dispatch({ type: 'locationGroup', value: parsed.data })
+                  }}
+                >
+                  <SelectTrigger aria-label="Group by location">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {locationGroupSchema.options.map((value) => (
+                      <SelectItem key={value} value={value}>
+                        {value[0]?.toUpperCase() + value.slice(1)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          )}
           <div className="studio-layout">
             <FilterToolbar
               baseUrl={active.baseUrl}

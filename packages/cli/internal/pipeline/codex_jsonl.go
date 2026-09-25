@@ -33,6 +33,8 @@ type codexJSONLState struct {
 	provider          *string
 	model             *string
 	turnID            *string
+	cwd               string
+	recordedRemote    string
 	pending           []codexPendingFact
 }
 
@@ -206,7 +208,7 @@ func (a *codexJSONLAdapter) parseCandidates(ctx context.Context, source Source, 
 			facts = append(facts, pendingFacts...)
 			diagnostics = append(diagnostics, pendingDiagnostics...)
 		case "event_msg":
-			fact, rowDiagnostics, ok := a.factFromEvent(source, options, &state, record, lineNumber)
+			fact, rowDiagnostics, ok := a.factFromEvent(ctx, source, options, &state, record, lineNumber)
 			diagnostics = append(diagnostics, rowDiagnostics...)
 			if ok {
 				facts = append(facts, fact)
@@ -244,6 +246,9 @@ func (state *codexJSONLState) applySessionMeta(record map[string]interface{}) []
 		if state.provider == nil {
 			state.provider = stringField(payload, "model_provider")
 		}
+		state.cwd = stringValue(payload, state.cwd, "cwd")
+		git := nested(payload, "git")
+		state.recordedRemote = stringValue(git, state.recordedRemote, "repository_url")
 		return diagnostics
 	} else if state.sessionID != *sessionID {
 		diagnostics = append(diagnostics, codexDiagnostic("codex_jsonl_multiple_session_meta", "Codex session file contains multiple session metadata ids"))
@@ -252,6 +257,9 @@ func (state *codexJSONLState) applySessionMeta(record map[string]interface{}) []
 	if state.provider == nil {
 		state.provider = stringField(payload, "model_provider")
 	}
+	state.cwd = stringValue(payload, state.cwd, "cwd")
+	git := nested(payload, "git")
+	state.recordedRemote = stringValue(git, state.recordedRemote, "repository_url")
 	return diagnostics
 }
 
@@ -266,6 +274,7 @@ func (state *codexJSONLState) applyTurnContext(record map[string]interface{}) {
 	if model := stringField(payload, "model"); model != nil {
 		state.model = model
 	}
+	state.cwd = stringValue(payload, state.cwd, "cwd")
 }
 
 func (state *codexJSONLState) flushPending(resolved bool) ([]codexCandidate, []Diagnostic) {
@@ -293,7 +302,7 @@ func (state *codexJSONLState) flushPending(resolved bool) ([]codexCandidate, []D
 	return facts, diagnostics
 }
 
-func (a *codexJSONLAdapter) factFromEvent(source Source, options SyncOptions, state *codexJSONLState, record map[string]interface{}, lineNumber int) (codexCandidate, []Diagnostic, bool) {
+func (a *codexJSONLAdapter) factFromEvent(ctx context.Context, source Source, options SyncOptions, state *codexJSONLState, record map[string]interface{}, lineNumber int) (codexCandidate, []Diagnostic, bool) {
 	payload := nested(record, "payload")
 	if payload == nil {
 		return codexCandidate{}, nil, false
@@ -347,6 +356,10 @@ func (a *codexJSONLAdapter) factFromEvent(source Source, options SyncOptions, st
 	}
 	sourceID := stableHash("codex-session:" + state.sessionID)
 	sessionID := state.sessionID
+	location, conflict := resolveFactLocation(ctx, options, state.cwd, state.recordedRemote, "")
+	if conflict {
+		diagnostics = append(diagnostics, codexDiagnostic("codex_jsonl_git_remote_conflict", "recorded repository differs from checkout at sync; using recorded remote"))
+	}
 	fact := RawTokenFact{
 		Harness:          HarnessCodex,
 		SourceID:         sourceID,
@@ -366,6 +379,7 @@ func (a *codexJSONLAdapter) factFromEvent(source Source, options SyncOptions, st
 		CacheReadTokens:  tokens.cacheRead,
 		CacheWriteTokens: nil,
 		TotalTokens:      nil,
+		Location:         location,
 	}
 	last, lastValid := codexSnapshotFromUsage(lastUsage)
 	total, totalValid := codexSnapshotFromUsage(totalUsage)

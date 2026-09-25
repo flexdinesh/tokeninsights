@@ -139,7 +139,7 @@ func apiNotFound(w http.ResponseWriter) {
 
 func isDashboardRoute(path string) bool {
 	switch path {
-	case "/tokens", "/models", "/providers", "/harnesses", "/sessions", "/context":
+	case "/tokens", "/models", "/providers", "/harnesses", "/sessions", "/context", "/repo":
 		return true
 	default:
 		return false
@@ -217,7 +217,10 @@ func (a *app) handler() http.Handler {
 		}
 		defer func() { _ = tx.Rollback() }()
 		f := q.Selection.Filter(time.Now())
-		values := serverapi.UsageFacetsResponse{Providers: []string{}, Models: []string{}, Harnesses: []serverapi.Harness{}, Sessions: []string{}}
+		if q.Tab == "repo" {
+			f.RepositoryKeys, f.DirectoryKeys = q.RepositoryKeys, q.DirectoryKeys
+		}
+		values := serverapi.UsageFacetsResponse{Providers: []string{}, Models: []string{}, Harnesses: []serverapi.Harness{}, Sessions: []string{}, Repositories: []serverapi.LocationOption{}, Directories: []serverapi.LocationOption{}}
 		values.Providers, err = db.AvailableProviders(ctx, tx, f)
 		if err != nil {
 			a.queryError(w, err)
@@ -238,6 +241,15 @@ func (a *app) handler() http.Handler {
 		if err != nil {
 			a.queryError(w, err)
 			return
+		}
+		if q.Tab == "repo" {
+			locations, err := db.AvailableLocations(ctx, tx, f)
+			if err != nil {
+				a.queryError(w, err)
+				return
+			}
+			values.Repositories = apiLocationOptions(locations.Repositories)
+			values.Directories = apiLocationOptions(locations.Directories)
 		}
 		if err = tx.Commit(); err != nil {
 			a.queryError(w, err)

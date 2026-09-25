@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/db"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/pipeline"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/viewer"
 )
@@ -69,21 +70,24 @@ func (values *stringList) Set(value string) error {
 }
 
 type filters struct {
-	sessionIDs stringList
-	providers  stringList
-	models     stringList
-	harnesses  stringList
-	dayFrom    string
-	dayTo      string
+	sessionIDs   stringList
+	providers    stringList
+	models       stringList
+	harnesses    stringList
+	repositories stringList
+	directories  stringList
+	dayFrom      string
+	dayTo        string
 }
 
 type tableOptions struct {
-	dbPath  string
-	noSync  bool
-	period  period
-	bucket  timeBucket
-	sort    sortMode
-	filters filters
+	dbPath    string
+	noSync    bool
+	period    period
+	bucket    timeBucket
+	sort      sortMode
+	repoGroup db.RepoGroup
+	filters   filters
 }
 
 func parseTableOptions(args []string, stderr io.Writer, requirePeriod bool, defaultPeriod period) (tableOptions, error) {

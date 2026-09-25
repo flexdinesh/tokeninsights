@@ -4,7 +4,7 @@ import { InstanceResponse } from '../src/generated/api'
 const localSource = 'http://127.0.0.1:18765'
 const remoteSource = 'http://127.0.0.1:18766'
 
-test('startup sync, six views, filtering, history, pagination, and refresh', async ({ page }) => {
+test('startup sync, seven views, filtering, history, pagination, and refresh', async ({ page }) => {
   const errors: string[] = []
   page.on('pageerror', (error) => errors.push(error.message))
   await page.goto('/')
@@ -13,7 +13,7 @@ test('startup sync, six views, filtering, history, pagination, and refresh', asy
   await expect(page.getByRole('region', { name: 'Usage over time', exact: true })).toBeVisible()
   await expect(page.locator('.recharts-surface')).toBeVisible()
   await expect(page.getByRole('button', { name: 'This week', exact: true })).toBeVisible()
-  for (const tab of ['Models', 'Providers', 'Harnesses', 'Sessions', 'Context', 'Tokens']) {
+  for (const tab of ['Models', 'Providers', 'Harnesses', 'Sessions', 'Context', 'Repo', 'Tokens']) {
     await page
       .getByRole('navigation', { name: 'Analytics views' })
       .getByRole('link', { name: tab, exact: true })
@@ -26,6 +26,41 @@ test('startup sync, six views, filtering, history, pagination, and refresh', asy
     await expect(page.locator('.sessions-card')).toContainText(
       '80 synced across all dates & harnesses',
     )
+    if (tab === 'Repo') {
+      const details = page.getByRole('region', { name: 'Repo details', exact: true })
+      await expect(page.getByRole('combobox', { name: 'Group by location' })).toBeVisible()
+      await expect(page.getByRole('combobox', { name: 'Breakdown by' })).toHaveCount(0)
+      await page.getByRole('combobox', { name: 'Group by location' }).click()
+      await expect(page.getByRole('option', { name: 'Repository' })).toBeVisible()
+      await expect(page.getByRole('option', { name: 'Directory' })).toBeVisible()
+      await expect(page.getByRole('option', { name: 'Worktree' })).toHaveCount(0)
+      await expect(page.getByRole('option', { name: 'Branch' })).toHaveCount(0)
+      await page.keyboard.press('Escape')
+      for (const column of ['Providers', 'Harnesses', 'Models']) {
+        await expect(details.getByRole('columnheader', { name: column, exact: true })).toBeVisible()
+      }
+      const totalRow = details.locator('tbody tr').first()
+      await expect(totalRow).toContainText('anthropic, openai')
+      await expect(totalRow).toContainText('pi')
+      await expect(totalRow).toContainText('model-a, model-b')
+      await expect(totalRow.getByText('~/workspace/project-0')).toBeHidden()
+      await expect(totalRow.getByText('Some usage has no recorded directory')).toHaveCount(0)
+      await totalRow.getByRole('button', { name: 'Show directories' }).click()
+      await expect(totalRow.getByText('~/workspace/project-0')).toBeVisible()
+      await expect(totalRow.getByText('~/workspace/project-1')).toBeVisible()
+      await expect(totalRow.getByText('~/workspace/project-2')).toBeVisible()
+      await expect(totalRow.getByText('~/workspace/project-3')).toBeVisible()
+      await expect(totalRow.getByText('Some usage has no recorded directory')).toBeVisible()
+      await page.getByRole('combobox', { name: 'Group by location' }).click()
+      await page.getByRole('option', { name: 'Directory' }).click()
+      const unknownDirectory = details.locator('.identity-cell').filter({
+        has: page.getByText('unknown', { exact: true }),
+      })
+      await expect(unknownDirectory).toContainText('No recorded directory')
+      await expect(unknownDirectory.getByRole('button', { name: 'Show directories' })).toHaveCount(
+        0,
+      )
+    }
   }
   await page.getByRole('button', { name: 'Model', exact: true }).click()
   await page.getByRole('checkbox', { name: 'model-a', exact: true }).check()

@@ -172,6 +172,10 @@ func recognizeSchema(ctx context.Context, reader Reader, version int) error {
 		if version >= 5 {
 			required[TableCanonicalTokenUsage] += " provider_source"
 		}
+		if version >= 9 {
+			required[TableRawTokenUsage] += " location_id location_conflicts"
+			required[TableCanonicalTokenUsage] += " location_id"
+		}
 		for _, state := range []struct {
 			table   string
 			columns string
@@ -180,12 +184,18 @@ func recognizeSchema(ctx context.Context, reader Reader, version int) error {
 			{TableNormalizationWorkQueue, "id raw_fact_id domain enqueued_at_ms", 6},
 			{TableSourceRefreshState, "id harness source_kind source_state_key collector parser last_successful_refresh_at_ms source_mtime_ms source_size_bytes updated_at_ms", 7},
 			{TableDatabaseLifecycle, "id data_generation rebuild_pending rebuild_source_key updated_at_ms", 8},
+			{TableUsageLocations, "id semantic_key directory_key directory_name repository_key repository_name repository_source worktree_key worktree_name worktree_source branch_key branch_value_key branch_name branch_source", 9},
 		} {
 			if version >= state.since {
 				required[state.table] = state.columns
 			} else {
 				optional[state.table] = state.columns
 			}
+		}
+		if version >= 10 {
+			required[TableUsageLocations] = "id semantic_key directory_key directory_name repository_key repository_name repository_source"
+		} else if version < 9 {
+			optional[TableUsageLocations] = "id semantic_key directory_key directory_name repository_key repository_name repository_source"
 		}
 	}
 	rows, err := reader.QueryContext(ctx, "SELECT type, name FROM sqlite_schema WHERE type IN ('table', 'view', 'trigger') AND name NOT GLOB 'sqlite_*'")

@@ -19,6 +19,7 @@ const (
 	tabHarnesses
 	tabSessions
 	tabContext
+	tabRepo
 )
 
 func (t tabMode) String() string {
@@ -35,6 +36,8 @@ func (t tabMode) String() string {
 		return "sessions"
 	case tabContext:
 		return "context"
+	case tabRepo:
+		return "repo"
 	default:
 		return ""
 	}
@@ -121,6 +124,14 @@ func columnsForModeAndTab(g groupByMode, t tabMode) []column {
 			{name: "median ctx", field: "medianContextUsedTokens", numeric: true},
 			{name: "max ctx", field: "maxContextUsedTokens", numeric: true},
 		}
+	case tabRepo:
+		return append([]column{
+			{name: "location", field: "location"},
+			{name: "providers", field: "providers"},
+			{name: "harnesses", field: "harnesses"},
+			{name: "models", field: "models"},
+			{name: "sessions", field: "sessions", numeric: true},
+		}, tokenColumns()...)
 	}
 
 	grouping := []column{{name: "day", field: "day"}}
@@ -157,6 +168,7 @@ func tokenColumns() []column {
 }
 
 type renderRow struct {
+	location                 string
 	bucket                   string
 	sessions                 string
 	sessionsValue            int64
@@ -502,6 +514,9 @@ func sortField(tab tabMode, sort sortMode) string {
 		if tab == tabSessions {
 			return "latest"
 		}
+		if tab == tabRepo {
+			return "location"
+		}
 		return rowNameField(tab)
 	default:
 		return ""
@@ -518,6 +533,8 @@ func rowNameField(tab tabMode) string {
 		return "harness"
 	case tabSessions:
 		return "sessionID"
+	case tabRepo:
+		return "location"
 	default:
 		return "bucket"
 	}
@@ -539,7 +556,7 @@ func rowStyle(rowIndex int) lipgloss.Style {
 
 func cellStyleForColumn(col column) lipgloss.Style {
 	switch col.field {
-	case "model", "provider", "harness", "bucket", "latest", "sessionID":
+	case "model", "provider", "harness", "bucket", "latest", "sessionID", "location":
 		return dimensionStyle
 	case "models", "providers", "harnesses", "sessions":
 		return mutedCellStyle
@@ -561,6 +578,8 @@ func formatRenderRows(rows []renderRow, cols []column) [][][]string {
 		for i, c := range cols {
 			value := ""
 			switch c.field {
+			case "location":
+				value = row.location
 			case "bucket":
 				value = row.bucket
 			case "sessions":
