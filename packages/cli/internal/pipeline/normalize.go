@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -55,6 +56,15 @@ type canonicalTokenValues struct {
 	RawFactID        int64
 	IngestRunID      interface{}
 	LocationID       interface{}
+}
+
+// Source identifiers stay in raw_token_usage; these rules affect canonical facts only.
+var providerAliases = map[Harness]map[string]string{
+	HarnessPi: {"openai-codex": "openai"},
+}
+
+var modelPrefixes = map[string]string{
+	"fireworks": "accounts/fireworks/models/",
 }
 
 func Normalize(ctx context.Context, options NormalizeOptions) (Summary, error) {
@@ -134,11 +144,56 @@ func normalizePrepared(ctx context.Context, database *sql.DB, options NormalizeO
 		summary.Canonical += count
 		summary.Diagnostics += diagnostic
 	}
+	if err := refreshCanonicalIdentifiers(ctx, tx, options.Harnesses); err != nil {
+		return summary, err
+	}
 	if err := tx.Commit(); err != nil {
 		return summary, err
 	}
 	committed = true
 	return summary, nil
+}
+
+func refreshCanonicalIdentifiers(ctx context.Context, runner sqlRunner, harnesses []Harness) error {
+	for harness, aliases := range providerAliases {
+		if len(harnesses) > 0 && !slices.Contains(harnesses, harness) {
+			continue
+		}
+		for source, canonical := range aliases {
+			if _, err := runner.ExecContext(ctx, `
+				UPDATE canonical_token_usage AS c
+				SET provider = ?
+				FROM raw_token_usage AS r
+				WHERE c.primary_raw_fact_id = r.id AND c.harness = ?
+					AND r.provider = ? AND c.provider = ?
+			`, canonical, harness, source, source); err != nil {
+				return err
+			}
+		}
+	}
+	for provider, prefix := range modelPrefixes {
+		query := `
+			UPDATE canonical_token_usage AS c
+			SET model = substr(r.model, length(?) + 1)
+			FROM raw_token_usage AS r
+			WHERE c.primary_raw_fact_id = r.id AND c.provider = ? AND r.provider = ?
+				AND substr(r.model, 1, length(?)) = ? AND length(r.model) > length(?)
+				AND c.model != substr(r.model, length(?) + 1)
+		`
+		args := []interface{}{prefix, provider, provider, prefix, prefix, prefix, prefix}
+		if len(harnesses) > 0 {
+			placeholders := make([]string, len(harnesses))
+			for i, harness := range harnesses {
+				placeholders[i] = "?"
+				args = append(args, harness)
+			}
+			query += " AND c.harness IN (" + strings.Join(placeholders, ",") + ")"
+		}
+		if _, err := runner.ExecContext(ctx, query, args...); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func loadPendingTokenRows(ctx context.Context, database *sql.DB, harnesses []Harness) ([]rawTokenRow, error) {
@@ -367,7 +422,7 @@ func canonicalTokenValuesFor(row rawTokenRow, sessionDBID int64, messageDBID *in
 		MessageDBID:      nullableInt64Ptr(messageDBID),
 		Provider:         provider,
 		ProviderSource:   providerSource,
-		Model:            normalizedText(row.Model, "unknown"),
+		Model:            canonicalModel(row.Model, provider),
 		UsageScope:       row.UsageScope,
 		Quality:          row.Quality,
 		Countable:        countable(row),
@@ -462,12 +517,25 @@ func normalizedText(value sql.NullString, fallback string) string {
 
 func canonicalProvider(row rawTokenRow) (string, string) {
 	if provider := normalizedText(row.Provider, ""); provider != "" {
+		if alias, ok := providerAliases[row.Harness][provider]; ok {
+			provider = alias
+		}
 		return provider, "explicit"
 	}
 	if row.Harness == HarnessClaudeCode {
 		return "maybe-anthropic", "inferred"
 	}
 	return "unknown", "unknown"
+}
+
+func canonicalModel(sourceModel sql.NullString, provider string) string {
+	model := normalizedText(sourceModel, "unknown")
+	if prefix, ok := modelPrefixes[provider]; ok && strings.HasPrefix(model, prefix) {
+		if trimmed := strings.TrimPrefix(model, prefix); trimmed != "" {
+			return trimmed
+		}
+	}
+	return model
 }
 
 func nullStringValue(value sql.NullString) string {
