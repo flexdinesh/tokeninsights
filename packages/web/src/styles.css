@@ -715,12 +715,16 @@ table {
   font-size: var(--text-sm);
   text-align: left;
 }
+.resizable-table {
+  table-layout: fixed;
+}
 thead {
   position: sticky;
   top: 0;
   z-index: var(--layer-sticky);
 }
 th {
+  position: relative;
   background: var(--color-surface-raised);
   border-block: var(--border-width) solid var(--color-border);
   font-weight: var(--weight-medium);
@@ -736,10 +740,6 @@ td:first-child {
 th:last-child,
 td:last-child {
   padding-right: var(--panel-padding);
-}
-.repo-table-panel th:first-child,
-.repo-table-panel td:first-child {
-  min-width: 16rem;
 }
 th button {
   display: inline-flex;
@@ -758,6 +758,32 @@ th button:hover {
 th[aria-sort='ascending'],
 th[aria-sort='descending'] {
   color: var(--color-accent-text);
+}
+.column-resize-handle {
+  position: absolute;
+  inset-block: 0;
+  inset-inline-end: 0;
+  width: var(--space-3);
+  cursor: col-resize;
+  touch-action: none;
+  user-select: none;
+}
+.column-resize-handle::after {
+  content: '';
+  position: absolute;
+  inset-block: var(--space-2);
+  inset-inline-end: 0;
+  width: var(--border-width);
+  background: var(--color-border);
+}
+.column-resize-handle:hover::after,
+.column-resize-handle:focus-visible::after,
+.column-resize-handle.resizing::after {
+  background: var(--color-accent-text);
+  width: calc(2 * var(--border-width));
+}
+.column-resize-handle:focus-visible {
+  outline-offset: calc(-1 * var(--focus-width));
 }
 .sort-hint {
   color: var(--color-text-muted);
@@ -789,6 +815,9 @@ tbody tr:hover {
   min-width: 9rem;
   max-width: 26rem;
 }
+.resizable-table .identity-cell {
+  max-width: 100%;
+}
 .identity-name {
   font-weight: var(--weight-medium);
   text-overflow: ellipsis;
@@ -796,6 +825,8 @@ tbody tr:hover {
   white-space: nowrap;
 }
 .identity-detail {
+  display: flex;
+  flex-direction: column;
   font-size: var(--text-xs);
   color: var(--color-text-muted);
   overflow-wrap: anywhere;
@@ -855,11 +886,20 @@ tbody tr:hover {
     transition: none;
   }
 }
+.dimension-values,
 .dimension-value {
   display: inline-block;
   min-width: 6rem;
   max-width: 18rem;
   overflow-wrap: anywhere;
+}
+.dimension-values > span {
+  display: block;
+}
+.resizable-table .dimension-values,
+.resizable-table .dimension-value {
+  min-width: 0;
+  max-width: 100%;
 }
 .results-summary {
   display: flex;
