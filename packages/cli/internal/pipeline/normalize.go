@@ -60,7 +60,10 @@ type canonicalTokenValues struct {
 
 // Source identifiers stay in raw_token_usage; these rules affect canonical facts only.
 var providerAliases = map[Harness]map[string]string{
-	HarnessPi: {"openai-codex": "openai"},
+	HarnessOpenCode:   {"fireworks-ai": "fireworks"},
+	HarnessPi:         {"openai-codex": "openai", "fireworks-ai": "fireworks"},
+	HarnessCodex:      {"fireworks-ai": "fireworks"},
+	HarnessClaudeCode: {"fireworks-ai": "fireworks"},
 }
 
 var modelPrefixes = map[string]string{
@@ -176,7 +179,7 @@ func refreshCanonicalIdentifiers(ctx context.Context, runner sqlRunner, harnesse
 			UPDATE canonical_token_usage AS c
 			SET model = substr(r.model, length(?) + 1)
 			FROM raw_token_usage AS r
-			WHERE c.primary_raw_fact_id = r.id AND c.provider = ? AND r.provider = ?
+			WHERE c.primary_raw_fact_id = r.id AND c.provider = ? AND r.provider IN (?, 'fireworks-ai')
 				AND substr(r.model, 1, length(?)) = ? AND length(r.model) > length(?)
 				AND c.model != substr(r.model, length(?) + 1)
 		`

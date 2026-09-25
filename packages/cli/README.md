@@ -56,7 +56,7 @@ Codex forks/subagents are reparsed each sync, with linked parent parses cached w
 
 Process pending canonical work from existing raw facts. After `reset-canonical`, this rebuilds canonical facts from requeued raw token facts.
 
-Raw provider and model names remain unchanged. Canonical rows used by queries map Pi `openai-codex` to `openai` and strip `accounts/fireworks/models/` from Fireworks model names. Normal sync and `normalize` also refresh previously stored canonical names.
+Raw provider and model names remain unchanged. Canonical rows used by queries map Pi `openai-codex` to `openai`, map `fireworks-ai` to `fireworks`, and strip `accounts/fireworks/models/` from Fireworks model names. Normal sync and `normalize` also refresh previously stored canonical names.
 
 ```sh
 tokeninsights normalize
