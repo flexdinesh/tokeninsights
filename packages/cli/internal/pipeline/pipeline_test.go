@@ -713,6 +713,81 @@ func TestPiJSONLSyncsAssistantMessageTokenUsage(t *testing.T) {
 	})
 }
 
+func TestSyncKeepsSourceIdentifiersAndQueriesCanonicalIdentifiers(t *testing.T) {
+	ctx := context.Background()
+	dbPath := filepath.Join(t.TempDir(), "tokeninsights.sqlite")
+	sourceDir := t.TempDir()
+	now := time.Date(2026, 9, 25, 0, 0, 0, 0, time.UTC)
+	sourcePath := filepath.Join(sourceDir, "pi", "project", "2026-01-01T00-00-00_names.jsonl")
+	writeJSONL(t, sourcePath,
+		`{"type":"session","version":1,"id":"names","timestamp":"2026-01-01T00:00:00.000Z"}`,
+		`{"type":"message","id":"openai","timestamp":"2026-01-01T00:00:01.000Z","message":{"role":"assistant","provider":"openai-codex","model":"gpt-5","usage":{"input":1,"output":1,"totalTokens":2},"timestamp":1767225601000}}`,
+		`{"type":"message","id":"fireworks","timestamp":"2026-01-01T00:00:02.000Z","message":{"role":"assistant","provider":"fireworks","model":"accounts/fireworks/models/kimi-k2p7-code","usage":{"input":1,"output":1,"totalTokens":2},"timestamp":1767225602000}}`,
+		`{"type":"message","id":"other","timestamp":"2026-01-01T00:00:03.000Z","message":{"role":"assistant","provider":"other","model":"accounts/fireworks/models/keep-prefix","usage":{"input":1,"output":1,"totalTokens":2},"timestamp":1767225603000}}`,
+	)
+	setFileModTime(t, sourcePath, now.Add(-72*time.Hour))
+	if _, err := Sync(ctx, SyncOptions{DBPath: dbPath, Harnesses: []Harness{HarnessPi}, SourceDir: sourceDir, Normalize: true, Now: now}); err != nil {
+		t.Fatal(err)
+	}
+
+	database := openTestDB(t, dbPath)
+	defer func() { _ = database.Close() }()
+	for _, check := range []struct {
+		messageID         string
+		sourceProvider    string
+		sourceModel       string
+		canonicalProvider string
+		canonicalModel    string
+	}{
+		{"openai", "openai-codex", "gpt-5", "openai", "gpt-5"},
+		{"fireworks", "fireworks", "accounts/fireworks/models/kimi-k2p7-code", "fireworks", "kimi-k2p7-code"},
+		{"other", "other", "accounts/fireworks/models/keep-prefix", "other", "accounts/fireworks/models/keep-prefix"},
+	} {
+		var sourceProvider, sourceModel, canonicalProvider, canonicalModel, providerSource string
+		err := database.QueryRow(`
+			SELECT r.provider, r.model, c.provider, c.model, c.provider_source
+			FROM canonical_token_usage c
+			JOIN raw_token_usage r ON r.id = c.primary_raw_fact_id
+			WHERE r.message_id = ?
+		`, check.messageID).Scan(&sourceProvider, &sourceModel, &canonicalProvider, &canonicalModel, &providerSource)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if sourceProvider != check.sourceProvider || sourceModel != check.sourceModel || canonicalProvider != check.canonicalProvider || canonicalModel != check.canonicalModel || providerSource != "explicit" {
+			t.Errorf("message %s: source %s/%s, canonical %s/%s (%s)", check.messageID, sourceProvider, sourceModel, canonicalProvider, canonicalModel, providerSource)
+		}
+	}
+	providers, err := db.AvailableProviders(ctx, database, db.Filter{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{"fireworks", "openai", "other"}; !reflect.DeepEqual(providers, want) {
+		t.Errorf("providers = %v, want %v", providers, want)
+	}
+	models, err := db.AvailableModels(ctx, database, db.Filter{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{"accounts/fireworks/models/keep-prefix", "gpt-5", "kimi-k2p7-code"}; !reflect.DeepEqual(models, want) {
+		t.Errorf("models = %v, want %v", models, want)
+	}
+	if _, err := database.Exec(`
+		UPDATE canonical_token_usage SET provider = 'openai-codex' WHERE provider = 'openai';
+		UPDATE canonical_token_usage SET model = 'accounts/fireworks/models/kimi-k2p7-code' WHERE provider = 'fireworks'
+	`); err != nil {
+		t.Fatal(err)
+	}
+	repeat, err := Sync(ctx, SyncOptions{DBPath: dbPath, Harnesses: []Harness{HarnessPi}, SourceDir: sourceDir, Normalize: true, Now: now.Add(time.Hour)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if repeat.RawFacts != 0 || repeat.Observations != 0 || repeat.Canonical != 0 {
+		t.Fatalf("repeat sync unexpectedly ingested facts: %+v", repeat)
+	}
+	assertSQLCount(t, database, "SELECT COUNT(*) FROM canonical_token_usage WHERE provider = 'openai' AND model = 'gpt-5'", 1)
+	assertSQLCount(t, database, "SELECT COUNT(*) FROM canonical_token_usage WHERE provider = 'fireworks' AND model = 'kimi-k2p7-code'", 1)
+}
+
 func TestCodexJSONLSyncsTokenCountUsage(t *testing.T) {
 	ctx := context.Background()
 	dbPath := filepath.Join(t.TempDir(), "tokeninsights.sqlite")

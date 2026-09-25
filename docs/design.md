@@ -230,7 +230,7 @@ Rows include:
 
 - `semantic_key`: stable fact identity.
 - `recorded_at_ms`, `harness`, canonical `session_id`, optional canonical `message_id`.
-- `provider` and `model`. Missing models normalize to `unknown`. Missing providers normalize to `unknown` except Claude Code artifact-derived rows, which canonicalize to `maybe-anthropic`.
+- `provider` and `model`: persisted query identifiers derived from the source values in `raw_token_usage`, which remain unchanged and accessible through `primary_raw_fact_id`. Code-defined rules map Pi `openai-codex` to `openai` and remove `accounts/fireworks/models/` from Fireworks models when a nonempty model name remains. Other identifiers pass through. Missing models normalize to `unknown`. Missing providers normalize to `unknown` except Claude Code artifact-derived rows, which canonicalize to `maybe-anthropic`.
 - `provider_source`: `explicit`, `inferred`, or `unknown`.
 - `usage_scope` and `quality`.
 - `is_countable`: default token analytics use only countable rows.
@@ -271,6 +271,8 @@ Each source ingest is transactional. If a raw fact, observation, or diagnostic w
 `sync --dry-run` discovers sources, uses existing source refresh state to preview old unchanged source skips when available, parses sources that would be refreshed, reports counts, and writes nothing. When recovery is needed, it previews reset/resume and rebuild parsing without stale refresh-state suppression or database mutation.
 
 `sync --full-refresh` ignores source refresh state for the requested harness scope and full-parses discovered sources using the existing parser behavior. Successful source ingest updates source refresh state after commit. Full refresh does not requeue all existing raw facts for canonical rebuild by default; only newly inserted raw facts enqueue pending normalization work.
+
+Identifier rules apply while writing canonical facts. Normal sync and `normalize` also refresh previously written canonical identifiers from linked raw facts, including when no new raw work is pending. Raw source identifiers remain unchanged.
 
 Source refresh optimization preserves the same correctness behavior while reducing repeated work in phases:
 
@@ -364,7 +366,7 @@ Normalization must be idempotent: repeated runs should converge on the same cano
 
 Current normalization is work-queue incremental. It loads pending `token_usage` work for the selected harness filter, upserts canonical rows by semantic key, removes completed work in the same transaction, and increments ingest-run canonical/diagnostic counters only for newly inserted canonical facts or diagnostics. Existing canonical rows may be updated deterministically when the same semantic key is requeued by an explicit rebuild path.
 
-Incremental normalization changes the default work selection, not the canonical identity rules. Ordinary normalization processes only pending normalization work, while explicit rebuild paths mark raw facts dirty and then use the same work mechanism. Deterministic updates remain allowed for dirty raw facts.
+Incremental normalization changes the default raw-fact work selection, not the canonical identity rules. Ordinary normalization processes pending raw-fact work and refreshes existing canonical provider/model identifiers; explicit rebuild paths mark raw facts dirty and then use the same work mechanism. Deterministic updates remain allowed for dirty raw facts.
 
 Explicit conflict precedence between competing raw facts is not implemented yet. Until that model exists, canonical identity is governed by semantic keys and deterministic upsert behavior.
 
@@ -376,7 +378,7 @@ Explicit conflict precedence between competing raw facts is not implemented yet.
 
 `view --no-sync` skips raw ingest and normalization. It preserves read-only viewer behavior and rejects a missing, incompatible, or rebuild-pending database instead of creating or modifying it.
 
-Implicit view sync normalizes pre-existing pending work even when sources are up to date, but skips normalization when no work is pending. `view --no-sync` remains read-only and must not process pending work.
+Implicit view sync normalizes pre-existing pending work even when sources are up to date. With no pending work, it still refreshes canonical provider/model identifiers using current code-defined rules. `view --no-sync` remains read-only and must not process pending work.
 
 Viewer Dimension Filters remain display constraints. For example, `view --harness pi` refreshes all supported Durable Sources first, then filters the displayed canonical facts to Pi.
 

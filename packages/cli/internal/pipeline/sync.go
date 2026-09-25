@@ -123,8 +123,10 @@ func syncPrepared(ctx context.Context, options SyncOptions) (Summary, error) {
 		shouldNormalize = hasPendingWork
 	}
 
-	if shouldNormalize {
-		reportSyncProgress(options, SyncProgressEvent{Status: SyncProgressNormalizing})
+	if options.Normalize {
+		if shouldNormalize {
+			reportSyncProgress(options, SyncProgressEvent{Status: SyncProgressNormalizing})
+		}
 		normalSummary, err := normalizePrepared(ctx, database, NormalizeOptions{
 			DBPath:    options.DBPath,
 			Harnesses: options.Harnesses,
