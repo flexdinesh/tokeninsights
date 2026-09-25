@@ -724,6 +724,7 @@ func TestSyncKeepsSourceIdentifiersAndQueriesCanonicalIdentifiers(t *testing.T) 
 		`{"type":"message","id":"openai","timestamp":"2026-01-01T00:00:01.000Z","message":{"role":"assistant","provider":"openai-codex","model":"gpt-5","usage":{"input":1,"output":1,"totalTokens":2},"timestamp":1767225601000}}`,
 		`{"type":"message","id":"fireworks","timestamp":"2026-01-01T00:00:02.000Z","message":{"role":"assistant","provider":"fireworks","model":"accounts/fireworks/models/kimi-k2p7-code","usage":{"input":1,"output":1,"totalTokens":2},"timestamp":1767225602000}}`,
 		`{"type":"message","id":"other","timestamp":"2026-01-01T00:00:03.000Z","message":{"role":"assistant","provider":"other","model":"accounts/fireworks/models/keep-prefix","usage":{"input":1,"output":1,"totalTokens":2},"timestamp":1767225603000}}`,
+		`{"type":"message","id":"fireworks_alias","timestamp":"2026-01-01T00:00:04.000Z","message":{"role":"assistant","provider":"fireworks-ai","model":"accounts/fireworks/models/deepseek-v3","usage":{"input":1,"output":1,"totalTokens":2},"timestamp":1767225604000}}`,
 	)
 	setFileModTime(t, sourcePath, now.Add(-72*time.Hour))
 	if _, err := Sync(ctx, SyncOptions{DBPath: dbPath, Harnesses: []Harness{HarnessPi}, SourceDir: sourceDir, Normalize: true, Now: now}); err != nil {
@@ -742,6 +743,7 @@ func TestSyncKeepsSourceIdentifiersAndQueriesCanonicalIdentifiers(t *testing.T) 
 		{"openai", "openai-codex", "gpt-5", "openai", "gpt-5"},
 		{"fireworks", "fireworks", "accounts/fireworks/models/kimi-k2p7-code", "fireworks", "kimi-k2p7-code"},
 		{"other", "other", "accounts/fireworks/models/keep-prefix", "other", "accounts/fireworks/models/keep-prefix"},
+		{"fireworks_alias", "fireworks-ai", "accounts/fireworks/models/deepseek-v3", "fireworks", "deepseek-v3"},
 	} {
 		var sourceProvider, sourceModel, canonicalProvider, canonicalModel, providerSource string
 		err := database.QueryRow(`
@@ -768,11 +770,13 @@ func TestSyncKeepsSourceIdentifiersAndQueriesCanonicalIdentifiers(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	if want := []string{"accounts/fireworks/models/keep-prefix", "gpt-5", "kimi-k2p7-code"}; !reflect.DeepEqual(models, want) {
+	if want := []string{"accounts/fireworks/models/keep-prefix", "deepseek-v3", "gpt-5", "kimi-k2p7-code"}; !reflect.DeepEqual(models, want) {
 		t.Errorf("models = %v, want %v", models, want)
 	}
 	if _, err := database.Exec(`
 		UPDATE canonical_token_usage SET provider = 'openai-codex' WHERE provider = 'openai';
+		UPDATE canonical_token_usage SET provider = 'fireworks-ai', model = 'accounts/fireworks/models/deepseek-v3'
+		WHERE primary_raw_fact_id IN (SELECT id FROM raw_token_usage WHERE provider = 'fireworks-ai');
 		UPDATE canonical_token_usage SET model = 'accounts/fireworks/models/kimi-k2p7-code' WHERE provider = 'fireworks'
 	`); err != nil {
 		t.Fatal(err)
@@ -786,6 +790,7 @@ func TestSyncKeepsSourceIdentifiersAndQueriesCanonicalIdentifiers(t *testing.T) 
 	}
 	assertSQLCount(t, database, "SELECT COUNT(*) FROM canonical_token_usage WHERE provider = 'openai' AND model = 'gpt-5'", 1)
 	assertSQLCount(t, database, "SELECT COUNT(*) FROM canonical_token_usage WHERE provider = 'fireworks' AND model = 'kimi-k2p7-code'", 1)
+	assertSQLCount(t, database, "SELECT COUNT(*) FROM canonical_token_usage WHERE provider = 'fireworks' AND model = 'deepseek-v3'", 1)
 }
 
 func TestCodexJSONLSyncsTokenCountUsage(t *testing.T) {

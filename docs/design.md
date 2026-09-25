@@ -230,7 +230,7 @@ Rows include:
 
 - `semantic_key`: stable fact identity.
 - `recorded_at_ms`, `harness`, canonical `session_id`, optional canonical `message_id`.
-- `provider` and `model`: persisted query identifiers derived from the source values in `raw_token_usage`, which remain unchanged and accessible through `primary_raw_fact_id`. Code-defined rules map Pi `openai-codex` to `openai` and remove `accounts/fireworks/models/` from Fireworks models when a nonempty model name remains. Other identifiers pass through. Missing models normalize to `unknown`. Missing providers normalize to `unknown` except Claude Code artifact-derived rows, which canonicalize to `maybe-anthropic`.
+- `provider` and `model`: persisted query identifiers derived from the source values in `raw_token_usage`, which remain unchanged and accessible through `primary_raw_fact_id`. Code-defined rules map Pi `openai-codex` to `openai`, map `fireworks-ai` to `fireworks` across harnesses, and remove `accounts/fireworks/models/` from Fireworks models when a nonempty model name remains. Other identifiers pass through. Missing models normalize to `unknown`. Missing providers normalize to `unknown` except Claude Code artifact-derived rows, which canonicalize to `maybe-anthropic`.
 - `provider_source`: `explicit`, `inferred`, or `unknown`.
 - `usage_scope` and `quality`.
 - `is_countable`: default token analytics use only countable rows.
