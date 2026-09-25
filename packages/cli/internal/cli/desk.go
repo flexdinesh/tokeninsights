@@ -7,6 +7,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/db"
 )
 
 const (
@@ -21,17 +22,18 @@ const (
 )
 
 var (
-	deskPanelStyle = lipgloss.NewStyle().Foreground(themeText)
-	deskLabelStyle = lipgloss.NewStyle().Foreground(themeMuted)
-	deskValueStyle = lipgloss.NewStyle().Foreground(themeText).Bold(true)
-	deskTotalStyle = lipgloss.NewStyle().Foreground(themeTotal).Bold(true)
-	deskKeyStyle   = lipgloss.NewStyle().Foreground(themeAccent).Bold(true)
-	deskScopeItems = []string{"Date range", "Provider", "Model", "Harness"}
-	deskHelpItems  = []string{
-		"1–6         Choose view", "Tab / Shift Tab   Next / previous",
+	deskPanelStyle     = lipgloss.NewStyle().Foreground(themeText)
+	deskLabelStyle     = lipgloss.NewStyle().Foreground(themeMuted)
+	deskValueStyle     = lipgloss.NewStyle().Foreground(themeText).Bold(true)
+	deskTotalStyle     = lipgloss.NewStyle().Foreground(themeTotal).Bold(true)
+	deskKeyStyle       = lipgloss.NewStyle().Foreground(themeAccent).Bold(true)
+	deskScopeItems     = []string{"Date range", "Provider", "Model", "Harness"}
+	deskRepoScopeItems = []string{"Date range", "Provider", "Model", "Harness", "Repository", "Directory"}
+	deskHelpItems      = []string{
+		"1–7         Choose view", "Tab / Shift Tab   Next / previous",
 		"↑↓ or j/k   Move through rows", "PgUp/PgDn   Move one page",
 		"←→          Scroll columns", "Home / End  First / last column",
-		"d           Date range", "g           Time bucket", "s           Sort",
+		"d           Date range", "g           Bucket / Repo group", "s           Sort",
 		"f           Filters", "p / m / h   Provider/model/harness",
 		"r           Reload usage", "q / Ctrl+C  Quit",
 	}
@@ -43,7 +45,7 @@ type deskMetric struct {
 }
 
 func (m interactiveModel) handleDeskMenuKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	count := len(deskScopeItems)
+	count := len(m.deskFilterItems())
 	if m.popup == popupHelp {
 		count = len(deskHelpItems)
 	}
@@ -68,10 +70,23 @@ func (m interactiveModel) handleDeskMenuKey(msg tea.KeyMsg) (tea.Model, tea.Cmd)
 			return m.openFilterValues(filterModel)
 		case 3:
 			return m.openFilterValues(filterHarness)
+		case 4:
+			return m.openFilterValues(filterRepository)
+		case 5:
+			return m.openFilterValues(filterDirectory)
 		}
 	}
 	return m, nil
 }
+
+func (m interactiveModel) deskFilterItems() []string {
+	if m.activeTab == tabRepo {
+		return deskRepoScopeItems
+	}
+	return deskScopeItems
+}
+
+func repoGroupLabel(group db.RepoGroup) string { return string(group) }
 
 // These are exact component sums from the entire filtered result, never from
 // formatted K/M labels or the visible viewport. Context peaks are not additive.
@@ -101,12 +116,18 @@ func (m interactiveModel) deskHeader() []string {
 		lines = append(lines, "")
 	}
 	controls := []string{deskControl("d", "Date", statuslineDateRangeLabel(m.options))}
-	if m.activeTab == tabTokens {
+	switch m.activeTab {
+	case tabTokens:
 		controls = append(controls, deskControl("g", "Bucket", string(m.options.bucket)))
+	case tabRepo:
+		controls = append(controls, deskControl("g", "Group", repoGroupLabel(m.options.repoGroup)))
 	}
 	controls = append(controls, deskControl("s", "Sort", string(activeSort(m.activeTab, m.options.sort))), deskControl("f", "Filters", ""))
 	lines = append(lines, strings.Join(controls, "   "))
 	filters := activeFiltersLabel(m.options.filters)
+	if m.activeTab == tabRepo {
+		filters += activeRepoFiltersLabel(m.options.filters)
+	}
 	if filters == "" {
 		filters = "All providers · All models · All harnesses"
 	}
@@ -287,7 +308,7 @@ func (m interactiveModel) renderDrawerContent(width, height int) string {
 	const inset = 2
 	contentWidth := max(1, width-2*inset-1)
 	title, description := "Filters", "Choose a scope to edit."
-	items := deskScopeItems
+	items := m.deskFilterItems()
 	checked := -1
 	multi := false
 	switch m.popup {
@@ -302,6 +323,12 @@ func (m interactiveModel) renderDrawerContent(width, height int) string {
 		checked = indexOfBucket(m.options.bucket)
 		for _, opt := range bucketOptions {
 			items = append(items, string(opt))
+		}
+	case popupRepoGroup:
+		title, description, items = "Repo grouping", "Choose the location dimension.", nil
+		checked = indexOfRepoGroup(m.options.repoGroup)
+		for _, opt := range repoGroupOptions {
+			items = append(items, repoGroupLabel(opt))
 		}
 	case popupSort:
 		title, description, items = "Sort", "Choose the table's sort order.", nil

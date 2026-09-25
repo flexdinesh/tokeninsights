@@ -65,6 +65,9 @@ func Sync(ctx context.Context, options SyncOptions) (Summary, error) {
 }
 
 func defaultSyncOptions(options SyncOptions) SyncOptions {
+	if options.locationResolver == nil {
+		options.locationResolver = &locationResolver{}
+	}
 	if options.Collector == "" {
 		options.Collector = defaultCollector
 	}
@@ -249,7 +252,7 @@ func syncHarness(ctx context.Context, database *sql.DB, options SyncOptions, har
 		return summary, nil
 	}
 
-	seenDedupeKeys := map[string]bool{}
+	seenDedupeKeys := map[string]int64{}
 	reportSyncProgress(options, SyncProgressEvent{Harness: harness, Status: SyncProgressSyncing})
 	for _, source := range sources {
 		sourceSummary, err := ingestSource(ctx, database, adapter, options, harness, source, seenDedupeKeys)
@@ -283,7 +286,7 @@ func reportSyncProgress(options SyncOptions, event SyncProgressEvent) {
 	}
 }
 
-func ingestSource(ctx context.Context, database *sql.DB, adapter Adapter, options SyncOptions, harness Harness, source Source, seenDedupeKeys map[string]bool) (Summary, error) {
+func ingestSource(ctx context.Context, database *sql.DB, adapter Adapter, options SyncOptions, harness Harness, source Source, seenDedupeKeys map[string]int64) (Summary, error) {
 	var summary Summary
 	tx, err := database.BeginTx(ctx, nil)
 	if err != nil {
@@ -334,10 +337,7 @@ func ingestSource(ctx context.Context, database *sql.DB, adapter Adapter, option
 		committed = true
 		return summary, fmt.Errorf("%s parse: %w", harness, parseErr)
 	}
-	facts, duplicateDiagnostics := suppressDuplicateFacts(facts, seenDedupeKeys)
-	diagnostics = append(diagnostics, duplicateDiagnostics...)
-
-	sourceSummary, err := writeSourceIngest(ctx, tx, runDBID, facts, diagnostics, options)
+	sourceSummary, err := writeSourceIngest(ctx, tx, runDBID, facts, diagnostics, options, seenDedupeKeys)
 	if err != nil {
 		if rollbackErr := rollbackSourceWrites(ctx, tx); rollbackErr != nil {
 			return summary, errors.Join(err, rollbackErr)
@@ -367,27 +367,6 @@ func ingestSource(ctx context.Context, database *sql.DB, adapter Adapter, option
 	return sourceSummary, nil
 }
 
-func suppressDuplicateFacts(facts []RawTokenFact, seen map[string]bool) ([]RawTokenFact, []Diagnostic) {
-	if len(facts) == 0 {
-		return facts, nil
-	}
-	filtered := make([]RawTokenFact, 0, len(facts))
-	var diagnostics []Diagnostic
-	for _, fact := range facts {
-		if fact.DedupeKey == "" {
-			filtered = append(filtered, fact)
-			continue
-		}
-		if seen[fact.DedupeKey] {
-			diagnostics = append(diagnostics, duplicateSuppressedDiagnostic(fact.Harness))
-			continue
-		}
-		seen[fact.DedupeKey] = true
-		filtered = append(filtered, fact)
-	}
-	return filtered, diagnostics
-}
-
 func duplicateSuppressedDiagnostic(harness Harness) Diagnostic {
 	switch harness {
 	case HarnessClaudeCode:
@@ -407,17 +386,60 @@ func duplicateSuppressedDiagnostic(harness Harness) Diagnostic {
 	}
 }
 
-func writeSourceIngest(ctx context.Context, runner sqlRunner, runDBID int64, facts []RawTokenFact, diagnostics []Diagnostic, options SyncOptions) (Summary, error) {
+func writeSourceIngest(ctx context.Context, runner sqlRunner, runDBID int64, facts []RawTokenFact, diagnostics []Diagnostic, options SyncOptions, seenDedupeKeys map[string]int64) (Summary, error) {
 	sourceSummary := Summary{}
 	for _, fact := range facts {
-		rawID, inserted, err := upsertRawTokenFact(ctx, runner, fact)
+		if primaryID, seen := seenDedupeKeys[fact.DedupeKey]; fact.DedupeKey != "" && seen {
+			changed, conflict, err := mergeRawFactLocation(ctx, runner, primaryID, fact.Location, fact.locationConflicts)
+			if err != nil {
+				return sourceSummary, err
+			}
+			if changed {
+				if err := enqueueNormalizationWork(ctx, runner, primaryID, db.DomainTokenUsage, syncNowMs(options.Now)); err != nil {
+					return sourceSummary, err
+				}
+			}
+			if conflict {
+				created, err := insertDiagnostic(ctx, runner, Diagnostic{Harness: fact.Harness, RawFactKey: fact.DedupeKey, Severity: "warning", Code: "location_conflict", Message: "conflicting location evidence for duplicate token fact; affected grouping is unknown"}, &primaryID, nil, syncNowMs(options.Now))
+				if err != nil {
+					return sourceSummary, err
+				}
+				if created {
+					sourceSummary.Diagnostics++
+				}
+			}
+			created, err := insertDiagnostic(ctx, runner, duplicateSuppressedDiagnostic(fact.Harness), nil, &runDBID, syncNowMs(options.Now))
+			if err != nil {
+				return sourceSummary, err
+			}
+			if created {
+				sourceSummary.Diagnostics++
+			}
+			continue
+		}
+		rawID, inserted, locationChanged, locationConflict, err := upsertRawTokenFact(ctx, runner, fact)
 		if err != nil {
 			return sourceSummary, err
 		}
+		if fact.DedupeKey != "" {
+			seenDedupeKeys[fact.DedupeKey] = rawID
+		}
 		if inserted {
 			sourceSummary.RawFacts++
+		}
+		if inserted || locationChanged {
 			if err := enqueueNormalizationWork(ctx, runner, rawID, db.DomainTokenUsage, syncNowMs(options.Now)); err != nil {
 				return sourceSummary, err
+			}
+		}
+		if locationConflict {
+			diagnostic := Diagnostic{Harness: fact.Harness, RawFactKey: rawFactKey(fact), Severity: "warning", Code: "location_conflict", Message: "conflicting location evidence for duplicate token fact; affected grouping is unknown"}
+			created, err := insertDiagnostic(ctx, runner, diagnostic, &rawID, nil, syncNowMs(options.Now))
+			if err != nil {
+				return sourceSummary, err
+			}
+			if created {
+				sourceSummary.Diagnostics++
 			}
 		}
 		observed, err := insertObservation(ctx, runner, runDBID, rawID, fact)
@@ -504,29 +526,68 @@ func completeIngestRun(ctx context.Context, runner sqlRunner, runID int64, statu
 	return err
 }
 
-func upsertRawTokenFact(ctx context.Context, runner sqlRunner, fact RawTokenFact) (int64, bool, error) {
+func upsertRawTokenFact(ctx context.Context, runner sqlRunner, fact RawTokenFact) (int64, bool, bool, bool, error) {
 	key := rawFactKey(fact)
+	var id int64
+	err := runner.QueryRowContext(ctx, "SELECT id FROM raw_token_usage WHERE raw_fact_key = ?", key).Scan(&id)
+	if err == nil {
+		changed, conflict, err := mergeRawFactLocation(ctx, runner, id, fact.Location, fact.locationConflicts)
+		if err != nil {
+			return 0, false, false, false, err
+		}
+		return id, false, changed, conflict, nil
+	}
+	if err != sql.ErrNoRows {
+		return 0, false, false, false, err
+	}
+	locationID, err := upsertLocation(ctx, runner, fact.Location)
+	if err != nil {
+		return 0, false, false, false, err
+	}
 	result, err := runner.ExecContext(ctx, `
-		INSERT OR IGNORE INTO raw_token_usage (
+		INSERT INTO raw_token_usage (
 			raw_fact_key, harness, source_id, source_kind, collector, parser, observed_at_ms, occurred_at_ms,
 			session_id, message_id, provider, model, usage_scope, quality,
-			input_tokens, output_tokens, reasoning_tokens, cache_read_tokens, cache_write_tokens, total_tokens, metadata_json
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			input_tokens, output_tokens, reasoning_tokens, cache_read_tokens, cache_write_tokens, total_tokens, metadata_json,
+			location_id, location_conflicts
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`, key, fact.Harness, fact.SourceID, fact.SourceKind, fact.Collector, fact.Parser, fact.ObservedAtMs, nullableInt(fact.OccurredAtMs),
 		nullableString(fact.SessionID), nullableString(fact.MessageID), nullableString(fact.Provider), nullableString(fact.Model), fact.UsageScope, fact.Quality,
-		nullableInt(fact.InputTokens), nullableInt(fact.OutputTokens), nullableInt(fact.ReasoningTokens), nullableInt(fact.CacheReadTokens), nullableInt(fact.CacheWriteTokens), nullableInt(fact.TotalTokens), nullableString(fact.MetadataJSON))
+		nullableInt(fact.InputTokens), nullableInt(fact.OutputTokens), nullableInt(fact.ReasoningTokens), nullableInt(fact.CacheReadTokens), nullableInt(fact.CacheWriteTokens), nullableInt(fact.TotalTokens), nullableString(fact.MetadataJSON), nullableInt64Ptr(locationID), locationValue(fact.locationConflicts))
 	if err != nil {
-		return 0, false, err
+		return 0, false, false, false, err
 	}
-	inserted, err := result.RowsAffected()
+	id, err = result.LastInsertId()
 	if err != nil {
-		return 0, false, err
+		return 0, false, false, false, err
 	}
-	var id int64
-	if err := runner.QueryRowContext(ctx, "SELECT id FROM raw_token_usage WHERE raw_fact_key = ?", key).Scan(&id); err != nil {
-		return 0, false, err
+	return id, true, false, fact.locationConflicts != "", nil
+}
+
+func mergeRawFactLocation(ctx context.Context, runner sqlRunner, id int64, incoming *Location, incomingConflicts string) (bool, bool, error) {
+	var existingID sql.NullInt64
+	var priorConflicts sql.NullString
+	if err := runner.QueryRowContext(ctx, "SELECT location_id, location_conflicts FROM raw_token_usage WHERE id = ?", id).Scan(&existingID, &priorConflicts); err != nil {
+		return false, false, err
 	}
-	return id, inserted > 0, nil
+	existing, err := loadLocation(ctx, runner, existingID)
+	if err != nil {
+		return false, false, err
+	}
+	joined := strings.Trim(strings.Join([]string{priorConflicts.String, incomingConflicts}, ","), ",")
+	merged, conflicts, changed, conflict := mergeLocations(existing, incoming, joined)
+	if incomingConflicts != "" && !strings.Contains(priorConflicts.String, incomingConflicts) {
+		conflict = true
+	}
+	if !changed && conflicts == priorConflicts.String {
+		return false, conflict, nil
+	}
+	locationID, err := upsertLocation(ctx, runner, merged)
+	if err != nil {
+		return false, false, err
+	}
+	_, err = runner.ExecContext(ctx, "UPDATE raw_token_usage SET location_id = ?, location_conflicts = ? WHERE id = ?", nullableInt64Ptr(locationID), locationValue(conflicts), id)
+	return true, conflict, err
 }
 
 func insertObservation(ctx context.Context, runner sqlRunner, runID int64, rawID int64, fact RawTokenFact) (bool, error) {

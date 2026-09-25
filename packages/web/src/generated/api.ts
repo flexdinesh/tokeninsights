@@ -41,10 +41,16 @@ export const UsageTab = zod.enum([
   'harnesses',
   'sessions',
   'context',
+  'repo',
 ])
 
 export type UsageTab = zod.input<typeof UsageTab>
 export type UsageTabOutput = zod.output<typeof UsageTab>
+
+export const LocationGroup = zod.enum(['repository', 'directory'])
+
+export type LocationGroup = zod.input<typeof LocationGroup>
+export type LocationGroupOutput = zod.output<typeof LocationGroup>
 
 export const SortField = zod.enum([
   'name',
@@ -177,6 +183,20 @@ export const UsageRow = zod.strictObject({
   averageContext: Count,
   medianContext: Count,
   maxContext: Count,
+  locationKey: zod.string(),
+  locationName: zod
+    .string()
+    .describe('Display name; directory values may be sanitized or full local paths.'),
+  directoryNames: zod
+    .array(zod.string())
+    .describe(
+      'Distinct recorded directories contributing to this row, sorted by display name. Empty outside Repo rows.',
+    ),
+  hasUnknownDirectory: zod
+    .boolean()
+    .describe('Whether any contributing fact lacks a recorded directory. False outside Repo rows.'),
+  repositoryKey: zod.string(),
+  repositoryName: zod.string(),
 })
 
 export type UsageRow = zod.input<typeof UsageRow>
@@ -212,11 +232,23 @@ export const UsageResponse = zod.strictObject({
 export type UsageResponse = zod.input<typeof UsageResponse>
 export type UsageResponseOutput = zod.output<typeof UsageResponse>
 
+export const LocationOption = zod.strictObject({
+  key: zod.string(),
+  name: zod
+    .string()
+    .describe('Display name; directory values may be sanitized or full local paths.'),
+})
+
+export type LocationOption = zod.input<typeof LocationOption>
+export type LocationOptionOutput = zod.output<typeof LocationOption>
+
 export const UsageFacetsResponse = zod.strictObject({
   providers: zod.array(zod.string()),
   models: zod.array(zod.string()),
   harnesses: zod.array(Harness),
   sessions: zod.array(zod.string()),
+  repositories: zod.array(LocationOption),
+  directories: zod.array(LocationOption),
 })
 
 export type UsageFacetsResponse = zod.input<typeof UsageFacetsResponse>
@@ -295,9 +327,25 @@ export const GetUsageQueryParams = zod.strictObject({
     .array(zod.string())
     .optional()
     .describe('Session-ID filter. Repeat the parameter to select multiple values.'),
+  repository: zod
+    .array(zod.string())
+    .optional()
+    .describe(
+      'Repo-tab stable repository key; repeat for multiple values. The key unknown selects missing values.',
+    ),
+  directory: zod
+    .array(zod.string())
+    .optional()
+    .describe(
+      'Repo-tab stable directory key; repeat for multiple values. The key unknown selects missing values.',
+    ),
   tab: UsageTab.default(getUsageQueryTabDefault).describe(
     'Aggregation shown in table and chart rows.',
   ),
+  locationGroup: zod
+    .enum(['repository', 'directory'])
+    .optional()
+    .describe('Repo-tab grouping by repository or directory.'),
   sort: zod
     .enum([
       'name',
@@ -369,6 +417,18 @@ export const GetUsageFacetsQueryParams = zod.strictObject({
     .array(zod.string())
     .optional()
     .describe('Session-ID filter. Repeat the parameter to select multiple values.'),
+  repository: zod
+    .array(zod.string())
+    .optional()
+    .describe(
+      'Repo-tab stable repository key; repeat for multiple values. The key unknown selects missing values.',
+    ),
+  directory: zod
+    .array(zod.string())
+    .optional()
+    .describe(
+      'Repo-tab stable directory key; repeat for multiple values. The key unknown selects missing values.',
+    ),
   search: zod
     .string()
     .default(getUsageFacetsQuerySearchDefault)

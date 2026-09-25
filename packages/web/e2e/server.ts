@@ -17,13 +17,14 @@ async function writeSession(
   totalTokens: number,
   cacheRead: number,
   recordedAt: Date,
+  cwd?: string,
 ) {
   const sessions = join(home, '.pi/agent/sessions')
   await mkdir(sessions, { recursive: true })
   const session = `${prefix}-${String(index).padStart(3, '0')}`
   const input = totalTokens - cacheRead - 300
   const records = [
-    { type: 'session', version: 1, id: session, timestamp: recordedAt.toISOString() },
+    { type: 'session', version: 1, id: session, timestamp: recordedAt.toISOString(), cwd },
     {
       type: 'message',
       id: 'turn-1',
@@ -48,7 +49,8 @@ for (let index = 0; index < 80; index++) {
   const provider = index % 2 === 0 ? 'openai' : 'anthropic'
   const recordedAt = new Date(now)
   if (index >= 60) recordedAt.setFullYear(now.getFullYear() - 1)
-  await writeSession(localHome, index, 'web-session', model, provider, 4300, 3000, recordedAt)
+  const cwd = index % 5 === 4 ? undefined : join(localHome, 'workspace', `project-${index % 4}`)
+  await writeSession(localHome, index, 'web-session', model, provider, 4300, 3000, recordedAt, cwd)
 }
 await writeSession(remoteHome, 0, 'remote-session', 'model-a', 'remote-provider', 777, 0, now)
 

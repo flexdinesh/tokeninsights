@@ -19,12 +19,15 @@ const chartLimit = 12
 const sessionOptionLimit = 100
 
 type query struct {
-	Selection viewer.Selection
-	Tab       string
-	Sort      string
-	Direction string
-	Page      int
-	PageSize  int
+	Selection      viewer.Selection
+	Tab            string
+	LocationGroup  db.RepoGroup
+	RepositoryKeys []string
+	DirectoryKeys  []string
+	Sort           string
+	Direction      string
+	Page           int
+	PageSize       int
 }
 
 func parseQuery(values url.Values) (query, error) {
@@ -45,9 +48,29 @@ func parseQuery(values url.Values) (query, error) {
 		q.Tab = values.Get("tab")
 	}
 	switch q.Tab {
-	case "tokens", "models", "providers", "harnesses", "sessions", "context":
+	case "tokens", "models", "providers", "harnesses", "sessions", "context", "repo":
 	default:
 		return q, fmt.Errorf("invalid tab")
+	}
+	q.LocationGroup = db.RepoGroupRepository
+	if values.Has("locationGroup") {
+		q.LocationGroup = db.RepoGroup(values.Get("locationGroup"))
+	}
+	if values.Has("breakdown") || values.Has("worktree") || values.Has("branch") {
+		return q, fmt.Errorf("unsupported location option")
+	}
+	if values.Has("locationGroup") || values.Has("repository") || values.Has("directory") {
+		if q.Tab != "repo" {
+			return q, fmt.Errorf("location options require repo tab")
+		}
+	}
+	switch q.LocationGroup {
+	case db.RepoGroupRepository, db.RepoGroupDirectory:
+	default:
+		return q, fmt.Errorf("invalid locationGroup")
+	}
+	if q.Tab == "repo" {
+		q.RepositoryKeys, q.DirectoryKeys = values["repository"], values["directory"]
 	}
 	q.Sort = values.Get("sort")
 	if q.Sort == "" {
@@ -60,6 +83,9 @@ func parseQuery(values url.Values) (query, error) {
 		}
 	}
 	allowed := map[string]bool{"name": true, "date": true, "total": true, "input": true, "output": true, "reasoning": true, "cacheRead": true, "cacheWrite": true, "sessions": true, "context": true}
+	if q.Tab == "repo" {
+		allowed["harness"], allowed["provider"], allowed["model"] = true, true, true
+	}
 	if q.Tab == "context" {
 		allowed = map[string]bool{"averageContext": true, "medianContext": true, "maxContext": true, "sessions": true, "harness": true, "provider": true, "model": true}
 	}
@@ -93,23 +119,29 @@ func parseQuery(values url.Values) (query, error) {
 
 // Row is a numeric analytics result, independent of API transport.
 type Row struct {
-	Key            string
-	Name           string
-	Harness        string
-	Provider       string
-	Model          string
-	Date           int64
-	Sessions       int64
-	Input          int64
-	Output         int64
-	Reasoning      int64
-	CacheRead      int64
-	CacheWrite     int64
-	Total          int64
-	Context        int64
-	AverageContext int64
-	MedianContext  int64
-	MaxContext     int64
+	Key                 string
+	Name                string
+	Harness             string
+	Provider            string
+	Model               string
+	Date                int64
+	Sessions            int64
+	Input               int64
+	Output              int64
+	Reasoning           int64
+	CacheRead           int64
+	CacheWrite          int64
+	Total               int64
+	Context             int64
+	AverageContext      int64
+	MedianContext       int64
+	MaxContext          int64
+	LocationKey         string
+	LocationName        string
+	DirectoryNames      []string
+	HasUnknownDirectory bool
+	RepositoryKey       string
+	RepositoryName      string
 }
 
 type dashboard struct {
@@ -149,6 +181,16 @@ func loadRows(ctx context.Context, reader db.Reader, f db.Filter, q query) ([]Ro
 		}
 		for _, r := range rows {
 			result = append(result, Row{Key: strings.Join([]string{r.Harness, r.Provider, r.Model}, "\x00"), Name: r.Model, Harness: r.Harness, Provider: r.Provider, Model: r.Model, Date: r.LatestAtMs, Sessions: r.SessionCount, AverageContext: r.AverageContextUsedTokens, MedianContext: r.MedianContextUsedTokens, MaxContext: r.MaxContextUsedTokens})
+		}
+	case "repo":
+		rows, err := db.ViewerRepoGroups(ctx, reader, f, q.LocationGroup)
+		if err != nil {
+			return nil, err
+		}
+		for _, r := range rows {
+			name := db.LocationDisplayName(db.LocationOption{Key: r.Key, Name: r.Name})
+			row := Row{Key: r.Key, Name: name, Harness: r.Harnesses, Provider: r.Providers, Model: r.Models, Date: r.LatestAtMs, Sessions: r.SessionCount, Input: r.InputTokens, Output: r.OutputTokens, Reasoning: r.ReasoningTokens, CacheRead: r.CacheReadTokens, CacheWrite: r.CacheWriteTokens, Total: r.TotalTokens, Context: r.ContextUsedTokens, LocationKey: r.Key, LocationName: name, DirectoryNames: r.DirectoryNames, HasUnknownDirectory: r.HasUnknownDirectory, RepositoryKey: r.RepositoryKey, RepositoryName: r.RepositoryName}
+			result = append(result, row)
 		}
 	default:
 		var rows []db.ViewerDimensionRow
@@ -259,6 +301,9 @@ func loadDashboard(ctx context.Context, path string, q query, now time.Time) (da
 	}
 	defer func() { _ = tx.Rollback() }()
 	f := q.Selection.Filter(now)
+	if q.Tab == "repo" {
+		f.RepositoryKeys, f.DirectoryKeys = q.RepositoryKeys, q.DirectoryKeys
+	}
 	rows, err := loadRows(ctx, tx, f, q)
 	if err != nil {
 		return result, err

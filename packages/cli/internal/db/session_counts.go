@@ -12,13 +12,14 @@ type SessionCounts struct {
 }
 
 func ViewerSessionCounts(ctx context.Context, database Reader, f Filter) (SessionCounts, error) {
-	where, args := canonicalWhereClause(f)
+	locationJoin, where, args := facetWhereClause(f)
 	var counts SessionCounts
 	err := database.QueryRowContext(ctx, `
 		SELECT
 			(SELECT COUNT(DISTINCT ctu.session_id)
 			 FROM canonical_token_usage ctu
 			 INNER JOIN canonical_sessions cs ON cs.id = ctu.session_id
+			 `+locationJoin+`
 			 `+where+`),
 			(SELECT COUNT(DISTINCT ctu.session_id)
 			 FROM canonical_token_usage ctu

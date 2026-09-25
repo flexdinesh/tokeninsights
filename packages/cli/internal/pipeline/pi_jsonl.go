@@ -20,6 +20,7 @@ type piJSONLSessionFile struct {
 	sessionID         string
 	filenameSessionID string
 	hasHeader         bool
+	cwd               string
 }
 
 func (a piJSONLAdapter) Harness() Harness {
@@ -150,6 +151,7 @@ func (a piJSONLAdapter) Parse(ctx context.Context, source Source, options SyncOp
 			continue
 		}
 		if stringValue(record, "", "type") == "session" {
+			session.cwd = stringValue(record, session.cwd, "cwd")
 			if sessionID := stringField(record, "id"); sessionID != nil {
 				session.hasHeader = true
 				session.sessionID = *sessionID
@@ -159,7 +161,7 @@ func (a piJSONLAdapter) Parse(ctx context.Context, source Source, options SyncOp
 			}
 			continue
 		}
-		fact, rowDiagnostics, ok := a.factFromRecord(source, options, session, record)
+		fact, rowDiagnostics, ok := a.factFromRecord(ctx, source, options, session, record)
 		diagnostics = append(diagnostics, rowDiagnostics...)
 		if ok {
 			facts = append(facts, fact)
@@ -174,7 +176,7 @@ func (a piJSONLAdapter) Parse(ctx context.Context, source Source, options SyncOp
 	return facts, diagnostics, nil
 }
 
-func (a piJSONLAdapter) factFromRecord(source Source, options SyncOptions, session piJSONLSessionFile, record map[string]interface{}) (RawTokenFact, []Diagnostic, bool) {
+func (a piJSONLAdapter) factFromRecord(ctx context.Context, source Source, options SyncOptions, session piJSONLSessionFile, record map[string]interface{}) (RawTokenFact, []Diagnostic, bool) {
 	if stringValue(record, "", "type") != "message" {
 		return RawTokenFact{}, nil, false
 	}
@@ -214,6 +216,7 @@ func (a piJSONLAdapter) factFromRecord(source Source, options SyncOptions, sessi
 		nowMs = time.Now().UnixMilli()
 	}
 	sourceID := stableHash("pi-session:" + session.sessionID)
+	location, _ := resolveFactLocation(ctx, options, session.cwd, "", "")
 	return RawTokenFact{
 		Harness:          HarnessPi,
 		SourceID:         sourceID,
@@ -234,6 +237,7 @@ func (a piJSONLAdapter) factFromRecord(source Source, options SyncOptions, sessi
 		CacheReadTokens:  tokens.cacheRead,
 		CacheWriteTokens: tokens.cacheWrite,
 		TotalTokens:      tokens.total,
+		Location:         location,
 	}, diagnostics, true
 }
 

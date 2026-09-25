@@ -31,6 +31,7 @@ type rawTokenRow struct {
 	CacheWriteTokens sql.NullInt64
 	TotalTokens      sql.NullInt64
 	LastRunID        sql.NullInt64
+	LocationID       sql.NullInt64
 }
 
 type canonicalTokenValues struct {
@@ -53,6 +54,7 @@ type canonicalTokenValues struct {
 	TotalTokens      int64
 	RawFactID        int64
 	IngestRunID      interface{}
+	LocationID       interface{}
 }
 
 func Normalize(ctx context.Context, options NormalizeOptions) (Summary, error) {
@@ -158,6 +160,7 @@ func loadPendingTokenRows(ctx context.Context, database *sql.DB, harnesses []Har
 			r.id, r.raw_fact_key, r.harness, r.source_id, r.observed_at_ms, r.occurred_at_ms,
 			r.session_id, r.message_id, r.provider, r.model, r.usage_scope, r.quality,
 			r.input_tokens, r.output_tokens, r.reasoning_tokens, r.cache_read_tokens, r.cache_write_tokens, r.total_tokens,
+			r.location_id,
 			(
 				SELECT ro.ingest_run_id
 				FROM raw_observations ro
@@ -199,6 +202,7 @@ func loadPendingTokenRows(ctx context.Context, database *sql.DB, harnesses []Har
 			&row.CacheReadTokens,
 			&row.CacheWriteTokens,
 			&row.TotalTokens,
+			&row.LocationID,
 			&row.LastRunID,
 		); err != nil {
 			return nil, err
@@ -314,11 +318,11 @@ func upsertCanonicalTokenUsage(ctx context.Context, runner sqlRunner, row rawTok
 		INSERT OR IGNORE INTO canonical_token_usage (
 			semantic_key, recorded_at_ms, harness, session_id, message_id, provider, provider_source, model, usage_scope, quality,
 			is_countable, input_tokens, output_tokens, reasoning_tokens, cache_read_tokens, cache_write_tokens,
-			total_tokens, primary_raw_fact_id, ingest_run_id
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			total_tokens, primary_raw_fact_id, ingest_run_id, location_id
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`, values.Key, values.RecordedAtMs, values.Harness, values.SessionDBID, values.MessageDBID, values.Provider, values.ProviderSource, values.Model,
 		values.UsageScope, values.Quality, values.Countable, values.InputTokens, values.OutputTokens, values.ReasoningTokens,
-		values.CacheReadTokens, values.CacheWriteTokens, values.TotalTokens, values.RawFactID, values.IngestRunID)
+		values.CacheReadTokens, values.CacheWriteTokens, values.TotalTokens, values.RawFactID, values.IngestRunID, values.LocationID)
 	if err != nil {
 		return false, err
 	}
@@ -344,11 +348,12 @@ func upsertCanonicalTokenUsage(ctx context.Context, runner sqlRunner, row rawTok
 			cache_write_tokens = ?,
 			total_tokens = ?,
 			primary_raw_fact_id = ?,
-			ingest_run_id = ?
+			ingest_run_id = ?,
+			location_id = ?
 		WHERE semantic_key = ?
 	`, values.RecordedAtMs, values.Provider, values.ProviderSource, values.Model, values.Quality, values.Countable, values.InputTokens, values.OutputTokens,
 		values.ReasoningTokens, values.CacheReadTokens, values.CacheWriteTokens, values.TotalTokens, values.RawFactID, values.IngestRunID,
-		values.Key)
+		values.LocationID, values.Key)
 	return false, err
 }
 
@@ -374,6 +379,7 @@ func canonicalTokenValuesFor(row rawTokenRow, sessionDBID int64, messageDBID *in
 		TotalTokens:      canonicalTotal(row),
 		RawFactID:        row.ID,
 		IngestRunID:      nullableNullInt(row.LastRunID),
+		LocationID:       nullableNullInt(row.LocationID),
 	}
 }
 

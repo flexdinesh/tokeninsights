@@ -2,6 +2,8 @@
 
 TokenInsights is a local token usage dashboard for OpenCode, Pi, Codex, and Claude Code. It reads durable local session data and presents usage in terminal and browser dashboards.
 
+The Repo view groups token, model, and provider usage by repository or directory. Location filters apply only there. Missing location data appears as **unknown**; the web view lets you expand an unknown row to see recorded contributing directories when available.
+
 | Web                                                                                  | TUI                                                                       |
 | ------------------------------------------------------------------------------------ | ------------------------------------------------------------------------- |
 | ![TokenInsights browser dashboard with synthetic demo data](assets/tokeninsights-web-light.png) | ![TokenInsights terminal dashboard with synthetic fixture data](assets/tokeninsights-view-models.png) |
@@ -56,7 +58,7 @@ Supported periods are `--today`, `--yesterday`, `--week`, `--month`, `--year`, a
 
 ## Privacy
 
-TokenInsights keeps data on your machine. It stores usage metadata such as token counts, timestamps, models, providers, and session identifiers—not prompts, responses, tool arguments, or tool output.
+TokenInsights keeps data on your machine. It stores usage metadata such as token counts, timestamps, models, providers, session identifiers, hashed location keys, and display names. Directory paths use `~/` where a home directory can be identified; otherwise a full directory path may be stored. It does not store prompts, responses, tool arguments, tool output, source artifact paths, or full remote URLs.
 
 The default database is `~/.local/share/tokeninsights/tokeninsights.sqlite`. Override it with `--db-path` or `TOKENINSIGHTS_DB_PATH`.
 

@@ -8,12 +8,13 @@ import (
 func AvailableProviders(ctx context.Context, db Reader, f Filter) ([]string, error) {
 	providerFilter := f
 	providerFilter.Providers = nil
-	whereClause, args := canonicalWhereClause(providerFilter)
+	locationJoin, whereClause, args := facetWhereClause(providerFilter)
 
 	rows, err := db.QueryContext(ctx, `
 		SELECT DISTINCT ctu.provider
 		FROM canonical_token_usage ctu
 		INNER JOIN canonical_sessions cs ON cs.id = ctu.session_id
+		`+locationJoin+`
 		`+whereClause+`
 		ORDER BY ctu.provider
 	`, args...)
@@ -38,12 +39,13 @@ func AvailableProviders(ctx context.Context, db Reader, f Filter) ([]string, err
 func AvailableModels(ctx context.Context, db Reader, f Filter) ([]string, error) {
 	modelFilter := f
 	modelFilter.Models = nil
-	whereClause, args := canonicalWhereClause(modelFilter)
+	locationJoin, whereClause, args := facetWhereClause(modelFilter)
 
 	rows, err := db.QueryContext(ctx, `
 		SELECT DISTINCT ctu.model
 		FROM canonical_token_usage ctu
 		INNER JOIN canonical_sessions cs ON cs.id = ctu.session_id
+		`+locationJoin+`
 		`+whereClause+`
 		ORDER BY ctu.model
 	`, args...)
@@ -68,12 +70,13 @@ func AvailableModels(ctx context.Context, db Reader, f Filter) ([]string, error)
 func AvailableHarnesses(ctx context.Context, db Reader, f Filter) ([]string, error) {
 	harnessFilter := f
 	harnessFilter.Harnesses = nil
-	whereClause, args := canonicalWhereClause(harnessFilter)
+	locationJoin, whereClause, args := facetWhereClause(harnessFilter)
 
 	rows, err := db.QueryContext(ctx, `
 		SELECT DISTINCT ctu.harness
 		FROM canonical_token_usage ctu
 		INNER JOIN canonical_sessions cs ON cs.id = ctu.session_id
+		`+locationJoin+`
 		`+whereClause+`
 		ORDER BY ctu.harness
 	`, args...)

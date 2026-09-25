@@ -79,9 +79,11 @@ export function UsageChart({ rows }: { rows: Row[] }) {
     ? 'Usage over time'
     : context
       ? 'Session peak context'
-      : query.tab === 'harnesses'
-        ? 'Usage by harness'
-        : `Usage by ${query.tab.slice(0, -1)}`
+      : query.tab === 'repo'
+        ? `Usage by ${query.locationGroup}`
+        : query.tab === 'harnesses'
+          ? 'Usage by harness'
+          : `Usage by ${query.tab.slice(0, -1)}`
   const filterDimension =
     query.tab === 'models'
       ? 'models'
@@ -105,7 +107,9 @@ export function UsageChart({ rows }: { rows: Row[] }) {
               ? 'Token usage across the selected range'
               : context
                 ? 'Top 12 groups by average in-range session peak'
-                : 'Top 12 by total tokens · select a label to filter'}
+                : query.tab === 'repo'
+                  ? 'Top 12 location rows by total tokens'
+                  : 'Top 12 by total tokens · select a label to filter'}
           </p>
         </div>
         {timeline ? (

@@ -2,11 +2,14 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState } 
 import type { ReactNode } from 'react'
 import { useNavigate, useParams, useSearch } from '@tanstack/react-router'
 import { z } from 'zod'
-import { bucketSchema, periodSchema, sortSchema, tabSchema } from './contracts'
-import type { Selection, Sort, Tab } from './contracts'
+import { bucketSchema, locationGroupSchema, periodSchema, sortSchema, tabSchema } from './contracts'
+import type { LocationGroup, Selection, Sort, Tab } from './contracts'
 
 export interface QueryState extends Selection {
   tab: Tab
+  locationGroup: LocationGroup
+  repositories: string[]
+  directories: string[]
   sort: Sort
   direction: 'asc' | 'desc'
   page: number
@@ -23,6 +26,9 @@ export interface DashboardSearch {
   models: string[]
   harnesses: Selection['harnesses']
   sessions: string[]
+  locationGroup?: LocationGroup
+  repositories: string[]
+  directories: string[]
   sort?: Sort
   direction?: 'asc' | 'desc'
   page?: number
@@ -40,7 +46,14 @@ interface State {
 }
 export type Action =
   | { type: 'selection'; value: Partial<Selection> }
+  | { type: 'reset'; value: Selection }
+  | { type: 'clearFilters' }
   | { type: 'tab'; value: Tab }
+  | { type: 'locationGroup'; value: LocationGroup }
+  | {
+      type: 'locations'
+      value: Partial<Pick<QueryState, 'repositories' | 'directories'>>
+    }
   | { type: 'sort'; value: Sort }
   | { type: 'page'; value: number }
   | { type: 'pageSize'; value: number }
@@ -60,6 +73,9 @@ export function initialQuery(defaults: Selection, tab: Tab = 'tokens'): QuerySta
   return {
     ...defaults,
     tab,
+    locationGroup: 'repository',
+    repositories: [],
+    directories: [],
     sort: defaultSort(tab),
     direction: 'desc',
     page: 1,
@@ -71,14 +87,41 @@ export function reduceQuery(query: QueryState, action: Action): QueryState {
   switch (action.type) {
     case 'selection':
       return { ...query, ...action.value, page: 1 }
+    case 'reset':
+      return {
+        ...query,
+        ...action.value,
+        repositories: [],
+        directories: [],
+        page: 1,
+      }
+    case 'clearFilters':
+      return {
+        ...query,
+        providers: [],
+        models: [],
+        harnesses: [],
+        sessions: [],
+        repositories: [],
+        directories: [],
+        from: '',
+        to: '',
+        page: 1,
+      }
     case 'tab':
       return {
         ...query,
         tab: action.value,
+        repositories: action.value === 'repo' ? query.repositories : [],
+        directories: action.value === 'repo' ? query.directories : [],
         sort: defaultSort(action.value),
         direction: 'desc',
         page: 1,
       }
+    case 'locationGroup':
+      return { ...query, locationGroup: action.value, page: 1 }
+    case 'locations':
+      return { ...query, ...action.value, page: 1 }
     case 'sort':
       return {
         ...query,
@@ -122,6 +165,7 @@ export function parseDashboardSearch(input: Record<string, unknown>): DashboardS
   const bucket = bucketSchema.safeParse(input.bucket)
   const sort = sortSchema.safeParse(input.sort)
   const tab = tabSchema.safeParse(input.legacyTab ?? input.tab)
+  const locationGroup = locationGroupSchema.safeParse(input.locationGroup)
   const harnesses = strings(input.harnesses ?? input.harness)
   return {
     v: input.v === 1 || input.v === '1' ? 1 : undefined,
@@ -135,6 +179,9 @@ export function parseDashboardSearch(input: Record<string, unknown>): DashboardS
       ['opencode', 'pi', 'codex', 'claude-code'].includes(value),
     ),
     sessions: strings(input.sessions ?? input.session),
+    locationGroup: locationGroup.success ? locationGroup.data : undefined,
+    repositories: strings(input.repositories ?? input.repository),
+    directories: strings(input.directories ?? input.directory),
     sort: sort.success ? sort.data : undefined,
     direction:
       input.direction === 'asc' || input.direction === 'desc' ? input.direction : undefined,
@@ -156,6 +203,9 @@ export function parseDashboardSearchParams(value: string): DashboardSearch {
     models: params.getAll('model'),
     harnesses: params.getAll('harness'),
     sessions: params.getAll('session'),
+    locationGroup: params.get('locationGroup'),
+    repositories: params.getAll('repository'),
+    directories: params.getAll('directory'),
     sort: params.get('sort'),
     direction: params.get('direction'),
     page: params.get('page'),
@@ -176,11 +226,14 @@ export function stringifyDashboardSearch(
   scalar('bucket', search.bucket)
   scalar('from', search.from)
   scalar('to', search.to)
+  scalar('locationGroup', search.locationGroup)
   const repeated: [string, unknown][] = [
     ['provider', search.providers],
     ['model', search.models],
     ['harness', search.harnesses],
     ['session', search.sessions],
+    ['repository', search.repositories],
+    ['directory', search.directories],
   ]
   for (const [key, value] of repeated) {
     for (const item of strings(value)) params.append(key, item)
@@ -205,6 +258,9 @@ export function searchFromQuery(query: QueryState): DashboardSearch {
     models: query.models,
     harnesses: query.harnesses,
     sessions: query.sessions,
+    locationGroup: query.tab === 'repo' ? query.locationGroup : undefined,
+    repositories: query.tab === 'repo' ? query.repositories : [],
+    directories: query.tab === 'repo' ? query.directories : [],
     sort: query.sort,
     direction: query.direction,
     page: query.page,
@@ -223,6 +279,9 @@ function configured(search: DashboardSearch): boolean {
     search.models.length ||
     search.harnesses.length ||
     search.sessions.length ||
+    search.locationGroup ||
+    search.repositories.length ||
+    search.directories.length ||
     search.sort ||
     search.direction ||
     search.page ||
@@ -262,6 +321,9 @@ export function queryFromSearch(
     models: search.models,
     harnesses: search.harnesses,
     sessions: search.sessions,
+    locationGroup: tab === 'repo' ? (search.locationGroup ?? 'repository') : 'repository',
+    repositories: tab === 'repo' ? search.repositories : [],
+    directories: tab === 'repo' ? search.directories : [],
     tab,
     sort,
     direction: search.direction ?? 'desc',
@@ -286,6 +348,11 @@ export function apiQueryParams(query: QueryState): URLSearchParams {
   for (const value of query.models) params.append('model', value)
   for (const value of query.harnesses) params.append('harness', value)
   for (const value of query.sessions) params.append('session', value)
+  if (query.tab === 'repo') {
+    params.set('locationGroup', query.locationGroup)
+    for (const value of query.repositories) params.append('repository', value)
+    for (const value of query.directories) params.append('directory', value)
+  }
   return params
 }
 

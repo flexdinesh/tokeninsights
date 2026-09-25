@@ -1,6 +1,7 @@
 package server
 
 import (
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/db"
 	serverapi "github.com/flexdinesh/tokeninsights/packages/cli/internal/server/api"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/viewer"
 )
@@ -73,24 +74,38 @@ func apiUsageRows(rows []Row) []serverapi.UsageRow {
 	result := make([]serverapi.UsageRow, 0, len(rows))
 	for _, row := range rows {
 		result = append(result, serverapi.UsageRow{
-			Key:            row.Key,
-			Name:           row.Name,
-			Harness:        row.Harness,
-			Provider:       row.Provider,
-			Model:          row.Model,
-			Date:           row.Date,
-			Sessions:       row.Sessions,
-			Input:          row.Input,
-			Output:         row.Output,
-			Reasoning:      row.Reasoning,
-			CacheRead:      row.CacheRead,
-			CacheWrite:     row.CacheWrite,
-			Total:          row.Total,
-			Context:        row.Context,
-			AverageContext: row.AverageContext,
-			MedianContext:  row.MedianContext,
-			MaxContext:     row.MaxContext,
+			Key:                 row.Key,
+			Name:                row.Name,
+			Harness:             row.Harness,
+			Provider:            row.Provider,
+			Model:               row.Model,
+			Date:                row.Date,
+			Sessions:            row.Sessions,
+			Input:               row.Input,
+			Output:              row.Output,
+			Reasoning:           row.Reasoning,
+			CacheRead:           row.CacheRead,
+			CacheWrite:          row.CacheWrite,
+			Total:               row.Total,
+			Context:             row.Context,
+			AverageContext:      row.AverageContext,
+			MedianContext:       row.MedianContext,
+			MaxContext:          row.MaxContext,
+			LocationKey:         row.LocationKey,
+			LocationName:        row.LocationName,
+			DirectoryNames:      nonNilStrings(row.DirectoryNames),
+			HasUnknownDirectory: row.HasUnknownDirectory,
+			RepositoryKey:       row.RepositoryKey,
+			RepositoryName:      row.RepositoryName,
 		})
+	}
+	return result
+}
+
+func apiLocationOptions(options []db.LocationOption) []serverapi.LocationOption {
+	result := make([]serverapi.LocationOption, 0, len(options))
+	for _, option := range options {
+		result = append(result, serverapi.LocationOption{Key: option.Key, Name: db.LocationDisplayName(option)})
 	}
 	return result
 }

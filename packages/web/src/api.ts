@@ -70,6 +70,7 @@ export function useAnalytics(baseUrl: string, q: QueryState, revision: number, e
     queryFn: async ({ signal }) => ({
       dashboard: await request(baseUrl, `/api/v1/usage?${params}`, dashboardSchema, signal),
       tab: q.tab,
+      locationGroup: q.locationGroup,
     }),
     enabled,
     placeholderData: (previous, previousQuery) => {
@@ -91,7 +92,8 @@ export function useFacets(
   search = '',
 ) {
   const params = apiQueryParams(q)
-  params.delete('tab')
+  if (q.tab !== 'repo') params.delete('tab')
+  params.delete('locationGroup')
   params.delete('sort')
   params.delete('direction')
   params.delete('page')

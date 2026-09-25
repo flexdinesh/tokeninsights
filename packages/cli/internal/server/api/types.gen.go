@@ -144,6 +144,24 @@ func (e HarnessSyncStatus) Valid() bool {
 	}
 }
 
+// Defines values for LocationGroup.
+const (
+	Directory  LocationGroup = "directory"
+	Repository LocationGroup = "repository"
+)
+
+// Valid indicates whether the value is a known member of the LocationGroup enum.
+func (e LocationGroup) Valid() bool {
+	switch e {
+	case Directory:
+		return true
+	case Repository:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for Period.
 const (
 	PeriodAll       Period = "all"
@@ -306,6 +324,7 @@ const (
 	UsageTabHarnesses UsageTab = "harnesses"
 	UsageTabModels    UsageTab = "models"
 	UsageTabProviders UsageTab = "providers"
+	UsageTabRepo      UsageTab = "repo"
 	UsageTabSessions  UsageTab = "sessions"
 	UsageTabTokens    UsageTab = "tokens"
 )
@@ -320,6 +339,8 @@ func (e UsageTab) Valid() bool {
 	case UsageTabModels:
 		return true
 	case UsageTabProviders:
+		return true
+	case UsageTabRepo:
 		return true
 	case UsageTabSessions:
 		return true
@@ -367,6 +388,17 @@ type InstanceResponse struct {
 	Timezone      string       `json:"timezone"`
 }
 
+// LocationGroup defines model for LocationGroup.
+type LocationGroup string
+
+// LocationOption defines model for LocationOption.
+type LocationOption struct {
+	Key string `json:"key"`
+
+	// Name Display name; directory values may be sanitized or full local paths.
+	Name string `json:"name"`
+}
+
 // Period defines model for Period.
 type Period string
 
@@ -406,10 +438,12 @@ type SyncResponse struct {
 
 // UsageFacetsResponse defines model for UsageFacetsResponse.
 type UsageFacetsResponse struct {
-	Harnesses []Harness `json:"harnesses"`
-	Models    []string  `json:"models"`
-	Providers []string  `json:"providers"`
-	Sessions  []string  `json:"sessions"`
+	Directories  []LocationOption `json:"directories"`
+	Harnesses    []Harness        `json:"harnesses"`
+	Models       []string         `json:"models"`
+	Providers    []string         `json:"providers"`
+	Repositories []LocationOption `json:"repositories"`
+	Sessions     []string         `json:"sessions"`
 }
 
 // UsageResponse defines model for UsageResponse.
@@ -426,14 +460,24 @@ type UsageResponse struct {
 
 // UsageRow defines model for UsageRow.
 type UsageRow struct {
-	AverageContext Count  `json:"averageContext"`
-	CacheRead      Count  `json:"cacheRead"`
-	CacheWrite     Count  `json:"cacheWrite"`
-	Context        Count  `json:"context"`
-	Date           Count  `json:"date"`
-	Harness        string `json:"harness"`
-	Input          Count  `json:"input"`
-	Key            string `json:"key"`
+	AverageContext Count `json:"averageContext"`
+	CacheRead      Count `json:"cacheRead"`
+	CacheWrite     Count `json:"cacheWrite"`
+	Context        Count `json:"context"`
+	Date           Count `json:"date"`
+
+	// DirectoryNames Distinct recorded directories contributing to this row, sorted by display name. Empty outside Repo rows.
+	DirectoryNames []string `json:"directoryNames"`
+	Harness        string   `json:"harness"`
+
+	// HasUnknownDirectory Whether any contributing fact lacks a recorded directory. False outside Repo rows.
+	HasUnknownDirectory bool   `json:"hasUnknownDirectory"`
+	Input               Count  `json:"input"`
+	Key                 string `json:"key"`
+	LocationKey         string `json:"locationKey"`
+
+	// LocationName Display name; directory values may be sanitized or full local paths.
+	LocationName   string `json:"locationName"`
 	MaxContext     Count  `json:"maxContext"`
 	MedianContext  Count  `json:"medianContext"`
 	Model          string `json:"model"`
@@ -441,6 +485,8 @@ type UsageRow struct {
 	Output         Count  `json:"output"`
 	Provider       string `json:"provider"`
 	Reasoning      Count  `json:"reasoning"`
+	RepositoryKey  string `json:"repositoryKey"`
+	RepositoryName string `json:"repositoryName"`
 	Sessions       Count  `json:"sessions"`
 	Total          Count  `json:"total"`
 }
@@ -463,6 +509,9 @@ type UsageTab string
 // BucketFilter defines model for BucketFilter.
 type BucketFilter = Bucket
 
+// DirectoryFilter defines model for DirectoryFilter.
+type DirectoryFilter = []string
+
 // FromFilter defines model for FromFilter.
 type FromFilter = string
 
@@ -477,6 +526,9 @@ type PeriodFilter = Period
 
 // ProviderFilter defines model for ProviderFilter.
 type ProviderFilter = []string
+
+// RepositoryFilter defines model for RepositoryFilter.
+type RepositoryFilter = []string
 
 // SessionFilter defines model for SessionFilter.
 type SessionFilter = []string
@@ -516,8 +568,17 @@ type GetUsageParams struct {
 	// Session Session-ID filter. Repeat the parameter to select multiple values.
 	Session *SessionFilter `form:"session,omitempty" json:"session,omitempty"`
 
+	// Repository Repo-tab stable repository key; repeat for multiple values. The key unknown selects missing values.
+	Repository *RepositoryFilter `form:"repository,omitempty" json:"repository,omitempty"`
+
+	// Directory Repo-tab stable directory key; repeat for multiple values. The key unknown selects missing values.
+	Directory *DirectoryFilter `form:"directory,omitempty" json:"directory,omitempty"`
+
 	// Tab Aggregation shown in table and chart rows.
 	Tab *UsageTab `form:"tab,omitempty" json:"tab,omitempty"`
+
+	// LocationGroup Repo-tab grouping by repository or directory.
+	LocationGroup *LocationGroup `form:"locationGroup,omitempty" json:"locationGroup,omitempty"`
 
 	// Sort Sort field. Context-only fields are valid only for the context tab.
 	Sort      *SortField     `form:"sort,omitempty" json:"sort,omitempty"`
@@ -548,6 +609,12 @@ type GetUsageFacetsParams struct {
 
 	// Session Session-ID filter. Repeat the parameter to select multiple values.
 	Session *SessionFilter `form:"session,omitempty" json:"session,omitempty"`
+
+	// Repository Repo-tab stable repository key; repeat for multiple values. The key unknown selects missing values.
+	Repository *RepositoryFilter `form:"repository,omitempty" json:"repository,omitempty"`
+
+	// Directory Repo-tab stable directory key; repeat for multiple values. The key unknown selects missing values.
+	Directory *DirectoryFilter `form:"directory,omitempty" json:"directory,omitempty"`
 
 	// Search Literal substring used to filter session IDs.
 	Search *string `form:"search,omitempty" json:"search,omitempty"`

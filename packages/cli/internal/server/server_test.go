@@ -142,6 +142,33 @@ func TestDashboardCombinedFiltersAndEmptyState(t *testing.T) {
 	}
 }
 
+func TestRepoUnknownAndDirectoryGrouping(t *testing.T) {
+	path := fixture(t)
+	q, err := parseQuery(url.Values{"tab": {"repo"}, "from": {"2026-09-01"}, "to": {"2026-09-30"}, "repository": {"unknown"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := loadDashboard(context.Background(), path, q, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(data.Rows) != 1 || data.Rows[0].LocationKey != "unknown" || data.Rows[0].Total != 453 || data.Summary.TotalTokens != 453 || len(data.Rows[0].DirectoryNames) != 0 || !data.Rows[0].HasUnknownDirectory {
+		t.Fatalf("unknown repo attribution: %+v", data)
+	}
+	transport := apiUsageRows(data.Rows)
+	if len(transport) != 1 || transport[0].DirectoryNames == nil || !transport[0].HasUnknownDirectory {
+		t.Fatalf("unknown directory transport: %+v", transport)
+	}
+	q.LocationGroup = db.RepoGroupDirectory
+	data, err = loadDashboard(context.Background(), path, q, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(data.Rows) != 1 || data.Rows[0].LocationKey != "unknown" || data.Summary.TotalTokens != 453 {
+		t.Fatalf("directory grouping: %+v", data)
+	}
+}
+
 func TestDashboardSessionCoverageAcrossBucketsAndDates(t *testing.T) {
 	path := fixture(t)
 	for _, bucket := range []string{"day", "week", "month", "year"} {
@@ -194,7 +221,7 @@ func TestDashboardSessionCoverageAcrossBucketsAndDates(t *testing.T) {
 func TestAPIValidationFacetsAndAssets(t *testing.T) {
 	a := newApp(context.Background(), Options{DBPath: fixture(t), Defaults: viewer.Selection{Period: "week", Bucket: "day", Providers: []string{}, Models: []string{}, Harnesses: []string{}, Sessions: []string{}}}, io.Discard)
 	handler := a.handler()
-	for _, query := range []string{"period=bad", "bucket=hour", "tab=tps", "from=2026-02-30", "from=2026-10-01&to=2026-09-01", "page=0", "pageSize=201", "direction=bad", "tab=context&sort=total", "sort=sql", "harness=bad"} {
+	for _, query := range []string{"period=bad", "bucket=hour", "tab=tps", "from=2026-02-30", "from=2026-10-01&to=2026-09-01", "page=0", "pageSize=201", "direction=bad", "tab=context&sort=total", "sort=sql", "harness=bad", "tab=repo&locationGroup=bad", "tab=repo&breakdown=provider", "tab=repo&worktree=old", "tab=repo&branch=main", "repository=unknown"} {
 		w := httptest.NewRecorder()
 		handler.ServeHTTP(w, httptest.NewRequest("GET", "/api/v1/usage?"+query, nil))
 		var responseError serverapi.ErrorResponse
@@ -216,6 +243,15 @@ func TestAPIValidationFacetsAndAssets(t *testing.T) {
 	}
 	if len(facets["models"]) != 2 || len(facets["providers"]) != 0 {
 		t.Fatalf("facets must ignore own selection only: %v", facets)
+	}
+	w = httptest.NewRecorder()
+	handler.ServeHTTP(w, httptest.NewRequest("GET", "/api/v1/usage/facets?tab=repo&period=all", nil))
+	var locationFacets serverapi.UsageFacetsResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &locationFacets); err != nil {
+		t.Fatal(err)
+	}
+	if w.Code != http.StatusOK || len(locationFacets.Repositories) != 1 || locationFacets.Repositories[0].Key != "unknown" || locationFacets.Repositories[0].Name != "unknown" {
+		t.Fatalf("unknown repository facet: %d %+v", w.Code, locationFacets)
 	}
 	w = httptest.NewRecorder()
 	handler.ServeHTTP(w, httptest.NewRequest("GET", "/api/v1/usage/facets?period=all&search=b", nil))
@@ -253,7 +289,7 @@ func TestAPIValidationFacetsAndAssets(t *testing.T) {
 func TestDashboardRoutesServeEmbeddedApp(t *testing.T) {
 	handler := newApp(context.Background(), Options{}, io.Discard).handler()
 
-	for _, path := range []string{"/tokens", "/models", "/providers", "/harnesses", "/sessions", "/context"} {
+	for _, path := range []string{"/tokens", "/models", "/providers", "/harnesses", "/sessions", "/context", "/repo"} {
 		t.Run(path, func(t *testing.T) {
 			response := httptest.NewRecorder()
 			handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, path+"?period=all", nil))

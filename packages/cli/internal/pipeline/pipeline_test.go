@@ -2652,7 +2652,7 @@ func TestSourceIngestWriteFailureRollsBackSource(t *testing.T) {
 		Collector: defaultCollector,
 		Parser:    defaultParser,
 		Now:       now,
-	}, HarnessCodex, source, map[string]bool{})
+	}, HarnessCodex, source, map[string]int64{})
 	if err == nil {
 		t.Fatal("expected source write failure")
 	}

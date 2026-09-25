@@ -29,7 +29,7 @@ func newTableSummaryModel(rows []renderRow, activeTab tabMode, loading bool) tab
 
 func tableSummaryShowsTotal(activeTab tabMode) bool {
 	switch activeTab {
-	case tabTokens, tabModels, tabProviders, tabHarnesses, tabSessions:
+	case tabTokens, tabModels, tabProviders, tabHarnesses, tabSessions, tabRepo:
 		return true
 	default:
 		return false
