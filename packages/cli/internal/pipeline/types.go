@@ -76,6 +76,7 @@ type SyncOptions struct {
 	Clock            func() time.Time
 	locationResolver *locationResolver
 	jobID            int64
+	hostname         string
 	recovering       bool
 }
 

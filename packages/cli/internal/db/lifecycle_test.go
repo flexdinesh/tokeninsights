@@ -81,6 +81,47 @@ func TestLifecycleMissingAndFresh(t *testing.T) {
 	}
 }
 
+func TestV13HostnameUpgradePreservesUsage(t *testing.T) {
+	database, path := newTestDB(t)
+	insertCanonicalToken(t, database, 2000, "pi", "retained", "openai", "gpt", 7, 1, 0, 0, 0, 8)
+	execLifecycleSQL(t, database, `
+		ALTER TABLE ingest_runs DROP COLUMN hostname;
+		INSERT INTO ingest_runs (run_id,harness,collector,parser,source_id,source_kind,status,started_at_ms)
+		VALUES ('retained','pi','test','test','test','test','completed',1000);
+		UPDATE sync_state SET revision = 7, last_successful_sync_at_ms = 2000;
+		PRAGMA user_version = 13;
+	`)
+	if got := inspectLifecycle(t, path); got != (Compatibility{Exists: true, MigrationRequired: true}) {
+		t.Fatalf("V13 compatibility: %+v", got)
+	}
+	release, err := AcquireWriterLock(context.Background(), path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = UpgradeMetadata(context.Background(), path)
+	release()
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertDBCount(t, database, TableCanonicalTokenUsage, 1)
+	assertDBCount(t, database, TableRawTokenUsage, 1)
+	assertDBCount(t, database, TableIngestRuns, 1)
+	var missingHostname bool
+	if err := database.QueryRow("SELECT hostname IS NULL FROM ingest_runs WHERE run_id = 'retained'").Scan(&missingHostname); err != nil || !missingHostname {
+		t.Fatalf("old hostname fabricated: %t, %v", missingHostname, err)
+	}
+	status, err := LoadSyncStatus(context.Background(), database)
+	if err != nil || status.Revision != 7 || status.LastSuccessfulAtMs != 2000 {
+		t.Fatalf("sync state changed: %+v, %v", status, err)
+	}
+	if got := inspectLifecycle(t, path); got != (Compatibility{Exists: true}) {
+		t.Fatalf("upgraded compatibility: %+v", got)
+	}
+	if err := UpgradeMetadata(context.Background(), path); err != nil {
+		t.Fatalf("repeat upgrade: %v", err)
+	}
+}
+
 func TestV12SyncMetadataUpgradePreservesUsage(t *testing.T) {
 	database, path := newTestDB(t)
 	insertCanonicalToken(t, database, 2000, "pi", "retained", "openai", "gpt", 7, 1, 0, 0, 0, 8)
@@ -648,6 +689,9 @@ func legacySchema(t *testing.T, version int) string {
 			statement = strings.ReplaceAll(statement, "  location_id INTEGER,\n", "")
 			statement = strings.ReplaceAll(statement, "  location_conflicts TEXT,\n", "")
 			statement = strings.ReplaceAll(statement, ",\n  FOREIGN KEY (location_id) REFERENCES usage_locations(id)", "")
+		}
+		if version < 14 {
+			statement = strings.ReplaceAll(statement, "  hostname TEXT,\n", "")
 		}
 		if version == 9 && strings.Contains(statement, "CREATE TABLE IF NOT EXISTS usage_locations") {
 			statement = strings.Replace(statement, "  repository_source TEXT", "  repository_source TEXT,\n  worktree_key TEXT,\n  worktree_name TEXT,\n  worktree_source TEXT,\n  branch_key TEXT,\n  branch_value_key TEXT,\n  branch_name TEXT,\n  branch_source TEXT", 1)

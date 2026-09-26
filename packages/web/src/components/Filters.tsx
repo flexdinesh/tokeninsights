@@ -244,12 +244,10 @@ function DateFilter() {
 }
 
 export function FilterToolbar({
-  baseUrl,
   facets,
   revision,
   enabled,
 }: {
-  baseUrl: string
   facets?: Facets
   revision: number
   enabled: boolean
@@ -265,7 +263,7 @@ export function FilterToolbar({
     const timer = setTimeout(() => setDebounced(search), 200)
     return () => clearTimeout(timer)
   }, [search])
-  const sessionFacets = useFacets(baseUrl, query, revision, enabled && debounced !== '', debounced)
+  const sessionFacets = useFacets(query, revision, enabled && debounced !== '', debounced)
   const hasFilters =
     dimensions.some((d) => query[d.key].length > 0) ||
     (query.tab === 'repo' && locationDimensions.some((d) => query[d.key].length > 0)) ||

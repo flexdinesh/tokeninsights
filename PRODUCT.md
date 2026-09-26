@@ -41,10 +41,9 @@ hooks to collect retained usage.
   skips that refresh; browser users can explicitly request **Sync now**.
 - Date ranges and dimension filters constrain displayed analytics, not which
   harnesses sync. Calendar grouping uses the serving machine's local time.
-- The browser can select a reachable remote TokenInsights server. Each source is
-  viewed separately; switching sources preserves filters and navigation and does
-  not merge datasets. Remote access is intended for trusted networks; the current
-  server has no authentication.
+- The browser queries the server serving its page. Open that server directly by
+  IP or DNS name, including with `--host 0.0.0.0`. Remote access is intended for
+  trusted networks; the current server has no authentication.
 
 ## Capabilities and Constraints
 
@@ -87,7 +86,7 @@ identity is recorded separately in `DESIGN.md`.
 2. Keep private conversation content out of analytics storage.
 3. Give terminal and browser users consistent canonical answers.
 4. Make filtering, session coverage, and unavailable data understandable.
-5. Preserve a self-contained local runtime and deliberate remote-source selection.
+5. Preserve a self-contained local runtime and direct network access.
 
 ## Accessibility & Inclusion
 

@@ -17,7 +17,7 @@ paths:
       tags: [Instance]
       responses:
         '200':
-          description: Server identity, capabilities, and viewer defaults
+          description: Server versions, saved data hostname, capabilities, and viewer defaults
           content:
             application/json:
               schema:
@@ -408,6 +408,7 @@ components:
           type: string
           minLength: 1
         hostname:
+          description: Hostname recorded by the latest completed ingest run; unknown when unavailable.
           type: string
           minLength: 1
         timezone:

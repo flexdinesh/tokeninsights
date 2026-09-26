@@ -181,7 +181,7 @@ func (a *app) handler() http.Handler {
 		writeJSON(w, http.StatusOK, serverapi.InstanceResponse{
 			ApiVersion:    serverapi.V1,
 			ServerVersion: version.Version,
-			Hostname:      machineHostname(),
+			Hostname:      a.dataHostname(r.Context()),
 			Timezone:      time.Now().Format("MST -07:00"),
 			Capabilities:  []serverapi.Capability{serverapi.Usage, serverapi.Facets, serverapi.Sync},
 			Defaults:      apiSelection(a.options.Defaults),
@@ -305,7 +305,22 @@ func (a *app) handler() http.Handler {
 		}
 		files.ServeHTTP(w, r)
 	})
-	return allowAPIOrigins(mux)
+	return mux
+}
+
+func (a *app) dataHostname(ctx context.Context) string {
+	ctx, cancel := context.WithTimeout(ctx, queryTimeout)
+	defer cancel()
+	database, err := db.Open(a.options.DBPath)
+	if err != nil {
+		return "unknown"
+	}
+	defer func() { _ = database.Close() }()
+	hostname, err := db.LatestIngestHostname(ctx, database)
+	if err != nil {
+		return "unknown"
+	}
+	return hostname
 }
 
 func (a *app) queryError(w http.ResponseWriter, err error) {

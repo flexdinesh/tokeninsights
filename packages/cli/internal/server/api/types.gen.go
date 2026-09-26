@@ -433,12 +433,14 @@ type HarnessSyncStatus string
 
 // InstanceResponse defines model for InstanceResponse.
 type InstanceResponse struct {
-	ApiVersion    ApiVersion   `json:"apiVersion"`
-	Capabilities  []Capability `json:"capabilities"`
-	Defaults      Selection    `json:"defaults"`
-	Hostname      string       `json:"hostname"`
-	ServerVersion string       `json:"serverVersion"`
-	Timezone      string       `json:"timezone"`
+	ApiVersion   ApiVersion   `json:"apiVersion"`
+	Capabilities []Capability `json:"capabilities"`
+	Defaults     Selection    `json:"defaults"`
+
+	// Hostname Hostname recorded by the latest completed ingest run; unknown when unavailable.
+	Hostname      string `json:"hostname"`
+	ServerVersion string `json:"serverVersion"`
+	Timezone      string `json:"timezone"`
 }
 
 // LocationGroup defines model for LocationGroup.

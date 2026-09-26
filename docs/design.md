@@ -45,7 +45,7 @@ Local harness data
        |                      |
        v                      v
  terminal TUI          embedded React UI
-                       local or remote API
+                       same-origin API
 ```
 
 Default storage is:
@@ -87,7 +87,7 @@ The OpenAPI document and SQLite schema remain language-neutral contracts. Deploy
 
 ## Current Implementation Status
 
-The sync-first canonical path is the active product path. Schema V13, automatic schema/data compatibility recovery, `sync`, OpenCode/Pi/Codex/Claude Code Recent Source Refresh, same-version unchanged-source reuse, Pi JSONL byte cursors, pending-work `normalize`, reset commands, canonical token aggregation, optional fact-level location attribution, and fixture-style pipeline conformance tests are implemented.
+The sync-first canonical path is the active product path. Schema V14, automatic schema/data compatibility recovery, `sync`, OpenCode/Pi/Codex/Claude Code Recent Source Refresh, same-version unchanged-source reuse, Pi JSONL byte cursors, pending-work `normalize`, reset commands, canonical token aggregation, optional fact-level location attribution, and fixture-style pipeline conformance tests are implemented.
 
 Known gaps are part of the current design contract:
 
@@ -101,7 +101,7 @@ Known gaps are part of the current design contract:
 
 `schema/schema.sql` is the single source of truth for SQLite table and column definitions. The Go CLI embeds a checked copy at `packages/cli/internal/db/schema/schema.sql`.
 
-Compatibility is gated by `PRAGMA user_version` plus `database_lifecycle.data_generation`. The current schema version is `13` and data generation is `5`. Release version numbers are not compatibility markers. Bump schema version for structural changes and data generation for breaking token semantics or raw/canonical identity changes requiring reingestion.
+Compatibility is gated by `PRAGMA user_version` plus `database_lifecycle.data_generation`. The current schema version is `14` and data generation is `5`. Release version numbers are not compatibility markers. Bump schema version for structural changes and data generation for breaking token semantics or raw/canonical identity changes requiring reingestion.
 
 Schema V4 adds the persisted `claude-code` harness value. Existing V3 databases reject that value physically through SQLite `CHECK` constraints.
 
@@ -141,13 +141,15 @@ Singleton Local-only Continuity Metadata, excluded from analytics and future exp
 
 Fresh databases start at the current generation with no pending rebuild and a NULL source key. Reset commits the current schema/generation, pending state, and source-scope fingerprint atomically. Failed recovery preserves that state and any committed partial imports for a same-scope retry; successful completion clears pending state and the source key together.
 
+Schema V14 adds nullable `ingest_runs.hostname` to record the machine performing source ingestion. V11–V13 upgrade additively without deleting usage or changing data generation. Existing runs keep NULL; hostname is captured on future syncs, including unchanged-source checks. Missing hostname lookup remains NULL.
+
 ### Durable sync status (V13)
 
 `sync_state` is a local singleton with a durable viewer publication revision and the last successful normalized all-harness sync time. It advances in the canonical transaction, including standalone normalization and canonical resets, and when terminal harness/job coverage commits. Existing per-source ingest completion is no longer presented as overall sync success.
 
 `sync_jobs` records metadata-only scope fingerprints, running/completed/failed/cancelled/interrupted outcome, phase, actual timestamps, normalization policy, and all-harness scope. `sync_harnesses` records discovery, source counts, status, and successful checked time for each job/harness. `sync_sources` records hashed source identities, reading/ingested/ready/unchanged/failed/deferred state, safe error codes, and conservative UTC usage-time bounds. No full paths or transcript content are added. These tables are Local-only Continuity Metadata, excluded from analytics and exports.
 
-V11 and V12 upgrade transactionally to V13 without deleting source facts or canonical usage. Prior successful overall check time is unknown until the first new all-harness sync; source ingest history cannot prove that coverage.
+V11–V13 upgrade transactionally to V14 without deleting source facts or canonical usage. V13 sync history is preserved. V11/V12 prior successful overall check time is unknown until the first new all-harness sync; source ingest history cannot prove that coverage.
 
 One database writer lock owns a job. Status reads observe that lock without creating it; orphaned running jobs read as interrupted and the next owner persists their interrupted outcome. Server POST joins an observed active job; CLI/TUI writers wait with a named waiting phase. Scope-changing contenders remain serialized. Recovery creates its job after transactional reset and retains it on retry; analytics remain unavailable until all normalized recovery work completes.
 
@@ -158,6 +160,7 @@ One row per source sync attempt. Runs start as `running` and complete as `comple
 Important fields:
 
 - `run_id`: unique sync-run identity.
+- `hostname`: nullable hostname captured once per sync from the ingesting machine; older rows and unavailable lookups remain NULL.
 - `harness`: `opencode`, `pi`, `codex`, or `claude-code`.
 - `collector` and `parser`: implementation/version provenance.
 - `source_id` and `source_kind`: stable logical source identity without storing full paths.
@@ -475,7 +478,7 @@ The V1 REST API consists of exactly these endpoints; unversioned `/api/*` routes
 
 | Endpoint | Purpose |
 |----------|---------|
-| `GET /api/v1/instance` | API/server versions, hostname, timezone, capabilities, and initial viewer defaults |
+| `GET /api/v1/instance` | API/server versions, saved data hostname, timezone, capabilities, and initial viewer defaults |
 | `GET /api/v1/sync` | Shared sync phase, per-harness progress, error, and completion revision |
 | `POST /api/v1/sync` | Start or join the server's all-harness sync job; returns HTTP 202 |
 | `GET /api/v1/usage` | Summary, chronological/ranked chart, sorted/paginated rows, and last sync |
@@ -485,15 +488,15 @@ Usage/facet query parameters are `period`, `bucket`, `from`, `to`, repeated `pro
 
 [`docs/openapi.yaml`](openapi.yaml) is the authoritative, repository-only API contract; the server does not expose it at runtime. `pnpm run generate:api` generates committed Go transport models and TypeScript types/Zod schemas. `pnpm run check-api` verifies generated output has not drifted from the contract. Handwritten handlers map canonical query results into generated response models, while browser query hooks validate responses with the generated schemas. Direct Go builds consume committed generated files and do not require Node or code-generation tools.
 
-All V1 API routes permit browser requests from every origin with `Access-Control-Allow-Origin: *`, `GET`, `POST`, and `OPTIONS`; successful preflights return HTTP 204 and credentials are not enabled. There is no authentication. This permits remote **Sync now**, but also lets any website that can reach the server read usage metadata and trigger local ingestion. This configuration is intended only for trusted networks until authentication and tighter origin/host controls exist.
+V1 API routes do not advertise cross-origin browser access or provide CORS preflight handling. The embedded dashboard uses relative, same-origin API URLs. The server has no authentication; network bindings remain intended for trusted networks.
 
-`packages/web` uses React, strict TypeScript, Vite, Tailwind CSS, local shadcn primitives backed by Radix UI, TanStack Router/Query/Table, and Recharts. Feature components compose through `components/ui`; bespoke CSS is limited to dashboard layout, responsive behavior, and data-visualization geometry. The route path owns the active Aggregation Tab, and validated route search owns dashboard filters, sorting, and pagination. Theme, visible columns, chart metric, active source, and transient popover/search drafts remain local UI state. The page origin is the initial local source. Users can add any reachable HTTP(S) base URL; bare `host:port` input normalizes to HTTP. A source is saved only after `/api/v1/instance` validates compatibility and required capabilities. Sources use automatic hostname labels, normalized-URL deduplication, and versioned `localStorage` persistence for both the list and active selection; unavailable storage falls back to memory.
+`packages/web` uses React, strict TypeScript, Vite, Tailwind CSS, local shadcn primitives backed by Radix UI, TanStack Router/Query/Table, and Recharts. Feature components compose through `components/ui`; bespoke CSS is limited to dashboard layout, responsive behavior, and data-visualization geometry. The route path owns the active Aggregation Tab, and validated route search owns dashboard filters, sorting, and pagination. Theme, visible columns, chart metric, and transient popover/search drafts remain local UI state.
 
-Every browser request, including **Sync now**, targets the active source. Query keys include source identity, superseded requests are cancelled, and data from one source is never displayed under another source's hostname. Sources are selected individually and their data is never merged. Switching preserves the current date range, filters, tab, sorting, and pagination, even when the new source returns no rows. Removing the active remote source selects the page-origin source. If a saved source later becomes unavailable or incompatible, it remains selected and the source selector stays usable while the UI shows a clear error and retry/recovery path rather than silently falling back.
+Every browser request, including **Sync now** and session search, targets the server serving the page. Users can open that server directly by IP or DNS name, including with `serve --host 0.0.0.0`. The header displays the saved data hostname as plain text; the footer includes the page origin. `/api/v1/instance.hostname` reads the latest completed ingest run, including unchanged-source checks, and returns `unknown` when no recorded hostname is available. Running or failed runs do not replace that display. It never substitutes the serving machine or browser address for the data hostname. Sync revision changes refresh instance metadata without a page reload. There is no add/remove/select-host UI, configurable browser API destination, or persisted host list. Legacy `tokeninsights.sources.v1` browser storage is ignored. Query keys retain filter scope and canonical revision; superseded requests are cancelled and route transitions preserve summary/result semantics. Connection failures offer retry.
 
-Remote reachability still depends on browser networking rules. An HTTPS page generally cannot query a plain-HTTP source because of mixed-content blocking, and invalid or untrusted TLS certificates can block HTTPS sources. CORS does not bypass those checks.
+Development Vite proxies `/api` to the Go server; its browser requests also remain same-origin.
 
-The route path owns the tab. Route search parameters own period, bucket, custom dates, repeated provider/model/harness/session filters, sort, direction, page, and page size, including browser back/forward and explicitly cleared startup filters. Tab navigation preserves filters, resets pagination, and applies the destination tab's valid default sort when needed. The Graphite & Lime dashboard uses a compact source/status/action header, route tabs and quick periods on a shared row, always-visible wrapping horizontal filters, static readouts, a 10rem chart, and dense tables. Summary readouts are compact static data displays on every tab; only the chart toolbar selects the chart metric. Route controls, filters, sync/error feedback, and summaries remain mounted across route changes; only the chart/table region loads, and it never displays rows from the previous route. Theme preference persists locally. CSS typography, color, spacing, and radius tokens use browser-scalable rem/em sizing, with responsive layouts, focus styles, accessible controls, and reduced-motion support. The active route uses lime text and an underline with aria-current. Readouts have no click, hover, tooltip, or selection state. Dark mode uses neutral graphite and bright lime; light mode uses warm white, bright lime action fills with dark text, and deep lime selections and chart ink. The secondary chart series uses a neutral sage gray.
+The route path owns the tab. Route search parameters own period, bucket, custom dates, repeated provider/model/harness/session filters, sort, direction, page, and page size, including browser back/forward and explicitly cleared startup filters. Tab navigation preserves filters, resets pagination, and applies the destination tab's valid default sort when needed. The Graphite & Lime dashboard uses a compact hostname/status/action header, route tabs and quick periods on a shared row, always-visible wrapping horizontal filters, static readouts, a 10rem chart, and dense tables. Summary readouts are compact static data displays on every tab; only the chart toolbar selects the chart metric. Route controls, filters, sync/error feedback, and summaries remain mounted across route changes; only the chart/table region loads, and it never displays rows from the previous route. Theme preference persists locally. CSS typography, color, spacing, and radius tokens use browser-scalable rem/em sizing, with responsive layouts, focus styles, accessible controls, and reduced-motion support. The active route uses lime text and an underline with aria-current. Readouts have no click, hover, tooltip, or selection state. Dark mode uses neutral graphite and bright lime; light mode uses warm white, bright lime action fills with dark text, and deep lime selections and chart ink. The secondary chart series uses a neutral sage gray.
 
 The React visual contract is [`DESIGN.md`](../DESIGN.md), implemented by `packages/web/src/tokens.css`, Tailwind theme utilities, local shadcn primitives under `components/ui`, and feature rules in `styles.css`. All Aggregation Tabs share semantic light/dark colors, a 4px-based spacing scale, three radius roles, aligned page/panel insets, and standard/compact controls with larger touch targets. Narrow layouts retain all seven navigation choices in a horizontally scrollable rail and keep accessible names for icon-only actions. Visual changes must follow that contract without changing canonical analytics semantics.
 
@@ -561,7 +564,7 @@ Can evolve with care:
 | `packages/cli/internal/cli/serve.go` | web command flags and orchestration |
 | `packages/cli/internal/viewer/filters.go` | shared calendar and filter semantics |
 | `packages/cli/internal/server/` | HTTP lifecycle, sync coordination, generated API models, handlers, embedded assets |
-| `packages/web/` | typed multi-source React dashboard, generated API schemas, and design tokens |
+| `packages/web/` | typed same-origin React dashboard, generated API schemas, and design tokens |
 | `packages/cli/internal/cli/table.go` | interactive TUI model |
 | `packages/cli/internal/cli/desk.go` | Instrument desk layout, readouts, and drawers |
 | `packages/cli/internal/cli/theme.go` | semantic light/dark terminal colors and styles |

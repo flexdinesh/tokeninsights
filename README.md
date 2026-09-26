@@ -48,7 +48,7 @@ tokeninsights
 The terminal dashboard uses a full-width table, filtered token readouts, and a
 light/dark Instrument desk theme. Press `f` for the filter drawer or `?` for keys.
 
-Both refresh supported local sources on startup. When compatible usage already exists, the dashboards show it while sync runs and refresh it as each harness publishes normalized usage. First sync and compatibility recovery show progress until data is ready. The browser server listens at `http://localhost:8765` by default. Use `--host <ipv4>` to bind another interface or `--port <port>` to choose another port.
+Both refresh supported local sources on startup. When compatible usage already exists, the dashboards show it while sync runs and refresh it as each harness publishes normalized usage. First sync and compatibility recovery show progress until data is ready. The browser server listens at `http://localhost:8765` by default. Use `--host <ipv4>` to bind another interface or `--port <port>` to choose another port. With `--host 0.0.0.0`, open the dashboard from another machine using the server’s IP or DNS name. The dashboard queries the server serving its page and displays the hostname saved during sync. Existing data without a recorded hostname shows `unknown` until synced again.
 
 Sync progress persists across restarts and is shared by CLI, TUI, and web. It distinguishes discovery, source checks, normalization, failures, and interrupted jobs. Daily coverage shows unknown/pending/partial/checked states; missing usage is not presented as zero before sources are checked. Last sync means a successful normalized all-harness refresh. Large JSONL tool-output records no longer hit a fixed 16 MiB Scanner limit, and a failed source does not prevent later sources from syncing. Active files are read to a captured extent; incomplete trailing records wait for the next sync.
 
@@ -69,7 +69,7 @@ Supported periods are `--today`, `--yesterday`, `--week`, `--month`, `--year`, a
 
 ## Privacy
 
-TokenInsights keeps data on your machine. It stores usage metadata such as token counts, timestamps, models, providers, session identifiers, hashed location keys, and display names. Directory paths use `~/` where a home directory can be identified; otherwise a full directory path may be stored. It does not store prompts, responses, tool arguments, tool output, source artifact paths, or full remote URLs.
+TokenInsights keeps data on your machine. It stores usage metadata such as token counts, timestamps, models, providers, session identifiers, ingesting-machine hostnames, hashed location keys, and display names. Directory paths use `~/` where a home directory can be identified; otherwise a full directory path may be stored. It does not store prompts, responses, tool arguments, tool output, source artifact paths, or full remote URLs.
 
 The default database is `~/.local/share/tokeninsights/tokeninsights.sqlite`. Override it with `--db-path` or `TOKENINSIGHTS_DB_PATH`.
 

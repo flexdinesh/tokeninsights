@@ -5,7 +5,6 @@ import { join, resolve } from 'node:path'
 
 const tempRoot = process.env.TOKENINSIGHTS_TEST_TMP ?? tmpdir()
 const localHome = await mkdtemp(join(tempRoot, 'tokeninsights-web-local-'))
-const remoteHome = await mkdtemp(join(tempRoot, 'tokeninsights-web-remote-'))
 const now = new Date()
 
 async function writeSession(
@@ -52,7 +51,6 @@ for (let index = 0; index < 80; index++) {
   const cwd = index % 5 === 4 ? undefined : join(localHome, 'workspace', `project-${index % 4}`)
   await writeSession(localHome, index, 'web-session', model, provider, 4300, 3000, recordedAt, cwd)
 }
-await writeSession(remoteHome, 0, 'remote-session', 'model-a', 'remote-provider', 777, 0, now)
 
 function startServer(home: string, port: string) {
   return spawn(
@@ -61,7 +59,7 @@ function startServer(home: string, port: string) {
       'serve',
       '--week',
       '--host',
-      '127.0.0.1',
+      '0.0.0.0',
       '--port',
       port,
       '--db-path',
@@ -80,17 +78,14 @@ function startServer(home: string, port: string) {
   )
 }
 
-const children = [startServer(localHome, '18765'), startServer(remoteHome, '18766')]
+const children = [startServer(localHome, '18765')]
 let stopping = false
 
 async function stop(code: number) {
   if (stopping) return
   stopping = true
   for (const child of children) child.kill('SIGTERM')
-  await Promise.all([
-    rm(localHome, { recursive: true, force: true }),
-    rm(remoteHome, { recursive: true, force: true }),
-  ])
+  await rm(localHome, { recursive: true, force: true })
   process.exitCode = code
 }
 
