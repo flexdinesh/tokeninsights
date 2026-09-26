@@ -14,7 +14,7 @@ import { flexRender, getCoreRowModel, useReactTable } from '@tanstack/react-tabl
 import type { ColumnDef } from '@tanstack/react-table'
 import type { Dashboard, Row, Sort, Tab } from '../contracts'
 import { sortSchema } from '../contracts'
-import { coverageLabel } from './SyncCoverage'
+import { CoverageIndicator } from './SyncCoverage'
 import type { CoverageDay } from './SyncCoverage'
 import { exactCount, formatCount, labels } from '../format'
 import { useDashboardState } from '../state'
@@ -166,7 +166,13 @@ export function UnknownLocation({
 
 type DisplayRow = Row & { coverage?: CoverageDay; placeholder?: boolean }
 
-function renderCell(row: DisplayRow, spec: Column, tab: Tab, timezone?: string): ReactNode {
+function renderCell(
+  row: DisplayRow,
+  spec: Column,
+  tab: Tab,
+  timezone?: string,
+  checkedSince?: number,
+): ReactNode {
   if (row.placeholder && spec.numeric && row.coverage?.status !== 'empty')
     return <span className="numeric-value">—</span>
   const value = row[spec.id]
@@ -193,13 +199,15 @@ function renderCell(row: DisplayRow, spec: Column, tab: Tab, timezone?: string):
     const details = identityDetails(row, tab)
     return (
       <div className="identity-cell">
-        <span className="identity-name" title={String(value)}>
-          {String(value)}
-        </span>
-        <span className="identity-detail">
+        <div className="identity-line">
+          <span className="identity-name" title={String(value)}>
+            {String(value)}
+          </span>
           {row.coverage && (
-            <span data-status={row.coverage.status}>{coverageLabel(row.coverage, timezone)}</span>
+            <CoverageIndicator day={row.coverage} timezone={timezone} checkedSince={checkedSince} />
           )}
+        </div>
+        <span className="identity-detail">
           {details.map((detail) => (
             <span key={detail}>{detail}</span>
           ))}
@@ -222,7 +230,15 @@ function renderCell(row: DisplayRow, spec: Column, tab: Tab, timezone?: string):
   )
 }
 
-export function ResultsTable({ data, timezone }: { data: Dashboard; timezone?: string }) {
+export function ResultsTable({
+  data,
+  timezone,
+  checkedSince,
+}: {
+  data: Dashboard
+  timezone?: string
+  checkedSince?: number
+}) {
   const {
     state: { query, hidden },
     dispatch,
@@ -279,12 +295,12 @@ export function ResultsTable({ data, timezone }: { data: Dashboard; timezone?: s
         id: spec.id,
         accessorFn: (row) => row[spec.id],
         header: spec.label,
-        cell: ({ row }) => renderCell(row.original, spec, query.tab, timezone),
+        cell: ({ row }) => renderCell(row.original, spec, query.tab, timezone, checkedSince),
         size: spec.id === 'name' ? (query.tab === 'repo' ? 256 : 224) : spec.numeric ? 128 : 160,
         minSize: spec.id === 'name' ? 176 : spec.numeric ? minColumnSize : 128,
         maxSize: maxColumnSize,
       })),
-    [specs, query.tab, timezone],
+    [specs, query.tab, timezone, checkedSince],
   )
   const visibility = Object.fromEntries(
     specs.map((s) => [s.id, !hidden.includes(s.id) || s.id === 'name']),

@@ -169,6 +169,7 @@ func tokenColumns() []column {
 
 type renderRow struct {
 	coverageStatus           string
+	coverageCheckedAtMs      int64
 	placeholder              bool
 	location                 string
 	bucket                   string
@@ -544,6 +545,19 @@ func rowNameField(tab tabMode) string {
 
 func renderCell(value string, col column, base lipgloss.Style) string {
 	style := base.Inherit(cellStyleForColumn(col))
+	if col.field == "bucket" {
+		bucket, marker, ok := strings.Cut(value, " ")
+		if ok && strings.TrimSpace(marker) != "" {
+			color := themeMuted
+			switch strings.TrimSpace(marker) {
+			case "…", "↻":
+				color = themeAccent
+			case "!":
+				color = themeDanger
+			}
+			return style.Render(bucket+" ") + base.Foreground(color).Render(marker)
+		}
+	}
 	return style.Render(value)
 }
 
@@ -585,7 +599,7 @@ func formatRenderRows(rows []renderRow, cols []column) [][][]string {
 			case "bucket":
 				value = row.bucket
 				if row.coverageStatus != "" {
-					value += "\n" + row.coverageStatus
+					value += " " + dayCoverageMarker(row.coverageStatus)
 				}
 			case "sessions":
 				value = row.sessions
@@ -735,7 +749,7 @@ func loadingReferenceRows(tab tabMode) []renderRow {
 func columnWidthBounds(col column, headerWidth int) (int, int) {
 	switch col.field {
 	case "bucket":
-		return bucketColumnWidth, bucketColumnWidth
+		return bucketColumnWidth, 0
 	case "latest":
 		return latestColumnWidth, latestColumnWidth
 	case "model":

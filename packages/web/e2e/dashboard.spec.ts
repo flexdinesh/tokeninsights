@@ -2,6 +2,68 @@ import { expect, test } from '@playwright/test'
 import { InstanceResponse, UsageResponse } from '../src/generated/api'
 import { dashboardSchema } from '../src/contracts'
 
+test('saved day completion stays blank until the current sync confirms it', async ({ page }) => {
+  let phase: 'waiting' | 'started' | 'updating' | 'complete' = 'waiting'
+  await page.route('**/api/v1/sync', (route) =>
+    route.fulfill({
+      json: {
+        phase: phase === 'complete' ? 'ready' : 'syncing',
+        running: phase !== 'complete',
+        error: '',
+        revision: phase === 'complete' ? 101 : 100,
+        harnesses: {},
+        progress:
+          phase === 'waiting'
+            ? undefined
+            : {
+                jobId: 100,
+                startedAt: 2000,
+                updatedAt: 3000,
+                lastSuccessfulAt: phase === 'complete' ? 3000 : 1000,
+                totalSources: 2,
+                checkedSources: phase === 'complete' ? 2 : 1,
+                readySources: phase === 'complete' ? 2 : 1,
+                failedSources: 0,
+                discoveryComplete: true,
+              },
+      },
+    }),
+  )
+  await page.route('**/api/v1/usage?*', async (route) => {
+    const response = await route.fetch()
+    const data = dashboardSchema.parse(await response.json())
+    const row = data.rows[0]
+    if (!row) throw new Error('Expected retained day usage')
+    await route.fulfill({
+      json: {
+        ...data,
+        coverage: [
+          {
+            day: row.name,
+            status: phase === 'updating' ? 'partial' : 'checked',
+            checkedAt: phase === 'complete' ? 3000 : phase === 'updating' ? 0 : 1000,
+            pendingSources: phase === 'updating' ? 1 : 0,
+            failedSources: 0,
+            hasUsage: true,
+            total: row.total,
+          },
+        ],
+      },
+    })
+  })
+  await page.goto('/tokens')
+  const results = page.getByRole('region', { name: 'Scrollable results' })
+  await expect(results.locator('tbody tr').first()).toBeVisible()
+  await expect(results.locator('.coverage-indicator')).toHaveCount(0)
+  phase = 'started'
+  await expect(page.getByLabel('Sources checked')).toHaveAttribute('value', '1')
+  await expect(results.locator('.coverage-indicator')).toHaveCount(0)
+  phase = 'updating'
+  await expect(results.getByRole('img', { name: 'Partial · updating' })).toBeVisible()
+  phase = 'complete'
+  await expect(results.getByRole('img', { name: /^Checked / })).toBeVisible()
+})
+
 test('pending calendar days keep absent usage visible during sync', async ({ page }, testInfo) => {
   const pendingDay = '2026-09-26'
   await page.route('**/api/v1/sync', (route) =>
@@ -62,13 +124,27 @@ test('pending calendar days keep absent usage visible during sync', async ({ pag
     .getByRole('region', { name: 'Scrollable results' })
     .getByRole('row', { name: /2026-09-26.*Pending/ })
   await expect(pending).toBeVisible()
+  await expect(pending.getByRole('img', { name: 'Pending · 5 sources' })).toHaveAttribute(
+    'title',
+    'Pending · 5 sources',
+  )
   await expect(pending.locator('td.numeric')).toHaveText(['—', '—', '—', '—', '—', '—', '—'])
+  await expect(page.getByRole('region', { name: 'Daily source coverage' })).not.toBeVisible()
+  const gutter = await pending
+    .locator('td')
+    .first()
+    .evaluate((cell) => getComputedStyle(cell).paddingLeft)
+  expect(Number.parseFloat(gutter)).toBeGreaterThan(0)
   await page.locator('.sync-coverage summary').click()
   await expect(page.getByRole('region', { name: 'Daily source coverage' })).toBeVisible()
   await expect(page.locator('.recharts-surface')).toBeVisible()
   await page.screenshot({ path: testInfo.outputPath('coverage-desktop.png'), fullPage: true })
   await page.setViewportSize({ width: 390, height: 844 })
   await page.screenshot({ path: testInfo.outputPath('coverage-mobile.png'), fullPage: true })
+  await page.evaluate(() => {
+    document.documentElement.style.fontSize = '200%'
+  })
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
 })
 
 test('dimension charts show filtered token shares on bars, labels, and tooltips', async ({
@@ -145,6 +221,57 @@ test('dimension charts show filtered token shares on bars, labels, and tooltips'
       return bounds.left >= 0 && bounds.right <= innerWidth
     }),
   ).toBe(true)
+})
+
+test('repo charts show full filtered token shares in both location groupings', async ({
+  page,
+}, testInfo) => {
+  await page.goto('/repo')
+  const repositoryChart = page.getByRole('region', { name: 'Usage by repository', exact: true })
+  await expect(repositoryChart.locator('.recharts-label-list text')).toHaveText(['100%'])
+  await repositoryChart.locator('.recharts-bar-rectangle path').first().hover()
+  await expect(repositoryChart.locator('.recharts-tooltip-wrapper')).toContainText('(100%)')
+
+  await page.getByRole('combobox', { name: 'Group by location' }).click()
+  await page.getByRole('option', { name: 'Directory' }).click()
+  const directoryChart = page.getByRole('region', { name: 'Usage by directory', exact: true })
+  const directoryShares = Array.from({ length: 5 }, () => '20%')
+  await expect(directoryChart.locator('.recharts-label-list text')).toHaveText(directoryShares)
+  await directoryChart.locator('.recharts-bar-rectangle path').first().hover()
+  await expect(directoryChart.locator('.recharts-tooltip-wrapper')).toContainText('(20%)')
+  await page.mouse.move(0, 0)
+  await page.screenshot({ path: testInfo.outputPath('repo-desktop.png'), fullPage: true })
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.screenshot({ path: testInfo.outputPath('repo-mobile.png'), fullPage: true })
+
+  await page.route('**/api/v1/usage?*', async (route) => {
+    const response = await route.fetch()
+    const data = UsageResponse.parse(await response.json())
+    const row = data.chart[0]
+    if (!row) throw new Error('Expected repo chart fixture')
+    const displayedGroups = 12
+    const displayedTotal = data.summary.total / 2
+    data.chart = Array.from({ length: displayedGroups }, (_, index) => ({
+      ...row,
+      key: `repo-${index}`,
+      name: `organization/project-${index}`,
+      total: displayedTotal / displayedGroups,
+    }))
+    await route.fulfill({ json: data })
+  })
+  await page.goto('/repo')
+  await expect(repositoryChart.locator('.recharts-label-list text')).toHaveText(
+    Array.from({ length: 12 }, () => '4.2%'),
+  )
+  await page.evaluate(() => {
+    document.documentElement.style.fontSize = '200%'
+  })
+  expect(
+    await repositoryChart
+      .locator('.chart-canvas')
+      .evaluate((el) => el.scrollWidth > el.clientWidth),
+  ).toBe(true)
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
 })
 
 test('table columns resize by drag and keyboard without sorting', async ({ page }) => {
@@ -431,11 +558,13 @@ test('themes, keyboard filters, mobile layout, and scalable typography', async (
   const toolbarControls = [
     page.getByRole('button', { name: 'Harness', exact: true }),
     page.getByRole('button', { name: 'This week', exact: true }),
-    page.getByRole('button', { name: 'Restore CLI defaults', exact: true }),
     page.getByRole('combobox', { name: 'Time bucket', exact: true }),
   ]
   const controlHeights = await Promise.all(
     toolbarControls.map(async (control) => (await control.boundingBox())?.height),
+  )
+  await expect(page.getByRole('button', { name: 'Restore CLI defaults', exact: true })).toHaveCount(
+    0,
   )
   for (const height of controlHeights) expect(height).toBeGreaterThanOrEqual(24)
   await page.getByRole('button', { name: 'Theme: system. Change theme' }).click()

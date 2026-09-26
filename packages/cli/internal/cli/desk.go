@@ -36,6 +36,10 @@ var (
 		"d           Date range", "g           Bucket / Repo group", "s           Sort",
 		"f           Filters", "p / m / h   Provider/model/harness",
 		"r           Reload usage", "u           Sync / retry (unless --no-sync)", "q / Ctrl+C  Quit",
+		"Day status  ✓ checked · ○ empty",
+		"            … pending · ↻ updating",
+		"            ! incomplete",
+		"            ? unverified",
 	}
 )
 
@@ -108,7 +112,11 @@ func (m interactiveModel) deskHeader() []string {
 	width := m.tableViewportWidth()
 	lines := []string{m.renderStatusline()}
 	if len(m.coverage) > 0 || m.sharedSync.JobID > 0 {
-		lines = append(lines, hintStyle.Render(truncateCell(m.coverageSummary(), width)), hintStyle.Render(truncateCell(m.syncWorkLabel(), width)))
+		work := m.syncWorkLabel()
+		if len(m.coverage) > 0 {
+			work = m.coverageSummary() + " · " + work
+		}
+		lines = append(lines, hintStyle.Render(truncateCell(work, width)))
 	}
 	roomy := m.height >= deskRoomyHeight
 	if roomy {
@@ -213,7 +221,7 @@ func (m interactiveModel) renderDesk() string {
 	lines := m.deskHeader()
 	rowStart := len(lines) + 1 // Skip the table's column header.
 	visible := m.maxVisibleRows()
-	rows := m.visibleRows()
+	rows := m.currentDayRows(m.visibleRows())
 	selectedSort := activeSort(m.activeTab, m.options.sort)
 	var table string
 	switch {
