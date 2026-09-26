@@ -33,7 +33,7 @@ func TestRecoveryTargetedSyncRebuildsAllDefaultsOnce(t *testing.T) {
 	if summary.Recovery != RecoveryReset || summary.RequestedHarnesses != len(SupportedHarnesses) {
 		t.Fatalf("expected all-harness reset, got %+v", summary)
 	}
-	if len(events) < 2 || events[0] != SyncProgressResetting || events[1] != SyncProgressRebuilding {
+	if len(events) < 3 || events[0] != SyncProgressWaiting || events[1] != SyncProgressResetting || events[2] != SyncProgressRebuilding {
 		t.Fatalf("recovery progress = %v", events)
 	}
 	database := openTestDB(t, path)

@@ -63,6 +63,33 @@ func (e Capability) Valid() bool {
 	}
 }
 
+// Defines values for DayCoverageStatus.
+const (
+	DayCoverageStatusChecked    DayCoverageStatus = "checked"
+	DayCoverageStatusEmpty      DayCoverageStatus = "empty"
+	DayCoverageStatusPartial    DayCoverageStatus = "partial"
+	DayCoverageStatusPending    DayCoverageStatus = "pending"
+	DayCoverageStatusUnverified DayCoverageStatus = "unverified"
+)
+
+// Valid indicates whether the value is a known member of the DayCoverageStatus enum.
+func (e DayCoverageStatus) Valid() bool {
+	switch e {
+	case DayCoverageStatusChecked:
+		return true
+	case DayCoverageStatusEmpty:
+		return true
+	case DayCoverageStatusPartial:
+		return true
+	case DayCoverageStatusPending:
+		return true
+	case DayCoverageStatusUnverified:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ErrorCode.
 const (
 	ErrorCodeInternalError    ErrorCode = "internal_error"
@@ -118,6 +145,7 @@ func (e Harness) Valid() bool {
 const (
 	HarnessSyncStatusDiscovering HarnessSyncStatus = "discovering"
 	HarnessSyncStatusFailed      HarnessSyncStatus = "failed"
+	HarnessSyncStatusNormalizing HarnessSyncStatus = "normalizing"
 	HarnessSyncStatusPending     HarnessSyncStatus = "pending"
 	HarnessSyncStatusSkipped     HarnessSyncStatus = "skipped"
 	HarnessSyncStatusSynced      HarnessSyncStatus = "synced"
@@ -130,6 +158,8 @@ func (e HarnessSyncStatus) Valid() bool {
 	case HarnessSyncStatusDiscovering:
 		return true
 	case HarnessSyncStatusFailed:
+		return true
+	case HarnessSyncStatusNormalizing:
 		return true
 	case HarnessSyncStatusPending:
 		return true
@@ -272,8 +302,10 @@ func (e SortField) Valid() bool {
 
 // Defines values for SyncPhase.
 const (
+	SyncPhaseCancelled        SyncPhase = "cancelled"
 	SyncPhaseDiscovering      SyncPhase = "discovering"
 	SyncPhaseFailed           SyncPhase = "failed"
+	SyncPhaseInterrupted      SyncPhase = "interrupted"
 	SyncPhaseLoadingDashboard SyncPhase = "loading dashboard"
 	SyncPhaseNormalizing      SyncPhase = "normalizing"
 	SyncPhasePending          SyncPhase = "pending"
@@ -284,14 +316,19 @@ const (
 	SyncPhaseSkipped          SyncPhase = "skipped"
 	SyncPhaseSynced           SyncPhase = "synced"
 	SyncPhaseSyncing          SyncPhase = "syncing"
+	SyncPhaseWaiting          SyncPhase = "waiting"
 )
 
 // Valid indicates whether the value is a known member of the SyncPhase enum.
 func (e SyncPhase) Valid() bool {
 	switch e {
+	case SyncPhaseCancelled:
+		return true
 	case SyncPhaseDiscovering:
 		return true
 	case SyncPhaseFailed:
+		return true
+	case SyncPhaseInterrupted:
 		return true
 	case SyncPhaseLoadingDashboard:
 		return true
@@ -312,6 +349,8 @@ func (e SyncPhase) Valid() bool {
 	case SyncPhaseSynced:
 		return true
 	case SyncPhaseSyncing:
+		return true
+	case SyncPhaseWaiting:
 		return true
 	default:
 		return false
@@ -362,6 +401,20 @@ type Capability string
 
 // Count defines model for Count.
 type Count = int64
+
+// DayCoverage defines model for DayCoverage.
+type DayCoverage struct {
+	CheckedAt      Count             `json:"checkedAt"`
+	Day            string            `json:"day"`
+	FailedSources  Count             `json:"failedSources"`
+	HasUsage       bool              `json:"hasUsage"`
+	PendingSources Count             `json:"pendingSources"`
+	Status         DayCoverageStatus `json:"status"`
+	Total          *int64            `json:"total"`
+}
+
+// DayCoverageStatus defines model for DayCoverage.Status.
+type DayCoverageStatus string
 
 // ErrorCode defines model for ErrorCode.
 type ErrorCode string
@@ -427,11 +480,25 @@ type SortField string
 // SyncPhase defines model for SyncPhase.
 type SyncPhase string
 
+// SyncProgress defines model for SyncProgress.
+type SyncProgress struct {
+	CheckedSources    Count `json:"checkedSources"`
+	DiscoveryComplete bool  `json:"discoveryComplete"`
+	FailedSources     Count `json:"failedSources"`
+	JobId             Count `json:"jobId"`
+	LastSuccessfulAt  Count `json:"lastSuccessfulAt"`
+	ReadySources      Count `json:"readySources"`
+	StartedAt         Count `json:"startedAt"`
+	TotalSources      Count `json:"totalSources"`
+	UpdatedAt         Count `json:"updatedAt"`
+}
+
 // SyncResponse defines model for SyncResponse.
 type SyncResponse struct {
 	Error     string                       `json:"error"`
 	Harnesses map[string]HarnessSyncStatus `json:"harnesses"`
 	Phase     SyncPhase                    `json:"phase"`
+	Progress  *SyncProgress                `json:"progress,omitempty"`
 	Revision  Count                        `json:"revision"`
 	Running   bool                         `json:"running"`
 }
@@ -448,14 +515,17 @@ type UsageFacetsResponse struct {
 
 // UsageResponse defines model for UsageResponse.
 type UsageResponse struct {
-	Chart      []UsageRow   `json:"chart"`
-	LastSynced Count        `json:"lastSynced"`
-	Page       int          `json:"page"`
-	PageSize   int          `json:"pageSize"`
-	Range      string       `json:"range"`
-	RowCount   Count        `json:"rowCount"`
-	Rows       []UsageRow   `json:"rows"`
-	Summary    UsageSummary `json:"summary"`
+	Chart []UsageRow `json:"chart"`
+
+	// Coverage Retained-source coverage in server-local days; bounded to 366 days, or the recent seven days for all-time views. Independent of usage rows and pagination.
+	Coverage   *[]DayCoverage `json:"coverage,omitempty"`
+	LastSynced Count          `json:"lastSynced"`
+	Page       int            `json:"page"`
+	PageSize   int            `json:"pageSize"`
+	Range      string         `json:"range"`
+	RowCount   Count          `json:"rowCount"`
+	Rows       []UsageRow     `json:"rows"`
+	Summary    UsageSummary   `json:"summary"`
 }
 
 // UsageRow defines model for UsageRow.

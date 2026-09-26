@@ -115,16 +115,7 @@ func TestSyncReportsHarnessProgress(t *testing.T) {
 	})
 
 	got := progressLabels(events)
-	want := []string{
-		"opencode:discovering",
-		"opencode:skipped",
-		"pi:discovering",
-		"pi:skipped",
-		"codex:discovering",
-		"codex:skipped",
-		"claude-code:discovering",
-		"claude-code:skipped",
-	}
+	want := []string{"waiting", "opencode:discovering", "pi:discovering", "codex:discovering", "claude-code:discovering", "opencode:skipped", "pi:skipped", "codex:skipped", "claude-code:skipped"}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("progress events = %#v, want %#v", got, want)
 	}
@@ -161,21 +152,7 @@ func TestSyncReportsSuccessfulHarnessAndNormalizationProgress(t *testing.T) {
 	})
 
 	got := progressLabels(events)
-	want := []string{
-		"opencode:discovering",
-		"opencode:syncing",
-		"opencode:synced",
-		"pi:discovering",
-		"pi:syncing",
-		"pi:synced",
-		"codex:discovering",
-		"codex:syncing",
-		"codex:synced",
-		"claude-code:discovering",
-		"claude-code:syncing",
-		"claude-code:synced",
-		"normalizing",
-	}
+	want := []string{"waiting", "opencode:discovering", "pi:discovering", "codex:discovering", "claude-code:discovering", "opencode:syncing", "opencode:normalizing", "opencode:synced", "pi:syncing", "pi:normalizing", "pi:synced", "codex:syncing", "codex:normalizing", "codex:synced", "claude-code:syncing", "claude-code:normalizing", "claude-code:synced"}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("progress events = %#v, want %#v", got, want)
 	}

@@ -168,6 +168,8 @@ func tokenColumns() []column {
 }
 
 type renderRow struct {
+	coverageStatus           string
+	placeholder              bool
 	location                 string
 	bucket                   string
 	sessions                 string
@@ -582,6 +584,9 @@ func formatRenderRows(rows []renderRow, cols []column) [][][]string {
 				value = row.location
 			case "bucket":
 				value = row.bucket
+				if row.coverageStatus != "" {
+					value += "\n" + row.coverageStatus
+				}
 			case "sessions":
 				value = row.sessions
 			case "latest":
@@ -651,6 +656,9 @@ func formatRenderRows(rows []renderRow, cols []column) [][][]string {
 }
 
 func formatCellLines(value string, col column) []string {
+	if col.field == "bucket" {
+		return strings.Split(value, "\n")
+	}
 	if isListColumn(col) {
 		return splitSummaryValues(value)
 	}

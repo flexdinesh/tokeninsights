@@ -46,6 +46,7 @@ type syncState struct {
 	Phase     string            `json:"phase"`
 	Harnesses map[string]string `json:"harnesses"`
 	Error     string            `json:"error"`
+	Progress  *db.SyncStatus    `json:"-"`
 	Revision  uint64            `json:"revision"`
 }
 
@@ -64,6 +65,21 @@ func newApp(ctx context.Context, options Options, log io.Writer) *app {
 }
 
 func (a *app) status() syncState {
+	if a.options.DBPath != "" {
+		shared, err := db.ReadSyncStatus(a.ctx, a.options.DBPath)
+		if err == nil && (shared.JobID > 0 || shared.Revision > 0) {
+			local := a.localStatus()
+			if !local.Running || shared.Running {
+				return syncState{Running: shared.Running, Phase: shared.Phase, Harnesses: shared.Harnesses, Error: shared.Error, Revision: uint64(shared.Revision), Progress: &shared}
+			}
+			local.Revision = uint64(shared.Revision)
+			return local
+		}
+	}
+	return a.localStatus()
+}
+
+func (a *app) localStatus() syncState {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	s := a.state
@@ -75,6 +91,12 @@ func (a *app) status() syncState {
 }
 
 func (a *app) startSync() {
+	if a.options.DBPath != "" {
+		shared, err := db.ReadSyncStatus(a.ctx, a.options.DBPath)
+		if err == nil && shared.Running && shared.AllHarnesses && shared.Normalize {
+			return
+		}
+	}
 	a.mu.Lock()
 	if a.state.Running || a.ctx.Err() != nil {
 		a.mu.Unlock()
@@ -94,6 +116,9 @@ func (a *app) startSync() {
 			defer a.mu.Unlock()
 			if a.state.Phase != string(pipeline.SyncProgressRebuilding) {
 				a.state.Phase = string(e.Status)
+			}
+			if e.Published {
+				a.state.Revision++
 			}
 			if e.Harness != "" {
 				a.state.Harnesses[string(e.Harness)] = string(e.Status)

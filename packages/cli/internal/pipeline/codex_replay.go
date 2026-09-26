@@ -1,7 +1,6 @@
 package pipeline
 
 import (
-	"bufio"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -149,8 +148,7 @@ func codexReadSourceMetadata(ctx context.Context, source Source) (codexSourceMet
 		return metadata, ctx.Err()
 	}
 	defer func() { _ = file.Close() }()
-	scanner := bufio.NewScanner(file)
-	scanner.Buffer(make([]byte, 0, 64*1024), maxCodexJSONLLineBytes)
+	scanner := newJSONLReader(ctx, file)
 	for {
 		if err := ctx.Err(); err != nil {
 			return metadata, err

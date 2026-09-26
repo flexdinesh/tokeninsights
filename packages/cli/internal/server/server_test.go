@@ -76,6 +76,71 @@ func fixture(t *testing.T) string {
 	return path
 }
 
+func TestSyncJoinsOnlyEquivalentExternalJob(t *testing.T) {
+	for _, scope := range []struct {
+		name            string
+		all, normalized bool
+		wantStart       bool
+	}{
+		{"all normalized", true, true, false},
+		{"single harness", false, true, true},
+		{"ingest only", true, false, true},
+	} {
+		t.Run(scope.name, func(t *testing.T) {
+			path := fixture(t)
+			database, err := db.OpenWritable(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer func() { _ = database.Close() }()
+			release, err := db.AcquireWriterLock(context.Background(), path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer release()
+			if _, err := database.Exec("INSERT INTO sync_jobs (scope_key, status, phase, started_at_ms, updated_at_ms, normalize, all_harnesses) VALUES ('scope', 'running', 'syncing', 1, 1, ?, ?)", scope.normalized, scope.all); err != nil {
+				t.Fatal(err)
+			}
+			a := newApp(context.Background(), Options{DBPath: path}, io.Discard)
+			var started atomic.Bool
+			a.syncer = func(context.Context, pipeline.SyncOptions) (pipeline.Summary, error) {
+				started.Store(true)
+				return pipeline.Summary{}, nil
+			}
+			a.startSync()
+			a.jobs.Wait()
+			if started.Load() != scope.wantStart {
+				t.Fatalf("started = %v, want %v", started.Load(), scope.wantStart)
+			}
+		})
+	}
+}
+
+func TestStatusSharesRevisionWithoutSyncJob(t *testing.T) {
+	path := fixture(t)
+	database, err := db.OpenWritable(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = database.Close() }()
+	if _, err := database.Exec("UPDATE sync_state SET revision = 7 WHERE id = 1"); err != nil {
+		t.Fatal(err)
+	}
+	a := newApp(context.Background(), Options{DBPath: path}, io.Discard)
+	if got := a.status().Revision; got != 7 {
+		t.Fatalf("revision = %d, want 7", got)
+	}
+	a.state = syncState{Running: true, Phase: "waiting", Revision: 1, Harnesses: map[string]string{"pi": "pending"}}
+	waiting := a.status()
+	if waiting.Revision != 7 || waiting.Progress != nil {
+		t.Fatalf("queued refresh reused stale progress: %+v", waiting)
+	}
+	a.state.Harnesses["pi"] = "syncing"
+	if waiting.Harnesses["pi"] != "pending" {
+		t.Fatal("returned status shared mutable harness map")
+	}
+}
+
 func TestDashboardCanonicalParityAndPagination(t *testing.T) {
 	path := fixture(t)
 	for tab, wantRows := range map[string]int{"tokens": 2, "models": 2, "providers": 2, "harnesses": 2, "sessions": 3, "context": 2} {

@@ -145,6 +145,7 @@ type Row struct {
 }
 
 type dashboard struct {
+	Coverage   []db.DayCoverage
 	Rows       []Row
 	Chart      []Row
 	RowCount   int
@@ -313,6 +314,10 @@ func loadDashboard(ctx context.Context, path string, q query, now time.Time) (da
 		return result, err
 	}
 	result.LastSynced, err = db.LastCompletedSync(ctx, tx)
+	if err != nil {
+		return result, err
+	}
+	result.Coverage, err = db.ViewerDayCoverage(ctx, tx, f, now)
 	if err != nil {
 		return result, err
 	}

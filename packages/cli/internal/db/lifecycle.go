@@ -137,8 +137,8 @@ func inspectCompatibility(ctx context.Context, reader Reader) (Compatibility, er
 		result.RebuildPending = pending == 1
 		result.RebuildSourceKey = sourceKey.String
 	}
-	result.ResetRequired = result.ResetRequired || (version < SupportedSchemaVersion && version != 11)
-	result.MigrationRequired = version == 11 && !result.ResetRequired
+	result.ResetRequired = result.ResetRequired || version < 11
+	result.MigrationRequired = version >= 11 && version < SupportedSchemaVersion && !result.ResetRequired
 	return result, nil
 }
 
@@ -188,6 +188,10 @@ func recognizeSchema(ctx context.Context, reader Reader, version int) error {
 			{TableSourceRefreshState, "id harness source_kind source_state_key collector parser last_successful_refresh_at_ms source_mtime_ms source_size_bytes updated_at_ms", 7},
 			{TableSourceCursorState, "id harness source_kind source_state_key collector parser cursor_kind byte_offset source_mtime_ms source_size_bytes prefix_hash boundary_hash location_fingerprint updated_at_ms", 11},
 			{TableNormalizationRuleState, "harness rule_signature updated_at_ms", 12},
+			{TableSyncState, "id revision last_successful_sync_at_ms", 13},
+			{TableSyncJobs, "id scope_key status phase started_at_ms completed_at_ms updated_at_ms normalize all_harnesses error_code", 13},
+			{TableSyncHarnesses, "job_id harness status discovered total_sources checked_sources failed_sources checked_at_ms", 13},
+			{TableSyncSources, "job_id harness source_id source_kind status error_code min_occurred_at_ms max_occurred_at_ms updated_at_ms", 13},
 			{TableDatabaseLifecycle, "id data_generation rebuild_pending rebuild_source_key updated_at_ms", 8},
 			{TableUsageLocations, "id semantic_key directory_key directory_name repository_key repository_name repository_source worktree_key worktree_name worktree_source branch_key branch_value_key branch_name branch_source", 9},
 		} {

@@ -59,13 +59,20 @@ export const useSyncStatus = (baseUrl: string, enabled = true) =>
 export const syncNow = (baseUrl: string) =>
   request(baseUrl, '/api/v1/sync', statusSchema, undefined, 'POST')
 
-export function useAnalytics(baseUrl: string, q: QueryState, revision: number, enabled: boolean) {
+export function useAnalytics(
+  baseUrl: string,
+  q: QueryState,
+  revision: number,
+  enabled: boolean,
+  running = false,
+) {
   const params = apiQueryParams(q)
   const summaryScope = apiQueryParams(q)
   for (const key of ['bucket', 'tab', 'sort', 'direction', 'page', 'pageSize']) {
     summaryScope.delete(key)
   }
   return useQuery({
+    refetchInterval: running ? 1000 : false,
     queryKey: ['usage', baseUrl, summaryScope.toString(), params.toString(), revision],
     queryFn: async ({ signal }) => ({
       dashboard: await request(baseUrl, `/api/v1/usage?${params}`, dashboardSchema, signal),
@@ -75,9 +82,7 @@ export function useAnalytics(baseUrl: string, q: QueryState, revision: number, e
     enabled,
     placeholderData: (previous, previousQuery) => {
       const previousKey = previousQuery?.queryKey
-      return previousKey?.[1] === baseUrl &&
-        previousKey[2] === summaryScope.toString() &&
-        previousKey[4] === revision
+      return previousKey?.[1] === baseUrl && previousKey[2] === summaryScope.toString()
         ? previous
         : undefined
     },

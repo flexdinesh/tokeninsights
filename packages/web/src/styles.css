@@ -1418,3 +1418,64 @@ a {
     scroll-behavior: auto !important;
   }
 }
+
+/* Operational coverage shares the dashboard surface; facts retain their totals. */
+.sync-coverage {
+  border-block: 1px solid var(--border);
+  color: var(--foreground);
+}
+.sync-coverage summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  padding: 0.75rem;
+  cursor: pointer;
+  min-height: 2.75rem;
+}
+.sync-coverage summary::before {
+  content: '+';
+  font-weight: 600;
+}
+.sync-coverage[open] summary::before {
+  content: '−';
+}
+.sync-coverage summary > span:first-of-type {
+  font-weight: 600;
+}
+.sync-coverage summary > span:not(:first-of-type),
+.sync-coverage p {
+  color: var(--muted-foreground);
+}
+.sync-coverage p {
+  padding: 0 0.75rem 0.75rem;
+  max-width: 70ch;
+}
+.coverage-scroll {
+  max-height: 20rem;
+  overflow: auto;
+}
+.sync-work-progress {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 1rem;
+  padding: var(--space-3) var(--space-4);
+  font-variant-numeric: tabular-nums;
+}
+.sync-work-progress progress {
+  width: 10rem;
+  max-width: 100%;
+  accent-color: var(--primary);
+}
+[data-status='partial'] {
+  color: var(--warning);
+}
+[data-status='pending'],
+[data-status='unverified'] {
+  color: var(--muted-foreground);
+}
+
+.coverage-scroll td:first-child {
+  white-space: nowrap;
+}

@@ -212,6 +212,9 @@ func normalizePrepared(ctx context.Context, database *sql.DB, options NormalizeO
 			}
 		}
 	}
+	if err := db.AdvanceAnalyticsRevision(ctx, tx); err != nil {
+		return summary, err
+	}
 	if err := tx.Commit(); err != nil {
 		return summary, err
 	}

@@ -81,13 +81,13 @@ commands and transports -> application semantics -> pipeline and database
 
 Protocol handlers must not become the reusable application boundary. Future transports such as MCP should share protocol-independent analytics and sync behavior with the REST server rather than call REST internally or duplicate database queries. Multiple commands that share one release lifecycle should remain in the existing Go module. A second Go module and root `go.work` become appropriate only when a component needs an independent dependency or release lifecycle.
 
-SQLite is the durable state boundary. In-memory HTTP sync status is process-local. Before adding another process that can trigger sync, choose a single write/job owner or define explicit cross-process coordination; separate processes must not present independent state for the same logical job.
+SQLite is the durable state boundary. Durable job status and canonical revisions coordinate HTTP, CLI, and TUI processes through the database writer lock. Transport-local startup/recovery feedback covers the interval before compatible operational metadata exists.
 
 The OpenAPI document and SQLite schema remain language-neutral contracts. Deployable browser applications may share narrowly scoped workspace packages such as UI primitives or API clients after a second consumer exists; generic shared packages and application-feature coupling should be avoided.
 
 ## Current Implementation Status
 
-The sync-first canonical path is the active product path. Schema V12, automatic schema/data compatibility recovery, `sync`, OpenCode/Pi/Codex/Claude Code Recent Source Refresh, same-version unchanged-source reuse, Pi JSONL byte cursors, pending-work `normalize`, reset commands, canonical token aggregation, optional fact-level location attribution, and fixture-style pipeline conformance tests are implemented.
+The sync-first canonical path is the active product path. Schema V13, automatic schema/data compatibility recovery, `sync`, OpenCode/Pi/Codex/Claude Code Recent Source Refresh, same-version unchanged-source reuse, Pi JSONL byte cursors, pending-work `normalize`, reset commands, canonical token aggregation, optional fact-level location attribution, and fixture-style pipeline conformance tests are implemented.
 
 Known gaps are part of the current design contract:
 
@@ -101,7 +101,7 @@ Known gaps are part of the current design contract:
 
 `schema/schema.sql` is the single source of truth for SQLite table and column definitions. The Go CLI embeds a checked copy at `packages/cli/internal/db/schema/schema.sql`.
 
-Compatibility is gated by `PRAGMA user_version` plus `database_lifecycle.data_generation`. The current schema version is `12` and data generation is `5`. Release version numbers are not compatibility markers. Bump schema version for structural changes and data generation for breaking token semantics or raw/canonical identity changes requiring reingestion.
+Compatibility is gated by `PRAGMA user_version` plus `database_lifecycle.data_generation`. The current schema version is `13` and data generation is `5`. Release version numbers are not compatibility markers. Bump schema version for structural changes and data generation for breaking token semantics or raw/canonical identity changes requiring reingestion.
 
 Schema V4 adds the persisted `claude-code` harness value. Existing V3 databases reject that value physically through SQLite `CHECK` constraints.
 
@@ -140,6 +140,16 @@ Singleton Local-only Continuity Metadata, excluded from analytics and future exp
 - `updated_at_ms`: lifecycle update time.
 
 Fresh databases start at the current generation with no pending rebuild and a NULL source key. Reset commits the current schema/generation, pending state, and source-scope fingerprint atomically. Failed recovery preserves that state and any committed partial imports for a same-scope retry; successful completion clears pending state and the source key together.
+
+### Durable sync status (V13)
+
+`sync_state` is a local singleton with a durable viewer publication revision and the last successful normalized all-harness sync time. It advances in the canonical transaction, including standalone normalization and canonical resets, and when terminal harness/job coverage commits. Existing per-source ingest completion is no longer presented as overall sync success.
+
+`sync_jobs` records metadata-only scope fingerprints, running/completed/failed/cancelled/interrupted outcome, phase, actual timestamps, normalization policy, and all-harness scope. `sync_harnesses` records discovery, source counts, status, and successful checked time for each job/harness. `sync_sources` records hashed source identities, reading/ingested/ready/unchanged/failed/deferred state, safe error codes, and conservative UTC usage-time bounds. No full paths or transcript content are added. These tables are Local-only Continuity Metadata, excluded from analytics and exports.
+
+V11 and V12 upgrade transactionally to V13 without deleting source facts or canonical usage. Prior successful overall check time is unknown until the first new all-harness sync; source ingest history cannot prove that coverage.
+
+One database writer lock owns a job. Status reads observe that lock without creating it; orphaned running jobs read as interrupted and the next owner persists their interrupted outcome. Server POST joins an observed active job; CLI/TUI writers wait with a named waiting phase. Scope-changing contenders remain serialized. Recovery creates its job after transactional reset and retains it on retry; analytics remain unavailable until all normalized recovery work completes.
 
 ### `ingest_runs`
 
@@ -269,7 +279,7 @@ Diagnostics must not contain private source content or full paths.
 7. Inserts `raw_observations` for this run.
 8. Records diagnostics.
 9. Marks ingest runs as `completed` or `failed`.
-10. Runs normalization unless `--no-normalize` or `--dry-run` is set.
+10. Normalizes and publishes after each harness unless `--no-normalize` or `--dry-run` is set; discovers all harnesses first so source-work totals are known.
 
 Each source ingest is transactional. If a raw fact, observation, or diagnostic write fails after the run is created, raw writes for that source are rolled back and the ingest run is committed as failed with no partial raw fact or observation rows.
 
@@ -308,7 +318,9 @@ Phase 3 rules:
 - `sync --dry-run` should use cursor state to preview real sync behavior without writing cursor updates;
 - `sync --full-refresh` ignores cursor or source refresh state for the requested harness scope without requeueing all existing raw facts for canonical rebuild.
 
-`sync --all` attempts all requested harnesses. Successful harness scopes should still normalize when one harness fails, and the command exits non-zero if any requested harness fails.
+`sync --all` attempts all requested harnesses and continues later sources after recoverable read/parse failures. Successful source scopes still normalize when one source or harness fails; the command exits non-zero if any requested scope fails. Database write failures and cancellation stop the job. Per-source transaction rollback cannot leak in-memory dedupe state. Source ingest uses an injected wall clock for actual start/completion times; source observations retain the command observation time.
+
+JSONL readers use Reader with a captured file extent, cancellation checks between chunks, and no fixed Scanner record limit. Large irrelevant Codex tool/output records do not block later usage, and large usage-bearing records remain countable. An unfinished trailing JSON record is deferred, not diagnosed as corrupt; its source coverage stays pending and no reusable fingerprint/cursor advances past that tail. Complete valid JSON without a trailing newline remains readable, without establishing a byte cursor.
 
 With `sync --all --source-dir <root>`, harness discovery is bounded to `<root>/<harness>`. Harnesses whose subdirectory is absent are skipped. Single-harness sync with `--source-dir` still scans the provided directory directly for ad hoc fixtures.
 
@@ -379,7 +391,7 @@ Explicit conflict precedence between competing raw facts is not implemented yet.
 
 ## Viewer
 
-`tokeninsights view` is interactive-only. By default it opens the TUI into an Implicit View Sync progress state: the same all-harness refresh behavior as `sync --all`, including default normalization and create-if-missing DB lifecycle. After that optional write-before-read step, the TUI opens the database read-only and queries canonical tables only.
+`tokeninsights view` is interactive-only. By default it opens the TUI into an Implicit View Sync progress state: the same all-harness refresh behavior as `sync --all`, including default normalization and create-if-missing DB lifecycle. The TUI opens the database read-only and queries committed canonical tables during ordinary sync and after completion.
 
 `view --no-sync` skips raw ingest and normalization. It preserves read-only viewer behavior and rejects a missing, incompatible, or rebuild-pending database instead of creating or modifying it.
 
@@ -387,9 +399,9 @@ Implicit view sync normalizes pre-existing pending work even when sources are up
 
 Viewer Dimension Filters remain display constraints. For example, `view --harness pi` refreshes all supported Durable Sources first, then filters the displayed canonical facts to Pi.
 
-The Implicit View Sync progress state shows all supported harnesses in sequential sync order with high-level statuses: `pending`, `resetting`, `rebuilding`, `discovering`, `syncing`, `skipped`, `synced`, `failed`, `normalizing`, and `loading dashboard`. Resetting/rebuilding are active spinner states explaining compatibility recovery. Explicit sync/normalize print concise recovery notices to stderr. It must not show source paths, source IDs, project names, or file-level details.
+The Implicit View Sync progress state shows all supported harnesses in sequential sync order with high-level statuses: `waiting`, `pending`, `resetting`, `rebuilding`, `discovering`, `syncing`, `skipped`, `synced`, `failed`, `normalizing`, and `loading dashboard`. Resetting/rebuilding are active spinner states explaining compatibility recovery. Explicit sync/normalize print concise recovery notices to stderr. It must not show source paths, source IDs, project names, or file-level details.
 
-Successful Implicit View Sync does not print a sync summary before rendering the dashboard. If ordinary Implicit View Sync fails, `view` exits the TUI, prints the sync summary, returns the sync error, recommends targeted manual refresh with `tokeninsights sync --harness <harness>` followed by `tokeninsights view --no-sync`, and does not render the dashboard table. Failed compatibility recovery instead recommends retrying `tokeninsights sync --all` with the original database, source override, and environment settings; pending data cannot be inspected with `--no-sync`.
+Successful Implicit View Sync does not print a sync summary before rendering the dashboard. Ordinary failures retain committed usage and allow `u` to retry sync; quitting reports the unresolved sync error. Shared metadata is polled read-only, including with `--no-sync`, and committed revisions refresh analytics during sync. Daily calendar markers show checked, empty, pending, updating, incomplete, or not checked. Unknown metrics render `—`; confirmed empty days render zero. Markers never contribute to fact-row counts or totals. The header shows days checked and source work percentage after discovery completes. Failed compatibility recovery instead recommends retrying `tokeninsights sync --all` with the original database, source override, and environment settings; pending data cannot be inspected with `--no-sync`.
 
 The TUI uses the **Instrument desk** visual system, implemented in `internal/cli/theme.go` and `internal/cli/desk.go` and documented in [`packages/cli/DESIGN.md`](../packages/cli/DESIGN.md). Full-screen terminals (120×35 and larger) get a spaced header, compact seven-view navigation, scope controls, a token readout strip, and a full-width table. The canvas, readouts, and drawers preserve the terminal background; only selection highlights use fills. Foregrounds adapt to light/dark terminals. Terminal fonts remain user-owned. Bracketed active navigation, a row cursor, explicit sync status words, and checkbox markers retain meaning without color.
 
@@ -405,7 +417,7 @@ Session coverage is queried from canonical data on every dashboard reload, indep
 
 The single-row footer owns essential shortcuts, loading state, and scroll position. Detailed keys live in the help drawer. Active filters live above the readouts. Session coverage and row count remain pinned in the table summary; the full-result token total also appears in the readout strip. Last sync time belongs only to the statusline.
 
-The TUI queries canonical tables only. Every reader uses `db.BeginAnalyticsRead` to validate lifecycle inside its read-only transaction, after the preliminary `db.Open` guard. Dashboard rows, session counts, and last-sync time share one validated snapshot; filters and standalone reads also use guarded snapshots. A concurrent reset cannot expose partial recovery through a validation-to-query race.
+The TUI queries canonical usage and operational sync metadata read-only. Every reader uses `db.BeginAnalyticsRead` to validate lifecycle inside its read-only transaction, after the preliminary `db.Open` guard. Dashboard rows, session counts, and last-sync time share one validated snapshot; filters and standalone reads also use guarded snapshots. A concurrent reset cannot expose partial recovery through a validation-to-query race.
 
 - token totals come from countable `canonical_token_usage` rows;
 - provider/model/harness filters derive from available canonical rows;
@@ -449,7 +461,7 @@ The default server binds `127.0.0.1` and prints a colored, indented startup summ
 
 Once HTTP serving starts, `serve` attempts to open the default browser using macOS `open`, Windows `rundll32`, or Linux `xdg-open`. Any nonempty `SSH_CONNECTION`, `SSH_CLIENT`, or `SSH_TTY` suppresses opening, even with display forwarding. Linux also requires `DISPLAY` or `WAYLAND_DISPLAY`; unsupported platforms skip opening. The browser receives the actual assigned port and uses localhost for a wildcard bind. Launcher startup failures print a warning and manual URL without stopping the server. Launcher processes are reaped asynchronously so serving does not wait for a browser to close. Cancelled or failed startup does not open a browser.
 
-Startup serves the UI immediately and runs the existing all-harness sync/normalization pipeline, including automatic compatibility recovery. Compatible committed usage remains queryable during ordinary sync, with a visible progress state; first sync shows loading until usage exists. The web UI shows metadata-only per-harness progress and explains resetting/rebuilding phases. `serve --no-sync` validates an existing compatible, fully recovered DB and skips startup writes; **Sync now** remains enabled. Sync requests share one process-wide job, independent of client filters. **Reload data** rereads canonical data without ingest. An ordinary sync failure leaves the server available with retry and an explicit **Inspect existing data** action. Recovery-required or rebuild-pending failures use status phase `rebuild_failed`, offer retry, and hide inspection. Dashboard/filter reads reject incompatible/pending data with HTTP 503. Detailed errors stay in terminal logs, while HTTP errors omit source paths.
+Startup serves the UI immediately and runs the existing all-harness sync/normalization pipeline, including automatic compatibility recovery. Compatible committed usage remains queryable during ordinary sync, with a visible progress state; first sync shows loading until usage exists. The web UI shows metadata-only per-harness progress and explains resetting/rebuilding phases. `serve --no-sync` validates an existing compatible, fully recovered DB and skips startup writes; **Sync now** remains enabled. Sync requests share one process-wide job, independent of client filters. **Reload data** rereads canonical data without ingest. An ordinary sync failure keeps saved usage visible with retry. Source coverage has expandable day details with server-local dates/check times, unknown values `—`, and confirmed empty values zero. Source-count progress measures checked work, independently of ready publication; it never claims a percentage of lifetime usage. Recovery-required or rebuild-pending failures use status phase `rebuild_failed`, offer retry, and hide inspection. Dashboard/filter reads reject incompatible/pending data with HTTP 503. Detailed errors stay in terminal logs, while HTTP errors omit source paths.
 
 During recovery, progress leaves the global `rebuilding` phase intact until completion, including normalization. Dashboard and filter reads validate lifecycle inside the transaction that reads analytics using `db.BeginAnalyticsRead`, closing the gap between preliminary open validation and the read snapshot. Recovery retry must preserve source configuration; a custom-root pending rebuild must be resumed from the CLI with the original `--source-dir` and `--db-path`.
 
@@ -488,6 +500,14 @@ The React visual contract is [`DESIGN.md`](../DESIGN.md), implemented by `packag
 The pnpm monorepo contains Go production packages and TypeScript development/browser packages. Browser code uses Vite and React. Node scripts use native, erasable TypeScript supported by Node 26+.
 
 Vite output is checked into `packages/cli/internal/server/static` and embedded using `go:embed`, preserving direct Go installs and offline runtime use. The workspace builds React before Go; CI rebuilds and checks generated assets for drift. Node, npm, pnpm, `node_modules`, and repository TypeScript tooling are build-, test-, and development-only. Production is one native Go binary: Go serves embedded browser JavaScript as bytes, the browser executes it, and Go runtime code never invokes a host JavaScript runtime. Web analytics use the canonical token and optional location contracts; lifecycle state is local-only and not an analytics dimension.
+
+## Source coverage and progress
+
+Both viewers show retained-source freshness separately from token totals. REST `/api/v1/sync` returns optional durable progress (job identity, actual timestamps, source counts, discovery completeness, last successful time); revision changes after canonical publication, not merely after overall job completion. `/api/v1/usage` returns day coverage in the same validated snapshot as its analytics, independent of pagination. Days have unverified/pending/partial/checked/empty status, pending/failed source counts, successful checked time, and a nullable filtered canonical total. Unknown/incomplete days never imply zero. Empty means no matching usage found in checked retained sources, not account-wide absence.
+
+Coverage uses serving-machine calendar dates and date/harness filters. Provider/model/session/location filters affect the displayed canonical day total, but never claim that unchecked sources cannot contain matching usage. A source can span days; UTC occurrence bounds are conservative, and unknown or unfinished source bounds affect every selected day. Pending canonical work prevents a checked-empty claim. Failed/unverified coverage never advances its check time. Bounded coverage includes at most 366 days through today; all-time defaults to the recent seven days, while a complete custom bounded range replaces the preset. Future days are omitted. Operational placeholders belong only to presentation; they do not create facts, change session counts or summaries, or manufacture chart activity.
+
+Progress is indeterminate during discovery. Afterwards source counts/percentages describe work checked and sources ready; failures stay explicit. Normalization is a named phase. A processed-source percentage never means completeness of lifetime usage or time remaining. Compatible committed usage can refresh during ordinary sync; recovery data stays hidden until ready. Orphaned jobs show interrupted with retry rather than remaining running forever.
 
 ## DB Lifecycle
 

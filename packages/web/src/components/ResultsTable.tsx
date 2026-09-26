@@ -14,6 +14,8 @@ import { flexRender, getCoreRowModel, useReactTable } from '@tanstack/react-tabl
 import type { ColumnDef } from '@tanstack/react-table'
 import type { Dashboard, Row, Sort, Tab } from '../contracts'
 import { sortSchema } from '../contracts'
+import { coverageLabel } from './SyncCoverage'
+import type { CoverageDay } from './SyncCoverage'
 import { exactCount, formatCount, labels } from '../format'
 import { useDashboardState } from '../state'
 import { Badge } from './ui/badge'
@@ -162,7 +164,11 @@ export function UnknownLocation({
   )
 }
 
-function renderCell(row: Row, spec: Column, tab: Tab): ReactNode {
+type DisplayRow = Row & { coverage?: CoverageDay; placeholder?: boolean }
+
+function renderCell(row: DisplayRow, spec: Column, tab: Tab, timezone?: string): ReactNode {
+  if (row.placeholder && spec.numeric && row.coverage?.status !== 'empty')
+    return <span className="numeric-value">—</span>
   const value = row[spec.id]
   if (spec.id === 'date')
     return (
@@ -191,6 +197,9 @@ function renderCell(row: Row, spec: Column, tab: Tab): ReactNode {
           {String(value)}
         </span>
         <span className="identity-detail">
+          {row.coverage && (
+            <span data-status={row.coverage.status}>{coverageLabel(row.coverage, timezone)}</span>
+          )}
           {details.map((detail) => (
             <span key={detail}>{detail}</span>
           ))}
@@ -213,32 +222,76 @@ function renderCell(row: Row, spec: Column, tab: Tab): ReactNode {
   )
 }
 
-export function ResultsTable({ data }: { data: Dashboard }) {
+export function ResultsTable({ data, timezone }: { data: Dashboard; timezone?: string }) {
   const {
     state: { query, hidden },
     dispatch,
   } = useDashboardState()
   const specs = useMemo(() => columnsFor(query.tab), [query.tab])
+  const displayRows = useMemo<DisplayRow[]>(() => {
+    if (query.tab !== 'tokens' || query.bucket !== 'day') return data.rows
+    const coverage = data.coverage ?? []
+    const byDay = new Map(coverage.map((day) => [day.day, day]))
+    const rows: DisplayRow[] = data.rows.map((row) => ({ ...row, coverage: byDay.get(row.name) }))
+    // Calendar markers are presentation only, outside analytics/pagination counts.
+    if (data.page === 1) {
+      const markerDays = coverage.length <= 31 ? coverage : coverage.slice(-7)
+      for (const day of markerDays.filter((candidate) => !candidate.hasUsage)) {
+        rows.push({
+          key: `coverage:${day.day}`,
+          name: day.day,
+          date: 0,
+          harness: '',
+          provider: '',
+          model: '',
+          sessions: 0,
+          input: 0,
+          output: 0,
+          reasoning: 0,
+          cacheRead: 0,
+          cacheWrite: 0,
+          total: 0,
+          context: 0,
+          averageContext: 0,
+          medianContext: 0,
+          maxContext: 0,
+          locationKey: '',
+          locationName: '',
+          directoryNames: [],
+          hasUnknownDirectory: false,
+          repositoryKey: '',
+          repositoryName: '',
+          coverage: day,
+          placeholder: true,
+        })
+      }
+    }
+    if (query.sort === 'date')
+      rows.sort((a, b) =>
+        query.direction === 'asc' ? a.name.localeCompare(b.name) : b.name.localeCompare(a.name),
+      )
+    return rows
+  }, [data, query.tab, query.bucket, query.sort, query.direction])
   const columnId = useId()
-  const columns = useMemo<ColumnDef<Row>[]>(
+  const columns = useMemo<ColumnDef<DisplayRow>[]>(
     () =>
       specs.map((spec) => ({
         id: spec.id,
         accessorFn: (row) => row[spec.id],
         header: spec.label,
-        cell: ({ row }) => renderCell(row.original, spec, query.tab),
+        cell: ({ row }) => renderCell(row.original, spec, query.tab, timezone),
         size: spec.id === 'name' ? (query.tab === 'repo' ? 256 : 224) : spec.numeric ? 128 : 160,
         minSize: spec.id === 'name' ? 176 : spec.numeric ? minColumnSize : 128,
         maxSize: maxColumnSize,
       })),
-    [specs, query.tab],
+    [specs, query.tab, timezone],
   )
   const visibility = Object.fromEntries(
     specs.map((s) => [s.id, !hidden.includes(s.id) || s.id === 'name']),
   )
   // oxlint-disable-next-line react/incompatible-library -- TanStack Table intentionally owns its memoized model.
   const table = useReactTable({
-    data: data.rows,
+    data: displayRows,
     columns,
     getCoreRowModel: getCoreRowModel(),
     manualSorting: true,
@@ -422,7 +475,7 @@ export function ResultsTable({ data }: { data: Dashboard }) {
             ))}
           </TableBody>
         </Table>
-        {data.rowCount === 0 && (
+        {data.rowCount === 0 && displayRows.length === 0 && (
           <div className="empty-state">
             <SearchEmpty />
             <h3>No matching usage</h3>

@@ -167,17 +167,10 @@ func recoverDatabase(ctx context.Context, options SyncOptions, compatibility db.
 	reportSyncProgress(options, SyncProgressEvent{Status: SyncProgressRebuilding})
 	options.Harnesses = SupportedHarnesses
 	options.Normalize = true
+	options.recovering = true
 	summary, err := syncPrepared(ctx, options)
 	summary.Recovery = action
 	if err != nil {
-		return summary, errors.Join(db.ErrRebuildPending, err)
-	}
-	database, err := db.OpenWritable(options.DBPath)
-	if err != nil {
-		return summary, errors.Join(db.ErrRebuildPending, err)
-	}
-	defer func() { _ = database.Close() }()
-	if err := db.CompleteRecovery(ctx, database); err != nil {
 		return summary, errors.Join(db.ErrRebuildPending, err)
 	}
 	return summary, nil

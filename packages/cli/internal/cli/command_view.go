@@ -28,6 +28,7 @@ func runView(invocation commandInvocation, args []string) error {
 
 	hostname, hostnameErr := os.Hostname()
 	model := newInteractiveModel(invocation.context, options, invocation.now, normalizeHostname(hostname, hostnameErr))
+	defer model.cancelSync()
 	finalModel, err := runInteractiveProgram(model, invocation.stdout)
 	if err != nil {
 		return err

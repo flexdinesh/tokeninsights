@@ -24,9 +24,7 @@ type Filter struct {
 func LastCompletedSync(ctx context.Context, db Reader) (int64, error) {
 	var value sql.NullInt64
 	if err := db.QueryRowContext(ctx, `
-		SELECT MAX(completed_at_ms)
-		FROM ingest_runs
-		WHERE status = 'completed'
+		SELECT last_successful_sync_at_ms FROM sync_state WHERE id = 1
 	`).Scan(&value); err != nil {
 		return 0, err
 	}
