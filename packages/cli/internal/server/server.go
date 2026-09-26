@@ -297,6 +297,10 @@ func (a *app) queryError(w http.ResponseWriter, err error) {
 }
 
 func Run(parent context.Context, options Options, stdout, stderr io.Writer) error {
+	return runServer(parent, options, stdout, stderr, openBrowser)
+}
+
+func runServer(parent context.Context, options Options, stdout, stderr io.Writer, open func(string) error) error {
 	ctx, cancel := signal.NotifyContext(parent, os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 	if options.NoSync {
@@ -327,6 +331,16 @@ func Run(parent context.Context, options Options, stdout, stderr io.Writer) erro
 	httpServer := &http.Server{Handler: a.handler(), ReadHeaderTimeout: 5 * time.Second, IdleTimeout: 60 * time.Second, WriteTimeout: queryTimeout + 5*time.Second, BaseContext: func(net.Listener) context.Context { return ctx }}
 	failures := make(chan error, 1)
 	go func() { failures <- httpServer.Serve(listener) }()
+	if ctx.Err() == nil {
+		host := options.Host
+		if host == "0.0.0.0" {
+			host = ""
+		}
+		url := displayURL(host, port)
+		if openErr := open(url); openErr != nil {
+			_, _ = fmt.Fprintf(stderr, "%scould not open browser: %v; open %s manually.\n", logIndent, openErr, url)
+		}
+	}
 	select {
 	case <-ctx.Done():
 	case err = <-failures:

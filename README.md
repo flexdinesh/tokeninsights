@@ -34,6 +34,8 @@ mobile disclosure.
 tokeninsights serve
 ```
 
+`serve` automatically opens your default browser when possible. SSH sessions and headless Linux sessions skip opening; the URL is always printed for manual access. A missing browser launcher does not stop the server.
+
 Open the terminal dashboard:
 
 ```sh

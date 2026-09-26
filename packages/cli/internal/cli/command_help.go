@@ -21,6 +21,7 @@ commands:
   serve             serve the React dashboard on localhost (port 8765)
 
 serve: viewer flags plus --host <ipv4> and --port <0-65535>; --no-sync skips startup sync
+  opens the default browser when possible; skips SSH sessions
   tokeninsights serve --week
   tokeninsights serve --host 10.0.1.151 --no-sync --port 8080`
 }

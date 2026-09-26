@@ -107,6 +107,8 @@ The default current-month filter can show a small subset of synced sessions. Com
 
 Serve the embedded React dashboard over IPv4. By default the listener binds to localhost and prints `http://localhost:8765`. Use `--host <ipv4>` to bind to that address. Default port: `8765`; `--port 0` chooses an available port. If the default port is busy, interactive startup identifies its listening process and offers to send it `SIGTERM` before retrying. An explicitly passed busy port fails without a prompt. Ctrl+C shuts down the server.
 
+After startup, `serve` automatically opens the default browser on macOS, Windows, and Linux desktop sessions. SSH sessions skip opening, including forwarded displays; headless Linux sessions also skip it. The printed URL remains available for manual access, and a missing launcher only prints a warning. With `--host 0.0.0.0`, the browser opens localhost using the assigned port.
+
 ```sh
 tokeninsights serve --week
 tokeninsights serve --no-sync --port 8080
