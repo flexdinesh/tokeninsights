@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { InstanceResponse } from '../src/generated/api'
+import { InstanceResponse, UsageResponse } from '../src/generated/api'
 import { dashboardSchema } from '../src/contracts'
 
 const localSource = 'http://127.0.0.1:18765'
@@ -72,6 +72,82 @@ test('pending calendar days keep absent usage visible during sync', async ({ pag
   await page.screenshot({ path: testInfo.outputPath('coverage-desktop.png'), fullPage: true })
   await page.setViewportSize({ width: 390, height: 844 })
   await page.screenshot({ path: testInfo.outputPath('coverage-mobile.png'), fullPage: true })
+})
+
+test('dimension charts show filtered token shares on bars, labels, and tooltips', async ({
+  page,
+}) => {
+  for (const { tab, title, shares } of [
+    { tab: 'models', title: 'Usage by model', shares: ['50%', '50%'] },
+    { tab: 'providers', title: 'Usage by provider', shares: ['50%', '50%'] },
+    { tab: 'harnesses', title: 'Usage by harness', shares: ['100%'] },
+  ]) {
+    await page.goto(`/${tab}`)
+    const chart = page.getByRole('region', { name: title, exact: true })
+    await expect(chart.locator('.recharts-label-list text')).toHaveText(shares)
+    await expect(chart.locator('.chart-share')).toHaveText(shares)
+    await chart.locator('.recharts-bar-rectangle path').first().hover()
+    await expect(chart.locator('.recharts-tooltip-wrapper')).toContainText(`(${shares[0] ?? ''})`)
+  }
+
+  await page.goto('/models')
+  const chart = page.getByRole('region', { name: 'Usage by model', exact: true })
+  await chart.getByRole('button', { name: 'model-a 50%', exact: true }).click()
+  await expect(chart.locator('.recharts-label-list text')).toHaveText(['100%'])
+  await expect(chart.getByRole('button', { name: 'model-a 100%', exact: true })).toBeVisible()
+
+  await page.setViewportSize({ width: 390, height: 844 })
+  await expect(chart.locator('.recharts-label-list text')).toBeVisible()
+  await expect(chart.getByRole('button', { name: 'model-a 100%', exact: true })).toBeVisible()
+
+  await page.route('**/api/v1/usage?*', async (route) => {
+    const response = await route.fetch()
+    const data = UsageResponse.parse(await response.json())
+    const row = data.chart[0]
+    if (!row) throw new Error('Expected model chart fixture')
+    const displayedGroups = 12
+    const displayedTotal = data.summary.total / 2
+    data.chart = Array.from({ length: displayedGroups }, (_, index) => ({
+      ...row,
+      key: `model-${index}`,
+      name: `organization/model-family-${index}-extended-thinking`,
+      total: displayedTotal / displayedGroups,
+    }))
+    await route.fulfill({ json: data })
+  })
+  await page.goto('/models')
+  const expectedShares = Array.from({ length: 12 }, () => '4.2%')
+  await expect(chart.locator('.chart-share')).toHaveText(expectedShares)
+  await expect(chart.locator('.recharts-label-list text')).toHaveText(expectedShares)
+  expect(
+    await chart.locator('.chart-canvas').evaluate((el) => el.scrollWidth > el.clientWidth),
+  ).toBe(true)
+  expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)).toBe(false)
+
+  await page.evaluate(() => {
+    document.documentElement.style.fontSize = '200%'
+  })
+  const sharesFitButtons = await chart.locator('.chart-filter').evaluateAll((buttons) =>
+    buttons.every((button) => {
+      const share = button.querySelector('.chart-share')
+      const name = button.querySelector('.chart-filter-name')
+      if (!share || !name) return false
+      const bounds = button.getBoundingClientRect()
+      const shareBounds = share.getBoundingClientRect()
+      return (
+        shareBounds.left >= bounds.left &&
+        shareBounds.right <= bounds.right &&
+        name.scrollWidth <= name.clientWidth
+      )
+    }),
+  )
+  expect(sharesFitButtons).toBe(true)
+  expect(
+    await chart.evaluate((element) => {
+      const bounds = element.getBoundingClientRect()
+      return bounds.left >= 0 && bounds.right <= innerWidth
+    }),
+  ).toBe(true)
 })
 
 test('table columns resize by drag and keyboard without sorting', async ({ page }) => {

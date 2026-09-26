@@ -321,6 +321,8 @@ the readout role; captions and details use label type. Total detail is hidden on
 narrow layouts while its accessible quantity remains.
 The timeline uses a fine lime line and tinted area. Category charts share their
 colors with labeled drill-down actions; context comparisons include an HTML legend.
+Model/provider/harness shares appear above bars and in drill-down labels. Long
+drill-down names wrap while their percentages remain visible at enlarged text sizes.
 
 ### Containers and tables
 

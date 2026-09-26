@@ -357,7 +357,7 @@ function DashboardShell() {
                             />
                           }
                         >
-                          <UsageChart rows={data.chart} />
+                          <UsageChart rows={data.chart} totalTokens={data.summary.total} />
                         </Suspense>
                       </>
                     )}

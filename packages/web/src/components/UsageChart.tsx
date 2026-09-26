@@ -5,6 +5,7 @@ import {
   BarChart,
   CartesianGrid,
   Cell,
+  LabelList,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -88,15 +89,31 @@ function tooltipFormatter(value: unknown): string {
   return typeof value === 'number' ? exactCount(value) : String(value)
 }
 
+const tokenShareFormat = new Intl.NumberFormat('en', {
+  style: 'percent',
+  maximumFractionDigits: 1,
+})
+const minimumDisplayedShare = 0.001
+
+export function formatTokenShare(tokens: number, totalTokens: number): string {
+  const share = totalTokens > 0 ? tokens / totalTokens : 0
+  return share > 0 && share < minimumDisplayedShare
+    ? `<${tokenShareFormat.format(minimumDisplayedShare)}`
+    : tokenShareFormat.format(share)
+}
+
 // Leave room for a full tick line when users enlarge text to 200%.
 const categoryAxisHeight = 48
+// Keep percentage labels readable when many categories share a narrow viewport.
+const categoryShareWidthRem = 3.5
+const categoryChartAxisWidthRem = 4
 const contextLegend = [
   { label: 'Average', color: 'var(--chart-1)' },
   { label: 'Median', color: 'var(--chart-2)' },
   { label: 'Maximum', color: 'var(--chart-3)' },
 ]
 
-export function UsageChart({ rows }: { rows: Row[] }) {
+export function UsageChart({ rows, totalTokens }: { rows: Row[]; totalTokens: number }) {
   const {
     state: { query, chartMetric: metric },
     dispatch,
@@ -124,6 +141,7 @@ export function UsageChart({ rows }: { rows: Row[] }) {
     ...r,
     label: context ? `${r.model} · ${r.harness} · ${r.provider}` : r.name,
     color: categoricalChartColor(index),
+    tokenShare: formatTokenShare(r.total, totalTokens),
   }))
   return (
     <Card className="chart-panel panel" role="region" aria-label={title}>
@@ -137,7 +155,7 @@ export function UsageChart({ rows }: { rows: Row[] }) {
                 ? 'Top 12 groups by average in-range session peak'
                 : query.tab === 'repo'
                   ? 'Top 12 location rows by total tokens'
-                  : 'Top 12 by total tokens · select a label to filter'}
+                  : 'Top 12 by total tokens · % of filtered total · select a label to filter'}
           </p>
         </div>
         {timeline ? (
@@ -164,8 +182,16 @@ export function UsageChart({ rows }: { rows: Row[] }) {
       {rows.length === 0 ? (
         <div className="chart-empty">No usage in this range</div>
       ) : (
-        <div className="chart-canvas">
-          <ResponsiveContainer width="100%" height="100%">
+        <div className={`chart-canvas${filterDimension ? ' chart-canvas-shares' : ''}`}>
+          <ResponsiveContainer
+            width="100%"
+            height="100%"
+            minWidth={
+              filterDimension
+                ? `${rows.length * categoryShareWidthRem + categoryChartAxisWidthRem}rem`
+                : undefined
+            }
+          >
             {timeline ? (
               <AreaChart
                 data={chartRows}
@@ -212,7 +238,7 @@ export function UsageChart({ rows }: { rows: Row[] }) {
               <BarChart
                 data={chartRows}
                 maxBarSize={64}
-                margin={{ top: 12, right: 12, left: 0, bottom: 0 }}
+                margin={{ top: filterDimension ? 28 : 12, right: 12, left: 0, bottom: 0 }}
                 accessibilityLayer
               >
                 <CartesianGrid
@@ -239,7 +265,11 @@ export function UsageChart({ rows }: { rows: Row[] }) {
                   tick={axisTick}
                 />
                 <Tooltip
-                  formatter={tooltipFormatter}
+                  formatter={(value) =>
+                    filterDimension && typeof value === 'number'
+                      ? `${exactCount(value)} (${formatTokenShare(value, totalTokens)})`
+                      : tooltipFormatter(value)
+                  }
                   contentStyle={tooltipStyle}
                   itemStyle={{ color: 'var(--color-text-primary)' }}
                 />
@@ -274,6 +304,14 @@ export function UsageChart({ rows }: { rows: Row[] }) {
                     {chartRows.map((row) => (
                       <Cell key={row.key} fill={row.color} />
                     ))}
+                    {filterDimension && (
+                      <LabelList
+                        dataKey="tokenShare"
+                        position="top"
+                        fill="var(--color-text-primary)"
+                        fontSize="var(--text-xs)"
+                      />
+                    )}
                   </Bar>
                 )}
               </BarChart>
@@ -298,7 +336,8 @@ export function UsageChart({ rows }: { rows: Row[] }) {
                 className="legend-dot"
                 style={{ backgroundColor: categoricalChartColor(index) }}
               />
-              {row.name}
+              <span className="chart-filter-name">{row.name}</span>
+              <span className="chart-share">{formatTokenShare(row.total, totalTokens)}</span>
             </Button>
           ))}
         </div>

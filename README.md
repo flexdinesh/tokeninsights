@@ -30,6 +30,8 @@ The Graphite & Lime layout pairs a compact status header and static usage summar
 with short charts, horizontal filters, and dense tables. Dark mode uses graphite
 and bright lime; light mode uses warm white and deep lime for readable selections
 and chart lines.
+Models, Providers, and Harnesses charts show each group's percentage of the full
+filtered token total above its bar and beside its filter label.
 
 ```sh
 tokeninsights serve
