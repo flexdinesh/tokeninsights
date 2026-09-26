@@ -236,8 +236,7 @@ test('static summaries preserve totals while chart controls switch the timeline'
     'true',
   )
   await page.setViewportSize({ width: 390, height: 844 })
-  await expect(page.getByRole('button', { name: 'Harness', exact: true })).not.toBeVisible()
-  await page.locator('.filter-disclosure').click()
+  await expect(page.getByRole('button', { name: 'Harness', exact: true })).toBeVisible()
   await page.getByRole('button', { name: 'Harness', exact: true }).click()
   await expect(page.getByRole('textbox', { name: 'Search harness' })).toBeFocused()
   await page.keyboard.press('Escape')
@@ -245,7 +244,7 @@ test('static summaries preserve totals while chart controls switch the timeline'
 })
 
 test('sorting preserves page scroll position', async ({ page }) => {
-  await page.setViewportSize({ width: 1440, height: 600 })
+  await page.setViewportSize({ width: 1440, height: 400 })
   await page.goto('/sessions')
   await expect(page.getByRole('region', { name: 'Usage over time', exact: true })).toBeVisible()
   const details = page.getByRole('region', { name: 'Sessions details', exact: true })
@@ -276,15 +275,16 @@ test('themes, keyboard filters, mobile layout, and scalable typography', async (
   await expect(page.getByRole('region', { name: 'Filtered usage summary' })).toBeVisible()
   await expect(page.getByRole('region', { name: 'Usage over time', exact: true })).toBeVisible()
   await expect(page.locator('.recharts-surface')).toBeVisible()
-  expect(await page.locator('body').evaluate((element) => getComputedStyle(element).fontSize)).toBe(
-    '15px',
-  )
+  const bodySize = await page
+    .locator('body')
+    .evaluate((element) => Number.parseFloat(getComputedStyle(element).fontSize))
+  expect(bodySize).toBeGreaterThanOrEqual(14)
   await expect(page.getByRole('heading', { name: 'Token usage', exact: true })).toBeAttached()
   expect(
     await page
       .getByLabel('Total tokens: 258,000', { exact: true })
-      .evaluate((element) => getComputedStyle(element).fontSize),
-  ).toBe('30px')
+      .evaluate((element) => Number.parseFloat(getComputedStyle(element).fontSize)),
+  ).toBeGreaterThan(bodySize)
   const toolbarControls = [
     page.getByRole('button', { name: 'Harness', exact: true }),
     page.getByRole('button', { name: 'This week', exact: true }),
@@ -294,7 +294,7 @@ test('themes, keyboard filters, mobile layout, and scalable typography', async (
   const controlHeights = await Promise.all(
     toolbarControls.map(async (control) => (await control.boundingBox())?.height),
   )
-  for (const height of controlHeights) expect(height).toBeGreaterThanOrEqual(32)
+  for (const height of controlHeights) expect(height).toBeGreaterThanOrEqual(24)
   await page.getByRole('button', { name: 'Theme: system. Change theme' }).click()
   await page.getByRole('button', { name: 'Theme: light. Change theme' }).click()
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark')
@@ -308,9 +308,9 @@ test('themes, keyboard filters, mobile layout, and scalable typography', async (
   await expect(page.getByRole('button', { name: 'Harness', exact: true })).toBeFocused()
   await page.setViewportSize({ width: 390, height: 844 })
   await expect(page.getByRole('button', { name: 'Sync Usage', exact: true })).toBeVisible()
-  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
-    true,
-  )
+  await expect
+    .poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth))
+    .toBe(true)
   await page.screenshot({ path: testInfo.outputPath('mobile.png'), fullPage: true })
   await page.setViewportSize({ width: 1440, height: 1100 })
   await page.evaluate(() => {
@@ -323,9 +323,9 @@ test('themes, keyboard filters, mobile layout, and scalable typography', async (
     expect(value.x).toBeGreaterThanOrEqual(container.x)
     expect(value.x + value.width).toBeLessThanOrEqual(container.x + container.width)
   }
-  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
-    true,
-  )
+  await expect
+    .poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth))
+    .toBe(true)
   await expect(page.getByRole('button', { name: 'Sync Usage', exact: true })).toBeVisible()
   await page.evaluate(() => {
     document.documentElement.style.fontSize = ''

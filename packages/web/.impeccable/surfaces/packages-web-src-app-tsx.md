@@ -5,32 +5,30 @@ primary_target: "packages/web/src/App.tsx"
 related_targets: ["packages/web/src/styles.css","packages/web/src/tokens.css","packages/web/src/components/SummaryCards.tsx","packages/web/src/components/Filters.tsx","packages/web/src/components/UsageChart.tsx"]
 ---
 
-# Browser dashboard — Signal Studio
+# Browser dashboard — Graphite & Lime
 
-Mode: Operate. User-approved redesign. Primary task: usage at a glance; secondary: existing filters and comparison tabs. Sessions remain accessible but secondary. Preserve all canonical semantics, source switching, sync, themes, keyboard access, and offline Go embedding.
+Mode: Operate. Individual developers scan local token usage, compare dimensions, then inspect exact rows. User approved the paired dark/light previews and implementation. Preserve canonical semantics, source identity, filters, sync recovery, offline Go embedding, and keyboard access.
 
 ## Direction contract
 
-THESIS: A studio for reading usage signals, replacing five disconnected cards with one coordinated meter bank and plot.
+THESIS: A compact measurement workspace puts the chart and table together in the first viewport.
 
-OWN-WORLD: Pale blue workspace, white instrument surface, navy text, sky selection and chart ink, neutral readouts, and slate secondary series. Dark mode uses ink-blue surfaces with soft sky and slate. Rounded controls, tabular numerals, sparse rules; no ornamental meters.
+OWN-WORLD: Neutral graphite with crisp lime in dark mode; warm white with deep lime text and chart ink in light mode. Bright lime action fills use dark text in both themes. System typography, tabular numerals, small corners, and fine rules.
 
-STORY: Read quantity and composition, see the usage pattern, then narrow the range or dimensions and compare views.
+STORY: Scan the shared readouts, read the timeline, narrow horizontal filters, then compare exact table rows.
 
-FIRST VIEWPORT: Product/source header; visible page title and quick dates; horizontal view navigation; a wide left meter-bank/chart/table region and a narrow right filter rail. Total has typographic emphasis. Readouts are compact static text groups with no click, hover, tooltip, or selection state. Chart controls exclusively select the timeline measure. Small screens place compact filters before the readout; tables scroll within their own region. Motion is brief selection-color feedback and real sync rotation, reduced-motion safe.
+FIRST VIEWPORT: A roughly 48px source/status/action header; route tabs and quick dates on one row; wrapping horizontal filters; five compact static readouts; a 160px plot and compact toolbar; dense table rows. No tall title block or filter rail. Mobile wraps controls with accessible touch targets. Signature interaction: existing immediate filter/metric selection uses lime feedback; sync alone rotates, with reduced-motion support.
 
-FORM: Signal Studio, grounded candidate 1, user-selected pick; seed 14d7bae9. Code-first build. No approved comp.
+FORM: User-selected Graphite & Mint, refined and approved as Graphite & Lime with matching light mode. Direction seed d483b2c9; explicit user choice overrides the assignment. Code-led; approved conversation previews are critique references.
 
 FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, DESIGN.md, and every shipping raster carrying its provenance
 
-## Completion evidence
+## Implementation evidence
 
-Implemented in the React browser app and rebuilt into the Go binary. Independent
-finish review requested two fixes: enlarged-text reflow/chart spacing and the
-singular harness label. Both scored resolved; verdict: ship at the scope of those
-fixes. Required captures: repository-root `.impeccable/review/web/` (desktop light
-and dark, mobile, narrow dark, tablet, wide, mobile filter, all six views, 200% text).
-Format, lint, full tests, build, and seven Go-backed browser tests pass. Direct Go
-build serves embedded assets and API with `PATH=/nonexistent`. Shipping screenshot
-and existing logo carry embedded provenance. Root `DESIGN.md` and
-`.impeccable/design.json` document the finished browser system.
+Desktop header 48px; plot 160px; Tokens table begins near 448px at 1440px width. Both themes, all seven routes, 320px mobile, tablet, filter popover, and 200% text captured under `.impeccable/review/graphite-lime/`.
+
+Reviewer disposition: ship; source-label overlap and enlarged endpoint dates both resolved. Verdict scope is those two fixes; earlier fidelity assessment stands. Format, lint, full tests, build, and eight browser tests passed. Direct Go build serves byte-identical embedded assets and API with Node/npm/pnpm absent from PATH; project TUI verified in PTY. Updated README screenshot uses synthetic data and embeds its origin; shipping raster scan reports zero missing provenance.
+
+Root DESIGN.md and `.impeccable/design.json` now document the implemented palette, compact scales, responsive behavior, and existing primitives. Documentation validation passed.
+
+Unresolved questions: none.

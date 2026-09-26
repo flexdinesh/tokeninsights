@@ -77,12 +77,12 @@ export function MultiSelect({
           className={`filter-button ${selected.length ? 'is-selected' : ''}`}
           aria-label={`${label}${selected.length ? ` ${selected.length}` : ''}`}
         >
-          <span className="filter-label">{label}</span>
-          {selected.length > 0 && <span className="count-badge">{selected.length}</span>}
-          <ChevronDown size="1em" />
+          <span className="filter-label">{label}:</span>
           <span className="filter-selection" aria-hidden="true">
             {selected.length ? selectedNames.join(', ') : 'All'}
           </span>
+          {selected.length > 0 && <span className="count-badge">{selected.length}</span>}
+          <ChevronDown size="1em" />
         </Button>
       </PopoverTrigger>
       <PopoverContent
@@ -261,13 +261,6 @@ export function FilterToolbar({
   } = useDashboardState()
   const [search, setSearch] = useState('')
   const [debounced, setDebounced] = useState('')
-  const [expanded, setExpanded] = useState(() => window.matchMedia('(min-width: 65rem)').matches)
-  useEffect(() => {
-    const desktop = window.matchMedia('(min-width: 65rem)')
-    const update = () => setExpanded(desktop.matches)
-    desktop.addEventListener('change', update)
-    return () => desktop.removeEventListener('change', update)
-  }, [])
   useEffect(() => {
     const timer = setTimeout(() => setDebounced(search), 200)
     return () => clearTimeout(timer)
@@ -279,144 +272,130 @@ export function FilterToolbar({
     Boolean(query.from || query.to)
   return (
     <section className="filters" aria-label="Dashboard filters">
-      <details open={expanded} onToggle={(event) => setExpanded(event.currentTarget.open)}>
-        <summary className="filter-disclosure">
-          <Filter size="1em" />
-          Filters
-          <span>{hasFilters ? 'Filtered view' : 'All dimensions'}</span>
-          <ChevronDown size="1em" />
-        </summary>
-        <div className="filter-content">
-          <div className="filter-heading">
-            <h2>
-              <Filter size="1em" /> Shape your view
-            </h2>
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              title="Restore CLI defaults"
-              aria-label="Restore CLI defaults"
-              onClick={() => dispatch({ type: 'reset', value: defaults })}
-            >
-              <RotateCcw size="1.1em" />
-            </Button>
+      <div className="filter-content">
+        <div className="filter-toolbar">
+          <span className="filter-caption">
+            <Filter size="1em" /> Filters
+          </span>
+          <div className="filter-date">
+            <DateFilter />
           </div>
-          <p className="filter-intro">Find the usage that matters to you.</p>
-          <div className="filter-toolbar">
-            <div className="filter-date">
-              <span className="filter-section-label">Date range</span>
-              <DateFilter />
-            </div>
-            <div className="filter-group">
-              {dimensions.map((d) => (
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            title="Restore CLI defaults"
+            aria-label="Restore CLI defaults"
+            onClick={() => dispatch({ type: 'reset', value: defaults })}
+          >
+            <RotateCcw size="1.1em" />
+          </Button>
+          <div className="filter-group">
+            {dimensions.map((d) => (
+              <MultiSelect
+                key={d.key}
+                label={d.label}
+                selected={query[d.key]}
+                values={
+                  (d.key === 'sessions' && debounced ? sessionFacets.data : facets)?.[d.key] ?? []
+                }
+                onChange={(values) => dispatch({ type: 'selection', value: { [d.key]: values } })}
+                onSearch={d.key === 'sessions' ? setSearch : undefined}
+                loading={d.key === 'sessions' && sessionFacets.isFetching}
+              />
+            ))}
+            {query.tab === 'repo' &&
+              locationDimensions.map((d) => (
                 <MultiSelect
                   key={d.key}
                   label={d.label}
                   selected={query[d.key]}
-                  values={
-                    (d.key === 'sessions' && debounced ? sessionFacets.data : facets)?.[d.key] ?? []
-                  }
-                  onChange={(values) => dispatch({ type: 'selection', value: { [d.key]: values } })}
-                  onSearch={d.key === 'sessions' ? setSearch : undefined}
-                  loading={d.key === 'sessions' && sessionFacets.isFetching}
+                  values={facets?.[d.key] ?? []}
+                  missingName={`${d.label} (unavailable)`}
+                  onChange={(values) => dispatch({ type: 'locations', value: { [d.key]: values } })}
                 />
               ))}
-              {query.tab === 'repo' &&
-                locationDimensions.map((d) => (
-                  <MultiSelect
-                    key={d.key}
-                    label={d.label}
-                    selected={query[d.key]}
-                    values={facets?.[d.key] ?? []}
-                    missingName={`${d.label} (unavailable)`}
-                    onChange={(values) =>
-                      dispatch({ type: 'locations', value: { [d.key]: values } })
-                    }
-                  />
-                ))}
-            </div>
           </div>
-          {hasFilters && (
-            <div className="active-filters" aria-label="Active filters">
-              {dimensions.flatMap((d) =>
-                query[d.key].map((value) => (
-                  <Button
-                    key={`${d.key}:${value}`}
-                    variant="secondary"
-                    size="sm"
-                    className="filter-chip"
-                    onClick={() =>
-                      dispatch({
-                        type: 'selection',
-                        value: { [d.key]: query[d.key].filter((v) => v !== value) },
-                      })
-                    }
-                    aria-label={`Remove ${d.label.toLowerCase()} ${value}`}
-                  >
-                    <span className="muted">{d.label}</span>
-                    <span className="chip-value" title={value}>
-                      {value}
-                    </span>
-                    <X size="0.9em" />
-                  </Button>
-                )),
-              )}
-              {query.tab === 'repo' &&
-                locationDimensions.flatMap((d) =>
-                  query[d.key].map((value) => {
-                    const name =
-                      facets?.[d.key].find((option) => option.key === value)?.name ??
-                      (value === 'unknown' ? 'unknown' : `${d.label} (unavailable)`)
-                    return (
-                      <Button
-                        key={`${d.key}:${value}`}
-                        variant="secondary"
-                        size="sm"
-                        className="filter-chip"
-                        onClick={() =>
-                          dispatch({
-                            type: 'locations',
-                            value: { [d.key]: query[d.key].filter((key) => key !== value) },
-                          })
-                        }
-                        aria-label={`Remove ${d.label.toLowerCase()} ${name}`}
-                      >
-                        <span className="muted">{d.label}</span>
-                        <span className="chip-value" title={name}>
-                          {name}
-                        </span>
-                        <X size="0.9em" />
-                      </Button>
-                    )
-                  }),
-                )}
-              {(query.from || query.to) && (
+        </div>
+        {hasFilters && (
+          <div className="active-filters" aria-label="Active filters">
+            {dimensions.flatMap((d) =>
+              query[d.key].map((value) => (
                 <Button
+                  key={`${d.key}:${value}`}
                   variant="secondary"
                   size="sm"
                   className="filter-chip"
-                  onClick={() => dispatch({ type: 'selection', value: { from: '', to: '' } })}
+                  onClick={() =>
+                    dispatch({
+                      type: 'selection',
+                      value: { [d.key]: query[d.key].filter((v) => v !== value) },
+                    })
+                  }
+                  aria-label={`Remove ${d.label.toLowerCase()} ${value}`}
                 >
-                  Custom dates
+                  <span className="muted">{d.label}</span>
+                  <span className="chip-value" title={value}>
+                    {value}
+                  </span>
                   <X size="0.9em" />
                 </Button>
+              )),
+            )}
+            {query.tab === 'repo' &&
+              locationDimensions.flatMap((d) =>
+                query[d.key].map((value) => {
+                  const name =
+                    facets?.[d.key].find((option) => option.key === value)?.name ??
+                    (value === 'unknown' ? 'unknown' : `${d.label} (unavailable)`)
+                  return (
+                    <Button
+                      key={`${d.key}:${value}`}
+                      variant="secondary"
+                      size="sm"
+                      className="filter-chip"
+                      onClick={() =>
+                        dispatch({
+                          type: 'locations',
+                          value: { [d.key]: query[d.key].filter((key) => key !== value) },
+                        })
+                      }
+                      aria-label={`Remove ${d.label.toLowerCase()} ${name}`}
+                    >
+                      <span className="muted">{d.label}</span>
+                      <span className="chip-value" title={name}>
+                        {name}
+                      </span>
+                      <X size="0.9em" />
+                    </Button>
+                  )
+                }),
               )}
+            {(query.from || query.to) && (
               <Button
-                variant="ghost"
+                variant="secondary"
                 size="sm"
-                className="text-button"
-                onClick={() => dispatch({ type: 'clearFilters' })}
+                className="filter-chip"
+                onClick={() => dispatch({ type: 'selection', value: { from: '', to: '' } })}
               >
-                Clear All
+                Custom dates
+                <X size="0.9em" />
               </Button>
-            </div>
-          )}
-          <p className="filter-note">
-            Date and usage filters apply to every view. Location filters apply only to Repo. Sync
-            always refreshes all supported harnesses.
-          </p>
-        </div>
-      </details>
+            )}
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-button"
+              onClick={() => dispatch({ type: 'clearFilters' })}
+            >
+              Clear All
+            </Button>
+          </div>
+        )}
+        <p className="sr-only">
+          Date and usage filters apply to every view. Location filters apply only to Repo. Sync
+          always refreshes all supported harnesses.
+        </p>
+      </div>
     </section>
   )
 }

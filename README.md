@@ -26,9 +26,10 @@ go install github.com/flexdinesh/tokeninsights/packages/cli/cmd/tokeninsights@la
 
 Open the browser dashboard:
 
-The Signal Studio layout pairs a compact static usage summary with a wide chart,
-sky-and-slate light/dark themes, and filters in a desktop side rail or compact
-mobile disclosure.
+The Graphite & Lime layout pairs a compact status header and static usage summary
+with short charts, horizontal filters, and dense tables. Dark mode uses graphite
+and bright lime; light mode uses warm white and deep lime for readable selections
+and chart lines.
 
 ```sh
 tokeninsights serve
