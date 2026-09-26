@@ -92,6 +92,9 @@ export const SyncPhase = zod.enum([
   'rebuild_failed',
   'normalizing',
   'loading dashboard',
+  'waiting',
+  'cancelled',
+  'interrupted',
 ])
 
 export type SyncPhase = zod.input<typeof SyncPhase>
@@ -101,6 +104,7 @@ export const HarnessSyncStatus = zod.enum([
   'pending',
   'discovering',
   'syncing',
+  'normalizing',
   'skipped',
   'synced',
   'failed',
@@ -154,16 +158,48 @@ export const Count = zod.int().min(CountMin).max(CountMax)
 export type Count = zod.input<typeof Count>
 export type CountOutput = zod.output<typeof Count>
 
+export const SyncProgress = zod.strictObject({
+  jobId: Count,
+  startedAt: Count,
+  updatedAt: Count,
+  lastSuccessfulAt: Count,
+  totalSources: Count,
+  checkedSources: Count,
+  readySources: Count,
+  failedSources: Count,
+  discoveryComplete: zod.boolean(),
+})
+
+export type SyncProgress = zod.input<typeof SyncProgress>
+export type SyncProgressOutput = zod.output<typeof SyncProgress>
+
 export const SyncResponse = zod.strictObject({
   running: zod.boolean(),
   phase: SyncPhase,
   harnesses: zod.record(zod.string(), HarnessSyncStatus),
   error: zod.string(),
   revision: Count,
+  progress: SyncProgress.optional(),
 })
 
 export type SyncResponse = zod.input<typeof SyncResponse>
 export type SyncResponseOutput = zod.output<typeof SyncResponse>
+
+export const dayCoverageTotalMin = 0
+export const dayCoverageTotalMax = 9007199254740991
+
+export const DayCoverage = zod.strictObject({
+  day: zod.string(),
+  status: zod.enum(['unverified', 'pending', 'partial', 'checked', 'empty']),
+  checkedAt: Count,
+  pendingSources: Count,
+  failedSources: Count,
+  hasUsage: zod.boolean(),
+  total: zod.int().min(dayCoverageTotalMin).max(dayCoverageTotalMax).nullable(),
+})
+
+export type DayCoverage = zod.input<typeof DayCoverage>
+export type DayCoverageOutput = zod.output<typeof DayCoverage>
 
 export const UsageRow = zod.strictObject({
   key: zod.string(),
@@ -219,6 +255,12 @@ export type UsageSummaryOutput = zod.output<typeof UsageSummary>
 export const usageResponsePageSizeMax = 200
 
 export const UsageResponse = zod.strictObject({
+  coverage: zod
+    .array(DayCoverage)
+    .optional()
+    .describe(
+      'Retained-source coverage in server-local days; bounded to 366 days, or the recent seven days for all-time views. Independent of usage rows and pagination.',
+    ),
   rows: zod.array(UsageRow),
   chart: zod.array(UsageRow),
   rowCount: Count,

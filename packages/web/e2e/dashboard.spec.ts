@@ -1,8 +1,78 @@
 import { expect, test } from '@playwright/test'
 import { InstanceResponse } from '../src/generated/api'
+import { dashboardSchema } from '../src/contracts'
 
 const localSource = 'http://127.0.0.1:18765'
 const remoteSource = 'http://127.0.0.1:18766'
+
+test('pending calendar days keep absent usage visible during sync', async ({ page }, testInfo) => {
+  const pendingDay = '2026-09-26'
+  await page.route('**/api/v1/sync', (route) =>
+    route.fulfill({
+      json: {
+        phase: 'syncing',
+        running: true,
+        error: '',
+        revision: 99,
+        harnesses: { codex: 'syncing', pi: 'synced' },
+        progress: {
+          jobId: 99,
+          totalSources: 10,
+          checkedSources: 5,
+          readySources: 3,
+          failedSources: 0,
+          discoveryComplete: true,
+          startedAt: 1000,
+          updatedAt: 5000,
+          lastSuccessfulAt: 0,
+        },
+      },
+    }),
+  )
+  await page.route('**/api/v1/usage?*', async (route) => {
+    const response = await route.fetch()
+    const data = dashboardSchema.parse(await response.json())
+    await route.fulfill({
+      json: {
+        ...data,
+        rows: data.rows.map((row) => ({ ...row, name: '2026-09-25' })),
+        coverage: [
+          {
+            day: '2026-09-25',
+            status: 'partial',
+            checkedAt: 0,
+            pendingSources: 5,
+            failedSources: 0,
+            hasUsage: true,
+            total: data.summary.total,
+          },
+          {
+            day: pendingDay,
+            status: 'pending',
+            checkedAt: 0,
+            pendingSources: 5,
+            failedSources: 0,
+            hasUsage: false,
+            total: null,
+          },
+        ],
+      },
+    })
+  })
+  await page.goto('/tokens')
+  await expect(page.getByLabel('Sources checked')).toHaveAttribute('value', '5')
+  const pending = page
+    .getByRole('region', { name: 'Scrollable results' })
+    .getByRole('row', { name: /2026-09-26.*Pending/ })
+  await expect(pending).toBeVisible()
+  await expect(pending.locator('td.numeric')).toHaveText(['—', '—', '—', '—', '—', '—', '—'])
+  await page.locator('.sync-coverage summary').click()
+  await expect(page.getByRole('region', { name: 'Daily source coverage' })).toBeVisible()
+  await expect(page.locator('.recharts-surface')).toBeVisible()
+  await page.screenshot({ path: testInfo.outputPath('coverage-desktop.png'), fullPage: true })
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.screenshot({ path: testInfo.outputPath('coverage-mobile.png'), fullPage: true })
+})
 
 test('table columns resize by drag and keyboard without sorting', async ({ page }) => {
   await page.goto('/tokens')
@@ -138,9 +208,9 @@ test('startup sync, seven views, filtering, history, pagination, and refresh', a
     .getByRole('navigation', { name: 'Analytics views' })
     .getByRole('link', { name: 'Sessions', exact: true })
     .click()
-  await expect(page.locator('tbody tr')).toHaveCount(50)
+  await expect(page.locator('.table-panel tbody tr')).toHaveCount(50)
   await page.getByRole('button', { name: 'Next page' }).click()
-  await expect(page.locator('tbody tr')).toHaveCount(10)
+  await expect(page.locator('.table-panel tbody tr')).toHaveCount(10)
   await expect(page.locator('.results-summary')).toContainText('60 rows')
   await expect(page.locator('.session-coverage')).toHaveText('Sessions 60 shown / 80 synced')
   await expect(page.locator('.results-summary')).toContainText('258K')
@@ -396,9 +466,7 @@ test('remote source switching, persistence, sync, and later failure', async ({ p
   await expect(page.getByRole('listitem').filter({ hasText: remoteSource })).toBeVisible()
 })
 
-test('custom dates, session search, and explicit inspection after sync failure', async ({
-  page,
-}) => {
+test('custom dates, session search, and saved usage after sync failure', async ({ page }) => {
   await page.goto('/')
   await expect(page.getByRole('region', { name: 'Filtered usage summary' })).toBeVisible()
   await page.getByRole('button', { name: 'This week', exact: true }).click()
@@ -426,10 +494,9 @@ test('custom dates, session search, and explicit inspection after sync failure',
     }),
   )
   await page.reload()
+  await expect(page.getByRole('button', { name: 'Retry Sync', exact: true })).toBeVisible()
   await expect(
     page.getByRole('button', { name: 'Inspect Existing Data', exact: true }),
-  ).toBeVisible()
-  await expect(page.getByRole('region', { name: 'Filtered usage summary' })).not.toBeVisible()
-  await page.getByRole('button', { name: 'Inspect Existing Data', exact: true }).click()
+  ).toHaveCount(0)
   await expect(page.getByLabel('Total tokens: 4,300', { exact: true })).toBeVisible()
 })

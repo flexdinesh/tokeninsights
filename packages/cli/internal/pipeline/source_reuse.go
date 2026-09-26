@@ -1,7 +1,6 @@
 package pipeline
 
 import (
-	"bufio"
 	"context"
 	"crypto/sha256"
 	"database/sql"
@@ -133,7 +132,12 @@ func sourceContentHash(ctx context.Context, source Source) (string, error) {
 			return "", err
 		}
 		fileHash := sha256.New()
-		size, copyErr := io.Copy(fileHash, file)
+		info, statErr := file.Stat()
+		if statErr != nil {
+			_ = file.Close()
+			return "", statErr
+		}
+		size, copyErr := io.Copy(fileHash, contextReader{ctx: ctx, reader: io.NewSectionReader(file, 0, info.Size())})
 		closeErr := file.Close()
 		if copyErr != nil {
 			return "", copyErr
@@ -157,8 +161,7 @@ func jsonlLocationFingerprint(ctx context.Context, source Source, options SyncOp
 	defer func() { _ = file.Close() }()
 	cwds := map[string]bool{"": true}
 	remotes := map[string]bool{"": true}
-	scanner := bufio.NewScanner(file)
-	scanner.Buffer(make([]byte, 0, 64*1024), maxCodexJSONLLineBytes)
+	scanner := newJSONLReader(ctx, file)
 	for scanner.Scan() {
 		if err := ctx.Err(); err != nil {
 			return "", err
@@ -192,6 +195,9 @@ func jsonlLocationFingerprint(ctx context.Context, source Source, options SyncOp
 	}
 	if err := scanner.Err(); err != nil {
 		return "", err
+	}
+	if scanner.deferred {
+		return "", errors.New("unfinished JSONL tail")
 	}
 	var signatures []string
 	for cwd := range cwds {

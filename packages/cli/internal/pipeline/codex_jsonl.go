@@ -1,7 +1,6 @@
 package pipeline
 
 import (
-	"bufio"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -17,7 +16,6 @@ import (
 
 const (
 	codexSessionJSONLSourceKind = "codex-session-jsonl"
-	maxCodexJSONLLineBytes      = 16 * 1024 * 1024
 )
 
 type codexJSONLAdapter struct {
@@ -179,8 +177,7 @@ func (a *codexJSONLAdapter) parseCandidates(ctx context.Context, source Source, 
 	}
 	var facts []codexCandidate
 	var diagnostics []Diagnostic
-	scanner := bufio.NewScanner(file)
-	scanner.Buffer(make([]byte, 0, 64*1024), maxCodexJSONLLineBytes)
+	scanner := newJSONLReader(ctx, file)
 	lineNumber := 0
 	for scanner.Scan() {
 		if ctx.Err() != nil {
@@ -189,6 +186,12 @@ func (a *codexJSONLAdapter) parseCandidates(ctx context.Context, source Source, 
 		lineNumber++
 		line := strings.TrimSpace(scanner.Text())
 		if line == "" {
+			continue
+		}
+		var envelope struct {
+			Type string `json:"type"`
+		}
+		if json.Unmarshal(scanner.Bytes(), &envelope) == nil && envelope.Type != "session_meta" && envelope.Type != "turn_context" && envelope.Type != "event_msg" {
 			continue
 		}
 		var record map[string]interface{}
@@ -217,6 +220,9 @@ func (a *codexJSONLAdapter) parseCandidates(ctx context.Context, source Source, 
 	}
 	if err := scanner.Err(); err != nil {
 		return nil, nil, err
+	}
+	if scanner.deferred {
+		diagnostics = append(diagnostics, Diagnostic{Harness: HarnessCodex, Severity: "info", Code: "jsonl_incomplete_tail", Message: "unfinished final JSONL record deferred until next sync"})
 	}
 	pendingFacts, pendingDiagnostics := state.flushPending(false)
 	facts = append(facts, pendingFacts...)

@@ -46,6 +46,7 @@ func Sync(ctx context.Context, options SyncOptions) (Summary, error) {
 	if err := validateRecoveryScope(options, compatibility); err != nil {
 		return Summary{}, err
 	}
+	reportSyncProgress(options, SyncProgressEvent{Status: SyncProgressWaiting})
 	release, err := db.AcquireWriterLock(ctx, options.DBPath)
 	if err != nil {
 		return Summary{}, recoveryFailure(compatibility, err)
@@ -74,6 +75,9 @@ func Sync(ctx context.Context, options SyncOptions) (Summary, error) {
 }
 
 func defaultSyncOptions(options SyncOptions) SyncOptions {
+	if options.Clock == nil {
+		options.Clock = time.Now
+	}
 	if options.locationResolver == nil {
 		options.locationResolver = &locationResolver{}
 	}
@@ -90,64 +94,96 @@ func defaultSyncOptions(options SyncOptions) SyncOptions {
 }
 
 // syncPrepared runs under the caller's writer lock, including during recovery.
-func syncPrepared(ctx context.Context, options SyncOptions) (Summary, error) {
-	summary := Summary{RequestedHarnesses: len(options.Harnesses)}
-
-	database, created, err := db.CreateIfMissing(options.DBPath)
+func syncPrepared(ctx context.Context, options SyncOptions) (summary Summary, resultErr error) {
+	summary = Summary{RequestedHarnesses: len(options.Harnesses)}
+	database, _, err := db.CreateIfMissing(options.DBPath)
 	if err != nil {
 		return summary, err
 	}
 	defer func() { _ = database.Close() }()
-	if created {
-		summary.Skipped = 0
+	options.jobID, err = startSyncJob(ctx, database, options)
+	if err != nil {
+		return summary, err
 	}
-
+	defer func() { resultErr = errors.Join(resultErr, finishSyncJob(database, options, resultErr)) }()
+	plans := make(map[Harness]harnessPlan, len(options.Harnesses))
 	for _, harness := range options.Harnesses {
+		if err := ctx.Err(); err != nil {
+			return summary, err
+		}
+		if err := setHarnessStatus(ctx, database, options, harness, SyncProgressDiscovering); err != nil {
+			return summary, err
+		}
 		reportSyncProgress(options, SyncProgressEvent{Harness: harness, Status: SyncProgressDiscovering})
-		harnessSummary, err := syncHarness(ctx, database, options, harness)
+		adapter, ok := AdapterFor(harness)
+		plan := harnessPlan{adapter: adapter}
+		if !ok {
+			plan.err = fmt.Errorf("unsupported harness %q", harness)
+		} else {
+			plan.sources, plan.err = adapter.Discover(ctx, discoverOptions(parserOptionsForHarness(options, harness)))
+		}
+		if plan.err == nil {
+			if err := recordDiscoveredSources(ctx, database, options, harness, plan.sources); err != nil {
+				return summary, err
+			}
+		}
+		plans[harness] = plan
+	}
+	for _, harness := range options.Harnesses {
+		if err := ctx.Err(); err != nil {
+			return summary, errors.Join(errors.Join(summary.Errors...), err)
+		}
+		harnessSummary, harnessErr := syncHarness(ctx, database, options, harness, plans[harness])
 		mergeSummary(&summary, harnessSummary)
-		if err != nil {
-			reportSyncProgress(options, SyncProgressEvent{Harness: harness, Status: SyncProgressFailed})
+		if harnessErr != nil {
+			var recoverable sourceFailure
+			if !errors.As(harnessErr, &recoverable) || ctx.Err() != nil {
+				return summary, errors.Join(errors.Join(summary.Errors...), harnessErr)
+			}
+		}
+		published := false
+		if options.Normalize {
+			pending, err := hasPendingNormalizationWork(ctx, database, []Harness{harness})
+			if err != nil {
+				return summary, err
+			}
+			if pending {
+				if err := setHarnessStatus(ctx, database, options, harness, SyncProgressNormalizing); err != nil {
+					return summary, err
+				}
+				reportSyncProgress(options, SyncProgressEvent{Harness: harness, Status: SyncProgressNormalizing})
+			}
+			normalSummary, err := normalizePrepared(ctx, database, NormalizeOptions{DBPath: options.DBPath, Harnesses: []Harness{harness}, Now: options.Now})
+			mergeSummary(&summary, normalSummary)
+			if err != nil {
+				return summary, errors.Join(harnessErr, err)
+			}
+			if err := publishHarnessSources(ctx, database, options, harness); err != nil {
+				return summary, err
+			}
+			published = pending || normalSummary.Canonical > 0
+		}
+		status := SyncProgressSynced
+		if harnessErr != nil {
+			status = SyncProgressFailed
 			summary.Failed++
-			summary.Errors = append(summary.Errors, err)
-			continue
-		}
-		if harnessSummary.RawFacts == 0 && harnessSummary.Observations == 0 {
-			reportSyncProgress(options, SyncProgressEvent{Harness: harness, Status: SyncProgressSkipped})
+			summary.Errors = append(summary.Errors, harnessErr)
+		} else if harnessSummary.RawFacts == 0 && harnessSummary.Observations == 0 {
+			status = SyncProgressSkipped
 			summary.Skipped++
-			continue
+		} else {
+			summary.Synced++
 		}
-		reportSyncProgress(options, SyncProgressEvent{Harness: harness, Status: SyncProgressSynced})
-		summary.Synced++
+		if err := setHarnessStatus(ctx, database, options, harness, status); err != nil {
+			return summary, err
+		}
+		reportSyncProgress(options, SyncProgressEvent{Harness: harness, Status: status, Published: published})
 	}
-
-	shouldNormalize := false
-	if options.Normalize && summary.Observations > 0 {
-		shouldNormalize = true
-	} else if options.Normalize {
-		hasPendingWork, err := hasPendingNormalizationWork(ctx, database, options.Harnesses)
-		if err != nil {
-			summary.Errors = append(summary.Errors, err)
-		}
-		shouldNormalize = hasPendingWork
+	resultErr = errors.Join(summary.Errors...)
+	if resultErr == nil && options.recovering {
+		resultErr = db.CompleteRecovery(ctx, database)
 	}
-
-	if options.Normalize {
-		if shouldNormalize {
-			reportSyncProgress(options, SyncProgressEvent{Status: SyncProgressNormalizing})
-		}
-		normalSummary, err := normalizePrepared(ctx, database, NormalizeOptions{
-			DBPath:    options.DBPath,
-			Harnesses: options.Harnesses,
-			Now:       options.Now,
-		})
-		mergeSummary(&summary, normalSummary)
-		if err != nil {
-			summary.Errors = append(summary.Errors, err)
-		}
-	}
-
-	return summary, errors.Join(summary.Errors...)
+	return summary, resultErr
 }
 
 func hasPendingNormalizationWork(ctx context.Context, database *sql.DB, harnesses []Harness) (bool, error) {
@@ -274,31 +310,52 @@ func dryRunSourceIsUpToDate(ctx context.Context, database *sql.DB, source Source
 	return err == nil && skip
 }
 
-func syncHarness(ctx context.Context, database *sql.DB, options SyncOptions, harness Harness) (Summary, error) {
+type harnessPlan struct {
+	adapter Adapter
+	sources []Source
+	err     error
+}
+
+func syncHarness(ctx context.Context, database *sql.DB, options SyncOptions, harness Harness, plan harnessPlan) (Summary, error) {
 	var summary Summary
 	options = parserOptionsForHarness(options, harness)
-	adapter, ok := AdapterFor(harness)
-	if !ok {
-		return summary, fmt.Errorf("unsupported harness %q", harness)
+	if plan.err != nil {
+		return summary, sourceFailure{err: fmt.Errorf("%s discover: %w", harness, plan.err)}
 	}
-
-	sources, err := adapter.Discover(ctx, discoverOptions(options))
-	if err != nil {
-		return summary, fmt.Errorf("%s discover: %w", harness, err)
-	}
+	adapter, sources := plan.adapter, plan.sources
 	if len(sources) == 0 {
 		return summary, nil
 	}
-
 	seenDedupeKeys := map[string]int64{}
+	if err := setHarnessStatus(ctx, database, options, harness, SyncProgressSyncing); err != nil {
+		return summary, err
+	}
 	reportSyncProgress(options, SyncProgressEvent{Harness: harness, Status: SyncProgressSyncing})
+	var failures []error
 	for _, source := range sources {
-		sourceSummary, err := ingestSource(ctx, database, adapter, options, harness, source, seenDedupeKeys)
-		if err != nil {
+		if err := ctx.Err(); err != nil {
+			return summary, err
+		}
+		if err := updateSourceStatus(ctx, database, options, source, "reading", "", nil, nil); err != nil {
+			return summary, err
+		}
+		sourceSummary, ingestErr := ingestSource(ctx, database, adapter, options, harness, source, seenDedupeKeys)
+		if ingestErr != nil {
+			var recoverable sourceFailure
+			if !errors.As(ingestErr, &recoverable) || ctx.Err() != nil {
+				return summary, ingestErr
+			}
+			failures = append(failures, ingestErr)
+		}
+		if err := completeSourceAttempt(ctx, database, options, source, ingestErr); err != nil {
 			return summary, err
 		}
 		mergeSummary(&summary, sourceSummary)
 	}
+	if len(failures) > 0 {
+		return summary, sourceFailure{err: errors.Join(failures...)}
+	}
+
 	return summary, nil
 }
 
@@ -362,10 +419,13 @@ func ingestSource(ctx context.Context, database *sql.DB, adapter Adapter, option
 		}
 	}
 	if skipSource {
+		if err := updateSourceStatus(ctx, tx, options, source, "unchanged", "", nil, nil); err != nil {
+			return summary, err
+		}
 		if err := upsertSourceRefreshState(ctx, tx, source, options, refreshMetadata, hasRefreshMetadata); err != nil {
 			return summary, err
 		}
-		if err := completeIngestRun(ctx, tx, runDBID, "completed", "", Summary{}, syncNowMs(options.Now)); err != nil {
+		if err := completeIngestRun(ctx, tx, runDBID, "completed", "", Summary{}, syncWallNow(options).UnixMilli()); err != nil {
 			return summary, err
 		}
 		if err := tx.Commit(); err != nil {
@@ -388,21 +448,40 @@ func ingestSource(ctx context.Context, database *sql.DB, adapter Adapter, option
 		facts, diagnostics, parseErr = adapter.Parse(ctx, source, options)
 	}
 	if parseErr != nil {
-		if err := completeIngestRun(ctx, tx, runDBID, "failed", parseErr.Error(), Summary{}, syncNowMs(options.Now)); err != nil {
+		if err := completeIngestRun(ctx, tx, runDBID, "failed", parseErr.Error(), Summary{}, syncWallNow(options).UnixMilli()); err != nil {
 			return summary, err
 		}
 		if err := tx.Commit(); err != nil {
 			return summary, err
 		}
 		committed = true
-		return summary, fmt.Errorf("%s parse: %w", harness, parseErr)
+		return summary, sourceFailure{err: fmt.Errorf("%s parse: %w", harness, parseErr)}
 	}
-	sourceSummary, err := writeSourceIngest(ctx, tx, runDBID, facts, diagnostics, options, seenDedupeKeys)
+	sourceStatus := "ingested"
+	for _, diagnostic := range diagnostics {
+		if diagnostic.Code == "jsonl_incomplete_tail" {
+			sourceStatus = "deferred"
+		}
+	}
+	if source.Harness != HarnessOpenCode && hasRefreshMetadata {
+		current, valid := sourceRefreshMetadataFor(source)
+		if !valid || current.mtimeMs != refreshMetadata.mtimeMs || current.sizeBytes != refreshMetadata.sizeBytes {
+			sourceStatus = "deferred"
+			diagnostics = append(diagnostics, Diagnostic{Harness: harness, Severity: "info", Code: "jsonl_source_changed", Message: "source changed during snapshot read; new records await next sync"})
+		}
+	}
+	sourceDedupeKeys := make(map[string]int64, len(facts))
+	for _, fact := range facts {
+		if id, ok := seenDedupeKeys[fact.DedupeKey]; ok {
+			sourceDedupeKeys[fact.DedupeKey] = id
+		}
+	}
+	sourceSummary, err := writeSourceIngest(ctx, tx, runDBID, facts, diagnostics, options, sourceDedupeKeys)
 	if err != nil {
 		if rollbackErr := rollbackSourceWrites(ctx, tx); rollbackErr != nil {
 			return summary, errors.Join(err, rollbackErr)
 		}
-		if completeErr := completeIngestRun(ctx, tx, runDBID, "failed", err.Error(), Summary{}, syncNowMs(options.Now)); completeErr != nil {
+		if completeErr := completeIngestRun(ctx, tx, runDBID, "failed", err.Error(), Summary{}, syncWallNow(options).UnixMilli()); completeErr != nil {
 			return summary, errors.Join(err, completeErr)
 		}
 		if commitErr := tx.Commit(); commitErr != nil {
@@ -414,25 +493,54 @@ func ingestSource(ctx context.Context, database *sql.DB, adapter Adapter, option
 	if err := releaseSourceWriteSavepoint(ctx, tx); err != nil {
 		return summary, err
 	}
-	if cursorCapable {
-		if err := storePiCursor(ctx, tx, source, options, refreshMetadata, hasRefreshMetadata, cursorEligible); err != nil {
-			return summary, err
+	if sourceStatus == "deferred" {
+		for _, table := range []string{db.TableSourceRefreshState, db.TableSourceCursorState} {
+			if _, err := tx.ExecContext(ctx, "DELETE FROM "+table+" WHERE harness = ? AND source_kind = ? AND source_state_key = ?", source.Harness, source.Kind, source.ID); err != nil {
+				return summary, err
+			}
 		}
 	} else {
-		if err := storeSourceReuse(ctx, tx, source, options, refreshMetadata, hasRefreshMetadata, reuseFingerprint); err != nil {
+		if cursorCapable {
+			if err := storePiCursor(ctx, tx, source, options, refreshMetadata, hasRefreshMetadata, cursorEligible); err != nil {
+				return summary, err
+			}
+		} else {
+			if err := storeSourceReuse(ctx, tx, source, options, refreshMetadata, hasRefreshMetadata, reuseFingerprint); err != nil {
+				return summary, err
+			}
+		}
+		if err := upsertSourceRefreshState(ctx, tx, source, options, refreshMetadata, hasRefreshMetadata); err != nil {
 			return summary, err
 		}
+
 	}
-	if err := upsertSourceRefreshState(ctx, tx, source, options, refreshMetadata, hasRefreshMetadata); err != nil {
+	var first, last interface{}
+	for _, fact := range facts {
+		if fact.OccurredAtMs != nil {
+			if first == nil || *fact.OccurredAtMs < first.(int64) {
+				first = *fact.OccurredAtMs
+			}
+			if last == nil || *fact.OccurredAtMs > last.(int64) {
+				last = *fact.OccurredAtMs
+			}
+		}
+	}
+	if sourceStatus == "deferred" {
+		first, last = nil, nil
+	}
+	if err := updateSourceStatus(ctx, tx, options, source, sourceStatus, "", first, last); err != nil {
 		return summary, err
 	}
-	if err := completeIngestRun(ctx, tx, runDBID, "completed", "", sourceSummary, syncNowMs(options.Now)); err != nil {
+	if err := completeIngestRun(ctx, tx, runDBID, "completed", "", sourceSummary, syncWallNow(options).UnixMilli()); err != nil {
 		return summary, err
 	}
 	if err := tx.Commit(); err != nil {
 		return summary, err
 	}
 	committed = true
+	for key, id := range sourceDedupeKeys {
+		seenDedupeKeys[key] = id
+	}
 	return sourceSummary, nil
 }
 
@@ -573,7 +681,7 @@ func createIngestRun(ctx context.Context, runner sqlRunner, runID string, source
 		INSERT INTO ingest_runs (
 			run_id, harness, collector, parser, source_id, source_kind, status, started_at_ms
 		) VALUES (?, ?, ?, ?, ?, ?, 'running', ?)
-	`, runID, source.Harness, options.Collector, options.Parser, source.ID, source.Kind, syncNowMs(options.Now))
+	`, runID, source.Harness, options.Collector, options.Parser, source.ID, source.Kind, syncWallNow(options).UnixMilli())
 	if err != nil {
 		return 0, err
 	}

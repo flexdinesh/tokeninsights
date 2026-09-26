@@ -122,6 +122,9 @@ func ResetCanonical(ctx context.Context, db *sql.DB) error {
 	`, DomainTokenUsage, time.Now().UnixMilli()); err != nil {
 		return err
 	}
+	if err := AdvanceAnalyticsRevision(ctx, tx); err != nil {
+		return err
+	}
 	if err := tx.Commit(); err != nil {
 		return err
 	}

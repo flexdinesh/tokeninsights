@@ -19,8 +19,14 @@ type tableSummaryModel struct {
 const tableSummarySeparator = " · "
 
 func newTableSummaryModel(rows []renderRow, activeTab tabMode, loading bool) tableSummaryModel {
+	count := 0
+	for _, row := range rows {
+		if !row.placeholder {
+			count++
+		}
+	}
 	return tableSummaryModel{
-		rowCount:   len(rows),
+		rowCount:   count,
 		totalValue: totalTokens(rows),
 		showTotal:  tableSummaryShowsTotal(activeTab),
 		loading:    loading,

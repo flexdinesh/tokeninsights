@@ -411,7 +411,7 @@ it.each<{ phase: SyncStatus['phase']; running: boolean; message: string }>([
   },
 )
 
-it('allows explicit inspection after an ordinary sync failure', async () => {
+it('shows saved usage and pending days after an ordinary sync failure', async () => {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false, staleTime: Infinity } },
   })
@@ -441,6 +441,39 @@ it('allows explicit inspection after an ordinary sync failure', async () => {
   }
   client.setQueryData(['instance', window.location.origin], bootstrap)
   client.setQueryData(['sync', window.location.origin], status)
+  vi.stubGlobal(
+    'fetch',
+    vi.fn<typeof fetch>(() =>
+      Promise.resolve(
+        new Response(
+          JSON.stringify({
+            ...dashboard(881),
+            coverage: [
+              {
+                day: '2026-09-25',
+                status: 'empty',
+                checkedAt: 1000,
+                pendingSources: 0,
+                failedSources: 0,
+                hasUsage: false,
+                total: 0,
+              },
+              {
+                day: '2026-09-26',
+                status: 'pending',
+                checkedAt: 0,
+                pendingSources: 2,
+                failedSources: 0,
+                hasUsage: false,
+                total: null,
+              },
+            ],
+          }),
+          { headers: { 'Content-Type': 'application/json' } },
+        ),
+      ),
+    ),
+  )
   render(
     <QueryClientProvider client={client}>
       <SourceProvider>
@@ -448,7 +481,24 @@ it('allows explicit inspection after an ordinary sync failure', async () => {
       </SourceProvider>
     </QueryClientProvider>,
   )
-  expect(await screen.findByRole('button', { name: 'Inspect Existing Data' })).toBeEnabled()
+  expect(await screen.findByRole('button', { name: 'Retry Sync' })).toBeEnabled()
+  expect(await screen.findByText('Source coverage')).toBeVisible()
+  const results = await screen.findByRole('region', { name: 'Scrollable results' })
+  const pending = within(results).getByRole('row', { name: /2026-09-26.*Pending/ })
+  expect(
+    within(pending)
+      .getAllByRole('cell')
+      .slice(1)
+      .every((cell) => cell.textContent === '—'),
+  ).toBe(true)
+  const empty = within(results).getByRole('row', { name: /2026-09-25.*No usage found/ })
+  expect(
+    within(empty)
+      .getAllByRole('cell')
+      .slice(1)
+      .every((cell) => cell.textContent === '0'),
+  ).toBe(true)
+  expect(screen.queryByRole('button', { name: 'Inspect Existing Data' })).not.toBeInTheDocument()
   client.clear()
 })
 

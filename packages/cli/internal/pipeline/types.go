@@ -73,7 +73,10 @@ type SyncOptions struct {
 	Parser           string
 	Now              time.Time
 	Progress         func(SyncProgressEvent)
+	Clock            func() time.Time
 	locationResolver *locationResolver
+	jobID            int64
+	recovering       bool
 }
 
 type SyncProgressStatus string
@@ -88,11 +91,13 @@ const (
 	SyncProgressFailed      SyncProgressStatus = "failed"
 	SyncProgressNormalizing SyncProgressStatus = "normalizing"
 	SyncProgressLoading     SyncProgressStatus = "loading dashboard"
+	SyncProgressWaiting     SyncProgressStatus = "waiting"
 )
 
 type SyncProgressEvent struct {
-	Harness Harness
-	Status  SyncProgressStatus
+	Harness   Harness
+	Status    SyncProgressStatus
+	Published bool
 }
 
 type NormalizeOptions struct {

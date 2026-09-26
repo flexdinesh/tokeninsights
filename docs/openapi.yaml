@@ -357,9 +357,12 @@ components:
         - rebuild_failed
         - normalizing
         - loading dashboard
+        - waiting
+        - cancelled
+        - interrupted
     HarnessSyncStatus:
       type: string
-      enum: [pending, discovering, syncing, skipped, synced, failed]
+      enum: [pending, discovering, syncing, normalizing, skipped, synced, failed]
     ErrorCode:
       type: string
       enum: [invalid_request, not_found, method_not_allowed, unavailable, internal_error]
@@ -434,6 +437,66 @@ components:
           type: string
         revision:
           $ref: '#/components/schemas/Count'
+        progress:
+          $ref: '#/components/schemas/SyncProgress'
+    SyncProgress:
+      type: object
+      additionalProperties: false
+      required:
+        [
+          jobId,
+          startedAt,
+          updatedAt,
+          lastSuccessfulAt,
+          totalSources,
+          checkedSources,
+          readySources,
+          failedSources,
+          discoveryComplete,
+        ]
+      properties:
+        jobId:
+          $ref: '#/components/schemas/Count'
+        startedAt:
+          $ref: '#/components/schemas/Count'
+        updatedAt:
+          $ref: '#/components/schemas/Count'
+        lastSuccessfulAt:
+          $ref: '#/components/schemas/Count'
+        totalSources:
+          $ref: '#/components/schemas/Count'
+        checkedSources:
+          $ref: '#/components/schemas/Count'
+        readySources:
+          $ref: '#/components/schemas/Count'
+        failedSources:
+          $ref: '#/components/schemas/Count'
+        discoveryComplete:
+          type: boolean
+    DayCoverage:
+      type: object
+      additionalProperties: false
+      required: [day, status, checkedAt, pendingSources, failedSources, hasUsage, total]
+      properties:
+        day:
+          type: string
+        status:
+          type: string
+          enum: [unverified, pending, partial, checked, empty]
+        checkedAt:
+          $ref: '#/components/schemas/Count'
+        pendingSources:
+          $ref: '#/components/schemas/Count'
+        failedSources:
+          $ref: '#/components/schemas/Count'
+        hasUsage:
+          type: boolean
+        total:
+          type: integer
+          format: int64
+          minimum: 0
+          maximum: 9007199254740991
+          nullable: true
     Count:
       type: integer
       format: int64
@@ -544,6 +607,11 @@ components:
       additionalProperties: false
       required: [rows, chart, rowCount, page, pageSize, summary, lastSynced, range]
       properties:
+        coverage:
+          description: Retained-source coverage in server-local days; bounded to 366 days, or the recent seven days for all-time views. Independent of usage rows and pagination.
+          type: array
+          items:
+            $ref: '#/components/schemas/DayCoverage'
         rows:
           type: array
           items:

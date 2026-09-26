@@ -1,7 +1,6 @@
 package pipeline
 
 import (
-	"bufio"
 	"context"
 	"os"
 	"path/filepath"
@@ -12,8 +11,7 @@ import (
 )
 
 const (
-	claudeCodeJSONLSourceKind   = "claude-code-session-jsonl"
-	maxClaudeCodeJSONLLineBytes = 16 * 1024 * 1024
+	claudeCodeJSONLSourceKind = "claude-code-session-jsonl"
 )
 
 type claudeCodeJSONLAdapter struct{}
@@ -121,8 +119,7 @@ func (a claudeCodeJSONLAdapter) Parse(ctx context.Context, source Source, option
 	var requestIDs []*string
 	var diagnostics []Diagnostic
 	mergedFactIndexes := map[string]int{}
-	scanner := bufio.NewScanner(file)
-	scanner.Buffer(make([]byte, 0, 64*1024), maxClaudeCodeJSONLLineBytes)
+	scanner := newJSONLReader(ctx, file)
 	for scanner.Scan() {
 		if ctx.Err() != nil {
 			return nil, nil, ctx.Err()
@@ -158,6 +155,9 @@ func (a claudeCodeJSONLAdapter) Parse(ctx context.Context, source Source, option
 	}
 	if err := scanner.Err(); err != nil {
 		return nil, nil, err
+	}
+	if scanner.deferred {
+		diagnostics = append(diagnostics, Diagnostic{Harness: HarnessClaudeCode, Severity: "info", Code: "jsonl_incomplete_tail", Message: "unfinished final JSONL record deferred until next sync"})
 	}
 	finalFacts := make([]RawTokenFact, 0, len(facts))
 	for index := range facts {

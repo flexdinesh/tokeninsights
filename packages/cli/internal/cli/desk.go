@@ -35,7 +35,7 @@ var (
 		"←→          Scroll columns", "Home / End  First / last column",
 		"d           Date range", "g           Bucket / Repo group", "s           Sort",
 		"f           Filters", "p / m / h   Provider/model/harness",
-		"r           Reload usage", "q / Ctrl+C  Quit",
+		"r           Reload usage", "u           Sync / retry (unless --no-sync)", "q / Ctrl+C  Quit",
 	}
 )
 
@@ -107,6 +107,9 @@ func tokenReadouts(rows []renderRow) []deskMetric {
 func (m interactiveModel) deskHeader() []string {
 	width := m.tableViewportWidth()
 	lines := []string{m.renderStatusline()}
+	if len(m.coverage) > 0 || m.sharedSync.JobID > 0 {
+		lines = append(lines, hintStyle.Render(truncateCell(m.coverageSummary(), width)), hintStyle.Render(truncateCell(m.syncWorkLabel(), width)))
+	}
 	roomy := m.height >= deskRoomyHeight
 	if roomy {
 		lines = append(lines, "")
@@ -281,6 +284,9 @@ func (m interactiveModel) deskFooter() string {
 		position = "syncing · saved data · " + position
 	} else if m.syncErr != nil {
 		position = "sync failed · saved data · " + position
+		if !m.options.noSync {
+			position = "u Retry · " + position
+		}
 	}
 	if maxOffset := m.maxHorizontalOffset(m.rows); maxOffset > 0 {
 		position += fmt.Sprintf(" · x %d/%d", m.horizontalOffset+1, maxOffset+1)

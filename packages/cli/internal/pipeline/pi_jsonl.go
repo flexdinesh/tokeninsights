@@ -1,7 +1,6 @@
 package pipeline
 
 import (
-	"bufio"
 	"context"
 	"io"
 	"os"
@@ -12,7 +11,6 @@ import (
 
 const (
 	piSessionJSONLSourceKind = "pi-session-jsonl"
-	maxPiJSONLLineBytes      = 16 * 1024 * 1024
 )
 
 type piJSONLAdapter struct{}
@@ -157,8 +155,7 @@ func (a piJSONLAdapter) ParseFrom(ctx context.Context, source Source, options Sy
 	}
 	var facts []RawTokenFact
 	var diagnostics []Diagnostic
-	scanner := bufio.NewScanner(file)
-	scanner.Buffer(make([]byte, 0, 64*1024), maxPiJSONLLineBytes)
+	scanner := newJSONLReader(ctx, file)
 	firstRecord := offset == 0
 	for scanner.Scan() {
 		if ctx.Err() != nil {
@@ -198,6 +195,9 @@ func (a piJSONLAdapter) ParseFrom(ctx context.Context, source Source, options Sy
 	if err := scanner.Err(); err != nil {
 		return nil, nil, false, err
 	}
+	if scanner.deferred {
+		diagnostics = append(diagnostics, Diagnostic{Harness: HarnessPi, Severity: "info", Code: "jsonl_incomplete_tail", Message: "unfinished final JSONL record deferred until next sync"})
+	}
 	if !session.hasHeader && session.filenameSessionID != "" && len(facts) > 0 {
 		diagnostics = append(diagnostics, piDiagnostic("pi_jsonl_missing_session_header", "used Pi filename session id because the session header was missing"))
 	}
@@ -208,8 +208,7 @@ func piCursorHeader(ctx context.Context, file *os.File, filenameSessionID string
 	if _, err := file.Seek(0, io.SeekStart); err != nil {
 		return piJSONLSessionFile{}, false, err
 	}
-	scanner := bufio.NewScanner(file)
-	scanner.Buffer(make([]byte, 0, 64*1024), maxPiJSONLLineBytes)
+	scanner := newJSONLReader(ctx, file)
 	for scanner.Scan() {
 		if err := ctx.Err(); err != nil {
 			return piJSONLSessionFile{}, false, err

@@ -81,6 +81,30 @@ func TestLifecycleMissingAndFresh(t *testing.T) {
 	}
 }
 
+func TestV12SyncMetadataUpgradePreservesUsage(t *testing.T) {
+	database, path := newTestDB(t)
+	insertCanonicalToken(t, database, 2000, "pi", "retained", "openai", "gpt", 7, 1, 0, 0, 0, 8)
+	execLifecycleSQL(t, database, "DROP TABLE sync_sources; DROP TABLE sync_harnesses; DROP TABLE sync_jobs; DROP TABLE sync_state; PRAGMA user_version = 12")
+	if got := inspectLifecycle(t, path); got != (Compatibility{Exists: true, MigrationRequired: true}) {
+		t.Fatalf("V12 compatibility: %+v", got)
+	}
+	release, err := AcquireWriterLock(context.Background(), path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = UpgradeMetadata(context.Background(), path)
+	release()
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertDBCount(t, database, TableCanonicalTokenUsage, 1)
+	assertDBCount(t, database, TableRawTokenUsage, 1)
+	assertDBCount(t, database, TableSyncState, 1)
+	if got := inspectLifecycle(t, path); got != (Compatibility{Exists: true}) {
+		t.Fatalf("upgraded compatibility: %+v", got)
+	}
+}
+
 func TestV11MetadataUpgradePreservesUsage(t *testing.T) {
 	database, path := newTestDB(t)
 	insertCanonicalToken(t, database, 2000, "pi", "retained", "openai", "gpt", 7, 1, 0, 0, 0, 8)
@@ -608,7 +632,8 @@ func legacySchema(t *testing.T, version int) string {
 	}
 	var statements []string
 	for _, statement := range strings.Split(string(schema), ";") {
-		if (version < 8 && strings.Contains(statement, "database_lifecycle")) ||
+		if (version < 13 && (strings.Contains(statement, "sync_state") || strings.Contains(statement, "sync_jobs") || strings.Contains(statement, "sync_harnesses") || strings.Contains(statement, "sync_sources"))) ||
+			(version < 8 && strings.Contains(statement, "database_lifecycle")) ||
 			(version < 6 && strings.Contains(statement, "normalization_work_queue")) ||
 			(version < 12 && strings.Contains(statement, "normalization_rule_state")) ||
 			(version < 7 && strings.Contains(statement, "source_refresh_state")) ||

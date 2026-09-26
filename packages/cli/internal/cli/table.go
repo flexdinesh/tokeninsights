@@ -16,10 +16,13 @@ import (
 )
 
 type reloadMsg struct {
-	rows          []renderRow
-	lastSyncMs    int64
-	sessionCounts db.SessionCounts
-	err           error
+	rows             []renderRow
+	coverage         []db.DayCoverage
+	revision         int64
+	preservePosition bool
+	lastSyncMs       int64
+	sessionCounts    db.SessionCounts
+	err              error
 }
 
 type filterValuesMsg struct {
@@ -39,6 +42,11 @@ type syncDoneMsg struct {
 }
 
 type snapshotMsg struct{ reloadMsg }
+
+type sharedSyncMsg struct {
+	status db.SyncStatus
+	err    error
+}
 
 type startDashboardLoadMsg struct{}
 
@@ -96,6 +104,10 @@ type interactiveModel struct {
 	filterLoading    bool
 	filterErr        error
 	ctx              context.Context
+	cancel           context.CancelFunc
+	statusPolling    bool
+	sharedSync       db.SyncStatus
+	coverage         []db.DayCoverage
 	options          tableOptions
 	now              time.Time
 	err              error
@@ -170,8 +182,10 @@ func newInteractiveModel(ctx context.Context, options tableOptions, now time.Tim
 	if options.repoGroup == "" {
 		options.repoGroup = db.RepoGroupRepository
 	}
+	syncContext, cancel := context.WithCancel(ctx)
 	m := interactiveModel{
-		ctx:              ctx,
+		ctx:              syncContext,
+		cancel:           cancel,
 		options:          options,
 		now:              now,
 		groupBy:          groupByNone,
@@ -236,6 +250,10 @@ func (m interactiveModel) reloadCmd() tea.Cmd {
 	}
 }
 
+func (m interactiveModel) refreshCmd() tea.Cmd {
+	return func() tea.Msg { result := m.loadDashboard(); result.preservePosition = true; return result }
+}
+
 func (m interactiveModel) deferredReloadCmd(delay time.Duration) tea.Cmd {
 	return tea.Tick(delay, func(time.Time) tea.Msg {
 		return m.loadDashboard()
@@ -269,8 +287,18 @@ func (m interactiveModel) loadDashboard() reloadMsg {
 	if err != nil {
 		return reloadMsg{err: err}
 	}
-	lastSyncMs, err := db.LastCompletedSync(m.ctx, tx)
-	return reloadMsg{rows: rows, lastSyncMs: lastSyncMs, sessionCounts: counts, err: err}
+	coverage, err := db.ViewerDayCoverage(m.ctx, tx, countsFilter, m.now)
+	if err != nil {
+		return reloadMsg{err: err}
+	}
+	status, err := db.LoadSyncStatus(m.ctx, tx)
+	if err != nil {
+		return reloadMsg{err: err}
+	}
+	if m.activeTab == tabTokens && m.options.bucket == bucketDay && m.groupBy == groupByNone {
+		rows = withDayCoverage(rows, coverage, m.options.sort)
+	}
+	return reloadMsg{rows: rows, coverage: coverage, revision: status.Revision, lastSyncMs: status.LastSuccessfulAtMs, sessionCounts: counts}
 }
 
 func (m interactiveModel) filterValuesCmd(dimension filterDimension) tea.Cmd {
@@ -453,6 +481,26 @@ func (m interactiveModel) tableContentWidth(rows []renderRow) int {
 
 func (m interactiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case sharedSyncMsg:
+		commands := []tea.Cmd{m.sharedSyncCmd()}
+		if msg.err == nil {
+			previous := m.sharedSync
+			m.sharedSync = msg.status
+			if msg.status.Phase == "rebuilding" || msg.status.Phase == "rebuild_failed" {
+				m.showingSnapshot, m.snapshotAllowed = false, false
+				m.rows, m.coverage = nil, nil
+				m.syncStatus = pipeline.SyncProgressRebuilding
+			} else if !m.reloadInFlight && (msg.status.Revision != previous.Revision || msg.status.JobID != previous.JobID) {
+				m.snapshotAllowed = true
+				m.reloadInFlight = true
+				if m.syncing {
+					commands = append(commands, m.snapshotCmd())
+				} else {
+					commands = append(commands, m.refreshCmd())
+				}
+			}
+		}
+		return m, tea.Batch(commands...)
 	case syncProgressMsg:
 		m = m.withSyncProgress(msg.event)
 		if msg.event.Status == pipeline.SyncProgressResetting || msg.event.Status == pipeline.SyncProgressRebuilding {
@@ -473,10 +521,11 @@ func (m interactiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.err != nil {
 			m.syncSummary = msg.summary
 			m.syncErr = msg.err
-			if m.showingSnapshot && !errors.Is(msg.err, db.ErrRebuildPending) && !errors.Is(msg.err, db.ErrRecoveryRequired) {
+			if !errors.Is(msg.err, db.ErrRebuildPending) && !errors.Is(msg.err, db.ErrRecoveryRequired) {
 				m.syncing = false
 				m.syncInFlight = false
-				return m, nil
+				m.reloadInFlight = true
+				return m, m.reloadCmd()
 			}
 			return m, tea.Quit
 		}
@@ -496,6 +545,10 @@ func (m interactiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m = m.measureHeights()
 		return m, m.reloadCmd()
 	case reloadMsg:
+		if m.sharedSync.Phase == "rebuilding" || m.sharedSync.Phase == "rebuild_failed" {
+			m.reloadInFlight = false
+			return m, nil
+		}
 		m.loading = false
 		m.reloadInFlight = false
 		if msg.err != nil {
@@ -504,24 +557,38 @@ func (m interactiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.err = nil
 		m.rows = msg.rows
+		m.coverage = msg.coverage
+		m.sharedSync.Revision = msg.revision
 		m.sessionCounts = msg.sessionCounts
 		m.lastSyncMs = msg.lastSyncMs
 		m = m.reconcileStatusline()
 		m = m.reconcileTableSummary()
-		m = m.resetRowPosition()
+		if msg.preservePosition {
+			m = m.ensureCursorVisible()
+		} else {
+			m = m.resetRowPosition()
+		}
 		m = m.clampHorizontalOffset()
 		return m, nil
 	case snapshotMsg:
-		if !m.syncing || !m.snapshotAllowed || m.showingSnapshot || msg.err != nil || msg.lastSyncMs == 0 || msg.sessionCounts.Synced == 0 {
+		m.reloadInFlight = false
+		if !m.syncing || !m.snapshotAllowed || msg.err != nil {
 			return m, nil
 		}
+		wasShowing := m.showingSnapshot
 		m.showingSnapshot = true
 		m.rows = msg.rows
+		m.coverage = msg.coverage
+		m.sharedSync.Revision = msg.revision
 		m.sessionCounts = msg.sessionCounts
 		m.lastSyncMs = msg.lastSyncMs
 		m = m.reconcileStatusline()
 		m = m.reconcileTableSummary()
-		m = m.resetRowPosition()
+		if wasShowing {
+			m = m.ensureCursorVisible()
+		} else {
+			m = m.resetRowPosition()
+		}
 		return m, nil
 	case filterValuesMsg:
 		if m.popup != popupFilterValues || msg.dimension != m.filterDimension {
@@ -552,10 +619,12 @@ func (m interactiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case tea.KeyMsg:
 		if msg.Type == tea.KeyCtrlC {
+			m.cancelSync()
 			return m, tea.Quit
 		}
 		if m.syncing && !m.showingSnapshot {
 			if msg.String() == "q" {
+				m.cancelSync()
 				return m, tea.Quit
 			}
 			return m, nil
@@ -609,6 +678,7 @@ func (m interactiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case tea.KeyRunes:
 			switch string(msg.Runes) {
 			case "q":
+				m.cancelSync()
 				return m, tea.Quit
 			case "1", "2", "3", "4", "5", "6", "7":
 				index := int(msg.Runes[0] - '1')
@@ -626,6 +696,16 @@ func (m interactiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "?":
 				m.popup, m.popupCursor = popupHelp, 0
 				return m, nil
+			case "u":
+				if m.options.noSync || m.syncInFlight || m.sharedSync.Running {
+					return m, nil
+				}
+				m.syncing, m.syncInFlight, m.snapshotAllowed, m.showingSnapshot = true, true, true, true
+				m.syncErr = nil
+				m.syncProgressRows = initialSyncProgressRows()
+				messages := make(chan tea.Msg, syncProgressBufferSize())
+				m.syncMessages = messages
+				return m, tea.Batch(m.syncCmd(messages), readSyncProgressCmd(messages), syncAnimationCmd())
 			case "r":
 				if m.reloadInFlight {
 					return m, nil
@@ -668,6 +748,11 @@ func (m interactiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 	case tea.WindowSizeMsg:
+		poll := tea.Cmd(nil)
+		if !m.statusPolling {
+			m.statusPolling = true
+			poll = m.sharedSyncCmd()
+		}
 		m.width = msg.Width
 		m.height = msg.Height
 		m = m.measureHeights()
@@ -678,12 +763,13 @@ func (m interactiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			syncMessages := make(chan tea.Msg, syncProgressBufferSize())
 			m.syncMessages = syncMessages
 			m.syncInFlight = true
-			return m, tea.Batch(m.syncCmd(syncMessages), readSyncProgressCmd(syncMessages), syncAnimationCmd(), m.snapshotCmd())
+			return m, tea.Batch(m.syncCmd(syncMessages), readSyncProgressCmd(syncMessages), syncAnimationCmd(), m.snapshotCmd(), poll)
 		}
 		if m.loading && !m.reloadInFlight {
 			m.reloadInFlight = true
-			return m, m.deferredReloadCmd(initialLoadingPaintDelay)
+			return m, tea.Batch(m.deferredReloadCmd(initialLoadingPaintDelay), poll)
 		}
+		return m, poll
 	}
 	return m, nil
 }
@@ -715,7 +801,7 @@ func syncAnimationCmd() tea.Cmd {
 }
 
 func syncProgressBufferSize() int {
-	return len(pipeline.SupportedHarnesses)*3 + 4
+	return len(pipeline.SupportedHarnesses)*5 + 8
 }
 
 func (m interactiveModel) syncCmd(messages chan<- tea.Msg) tea.Cmd {
@@ -726,10 +812,16 @@ func (m interactiveModel) syncCmd(messages chan<- tea.Msg) tea.Cmd {
 			Normalize: true,
 			Now:       m.now,
 			Progress: func(event pipeline.SyncProgressEvent) {
-				messages <- syncProgressMsg{event: event}
+				select {
+				case messages <- syncProgressMsg{event: event}:
+				case <-m.ctx.Done():
+				}
 			},
 		})
-		messages <- syncDoneMsg{summary: summary, err: err}
+		select {
+		case messages <- syncDoneMsg{summary: summary, err: err}:
+		case <-m.ctx.Done():
+		}
 		close(messages)
 		return nil
 	}
@@ -1206,7 +1298,7 @@ func filterDimensionLabel(dimension filterDimension) string {
 }
 
 func (m interactiveModel) View() string {
-	if m.syncing && !m.showingSnapshot {
+	if (m.syncing && !m.showingSnapshot) || m.sharedSync.Phase == "rebuilding" || m.sharedSync.Phase == "rebuild_failed" {
 		return m.renderSyncProgress()
 	}
 	view := m.renderDesk()
@@ -1255,7 +1347,7 @@ func (m interactiveModel) renderSyncProgress() string {
 	if m.syncStatus != "" {
 		rawRows = append(rawRows, "", fmt.Sprintf("%s %s", m.syncProgressStatusIcon(m.syncStatus), m.syncStatus))
 	}
-	lines = append(lines, "")
+	lines = append(lines, "", m.syncWorkLabel())
 	lines = append(lines, rawRows...)
 	return renderSyncProgressOnAppSurface(lines, width, height)
 }

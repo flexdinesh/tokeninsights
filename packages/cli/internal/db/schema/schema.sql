@@ -12,6 +12,57 @@ CREATE TABLE IF NOT EXISTS database_lifecycle (
   CHECK (rebuild_pending != 1 OR (rebuild_source_key IS NOT NULL AND length(rebuild_source_key) > 0))
 );
 
+-- Local operational state; excluded from analytics and exports.
+CREATE TABLE IF NOT EXISTS sync_state (
+  id INTEGER PRIMARY KEY CHECK (id = 1),
+  revision INTEGER NOT NULL DEFAULT 0 CHECK (revision >= 0),
+  last_successful_sync_at_ms INTEGER NOT NULL DEFAULT 0 CHECK (last_successful_sync_at_ms >= 0)
+);
+
+INSERT OR IGNORE INTO sync_state (id) VALUES (1);
+
+CREATE TABLE IF NOT EXISTS sync_jobs (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  scope_key TEXT NOT NULL,
+  status TEXT NOT NULL CHECK (status IN ('running', 'completed', 'failed', 'cancelled', 'interrupted')),
+  phase TEXT NOT NULL,
+  started_at_ms INTEGER NOT NULL,
+  completed_at_ms INTEGER,
+  updated_at_ms INTEGER NOT NULL,
+  normalize INTEGER NOT NULL CHECK (normalize IN (0, 1)),
+  all_harnesses INTEGER NOT NULL CHECK (all_harnesses IN (0, 1)),
+  error_code TEXT NOT NULL DEFAULT '',
+  CHECK (completed_at_ms IS NULL OR completed_at_ms >= started_at_ms)
+);
+
+CREATE TABLE IF NOT EXISTS sync_harnesses (
+  job_id INTEGER NOT NULL,
+  harness TEXT NOT NULL CHECK (harness IN ('opencode', 'pi', 'codex', 'claude-code')),
+  status TEXT NOT NULL CHECK (status IN ('pending', 'discovering', 'syncing', 'normalizing', 'skipped', 'synced', 'failed')),
+  discovered INTEGER NOT NULL DEFAULT 0 CHECK (discovered IN (0, 1)),
+  total_sources INTEGER NOT NULL DEFAULT 0 CHECK (total_sources >= 0),
+  checked_sources INTEGER NOT NULL DEFAULT 0 CHECK (checked_sources >= 0),
+  failed_sources INTEGER NOT NULL DEFAULT 0 CHECK (failed_sources >= 0),
+  checked_at_ms INTEGER NOT NULL DEFAULT 0 CHECK (checked_at_ms >= 0),
+  PRIMARY KEY (job_id, harness),
+  FOREIGN KEY (job_id) REFERENCES sync_jobs(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS sync_sources (
+  job_id INTEGER NOT NULL,
+  harness TEXT NOT NULL CHECK (harness IN ('opencode', 'pi', 'codex', 'claude-code')),
+  source_id TEXT NOT NULL,
+  source_kind TEXT NOT NULL,
+  status TEXT NOT NULL CHECK (status IN ('pending', 'reading', 'ingested', 'ready', 'unchanged', 'failed', 'deferred')),
+  error_code TEXT NOT NULL DEFAULT '',
+  min_occurred_at_ms INTEGER,
+  max_occurred_at_ms INTEGER,
+  updated_at_ms INTEGER NOT NULL,
+  PRIMARY KEY (job_id, harness, source_kind, source_id),
+  FOREIGN KEY (job_id, harness) REFERENCES sync_harnesses(job_id, harness) ON DELETE CASCADE,
+  CHECK (min_occurred_at_ms IS NULL OR max_occurred_at_ms >= min_occurred_at_ms)
+);
+
 CREATE TABLE IF NOT EXISTS ingest_runs (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   run_id TEXT NOT NULL UNIQUE,
@@ -236,4 +287,4 @@ CREATE TABLE IF NOT EXISTS normalization_diagnostics (
 CREATE INDEX IF NOT EXISTS normalization_diagnostics_harness_time_idx ON normalization_diagnostics (harness, recorded_at_ms);
 CREATE INDEX IF NOT EXISTS normalization_diagnostics_code_idx ON normalization_diagnostics (code);
 
-PRAGMA user_version = 12;
+PRAGMA user_version = 13;

@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useState } from 'react'
+import { lazy, Suspense, useEffect } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
 import {
@@ -25,6 +25,7 @@ import { labels } from './format'
 import { FilterToolbar, QuickPeriods } from './components/Filters'
 import { SummaryCards } from './components/SummaryCards'
 import { ResultsTable } from './components/ResultsTable'
+import { SyncCoverage } from './components/SyncCoverage'
 import { SourceSelector } from './components/SourceSelector'
 import { useSources } from './source-context'
 import { createSource } from './sources'
@@ -118,17 +119,12 @@ function DashboardShell() {
   }, [active.baseUrl, add, bootstrap])
   const statusQuery = useSyncStatus(active.baseUrl, Boolean(bootstrap))
   const status = statusQuery.data
-  const [inspectedRevision, setInspectedRevision] = useState<number | null>(null)
   const recoveryFailed = status?.phase === 'rebuild_failed'
   const enabled = Boolean(
-    status &&
-    status.phase !== 'resetting' &&
-    status.phase !== 'rebuilding' &&
-    !recoveryFailed &&
-    (!status.error || inspectedRevision === status.revision),
+    status && status.phase !== 'resetting' && status.phase !== 'rebuilding' && !recoveryFailed,
   )
   const revision = status?.revision ?? 0
-  const analytics = useAnalytics(active.baseUrl, query, revision, enabled)
+  const analytics = useAnalytics(active.baseUrl, query, revision, enabled, Boolean(status?.running))
   const facets = useFacets(active.baseUrl, query, revision, enabled)
   const sync = useMutation({
     mutationFn: () => syncNow(active.baseUrl),
@@ -320,11 +316,6 @@ function DashboardShell() {
                   <Button variant="outline" onClick={() => sync.mutate()} disabled={running}>
                     Retry Sync
                   </Button>
-                  {!enabled && !recoveryFailed && (
-                    <Button variant="outline" onClick={() => setInspectedRevision(status.revision)}>
-                      Inspect Existing Data
-                    </Button>
-                  )}
                 </Alert>
               )}
               {enabled && analytics.error && !running && (
@@ -335,6 +326,9 @@ function DashboardShell() {
                   message="Filter values couldn’t load."
                   onRetry={() => void facets.refetch()}
                 />
+              )}
+              {enabled && data?.coverage && (
+                <SyncCoverage days={data.coverage} timezone={bootstrap.timezone} />
               )}
               {enabled && !hasData && (!analytics.error || running) && <DashboardSkeleton />}
               {enabled && data && hasData && (
@@ -369,7 +363,7 @@ function DashboardShell() {
                     )}
                   </div>
                   {(!analytics.isPlaceholderData || resultsMatchView) && (
-                    <ResultsTable data={data} />
+                    <ResultsTable data={data} timezone={bootstrap.timezone} />
                   )}
                 </div>
               )}
@@ -419,6 +413,41 @@ function SyncProgress({ status, hasData }: { status: SyncStatus; hasData: boolea
           <p>{message}</p>
         </div>
       </div>
+      {status.progress && (
+        <div className="sync-work-progress">
+          <progress
+            aria-label="Sources checked"
+            max={
+              status.progress.discoveryComplete
+                ? Math.max(1, status.progress.totalSources)
+                : undefined
+            }
+            value={status.progress.discoveryComplete ? status.progress.checkedSources : undefined}
+          />
+          <span>
+            {status.progress.discoveryComplete
+              ? `${status.progress.checkedSources} / ${status.progress.totalSources} sources checked`
+              : `${status.progress.totalSources} sources found · discovering`}
+          </span>
+          {status.progress.discoveryComplete && status.progress.totalSources > 0 && (
+            <span>
+              {Math.floor((status.progress.checkedSources / status.progress.totalSources) * 100)}%
+              checked
+            </span>
+          )}
+          <span>
+            {status.progress.readySources} ready
+            {status.progress.failedSources > 0 ? ` · ${status.progress.failedSources} failed` : ''}
+          </span>
+          <span>
+            {Math.max(
+              0,
+              Math.floor((status.progress.updatedAt - status.progress.startedAt) / 1000),
+            )}
+            s elapsed
+          </span>
+        </div>
+      )}
       <div className="sync-harnesses">
         {Object.entries(status.harnesses).map(([harness, phase]) => (
           <div key={harness} data-phase={phase}>
