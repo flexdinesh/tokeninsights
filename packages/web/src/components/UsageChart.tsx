@@ -46,6 +46,34 @@ export function categoricalChartColor(index: number): string {
 }
 
 const axisTick = { fill: 'var(--color-text-muted)', fontSize: 'var(--text-xs)' }
+
+function TimelineTick({
+  x,
+  y,
+  index,
+  visibleTicksCount,
+  payload,
+}: {
+  x?: number
+  y?: number
+  index?: number
+  visibleTicksCount?: number
+  payload?: { value?: string | number }
+}) {
+  const anchor =
+    (visibleTicksCount ?? 0) <= 1
+      ? 'middle'
+      : index === 0
+        ? 'start'
+        : index === (visibleTicksCount ?? 0) - 1
+          ? 'end'
+          : 'middle'
+  return (
+    <text x={x} y={y} dy="0.8em" textAnchor={anchor} {...axisTick}>
+      {payload?.value}
+    </text>
+  )
+}
 const tooltipStyle = {
   background: 'var(--color-surface)',
   color: 'var(--color-text-primary)',
@@ -102,7 +130,7 @@ export function UsageChart({ rows }: { rows: Row[] }) {
       <div className="panel-heading">
         <div>
           <h2>{title}</h2>
-          <p>
+          <p className={timeline ? 'sr-only' : undefined}>
             {timeline
               ? 'Token usage across the selected range'
               : context
@@ -130,7 +158,7 @@ export function UsageChart({ rows }: { rows: Row[] }) {
             <BucketControl />
           </div>
         ) : (
-          <span className="eyebrow">{context ? 'Prompt-side tokens' : 'Countable tokens'}</span>
+          <span className="chart-unit">{context ? 'Prompt-side tokens' : 'Countable tokens'}</span>
         )}
       </div>
       {rows.length === 0 ? (
@@ -144,12 +172,6 @@ export function UsageChart({ rows }: { rows: Row[] }) {
                 margin={{ top: 12, right: 12, left: 0, bottom: 0 }}
                 accessibilityLayer
               >
-                <defs>
-                  <linearGradient id="usage-fill" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="var(--chart-1)" stopOpacity={0.24} />
-                    <stop offset="100%" stopColor="var(--chart-1)" stopOpacity={0.015} />
-                  </linearGradient>
-                </defs>
                 <CartesianGrid
                   vertical={false}
                   stroke="var(--color-border)"
@@ -161,7 +183,7 @@ export function UsageChart({ rows }: { rows: Row[] }) {
                   axisLine={false}
                   minTickGap={40}
                   height={categoryAxisHeight}
-                  tick={axisTick}
+                  tick={<TimelineTick />}
                 />
                 <YAxis
                   tickFormatter={formatCount}
@@ -181,7 +203,7 @@ export function UsageChart({ rows }: { rows: Row[] }) {
                   name={metrics.find((m) => m.key === metric)?.label}
                   stroke="var(--chart-1)"
                   strokeWidth={2}
-                  fill="url(#usage-fill)"
+                  fill="var(--accent)"
                   isAnimationActive={false}
                   dot={rows.length === 1}
                 />

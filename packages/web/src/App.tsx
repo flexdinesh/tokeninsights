@@ -148,6 +148,9 @@ function DashboardShell() {
   const resultsMatchView =
     analytics.data?.tab === query.tab &&
     (query.tab !== 'repo' || analytics.data?.locationGroup === query.locationGroup)
+  const sourceUnavailable = Boolean(
+    bootstrapQuery.error || statusQuery.error || analytics.error || facets.error,
+  )
   return (
     <div className="app-shell">
       <a href="#dashboard" className="skip-link">
@@ -161,11 +164,16 @@ function DashboardShell() {
           </span>
         </div>
         <div className="header-actions">
-          <SourceSelector
-            unavailable={Boolean(
-              bootstrapQuery.error || statusQuery.error || analytics.error || facets.error,
-            )}
-          />
+          <SourceSelector unavailable={sourceUnavailable} />
+          <span className="header-status" role="status">
+            {sourceUnavailable
+              ? 'Unavailable'
+              : running
+                ? 'Syncing…'
+                : data?.lastSynced
+                  ? 'Synced'
+                  : 'Ready'}
+          </span>
           <span className="header-divider" />
           <Button
             variant="ghost"
@@ -190,6 +198,7 @@ function DashboardShell() {
           </Button>
           <Button
             variant="outline"
+            size="sm"
             className="reload-button"
             aria-label="Reload Data"
             title="Reload Data"
@@ -201,6 +210,7 @@ function DashboardShell() {
           </Button>
           <Button
             className="sync-button"
+            size="sm"
             disabled={running || !bootstrap}
             onClick={() => sync.mutate()}
           >
@@ -232,13 +242,7 @@ function DashboardShell() {
       )}
       {bootstrap && (
         <main id="dashboard" className="dashboard">
-          <div className="dashboard-heading">
-            <div>
-              <h1>Token usage</h1>
-              <p>Your usage, in perspective.</p>
-            </div>
-            <QuickPeriods />
-          </div>
+          <h1 className="sr-only">Token usage</h1>
           <div className="view-controls">
             <nav className="view-tabs" aria-label="Analytics views">
               {tabs.map(({ id, icon: Icon }) => (
@@ -255,6 +259,7 @@ function DashboardShell() {
                 </Button>
               ))}
             </nav>
+            <QuickPeriods />
           </div>
           {query.tab === 'repo' && (
             <div className="repo-controls" aria-label="Repo view options">

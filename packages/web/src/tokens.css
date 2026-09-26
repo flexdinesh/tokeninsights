@@ -1,29 +1,29 @@
-/* Signal Studio: shared semantic roles for the browser measurement workspace. */
+/* Graphite & Lime: compact browser measurement workspace. */
 :root {
-  --background: #eef4f9;
-  --foreground: #1c3048;
-  --card: #ffffff;
+  --background: #f5f6f1;
+  --foreground: #272d24;
+  --card: #fdfefb;
   --card-foreground: var(--foreground);
-  --popover: #ffffff;
+  --popover: #fdfefb;
   --popover-foreground: var(--foreground);
-  --primary: #12628f;
-  --primary-foreground: #ffffff;
-  --secondary: #e7f0f8;
-  --secondary-foreground: #304c67;
-  --muted: #e7f0f8;
-  --muted-foreground: #55687e;
-  --accent: #ddeffc;
-  --accent-foreground: #105d8b;
+  --primary: #c5e85d;
+  --primary-foreground: #25300f;
+  --secondary: #ecefe6;
+  --secondary-foreground: #46513e;
+  --muted: #ecefe6;
+  --muted-foreground: #5d6657;
+  --accent: #e7eecf;
+  --accent-foreground: #507000;
   --destructive: oklch(0.56 0.22 27);
   --destructive-foreground: oklch(0.985 0 0);
-  --border: #d9e3ed;
-  --input: #8298ae;
-  --ring: #12628f;
+  --border: #dce1d5;
+  --input: #828f75;
+  --ring: #507000;
   --success: oklch(0.49 0.14 155);
   --warning: oklch(0.55 0.14 75);
   --error-surface: oklch(0.96 0.025 25);
-  --chart-1: #147cab;
-  --chart-2: #677d99;
+  --chart-1: #507000;
+  --chart-2: #748068;
   --chart-3: oklch(0.67 0.16 65);
   --chart-4: oklch(0.58 0.16 165);
   --chart-5: oklch(0.6 0.2 25);
@@ -38,12 +38,12 @@
   --font-sans: ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   --font-mono: ui-monospace, 'SFMono-Regular', Consolas, monospace;
   --text-xs: 0.8125rem;
-  --text-sm: 0.9375rem;
+  --text-sm: 0.875rem;
   --text-base: 1.0625rem;
   --text-lg: 1.1875rem;
   --text-2xl: 1.875rem;
   --text-3xl: 2.25rem;
-  --text-readout: 1.875rem;
+  --text-readout: 1.5rem;
   --text-metric: 1.5rem;
   --weight-medium: 500;
   --weight-semibold: 600;
@@ -63,25 +63,24 @@
   --space-12: 3rem;
   --space-16: 4rem;
   --radius-sm: 0.25rem;
-  --radius-md: 0.5rem;
-  --radius-lg: 1rem;
+  --radius-md: 0.375rem;
+  --radius-lg: 0.5rem;
   --border-width: 0.0625rem;
   --focus-width: 0.125rem;
   --focus-offset: 0.125rem;
-  --control-height-sm: 2rem;
-  --control-height-md: 2.25rem;
-  --control-height-lg: 2.5rem;
+  --control-height-sm: 1.875rem;
+  --control-height-md: 2rem;
+  --control-height-lg: 2.25rem;
   --control-height: var(--control-height-md);
   --control-height-compact: var(--control-height-sm);
   --icon-size: 1rem;
   --content-width: 100rem;
-  --filter-rail-width: 17rem;
   --reading-width: 42rem;
-  --page-gutter: var(--space-8);
-  --panel-padding: var(--space-6);
-  --header-height: 4rem;
+  --page-gutter: var(--space-4);
+  --panel-padding: var(--space-3);
+  --header-height: 3rem;
   --popover-width: 22rem;
-  --chart-height: 17rem;
+  --chart-height: 10rem;
   --layer-sticky: 1;
   --layer-header: 10;
   --layer-popover: 20;
@@ -115,34 +114,34 @@
   --color-chart-secondary: var(--chart-2);
   --color-chart-tertiary: var(--chart-3);
   color-scheme: light;
-  --rail-surface: #e5eef6;
+  --rail-surface: #ecefe6;
 }
 
 :root[data-theme='dark'] {
-  --background: #101b2c;
-  --foreground: #e5eff8;
-  --card: #17263a;
+  --background: #17191b;
+  --foreground: #edf0ee;
+  --card: #202326;
   --card-foreground: var(--foreground);
-  --popover: #1c2e45;
+  --popover: #282c2e;
   --popover-foreground: var(--foreground);
-  --primary: #83cefa;
-  --primary-foreground: #10273b;
-  --secondary: #20344c;
-  --secondary-foreground: #d4e3f0;
-  --muted: #20344c;
-  --muted-foreground: #adbdd0;
-  --accent: #263f59;
-  --accent-foreground: #9bdafd;
+  --primary: #c5ee62;
+  --primary-foreground: #1c260e;
+  --secondary: #292e2a;
+  --secondary-foreground: #c2c9be;
+  --muted: #292e2a;
+  --muted-foreground: #afb6ad;
+  --accent: #303b21;
+  --accent-foreground: #c5ee62;
   --destructive: oklch(0.68 0.19 23);
   --destructive-foreground: oklch(0.985 0 0);
-  --border: #31455d;
-  --input: #68819c;
-  --ring: #83cefa;
+  --border: #393e39;
+  --input: #69745f;
+  --ring: #c5ee62;
   --success: oklch(0.72 0.16 155);
   --warning: oklch(0.78 0.15 80);
   --error-surface: oklch(0.2 0.04 25);
-  --chart-1: #66c6f1;
-  --chart-2: #9aacc4;
+  --chart-1: #c5ee62;
+  --chart-2: #9da991;
   --chart-3: oklch(0.76 0.15 70);
   --chart-4: oklch(0.72 0.14 165);
   --chart-5: oklch(0.72 0.18 25);
@@ -157,35 +156,35 @@
   --color-accent-active: oklch(0.98 0 0);
   --shadow-overlay: 0 0.75rem 2rem rgb(0 0 0 / 45%);
   color-scheme: dark;
-  --rail-surface: #152238;
+  --rail-surface: #202326;
 }
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme='light']):not([data-theme='dark']) {
-    --background: #101b2c;
-    --foreground: #e5eff8;
-    --card: #17263a;
+    --background: #17191b;
+    --foreground: #edf0ee;
+    --card: #202326;
     --card-foreground: var(--foreground);
-    --popover: #1c2e45;
+    --popover: #282c2e;
     --popover-foreground: var(--foreground);
-    --primary: #83cefa;
-    --primary-foreground: #10273b;
-    --secondary: #20344c;
-    --secondary-foreground: #d4e3f0;
-    --muted: #20344c;
-    --muted-foreground: #adbdd0;
-    --accent: #263f59;
-    --accent-foreground: #9bdafd;
+    --primary: #c5ee62;
+    --primary-foreground: #1c260e;
+    --secondary: #292e2a;
+    --secondary-foreground: #c2c9be;
+    --muted: #292e2a;
+    --muted-foreground: #afb6ad;
+    --accent: #303b21;
+    --accent-foreground: #c5ee62;
     --destructive: oklch(0.68 0.19 23);
     --destructive-foreground: oklch(0.985 0 0);
-    --border: #31455d;
-    --input: #68819c;
-    --ring: #83cefa;
+    --border: #393e39;
+    --input: #69745f;
+    --ring: #c5ee62;
     --success: oklch(0.72 0.16 155);
     --warning: oklch(0.78 0.15 80);
     --error-surface: oklch(0.2 0.04 25);
-    --chart-1: #66c6f1;
-    --chart-2: #9aacc4;
+    --chart-1: #c5ee62;
+    --chart-2: #9da991;
     --chart-3: oklch(0.76 0.15 70);
     --chart-4: oklch(0.72 0.14 165);
     --chart-5: oklch(0.72 0.18 25);
@@ -200,7 +199,7 @@
     --color-accent-active: oklch(0.98 0 0);
     --shadow-overlay: 0 0.75rem 2rem rgb(0 0 0 / 45%);
     color-scheme: dark;
-    --rail-surface: #152238;
+    --rail-surface: #202326;
   }
 }
 
@@ -239,8 +238,8 @@
 
 @media (max-width: 75rem) {
   :root {
-    --page-gutter: var(--space-6);
-    --panel-padding: var(--space-4);
+    --page-gutter: var(--space-4);
+    --panel-padding: var(--space-3);
   }
 }
 
