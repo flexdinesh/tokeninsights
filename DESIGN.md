@@ -303,8 +303,8 @@ Keep visible labels, field edges, native dates, and associated validation.
 Date ranges wrap to preserve their full label. Search wrappers own their focus
 outline; multiselect rows retain checkbox labels and search.
 Popovers target 22rem width, scroll within available height, and use 8px anchor
-offset with 16px collision clearance. Source selection retains hostname/URL
-disambiguation and add/remove/recovery controls.
+offset with 16px collision clearance. The header shows the data hostname as plain text, with the page origin available
+in its title and footer. Connection failures retain retry controls.
 
 ### Navigation and chips
 

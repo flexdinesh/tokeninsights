@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect } from 'react'
+import { lazy, Suspense, useEffect, useRef } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
 import {
@@ -26,9 +26,6 @@ import { FilterToolbar, QuickPeriods } from './components/Filters'
 import { SummaryCards } from './components/SummaryCards'
 import { ResultsTable } from './components/ResultsTable'
 import { SyncCoverage } from './components/SyncCoverage'
-import { SourceSelector } from './components/SourceSelector'
-import { useSources } from './source-context'
-import { createSource } from './sources'
 import { Button } from './components/ui/button'
 import { Skeleton } from './components/ui/skeleton'
 import { Alert, AlertDescription, AlertTitle } from './components/ui/alert'
@@ -56,13 +53,12 @@ const tabs: { id: Tab; icon: typeof Activity }[] = [
 ]
 
 export function App() {
-  const { active } = useSources()
-  const bootstrap = useBootstrap(active.baseUrl)
-  const defaults = active.defaults ?? bootstrap.data?.defaults
+  const bootstrap = useBootstrap()
+  const defaults = bootstrap.data?.defaults
   if (!defaults) return <ConnectionScreen error={bootstrap.error} retry={bootstrap.refetch} />
   return (
     <DashboardProvider defaults={defaults}>
-      <DashboardShell key={active.baseUrl} />
+      <DashboardShell />
     </DashboardProvider>
   )
 }
@@ -74,7 +70,6 @@ function ConnectionScreen({
   error: Error | null
   retry: () => Promise<unknown>
 }) {
-  const { active } = useSources()
   return (
     <div className="app-shell">
       <header className="app-header">
@@ -84,20 +79,19 @@ function ConnectionScreen({
             Token<span className="brand-light">Insights</span>
           </span>
         </div>
-        <SourceSelector unavailable={Boolean(error)} />
       </header>
       <main className="startup-state">
         {error ? (
           <>
             <CircleAlert />
-            <h1>Couldn’t connect to {active.hostname}</h1>
+            <h1>Couldn’t connect to {window.location.host}</h1>
             <p>{error.message}</p>
             <Button onClick={() => void retry()}>Retry Connection</Button>
           </>
         ) : (
           <>
             <LoaderCircle className="spin" />
-            <p>Connecting to {active.hostname}…</p>
+            <p>Connecting to {window.location.host}…</p>
           </>
         )}
       </main>
@@ -106,37 +100,39 @@ function ConnectionScreen({
 }
 
 function DashboardShell() {
-  const { active, add } = useSources()
   const {
     state: { query, theme },
     dispatch,
   } = useDashboardState()
   const client = useQueryClient()
-  const bootstrapQuery = useBootstrap(active.baseUrl)
+  const bootstrapQuery = useBootstrap()
   const bootstrap = bootstrapQuery.data
-  useEffect(() => {
-    if (bootstrap) add(createSource(active.baseUrl, bootstrap))
-  }, [active.baseUrl, add, bootstrap])
-  const statusQuery = useSyncStatus(active.baseUrl, Boolean(bootstrap))
+  const statusQuery = useSyncStatus(Boolean(bootstrap))
   const status = statusQuery.data
   const recoveryFailed = status?.phase === 'rebuild_failed'
   const enabled = Boolean(
     status && status.phase !== 'resetting' && status.phase !== 'rebuilding' && !recoveryFailed,
   )
   const revision = status?.revision ?? 0
-  const analytics = useAnalytics(active.baseUrl, query, revision, enabled, Boolean(status?.running))
-  const facets = useFacets(active.baseUrl, query, revision, enabled)
+  const previousRevision = useRef(revision)
+  useEffect(() => {
+    if (previousRevision.current === revision) return
+    previousRevision.current = revision
+    void client.invalidateQueries({ queryKey: ['instance'] })
+  }, [client, revision])
+  const analytics = useAnalytics(query, revision, enabled, Boolean(status?.running))
+  const facets = useFacets(query, revision, enabled)
   const sync = useMutation({
-    mutationFn: () => syncNow(active.baseUrl),
+    mutationFn: syncNow,
     onSuccess: (value) => {
-      client.setQueryData(['sync', active.baseUrl], value)
+      client.setQueryData(['sync'], value)
     },
   })
   const reload = () => {
-    void client.invalidateQueries({ queryKey: ['usage', active.baseUrl] })
-    void client.invalidateQueries({ queryKey: ['facets', active.baseUrl] })
-    void client.invalidateQueries({ queryKey: ['sync', active.baseUrl] })
-    void client.invalidateQueries({ queryKey: ['instance', active.baseUrl] })
+    void client.invalidateQueries({ queryKey: ['usage'] })
+    void client.invalidateQueries({ queryKey: ['facets'] })
+    void client.invalidateQueries({ queryKey: ['sync'] })
+    void client.invalidateQueries({ queryKey: ['instance'] })
   }
   const running = status?.running || sync.isPending
   const data = analytics.data?.dashboard
@@ -144,7 +140,7 @@ function DashboardShell() {
   const resultsMatchView =
     analytics.data?.tab === query.tab &&
     (query.tab !== 'repo' || analytics.data?.locationGroup === query.locationGroup)
-  const sourceUnavailable = Boolean(
+  const serverUnavailable = Boolean(
     bootstrapQuery.error || statusQuery.error || analytics.error || facets.error,
   )
   return (
@@ -160,9 +156,11 @@ function DashboardShell() {
           </span>
         </div>
         <div className="header-actions">
-          <SourceSelector unavailable={sourceUnavailable} />
+          <span className="server-identity" title={window.location.origin}>
+            {bootstrap?.hostname ?? window.location.host}
+          </span>
           <span className="header-status" role="status">
-            {sourceUnavailable
+            {serverUnavailable
               ? 'Unavailable'
               : running
                 ? 'Syncing…'
@@ -224,14 +222,14 @@ function DashboardShell() {
           {bootstrapQuery.error ? (
             <>
               <CircleAlert />
-              <h1>Couldn’t connect to {active.hostname}</h1>
+              <h1>Couldn’t connect to {window.location.host}</h1>
               <p>{bootstrapQuery.error.message}</p>
               <Button onClick={() => void bootstrapQuery.refetch()}>Retry Connection</Button>
             </>
           ) : (
             <>
               <LoaderCircle className="spin" />
-              <p>Connecting to {active.hostname}…</p>
+              <p>Connecting to {window.location.host}…</p>
             </>
           )}
         </main>
@@ -283,12 +281,7 @@ function DashboardShell() {
             </div>
           )}
           <div className="studio-layout">
-            <FilterToolbar
-              baseUrl={active.baseUrl}
-              facets={facets.data}
-              revision={revision}
-              enabled={enabled}
-            />
+            <FilterToolbar facets={facets.data} revision={revision} enabled={enabled} />
             <div className="studio-results">
               {(bootstrapQuery.error || statusQuery.error || sync.error) && (
                 <ErrorBanner
@@ -372,7 +365,7 @@ function DashboardShell() {
           <footer className="app-footer">
             <span>
               <span className="status-dot" />
-              {active.hostname} · {active.baseUrl}
+              {bootstrap.hostname} · {window.location.origin}
             </span>
             <span>OpenCode · Pi · Codex · Claude Code</span>
           </footer>

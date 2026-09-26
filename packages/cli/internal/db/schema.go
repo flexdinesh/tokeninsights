@@ -41,6 +41,7 @@ const (
 	ColRebuildPending         = "rebuild_pending"
 	ColRebuildSourceKey       = "rebuild_source_key"
 	ColRunID                  = "run_id"
+	ColHostname               = "hostname"
 	ColHarness                = "harness"
 	ColCollector              = "collector"
 	ColParser                 = "parser"
@@ -107,6 +108,6 @@ const (
 	ColRepositorySource       = "repository_source"
 )
 
-const SupportedSchemaVersion = 13
+const SupportedSchemaVersion = 14
 
 const CurrentDataGeneration = 5

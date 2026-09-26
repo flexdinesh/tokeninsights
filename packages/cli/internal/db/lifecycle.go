@@ -172,6 +172,9 @@ func recognizeSchema(ctx context.Context, reader Reader, version int) error {
 		}
 		required["oc_token_events"] += " part_id source"
 	} else {
+		if version >= 14 {
+			required[TableIngestRuns] += " hostname"
+		}
 		if version >= 5 {
 			required[TableCanonicalTokenUsage] += " provider_source"
 		}

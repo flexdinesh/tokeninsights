@@ -7,28 +7,22 @@ import {
   facetsSchema,
   statusSchema,
 } from './contracts'
-import { normalizeBaseUrl } from './sources'
 import { apiQueryParams } from './state'
 import type { Bootstrap } from './contracts'
 import type { QueryState } from './state'
 
-function endpoint(baseUrl: string, path: string): string {
-  return `${normalizeBaseUrl(baseUrl)}${path}`
-}
-
 export async function request<T>(
-  baseUrl: string,
   path: string,
   schema: z.ZodType<T>,
   signal?: AbortSignal,
   method = 'GET',
 ): Promise<T> {
-  const response = await fetch(endpoint(baseUrl, path), { signal, method })
+  const response = await fetch(path, { signal, method })
   let body: unknown
   try {
     body = await response.json()
   } catch {
-    throw new Error(`Invalid response from ${new URL(baseUrl).hostname}`)
+    throw new Error('Invalid response from server')
   }
   if (!response.ok) {
     const error = errorSchema.safeParse(body)
@@ -37,35 +31,28 @@ export async function request<T>(
   return schema.parse(body)
 }
 
-export function getInstance(baseUrl: string, signal?: AbortSignal): Promise<Bootstrap> {
-  return request(baseUrl, '/api/v1/instance', bootstrapSchema, signal)
+export function getInstance(signal?: AbortSignal): Promise<Bootstrap> {
+  return request('/api/v1/instance', bootstrapSchema, signal)
 }
 
-export const useBootstrap = (baseUrl: string) =>
+export const useBootstrap = () =>
   useQuery({
-    queryKey: ['instance', baseUrl],
-    queryFn: ({ signal }) => getInstance(baseUrl, signal),
+    queryKey: ['instance'],
+    queryFn: ({ signal }) => getInstance(signal),
     staleTime: Infinity,
   })
 
-export const useSyncStatus = (baseUrl: string, enabled = true) =>
+export const useSyncStatus = (enabled = true) =>
   useQuery({
-    queryKey: ['sync', baseUrl],
-    queryFn: ({ signal }) => request(baseUrl, '/api/v1/sync', statusSchema, signal),
+    queryKey: ['sync'],
+    queryFn: ({ signal }) => request('/api/v1/sync', statusSchema, signal),
     enabled,
     refetchInterval: (query) => (query.state.data?.running ? 1000 : 5000),
   })
 
-export const syncNow = (baseUrl: string) =>
-  request(baseUrl, '/api/v1/sync', statusSchema, undefined, 'POST')
+export const syncNow = () => request('/api/v1/sync', statusSchema, undefined, 'POST')
 
-export function useAnalytics(
-  baseUrl: string,
-  q: QueryState,
-  revision: number,
-  enabled: boolean,
-  running = false,
-) {
+export function useAnalytics(q: QueryState, revision: number, enabled: boolean, running = false) {
   const params = apiQueryParams(q)
   const summaryScope = apiQueryParams(q)
   for (const key of ['bucket', 'tab', 'sort', 'direction', 'page', 'pageSize']) {
@@ -73,29 +60,21 @@ export function useAnalytics(
   }
   return useQuery({
     refetchInterval: running ? 1000 : false,
-    queryKey: ['usage', baseUrl, summaryScope.toString(), params.toString(), revision],
+    queryKey: ['usage', summaryScope.toString(), params.toString(), revision],
     queryFn: async ({ signal }) => ({
-      dashboard: await request(baseUrl, `/api/v1/usage?${params}`, dashboardSchema, signal),
+      dashboard: await request(`/api/v1/usage?${params}`, dashboardSchema, signal),
       tab: q.tab,
       locationGroup: q.locationGroup,
     }),
     enabled,
     placeholderData: (previous, previousQuery) => {
       const previousKey = previousQuery?.queryKey
-      return previousKey?.[1] === baseUrl && previousKey[2] === summaryScope.toString()
-        ? previous
-        : undefined
+      return previousKey?.[1] === summaryScope.toString() ? previous : undefined
     },
   })
 }
 
-export function useFacets(
-  baseUrl: string,
-  q: QueryState,
-  revision: number,
-  enabled: boolean,
-  search = '',
-) {
+export function useFacets(q: QueryState, revision: number, enabled: boolean, search = '') {
   const params = apiQueryParams(q)
   if (q.tab !== 'repo') params.delete('tab')
   params.delete('locationGroup')
@@ -105,9 +84,8 @@ export function useFacets(
   params.delete('pageSize')
   params.set('search', search)
   return useQuery({
-    queryKey: ['facets', baseUrl, params.toString(), revision],
-    queryFn: ({ signal }) =>
-      request(baseUrl, `/api/v1/usage/facets?${params}`, facetsSchema, signal),
+    queryKey: ['facets', params.toString(), revision],
+    queryFn: ({ signal }) => request(`/api/v1/usage/facets?${params}`, facetsSchema, signal),
     enabled,
   })
 }

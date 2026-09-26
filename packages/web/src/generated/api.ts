@@ -141,7 +141,10 @@ export type SelectionOutput = zod.output<typeof Selection>
 export const InstanceResponse = zod.strictObject({
   apiVersion: ApiVersion,
   serverVersion: zod.string().min(1),
-  hostname: zod.string().min(1),
+  hostname: zod
+    .string()
+    .min(1)
+    .describe('Hostname recorded by the latest completed ingest run; unknown when unavailable.'),
   timezone: zod.string().min(1),
   capabilities: zod.array(Capability),
   defaults: Selection,

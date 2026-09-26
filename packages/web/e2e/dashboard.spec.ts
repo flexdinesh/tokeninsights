@@ -2,9 +2,6 @@ import { expect, test } from '@playwright/test'
 import { InstanceResponse, UsageResponse } from '../src/generated/api'
 import { dashboardSchema } from '../src/contracts'
 
-const localSource = 'http://127.0.0.1:18765'
-const remoteSource = 'http://127.0.0.1:18766'
-
 test('pending calendar days keep absent usage visible during sync', async ({ page }, testInfo) => {
   const pendingDay = '2026-09-26'
   await page.route('**/api/v1/sync', (route) =>
@@ -482,65 +479,66 @@ test('themes, keyboard filters, mobile layout, and scalable typography', async (
   await page.screenshot({ path: testInfo.outputPath('desktop-light.png'), fullPage: true })
 })
 
-test('remote source switching, persistence, sync, and later failure', async ({ page }) => {
-  const instanceResponse = await page.request.get(`${remoteSource}/api/v1/instance`)
-  expect(instanceResponse.ok()).toBe(true)
-  const remoteInstance = InstanceResponse.parse(await instanceResponse.json())
-
-  await page.goto('/')
-  await expect(page.getByLabel('Total tokens: 258,000', { exact: true })).toBeVisible()
-  await page.getByRole('button', { name: 'Model', exact: true }).click()
-  await page.getByRole('checkbox', { name: 'model-a', exact: true }).check()
-  await page.getByRole('button', { name: 'Done', exact: true }).click()
-  await expect(page.getByLabel('Total tokens: 129,000', { exact: true })).toBeVisible()
-
-  await page.getByRole('button', { name: 'Choose data source' }).click()
-  await page.getByLabel('Add source').fill('127.0.0.1:18766')
-  await page.getByRole('button', { name: 'Add', exact: true }).click()
-  await expect(page.getByRole('button', { name: 'Choose data source' })).toContainText(
-    remoteInstance.hostname,
-  )
-  await expect(page.getByRole('button', { name: 'Choose data source' })).toContainText(remoteSource)
-  await expect(page).toHaveURL(/model=model-a/)
-  await expect(page.getByLabel('Total tokens: 777', { exact: true })).toBeVisible()
-
-  await page.reload()
-  await expect(page.getByRole('button', { name: 'Choose data source' })).toContainText(remoteSource)
-  await expect(page).toHaveURL(/model=model-a/)
-  await expect(page.getByLabel('Total tokens: 777', { exact: true })).toBeVisible()
-
-  const remoteSync = page.waitForRequest(
-    (request) => request.url() === `${remoteSource}/api/v1/sync` && request.method() === 'POST',
-  )
-  await page.getByRole('button', { name: 'Sync Usage', exact: true }).click()
-  await remoteSync
-  await expect(page.getByRole('button', { name: 'Sync Usage', exact: true })).toBeEnabled()
-  await expect(page.getByLabel('Total tokens: 777', { exact: true })).toBeVisible()
-
-  await page.getByRole('button', { name: 'Choose data source' }).click()
-  await page
-    .getByRole('listitem')
-    .filter({ hasText: localSource })
-    .getByRole('button', { name: /Select .* source/ })
-    .click()
-  await expect(page).toHaveURL(/model=model-a/)
-  await expect(page.getByLabel('Total tokens: 129,000', { exact: true })).toBeVisible()
-
-  await page.getByRole('button', { name: 'Choose data source' }).click()
-  await page
-    .getByRole('listitem')
-    .filter({ hasText: remoteSource })
-    .getByRole('button', { name: /Select .* source/ })
-    .click()
-  await expect(page.getByLabel('Total tokens: 777', { exact: true })).toBeVisible()
-
-  await page.route(`${remoteSource}/api/v1/**`, (route) => route.abort('connectionfailed'))
-  await page.reload()
-  await expect(page.getByRole('button', { name: 'Choose data source' })).toContainText(remoteSource)
-  await expect(page.getByRole('heading', { name: /Couldn.t connect to/ })).toBeVisible()
-  await page.getByRole('button', { name: 'Choose data source' }).click()
-  await expect(page.getByRole('listitem').filter({ hasText: remoteSource })).toBeVisible()
-})
+for (const address of ['127.0.0.1', 'localhost']) {
+  test(`page server via ${address} ignores saved hosts and owns every API request`, async ({
+    page,
+  }) => {
+    const origin = `http://${address}:18765`
+    const instanceResponse = await page.request.get(`${origin}/api/v1/instance`)
+    const instance = InstanceResponse.parse(await instanceResponse.json())
+    await page.addInitScript(() => {
+      localStorage.setItem(
+        'tokeninsights.sources.v1',
+        JSON.stringify({
+          version: 1,
+          sources: [
+            {
+              baseUrl: 'http://obsolete-host:18766',
+              hostname: 'obsolete-host',
+              apiVersion: 'v1',
+              serverVersion: 'test',
+              capabilities: ['usage', 'facets', 'sync'],
+              defaults: {
+                period: 'week',
+                bucket: 'day',
+                from: '',
+                to: '',
+                providers: [],
+                models: [],
+                harnesses: [],
+                sessions: [],
+              },
+            },
+          ],
+          activeUrl: 'http://obsolete-host:18766',
+        }),
+      )
+    })
+    const requests: string[] = []
+    page.on('request', (request) => {
+      if (new URL(request.url()).pathname.startsWith('/api/')) requests.push(request.url())
+    })
+    await page.goto(`${origin}/tokens`)
+    await expect(page.getByLabel('Total tokens: 258,000', { exact: true })).toBeVisible()
+    await expect(page.locator('.server-identity')).toHaveText(instance.hostname)
+    await expect(page.getByRole('button', { name: 'Choose data source' })).toHaveCount(0)
+    await page.getByRole('button', { name: 'Session', exact: true }).click()
+    await page.getByRole('textbox', { name: 'Search session' }).fill('059')
+    await expect(page.getByRole('checkbox', { name: 'web-session-059', exact: true })).toBeVisible()
+    await page.getByRole('button', { name: 'Done', exact: true }).click()
+    const sync = page.waitForRequest(
+      (request) => request.url() === `${origin}/api/v1/sync` && request.method() === 'POST',
+    )
+    await page.getByRole('button', { name: 'Sync Usage', exact: true }).click()
+    await sync
+    await expect(page.getByRole('button', { name: 'Sync Usage', exact: true })).toBeEnabled()
+    await page.reload()
+    await expect(page.getByLabel('Total tokens: 258,000', { exact: true })).toBeVisible()
+    expect(requests.every((url) => new URL(url).origin === origin)).toBe(true)
+    expect(requests.some((url) => new URL(url).pathname === '/api/v1/usage')).toBe(true)
+    expect(requests.some((url) => new URL(url).pathname === '/api/v1/usage/facets')).toBe(true)
+  })
+}
 
 test('custom dates, session search, and saved usage after sync failure', async ({ page }) => {
   await page.goto('/')

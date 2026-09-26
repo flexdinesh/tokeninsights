@@ -75,6 +75,12 @@ func Sync(ctx context.Context, options SyncOptions) (Summary, error) {
 }
 
 func defaultSyncOptions(options SyncOptions) SyncOptions {
+	if options.hostname == "" {
+		hostname, err := os.Hostname()
+		if err == nil {
+			options.hostname = strings.TrimSpace(hostname)
+		}
+	}
 	if options.Clock == nil {
 		options.Clock = time.Now
 	}
@@ -679,9 +685,9 @@ func newRunID(harness Harness, sourceID string, now time.Time) string {
 func createIngestRun(ctx context.Context, runner sqlRunner, runID string, source Source, options SyncOptions) (int64, error) {
 	result, err := runner.ExecContext(ctx, `
 		INSERT INTO ingest_runs (
-			run_id, harness, collector, parser, source_id, source_kind, status, started_at_ms
-		) VALUES (?, ?, ?, ?, ?, ?, 'running', ?)
-	`, runID, source.Harness, options.Collector, options.Parser, source.ID, source.Kind, syncWallNow(options).UnixMilli())
+			run_id, hostname, harness, collector, parser, source_id, source_kind, status, started_at_ms
+		) VALUES (?, NULLIF(?, ''), ?, ?, ?, ?, ?, 'running', ?)
+	`, runID, options.hostname, source.Harness, options.Collector, options.Parser, source.ID, source.Kind, syncWallNow(options).UnixMilli())
 	if err != nil {
 		return 0, err
 	}

@@ -1,12 +1,10 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
-import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
+import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { RouterProvider, createMemoryHistory } from '@tanstack/react-router'
 import { useAnalytics } from './api'
 import { createAppRouter } from './router'
-import { SourceProvider } from './source-context'
-import { createSource, createSourceStore } from './sources'
 import { initialQuery } from './state'
 import type { QueryState } from './state'
 import type { Bootstrap, Dashboard, SyncStatus } from './contracts'
@@ -28,14 +26,8 @@ function requestURL(input: RequestInfo | URL): string {
   return input instanceof URL ? input.href : input.url
 }
 
-function AnalyticsExample({
-  query,
-  baseUrl = 'http://localhost',
-}: {
-  query: QueryState
-  baseUrl?: string
-}) {
-  const data = useAnalytics(baseUrl, query, 0, true)
+function AnalyticsExample({ query }: { query: QueryState }) {
+  const data = useAnalytics(query, 0, true)
   return (
     <output data-tab={data.data?.tab} data-placeholder={data.isPlaceholderData}>
       {data.data ? data.data.dashboard.summary.total : 'Loading'}
@@ -102,22 +94,17 @@ it('uses server defaults on first load', async () => {
     ),
   )
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-  const store = createSourceStore({ origin: window.location.origin, storage: null })
   render(
     <QueryClientProvider client={client}>
-      <SourceProvider store={store}>
-        <RouterProvider router={testRouter} />
-      </SourceProvider>
+      <RouterProvider router={testRouter} />
     </QueryClientProvider>,
   )
 
   expect(await screen.findByRole('button', { name: 'This week' })).toBeVisible()
-  expect(store.getSnapshot().sources[0]?.defaults?.period).toBe('week')
   client.clear()
 })
 
 it('shows saved usage while ordinary sync runs', async () => {
-  const baseUrl = window.location.origin
   const bootstrap: Bootstrap = {
     apiVersion: 'v1',
     serverVersion: 'test',
@@ -145,8 +132,8 @@ it('shows saved usage while ordinary sync runs', async () => {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false, staleTime: Infinity } },
   })
-  client.setQueryData(['instance', baseUrl], bootstrap)
-  client.setQueryData(['sync', baseUrl], status)
+  client.setQueryData(['instance'], bootstrap)
+  client.setQueryData(['sync'], status)
   const fetcher = vi.fn<(input: RequestInfo | URL) => Promise<Response>>((input) => {
     const path = requestURL(input)
     const body = path.includes('/usage/facets')
@@ -168,9 +155,7 @@ it('shows saved usage while ordinary sync runs', async () => {
   vi.stubGlobal('fetch', fetcher)
   render(
     <QueryClientProvider client={client}>
-      <SourceProvider>
-        <RouterProvider router={testRouter} />
-      </SourceProvider>
+      <RouterProvider router={testRouter} />
     </QueryClientProvider>,
   )
 
@@ -223,7 +208,6 @@ it('removes the final route filter after direct load', async () => {
     ),
   )
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-  const store = createSourceStore({ origin: window.location.origin, storage: null })
   const directRouter = createAppRouter(
     createMemoryHistory({
       initialEntries: [
@@ -233,9 +217,7 @@ it('removes the final route filter after direct load', async () => {
   )
   render(
     <QueryClientProvider client={client}>
-      <SourceProvider store={store}>
-        <RouterProvider router={directRouter} />
-      </SourceProvider>
+      <RouterProvider router={directRouter} />
     </QueryClientProvider>,
   )
 
@@ -245,17 +227,15 @@ it('removes the final route filter after direct load', async () => {
   client.clear()
 })
 
-it('keeps dashboard filters while switching sources', async () => {
-  const localUrl = 'http://localhost:3000'
-  const remoteUrl = 'http://remote:8765'
-  const local: Bootstrap = {
+it('refreshes the saved hostname when sync publishes a new revision', async () => {
+  const bootstrap: Bootstrap = {
     apiVersion: 'v1',
     serverVersion: 'test',
-    hostname: 'local-machine',
+    hostname: 'unknown',
     timezone: 'UTC',
     capabilities: ['usage', 'facets', 'sync'],
     defaults: {
-      period: 'month',
+      period: 'week',
       bucket: 'day',
       from: '',
       to: '',
@@ -265,7 +245,6 @@ it('keeps dashboard filters while switching sources', async () => {
       sessions: [],
     },
   }
-  const remote: Bootstrap = { ...local, hostname: 'remote-machine' }
   const status: SyncStatus = {
     phase: 'syncing',
     running: true,
@@ -273,79 +252,61 @@ it('keeps dashboard filters while switching sources', async () => {
     revision: 1,
     harnesses: {},
   }
-  const store = createSourceStore({ origin: localUrl, storage: null })
-  store.add(createSource(localUrl, local))
-  store.add(createSource(remoteUrl, remote))
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false, staleTime: Infinity } },
   })
-  client.setQueryData(['instance', localUrl], local)
-  client.setQueryData(['instance', remoteUrl], remote)
-  client.setQueryData(['sync', localUrl], status)
-  client.setQueryData(['sync', remoteUrl], status)
-  render(
-    <QueryClientProvider client={client}>
-      <SourceProvider store={store}>
-        <RouterProvider router={testRouter} />
-      </SourceProvider>
-    </QueryClientProvider>,
-  )
-  const user = userEvent.setup()
-
-  await user.click(await screen.findByRole('button', { name: 'This month' }))
-  await user.click(
-    within(screen.getByRole('dialog', { name: 'Date range' })).getByRole('button', {
-      name: 'All time',
+  client.setQueryData(['instance'], bootstrap)
+  client.setQueryData(['sync'], status)
+  vi.stubGlobal(
+    'fetch',
+    vi.fn<(input: RequestInfo | URL) => Promise<Response>>((input) => {
+      const path = requestURL(input)
+      const body = path.endsWith('/instance')
+        ? { ...bootstrap, hostname: 'collector-workstation' }
+        : path.includes('/usage/facets')
+          ? {
+              providers: [],
+              models: [],
+              harnesses: [],
+              sessions: [],
+              repositories: [],
+              directories: [],
+            }
+          : dashboard(123)
+      return Promise.resolve(
+        new Response(JSON.stringify(body), { headers: { 'Content-Type': 'application/json' } }),
+      )
     }),
   )
-  await user.click(screen.getByRole('button', { name: 'Choose data source' }))
-  await user.click(screen.getByRole('button', { name: 'Select remote-machine source' }))
-
-  expect(store.getSnapshot().activeUrl).toBe(remoteUrl)
-  expect(
-    within(screen.getByLabelText('Quick date ranges')).getByRole('button', { name: 'All time' }),
-  ).toBeVisible()
-  expect(testRouter.state.location.search.period).toBe('all')
+  render(
+    <QueryClientProvider client={client}>
+      <RouterProvider router={testRouter} />
+    </QueryClientProvider>,
+  )
+  const header = await screen.findByRole('banner')
+  expect(within(header).getByText('unknown')).toBeVisible()
+  await act(async () => {
+    client.setQueryData(['sync'], { ...status, revision: 2 })
+  })
+  expect(await within(header).findByText('collector-workstation')).toBeVisible()
   client.clear()
 })
 
-it('keeps an unavailable selected source active with recovery controls', async () => {
-  const remoteUrl = 'http://offline:8765'
-  const remote: Bootstrap = {
-    apiVersion: 'v1',
-    serverVersion: 'test',
-    hostname: 'offline-machine',
-    timezone: 'UTC',
-    capabilities: ['usage', 'facets', 'sync'],
-    defaults: {
-      period: 'month',
-      bucket: 'day',
-      from: '',
-      to: '',
-      providers: [],
-      models: [],
-      harnesses: [],
-      sessions: [],
-    },
-  }
-  const store = createSourceStore({ origin: 'http://localhost:3000', storage: null })
-  store.add(createSource(remoteUrl, remote))
-  store.select(remoteUrl)
-  vi.stubGlobal('fetch', vi.fn<typeof fetch>().mockRejectedValue(new Error('Network offline')))
+it('offers retry when the page server is unavailable', async () => {
+  const fetcher = vi.fn<typeof fetch>().mockRejectedValue(new Error('Network offline'))
+  vi.stubGlobal('fetch', fetcher)
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   render(
     <QueryClientProvider client={client}>
-      <SourceProvider store={store}>
-        <RouterProvider router={testRouter} />
-      </SourceProvider>
+      <RouterProvider router={testRouter} />
     </QueryClientProvider>,
   )
-
   expect(
-    await screen.findByRole('heading', { name: 'Couldn’t connect to offline-machine' }),
+    await screen.findByRole('heading', { name: `Couldn’t connect to ${window.location.host}` }),
   ).toBeVisible()
-  expect(screen.getByRole('button', { name: 'Choose data source' })).toBeEnabled()
-  expect(store.getSnapshot().activeUrl).toBe(remoteUrl)
+  await userEvent.click(screen.getByRole('button', { name: 'Retry Connection' }))
+  await waitFor(() => expect(fetcher).toHaveBeenCalledTimes(2))
+  expect(fetcher.mock.calls.every(([input]) => requestURL(input) === '/api/v1/instance')).toBe(true)
   client.clear()
 })
 
@@ -392,15 +353,13 @@ it.each<{ phase: SyncStatus['phase']; running: boolean; message: string }>([
       revision: 1,
       harnesses: { codex: 'pending' },
     }
-    client.setQueryData(['instance', window.location.origin], bootstrap)
-    client.setQueryData(['sync', window.location.origin], status)
+    client.setQueryData(['instance'], bootstrap)
+    client.setQueryData(['sync'], status)
     const fetcher = vi.fn<typeof fetch>()
     vi.stubGlobal('fetch', fetcher)
     render(
       <QueryClientProvider client={client}>
-        <SourceProvider>
-          <RouterProvider router={testRouter} />
-        </SourceProvider>
+        <RouterProvider router={testRouter} />
       </QueryClientProvider>,
     )
     expect(await screen.findByText(message)).toBeVisible()
@@ -439,8 +398,8 @@ it('shows saved usage and pending days after an ordinary sync failure', async ()
     revision: 1,
     harnesses: {},
   }
-  client.setQueryData(['instance', window.location.origin], bootstrap)
-  client.setQueryData(['sync', window.location.origin], status)
+  client.setQueryData(['instance'], bootstrap)
+  client.setQueryData(['sync'], status)
   vi.stubGlobal(
     'fetch',
     vi.fn<typeof fetch>(() =>
@@ -476,9 +435,7 @@ it('shows saved usage and pending days after an ordinary sync failure', async ()
   )
   render(
     <QueryClientProvider client={client}>
-      <SourceProvider>
-        <RouterProvider router={testRouter} />
-      </SourceProvider>
+      <RouterProvider router={testRouter} />
     </QueryClientProvider>,
   )
   expect(await screen.findByRole('button', { name: 'Retry Sync' })).toBeEnabled()
@@ -562,56 +519,6 @@ it('cancels obsolete filter requests and only renders the current result', async
   )
   await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('123'))
   expect(aborted).toBe(true)
-  client.clear()
-})
-
-it('isolates cached usage while switching sources', async () => {
-  let resolveRemote: ((response: Response) => void) | undefined
-  vi.stubGlobal(
-    'fetch',
-    vi.fn<(input: RequestInfo | URL) => Promise<Response>>((input) => {
-      if (requestURL(input).startsWith('http://remote')) {
-        return new Promise((resolve) => {
-          resolveRemote = resolve
-        })
-      }
-      return Promise.resolve(
-        new Response(JSON.stringify(dashboard(111)), {
-          headers: { 'Content-Type': 'application/json' },
-        }),
-      )
-    }),
-  )
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-  const query = initialQuery({
-    period: 'week',
-    bucket: 'day',
-    from: '',
-    to: '',
-    providers: [],
-    models: [],
-    harnesses: [],
-    sessions: [],
-  })
-  const view = render(
-    <QueryClientProvider client={client}>
-      <AnalyticsExample query={query} />
-    </QueryClientProvider>,
-  )
-  expect(await screen.findByText('111')).toBeVisible()
-
-  view.rerender(
-    <QueryClientProvider client={client}>
-      <AnalyticsExample baseUrl="http://remote:8765" query={query} />
-    </QueryClientProvider>,
-  )
-  expect(screen.getByRole('status')).toHaveTextContent('Loading')
-  resolveRemote?.(
-    new Response(JSON.stringify(dashboard(222)), {
-      headers: { 'Content-Type': 'application/json' },
-    }),
-  )
-  await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('222'))
   client.clear()
 })
 

@@ -76,6 +76,47 @@ func fixture(t *testing.T) string {
 	return path
 }
 
+func TestInstanceUsesSavedDataHostname(t *testing.T) {
+	path := fixture(t)
+	database, err := db.OpenWritable(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = database.Close() }()
+	a := newApp(context.Background(), Options{DBPath: path}, io.Discard)
+	checkHostname := func(want string) {
+		t.Helper()
+		response := httptest.NewRecorder()
+		a.handler().ServeHTTP(response, httptest.NewRequest(http.MethodGet, "http://dashboard.example.test/api/v1/instance", nil))
+		var instance serverapi.InstanceResponse
+		if err := json.Unmarshal(response.Body.Bytes(), &instance); err != nil {
+			t.Fatal(err)
+		}
+		if response.Code != http.StatusOK || instance.Hostname != want {
+			t.Fatalf("instance hostname = %q, want %q (status %d)", instance.Hostname, want, response.Code)
+		}
+	}
+	checkHostname("unknown")
+	for i, run := range []struct {
+		hostname, status string
+	}{
+		{"collector-workstation", "completed"},
+		{"other-workstation", "running"},
+		{"other-workstation", "failed"},
+	} {
+		if _, err := database.Exec(`INSERT INTO ingest_runs (run_id,hostname,harness,collector,parser,source_id,source_kind,status,started_at_ms)
+			VALUES (?,?,'pi','test','test','test','test',?,1000)`, fmt.Sprint(i), run.hostname, run.status); err != nil {
+			t.Fatal(err)
+		}
+		checkHostname("collector-workstation")
+	}
+	if _, err := database.Exec(`INSERT INTO ingest_runs (run_id,harness,collector,parser,source_id,source_kind,status,started_at_ms)
+		VALUES ('legacy','pi','test','test','test','test','completed',1000)`); err != nil {
+		t.Fatal(err)
+	}
+	checkHostname("unknown")
+}
+
 func TestSyncJoinsOnlyEquivalentExternalJob(t *testing.T) {
 	for _, scope := range []struct {
 		name            string

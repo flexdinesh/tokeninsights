@@ -66,7 +66,7 @@ func createSchema(ctx context.Context, database *sql.DB) error {
 	return tx.Commit()
 }
 
-// UpgradeMetadata adds operational metadata without replacing source or usage data.
+// UpgradeMetadata adds metadata without replacing source or usage data.
 // The caller holds the database writer lock.
 func UpgradeMetadata(ctx context.Context, path string) error {
 	state, err := InspectCompatibility(ctx, path)
@@ -93,6 +93,15 @@ func UpgradeMetadata(ctx context.Context, path string) error {
 	}
 	if !state.MigrationRequired {
 		return requireCompatible(state, false)
+	}
+	var hasHostname bool
+	if err := tx.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM pragma_table_info('ingest_runs') WHERE name = ?)", ColHostname).Scan(&hasHostname); err != nil {
+		return err
+	}
+	if !hasHostname {
+		if _, err := tx.ExecContext(ctx, "ALTER TABLE ingest_runs ADD COLUMN hostname TEXT"); err != nil {
+			return err
+		}
 	}
 	_, body, err := schemaParts()
 	if err != nil {

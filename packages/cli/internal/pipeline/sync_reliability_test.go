@@ -12,6 +12,38 @@ import (
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/db"
 )
 
+func TestSyncPersistsHostnameForNewAndUnchangedSources(t *testing.T) {
+	root := t.TempDir()
+	codexReplaySource(t, root, "host", codexReplayHeader("host", ""), codexReplayTurn("turn"), codexReplayUsage(1, 10, 10))
+	opts := SyncOptions{DBPath: filepath.Join(t.TempDir(), "usage.sqlite"), Harnesses: []Harness{HarnessCodex}, SourceDir: root, Normalize: true}
+	hostname, err := os.Hostname()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for attempt := 1; attempt <= 2; attempt++ {
+		if _, err := Sync(context.Background(), opts); err != nil {
+			t.Fatal(err)
+		}
+		database := openTestDB(t, opts.DBPath)
+		var count int
+		if err := database.QueryRow("SELECT COUNT(*) FROM ingest_runs WHERE hostname = ? AND status = 'completed'", strings.TrimSpace(hostname)).Scan(&count); err != nil {
+			t.Fatal(err)
+		}
+		if count != attempt {
+			t.Fatalf("hostname runs = %d, want %d", count, attempt)
+		}
+		assertSQLCount(t, database, "SELECT COUNT(*) FROM canonical_token_usage", 1)
+		_ = database.Close()
+	}
+	opts.DryRun = true
+	if _, err := Sync(context.Background(), opts); err != nil {
+		t.Fatal(err)
+	}
+	database := openTestDB(t, opts.DBPath)
+	defer func() { _ = database.Close() }()
+	assertSQLCount(t, database, "SELECT COUNT(*) FROM ingest_runs", 2)
+}
+
 func TestCodexLargeRecordPreservesUsageBeforeAndAfter(t *testing.T) {
 	root := t.TempDir()
 	large := strings.Repeat("x", 17*1024*1024)
