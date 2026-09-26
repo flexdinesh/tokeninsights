@@ -641,6 +641,9 @@ textarea[aria-invalid='true'] {
   padding: 0 var(--space-1) 0 0;
   font-variant-numeric: tabular-nums;
 }
+.chart-canvas-shares {
+  overflow-x: auto;
+}
 .chart-empty {
   min-height: var(--chart-height);
   display: grid;
@@ -681,10 +684,19 @@ textarea[aria-invalid='true'] {
   max-width: 100%;
   overflow-wrap: anywhere;
   text-align: left;
+  white-space: normal;
+}
+.chart-filter-name {
+  min-width: 0;
 }
 .chart-filter:hover {
   color: var(--color-accent-text);
   text-decoration: underline;
+}
+.chart-share {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 .legend-dot {
   display: inline-block;
