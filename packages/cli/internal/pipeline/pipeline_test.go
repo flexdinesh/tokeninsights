@@ -404,18 +404,14 @@ func TestOpenCodeRecentSourceRefreshParsesRecentTouchedAndMissingStateSources(t 
 		if err != nil {
 			t.Fatal(err)
 		}
-		assertSummary(t, repeatSummary, Summary{
-			RequestedHarnesses: 1,
-			Synced:             1,
-			Observations:       1,
-		})
+		assertSummary(t, repeatSummary, Summary{RequestedHarnesses: 1, Skipped: 1})
 
 		database := openTestDB(t, dbPath)
 		defer func() { _ = database.Close() }()
 		assertCount(t, database, "raw_token_usage", 1)
-		assertCount(t, database, "raw_observations", 2)
+		assertCount(t, database, "raw_observations", 1)
 		assertCount(t, database, "canonical_token_usage", 1)
-		assertSQLCount(t, database, "SELECT COUNT(*) FROM ingest_runs WHERE status = 'completed' AND raw_fact_count = 0 AND observation_count = 1", 1)
+		assertSQLCount(t, database, "SELECT COUNT(*) FROM ingest_runs WHERE status = 'completed' AND raw_fact_count = 0 AND observation_count = 0", 1)
 	})
 
 	t.Run("touched", func(t *testing.T) {
@@ -436,18 +432,14 @@ func TestOpenCodeRecentSourceRefreshParsesRecentTouchedAndMissingStateSources(t 
 		if err != nil {
 			t.Fatal(err)
 		}
-		assertSummary(t, repeatSummary, Summary{
-			RequestedHarnesses: 1,
-			Synced:             1,
-			Observations:       1,
-		})
+		assertSummary(t, repeatSummary, Summary{RequestedHarnesses: 1, Skipped: 1})
 
 		database := openTestDB(t, dbPath)
 		defer func() { _ = database.Close() }()
 		assertCount(t, database, "raw_token_usage", 1)
-		assertCount(t, database, "raw_observations", 2)
+		assertCount(t, database, "raw_observations", 1)
 		assertCount(t, database, "canonical_token_usage", 1)
-		assertSQLCount(t, database, "SELECT COUNT(*) FROM ingest_runs WHERE status = 'completed' AND raw_fact_count = 0 AND observation_count = 1", 1)
+		assertSQLCount(t, database, "SELECT COUNT(*) FROM ingest_runs WHERE status = 'completed' AND raw_fact_count = 0 AND observation_count = 0", 1)
 	})
 
 	t.Run("missing-state", func(t *testing.T) {
@@ -513,6 +505,73 @@ func TestOpenCodeRecentSourceRefreshParsesRecentTouchedAndMissingStateSources(t 
 		})
 		assertSQLCount(t, database, "SELECT COUNT(*) FROM source_refresh_state WHERE harness = 'opencode' AND parser = 'opencode-sqlite-v1-v2'", 1)
 	})
+}
+
+func TestOpenCodeLogicalFingerprintIgnoresUnrelatedSQLiteWrites(t *testing.T) {
+	ctx := context.Background()
+	dbPath := filepath.Join(t.TempDir(), "tokeninsights.sqlite")
+	sourceDir := t.TempDir()
+	path := writeOpenCodeSourceRefreshFixture(t, sourceDir)
+	now := time.Date(2026, 4, 24, 15, 0, 0, 0, time.UTC)
+	options := SyncOptions{DBPath: dbPath, Harnesses: []Harness{HarnessOpenCode}, SourceDir: sourceDir, Normalize: true, Now: now}
+	if _, err := Sync(ctx, options); err != nil {
+		t.Fatal(err)
+	}
+	sourceDB, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = sourceDB.Close() }()
+	if _, err := sourceDB.Exec("PRAGMA journal_mode = WAL; PRAGMA wal_autocheckpoint = 0; CREATE TABLE unrelated (value TEXT); INSERT INTO unrelated VALUES ('changed')"); err != nil {
+		t.Fatal(err)
+	}
+	options.Now = now.Add(time.Hour)
+	if summary, err := Sync(ctx, options); err != nil || summary.Skipped != 1 {
+		t.Fatalf("unrelated WAL write: %+v, %v", summary, err)
+	}
+	if _, err := sourceDB.Exec(`UPDATE message SET data = replace(data, '"input":100', '"input":120') WHERE id = 'm1'`); err != nil {
+		t.Fatal(err)
+	}
+	options.Now = now.Add(2 * time.Hour)
+	if summary, err := Sync(ctx, options); err != nil || summary.Synced != 1 || summary.Observations != 1 {
+		t.Fatalf("message update skipped: %+v, %v", summary, err)
+	}
+}
+
+func TestOpenCodeLogicalFingerprintBindsSessionLocations(t *testing.T) {
+	ctx := context.Background()
+	dbPath := filepath.Join(t.TempDir(), "tokeninsights.sqlite")
+	sourceDir := t.TempDir()
+	path := filepath.Join(sourceDir, "opencode", "opencode.db")
+	messageData := `{"role":"assistant","providerID":"openai","modelID":"gpt-5","tokens":{"input":100,"output":50},"time":{"created":1770000000000}}`
+	createOpenCodeSQLiteMessages(t, path,
+		openCodeSQLiteMessage{ID: "m1", SessionID: "s1", TimeCreated: 1770000000000, Data: messageData},
+		openCodeSQLiteMessage{ID: "m2", SessionID: "s2", TimeCreated: 1770000000000, Data: messageData},
+	)
+	sourceDB, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = sourceDB.Close() }()
+	first, second := filepath.Join(t.TempDir(), "first"), filepath.Join(t.TempDir(), "second")
+	if _, err := sourceDB.Exec("CREATE TABLE session (id TEXT PRIMARY KEY, directory TEXT, project_id TEXT)"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := sourceDB.Exec("INSERT INTO session VALUES ('s1', ?, ''), ('s2', ?, '')", first, second); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Date(2026, 4, 24, 15, 0, 0, 0, time.UTC)
+	options := SyncOptions{DBPath: dbPath, Harnesses: []Harness{HarnessOpenCode}, SourceDir: sourceDir, Normalize: true, Now: now}
+	if _, err := Sync(ctx, options); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := sourceDB.Exec("UPDATE session SET directory = CASE id WHEN 's1' THEN ? ELSE ? END", second, first); err != nil {
+		t.Fatal(err)
+	}
+	options.Now = now.Add(time.Hour)
+	if summary, err := Sync(ctx, options); err != nil || summary.Synced != 1 || summary.Observations == 0 {
+		t.Fatalf("session location swap skipped: %+v, %v", summary, err)
+	}
 }
 
 func TestOpenCodeRecentSourceRefreshDryRunPreviewsSkipWithoutWriting(t *testing.T) {
@@ -781,6 +840,9 @@ func TestSyncKeepsSourceIdentifiersAndQueriesCanonicalIdentifiers(t *testing.T) 
 	`); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := database.Exec("DELETE FROM normalization_rule_state WHERE harness = 'pi'"); err != nil {
+		t.Fatal(err)
+	}
 	repeat, err := Sync(ctx, SyncOptions{DBPath: dbPath, Harnesses: []Harness{HarnessPi}, SourceDir: sourceDir, Normalize: true, Now: now.Add(time.Hour)})
 	if err != nil {
 		t.Fatal(err)
@@ -791,6 +853,82 @@ func TestSyncKeepsSourceIdentifiersAndQueriesCanonicalIdentifiers(t *testing.T) 
 	assertSQLCount(t, database, "SELECT COUNT(*) FROM canonical_token_usage WHERE provider = 'openai' AND model = 'gpt-5'", 1)
 	assertSQLCount(t, database, "SELECT COUNT(*) FROM canonical_token_usage WHERE provider = 'fireworks' AND model = 'kimi-k2p7-code'", 1)
 	assertSQLCount(t, database, "SELECT COUNT(*) FROM canonical_token_usage WHERE provider = 'fireworks' AND model = 'deepseek-v3'", 1)
+}
+
+func TestNormalizeSkipsCurrentRulesAndRefreshesStaleScope(t *testing.T) {
+	ctx := context.Background()
+	dbPath := filepath.Join(t.TempDir(), "tokeninsights.sqlite")
+	sourceDir := t.TempDir()
+	writePiAssistantSession(t, filepath.Join(sourceDir, "pi", "project", "session.jsonl"), "session", "message", 100, 50)
+	now := time.Date(2026, 4, 24, 15, 0, 0, 0, time.UTC)
+	if _, err := Sync(ctx, SyncOptions{DBPath: dbPath, Harnesses: []Harness{HarnessPi}, SourceDir: sourceDir, Normalize: true, Now: now}); err != nil {
+		t.Fatal(err)
+	}
+	database := openTestDB(t, dbPath)
+	defer func() { _ = database.Close() }()
+	assertSQLCount(t, database, "SELECT COUNT(*) FROM normalization_rule_state WHERE harness = 'pi'", 1)
+	assertSQLCount(t, database, "SELECT COUNT(*) FROM normalization_rule_state WHERE harness != 'pi'", 0)
+	if _, err := Normalize(ctx, NormalizeOptions{DBPath: dbPath, Harnesses: []Harness{HarnessPi}, Now: now.Add(time.Hour)}); err != nil {
+		t.Fatal(err)
+	}
+	assertSQLCount(t, database, "SELECT COUNT(*) FROM normalization_rule_state WHERE harness = 'pi' AND updated_at_ms = "+strconv.FormatInt(now.UnixMilli(), 10), 1)
+	if _, err := database.Exec("UPDATE normalization_rule_state SET rule_signature = 'stale' WHERE harness = 'pi'"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Normalize(ctx, NormalizeOptions{DBPath: dbPath, Harnesses: []Harness{HarnessPi}, Now: now.Add(2 * time.Hour)}); err != nil {
+		t.Fatal(err)
+	}
+	assertSQLCount(t, database, "SELECT COUNT(*) FROM normalization_rule_state WHERE harness = 'pi' AND rule_signature != 'stale'", 1)
+}
+
+func TestSyncUpgradesV11MetadataWithoutReingestingHistory(t *testing.T) {
+	ctx := context.Background()
+	dbPath := filepath.Join(t.TempDir(), "tokeninsights.sqlite")
+	sourceDir := t.TempDir()
+	writePiAssistantSession(t, filepath.Join(sourceDir, "pi", "project", "session.jsonl"), "session", "message", 100, 50)
+	now := time.Date(2026, 4, 24, 15, 0, 0, 0, time.UTC)
+	options := SyncOptions{DBPath: dbPath, Harnesses: []Harness{HarnessPi}, SourceDir: sourceDir, Normalize: true, Now: now}
+	if _, err := Sync(ctx, options); err != nil {
+		t.Fatal(err)
+	}
+	database := openTestDB(t, dbPath)
+	defer func() { _ = database.Close() }()
+	if _, err := database.Exec("DROP TABLE normalization_rule_state; PRAGMA user_version = 11"); err != nil {
+		t.Fatal(err)
+	}
+	options.Now = now.Add(time.Hour)
+	summary, err := Sync(ctx, options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if summary.Skipped != 1 || summary.RawFacts != 0 || summary.Observations != 0 {
+		t.Fatalf("V11 upgrade reingested history: %+v", summary)
+	}
+	assertCount(t, database, "raw_token_usage", 1)
+	assertCount(t, database, "canonical_token_usage", 1)
+	assertSQLCount(t, database, "SELECT COUNT(*) FROM normalization_rule_state WHERE harness = 'pi'", 1)
+}
+
+func TestNormalizeUpgradesV11MetadataWithoutReingestingHistory(t *testing.T) {
+	ctx := context.Background()
+	dbPath := filepath.Join(t.TempDir(), "tokeninsights.sqlite")
+	sourceDir := t.TempDir()
+	writePiAssistantSession(t, filepath.Join(sourceDir, "pi", "project", "session.jsonl"), "session", "message", 100, 50)
+	now := time.Date(2026, 4, 24, 15, 0, 0, 0, time.UTC)
+	if _, err := Sync(ctx, SyncOptions{DBPath: dbPath, Harnesses: []Harness{HarnessPi}, SourceDir: sourceDir, Normalize: true, Now: now}); err != nil {
+		t.Fatal(err)
+	}
+	database := openTestDB(t, dbPath)
+	defer func() { _ = database.Close() }()
+	if _, err := database.Exec("DROP TABLE normalization_rule_state; PRAGMA user_version = 11"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Normalize(ctx, NormalizeOptions{DBPath: dbPath, Harnesses: []Harness{HarnessPi}, Now: now.Add(time.Hour)}); err != nil {
+		t.Fatal(err)
+	}
+	assertCount(t, database, "raw_token_usage", 1)
+	assertCount(t, database, "canonical_token_usage", 1)
+	assertSQLCount(t, database, "SELECT COUNT(*) FROM normalization_rule_state WHERE harness = 'pi'", 1)
 }
 
 func TestCodexJSONLSyncsTokenCountUsage(t *testing.T) {
@@ -1711,18 +1849,17 @@ func TestSyncAndNormalizeHarnessFixtures(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if secondSummary.RawFacts != 0 || secondSummary.Observations != 8 || secondSummary.Canonical != 0 || secondSummary.Diagnostics != 2 {
+	if secondSummary.RawFacts != 0 || secondSummary.Observations != 0 || secondSummary.Canonical != 0 || secondSummary.Diagnostics != 0 || secondSummary.Skipped != 4 {
 		t.Fatalf("unexpected repeat summary: %+v", secondSummary)
 	}
 	assertCount(t, database, "raw_token_usage", 8)
-	assertCount(t, database, "raw_observations", 16)
+	assertCount(t, database, "raw_observations", 8)
 	assertCount(t, database, "canonical_token_usage", 8)
 	assertSQLCount(t, database, "SELECT COUNT(*) FROM ingest_runs WHERE status = 'completed' AND raw_fact_count = 2 AND observation_count = 2 AND canonical_count = 2 AND diagnostic_count = 0", 1)
 	assertSQLCount(t, database, "SELECT COUNT(*) FROM ingest_runs WHERE status = 'completed' AND raw_fact_count = 1 AND observation_count = 1 AND canonical_count = 1 AND diagnostic_count = 0", 4)
 	assertSQLCount(t, database, "SELECT COUNT(*) FROM ingest_runs WHERE status = 'completed' AND raw_fact_count = 1 AND observation_count = 1 AND canonical_count = 1 AND diagnostic_count = 1", 2)
-	assertSQLCount(t, database, "SELECT COUNT(*) FROM ingest_runs WHERE status = 'completed' AND raw_fact_count = 0 AND observation_count = 2 AND canonical_count = 0 AND diagnostic_count = 0", 1)
-	assertSQLCount(t, database, "SELECT COUNT(*) FROM ingest_runs WHERE status = 'completed' AND raw_fact_count = 0 AND observation_count = 1 AND canonical_count = 0 AND diagnostic_count = 0", 4)
-	assertSQLCount(t, database, "SELECT COUNT(*) FROM ingest_runs WHERE status = 'completed' AND raw_fact_count = 0 AND observation_count = 1 AND canonical_count = 0 AND diagnostic_count = 1", 2)
+	assertSQLCount(t, database, "SELECT COUNT(*) FROM ingest_runs WHERE status = 'completed' AND raw_fact_count = 0 AND observation_count = 0 AND canonical_count = 0 AND diagnostic_count = 0", 7)
+	assertSQLCount(t, database, "SELECT COUNT(*) FROM source_cursor_state WHERE harness = 'pi'", 2)
 
 	normalizeSummary, err := Normalize(ctx, NormalizeOptions{DBPath: dbPath, Now: now})
 	if err != nil {
@@ -1735,9 +1872,7 @@ func TestSyncAndNormalizeHarnessFixtures(t *testing.T) {
 	assertSQLCount(t, database, "SELECT COUNT(*) FROM ingest_runs WHERE status = 'completed' AND raw_fact_count = 2 AND observation_count = 2 AND canonical_count = 2 AND diagnostic_count = 0", 1)
 	assertSQLCount(t, database, "SELECT COUNT(*) FROM ingest_runs WHERE status = 'completed' AND raw_fact_count = 1 AND observation_count = 1 AND canonical_count = 1 AND diagnostic_count = 0", 4)
 	assertSQLCount(t, database, "SELECT COUNT(*) FROM ingest_runs WHERE status = 'completed' AND raw_fact_count = 1 AND observation_count = 1 AND canonical_count = 1 AND diagnostic_count = 1", 2)
-	assertSQLCount(t, database, "SELECT COUNT(*) FROM ingest_runs WHERE status = 'completed' AND raw_fact_count = 0 AND observation_count = 2 AND canonical_count = 0 AND diagnostic_count = 0", 1)
-	assertSQLCount(t, database, "SELECT COUNT(*) FROM ingest_runs WHERE status = 'completed' AND raw_fact_count = 0 AND observation_count = 1 AND canonical_count = 0 AND diagnostic_count = 0", 4)
-	assertSQLCount(t, database, "SELECT COUNT(*) FROM ingest_runs WHERE status = 'completed' AND raw_fact_count = 0 AND observation_count = 1 AND canonical_count = 0 AND diagnostic_count = 1", 2)
+	assertSQLCount(t, database, "SELECT COUNT(*) FROM ingest_runs WHERE status = 'completed' AND raw_fact_count = 0 AND observation_count = 0 AND canonical_count = 0 AND diagnostic_count = 0", 7)
 }
 
 func TestSyncNoNormalizeLeavesPendingTokenUsageWorkForNormalize(t *testing.T) {
@@ -1782,8 +1917,7 @@ func TestSyncNoNormalizeLeavesPendingTokenUsageWorkForNormalize(t *testing.T) {
 	}
 	assertSummary(t, repeatSummary, Summary{
 		RequestedHarnesses: 1,
-		Synced:             1,
-		Observations:       1,
+		Skipped:            1,
 	})
 	assertSQLCount(t, database, "SELECT COUNT(*) FROM normalization_work_queue WHERE domain = 'token_usage'", 1)
 
@@ -1860,9 +1994,17 @@ func TestPiRecentSourceRefreshSkipsOldUnchangedSource(t *testing.T) {
 	assertCount(t, database, "canonical_token_usage", 1)
 	assertSQLCount(t, database, "SELECT COUNT(*) FROM ingest_runs WHERE status = 'completed' AND raw_fact_count = 0 AND observation_count = 0", 1)
 	assertSQLCount(t, database, "SELECT COUNT(*) FROM normalization_work_queue WHERE domain = 'token_usage'", 0)
+	fullRefreshSummary, err := Sync(ctx, SyncOptions{
+		DBPath: dbPath, Harnesses: []Harness{HarnessPi}, FullRefresh: true, Normalize: true,
+		SourceDir: sourceDir, Now: now.Add(2 * time.Hour),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertSummary(t, fullRefreshSummary, Summary{RequestedHarnesses: 1, Synced: 1, Observations: 1})
 }
 
-func TestPiRecentSourceRefreshParsesRecentUnchangedSource(t *testing.T) {
+func TestPiCursorSkipsRecentUnchangedSource(t *testing.T) {
 	ctx := context.Background()
 	dbPath := filepath.Join(t.TempDir(), "tokeninsights.sqlite")
 	sourceDir := t.TempDir()
@@ -1888,6 +2030,14 @@ func TestPiRecentSourceRefreshParsesRecentUnchangedSource(t *testing.T) {
 		Observations:       1,
 		Canonical:          1,
 	})
+	dryRunSummary, err := Sync(ctx, SyncOptions{
+		DBPath: dbPath, Harnesses: []Harness{HarnessPi}, DryRun: true,
+		SourceDir: sourceDir, Now: now.Add(time.Hour),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertSummary(t, dryRunSummary, Summary{RequestedHarnesses: 1, Skipped: 1})
 
 	repeatSummary, err := Sync(ctx, SyncOptions{
 		DBPath:    dbPath,
@@ -1901,17 +2051,179 @@ func TestPiRecentSourceRefreshParsesRecentUnchangedSource(t *testing.T) {
 	}
 	assertSummary(t, repeatSummary, Summary{
 		RequestedHarnesses: 1,
-		Synced:             1,
-		Observations:       1,
+		Skipped:            1,
 	})
 
 	database := openTestDB(t, dbPath)
 	defer func() { _ = database.Close() }()
 	assertCount(t, database, "raw_token_usage", 1)
-	assertCount(t, database, "raw_observations", 2)
+	assertCount(t, database, "raw_observations", 1)
 	assertCount(t, database, "canonical_token_usage", 1)
-	assertSQLCount(t, database, "SELECT COUNT(*) FROM ingest_runs WHERE status = 'completed' AND raw_fact_count = 0 AND observation_count = 1", 1)
+	assertSQLCount(t, database, "SELECT COUNT(*) FROM ingest_runs WHERE status = 'completed' AND raw_fact_count = 0 AND observation_count = 0", 1)
 	assertSQLCount(t, database, "SELECT COUNT(*) FROM normalization_work_queue WHERE domain = 'token_usage'", 0)
+}
+
+func TestPiCursorParsesAppendedFactsAndFallsBackAfterPrefixRewrite(t *testing.T) {
+	ctx := context.Background()
+	dbPath := filepath.Join(t.TempDir(), "tokeninsights.sqlite")
+	sourceDir := t.TempDir()
+	path := filepath.Join(sourceDir, "pi", "project", "2026-01-01T00-00-00_pi_s1.jsonl")
+	now := time.Date(2026, 4, 24, 15, 0, 0, 0, time.UTC)
+	mtime := now.Add(-time.Hour)
+	writePiAssistantSession(t, path, "pi_s1", "msg_a", 100, 50)
+	initial, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	padded := strings.Replace(string(initial), "\n", "\n"+strings.Repeat("\n", sourceCursorHashWindow+1), 1)
+	padded += strings.Repeat("\n", sourceCursorHashWindow+1)
+	if err := os.WriteFile(path, []byte(padded), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	setFileModTime(t, path, mtime)
+	options := SyncOptions{DBPath: dbPath, Harnesses: []Harness{HarnessPi}, Normalize: true, SourceDir: sourceDir, Now: now}
+	if _, err := Sync(ctx, options); err != nil {
+		t.Fatal(err)
+	}
+	database := openTestDB(t, dbPath)
+	defer func() { _ = database.Close() }()
+	assertSQLCount(t, database, "SELECT COUNT(*) FROM source_cursor_state WHERE harness = 'pi'", 1)
+
+	file, err := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = file.WriteString(`{"type":"message","id":"msg_b","parentId":null,"timestamp":"2026-01-01T00:00:02.000Z","message":{"role":"assistant","content":[],"provider":"anthropic","model":"claude-sonnet-4","usage":{"input":120,"output":30,"cacheRead":0,"cacheWrite":0,"totalTokens":150},"timestamp":1770000002000}}` + "\n")
+	if closeErr := file.Close(); err == nil {
+		err = closeErr
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	options.Now = now.Add(time.Hour)
+	preview := options
+	preview.DryRun = true
+	previewSummary, err := Sync(ctx, preview)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertSummary(t, previewSummary, Summary{RequestedHarnesses: 1, Synced: 1, RawFacts: 1})
+	assertCount(t, database, "raw_token_usage", 1)
+	summary, err := Sync(ctx, options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertSummary(t, summary, Summary{RequestedHarnesses: 1, Synced: 1, RawFacts: 1, Observations: 1, Canonical: 1})
+	assertCount(t, database, "canonical_token_usage", 2)
+
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rewritten := strings.Replace(string(content), `"id":"msg_a"`, `"id":"msg_c"`, 1)
+	if len(rewritten) != len(content) {
+		t.Fatal("test rewrite changed file size")
+	}
+	if err := os.WriteFile(path, []byte(rewritten), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	setFileModTime(t, path, info.ModTime())
+	options.Now = now.Add(2 * time.Hour)
+	summary, err = Sync(ctx, options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertSummary(t, summary, Summary{RequestedHarnesses: 1, Synced: 1, RawFacts: 1, Observations: 2, Canonical: 1})
+	assertCount(t, database, "canonical_token_usage", 3)
+}
+
+func TestPiCursorDoesNotAdvancePastUnterminatedLine(t *testing.T) {
+	ctx := context.Background()
+	dbPath := filepath.Join(t.TempDir(), "tokeninsights.sqlite")
+	sourceDir := t.TempDir()
+	path := filepath.Join(sourceDir, "pi", "project", "2026-01-01T00-00-00_pi_s1.jsonl")
+	writePiAssistantSession(t, path, "pi_s1", "msg_a", 100, 50)
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, content[:len(content)-1], 0o644); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Date(2026, 4, 24, 15, 0, 0, 0, time.UTC)
+	options := SyncOptions{DBPath: dbPath, Harnesses: []Harness{HarnessPi}, Normalize: true, SourceDir: sourceDir, Now: now}
+	if _, err := Sync(ctx, options); err != nil {
+		t.Fatal(err)
+	}
+	database := openTestDB(t, dbPath)
+	defer func() { _ = database.Close() }()
+	assertSQLCount(t, database, "SELECT COUNT(*) FROM source_cursor_state", 0)
+	options.Now = now.Add(time.Hour)
+	summary, err := Sync(ctx, options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertSummary(t, summary, Summary{RequestedHarnesses: 1, Synced: 1, Observations: 1})
+}
+
+func TestClaudeCodeSourceReuseDetectsSameSizeRewrite(t *testing.T) {
+	ctx := context.Background()
+	dbPath := filepath.Join(t.TempDir(), "tokeninsights.sqlite")
+	sourceDir := t.TempDir()
+	path := filepath.Join(sourceDir, "claude-code", "project", "session.jsonl")
+	writeClaudeCodeAssistantSession(t, path, "session", "msg_a", 100, 50)
+	now := time.Date(2026, 4, 24, 15, 0, 0, 0, time.UTC)
+	mtime := now.Add(-time.Hour)
+	setFileModTime(t, path, mtime)
+	options := SyncOptions{DBPath: dbPath, Harnesses: []Harness{HarnessClaudeCode}, Normalize: true, SourceDir: sourceDir, Now: now}
+	if _, err := Sync(ctx, options); err != nil {
+		t.Fatal(err)
+	}
+	database := openTestDB(t, dbPath)
+	defer func() { _ = database.Close() }()
+	assertSQLCount(t, database, "SELECT COUNT(*) FROM source_cursor_state WHERE cursor_kind = 'source-fingerprint-v1'", 1)
+	options.Now = now.Add(time.Hour)
+	preview := options
+	preview.DryRun = true
+	if summary, err := Sync(ctx, preview); err != nil || summary.Skipped != 1 {
+		t.Fatalf("unchanged dry run: %+v, %v", summary, err)
+	}
+	if summary, err := Sync(ctx, options); err != nil || summary.Skipped != 1 {
+		t.Fatalf("unchanged sync: %+v, %v", summary, err)
+	}
+	fullRefresh := options
+	fullRefresh.FullRefresh = true
+	if summary, err := Sync(ctx, fullRefresh); err != nil || summary.Synced != 1 || summary.Observations != 1 {
+		t.Fatalf("explicit full refresh: %+v, %v", summary, err)
+	}
+	if summary, err := Sync(ctx, options); err != nil || summary.Skipped != 1 {
+		t.Fatalf("after full refresh: %+v, %v", summary, err)
+	}
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rewritten := strings.ReplaceAll(string(content), "msg_a", "msg_b")
+	if len(rewritten) != len(content) {
+		t.Fatal("test rewrite changed size")
+	}
+	if err := os.WriteFile(path, []byte(rewritten), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	setFileModTime(t, path, mtime)
+	options.Now = now.Add(2 * time.Hour)
+	summary, err := Sync(ctx, options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if summary.Synced != 1 || summary.Observations != 1 {
+		t.Fatalf("same-size rewrite skipped: %+v", summary)
+	}
+	assertCount(t, database, "canonical_token_usage", 2)
 }
 
 func TestPiRecentSourceRefreshParsesTouchedOldSource(t *testing.T) {
@@ -2298,19 +2610,14 @@ func TestJSONLRecentSourceRefreshParsesRecentTouchedAndMissingStateSources(t *te
 			if err != nil {
 				t.Fatal(err)
 			}
-			assertSummary(t, repeatSummary, Summary{
-				RequestedHarnesses: 1,
-				Synced:             1,
-				Observations:       1,
-				Diagnostics:        testCase.parseDiagnostics,
-			})
+			assertSummary(t, repeatSummary, Summary{RequestedHarnesses: 1, Skipped: 1})
 
 			database := openTestDB(t, dbPath)
 			defer func() { _ = database.Close() }()
 			assertCount(t, database, "raw_token_usage", 1)
-			assertCount(t, database, "raw_observations", 2)
+			assertCount(t, database, "raw_observations", 1)
 			assertCount(t, database, "canonical_token_usage", 1)
-			assertSQLCount(t, database, "SELECT COUNT(*) FROM ingest_runs WHERE status = 'completed' AND raw_fact_count = 0 AND observation_count = 1", 1)
+			assertSQLCount(t, database, "SELECT COUNT(*) FROM ingest_runs WHERE status = 'completed' AND raw_fact_count = 0 AND observation_count = 0", 1)
 		})
 
 		t.Run(testCase.name+"/touched", func(t *testing.T) {

@@ -122,7 +122,8 @@ function DashboardShell() {
   const recoveryFailed = status?.phase === 'rebuild_failed'
   const enabled = Boolean(
     status &&
-    !status.running &&
+    status.phase !== 'resetting' &&
+    status.phase !== 'rebuilding' &&
     !recoveryFailed &&
     (!status.error || inspectedRevision === status.revision),
   )
@@ -143,6 +144,7 @@ function DashboardShell() {
   }
   const running = status?.running || sync.isPending
   const data = analytics.data?.dashboard
+  const hasData = Boolean(data && (!running || data.summary.syncedSessions > 0))
   const resultsMatchView =
     analytics.data?.tab === query.tab &&
     (query.tab !== 'repo' || analytics.data?.locationGroup === query.locationGroup)
@@ -302,7 +304,7 @@ function DashboardShell() {
                   }}
                 />
               )}
-              {status?.running && <SyncProgress status={status} />}
+              {status?.running && <SyncProgress status={status} hasData={hasData} />}
               {status?.error && (
                 <Alert className="sync-error" variant="destructive" role="alert">
                   <CircleAlert size="1.3em" />
@@ -320,17 +322,17 @@ function DashboardShell() {
                   )}
                 </Alert>
               )}
-              {enabled && analytics.error && (
+              {enabled && analytics.error && !running && (
                 <ErrorBanner message={analytics.error.message} onRetry={reload} />
               )}
-              {enabled && facets.error && (
+              {enabled && facets.error && !running && (
                 <ErrorBanner
                   message="Filter values couldn’t load."
                   onRetry={() => void facets.refetch()}
                 />
               )}
-              {enabled && !data && !analytics.error && <DashboardSkeleton />}
-              {enabled && data && (
+              {enabled && !hasData && (!analytics.error || running) && <DashboardSkeleton />}
+              {enabled && data && hasData && (
                 <div className="analytics" aria-busy={analytics.isFetching}>
                   <div className="usage-workbench">
                     <SummaryCards summary={data.summary} />
@@ -390,7 +392,7 @@ function RouteResultsSkeleton() {
   )
 }
 
-function SyncProgress({ status }: { status: SyncStatus }) {
+function SyncProgress({ status, hasData }: { status: SyncStatus; hasData: boolean }) {
   const message =
     status.phase === 'resetting'
       ? 'Resetting usage data for compatibility…'
@@ -398,7 +400,9 @@ function SyncProgress({ status }: { status: SyncStatus }) {
         ? 'Rebuilding usage from all configured harnesses…'
         : status.phase === 'normalizing'
           ? 'Normalizing canonical data…'
-          : 'Syncing all supported harnesses…'
+          : hasData
+            ? 'Syncing all supported harnesses. Saved usage remains available while this runs.'
+            : 'Syncing all supported harnesses…'
   return (
     <Card className="sync-progress panel" role="status" aria-live="polite">
       <div className="panel-heading">

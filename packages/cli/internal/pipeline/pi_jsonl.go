@@ -3,6 +3,7 @@ package pipeline
 import (
 	"bufio"
 	"context"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -125,21 +126,43 @@ func (a piJSONLAdapter) source(path string, root string) Source {
 }
 
 func (a piJSONLAdapter) Parse(ctx context.Context, source Source, options SyncOptions) ([]RawTokenFact, []Diagnostic, error) {
+	facts, diagnostics, _, err := a.ParseFrom(ctx, source, options, 0)
+	return facts, diagnostics, err
+}
+
+func (a piJSONLAdapter) ParseFrom(ctx context.Context, source Source, options SyncOptions, offset int64) ([]RawTokenFact, []Diagnostic, bool, error) {
 	file, err := os.Open(source.Path)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, false, err
 	}
 	defer func() { _ = file.Close() }()
 
 	session := piJSONLSessionFile{filenameSessionID: piSessionIDFromFilename(source.Path)}
 	session.sessionID = session.filenameSessionID
+	eligible := false
+	if offset > 0 {
+		header, ok, err := piCursorHeader(ctx, file, session.filenameSessionID)
+		if err != nil {
+			return nil, nil, false, err
+		}
+		if ok {
+			session = header
+			eligible = true
+		} else {
+			offset = 0
+		}
+		if _, err := file.Seek(offset, io.SeekStart); err != nil {
+			return nil, nil, false, err
+		}
+	}
 	var facts []RawTokenFact
 	var diagnostics []Diagnostic
 	scanner := bufio.NewScanner(file)
 	scanner.Buffer(make([]byte, 0, 64*1024), maxPiJSONLLineBytes)
+	firstRecord := offset == 0
 	for scanner.Scan() {
 		if ctx.Err() != nil {
-			return nil, nil, ctx.Err()
+			return nil, nil, false, ctx.Err()
 		}
 		line := strings.TrimSpace(scanner.Text())
 		if line == "" {
@@ -148,9 +171,12 @@ func (a piJSONLAdapter) Parse(ctx context.Context, source Source, options SyncOp
 		var record map[string]interface{}
 		if err := decodeJSONRecord(line, &record); err != nil {
 			diagnostics = append(diagnostics, piDiagnostic("pi_jsonl_parse_error", "skipped unparsable Pi JSONL line"))
+			firstRecord = false
 			continue
 		}
 		if stringValue(record, "", "type") == "session" {
+			id := stringField(record, "id")
+			eligible = firstRecord && id != nil && strings.TrimSpace(*id) != ""
 			session.cwd = stringValue(record, session.cwd, "cwd")
 			if sessionID := stringField(record, "id"); sessionID != nil {
 				session.hasHeader = true
@@ -159,8 +185,10 @@ func (a piJSONLAdapter) Parse(ctx context.Context, source Source, options SyncOp
 					diagnostics = append(diagnostics, piDiagnostic("pi_jsonl_session_id_mismatch", "Pi session header id differs from filename session id"))
 				}
 			}
+			firstRecord = false
 			continue
 		}
+		firstRecord = false
 		fact, rowDiagnostics, ok := a.factFromRecord(ctx, source, options, session, record)
 		diagnostics = append(diagnostics, rowDiagnostics...)
 		if ok {
@@ -168,12 +196,39 @@ func (a piJSONLAdapter) Parse(ctx context.Context, source Source, options SyncOp
 		}
 	}
 	if err := scanner.Err(); err != nil {
-		return nil, nil, err
+		return nil, nil, false, err
 	}
 	if !session.hasHeader && session.filenameSessionID != "" && len(facts) > 0 {
 		diagnostics = append(diagnostics, piDiagnostic("pi_jsonl_missing_session_header", "used Pi filename session id because the session header was missing"))
 	}
-	return facts, diagnostics, nil
+	return facts, diagnostics, eligible, nil
+}
+
+func piCursorHeader(ctx context.Context, file *os.File, filenameSessionID string) (piJSONLSessionFile, bool, error) {
+	if _, err := file.Seek(0, io.SeekStart); err != nil {
+		return piJSONLSessionFile{}, false, err
+	}
+	scanner := bufio.NewScanner(file)
+	scanner.Buffer(make([]byte, 0, 64*1024), maxPiJSONLLineBytes)
+	for scanner.Scan() {
+		if err := ctx.Err(); err != nil {
+			return piJSONLSessionFile{}, false, err
+		}
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" {
+			continue
+		}
+		var record map[string]interface{}
+		if decodeJSONRecord(line, &record) != nil || stringValue(record, "", "type") != "session" {
+			return piJSONLSessionFile{}, false, nil
+		}
+		id := stringField(record, "id")
+		if id == nil || strings.TrimSpace(*id) == "" {
+			return piJSONLSessionFile{}, false, nil
+		}
+		return piJSONLSessionFile{sessionID: *id, filenameSessionID: filenameSessionID, hasHeader: true, cwd: stringValue(record, "", "cwd")}, true, nil
+	}
+	return piJSONLSessionFile{}, false, scanner.Err()
 }
 
 func (a piJSONLAdapter) factFromRecord(ctx context.Context, source Source, options SyncOptions, session piJSONLSessionFile, record map[string]interface{}) (RawTokenFact, []Diagnostic, bool) {

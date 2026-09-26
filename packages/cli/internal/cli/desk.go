@@ -277,6 +277,11 @@ func (m interactiveModel) deskFooter() string {
 	} else if len(m.rows) > 0 {
 		position = fmt.Sprintf("%d–%d / %d", m.scrollOffset+1, m.scrollOffset+len(m.visibleRows()), len(m.rows))
 	}
+	if m.syncing && m.showingSnapshot {
+		position = "syncing · saved data · " + position
+	} else if m.syncErr != nil {
+		position = "sync failed · saved data · " + position
+	}
 	if maxOffset := m.maxHorizontalOffset(m.rows); maxOffset > 0 {
 		position += fmt.Sprintf(" · x %d/%d", m.horizontalOffset+1, maxOffset+1)
 	}

@@ -2,6 +2,7 @@ package pipeline
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"os"
 	"os/exec"
@@ -125,6 +126,123 @@ func TestRecordedRemoteIdentifiesRepositoryWithoutCheckoutRemote(t *testing.T) {
 	location, conflict := resolveFactLocation(context.Background(), SyncOptions{}, path, "https://example.com/team/project.git", "")
 	if location == nil || location.RepositoryKey == "" || location.RepositorySource != "harness" || conflict {
 		t.Fatalf("recorded remote attribution: %+v, conflict=%t", location, conflict)
+	}
+}
+
+func TestPiCursorRechecksGitAttribution(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git unavailable")
+	}
+	repoPath := filepath.Join(t.TempDir(), "checkout")
+	for _, args := range [][]string{{"init", "-q", repoPath}, {"-C", repoPath, "remote", "add", "origin", "https://example.com/team/first.git"}} {
+		if output, err := exec.Command("git", args...).CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v: %s", args, err, output)
+		}
+	}
+	sourceDir := t.TempDir()
+	path := filepath.Join(sourceDir, "pi", "project", "2026-01-01T00-00-00_pi_s1.jsonl")
+	writeJSONL(t, path,
+		fmt.Sprintf(`{"type":"session","id":"pi_s1","cwd":%q}`, repoPath),
+		`{"type":"message","id":"msg_a","timestamp":"2026-01-01T00:00:01.000Z","message":{"role":"assistant","provider":"anthropic","model":"claude-sonnet-4","usage":{"input":100,"output":50,"totalTokens":150}}}`,
+	)
+	dbPath := filepath.Join(t.TempDir(), "tokeninsights.sqlite")
+	options := SyncOptions{DBPath: dbPath, Harnesses: []Harness{HarnessPi}, SourceDir: sourceDir, Normalize: true, Now: time.Date(2026, 4, 24, 15, 0, 0, 0, time.UTC)}
+	if _, err := Sync(context.Background(), options); err != nil {
+		t.Fatal(err)
+	}
+	if output, err := exec.Command("git", "-C", repoPath, "remote", "set-url", "origin", "https://example.com/team/second.git").CombinedOutput(); err != nil {
+		t.Fatalf("change git remote: %v: %s", err, output)
+	}
+	options.Now = options.Now.Add(time.Hour)
+	summary, err := Sync(context.Background(), options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if summary.Synced != 1 || summary.Observations != 1 {
+		t.Fatalf("git attribution change was skipped: %+v", summary)
+	}
+}
+
+func TestClaudeCodeSourceReuseRechecksGitAttribution(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git unavailable")
+	}
+	repoPath := filepath.Join(t.TempDir(), "checkout")
+	for _, args := range [][]string{{"init", "-q", repoPath}, {"-C", repoPath, "remote", "add", "origin", "https://example.com/team/first.git"}} {
+		if output, err := exec.Command("git", args...).CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v: %s", args, err, output)
+		}
+	}
+	sourceDir := t.TempDir()
+	path := filepath.Join(sourceDir, "claude-code", "project", "session.jsonl")
+	writeJSONL(t, path, fmt.Sprintf(`{"type":"assistant","uuid":"msg_a","requestId":"req_a","timestamp":"2026-01-01T00:00:02.000Z","sessionId":"session","cwd":%q,"message":{"id":"msg_a","role":"assistant","model":"claude-sonnet-4-5","usage":{"input_tokens":100,"output_tokens":50}}}`, repoPath))
+	dbPath := filepath.Join(t.TempDir(), "tokeninsights.sqlite")
+	options := SyncOptions{DBPath: dbPath, Harnesses: []Harness{HarnessClaudeCode}, SourceDir: sourceDir, Normalize: true, Now: time.Date(2026, 4, 24, 15, 0, 0, 0, time.UTC)}
+	if _, err := Sync(context.Background(), options); err != nil {
+		t.Fatal(err)
+	}
+	options.Now = options.Now.Add(time.Hour)
+	if summary, err := Sync(context.Background(), options); err != nil || summary.Skipped != 1 {
+		t.Fatalf("unchanged source: %+v, %v", summary, err)
+	}
+	if output, err := exec.Command("git", "-C", repoPath, "remote", "set-url", "origin", "https://example.com/team/second.git").CombinedOutput(); err != nil {
+		t.Fatalf("change git remote: %v: %s", err, output)
+	}
+	options.Now = options.Now.Add(time.Hour)
+	summary, err := Sync(context.Background(), options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if summary.Synced != 1 || summary.Observations != 1 {
+		t.Fatalf("git attribution change was skipped: %+v", summary)
+	}
+}
+
+func TestOpenCodeSourceReuseRechecksGitAttribution(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git unavailable")
+	}
+	repoPath := filepath.Join(t.TempDir(), "checkout")
+	for _, args := range [][]string{{"init", "-q", repoPath}, {"-C", repoPath, "remote", "add", "origin", "https://example.com/team/first.git"}} {
+		if output, err := exec.Command("git", args...).CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v: %s", args, err, output)
+		}
+	}
+	sourceDir := t.TempDir()
+	path := filepath.Join(sourceDir, "opencode", "opencode.db")
+	createOpenCodeSQLiteMessages(t, path, openCodeSQLiteMessage{ID: "m1", SessionID: "oc_s1", TimeCreated: 1770000000000, TimeUpdated: 1770000000000, Data: `{"role":"assistant","providerID":"openai","modelID":"gpt-5","tokens":{"input":100,"output":50},"time":{"created":1770000000000}}`})
+	sourceDB, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := sourceDB.Exec("CREATE TABLE session (id TEXT PRIMARY KEY, directory TEXT, project_id TEXT)"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := sourceDB.Exec("INSERT INTO session (id, directory, project_id) VALUES (?, ?, ?)", "oc_s1", repoPath, ""); err != nil {
+		t.Fatal(err)
+	}
+	if err := sourceDB.Close(); err != nil {
+		t.Fatal(err)
+	}
+	dbPath := filepath.Join(t.TempDir(), "tokeninsights.sqlite")
+	options := SyncOptions{DBPath: dbPath, Harnesses: []Harness{HarnessOpenCode}, SourceDir: sourceDir, Normalize: true, Now: time.Date(2026, 4, 24, 15, 0, 0, 0, time.UTC)}
+	if _, err := Sync(context.Background(), options); err != nil {
+		t.Fatal(err)
+	}
+	options.Now = options.Now.Add(time.Hour)
+	if summary, err := Sync(context.Background(), options); err != nil || summary.Skipped != 1 {
+		t.Fatalf("unchanged source: %+v, %v", summary, err)
+	}
+	if output, err := exec.Command("git", "-C", repoPath, "remote", "set-url", "origin", "https://example.com/team/second.git").CombinedOutput(); err != nil {
+		t.Fatalf("change git remote: %v: %s", err, output)
+	}
+	options.Now = options.Now.Add(time.Hour)
+	summary, err := Sync(context.Background(), options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if summary.Synced != 1 || summary.Observations != 1 {
+		t.Fatalf("git attribution change was skipped: %+v", summary)
 	}
 }
 

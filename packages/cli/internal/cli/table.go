@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -36,6 +37,8 @@ type syncDoneMsg struct {
 	summary pipeline.Summary
 	err     error
 }
+
+type snapshotMsg struct{ reloadMsg }
 
 type startDashboardLoadMsg struct{}
 
@@ -99,6 +102,8 @@ type interactiveModel struct {
 	loading          bool
 	reloadInFlight   bool
 	syncing          bool
+	showingSnapshot  bool
+	snapshotAllowed  bool
 	syncInFlight     bool
 	syncMessages     <-chan tea.Msg
 	syncProgressRows []syncProgressRow
@@ -175,6 +180,7 @@ func newInteractiveModel(ctx context.Context, options tableOptions, now time.Tim
 		filterSelections: make(map[string]bool),
 		loading:          options.noSync,
 		syncing:          !options.noSync,
+		snapshotAllowed:  true,
 		syncProgressRows: initialSyncProgressRows(),
 	}
 	m.statusline = newStatuslineModel(statuslineDateRangeLabel(options), string(options.bucket), string(activeSort(tabTokens, options.sort)), hostname, 0)
@@ -234,6 +240,10 @@ func (m interactiveModel) deferredReloadCmd(delay time.Duration) tea.Cmd {
 	return tea.Tick(delay, func(time.Time) tea.Msg {
 		return m.loadDashboard()
 	})
+}
+
+func (m interactiveModel) snapshotCmd() tea.Cmd {
+	return func() tea.Msg { return snapshotMsg{m.loadDashboard()} }
 }
 
 func (m interactiveModel) loadDashboard() reloadMsg {
@@ -445,6 +455,10 @@ func (m interactiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case syncProgressMsg:
 		m = m.withSyncProgress(msg.event)
+		if msg.event.Status == pipeline.SyncProgressResetting || msg.event.Status == pipeline.SyncProgressRebuilding {
+			m.showingSnapshot = false
+			m.snapshotAllowed = false
+		}
 		if m.syncing && m.syncInFlight && m.syncMessages != nil {
 			return m, readSyncProgressCmd(m.syncMessages)
 		}
@@ -459,6 +473,11 @@ func (m interactiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.err != nil {
 			m.syncSummary = msg.summary
 			m.syncErr = msg.err
+			if m.showingSnapshot && !errors.Is(msg.err, db.ErrRebuildPending) && !errors.Is(msg.err, db.ErrRecoveryRequired) {
+				m.syncing = false
+				m.syncInFlight = false
+				return m, nil
+			}
 			return m, tea.Quit
 		}
 		m.syncSummary = msg.summary
@@ -467,6 +486,10 @@ func (m interactiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.deferredDashboardLoadCmd(initialLoadingPaintDelay)
 	case startDashboardLoadMsg:
 		m.syncing = false
+		if m.showingSnapshot {
+			m.reloadInFlight = true
+			return m, m.reloadCmd()
+		}
 		m.loading = true
 		m = m.reconcileTableSummary()
 		m.reloadInFlight = true
@@ -487,6 +510,18 @@ func (m interactiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m = m.reconcileTableSummary()
 		m = m.resetRowPosition()
 		m = m.clampHorizontalOffset()
+		return m, nil
+	case snapshotMsg:
+		if !m.syncing || !m.snapshotAllowed || m.showingSnapshot || msg.err != nil || msg.lastSyncMs == 0 || msg.sessionCounts.Synced == 0 {
+			return m, nil
+		}
+		m.showingSnapshot = true
+		m.rows = msg.rows
+		m.sessionCounts = msg.sessionCounts
+		m.lastSyncMs = msg.lastSyncMs
+		m = m.reconcileStatusline()
+		m = m.reconcileTableSummary()
+		m = m.resetRowPosition()
 		return m, nil
 	case filterValuesMsg:
 		if m.popup != popupFilterValues || msg.dimension != m.filterDimension {
@@ -519,7 +554,7 @@ func (m interactiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.Type == tea.KeyCtrlC {
 			return m, tea.Quit
 		}
-		if m.syncing {
+		if m.syncing && !m.showingSnapshot {
 			if msg.String() == "q" {
 				return m, tea.Quit
 			}
@@ -643,7 +678,7 @@ func (m interactiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			syncMessages := make(chan tea.Msg, syncProgressBufferSize())
 			m.syncMessages = syncMessages
 			m.syncInFlight = true
-			return m, tea.Batch(m.syncCmd(syncMessages), readSyncProgressCmd(syncMessages), syncAnimationCmd())
+			return m, tea.Batch(m.syncCmd(syncMessages), readSyncProgressCmd(syncMessages), syncAnimationCmd(), m.snapshotCmd())
 		}
 		if m.loading && !m.reloadInFlight {
 			m.reloadInFlight = true
@@ -1171,7 +1206,7 @@ func filterDimensionLabel(dimension filterDimension) string {
 }
 
 func (m interactiveModel) View() string {
-	if m.syncing {
+	if m.syncing && !m.showingSnapshot {
 		return m.renderSyncProgress()
 	}
 	view := m.renderDesk()

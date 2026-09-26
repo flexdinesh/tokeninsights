@@ -81,6 +81,41 @@ func TestLifecycleMissingAndFresh(t *testing.T) {
 	}
 }
 
+func TestV11MetadataUpgradePreservesUsage(t *testing.T) {
+	database, path := newTestDB(t)
+	insertCanonicalToken(t, database, 2000, "pi", "retained", "openai", "gpt", 7, 1, 0, 0, 0, 8)
+	execLifecycleSQL(t, database, "CREATE TRIGGER retained_trigger AFTER INSERT ON ingest_runs BEGIN SELECT 1; END")
+	execLifecycleSQL(t, database, "DROP TABLE normalization_rule_state; PRAGMA user_version = 11")
+	if got := inspectLifecycle(t, path); got != (Compatibility{Exists: true, MigrationRequired: true}) {
+		t.Fatalf("V11 compatibility: %+v", got)
+	}
+	if opened, err := Open(path); !errors.Is(err, ErrMetadataUpgradeRequired) {
+		if opened != nil {
+			_ = opened.Close()
+		}
+		t.Fatalf("V11 read error = %v", err)
+	}
+	release, err := AcquireWriterLock(context.Background(), path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = UpgradeMetadata(context.Background(), path)
+	release()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := inspectLifecycle(t, path); got != (Compatibility{Exists: true}) {
+		t.Fatalf("upgraded compatibility: %+v", got)
+	}
+	assertDBCount(t, database, TableRawTokenUsage, 1)
+	assertDBCount(t, database, TableCanonicalTokenUsage, 1)
+	assertDBCount(t, database, TableNormalizationRuleState, 0)
+	var triggerCount int
+	if err := database.QueryRow("SELECT COUNT(*) FROM sqlite_schema WHERE type = 'trigger' AND name = 'retained_trigger'").Scan(&triggerCount); err != nil || triggerCount != 1 {
+		t.Fatalf("V11 trigger lost: %d, %v", triggerCount, err)
+	}
+}
+
 func TestRecoveryLegacySchemas(t *testing.T) {
 	for version := 2; version < SupportedSchemaVersion; version++ {
 		t.Run(fmt.Sprintf("v%d", version), func(t *testing.T) {
@@ -575,7 +610,9 @@ func legacySchema(t *testing.T, version int) string {
 	for _, statement := range strings.Split(string(schema), ";") {
 		if (version < 8 && strings.Contains(statement, "database_lifecycle")) ||
 			(version < 6 && strings.Contains(statement, "normalization_work_queue")) ||
+			(version < 12 && strings.Contains(statement, "normalization_rule_state")) ||
 			(version < 7 && strings.Contains(statement, "source_refresh_state")) ||
+			(version < 11 && strings.Contains(statement, "source_cursor_state")) ||
 			(version < 9 && (strings.Contains(statement, "CREATE TABLE IF NOT EXISTS usage_locations") ||
 				strings.Contains(statement, "CREATE INDEX IF NOT EXISTS usage_locations_") ||
 				strings.Contains(statement, "canonical_token_usage_location_time_idx"))) ||

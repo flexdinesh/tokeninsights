@@ -81,6 +81,21 @@ func insertSourceRefreshState(t *testing.T, database *sql.DB) {
 	}
 }
 
+func insertSourceCursorState(t *testing.T, database *sql.DB) {
+	t.Helper()
+	_, err := database.Exec(`
+		INSERT INTO source_cursor_state (
+			harness, source_kind, source_state_key, collector, parser, cursor_kind,
+			byte_offset, source_mtime_ms, source_size_bytes, prefix_hash, boundary_hash,
+			location_fingerprint, updated_at_ms
+		) VALUES ('pi', 'pi-session-jsonl', 'state-key', 'collector', 'parser', 'pi-jsonl-byte-v1',
+			1024, 1776783600000, 1024, 'head', 'boundary', 'location', 1777042800000)
+	`)
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
 func assertDBCount(t *testing.T, database *sql.DB, table string, want int) {
 	t.Helper()
 	var got int
@@ -140,6 +155,10 @@ func TestResetCanonicalKeepsRawFacts(t *testing.T) {
 	recordedAtMs := time.Date(2026, 4, 24, 12, 0, 0, 0, time.Local).UnixMilli()
 	insertCanonicalToken(t, database, recordedAtMs, "opencode", "ses_1", "openai", "gpt", 100, 10, 5, 20, 1, 136)
 	insertSourceRefreshState(t, database)
+	insertSourceCursorState(t, database)
+	if _, err := database.Exec("INSERT INTO normalization_rule_state (harness, rule_signature, updated_at_ms) VALUES ('pi', 'rules', 1)"); err != nil {
+		t.Fatal(err)
+	}
 
 	if err := ResetCanonical(context.Background(), database); err != nil {
 		t.Fatal(err)
@@ -173,6 +192,8 @@ func TestResetCanonicalKeepsRawFacts(t *testing.T) {
 	if sourceStateCount != 1 {
 		t.Fatalf("got source refresh state count %d, want 1", sourceStateCount)
 	}
+	assertDBCount(t, database, TableSourceCursorState, 1)
+	assertDBCount(t, database, TableNormalizationRuleState, 0)
 }
 
 func TestResetAllClearsSourceRefreshStateAndNormalizationWork(t *testing.T) {
@@ -180,6 +201,10 @@ func TestResetAllClearsSourceRefreshStateAndNormalizationWork(t *testing.T) {
 	recordedAtMs := time.Date(2026, 4, 24, 12, 0, 0, 0, time.Local).UnixMilli()
 	insertCanonicalToken(t, database, recordedAtMs, "opencode", "ses_1", "openai", "gpt", 100, 10, 5, 20, 1, 136)
 	insertSourceRefreshState(t, database)
+	insertSourceCursorState(t, database)
+	if _, err := database.Exec("INSERT INTO normalization_rule_state (harness, rule_signature, updated_at_ms) VALUES ('pi', 'rules', 1)"); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := database.Exec(`
 		INSERT OR IGNORE INTO normalization_work_queue (raw_fact_id, domain, enqueued_at_ms)
 		SELECT id, ?, ? FROM raw_token_usage
@@ -199,6 +224,8 @@ func TestResetAllClearsSourceRefreshStateAndNormalizationWork(t *testing.T) {
 	}
 	defer func() { _ = resetDB.Close() }()
 	assertDBCount(t, resetDB, "source_refresh_state", 0)
+	assertDBCount(t, resetDB, TableSourceCursorState, 0)
+	assertDBCount(t, resetDB, TableNormalizationRuleState, 0)
 	assertDBCount(t, resetDB, "normalization_work_queue", 0)
 	assertDBCount(t, resetDB, "raw_token_usage", 0)
 }

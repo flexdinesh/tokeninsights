@@ -55,6 +55,15 @@ func Sync(ctx context.Context, options SyncOptions) (Summary, error) {
 	if err != nil {
 		return Summary{}, err
 	}
+	if compatibility.MigrationRequired {
+		if err := db.UpgradeMetadata(ctx, options.DBPath); err != nil {
+			return Summary{}, err
+		}
+		compatibility, err = db.InspectCompatibility(ctx, options.DBPath)
+		if err != nil {
+			return Summary{}, err
+		}
+	}
 	if needsRecovery(compatibility) {
 		if err := validateRecoveryScope(options, compatibility); err != nil {
 			return Summary{}, err
@@ -192,10 +201,37 @@ func dryRunSync(ctx context.Context, options SyncOptions) (Summary, error) {
 		parsedSources := 0
 		harnessFailed := false
 		for _, source := range sources {
-			if dryRunSourceIsUpToDate(ctx, stateDB, source, harnessOptions) {
-				continue
+			if source.Harness == HarnessPi {
+				if dryRunSourceIsUpToDate(ctx, stateDB, source, harnessOptions) {
+					continue
+				}
+			} else if stateDB != nil {
+				metadata, hasMetadata := sourceRefreshMetadataFor(source)
+				var skip bool
+				_, skip, err = planSourceReuse(ctx, stateDB, source, harnessOptions, metadata, hasMetadata)
+				if err != nil {
+					return summary, err
+				}
+				if skip {
+					continue
+				}
 			}
-			facts, diagnostics, err := adapter.Parse(ctx, source, harnessOptions)
+			var facts []RawTokenFact
+			var diagnostics []Diagnostic
+			var err error
+			if cursorAdapter, ok := adapter.(byteCursorAdapter); ok && stateDB != nil {
+				metadata, hasMetadata := sourceRefreshMetadataFor(source)
+				offset, skip, cursorErr := planPiCursor(ctx, stateDB, source, harnessOptions, metadata, hasMetadata)
+				if cursorErr != nil {
+					return summary, cursorErr
+				}
+				if skip {
+					continue
+				}
+				facts, diagnostics, _, err = cursorAdapter.ParseFrom(ctx, source, harnessOptions, offset)
+			} else {
+				facts, diagnostics, err = adapter.Parse(ctx, source, harnessOptions)
+			}
 			if err != nil {
 				harnessFailed = true
 				summary.Failed++
@@ -307,9 +343,23 @@ func ingestSource(ctx context.Context, database *sql.DB, adapter Adapter, option
 		return summary, err
 	}
 	refreshMetadata, hasRefreshMetadata := sourceRefreshMetadataFor(source)
-	skipSource, err := shouldSkipSourceRefresh(ctx, tx, source, options, refreshMetadata, hasRefreshMetadata)
+	var skipSource bool
+	var reuseFingerprint sourceFingerprint
+	if source.Harness == HarnessPi {
+		skipSource, err = shouldSkipSourceRefresh(ctx, tx, source, options, refreshMetadata, hasRefreshMetadata)
+	} else {
+		reuseFingerprint, skipSource, err = planSourceReuse(ctx, tx, source, options, refreshMetadata, hasRefreshMetadata)
+	}
 	if err != nil {
 		return summary, err
+	}
+	cursorAdapter, cursorCapable := adapter.(byteCursorAdapter)
+	var cursorOffset int64
+	if !skipSource && cursorCapable {
+		cursorOffset, skipSource, err = planPiCursor(ctx, tx, source, options, refreshMetadata, hasRefreshMetadata)
+		if err != nil {
+			return summary, err
+		}
 	}
 	if skipSource {
 		if err := upsertSourceRefreshState(ctx, tx, source, options, refreshMetadata, hasRefreshMetadata); err != nil {
@@ -328,7 +378,15 @@ func ingestSource(ctx context.Context, database *sql.DB, adapter Adapter, option
 		return summary, err
 	}
 
-	facts, diagnostics, parseErr := adapter.Parse(ctx, source, options)
+	var facts []RawTokenFact
+	var diagnostics []Diagnostic
+	var cursorEligible bool
+	var parseErr error
+	if cursorCapable {
+		facts, diagnostics, cursorEligible, parseErr = cursorAdapter.ParseFrom(ctx, source, options, cursorOffset)
+	} else {
+		facts, diagnostics, parseErr = adapter.Parse(ctx, source, options)
+	}
 	if parseErr != nil {
 		if err := completeIngestRun(ctx, tx, runDBID, "failed", parseErr.Error(), Summary{}, syncNowMs(options.Now)); err != nil {
 			return summary, err
@@ -355,6 +413,15 @@ func ingestSource(ctx context.Context, database *sql.DB, adapter Adapter, option
 	}
 	if err := releaseSourceWriteSavepoint(ctx, tx); err != nil {
 		return summary, err
+	}
+	if cursorCapable {
+		if err := storePiCursor(ctx, tx, source, options, refreshMetadata, hasRefreshMetadata, cursorEligible); err != nil {
+			return summary, err
+		}
+	} else {
+		if err := storeSourceReuse(ctx, tx, source, options, refreshMetadata, hasRefreshMetadata, reuseFingerprint); err != nil {
+			return summary, err
+		}
 	}
 	if err := upsertSourceRefreshState(ctx, tx, source, options, refreshMetadata, hasRefreshMetadata); err != nil {
 		return summary, err

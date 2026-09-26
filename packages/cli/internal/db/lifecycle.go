@@ -13,12 +13,14 @@ import (
 
 var ErrRecoveryRequired = errors.New("database recovery required: run `tokeninsights sync --all`")
 var ErrRebuildPending = errors.New("database rebuild pending: repeat `tokeninsights sync --all` with the original source options and database path to resume")
+var ErrMetadataUpgradeRequired = errors.New("database metadata upgrade required: run `tokeninsights sync` or `tokeninsights normalize`")
 
 type Compatibility struct {
-	Exists           bool
-	ResetRequired    bool
-	RebuildPending   bool
-	RebuildSourceKey string
+	Exists            bool
+	ResetRequired     bool
+	MigrationRequired bool
+	RebuildPending    bool
+	RebuildSourceKey  string
 }
 
 // InspectCompatibility never creates a database or changes its contents.
@@ -56,7 +58,7 @@ func inspectDatabase(ctx context.Context, database *sql.DB, checkIntegrity bool)
 	}
 	defer func() { _ = tx.Rollback() }()
 	state, err := inspectCompatibility(ctx, tx)
-	if err != nil || !checkIntegrity || !state.ResetRequired {
+	if err != nil || !checkIntegrity || (!state.ResetRequired && !state.MigrationRequired) {
 		return state, err
 	}
 	// Scan before destructive recovery. Compatible refreshes and analytics opens
@@ -135,7 +137,8 @@ func inspectCompatibility(ctx context.Context, reader Reader) (Compatibility, er
 		result.RebuildPending = pending == 1
 		result.RebuildSourceKey = sourceKey.String
 	}
-	result.ResetRequired = result.ResetRequired || version < SupportedSchemaVersion
+	result.ResetRequired = result.ResetRequired || (version < SupportedSchemaVersion && version != 11)
+	result.MigrationRequired = version == 11 && !result.ResetRequired
 	return result, nil
 }
 
@@ -183,6 +186,8 @@ func recognizeSchema(ctx context.Context, reader Reader, version int) error {
 		}{
 			{TableNormalizationWorkQueue, "id raw_fact_id domain enqueued_at_ms", 6},
 			{TableSourceRefreshState, "id harness source_kind source_state_key collector parser last_successful_refresh_at_ms source_mtime_ms source_size_bytes updated_at_ms", 7},
+			{TableSourceCursorState, "id harness source_kind source_state_key collector parser cursor_kind byte_offset source_mtime_ms source_size_bytes prefix_hash boundary_hash location_fingerprint updated_at_ms", 11},
+			{TableNormalizationRuleState, "harness rule_signature updated_at_ms", 12},
 			{TableDatabaseLifecycle, "id data_generation rebuild_pending rebuild_source_key updated_at_ms", 8},
 			{TableUsageLocations, "id semantic_key directory_key directory_name repository_key repository_name repository_source worktree_key worktree_name worktree_source branch_key branch_value_key branch_name branch_source", 9},
 		} {
@@ -209,7 +214,7 @@ func recognizeSchema(ctx context.Context, reader Reader, version int) error {
 			_ = rows.Close()
 			return err
 		}
-		if kind == "trigger" && version == SupportedSchemaVersion {
+		if kind == "trigger" && version >= 11 {
 			continue
 		}
 		if kind != "table" || (required[name] == "" && optional[name] == "") {
@@ -246,6 +251,9 @@ func recognizeSchema(ctx context.Context, reader Reader, version int) error {
 func requireCompatible(state Compatibility, analytics bool) error {
 	if state.ResetRequired {
 		return ErrRecoveryRequired
+	}
+	if state.MigrationRequired {
+		return ErrMetadataUpgradeRequired
 	}
 	if analytics && state.RebuildPending {
 		return ErrRebuildPending

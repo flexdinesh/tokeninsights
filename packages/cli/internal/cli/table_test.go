@@ -882,6 +882,25 @@ func TestImplicitSyncSuccessTransitionsThroughLoadingDashboardToTableLoading(t *
 	}
 }
 
+func TestImplicitSyncShowsSavedSnapshotAndHidesItForRecovery(t *testing.T) {
+	m := newInteractiveModel(context.Background(), tableOptions{period: periodMonth}, time.Now(), "local")
+	m.width, m.height = 80, 24
+	model, _ := m.Update(snapshotMsg{reloadMsg{lastSyncMs: 1, sessionCounts: db.SessionCounts{Synced: 1}}})
+	shown := model.(interactiveModel)
+	if !shown.showingSnapshot || !strings.Contains(shown.View(), "syncing · saved data") {
+		t.Fatalf("saved snapshot not shown during sync:\n%s", shown.View())
+	}
+	model, cmd := shown.Update(tea.KeyMsg{Type: tea.KeyTab})
+	if next := model.(interactiveModel); next.activeTab != tabModels || cmd == nil {
+		t.Fatal("saved snapshot is not interactive")
+	}
+	model, _ = shown.Update(syncProgressMsg{event: pipeline.SyncProgressEvent{Status: pipeline.SyncProgressRebuilding}})
+	rebuilding := model.(interactiveModel)
+	if rebuilding.showingSnapshot || rebuilding.snapshotAllowed || !strings.Contains(rebuilding.View(), "Rebuilding") {
+		t.Fatalf("recovery exposed saved data:\n%s", rebuilding.View())
+	}
+}
+
 func TestImplicitSyncProcessesPendingNormalizationWork(t *testing.T) {
 	ctx := context.Background()
 	sourceRoot := t.TempDir()
