@@ -134,12 +134,19 @@ func (a piJSONLAdapter) ParseFrom(ctx context.Context, source Source, options Sy
 		return nil, nil, false, err
 	}
 	defer func() { _ = file.Close() }()
+	recordSourceParse(ctx)
 
 	session := piJSONLSessionFile{filenameSessionID: piSessionIDFromFilename(source.Path)}
 	session.sessionID = session.filenameSessionID
 	eligible := false
 	if offset > 0 {
-		header, ok, err := piCursorHeader(ctx, file, session.filenameSessionID)
+		var header piJSONLSessionFile
+		var ok bool
+		if options.sourceSnapshot != nil && options.sourceSnapshot.piHeaderValid {
+			header, ok = options.sourceSnapshot.piHeader, true
+		} else {
+			header, ok, err = piCursorHeader(ctx, file, session.filenameSessionID)
+		}
 		if err != nil {
 			return nil, nil, false, err
 		}
@@ -155,7 +162,7 @@ func (a piJSONLAdapter) ParseFrom(ctx context.Context, source Source, options Sy
 	}
 	var facts []RawTokenFact
 	var diagnostics []Diagnostic
-	scanner := newJSONLReader(ctx, file)
+	scanner := newSourceJSONLReader(ctx, file, source, options)
 	firstRecord := offset == 0
 	for scanner.Scan() {
 		if ctx.Err() != nil {
@@ -200,6 +207,9 @@ func (a piJSONLAdapter) ParseFrom(ctx context.Context, source Source, options Sy
 	}
 	if !session.hasHeader && session.filenameSessionID != "" && len(facts) > 0 {
 		diagnostics = append(diagnostics, piDiagnostic("pi_jsonl_missing_session_header", "used Pi filename session id because the session header was missing"))
+	}
+	if options.sourceSnapshot != nil {
+		options.sourceSnapshot.piHeader, options.sourceSnapshot.piHeaderValid = session, eligible
 	}
 	return facts, diagnostics, eligible, nil
 }

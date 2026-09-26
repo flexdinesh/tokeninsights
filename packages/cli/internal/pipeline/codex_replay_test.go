@@ -558,15 +558,6 @@ func TestCodexReplayOwnershipAndMetadataPrivacy(t *testing.T) {
 	}
 }
 
-func TestCodexAlwaysRefreshBypassesStateForDryRun(t *testing.T) {
-	for _, dryRun := range []bool{false, true} {
-		skip, err := shouldSkipSourceRefresh(context.Background(), nil, Source{AlwaysRefresh: true}, SyncOptions{DryRun: dryRun}, sourceRefreshMetadata{}, true)
-		if err != nil || skip {
-			t.Fatalf("fork skip=%t err=%v", skip, err)
-		}
-	}
-}
-
 func TestCodexReplayConformance(t *testing.T) {
 	assertConformanceFixture(t, filepath.Join("testdata", "conformance", "codex-replay"), Summary{RequestedHarnesses: 4, Synced: 1, Skipped: 3, RawFacts: 3, Observations: 5, Canonical: 3, Diagnostics: 1})
 }
@@ -633,15 +624,15 @@ func TestCodexReplaySkippedParentStillSuppliesOriginals(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if summary.Observations != 2 || summary.RawFacts != 0 {
-		t.Fatalf("child was not refreshed independently of skipped parent: %+v", summary)
+	if summary.Observations != 0 || summary.RawFacts != 0 {
+		t.Fatalf("verified child ancestry was unnecessarily refreshed: %+v", summary)
 	}
 	options.DryRun = true
 	dry, err := Sync(context.Background(), options)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if dry.RawFacts != 2 {
-		t.Fatalf("dry-run skipped old fork: %+v", dry)
+	if dry.RawFacts != 0 {
+		t.Fatalf("dry-run reparsed verified old fork: %+v", dry)
 	}
 }

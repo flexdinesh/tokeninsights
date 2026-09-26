@@ -33,6 +33,7 @@ type sqlRunner interface {
 
 func Sync(ctx context.Context, options SyncOptions) (Summary, error) {
 	options = defaultSyncOptions(options)
+	ctx = withSyncStats(ctx, options.stats)
 	if options.DryRun && strings.TrimSpace(options.DBPath) == "" {
 		return dryRunSync(ctx, options)
 	}
@@ -112,28 +113,17 @@ func syncPrepared(ctx context.Context, options SyncOptions) (summary Summary, re
 		return summary, err
 	}
 	defer func() { resultErr = errors.Join(resultErr, finishSyncJob(database, options, resultErr)) }()
-	plans := make(map[Harness]harnessPlan, len(options.Harnesses))
-	for _, harness := range options.Harnesses {
-		if err := ctx.Err(); err != nil {
-			return summary, err
-		}
+	plans, err := discoverHarnessPlans(ctx, options, func(harness Harness) error {
 		if err := setHarnessStatus(ctx, database, options, harness, SyncProgressDiscovering); err != nil {
-			return summary, err
+			return err
 		}
 		reportSyncProgress(options, SyncProgressEvent{Harness: harness, Status: SyncProgressDiscovering})
-		adapter, ok := AdapterFor(harness)
-		plan := harnessPlan{adapter: adapter}
-		if !ok {
-			plan.err = fmt.Errorf("unsupported harness %q", harness)
-		} else {
-			plan.sources, plan.err = adapter.Discover(ctx, discoverOptions(parserOptionsForHarness(options, harness)))
-		}
-		if plan.err == nil {
-			if err := recordDiscoveredSources(ctx, database, options, harness, plan.sources); err != nil {
-				return summary, err
-			}
-		}
-		plans[harness] = plan
+		return nil
+	}, func(harness Harness, sources []Source) error {
+		return recordDiscoveredSources(ctx, database, options, harness, sources)
+	})
+	if err != nil {
+		return summary, err
 	}
 	for _, harness := range options.Harnesses {
 		if err := ctx.Err(); err != nil {
@@ -194,7 +184,7 @@ func syncPrepared(ctx context.Context, options SyncOptions) (summary Summary, re
 
 func hasPendingNormalizationWork(ctx context.Context, database *sql.DB, harnesses []Harness) (bool, error) {
 	query := `
-		SELECT COUNT(*)
+		SELECT EXISTS(SELECT 1
 		FROM normalization_work_queue q
 		JOIN raw_token_usage r ON r.id = q.raw_fact_id
 		WHERE q.domain = ?
@@ -208,85 +198,62 @@ func hasPendingNormalizationWork(ctx context.Context, database *sql.DB, harnesse
 		}
 		query += " AND r.harness IN (" + strings.Join(placeholders, ", ") + ")"
 	}
-	var count int
-	if err := database.QueryRowContext(ctx, query, args...).Scan(&count); err != nil {
+	query += ")"
+	var pending bool
+	if err := database.QueryRowContext(ctx, query, args...).Scan(&pending); err != nil {
 		return false, err
 	}
-	return count > 0, nil
+	return pending, nil
 }
 
 func dryRunSync(ctx context.Context, options SyncOptions) (Summary, error) {
-	var summary Summary
-	summary.RequestedHarnesses = len(options.Harnesses)
+	summary := Summary{RequestedHarnesses: len(options.Harnesses)}
 	stateDB := openDryRunSourceRefreshDB(options.DBPath)
 	if stateDB != nil {
 		defer func() { _ = stateDB.Close() }()
 	}
+	plans, err := discoverHarnessPlans(ctx, options, nil, nil)
+	if err != nil {
+		return summary, err
+	}
 	for _, harness := range options.Harnesses {
+		if err := ctx.Err(); err != nil {
+			return summary, err
+		}
 		harnessOptions := parserOptionsForHarness(options, harness)
-		adapter, ok := AdapterFor(harness)
-		if !ok {
+		plan := plans[harness]
+		if plan.err != nil {
 			summary.Failed++
-			summary.Errors = append(summary.Errors, fmt.Errorf("unsupported harness %q", harness))
+			summary.Errors = append(summary.Errors, fmt.Errorf("%s discover: %w", harness, plan.err))
 			continue
 		}
-		sources, err := adapter.Discover(ctx, discoverOptions(harnessOptions))
+		states, err := loadSourceStates(ctx, stateDB, harness)
 		if err != nil {
-			summary.Failed++
-			summary.Errors = append(summary.Errors, fmt.Errorf("%s discover: %w", harness, err))
-			continue
+			return summary, err
 		}
-		if len(sources) == 0 {
-			summary.Skipped++
-			continue
-		}
-		parsedSources := 0
-		harnessFailed := false
-		for _, source := range sources {
-			if source.Harness == HarnessPi {
-				if dryRunSourceIsUpToDate(ctx, stateDB, source, harnessOptions) {
-					continue
+		parsed := 0
+		failed := false
+		consume := func(prepared preparedSource) error {
+			if prepared.parseErr != nil {
+				if err := ctx.Err(); err != nil {
+					return err
 				}
-			} else if stateDB != nil {
-				metadata, hasMetadata := sourceRefreshMetadataFor(source)
-				var skip bool
-				_, skip, err = planSourceReuse(ctx, stateDB, source, harnessOptions, metadata, hasMetadata)
-				if err != nil {
-					return summary, err
-				}
-				if skip {
-					continue
-				}
-			}
-			var facts []RawTokenFact
-			var diagnostics []Diagnostic
-			var err error
-			if cursorAdapter, ok := adapter.(byteCursorAdapter); ok && stateDB != nil {
-				metadata, hasMetadata := sourceRefreshMetadataFor(source)
-				offset, skip, cursorErr := planPiCursor(ctx, stateDB, source, harnessOptions, metadata, hasMetadata)
-				if cursorErr != nil {
-					return summary, cursorErr
-				}
-				if skip {
-					continue
-				}
-				facts, diagnostics, _, err = cursorAdapter.ParseFrom(ctx, source, harnessOptions, offset)
-			} else {
-				facts, diagnostics, err = adapter.Parse(ctx, source, harnessOptions)
-			}
-			if err != nil {
-				harnessFailed = true
+				failed = true
 				summary.Failed++
-				summary.Errors = append(summary.Errors, fmt.Errorf("%s parse: %w", harness, err))
-				continue
+				summary.Errors = append(summary.Errors, fmt.Errorf("%s parse: %w", harness, prepared.parseErr))
+			} else if !prepared.unchanged {
+				parsed++
+				summary.RawFacts += len(prepared.facts)
+				summary.Diagnostics += len(prepared.diagnostics)
 			}
-			parsedSources++
-			summary.RawFacts += len(facts)
-			summary.Diagnostics += len(diagnostics)
+			return nil
 		}
-		if parsedSources > 0 {
+		if err := prepareSources(ctx, plan.sources, harnessOptions, plan.adapter, states, nil, consume, nil); err != nil {
+			return summary, err
+		}
+		if parsed > 0 {
 			summary.Synced++
-		} else if !harnessFailed {
+		} else if !failed {
 			summary.Skipped++
 		}
 	}
@@ -304,18 +271,6 @@ func openDryRunSourceRefreshDB(dbPath string) *sql.DB {
 	return database
 }
 
-func dryRunSourceIsUpToDate(ctx context.Context, database *sql.DB, source Source, options SyncOptions) bool {
-	if database == nil {
-		return false
-	}
-	metadata, ok := sourceRefreshMetadataFor(source)
-	if !ok {
-		return false
-	}
-	skip, err := shouldSkipSourceRefresh(ctx, database, source, options, metadata, ok)
-	return err == nil && skip
-}
-
 type harnessPlan struct {
 	adapter Adapter
 	sources []Source
@@ -328,40 +283,95 @@ func syncHarness(ctx context.Context, database *sql.DB, options SyncOptions, har
 	if plan.err != nil {
 		return summary, sourceFailure{err: fmt.Errorf("%s discover: %w", harness, plan.err)}
 	}
-	adapter, sources := plan.adapter, plan.sources
-	if len(sources) == 0 {
+	if len(plan.sources) == 0 {
 		return summary, nil
 	}
-	seenDedupeKeys := map[string]int64{}
+	states, err := loadSourceStates(ctx, database, harness)
+	if err != nil {
+		return summary, err
+	}
 	if err := setHarnessStatus(ctx, database, options, harness, SyncProgressSyncing); err != nil {
 		return summary, err
 	}
 	reportSyncProgress(options, SyncProgressEvent{Harness: harness, Status: SyncProgressSyncing})
+	seen := map[string]int64{}
 	var failures []error
-	for _, source := range sources {
-		if err := ctx.Err(); err != nil {
-			return summary, err
+	var unchanged []preparedSource
+	var reading []Source
+	flushReading := func() error {
+		if len(reading) == 0 {
+			return nil
 		}
-		if err := updateSourceStatus(ctx, database, options, source, "reading", "", nil, nil); err != nil {
-			return summary, err
+		tx, err := database.BeginTx(ctx, nil)
+		if err != nil {
+			return err
 		}
-		sourceSummary, ingestErr := ingestSource(ctx, database, adapter, options, harness, source, seenDedupeKeys)
-		if ingestErr != nil {
-			var recoverable sourceFailure
-			if !errors.As(ingestErr, &recoverable) || ctx.Err() != nil {
-				return summary, ingestErr
+		defer func() { _ = tx.Rollback() }()
+		for _, source := range reading {
+			if err := updateSourceStatus(ctx, tx, options, source, "reading", "", nil, nil); err != nil {
+				return err
 			}
-			failures = append(failures, ingestErr)
 		}
-		if err := completeSourceAttempt(ctx, database, options, source, ingestErr); err != nil {
-			return summary, err
+		if err := commitSyncTransaction(ctx, tx); err != nil {
+			return err
 		}
-		mergeSummary(&summary, sourceSummary)
+		reading = nil
+		return nil
+	}
+	commit := func(prepared []preparedSource) error {
+		if err := flushReading(); err != nil {
+			return err
+		}
+		part, err := commitPreparedSources(ctx, database, options, prepared, seen)
+		mergeSummary(&summary, part)
+		if err != nil {
+			var recoverable sourceFailure
+			if !errors.As(err, &recoverable) || ctx.Err() != nil {
+				return err
+			}
+			failures = append(failures, err)
+		}
+		return nil
+	}
+	flush := func() error {
+		if err := flushReading(); err != nil {
+			return err
+		}
+		if len(unchanged) == 0 {
+			return nil
+		}
+		if err := commit(unchanged); err != nil {
+			return err
+		}
+		unchanged = nil
+		return nil
+	}
+	start := func(source Source) error {
+		reading = append(reading, source)
+		if len(reading) >= sourceWriteBatchSize {
+			return flushReading()
+		}
+		return nil
+	}
+	consume := func(prepared preparedSource) error {
+		if prepared.unchanged {
+			unchanged = append(unchanged, prepared)
+			if len(unchanged) >= sourceWriteBatchSize {
+				return flush()
+			}
+			return nil
+		}
+		if err := flush(); err != nil {
+			return err
+		}
+		return commit([]preparedSource{prepared})
+	}
+	if err := prepareSources(ctx, plan.sources, options, plan.adapter, states, start, consume, flush); err != nil {
+		return summary, err
 	}
 	if len(failures) > 0 {
 		return summary, sourceFailure{err: errors.Join(failures...)}
 	}
-
 	return summary, nil
 }
 
@@ -388,166 +398,14 @@ func reportSyncProgress(options SyncOptions, event SyncProgressEvent) {
 }
 
 func ingestSource(ctx context.Context, database *sql.DB, adapter Adapter, options SyncOptions, harness Harness, source Source, seenDedupeKeys map[string]int64) (Summary, error) {
-	var summary Summary
-	tx, err := database.BeginTx(ctx, nil)
+	states, err := loadSourceStates(ctx, database, harness)
 	if err != nil {
-		return summary, err
+		return Summary{}, err
 	}
-	committed := false
-	defer func() {
-		if !committed {
-			_ = tx.Rollback()
-		}
-	}()
-
-	runID := newRunID(harness, source.ID, options.Now)
-	runDBID, err := createIngestRun(ctx, tx, runID, source, options)
-	if err != nil {
-		return summary, err
-	}
-	refreshMetadata, hasRefreshMetadata := sourceRefreshMetadataFor(source)
-	var skipSource bool
-	var reuseFingerprint sourceFingerprint
-	if source.Harness == HarnessPi {
-		skipSource, err = shouldSkipSourceRefresh(ctx, tx, source, options, refreshMetadata, hasRefreshMetadata)
-	} else {
-		reuseFingerprint, skipSource, err = planSourceReuse(ctx, tx, source, options, refreshMetadata, hasRefreshMetadata)
-	}
-	if err != nil {
-		return summary, err
-	}
-	cursorAdapter, cursorCapable := adapter.(byteCursorAdapter)
-	var cursorOffset int64
-	if !skipSource && cursorCapable {
-		cursorOffset, skipSource, err = planPiCursor(ctx, tx, source, options, refreshMetadata, hasRefreshMetadata)
-		if err != nil {
-			return summary, err
-		}
-	}
-	if skipSource {
-		if err := updateSourceStatus(ctx, tx, options, source, "unchanged", "", nil, nil); err != nil {
-			return summary, err
-		}
-		if err := upsertSourceRefreshState(ctx, tx, source, options, refreshMetadata, hasRefreshMetadata); err != nil {
-			return summary, err
-		}
-		if err := completeIngestRun(ctx, tx, runDBID, "completed", "", Summary{}, syncWallNow(options).UnixMilli()); err != nil {
-			return summary, err
-		}
-		if err := tx.Commit(); err != nil {
-			return summary, err
-		}
-		committed = true
-		return summary, nil
-	}
-	if err := createSourceWriteSavepoint(ctx, tx); err != nil {
-		return summary, err
-	}
-
-	var facts []RawTokenFact
-	var diagnostics []Diagnostic
-	var cursorEligible bool
-	var parseErr error
-	if cursorCapable {
-		facts, diagnostics, cursorEligible, parseErr = cursorAdapter.ParseFrom(ctx, source, options, cursorOffset)
-	} else {
-		facts, diagnostics, parseErr = adapter.Parse(ctx, source, options)
-	}
-	if parseErr != nil {
-		if err := completeIngestRun(ctx, tx, runDBID, "failed", parseErr.Error(), Summary{}, syncWallNow(options).UnixMilli()); err != nil {
-			return summary, err
-		}
-		if err := tx.Commit(); err != nil {
-			return summary, err
-		}
-		committed = true
-		return summary, sourceFailure{err: fmt.Errorf("%s parse: %w", harness, parseErr)}
-	}
-	sourceStatus := "ingested"
-	for _, diagnostic := range diagnostics {
-		if diagnostic.Code == "jsonl_incomplete_tail" {
-			sourceStatus = "deferred"
-		}
-	}
-	if source.Harness != HarnessOpenCode && hasRefreshMetadata {
-		current, valid := sourceRefreshMetadataFor(source)
-		if !valid || current.mtimeMs != refreshMetadata.mtimeMs || current.sizeBytes != refreshMetadata.sizeBytes {
-			sourceStatus = "deferred"
-			diagnostics = append(diagnostics, Diagnostic{Harness: harness, Severity: "info", Code: "jsonl_source_changed", Message: "source changed during snapshot read; new records await next sync"})
-		}
-	}
-	sourceDedupeKeys := make(map[string]int64, len(facts))
-	for _, fact := range facts {
-		if id, ok := seenDedupeKeys[fact.DedupeKey]; ok {
-			sourceDedupeKeys[fact.DedupeKey] = id
-		}
-	}
-	sourceSummary, err := writeSourceIngest(ctx, tx, runDBID, facts, diagnostics, options, sourceDedupeKeys)
-	if err != nil {
-		if rollbackErr := rollbackSourceWrites(ctx, tx); rollbackErr != nil {
-			return summary, errors.Join(err, rollbackErr)
-		}
-		if completeErr := completeIngestRun(ctx, tx, runDBID, "failed", err.Error(), Summary{}, syncWallNow(options).UnixMilli()); completeErr != nil {
-			return summary, errors.Join(err, completeErr)
-		}
-		if commitErr := tx.Commit(); commitErr != nil {
-			return summary, errors.Join(err, commitErr)
-		}
-		committed = true
-		return summary, err
-	}
-	if err := releaseSourceWriteSavepoint(ctx, tx); err != nil {
-		return summary, err
-	}
-	if sourceStatus == "deferred" {
-		for _, table := range []string{db.TableSourceRefreshState, db.TableSourceCursorState} {
-			if _, err := tx.ExecContext(ctx, "DELETE FROM "+table+" WHERE harness = ? AND source_kind = ? AND source_state_key = ?", source.Harness, source.Kind, source.ID); err != nil {
-				return summary, err
-			}
-		}
-	} else {
-		if cursorCapable {
-			if err := storePiCursor(ctx, tx, source, options, refreshMetadata, hasRefreshMetadata, cursorEligible); err != nil {
-				return summary, err
-			}
-		} else {
-			if err := storeSourceReuse(ctx, tx, source, options, refreshMetadata, hasRefreshMetadata, reuseFingerprint); err != nil {
-				return summary, err
-			}
-		}
-		if err := upsertSourceRefreshState(ctx, tx, source, options, refreshMetadata, hasRefreshMetadata); err != nil {
-			return summary, err
-		}
-
-	}
-	var first, last interface{}
-	for _, fact := range facts {
-		if fact.OccurredAtMs != nil {
-			if first == nil || *fact.OccurredAtMs < first.(int64) {
-				first = *fact.OccurredAtMs
-			}
-			if last == nil || *fact.OccurredAtMs > last.(int64) {
-				last = *fact.OccurredAtMs
-			}
-		}
-	}
-	if sourceStatus == "deferred" {
-		first, last = nil, nil
-	}
-	if err := updateSourceStatus(ctx, tx, options, source, sourceStatus, "", first, last); err != nil {
-		return summary, err
-	}
-	if err := completeIngestRun(ctx, tx, runDBID, "completed", "", sourceSummary, syncWallNow(options).UnixMilli()); err != nil {
-		return summary, err
-	}
-	if err := tx.Commit(); err != nil {
-		return summary, err
-	}
-	committed = true
-	for key, id := range sourceDedupeKeys {
-		seenDedupeKeys[key] = id
-	}
-	return sourceSummary, nil
+	started := syncWallNow(options).UnixMilli()
+	prepared := prepareSource(ctx, adapter, source, options, states[stateKeyFor(source)])
+	prepared.startedAtMs = started
+	return commitPreparedSources(ctx, database, options, []preparedSource{prepared}, seenDedupeKeys)
 }
 
 func duplicateSuppressedDiagnostic(harness Harness) Diagnostic {
@@ -683,11 +541,15 @@ func newRunID(harness Harness, sourceID string, now time.Time) string {
 }
 
 func createIngestRun(ctx context.Context, runner sqlRunner, runID string, source Source, options SyncOptions) (int64, error) {
+	return createIngestRunAt(ctx, runner, runID, source, options, syncWallNow(options).UnixMilli())
+}
+
+func createIngestRunAt(ctx context.Context, runner sqlRunner, runID string, source Source, options SyncOptions, startedAtMs int64) (int64, error) {
 	result, err := runner.ExecContext(ctx, `
 		INSERT INTO ingest_runs (
 			run_id, hostname, harness, collector, parser, source_id, source_kind, status, started_at_ms
 		) VALUES (?, NULLIF(?, ''), ?, ?, ?, ?, ?, 'running', ?)
-	`, runID, options.hostname, source.Harness, options.Collector, options.Parser, source.ID, source.Kind, syncWallNow(options).UnixMilli())
+	`, runID, options.hostname, source.Harness, options.Collector, options.Parser, source.ID, source.Kind, startedAtMs)
 	if err != nil {
 		return 0, err
 	}

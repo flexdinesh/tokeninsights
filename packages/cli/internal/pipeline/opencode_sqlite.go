@@ -159,6 +159,11 @@ func (a opencodeSQLiteAdapter) Parse(ctx context.Context, source Source, options
 		return nil, nil, err
 	}
 	defer func() { _ = tx.Rollback() }()
+	return a.parseSnapshot(ctx, tx, source, options)
+}
+
+func (a opencodeSQLiteAdapter) parseSnapshot(ctx context.Context, tx openCodeReader, source Source, options SyncOptions) ([]RawTokenFact, []Diagnostic, error) {
+	recordSourceParse(ctx)
 	v1Exists, err := sqliteTableExists(ctx, tx, "message")
 	if err != nil {
 		return nil, nil, err

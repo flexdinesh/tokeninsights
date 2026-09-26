@@ -2,13 +2,8 @@ package pipeline
 
 import (
 	"context"
-	"database/sql"
-	"errors"
 	"os"
-	"time"
 )
-
-const recentSourceRefreshWindow = 48 * time.Hour
 
 type sourceRefreshMetadata struct {
 	stateKey  string
@@ -59,52 +54,6 @@ func sourceRefreshEnabled(source Source) bool {
 	default:
 		return false
 	}
-}
-
-func shouldSkipSourceRefresh(ctx context.Context, runner sqlRunner, source Source, options SyncOptions, metadata sourceRefreshMetadata, ok bool) (bool, error) {
-	if options.FullRefresh || source.AlwaysRefresh {
-		return false, nil
-	}
-	if !ok {
-		return false, nil
-	}
-	state, found, err := loadSourceRefreshState(ctx, runner, source, metadata.stateKey)
-	if err != nil {
-		return false, err
-	}
-	if !found {
-		return false, nil
-	}
-	if state.collector != options.Collector || state.parser != options.Parser {
-		return false, nil
-	}
-	if state.sourceMtimeMs != metadata.mtimeMs || state.sourceSizeBytes != metadata.sizeBytes {
-		return false, nil
-	}
-	freshnessCutoffMs := state.lastSuccessfulRefreshAtMs - recentSourceRefreshWindow.Milliseconds()
-	return metadata.mtimeMs < freshnessCutoffMs, nil
-}
-
-func loadSourceRefreshState(ctx context.Context, runner sqlRunner, source Source, stateKey string) (sourceRefreshState, bool, error) {
-	var state sourceRefreshState
-	err := runner.QueryRowContext(ctx, `
-		SELECT collector, parser, last_successful_refresh_at_ms, source_mtime_ms, source_size_bytes
-		FROM source_refresh_state
-		WHERE harness = ? AND source_kind = ? AND source_state_key = ?
-	`, source.Harness, source.Kind, stateKey).Scan(
-		&state.collector,
-		&state.parser,
-		&state.lastSuccessfulRefreshAtMs,
-		&state.sourceMtimeMs,
-		&state.sourceSizeBytes,
-	)
-	if errors.Is(err, sql.ErrNoRows) {
-		return sourceRefreshState{}, false, nil
-	}
-	if err != nil {
-		return sourceRefreshState{}, false, err
-	}
-	return state, true, nil
 }
 
 func upsertSourceRefreshState(ctx context.Context, runner sqlRunner, source Source, options SyncOptions, metadata sourceRefreshMetadata, ok bool) error {

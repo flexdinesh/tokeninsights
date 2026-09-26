@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 )
 
 const locationLabelLimit = 48
@@ -27,7 +28,13 @@ type gitLocation struct {
 }
 
 type locationResolver struct {
-	git map[string]gitLocation
+	mu  sync.Mutex
+	git map[string]*gitLocationCall
+}
+
+type gitLocationCall struct {
+	done     chan struct{}
+	location gitLocation
 }
 
 func resolveFactLocation(ctx context.Context, options SyncOptions, directory, recordedRemote, projectID string) (*Location, bool) {
@@ -72,9 +79,22 @@ func (resolver *locationResolver) inspect(ctx context.Context, path string) gitL
 	if path == "" {
 		return gitLocation{}
 	}
+	resolver.mu.Lock()
 	if cached, ok := resolver.git[path]; ok {
-		return cached
+		resolver.mu.Unlock()
+		select {
+		case <-cached.done:
+			return cached.location
+		case <-ctx.Done():
+			return gitLocation{}
+		}
 	}
+	if resolver.git == nil {
+		resolver.git = make(map[string]*gitLocationCall)
+	}
+	call := &gitLocationCall{done: make(chan struct{})}
+	resolver.git[path] = call
+	resolver.mu.Unlock()
 	result := gitLocation{}
 	if info, err := os.Stat(path); err == nil && info.IsDir() {
 		paths := strings.SplitN(gitValue(ctx, path, "rev-parse", "--show-toplevel", "--path-format=absolute", "--git-common-dir"), "\n", 2)
@@ -97,10 +117,13 @@ func (resolver *locationResolver) inspect(ctx context.Context, path string) gitL
 			}
 		}
 	}
-	if resolver.git == nil {
-		resolver.git = make(map[string]gitLocation)
+	resolver.mu.Lock()
+	call.location = result
+	if ctx.Err() != nil {
+		delete(resolver.git, path)
 	}
-	resolver.git[path] = result
+	close(call.done)
+	resolver.mu.Unlock()
 	return result
 }
 

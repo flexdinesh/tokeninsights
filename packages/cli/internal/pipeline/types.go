@@ -75,6 +75,9 @@ type SyncOptions struct {
 	Progress         func(SyncProgressEvent)
 	Clock            func() time.Time
 	locationResolver *locationResolver
+	sourceSnapshot   *sourceSnapshot
+	workers          int
+	stats            *syncStats
 	jobID            int64
 	hostname         string
 	recovering       bool

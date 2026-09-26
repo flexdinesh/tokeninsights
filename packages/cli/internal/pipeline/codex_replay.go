@@ -44,9 +44,23 @@ type codexParseResult struct {
 	diagnostics []Diagnostic
 	// Each fingerprint maps to unique accepted logical originals. More than one
 	// original is ambiguous, even if all normalized token components agree.
-	proofs     map[string]map[string]RawTokenFact
-	err        error
-	unresolved bool
+	proofs       map[string]map[string]RawTokenFact
+	err          error
+	unresolved   bool
+	snapshot     *sourceSnapshot
+	dependencies []codexVerifiedSource
+}
+
+type codexParseCall struct {
+	done   chan struct{}
+	result codexParseResult
+}
+
+func (a *codexJSONLAdapter) sourceMetadata(source Source) (codexSourceMetadata, bool) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	metadata, found := a.metadata[source.Path]
+	return metadata, found
 }
 
 func codexSnapshotFromUsage(usage map[string]interface{}) (*codexUsageSnapshot, bool) {
@@ -174,6 +188,8 @@ func codexReadSourceMetadata(ctx context.Context, source Source) (codexSourceMet
 // Validate the entire chain before recursing. This makes cycles and copied or
 // conflicting parent sources deterministic regardless of ingestion order.
 func (a *codexJSONLAdapter) ancestryProblem(source Source) string {
+	a.mu.Lock()
+	defer a.mu.Unlock()
 	seen := make(map[string]bool)
 	for {
 		metadata := a.metadata[source.Path]
@@ -200,6 +216,9 @@ func (a *codexJSONLAdapter) ancestryProblem(source Source) string {
 
 func (a *codexJSONLAdapter) Parse(ctx context.Context, source Source, options SyncOptions) ([]RawTokenFact, []Diagnostic, error) {
 	result := a.parseResolved(ctx, source, options)
+	if options.sourceSnapshot != nil && result.snapshot != nil {
+		*options.sourceSnapshot = *result.snapshot
+	}
 	facts := make([]RawTokenFact, len(result.facts))
 	for i, fact := range result.facts {
 		fact.Collector = options.Collector
@@ -214,36 +233,80 @@ func (a *codexJSONLAdapter) parseResolved(ctx context.Context, source Source, op
 	if err := ctx.Err(); err != nil {
 		return codexParseResult{err: err}
 	}
-	if result, found := a.cache[source.Path]; found {
-		return result
+	a.mu.Lock()
+	if call, found := a.cache[source.Path]; found {
+		a.mu.Unlock()
+		select {
+		case <-call.done:
+			return call.result
+		case <-ctx.Done():
+			return codexParseResult{err: ctx.Err()}
+		}
 	}
 	if a.cache == nil {
-		a.cache = make(map[string]codexParseResult)
+		a.cache = make(map[string]*codexParseCall)
 	}
+	call := &codexParseCall{done: make(chan struct{})}
+	a.cache[source.Path] = call
+	a.mu.Unlock()
+	result := a.parseResolvedUncached(ctx, source, options)
+	if err := ctx.Err(); err != nil {
+		result = codexParseResult{err: err}
+	}
+	a.mu.Lock()
+	call.result = result
+	if result.err == context.Canceled || result.err == context.DeadlineExceeded {
+		delete(a.cache, source.Path)
+	}
+	close(call.done)
+	a.mu.Unlock()
+	return result
+}
+
+func (a *codexJSONLAdapter) parseResolvedUncached(ctx context.Context, source Source, options SyncOptions) codexParseResult {
+	a.mu.Lock()
 	if a.metadata == nil {
 		a.metadata = make(map[string]codexSourceMetadata)
 	}
 	metadata, found := a.metadata[source.Path]
+	a.mu.Unlock()
 	if !found {
 		var err error
 		metadata, err = codexReadSourceMetadata(ctx, source)
 		if err != nil {
 			return codexParseResult{err: err}
 		}
+		a.mu.Lock()
 		a.metadata[source.Path] = metadata
+		a.mu.Unlock()
 	}
+	beforeInfo, beforeInfoErr := os.Stat(source.Path)
+	before, hasBefore := sourceRefreshMetadataFor(source)
+	options.sourceSnapshot = newSourceSnapshot(source)
+	options.sourceSnapshot.metadata = before
 	candidates, diagnostics, err := a.parseCandidates(ctx, source, options)
 	if err := ctx.Err(); err != nil {
 		return codexParseResult{err: err}
 	}
-	result := codexParseResult{diagnostics: diagnostics, err: err, proofs: make(map[string]map[string]RawTokenFact)}
+	result := codexParseResult{diagnostics: diagnostics, err: err, proofs: make(map[string]map[string]RawTokenFact), snapshot: options.sourceSnapshot}
 	if err != nil {
-		a.cache[source.Path] = result
 		return result
+	}
+	fingerprint, fingerprintErr := options.sourceSnapshot.fingerprint(ctx, options)
+	content, contentErr := sourceContentHash(ctx, source)
+	after, hasAfter := sourceRefreshMetadataFor(source)
+	afterInfo, afterInfoErr := os.Stat(source.Path)
+	header, headerErr := codexReadSourceMetadata(ctx, source)
+	if fingerprintErr == nil && contentErr == nil && headerErr == nil && header == metadata && beforeInfoErr == nil && afterInfoErr == nil && os.SameFile(beforeInfo, afterInfo) && hasBefore && hasAfter && before == after && content == fingerprint.content {
+		options.sourceSnapshot.verified = true
+		result.dependencies = []codexVerifiedSource{{source: source, metadata: before, fingerprint: fingerprint, sourceInfo: beforeInfo, valid: true}}
 	}
 	problem := a.ancestryProblem(source)
 	if metadata.fork && problem == "" {
-		parent := a.parseResolved(ctx, a.sessions[metadata.parentID][0], options)
+		a.mu.Lock()
+		parentSource := a.sessions[metadata.parentID][0]
+		a.mu.Unlock()
+		parent := a.parseResolved(ctx, parentSource, options)
 		if err := ctx.Err(); err != nil {
 			return codexParseResult{err: err}
 		}
@@ -252,6 +315,11 @@ func (a *codexJSONLAdapter) parseResolved(ctx context.Context, source Source, op
 		} else if parent.unresolved {
 			problem = "codex_jsonl_replay_unresolved_parent"
 		} else {
+			if len(result.dependencies) != 0 && len(parent.dependencies) != 0 {
+				result.dependencies = append(result.dependencies, parent.dependencies...)
+			} else {
+				result.dependencies = nil
+			}
 			for fingerprint, originals := range parent.proofs {
 				for _, original := range originals {
 					result.addProof(fingerprint, original)
@@ -261,6 +329,7 @@ func (a *codexJSONLAdapter) parseResolved(ctx context.Context, source Source, op
 	}
 	if problem != "" {
 		result.unresolved = true
+		result.dependencies = nil
 		result.diagnostics = append(result.diagnostics, codexDiagnostic(problem, "retained Codex usage because explicit ancestry could not establish replay ownership"))
 	}
 	var previousTotal *codexTokenCounts
@@ -329,7 +398,6 @@ func (a *codexJSONLAdapter) parseResolved(ctx context.Context, source Source, op
 			Message:  "matched inherited Codex token usage to original session facts",
 		})
 	}
-	a.cache[source.Path] = result
 	return result
 }
 

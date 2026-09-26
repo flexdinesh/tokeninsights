@@ -11,6 +11,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -19,9 +20,11 @@ const (
 )
 
 type codexJSONLAdapter struct {
+	mu       sync.Mutex
 	metadata map[string]codexSourceMetadata
 	sessions map[string][]Source
-	cache    map[string]codexParseResult
+	cache    map[string]*codexParseCall
+	verified map[string]*codexVerificationCall
 }
 
 type codexJSONLState struct {
@@ -132,7 +135,8 @@ func (a *codexJSONLAdapter) Discover(ctx context.Context, options DiscoverOption
 	})
 	a.metadata = make(map[string]codexSourceMetadata)
 	a.sessions = make(map[string][]Source)
-	a.cache = make(map[string]codexParseResult)
+	a.cache = make(map[string]*codexParseCall)
+	a.verified = make(map[string]*codexVerificationCall)
 	for i := range sources {
 		if err := ctx.Err(); err != nil {
 			return nil, err
@@ -150,7 +154,7 @@ func (a *codexJSONLAdapter) Discover(ctx context.Context, options DiscoverOption
 	return sources, ctx.Err()
 }
 
-func (a codexJSONLAdapter) source(path string, root string) Source {
+func (a *codexJSONLAdapter) source(path string, root string) Source {
 	rel, err := filepath.Rel(root, path)
 	if err != nil {
 		rel = filepath.Base(path)
@@ -169,15 +173,16 @@ func (a *codexJSONLAdapter) parseCandidates(ctx context.Context, source Source, 
 		return nil, nil, err
 	}
 	defer func() { _ = file.Close() }()
+	recordSourceParse(ctx)
 
 	state := codexJSONLState{filenameSessionID: codexSessionIDFromFilename(source.Path)}
 	state.sessionID = state.filenameSessionID
-	if metadata, found := a.metadata[source.Path]; found && metadata.sessionID != "" {
+	if metadata, found := a.sourceMetadata(source); found && metadata.sessionID != "" {
 		state.sessionID = metadata.sessionID
 	}
 	var facts []codexCandidate
 	var diagnostics []Diagnostic
-	scanner := newJSONLReader(ctx, file)
+	scanner := newSourceJSONLReader(ctx, file, source, options)
 	lineNumber := 0
 	for scanner.Scan() {
 		if ctx.Err() != nil {
@@ -200,6 +205,9 @@ func (a *codexJSONLAdapter) parseCandidates(ctx context.Context, source Source, 
 		if err := decoder.Decode(&record); err != nil || decoder.Decode(new(interface{})) != io.EOF {
 			diagnostics = append(diagnostics, codexDiagnostic("codex_jsonl_parse_error", "skipped unparsable Codex JSONL line"))
 			continue
+		}
+		if options.sourceSnapshot != nil {
+			options.sourceSnapshot.observeRecord(record)
 		}
 		recordType := stringValue(record, "", "type")
 		switch recordType {
