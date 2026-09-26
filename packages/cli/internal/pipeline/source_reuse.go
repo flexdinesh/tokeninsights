@@ -29,71 +29,102 @@ type sourceFingerprint struct {
 	location string
 }
 
-func planSourceReuse(ctx context.Context, runner sqlRunner, source Source, options SyncOptions, metadata sourceRefreshMetadata, ok bool) (sourceFingerprint, bool, error) {
-	if !ok || source.AlwaysRefresh || source.Harness == HarnessPi {
-		return sourceFingerprint{}, false, nil
+func sourceMarkerValid(source Source, options SyncOptions, metadata sourceRefreshMetadata, state sourceState) bool {
+	if options.FullRefresh || source.AlwaysRefresh || !state.hasRefresh || !state.hasCursor {
+		return false
 	}
-	current, valid := fingerprintSource(ctx, source, options)
-	if !valid {
-		return sourceFingerprint{}, false, nil
+	cursor, refresh := state.cursor, state.refresh
+	if cursor.collector != options.Collector || cursor.parser != options.Parser ||
+		cursor.kind != fingerprintKind(source) || refresh.collector != cursor.collector || refresh.parser != cursor.parser {
+		return false
 	}
-	if options.FullRefresh {
-		return current, false, nil
-	}
-	var state sourceCursorState
-	err := runner.QueryRowContext(ctx, `
-		SELECT collector, parser, cursor_kind, byte_offset, source_mtime_ms, source_size_bytes, prefix_hash, boundary_hash, location_fingerprint
-		FROM source_cursor_state WHERE harness = ? AND source_kind = ? AND source_state_key = ?
-	`, source.Harness, source.Kind, metadata.stateKey).Scan(&state.collector, &state.parser, &state.kind, &state.offset, &state.mtimeMs, &state.sizeBytes, &state.prefixHash, &state.boundaryHash, &state.locationFingerprint)
-	if errors.Is(err, sql.ErrNoRows) {
-		return current, false, nil
-	}
-	if err != nil {
-		return sourceFingerprint{}, false, err
-	}
-	refresh, found, err := loadSourceRefreshState(ctx, runner, source, metadata.stateKey)
-	if err != nil {
-		return sourceFingerprint{}, false, err
-	}
-	valid = found && state.collector == options.Collector && state.parser == options.Parser &&
-		state.kind == fingerprintKind(source) && refresh.collector == state.collector && refresh.parser == state.parser
-	if source.Harness != HarnessOpenCode {
-		valid = valid && state.offset == state.sizeBytes && state.sizeBytes == metadata.sizeBytes &&
-			state.mtimeMs == metadata.mtimeMs && refresh.sourceMtimeMs == state.mtimeMs && refresh.sourceSizeBytes == state.sizeBytes
-	}
-	return current, valid && state.prefixHash == current.content && state.locationFingerprint == current.location, nil
+	return source.Harness == HarnessOpenCode || (cursor.offset == cursor.sizeBytes && cursor.sizeBytes == metadata.sizeBytes &&
+		cursor.mtimeMs == metadata.mtimeMs && refresh.sourceMtimeMs == cursor.mtimeMs && refresh.sourceSizeBytes == cursor.sizeBytes)
 }
 
-func storeSourceReuse(ctx context.Context, runner sqlRunner, source Source, options SyncOptions, metadata sourceRefreshMetadata, ok bool, before sourceFingerprint) error {
-	if !ok || source.Harness == HarnessPi || source.AlwaysRefresh {
-		return nil
+func preparedFingerprintCursor(source Source, options SyncOptions, metadata sourceRefreshMetadata, fingerprint sourceFingerprint) *sourceCursorState {
+	return &sourceCursorState{collector: options.Collector, parser: options.Parser, kind: fingerprintKind(source),
+		offset: metadata.sizeBytes, mtimeMs: metadata.mtimeMs, sizeBytes: metadata.sizeBytes,
+		prefixHash: fingerprint.content, locationFingerprint: fingerprint.location}
+}
+
+func prepareJSONLSource(ctx context.Context, adapter Adapter, source Source, options SyncOptions, state sourceState) preparedSource {
+	metadata, ok := sourceRefreshMetadataFor(source)
+	result := preparedSource{source: source, metadata: metadata, hasMetadata: ok, status: "ingested"}
+	result.sourceInfo, _ = os.Stat(source.Path)
+	if ok && sourceMarkerValid(source, options, metadata, state) {
+		fingerprint, valid := fingerprintSource(ctx, source, options)
+		if valid && fingerprint.content == state.cursor.prefixHash && fingerprint.location == state.cursor.locationFingerprint {
+			result.fingerprint = fingerprint
+			result.cursor = preparedFingerprintCursor(source, options, metadata, fingerprint)
+			result.unchanged, result.status = true, "unchanged"
+			return result
+		}
 	}
-	if before.content == "" {
-		_, err := runner.ExecContext(ctx, "DELETE FROM source_cursor_state WHERE harness = ? AND source_kind = ? AND source_state_key = ?", source.Harness, source.Kind, metadata.stateKey)
-		return err
+	snapshot := newSourceSnapshot(source)
+	options.sourceSnapshot = snapshot
+	result.facts, result.diagnostics, result.parseErr = adapter.Parse(ctx, source, options)
+	if result.parseErr != nil {
+		return result
 	}
-	currentMetadata, valid := sourceRefreshMetadataFor(source)
-	if !valid || (source.Harness != HarnessOpenCode && (currentMetadata.mtimeMs != metadata.mtimeMs || currentMetadata.sizeBytes != metadata.sizeBytes)) {
-		return nil
+	if snapshot.deferred {
+		result.status = "deferred"
+		return result
 	}
-	after, valid := fingerprintSource(ctx, source, options)
-	if !valid || after != before {
-		return nil
+	if !ok || source.AlwaysRefresh {
+		return result
 	}
-	_, err := runner.ExecContext(ctx, `
-		INSERT INTO source_cursor_state (
-			harness, source_kind, source_state_key, collector, parser, cursor_kind,
-			byte_offset, source_mtime_ms, source_size_bytes, prefix_hash, boundary_hash, location_fingerprint, updated_at_ms
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-		ON CONFLICT (harness, source_kind, source_state_key) DO UPDATE SET
-			collector = excluded.collector, parser = excluded.parser, cursor_kind = excluded.cursor_kind,
-			byte_offset = excluded.byte_offset, source_mtime_ms = excluded.source_mtime_ms,
-			source_size_bytes = excluded.source_size_bytes, prefix_hash = excluded.prefix_hash,
-			boundary_hash = excluded.boundary_hash, location_fingerprint = excluded.location_fingerprint,
-			updated_at_ms = excluded.updated_at_ms
-	`, source.Harness, source.Kind, metadata.stateKey, options.Collector, options.Parser, fingerprintKind(source),
-		metadata.sizeBytes, metadata.mtimeMs, metadata.sizeBytes, before.content, "", before.location, syncNowMs(options.Now))
-	return err
+	current, valid := sourceRefreshMetadataFor(source)
+	if !valid || current != metadata {
+		result.status = "deferred"
+		return result
+	}
+	fingerprint, err := snapshot.fingerprint(ctx, options)
+	if err != nil {
+		return result
+	}
+	if !snapshot.verified || snapshot.metadata != metadata {
+		verified, err := sourceContentHash(ctx, source)
+		if err != nil || verified != fingerprint.content {
+			result.status = "deferred"
+			return result
+		}
+	}
+	result.fingerprint = fingerprint
+	result.cursor = preparedFingerprintCursor(source, options, metadata, fingerprint)
+	return result
+}
+
+func prepareOpenCodeSource(ctx context.Context, source Source, options SyncOptions, state sourceState) preparedSource {
+	metadata, ok := sourceRefreshMetadataFor(source)
+	result := preparedSource{source: source, metadata: metadata, hasMetadata: ok, status: "ingested"}
+	result.sourceInfo, _ = os.Stat(source.Path)
+	database, err := openReadOnlySQLite(source.Path)
+	if err != nil {
+		result.parseErr = err
+		return result
+	}
+	defer func() { _ = database.Close() }()
+	tx, err := database.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		result.parseErr = err
+		return result
+	}
+	defer func() { _ = tx.Rollback() }()
+	fingerprint, fingerprintErr := openCodeSnapshotFingerprint(ctx, tx, options)
+	if fingerprintErr == nil && ok && sourceMarkerValid(source, options, metadata, state) &&
+		fingerprint.content == state.cursor.prefixHash && fingerprint.location == state.cursor.locationFingerprint {
+		result.fingerprint = fingerprint
+		result.cursor = preparedFingerprintCursor(source, options, metadata, fingerprint)
+		result.unchanged, result.status = true, "unchanged"
+		return result
+	}
+	result.facts, result.diagnostics, result.parseErr = (opencodeSQLiteAdapter{}).parseSnapshot(ctx, tx, source, options)
+	if result.parseErr == nil && fingerprintErr == nil && ok {
+		result.fingerprint = fingerprint
+		result.cursor = preparedFingerprintCursor(source, options, metadata, fingerprint)
+	}
+	return result
 }
 
 func fingerprintSource(ctx context.Context, source Source, options SyncOptions) (sourceFingerprint, bool) {
@@ -101,22 +132,33 @@ func fingerprintSource(ctx context.Context, source Source, options SyncOptions) 
 		fingerprint, err := openCodeLogicalFingerprint(ctx, source, options)
 		return fingerprint, err == nil
 	}
-	content, err := sourceContentHash(ctx, source)
-	if err != nil {
+	if source.Harness != HarnessCodex && source.Harness != HarnessClaudeCode {
 		return sourceFingerprint{}, false
 	}
-	var location string
-	switch source.Harness {
-	case HarnessCodex, HarnessClaudeCode:
-		location, err = jsonlLocationFingerprint(ctx, source, options)
-	default:
-		return sourceFingerprint{}, false
-	}
+	current, err := scanJSONLFingerprint(ctx, source, options)
 	if err != nil {
 		return sourceFingerprint{}, false
 	}
 	verifiedContent, err := sourceContentHash(ctx, source)
-	return sourceFingerprint{content: content, location: location}, err == nil && content == verifiedContent
+	return current, err == nil && current.content == verifiedContent
+}
+
+func scanJSONLFingerprint(ctx context.Context, source Source, options SyncOptions) (sourceFingerprint, error) {
+	file, err := os.Open(source.Path)
+	if err != nil {
+		return sourceFingerprint{}, err
+	}
+	defer func() { _ = file.Close() }()
+	snapshot := newSourceSnapshot(source)
+	snapshot.scanLocations = true
+	options.sourceSnapshot = snapshot
+	scanner := newSourceJSONLReader(ctx, file, source, options)
+	for scanner.Scan() {
+	}
+	if err := scanner.Err(); err != nil {
+		return sourceFingerprint{}, err
+	}
+	return snapshot.fingerprint(ctx, options)
 }
 
 func sourceContentHash(ctx context.Context, source Source) (string, error) {
@@ -153,63 +195,6 @@ func sourceContentHash(ctx context.Context, source Source) (string, error) {
 	return fmt.Sprintf("%x", hash.Sum(nil)), nil
 }
 
-func jsonlLocationFingerprint(ctx context.Context, source Source, options SyncOptions) (string, error) {
-	file, err := os.Open(source.Path)
-	if err != nil {
-		return "", err
-	}
-	defer func() { _ = file.Close() }()
-	cwds := map[string]bool{"": true}
-	remotes := map[string]bool{"": true}
-	scanner := newJSONLReader(ctx, file)
-	for scanner.Scan() {
-		if err := ctx.Err(); err != nil {
-			return "", err
-		}
-		line := scanner.Text()
-		if !strings.Contains(line, `"cwd"`) && !strings.Contains(line, `"repository_url"`) && !strings.Contains(line, `\u`) {
-			continue
-		}
-		var record map[string]interface{}
-		if decodeJSONRecord(line, &record) != nil {
-			continue
-		}
-		if source.Harness == HarnessCodex {
-			switch stringValue(record, "", "type") {
-			case "session_meta", "turn_context":
-				payload := nested(record, "payload")
-				if cwd := stringField(payload, "cwd"); cwd != nil {
-					cwds[*cwd] = true
-				}
-				if stringValue(record, "", "type") == "session_meta" {
-					if remote := stringField(nested(payload, "git"), "repository_url"); remote != nil {
-						remotes[*remote] = true
-					}
-				}
-			}
-		} else if stringValue(record, "", "type") == "assistant" {
-			if cwd := stringField(record, "cwd"); cwd != nil {
-				cwds[*cwd] = true
-			}
-		}
-	}
-	if err := scanner.Err(); err != nil {
-		return "", err
-	}
-	if scanner.deferred {
-		return "", errors.New("unfinished JSONL tail")
-	}
-	var signatures []string
-	for cwd := range cwds {
-		for remote := range remotes {
-			location, conflict := resolveFactLocation(ctx, options, cwd, remote, "")
-			signatures = append(signatures, locationFingerprintPart(location, conflict))
-		}
-	}
-	sort.Strings(signatures)
-	return stableHash(strings.Join(signatures, "\x00")), nil
-}
-
 func openCodeLogicalFingerprint(ctx context.Context, source Source, options SyncOptions) (sourceFingerprint, error) {
 	database, err := openReadOnlySQLite(source.Path)
 	if err != nil {
@@ -221,6 +206,10 @@ func openCodeLogicalFingerprint(ctx context.Context, source Source, options Sync
 		return sourceFingerprint{}, err
 	}
 	defer func() { _ = tx.Rollback() }()
+	return openCodeSnapshotFingerprint(ctx, tx, options)
+}
+
+func openCodeSnapshotFingerprint(ctx context.Context, tx openCodeReader, options SyncOptions) (sourceFingerprint, error) {
 	hasher := sha256.New()
 	rows, err := tx.QueryContext(ctx, `SELECT name, sql FROM sqlite_schema
 		WHERE type = 'table' AND name IN ('message', 'session_message', 'session', 'project') ORDER BY name`)

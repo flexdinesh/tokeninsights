@@ -38,11 +38,11 @@ func startSyncJob(ctx context.Context, database *sql.DB, options SyncOptions) (i
 			return 0, err
 		}
 	}
-	return id, tx.Commit()
+	return id, commitSyncTransaction(ctx, tx)
 }
 
 func finishSyncJob(database *sql.DB, options SyncOptions, runErr error) error {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(withSyncStats(context.Background(), options.stats), 5*time.Second)
 	defer cancel()
 	outcome, phase, code := "completed", "ready", ""
 	if runErr != nil {
@@ -60,11 +60,11 @@ func finishSyncJob(database *sql.DB, options SyncOptions, runErr error) error {
 	if _, err := tx.ExecContext(ctx, "UPDATE sync_jobs SET status = ?, phase = ?, error_code = ?, completed_at_ms = MAX(started_at_ms, ?), updated_at_ms = ? WHERE id = ?", outcome, phase, code, now, now, options.jobID); err != nil {
 		return err
 	}
-	var deferred int
-	if err := tx.QueryRowContext(ctx, "SELECT COUNT(*) FROM sync_sources WHERE job_id = ? AND status = 'deferred'", options.jobID).Scan(&deferred); err != nil {
+	var deferred bool
+	if err := tx.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM sync_sources WHERE job_id = ? AND status = 'deferred')", options.jobID).Scan(&deferred); err != nil {
 		return err
 	}
-	if runErr == nil && deferred == 0 && options.Normalize && selectsAllHarnesses(options.Harnesses) {
+	if runErr == nil && !deferred && options.Normalize && selectsAllHarnesses(options.Harnesses) {
 		if _, err := tx.ExecContext(ctx, "UPDATE sync_state SET last_successful_sync_at_ms = ? WHERE id = 1", now); err != nil {
 			return err
 		}
@@ -72,7 +72,7 @@ func finishSyncJob(database *sql.DB, options SyncOptions, runErr error) error {
 	if err := db.AdvanceAnalyticsRevision(ctx, tx); err != nil {
 		return err
 	}
-	return tx.Commit()
+	return commitSyncTransaction(ctx, tx)
 }
 
 func setHarnessStatus(ctx context.Context, database *sql.DB, options SyncOptions, h Harness, status SyncProgressStatus) error {
@@ -93,7 +93,7 @@ func setHarnessStatus(ctx context.Context, database *sql.DB, options SyncOptions
 			return err
 		}
 	}
-	return tx.Commit()
+	return commitSyncTransaction(ctx, tx)
 }
 
 func recordDiscoveredSources(ctx context.Context, database *sql.DB, options SyncOptions, h Harness, sources []Source) error {
@@ -110,7 +110,7 @@ func recordDiscoveredSources(ctx context.Context, database *sql.DB, options Sync
 			return err
 		}
 	}
-	return tx.Commit()
+	return commitSyncTransaction(ctx, tx)
 }
 
 func updateSourceStatus(ctx context.Context, runner sqlRunner, options SyncOptions, source Source, status, code string, first, last interface{}) error {
@@ -126,28 +126,6 @@ type sourceFailure struct{ err error }
 func (e sourceFailure) Error() string { return e.err.Error() }
 func (e sourceFailure) Unwrap() error { return e.err }
 
-func completeSourceAttempt(ctx context.Context, database *sql.DB, options SyncOptions, source Source, runErr error) error {
-	tx, err := database.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = tx.Rollback() }()
-	failed := 0
-	if runErr != nil {
-		failed = 1
-		if err := updateSourceStatus(ctx, tx, options, source, "failed", "read_or_parse_failed", nil, nil); err != nil {
-			return err
-		}
-	}
-	if _, err := tx.ExecContext(ctx, "UPDATE sync_harnesses SET checked_sources = checked_sources + 1, failed_sources = failed_sources + ? WHERE job_id = ? AND harness = ?", failed, options.jobID, source.Harness); err != nil {
-		return err
-	}
-	if _, err := tx.ExecContext(ctx, "UPDATE sync_jobs SET updated_at_ms = ? WHERE id = ?", syncWallNow(options).UnixMilli(), options.jobID); err != nil {
-		return err
-	}
-	return tx.Commit()
-}
-
 func publishHarnessSources(ctx context.Context, database *sql.DB, options SyncOptions, h Harness) error {
 	if !options.Normalize {
 		return nil
@@ -155,6 +133,9 @@ func publishHarnessSources(ctx context.Context, database *sql.DB, options SyncOp
 	_, err := database.ExecContext(ctx, "UPDATE sync_sources SET status = 'ready', updated_at_ms = ? WHERE job_id = ? AND harness = ? AND status = 'ingested'", syncWallNow(options).UnixMilli(), options.jobID, h)
 	if err != nil {
 		return fmt.Errorf("publish source coverage: %w", err)
+	}
+	if stats := statsForSync(ctx); stats != nil {
+		stats.writerCommits.Add(1)
 	}
 	return nil
 }

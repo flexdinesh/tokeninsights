@@ -215,7 +215,7 @@ func normalizePrepared(ctx context.Context, database *sql.DB, options NormalizeO
 	if err := db.AdvanceAnalyticsRevision(ctx, tx); err != nil {
 		return summary, err
 	}
-	if err := tx.Commit(); err != nil {
+	if err := commitSyncTransaction(ctx, tx); err != nil {
 		return summary, err
 	}
 	committed = true

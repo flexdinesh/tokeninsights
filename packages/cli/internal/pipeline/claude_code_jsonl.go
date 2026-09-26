@@ -113,13 +113,14 @@ func (a claudeCodeJSONLAdapter) Parse(ctx context.Context, source Source, option
 		return nil, nil, err
 	}
 	defer func() { _ = file.Close() }()
+	recordSourceParse(ctx)
 
 	sessionID := claudeCodeSessionIDFromFilename(source.Path)
 	var facts []RawTokenFact
 	var requestIDs []*string
 	var diagnostics []Diagnostic
 	mergedFactIndexes := map[string]int{}
-	scanner := newJSONLReader(ctx, file)
+	scanner := newSourceJSONLReader(ctx, file, source, options)
 	for scanner.Scan() {
 		if ctx.Err() != nil {
 			return nil, nil, ctx.Err()
@@ -132,6 +133,9 @@ func (a claudeCodeJSONLAdapter) Parse(ctx context.Context, source Source, option
 		if err := decodeJSONRecord(line, &record); err != nil {
 			diagnostics = append(diagnostics, claudeCodeDiagnostic("claude_code_jsonl_parse_error", "skipped unparsable Claude Code JSONL line", "warning"))
 			continue
+		}
+		if options.sourceSnapshot != nil {
+			options.sourceSnapshot.observeRecord(record)
 		}
 		fact, rowDiagnostics, ok := a.factFromRecord(ctx, source, options, sessionID, record)
 		diagnostics = append(diagnostics, rowDiagnostics...)

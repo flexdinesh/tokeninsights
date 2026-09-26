@@ -3,8 +3,6 @@ package pipeline
 import (
 	"context"
 	"crypto/sha256"
-	"database/sql"
-	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -13,10 +11,6 @@ import (
 const sourceCursorHashWindow = 4096
 const piByteCursorKind = "pi-jsonl-byte-v1"
 
-type byteCursorAdapter interface {
-	ParseFrom(context.Context, Source, SyncOptions, int64) ([]RawTokenFact, []Diagnostic, bool, error)
-}
-
 type sourceCursorState struct {
 	collector, parser, kind    string
 	offset, mtimeMs, sizeBytes int64
@@ -24,99 +18,90 @@ type sourceCursorState struct {
 	locationFingerprint        string
 }
 
-func planPiCursor(ctx context.Context, runner sqlRunner, source Source, options SyncOptions, metadata sourceRefreshMetadata, ok bool) (int64, bool, error) {
-	if !ok || options.FullRefresh || source.AlwaysRefresh || source.Harness != HarnessPi {
-		return 0, false, nil
-	}
-	var state sourceCursorState
-	err := runner.QueryRowContext(ctx, `
-		SELECT collector, parser, cursor_kind, byte_offset, source_mtime_ms, source_size_bytes, prefix_hash, boundary_hash, location_fingerprint
-		FROM source_cursor_state WHERE harness = ? AND source_kind = ? AND source_state_key = ?
-	`, source.Harness, source.Kind, metadata.stateKey).Scan(&state.collector, &state.parser, &state.kind, &state.offset, &state.mtimeMs, &state.sizeBytes, &state.prefixHash, &state.boundaryHash, &state.locationFingerprint)
-	if errors.Is(err, sql.ErrNoRows) {
-		return 0, false, nil
-	}
-	if err != nil {
-		return 0, false, err
-	}
-	if state.collector != options.Collector || state.parser != options.Parser || state.kind != piByteCursorKind || state.offset == 0 || state.offset != state.sizeBytes || metadata.sizeBytes < state.offset {
-		return 0, false, nil
-	}
-	refresh, found, err := loadSourceRefreshState(ctx, runner, source, metadata.stateKey)
-	if err != nil {
-		return 0, false, err
-	}
-	if !found || refresh.collector != state.collector || refresh.parser != state.parser || refresh.sourceMtimeMs != state.mtimeMs || refresh.sourceSizeBytes != state.sizeBytes {
-		return 0, false, nil
-	}
-	prefix, boundary, terminated, err := sourceCursorHashes(source.Path, state.offset)
-	if err != nil || !terminated || prefix != state.prefixHash || boundary != state.boundaryHash {
-		return 0, false, nil
-	}
-	locationFingerprint, validHeader := piCursorLocationFingerprint(ctx, source, options)
-	if !validHeader || locationFingerprint != state.locationFingerprint {
-		return 0, false, nil
-	}
-	if metadata.sizeBytes == state.offset {
-		if metadata.mtimeMs == state.mtimeMs {
-			return state.offset, true, nil
+func preparePiSource(ctx context.Context, source Source, options SyncOptions, state sourceState) preparedSource {
+	metadata, ok := sourceRefreshMetadataFor(source)
+	result := preparedSource{source: source, metadata: metadata, hasMetadata: ok, status: "ingested"}
+	result.sourceInfo, _ = os.Stat(source.Path)
+	snapshot := newSourceSnapshot(source)
+	var offset int64
+	cursor, refresh := state.cursor, state.refresh
+	valid := ok && !options.FullRefresh && !source.AlwaysRefresh && state.hasCursor && state.hasRefresh &&
+		cursor.collector == options.Collector && cursor.parser == options.Parser && cursor.kind == piByteCursorKind &&
+		cursor.offset > 0 && cursor.offset == cursor.sizeBytes && metadata.sizeBytes >= cursor.offset &&
+		refresh.collector == cursor.collector && refresh.parser == cursor.parser &&
+		refresh.sourceMtimeMs == cursor.mtimeMs && refresh.sourceSizeBytes == cursor.sizeBytes
+	locationFingerprint := ""
+	if valid {
+		file, err := os.Open(source.Path)
+		if err == nil {
+			_, err = io.CopyN(snapshot, contextReader{ctx: ctx, reader: file}, cursor.offset)
+			_ = file.Close()
 		}
-		return 0, false, nil
+		boundary := sha256.Sum256(snapshot.boundary)
+		valid = err == nil && len(snapshot.boundary) > 0 && snapshot.boundary[len(snapshot.boundary)-1] == '\n' &&
+			fmt.Sprintf("%x", snapshot.hasher.Sum(nil)) == cursor.prefixHash && fmt.Sprintf("%x", boundary) == cursor.boundaryHash
+		if valid {
+			file, err := os.Open(source.Path)
+			if err == nil {
+				snapshot.piHeader, snapshot.piHeaderValid, err = piCursorHeader(ctx, file, piSessionIDFromFilename(source.Path))
+				_ = file.Close()
+			}
+			if err == nil && snapshot.piHeaderValid {
+				location, _ := resolveFactLocation(ctx, options, snapshot.piHeader.cwd, "", "")
+				if location != nil {
+					locationFingerprint = locationSemanticKey(*location)
+				}
+			}
+			valid = err == nil && snapshot.piHeaderValid && locationFingerprint == cursor.locationFingerprint
+		}
+		if valid && metadata.sizeBytes == cursor.offset && metadata.mtimeMs == cursor.mtimeMs {
+			result.unchanged, result.status, result.cursor = true, "unchanged", &cursor
+			return result
+		}
+		if valid && metadata.sizeBytes > cursor.offset {
+			offset = cursor.offset
+		}
 	}
-	return state.offset, false, nil
-}
-
-func storePiCursor(ctx context.Context, runner sqlRunner, source Source, options SyncOptions, metadata sourceRefreshMetadata, ok, eligible bool) error {
-	if !ok || source.Harness != HarnessPi {
-		return nil
+	if offset == 0 {
+		snapshot = newSourceSnapshot(source)
 	}
-	if !eligible {
-		_, err := runner.ExecContext(ctx, "DELETE FROM source_cursor_state WHERE harness = ? AND source_kind = ? AND source_state_key = ?", source.Harness, source.Kind, metadata.stateKey)
-		return err
+	options.sourceSnapshot = snapshot
+	var eligible bool
+	result.facts, result.diagnostics, eligible, result.parseErr = (piJSONLAdapter{}).ParseFrom(ctx, source, options, offset)
+	if result.parseErr != nil {
+		return result
+	}
+	if snapshot.deferred {
+		result.status = "deferred"
+		return result
 	}
 	current, currentOK := sourceRefreshMetadataFor(source)
-	if !currentOK || current.mtimeMs != metadata.mtimeMs || current.sizeBytes != metadata.sizeBytes {
-		return nil
+	if ok && (!currentOK || current != metadata || snapshot.size != metadata.sizeBytes) {
+		result.status = "deferred"
+		return result
 	}
-	prefix, boundary, terminated, err := sourceCursorHashes(source.Path, metadata.sizeBytes)
-	if err != nil || !terminated {
-		return nil
+	if !ok || !eligible || !snapshot.complete || len(snapshot.boundary) == 0 || snapshot.boundary[len(snapshot.boundary)-1] != '\n' {
+		return result
 	}
-	locationFingerprint, validHeader := piCursorLocationFingerprint(ctx, source, options)
-	if !validHeader {
-		return nil
+	if offset == 0 {
+		if !snapshot.piHeaderValid {
+			return result
+		}
+		location, _ := resolveFactLocation(ctx, options, snapshot.piHeader.cwd, "", "")
+		if location != nil {
+			locationFingerprint = locationSemanticKey(*location)
+		}
 	}
-	_, err = runner.ExecContext(ctx, `
-		INSERT INTO source_cursor_state (
-			harness, source_kind, source_state_key, collector, parser, cursor_kind,
-			byte_offset, source_mtime_ms, source_size_bytes, prefix_hash, boundary_hash, location_fingerprint, updated_at_ms
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-		ON CONFLICT (harness, source_kind, source_state_key) DO UPDATE SET
-			collector = excluded.collector, parser = excluded.parser, cursor_kind = excluded.cursor_kind,
-			byte_offset = excluded.byte_offset, source_mtime_ms = excluded.source_mtime_ms,
-			source_size_bytes = excluded.source_size_bytes, prefix_hash = excluded.prefix_hash,
-			boundary_hash = excluded.boundary_hash, location_fingerprint = excluded.location_fingerprint,
-			updated_at_ms = excluded.updated_at_ms
-	`, source.Harness, source.Kind, metadata.stateKey, options.Collector, options.Parser, piByteCursorKind,
-		metadata.sizeBytes, metadata.mtimeMs, metadata.sizeBytes, prefix, boundary, locationFingerprint, syncNowMs(options.Now))
-	return err
-}
-
-func piCursorLocationFingerprint(ctx context.Context, source Source, options SyncOptions) (string, bool) {
-	file, err := os.Open(source.Path)
-	if err != nil {
-		return "", false
+	verified, err := sourceContentHash(ctx, source)
+	if err != nil || verified != snapshot.contentFingerprint() {
+		result.status = "deferred"
+		return result
 	}
-	defer func() { _ = file.Close() }()
-	header, ok, err := piCursorHeader(ctx, file, piSessionIDFromFilename(source.Path))
-	if err != nil || !ok {
-		return "", false
-	}
-	location, _ := resolveFactLocation(ctx, options, header.cwd, "", "")
-	if location == nil {
-		return "", true
-	}
-	return locationSemanticKey(*location), true
+	boundary := sha256.Sum256(snapshot.boundary)
+	result.cursor = &sourceCursorState{collector: options.Collector, parser: options.Parser, kind: piByteCursorKind,
+		offset: snapshot.size, mtimeMs: metadata.mtimeMs, sizeBytes: metadata.sizeBytes,
+		prefixHash: fmt.Sprintf("%x", snapshot.hasher.Sum(nil)), boundaryHash: fmt.Sprintf("%x", boundary), locationFingerprint: locationFingerprint}
+	return result
 }
 
 func sourceCursorHashes(path string, offset int64) (string, string, bool, error) {
