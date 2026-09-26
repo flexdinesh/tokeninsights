@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState } from 'react'
-import { CalendarDays, Check, ChevronDown, Filter, RotateCcw, Search, X } from 'lucide-react'
+import { CalendarDays, Check, ChevronDown, Filter, Search, X } from 'lucide-react'
 import type { Dimension, Facets, Selection } from '../contracts'
 import { bucketSchema, periodSchema } from '../contracts'
 import { useDashboardState } from '../state'
@@ -255,7 +255,6 @@ export function FilterToolbar({
   const {
     state: { query },
     dispatch,
-    defaults,
   } = useDashboardState()
   const [search, setSearch] = useState('')
   const [debounced, setDebounced] = useState('')
@@ -278,15 +277,6 @@ export function FilterToolbar({
           <div className="filter-date">
             <DateFilter />
           </div>
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            title="Restore CLI defaults"
-            aria-label="Restore CLI defaults"
-            onClick={() => dispatch({ type: 'reset', value: defaults })}
-          >
-            <RotateCcw size="1.1em" />
-          </Button>
           <div className="filter-group">
             {dimensions.map((d) => (
               <MultiSelect

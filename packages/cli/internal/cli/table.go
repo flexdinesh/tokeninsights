@@ -108,6 +108,7 @@ type interactiveModel struct {
 	statusPolling    bool
 	sharedSync       db.SyncStatus
 	coverage         []db.DayCoverage
+	coverageSinceMs  int64
 	options          tableOptions
 	now              time.Time
 	err              error
@@ -196,6 +197,9 @@ func newInteractiveModel(ctx context.Context, options tableOptions, now time.Tim
 		syncing:          !options.noSync,
 		snapshotAllowed:  true,
 		syncProgressRows: initialSyncProgressRows(),
+	}
+	if !options.noSync {
+		m.coverageSinceMs = now.UnixMilli()
 	}
 	m.statusline = newStatuslineModel(statuslineDateRangeLabel(options), string(options.bucket), string(activeSort(tabTokens, options.sort)), hostname, 0)
 	m.tableSummary = newTableSummaryModel(nil, m.activeTab, m.loading)
@@ -701,6 +705,7 @@ func (m interactiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					return m, nil
 				}
 				m.syncing, m.syncInFlight, m.snapshotAllowed, m.showingSnapshot = true, true, true, true
+				m.coverageSinceMs = time.Now().UnixMilli()
 				m.syncErr = nil
 				m.syncProgressRows = initialSyncProgressRows()
 				messages := make(chan tea.Msg, syncProgressBufferSize())

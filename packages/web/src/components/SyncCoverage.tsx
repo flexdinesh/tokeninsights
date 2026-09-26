@@ -1,4 +1,13 @@
 import type { Dashboard } from '../contracts'
+import {
+  Check,
+  ChevronRight,
+  CircleAlert,
+  CircleHelp,
+  CircleMinus,
+  Clock3,
+  RefreshCw,
+} from 'lucide-react'
 import { formatCount } from '../format'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './ui/table'
 
@@ -43,10 +52,61 @@ export function coverageLabel(day: CoverageDay, timezone?: string): string {
   }
 }
 
-export function SyncCoverage({ days, timezone }: { days: CoverageDay[]; timezone?: string }) {
+export function coverageConfirmed(day: CoverageDay, checkedSince?: number): boolean {
+  return checkedSince !== undefined && day.checkedAt >= checkedSince
+}
+
+export function CoverageIndicator({
+  day,
+  timezone,
+  checkedSince,
+}: {
+  day: CoverageDay
+  timezone?: string
+  checkedSince?: number
+}) {
+  if ((day.status === 'checked' || day.status === 'empty') && !coverageConfirmed(day, checkedSince))
+    return null
+  const label = coverageLabel(day, timezone)
+  const Icon =
+    day.status === 'checked'
+      ? Check
+      : day.status === 'empty'
+        ? CircleMinus
+        : day.status === 'pending'
+          ? Clock3
+          : day.status === 'partial'
+            ? day.failedSources > 0
+              ? CircleAlert
+              : RefreshCw
+            : CircleHelp
+  return (
+    <span
+      className="coverage-indicator"
+      data-status={day.status}
+      role="img"
+      aria-label={label}
+      title={label}
+    >
+      <Icon size="1em" aria-hidden="true" />
+    </span>
+  )
+}
+
+export function SyncCoverage({
+  days,
+  timezone,
+  checkedSince,
+}: {
+  days: CoverageDay[]
+  timezone?: string
+  checkedSince?: number
+}) {
   if (days.length === 0) return null
-  const checked = days.filter((day) => day.status === 'checked' || day.status === 'empty').length
-  const newest = days.at(-1)
+  const checked = days.filter(
+    (day) =>
+      (day.status === 'checked' || day.status === 'empty') && coverageConfirmed(day, checkedSince),
+  ).length
   const newestFirst: CoverageDay[] = []
   for (let index = days.length - 1; index >= 0; index--) {
     const day = days[index]
@@ -55,19 +115,13 @@ export function SyncCoverage({ days, timezone }: { days: CoverageDay[]; timezone
   return (
     <details className="sync-coverage">
       <summary>
+        <ChevronRight size="1em" aria-hidden="true" />
         <span>Source coverage</span>
-        <span>
-          {checked} / {days.length} days checked
-        </span>
-        {newest && (
-          <span className="coverage-latest">
-            {newest.day} · {coverageLabel(newest, timezone)}
-          </span>
-        )}
       </summary>
       <p>
-        Retained local sources, as checked. Pending or incomplete days may gain usage. Dates and
-        check times use {timezone ?? 'the source server’s timezone'}.
+        {checked} / {days.length} days checked. Retained local sources, as checked. Pending or
+        incomplete days may gain usage. Dates and check times use{' '}
+        {timezone ?? 'the source server’s timezone'}.
       </p>
       <div
         className="coverage-scroll"
