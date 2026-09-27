@@ -151,6 +151,13 @@ readouts, table, coverage and shortcuts. The footer reserves four rows: spacer,
 coverage, horizontal divider and shortcuts. Remaining height belongs to the
 table, whose column header consumes one row. Multiline dimension values consume
 their actual line count; the viewport clips oversized rows to retain footer space.
+Source freshness uses one muted line beneath status: compact days checked and
+source work share it. Daily dates have inline markers: `✓` checked, `○` empty,
+`…` pending, `↻` updating, `!` incomplete, `?` unverified. Busy markers use sky,
+failed markers use danger, and other markers use muted ink. Help explains every
+symbol. Day status consumes no extra table row.
+On startup and retry, saved completed markers stay blank until a fresh day check
+confirms them; usage remains visible. `--no-sync` retains saved markers.
 
 - At **30 rows or more**, add a blank row after status and navigation.
 - Readouts appear at **24 rows or more** and **72 content cells or more**.

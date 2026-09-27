@@ -2,6 +2,7 @@ package cli
 
 import (
 	"fmt"
+	"slices"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -26,6 +27,9 @@ func (m interactiveModel) sharedSyncCmd() tea.Cmd {
 
 func (m interactiveModel) syncWorkLabel() string {
 	s := m.sharedSync
+	if m.syncInFlight && s.StartedAtMs < m.coverageSinceMs {
+		return "Checking local sources"
+	}
 	if s.JobID == 0 {
 		if m.syncInFlight || m.sharedSync.Running {
 			return "Checking local sources"
@@ -49,11 +53,49 @@ func (m interactiveModel) syncWorkLabel() string {
 func (m interactiveModel) coverageSummary() string {
 	checked := 0
 	for _, d := range m.coverage {
-		if d.Status == "checked" || d.Status == "empty" {
+		if (d.Status == "checked" || d.Status == "empty") && m.dayCheckConfirmed(d.CheckedAtMs) {
 			checked++
 		}
 	}
-	return fmt.Sprintf("Source coverage %d/%d days checked", checked, len(m.coverage))
+	return fmt.Sprintf("%d/%d days checked", checked, len(m.coverage))
+}
+
+func (m interactiveModel) dayCheckConfirmed(checkedAtMs int64) bool {
+	since := m.coverageSinceMs
+	if m.sharedSync.Running {
+		since = max(since, m.sharedSync.StartedAtMs)
+	}
+	return checkedAtMs >= since
+}
+
+func (m interactiveModel) currentDayRows(rows []renderRow) []renderRow {
+	display := slices.Clone(rows)
+	for i := range display {
+		row := &display[i]
+		if (row.coverageStatus == "checked" || row.coverageStatus == "empty") && !m.dayCheckConfirmed(row.coverageCheckedAtMs) {
+			row.coverageStatus = ""
+		}
+	}
+	return display
+}
+
+func dayCoverageMarker(status string) string {
+	switch status {
+	case "checked":
+		return "✓"
+	case "empty":
+		return "○"
+	case "pending":
+		return "…"
+	case "updating":
+		return "↻"
+	case "incomplete":
+		return "!"
+	case "unverified":
+		return "?"
+	default:
+		return ""
+	}
 }
 
 func dayCoverageLabel(d db.DayCoverage) string {
@@ -84,6 +126,7 @@ func withDayCoverage(rows []renderRow, days []db.DayCoverage, selected sortMode)
 		seen[rows[i].bucket] = true
 		if d, ok := byDay[rows[i].bucket]; ok {
 			rows[i].coverageStatus = dayCoverageLabel(d)
+			rows[i].coverageCheckedAtMs = d.CheckedAtMs
 		}
 	}
 	// Long ranges retain a compact recent calendar; every day remains in coverage.
@@ -99,7 +142,7 @@ func withDayCoverage(rows []renderRow, days []db.DayCoverage, selected sortMode)
 		if d.Status == "empty" {
 			value = "0"
 		}
-		rows = append(rows, renderRow{bucket: d.Day, coverageStatus: dayCoverageLabel(d), placeholder: true, sessions: value, inputTokens: value, outputTokens: value, reasoningTokens: value, cacheReadTokens: value, cacheWriteTokens: value, totalTokens: value})
+		rows = append(rows, renderRow{bucket: d.Day, coverageStatus: dayCoverageLabel(d), coverageCheckedAtMs: d.CheckedAtMs, placeholder: true, sessions: value, inputTokens: value, outputTokens: value, reasoningTokens: value, cacheReadTokens: value, cacheWriteTokens: value, totalTokens: value})
 	}
 	sortRenderRows(rows, tabTokens, selected)
 	return rows

@@ -266,6 +266,12 @@ Widths and type follow the root font size; preserve reflow at 200% text.
 Tables scroll within their own region, capped at 35rem, with sticky headings.
 Dense rows use 0.25rem vertical padding and fine rules. Numeric cells align
 right; the independent result summary describes all filtered results.
+All headings and cells keep 1rem horizontal gutters, including outer edges.
+Daily dates share one line with small status icons; labels and check times remain
+accessible and available on hover. Source coverage is a muted, collapsed
+disclosure below results; diagnostic counts and dates appear only when expanded.
+Completion icons stay blank while awaiting a check or when their saved check time
+predates the current sync. Actual pending, updating, and failure states remain visible.
 
 ## Elevation & Depth
 
@@ -321,8 +327,9 @@ the readout role; captions and details use label type. Total detail is hidden on
 narrow layouts while its accessible quantity remains.
 The timeline uses a fine lime line and tinted area. Category charts share their
 colors with labeled drill-down actions; context comparisons include an HTML legend.
-Model/provider/harness shares appear above bars and in drill-down labels. Long
-drill-down names wrap while their percentages remain visible at enlarged text sizes.
+Model/provider/harness/repo shares appear above bars and in tooltips; dimension
+drill-down labels also show shares. Long drill-down names wrap while their
+percentages remain visible at enlarged text sizes.
 
 ### Containers and tables
 

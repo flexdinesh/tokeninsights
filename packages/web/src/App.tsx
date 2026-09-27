@@ -135,6 +135,10 @@ function DashboardShell() {
     void client.invalidateQueries({ queryKey: ['instance'] })
   }
   const running = status?.running || sync.isPending
+  const checkedSince =
+    !status || sync.isPending
+      ? undefined
+      : status.progress?.startedAt || (status.running ? undefined : 0)
   const data = analytics.data?.dashboard
   const hasData = Boolean(data && (!running || data.summary.syncedSessions > 0))
   const resultsMatchView =
@@ -320,9 +324,6 @@ function DashboardShell() {
                   onRetry={() => void facets.refetch()}
                 />
               )}
-              {enabled && data?.coverage && (
-                <SyncCoverage days={data.coverage} timezone={bootstrap.timezone} />
-              )}
               {enabled && !hasData && (!analytics.error || running) && <DashboardSkeleton />}
               {enabled && data && hasData && (
                 <div className="analytics" aria-busy={analytics.isFetching}>
@@ -356,9 +357,20 @@ function DashboardShell() {
                     )}
                   </div>
                   {(!analytics.isPlaceholderData || resultsMatchView) && (
-                    <ResultsTable data={data} timezone={bootstrap.timezone} />
+                    <ResultsTable
+                      data={data}
+                      timezone={bootstrap.timezone}
+                      checkedSince={checkedSince}
+                    />
                   )}
                 </div>
+              )}
+              {enabled && data?.coverage && (
+                <SyncCoverage
+                  days={data.coverage}
+                  timezone={bootstrap.timezone}
+                  checkedSince={checkedSince}
+                />
               )}
             </div>
           </div>

@@ -459,6 +459,7 @@ textarea[aria-invalid='true'] {
   gap: var(--space-1);
 }
 .quick-periods {
+  flex-wrap: wrap;
   padding: var(--space-1);
   background: transparent;
   border-radius: var(--radius-md);
@@ -665,14 +666,6 @@ th {
   padding: var(--space-1) var(--space-4);
   white-space: nowrap;
 }
-th:first-child,
-td:first-child {
-  padding-left: 0;
-}
-th:last-child,
-td:last-child {
-  padding-right: 0;
-}
 th button {
   display: inline-flex;
   align-items: center;
@@ -748,6 +741,7 @@ tbody tr:hover {
   max-width: 26rem;
 }
 .resizable-table .identity-cell {
+  min-width: 0;
   max-width: 100%;
 }
 .identity-name {
@@ -755,6 +749,23 @@ tbody tr:hover {
   text-overflow: ellipsis;
   overflow: hidden;
   white-space: nowrap;
+}
+.identity-line {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+.identity-line .identity-name {
+  min-width: 0;
+}
+.coverage-indicator {
+  display: inline-flex;
+  flex-shrink: 0;
+  color: var(--muted-foreground);
+}
+.coverage-indicator[data-status='checked'] {
+  color: var(--success);
 }
 .identity-detail {
   display: flex;
@@ -1322,34 +1333,35 @@ a {
 
 /* Operational coverage shares the dashboard surface; facts retain their totals. */
 .sync-coverage {
-  border-block: 1px solid var(--border);
-  color: var(--foreground);
+  color: var(--muted-foreground);
+  font-size: var(--text-xs);
 }
 .sync-coverage summary {
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
-  gap: var(--space-3);
-  padding: 0.75rem;
+  gap: var(--space-1);
+  width: fit-content;
+  padding: var(--space-1) 0;
   cursor: pointer;
-  min-height: 2.75rem;
+  min-height: var(--control-height);
+  list-style: none;
 }
-.sync-coverage summary::before {
-  content: '+';
-  font-weight: 600;
+.sync-coverage summary::-webkit-details-marker {
+  display: none;
 }
-.sync-coverage[open] summary::before {
-  content: '−';
+.sync-coverage summary:hover {
+  color: var(--foreground);
 }
-.sync-coverage summary > span:first-of-type {
-  font-weight: 600;
+.sync-coverage[open] summary svg {
+  transform: rotate(90deg);
 }
-.sync-coverage summary > span:not(:first-of-type),
+@media (pointer: coarse) {
+  .sync-coverage summary {
+    min-height: 2.75rem;
+  }
+}
 .sync-coverage p {
-  color: var(--muted-foreground);
-}
-.sync-coverage p {
-  padding: 0 0.75rem 0.75rem;
+  padding: var(--space-2) 0;
   max-width: 70ch;
 }
 .coverage-scroll {

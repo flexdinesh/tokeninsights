@@ -137,6 +137,7 @@ export function UsageChart({ rows, totalTokens }: { rows: Row[]; totalTokens: nu
         : query.tab === 'harnesses'
           ? 'harnesses'
           : undefined
+  const showTokenShares = filterDimension !== undefined || query.tab === 'repo'
   const chartRows = rows.map((r, index) => ({
     ...r,
     label: context ? `${r.model} · ${r.harness} · ${r.provider}` : r.name,
@@ -154,7 +155,7 @@ export function UsageChart({ rows, totalTokens }: { rows: Row[]; totalTokens: nu
               : context
                 ? 'Top 12 groups by average in-range session peak'
                 : query.tab === 'repo'
-                  ? 'Top 12 location rows by total tokens'
+                  ? 'Top 12 location rows by total tokens · % of filtered total'
                   : 'Top 12 by total tokens · % of filtered total · select a label to filter'}
           </p>
         </div>
@@ -182,12 +183,12 @@ export function UsageChart({ rows, totalTokens }: { rows: Row[]; totalTokens: nu
       {rows.length === 0 ? (
         <div className="chart-empty">No usage in this range</div>
       ) : (
-        <div className={`chart-canvas${filterDimension ? ' chart-canvas-shares' : ''}`}>
+        <div className={`chart-canvas${showTokenShares ? ' chart-canvas-shares' : ''}`}>
           <ResponsiveContainer
             width="100%"
             height="100%"
             minWidth={
-              filterDimension
+              showTokenShares
                 ? `${rows.length * categoryShareWidthRem + categoryChartAxisWidthRem}rem`
                 : undefined
             }
@@ -238,7 +239,7 @@ export function UsageChart({ rows, totalTokens }: { rows: Row[]; totalTokens: nu
               <BarChart
                 data={chartRows}
                 maxBarSize={64}
-                margin={{ top: filterDimension ? 28 : 12, right: 12, left: 0, bottom: 0 }}
+                margin={{ top: showTokenShares ? 28 : 12, right: 12, left: 0, bottom: 0 }}
                 accessibilityLayer
               >
                 <CartesianGrid
@@ -266,7 +267,7 @@ export function UsageChart({ rows, totalTokens }: { rows: Row[]; totalTokens: nu
                 />
                 <Tooltip
                   formatter={(value) =>
-                    filterDimension && typeof value === 'number'
+                    showTokenShares && typeof value === 'number'
                       ? `${exactCount(value)} (${formatTokenShare(value, totalTokens)})`
                       : tooltipFormatter(value)
                   }
@@ -304,7 +305,7 @@ export function UsageChart({ rows, totalTokens }: { rows: Row[]; totalTokens: nu
                     {chartRows.map((row) => (
                       <Cell key={row.key} fill={row.color} />
                     ))}
-                    {filterDimension && (
+                    {showTokenShares && (
                       <LabelList
                         dataKey="tokenShare"
                         position="top"
