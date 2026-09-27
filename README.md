@@ -59,6 +59,8 @@ Daily sync status appears beside dates as compact markers. Web markers expose st
 
 When a new sync starts, previous completed day markers stay blank until the current check confirms them. Saved usage remains visible; pending/updating/failure markers reflect actual source work. `--no-sync` retains saved coverage markers.
 
+The browser also withholds stale empty-day zeros and completion labels in expanded coverage until the current check confirms them. Session search failures offer retry without clearing the search or selected filters. Chart load failures keep navigation, summaries, and tables available, with an explicit page reload to recover.
+
 Repeated syncs verify persisted markers and skip unchanged sources after a successful ingest. Codex fork markers also verify the complete parent chain, avoiding repeated replay parsing. OpenCode checks parser-relevant SQLite rows, so unrelated database writes do not reparse messages. Eligible Pi session files use a verified byte cursor to parse only appended records. Verification still reads source content to detect rewrites; loading progress includes these checks. Discovery and source preparation use multiple cores, with bounded workers and one SQLite writer that batches unchanged-source bookkeeping. Normalization skips identifier refresh when its rule marker is current. Changed sources retain full parsing where incremental replay is unsafe. CLI and schema remain unchanged; existing fork sources establish their new markers on the next sync. The V11–V13-to-V14 metadata upgrade preserves existing usage; older incompatible upgrades rebuild from retained source artifacts.
 
 Common filters:

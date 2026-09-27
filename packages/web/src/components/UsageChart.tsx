@@ -13,7 +13,7 @@ import {
 } from 'recharts'
 import type { Row, Sort } from '../contracts'
 import { exactCount, formatCount } from '../format'
-import { useDashboardState } from '../state'
+import { useDashboardPreferences, useDashboardQuery } from '../state'
 import { BucketControl } from './Filters'
 import { Button } from './ui/button'
 import { Card } from './ui/card'
@@ -114,10 +114,8 @@ const contextLegend = [
 ]
 
 export function UsageChart({ rows, totalTokens }: { rows: Row[]; totalTokens: number }) {
-  const {
-    state: { query, chartMetric: metric },
-    dispatch,
-  } = useDashboardState()
+  const { query, updateSelection } = useDashboardQuery()
+  const { chartMetric: metric, setChartMetric } = useDashboardPreferences()
   const timeline = query.tab === 'tokens' || query.tab === 'sessions'
   const context = query.tab === 'context'
   const title = timeline
@@ -168,7 +166,7 @@ export function UsageChart({ rows, totalTokens }: { rows: Row[]; totalTokens: nu
                   variant="ghost"
                   size="sm"
                   aria-pressed={metric === m.key}
-                  onClick={() => dispatch({ type: 'chartMetric', value: m.key })}
+                  onClick={() => setChartMetric(m.key)}
                 >
                   {m.label}
                 </Button>
@@ -328,9 +326,7 @@ export function UsageChart({ rows, totalTokens }: { rows: Row[]; totalTokens: nu
               variant="ghost"
               size="sm"
               className="chart-filter"
-              onClick={() =>
-                dispatch({ type: 'selection', value: { [filterDimension]: [row.name] } })
-              }
+              onClick={() => updateSelection({ [filterDimension]: [row.name] })}
               title={`Filter ${row.name}`}
             >
               <span

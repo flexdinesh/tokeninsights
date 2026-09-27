@@ -14,10 +14,10 @@ import { flexRender, getCoreRowModel, useReactTable } from '@tanstack/react-tabl
 import type { ColumnDef } from '@tanstack/react-table'
 import type { Dashboard, Row, Sort, Tab } from '../contracts'
 import { sortSchema } from '../contracts'
-import { CoverageIndicator } from './SyncCoverage'
+import { CoverageIndicator, presentCoverage } from './SyncCoverage'
 import type { CoverageDay } from './SyncCoverage'
 import { exactCount, formatCount, labels } from '../format'
-import { useDashboardState } from '../state'
+import { useDashboardPreferences, useDashboardQuery } from '../state'
 import { Badge } from './ui/badge'
 import { Button } from './ui/button'
 import { Checkbox } from './ui/checkbox'
@@ -166,14 +166,24 @@ export function UnknownLocation({
 
 type DisplayRow = Row & { coverage?: CoverageDay; placeholder?: boolean }
 
-function renderCell(
-  row: DisplayRow,
-  spec: Column,
-  tab: Tab,
-  timezone?: string,
-  checkedSince?: number,
-): ReactNode {
-  if (row.placeholder && spec.numeric && row.coverage?.status !== 'empty')
+function ResultsCell({
+  row,
+  spec,
+  tab,
+  timezone,
+  checkedSince,
+}: {
+  row: DisplayRow
+  spec: Column
+  tab: Tab
+  timezone?: string
+  checkedSince?: number
+}): ReactNode {
+  if (
+    row.placeholder &&
+    spec.numeric &&
+    (!row.coverage || presentCoverage(row.coverage, checkedSince).status !== 'empty')
+  )
     return <span className="numeric-value">—</span>
   const value = row[spec.id]
   if (spec.id === 'date')
@@ -239,10 +249,8 @@ export function ResultsTable({
   timezone?: string
   checkedSince?: number
 }) {
-  const {
-    state: { query, hidden },
-    dispatch,
-  } = useDashboardState()
+  const { query, sortBy, setPage, setPageSize } = useDashboardQuery()
+  const { hiddenColumns: hidden, toggleColumn } = useDashboardPreferences()
   const specs = useMemo(() => columnsFor(query.tab), [query.tab])
   const displayRows = useMemo<DisplayRow[]>(() => {
     if (query.tab !== 'tokens' || query.bucket !== 'day') return data.rows
@@ -295,12 +303,11 @@ export function ResultsTable({
         id: spec.id,
         accessorFn: (row) => row[spec.id],
         header: spec.label,
-        cell: ({ row }) => renderCell(row.original, spec, query.tab, timezone, checkedSince),
         size: spec.id === 'name' ? (query.tab === 'repo' ? 256 : 224) : spec.numeric ? 128 : 160,
         minSize: spec.id === 'name' ? 176 : spec.numeric ? minColumnSize : 128,
         maxSize: maxColumnSize,
       })),
-    [specs, query.tab, timezone, checkedSince],
+    [specs, query.tab],
   )
   const visibility = Object.fromEntries(
     specs.map((s) => [s.id, !hidden.includes(s.id) || s.id === 'name']),
@@ -345,7 +352,7 @@ export function ResultsTable({
               value={query.sort}
               onValueChange={(value) => {
                 const sort = sortSchema.safeParse(value)
-                if (sort.success) dispatch({ type: 'sort', value: sort.data })
+                if (sort.success) sortBy(sort.data)
               }}
             >
               <SelectTrigger aria-label="Sort by">
@@ -364,7 +371,7 @@ export function ResultsTable({
             variant="outline"
             size="icon"
             aria-label={`Sort ${query.direction === 'asc' ? 'descending' : 'ascending'}`}
-            onClick={() => dispatch({ type: 'sort', value: query.sort })}
+            onClick={() => sortBy(query.sort)}
           >
             {query.direction === 'asc' ? <ArrowUp size="1em" /> : <ArrowDown size="1em" />}
           </Button>
@@ -384,7 +391,7 @@ export function ResultsTable({
                     <Checkbox
                       id={`${columnId}-${s.id}`}
                       checked={!hidden.includes(s.id)}
-                      onCheckedChange={() => dispatch({ type: 'column', value: s.id })}
+                      onCheckedChange={() => toggleColumn(s.id)}
                     />
                     {s.label}
                   </label>
@@ -420,11 +427,7 @@ export function ResultsTable({
                         active ? (query.direction === 'asc' ? 'ascending' : 'descending') : 'none'
                       }
                     >
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => dispatch({ type: 'sort', value: sort })}
-                      >
+                      <Button variant="ghost" size="sm" onClick={() => sortBy(sort)}>
                         {flexRender(header.column.columnDef.header, header.getContext())}
                         {active ? (
                           query.direction === 'asc' ? (
@@ -479,14 +482,21 @@ export function ResultsTable({
           <TableBody>
             {table.getRowModel().rows.map((row) => (
               <TableRow key={row.id}>
-                {row.getVisibleCells().map((cell) => (
-                  <TableCell
-                    key={cell.id}
-                    className={specs.find((s) => s.id === cell.column.id)?.numeric ? 'numeric' : ''}
-                  >
-                    {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                  </TableCell>
-                ))}
+                {row.getVisibleCells().map((cell) => {
+                  const spec = specs.find((candidate) => candidate.id === cell.column.id)
+                  if (!spec) return null
+                  return (
+                    <TableCell key={cell.id} className={spec.numeric ? 'numeric' : ''}>
+                      <ResultsCell
+                        row={row.original}
+                        spec={spec}
+                        tab={query.tab}
+                        timezone={timezone}
+                        checkedSince={checkedSince}
+                      />
+                    </TableCell>
+                  )
+                })}
               </TableRow>
             ))}
           </TableBody>
@@ -529,7 +539,7 @@ export function ResultsTable({
             Rows
             <Select
               value={String(query.pageSize)}
-              onValueChange={(value) => dispatch({ type: 'pageSize', value: Number(value) })}
+              onValueChange={(value) => setPageSize(Number(value))}
             >
               <SelectTrigger aria-label="Rows per page">
                 <SelectValue />
@@ -550,7 +560,7 @@ export function ResultsTable({
             variant="outline"
             size="icon"
             disabled={data.page <= 1}
-            onClick={() => dispatch({ type: 'page', value: data.page - 1 })}
+            onClick={() => setPage(data.page - 1)}
             aria-label="Previous page"
           >
             <ChevronLeft size="1em" />
@@ -559,7 +569,7 @@ export function ResultsTable({
             variant="outline"
             size="icon"
             disabled={data.page >= pages}
-            onClick={() => dispatch({ type: 'page', value: data.page + 1 })}
+            onClick={() => setPage(data.page + 1)}
             aria-label="Next page"
           >
             <ChevronRight size="1em" />

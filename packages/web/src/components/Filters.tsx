@@ -2,7 +2,7 @@ import { useEffect, useId, useRef, useState } from 'react'
 import { CalendarDays, Check, ChevronDown, Filter, Search, X } from 'lucide-react'
 import type { Dimension, Facets, Selection } from '../contracts'
 import { bucketSchema, periodSchema } from '../contracts'
-import { useDashboardState } from '../state'
+import { useDashboardQuery } from '../state'
 import { useFacets } from '../api'
 import { Button } from './ui/button'
 import { Checkbox } from './ui/checkbox'
@@ -38,7 +38,9 @@ export function MultiSelect({
   selected,
   onChange,
   onSearch,
+  search: controlledSearch,
   loading = false,
+  error,
   missingName,
 }: {
   label: string
@@ -46,10 +48,13 @@ export function MultiSelect({
   selected: string[]
   onChange: (values: string[]) => void
   onSearch?: (search: string) => void
+  search?: string
   loading?: boolean
+  error?: { message: string; onRetry: () => void }
   missingName?: string
 }) {
-  const [search, setSearch] = useState('')
+  const [localSearch, setLocalSearch] = useState('')
+  const search = controlledSearch ?? localSearch
   const searchId = useId()
   const searchInput = useRef<HTMLInputElement>(null)
   const known = values.map((value) =>
@@ -108,7 +113,7 @@ export function MultiSelect({
             placeholder={`Find ${label.toLowerCase()}…`}
             value={search}
             onChange={(e) => {
-              setSearch(e.target.value)
+              if (controlledSearch === undefined) setLocalSearch(e.target.value)
               onSearch?.(e.target.value)
             }}
           />
@@ -130,10 +135,18 @@ export function MultiSelect({
               <span title={value.name}>{value.name}</span>
             </label>
           ))}
-          {options.length === 0 && (
+          {options.length === 0 && !error && (
             <p className="muted">{loading ? 'Loading…' : 'No matching values'}</p>
           )}
         </div>
+        {error && (
+          <div role="alert">
+            <p className="error-text">{error.message}</p>
+            <Button variant="outline" size="sm" onClick={error.onRetry} disabled={loading}>
+              Retry {label.toLowerCase()} search
+            </Button>
+          </div>
+        )}
         {onSearch && <p className="hint">First 100 matches. Search to narrow results.</p>}
         <PopoverClose asChild>
           <Button className="full-width">
@@ -146,11 +159,48 @@ export function MultiSelect({
   )
 }
 
+function SessionFilter({
+  values,
+  revision,
+  enabled,
+}: {
+  values: string[]
+  revision: number
+  enabled: boolean
+}) {
+  const { query, updateSelection } = useDashboardQuery()
+  const [search, setSearch] = useState('')
+  const [debounced, setDebounced] = useState('')
+  useEffect(() => {
+    const timer = setTimeout(() => setDebounced(search), 200)
+    return () => clearTimeout(timer)
+  }, [search])
+  const sessionFacets = useFacets(query, revision, enabled && debounced !== '', debounced)
+  const current = search === debounced
+  const searching = search !== ''
+  return (
+    <MultiSelect
+      label="Session"
+      selected={query.sessions}
+      values={searching ? (current ? (sessionFacets.data?.sessions ?? []) : []) : values}
+      onChange={(sessions) => updateSelection({ sessions })}
+      search={search}
+      onSearch={setSearch}
+      loading={searching && (!current || sessionFacets.isFetching)}
+      error={
+        searching && current && sessionFacets.error
+          ? {
+              message: 'Session values couldn’t load.',
+              onRetry: () => void sessionFacets.refetch(),
+            }
+          : undefined
+      }
+    />
+  )
+}
+
 function DateFilter() {
-  const {
-    state: { query },
-    dispatch,
-  } = useDashboardState()
+  const { query, updateSelection } = useDashboardQuery()
   const errorId = useId()
   const [open, setOpen] = useState(false)
   const [from, setFrom] = useState(query.from)
@@ -186,7 +236,7 @@ function DateFilter() {
               variant={!custom && query.period === p.value ? 'secondary' : 'outline'}
               aria-pressed={!custom && query.period === p.value}
               onClick={() => {
-                dispatch({ type: 'selection', value: { period: p.value, from: '', to: '' } })
+                updateSelection({ period: p.value, from: '', to: '' })
                 setOpen(false)
               }}
             >
@@ -232,7 +282,7 @@ function DateFilter() {
           className="full-width"
           disabled={invalid || (!from && !to)}
           onClick={() => {
-            dispatch({ type: 'selection', value: { from, to } })
+            updateSelection({ from, to })
             setOpen(false)
           }}
         >
@@ -252,17 +302,7 @@ export function FilterToolbar({
   revision: number
   enabled: boolean
 }) {
-  const {
-    state: { query },
-    dispatch,
-  } = useDashboardState()
-  const [search, setSearch] = useState('')
-  const [debounced, setDebounced] = useState('')
-  useEffect(() => {
-    const timer = setTimeout(() => setDebounced(search), 200)
-    return () => clearTimeout(timer)
-  }, [search])
-  const sessionFacets = useFacets(query, revision, enabled && debounced !== '', debounced)
+  const { query, updateSelection, updateLocations, clearFilters } = useDashboardQuery()
   const hasFilters =
     dimensions.some((d) => query[d.key].length > 0) ||
     (query.tab === 'repo' && locationDimensions.some((d) => query[d.key].length > 0)) ||
@@ -278,19 +318,24 @@ export function FilterToolbar({
             <DateFilter />
           </div>
           <div className="filter-group">
-            {dimensions.map((d) => (
-              <MultiSelect
-                key={d.key}
-                label={d.label}
-                selected={query[d.key]}
-                values={
-                  (d.key === 'sessions' && debounced ? sessionFacets.data : facets)?.[d.key] ?? []
-                }
-                onChange={(values) => dispatch({ type: 'selection', value: { [d.key]: values } })}
-                onSearch={d.key === 'sessions' ? setSearch : undefined}
-                loading={d.key === 'sessions' && sessionFacets.isFetching}
-              />
-            ))}
+            {dimensions.map((d) =>
+              d.key === 'sessions' ? (
+                <SessionFilter
+                  key={d.key}
+                  values={facets?.sessions ?? []}
+                  revision={revision}
+                  enabled={enabled}
+                />
+              ) : (
+                <MultiSelect
+                  key={d.key}
+                  label={d.label}
+                  selected={query[d.key]}
+                  values={facets?.[d.key] ?? []}
+                  onChange={(values) => updateSelection({ [d.key]: values })}
+                />
+              ),
+            )}
             {query.tab === 'repo' &&
               locationDimensions.map((d) => (
                 <MultiSelect
@@ -299,7 +344,7 @@ export function FilterToolbar({
                   selected={query[d.key]}
                   values={facets?.[d.key] ?? []}
                   missingName={`${d.label} (unavailable)`}
-                  onChange={(values) => dispatch({ type: 'locations', value: { [d.key]: values } })}
+                  onChange={(values) => updateLocations({ [d.key]: values })}
                 />
               ))}
           </div>
@@ -314,10 +359,7 @@ export function FilterToolbar({
                   size="sm"
                   className="filter-chip"
                   onClick={() =>
-                    dispatch({
-                      type: 'selection',
-                      value: { [d.key]: query[d.key].filter((v) => v !== value) },
-                    })
+                    updateSelection({ [d.key]: query[d.key].filter((v) => v !== value) })
                   }
                   aria-label={`Remove ${d.label.toLowerCase()} ${value}`}
                 >
@@ -342,10 +384,7 @@ export function FilterToolbar({
                       size="sm"
                       className="filter-chip"
                       onClick={() =>
-                        dispatch({
-                          type: 'locations',
-                          value: { [d.key]: query[d.key].filter((key) => key !== value) },
-                        })
+                        updateLocations({ [d.key]: query[d.key].filter((key) => key !== value) })
                       }
                       aria-label={`Remove ${d.label.toLowerCase()} ${name}`}
                     >
@@ -363,18 +402,13 @@ export function FilterToolbar({
                 variant="secondary"
                 size="sm"
                 className="filter-chip"
-                onClick={() => dispatch({ type: 'selection', value: { from: '', to: '' } })}
+                onClick={() => updateSelection({ from: '', to: '' })}
               >
                 Custom dates
                 <X size="0.9em" />
               </Button>
             )}
-            <Button
-              variant="ghost"
-              size="sm"
-              className="text-button"
-              onClick={() => dispatch({ type: 'clearFilters' })}
-            >
+            <Button variant="ghost" size="sm" className="text-button" onClick={clearFilters}>
               Clear All
             </Button>
           </div>
@@ -389,10 +423,7 @@ export function FilterToolbar({
 }
 
 export function BucketControl() {
-  const {
-    state: { query },
-    dispatch,
-  } = useDashboardState()
+  const { query, updateSelection } = useDashboardQuery()
   return (
     <div className="bucket-control">
       Bucket
@@ -400,7 +431,7 @@ export function BucketControl() {
         value={query.bucket}
         onValueChange={(value) => {
           const parsed = bucketSchema.safeParse(value)
-          if (parsed.success) dispatch({ type: 'selection', value: { bucket: parsed.data } })
+          if (parsed.success) updateSelection({ bucket: parsed.data })
         }}
       >
         <SelectTrigger size="sm" aria-label="Time bucket">
@@ -420,10 +451,7 @@ export function BucketControl() {
 }
 
 export function QuickPeriods() {
-  const {
-    state: { query },
-    dispatch,
-  } = useDashboardState()
+  const { query, updateSelection } = useDashboardQuery()
   return (
     <div className="quick-periods" aria-label="Quick date ranges">
       {['today', 'week', 'month', 'year', 'all'].map((value) => {
@@ -434,7 +462,7 @@ export function QuickPeriods() {
             variant="ghost"
             size="sm"
             aria-pressed={query.period === period && !query.from && !query.to}
-            onClick={() => dispatch({ type: 'selection', value: { period, from: '', to: '' } })}
+            onClick={() => updateSelection({ period, from: '', to: '' })}
           >
             {period === 'all' ? 'All time' : period[0]?.toUpperCase() + period.slice(1)}
           </Button>
