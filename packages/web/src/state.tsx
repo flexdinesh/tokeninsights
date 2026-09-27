@@ -38,13 +38,7 @@ export interface DashboardSearch {
 
 const themeSchema = z.enum(['system', 'light', 'dark'])
 export type Theme = z.infer<typeof themeSchema>
-interface State {
-  query: QueryState
-  theme: Theme
-  hidden: string[]
-  chartMetric: Sort
-}
-export type Action =
+export type QueryAction =
   | { type: 'selection'; value: Partial<Selection> }
   | { type: 'reset'; value: Selection }
   | { type: 'clearFilters' }
@@ -57,9 +51,6 @@ export type Action =
   | { type: 'sort'; value: Sort }
   | { type: 'page'; value: number }
   | { type: 'pageSize'; value: number }
-  | { type: 'theme'; value: Theme }
-  | { type: 'column'; value: string }
-  | { type: 'chartMetric'; value: Sort }
 
 export function defaultSort(tab: Tab): Sort {
   return tab === 'context'
@@ -83,7 +74,7 @@ export function initialQuery(defaults: Selection, tab: Tab = 'tokens'): QuerySta
   }
 }
 
-export function reduceQuery(query: QueryState, action: Action): QueryState {
+export function reduceQuery(query: QueryState, action: QueryAction): QueryState {
   switch (action.type) {
     case 'selection':
       return { ...query, ...action.value, page: 1 }
@@ -356,10 +347,26 @@ export function apiQueryParams(query: QueryState): URLSearchParams {
   return params
 }
 
-const StateContext = createContext<{
-  state: State
-  dispatch: (action: Action) => void
+const QueryContext = createContext<{
+  query: QueryState
   defaults: Selection
+  updateSelection: (value: Partial<Selection>) => void
+  resetSelection: () => void
+  clearFilters: () => void
+  setLocationGroup: (value: LocationGroup) => void
+  updateLocations: (value: Partial<Pick<QueryState, 'repositories' | 'directories'>>) => void
+  sortBy: (value: Sort) => void
+  setPage: (value: number) => void
+  setPageSize: (value: number) => void
+} | null>(null)
+
+const PreferencesContext = createContext<{
+  theme: Theme
+  hiddenColumns: string[]
+  chartMetric: Sort
+  setTheme: (value: Theme) => void
+  toggleColumn: (value: string) => void
+  setChartMetric: (value: Sort) => void
 } | null>(null)
 
 function savedTheme(): Theme {
@@ -377,6 +384,20 @@ export function DashboardProvider({
   defaults: Selection
   children: ReactNode
 }) {
+  return (
+    <DashboardQueryProvider defaults={defaults}>
+      <DashboardPreferencesProvider>{children}</DashboardPreferencesProvider>
+    </DashboardQueryProvider>
+  )
+}
+
+function DashboardQueryProvider({
+  defaults,
+  children,
+}: {
+  defaults: Selection
+  children: ReactNode
+}) {
   const { tab } = useParams({ from: '/$tab' })
   const search = useSearch({ from: '/$tab' })
   const navigate = useNavigate({ from: '/$tab' })
@@ -384,9 +405,6 @@ export function DashboardProvider({
   const canonicalSearch = useMemo(() => searchFromQuery(query), [query])
   const currentSearchKey = stringifyDashboardSearch(search)
   const canonicalSearchKey = stringifyDashboardSearch(canonicalSearch)
-  const [theme, setTheme] = useState(savedTheme)
-  const [hidden, setHidden] = useState<string[]>([])
-  const [chartMetric, setChartMetric] = useState<Sort>('total')
 
   useEffect(() => {
     if (currentSearchKey !== canonicalSearchKey) {
@@ -394,33 +412,8 @@ export function DashboardProvider({
     }
   }, [canonicalSearch, canonicalSearchKey, currentSearchKey, navigate, tab])
 
-  useEffect(() => {
-    document.documentElement.dataset.theme = theme
-    try {
-      localStorage.setItem('tokeninsights.theme', theme)
-    } catch {
-      /* Preferences still work without storage. */
-    }
-  }, [theme])
-
-  const dispatch = useCallback(
-    (action: Action) => {
-      if (action.type === 'theme') {
-        setTheme(action.value)
-        return
-      }
-      if (action.type === 'column') {
-        setHidden((values) =>
-          values.includes(action.value)
-            ? values.filter((value) => value !== action.value)
-            : [...values, action.value],
-        )
-        return
-      }
-      if (action.type === 'chartMetric') {
-        setChartMetric(action.value)
-        return
-      }
+  const navigateQuery = useCallback(
+    (action: QueryAction) => {
       const next = reduceQuery(query, action)
       void navigate({
         to: '/$tab',
@@ -432,16 +425,57 @@ export function DashboardProvider({
     [navigate, query],
   )
 
-  const state = useMemo(
-    () => ({ query, theme, hidden, chartMetric }),
-    [chartMetric, hidden, query, theme],
+  const contextValue = useMemo(
+    () => ({
+      query,
+      defaults,
+      updateSelection: (value: Partial<Selection>) => navigateQuery({ type: 'selection', value }),
+      resetSelection: () => navigateQuery({ type: 'reset', value: defaults }),
+      clearFilters: () => navigateQuery({ type: 'clearFilters' }),
+      setLocationGroup: (value: LocationGroup) => navigateQuery({ type: 'locationGroup', value }),
+      updateLocations: (value: Partial<Pick<QueryState, 'repositories' | 'directories'>>) =>
+        navigateQuery({ type: 'locations', value }),
+      sortBy: (value: Sort) => navigateQuery({ type: 'sort', value }),
+      setPage: (value: number) => navigateQuery({ type: 'page', value }),
+      setPageSize: (value: number) => navigateQuery({ type: 'pageSize', value }),
+    }),
+    [defaults, navigateQuery, query],
   )
-  const value = useMemo(() => ({ state, dispatch, defaults }), [defaults, dispatch, state])
-  return <StateContext.Provider value={value}>{children}</StateContext.Provider>
+  return <QueryContext.Provider value={contextValue}>{children}</QueryContext.Provider>
 }
 
-export function useDashboardState() {
-  const value = useContext(StateContext)
-  if (!value) throw new Error('DashboardProvider missing')
+function DashboardPreferencesProvider({ children }: { children: ReactNode }) {
+  const [theme, setTheme] = useState(savedTheme)
+  const [hiddenColumns, setHiddenColumns] = useState<string[]>([])
+  const [chartMetric, setChartMetric] = useState<Sort>('total')
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme
+    try {
+      localStorage.setItem('tokeninsights.theme', theme)
+    } catch {
+      /* Preferences still work without storage. */
+    }
+  }, [theme])
+  const toggleColumn = useCallback((column: string) => {
+    setHiddenColumns((values) =>
+      values.includes(column) ? values.filter((value) => value !== column) : [...values, column],
+    )
+  }, [])
+  const value = useMemo(
+    () => ({ theme, hiddenColumns, chartMetric, setTheme, toggleColumn, setChartMetric }),
+    [chartMetric, hiddenColumns, theme, toggleColumn],
+  )
+  return <PreferencesContext.Provider value={value}>{children}</PreferencesContext.Provider>
+}
+
+export function useDashboardQuery() {
+  const value = useContext(QueryContext)
+  if (!value) throw new Error('DashboardQueryProvider missing')
+  return value
+}
+
+export function useDashboardPreferences() {
+  const value = useContext(PreferencesContext)
+  if (!value) throw new Error('DashboardPreferencesProvider missing')
   return value
 }

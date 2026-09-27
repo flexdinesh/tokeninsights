@@ -34,8 +34,25 @@ export function formatCoverageTime(timestamp: number, timezone?: string): string
   }
 }
 
-export function coverageLabel(day: CoverageDay, timezone?: string): string {
-  switch (day.status) {
+export function presentCoverage(
+  day: CoverageDay,
+  checkedSince?: number,
+): {
+  status: CoverageDay['status'] | 'awaiting'
+  total: number | null
+} {
+  const awaiting =
+    (day.status === 'checked' || day.status === 'empty') && !coverageConfirmed(day, checkedSince)
+  return {
+    status: awaiting ? 'awaiting' : day.status,
+    total: awaiting && day.status === 'empty' ? null : day.total,
+  }
+}
+
+export function coverageLabel(day: CoverageDay, timezone?: string, checkedSince?: number): string {
+  switch (presentCoverage(day, checkedSince).status) {
+    case 'awaiting':
+      return 'Awaiting current check'
     case 'checked':
       return `Checked ${formatCoverageTime(day.checkedAt, timezone)}`
     case 'empty':
@@ -65,9 +82,8 @@ export function CoverageIndicator({
   timezone?: string
   checkedSince?: number
 }) {
-  if ((day.status === 'checked' || day.status === 'empty') && !coverageConfirmed(day, checkedSince))
-    return null
-  const label = coverageLabel(day, timezone)
+  if (presentCoverage(day, checkedSince).status === 'awaiting') return null
+  const label = coverageLabel(day, timezone, checkedSince)
   const Icon =
     day.status === 'checked'
       ? Check
@@ -138,20 +154,23 @@ export function SyncCoverage({
             </TableRow>
           </TableHeader>
           <TableBody>
-            {newestFirst.map((day) => (
-              <TableRow key={day.day}>
-                <TableCell>{day.day}</TableCell>
-                <TableCell className="numeric">
-                  {day.total === null ? '—' : formatCount(day.total)}
-                </TableCell>
-                <TableCell data-status={day.status}>
-                  {coverageLabel(day, timezone)}
-                  {day.status === 'empty' && (
-                    <small> · Checked {formatCoverageTime(day.checkedAt, timezone)}</small>
-                  )}
-                </TableCell>
-              </TableRow>
-            ))}
+            {newestFirst.map((day) => {
+              const presentation = presentCoverage(day, checkedSince)
+              return (
+                <TableRow key={day.day}>
+                  <TableCell>{day.day}</TableCell>
+                  <TableCell className="numeric">
+                    {presentation.total === null ? '—' : formatCount(presentation.total)}
+                  </TableCell>
+                  <TableCell data-status={presentation.status}>
+                    {coverageLabel(day, timezone, checkedSince)}
+                    {presentation.status === 'empty' && (
+                      <small> · Checked {formatCoverageTime(day.checkedAt, timezone)}</small>
+                    )}
+                  </TableCell>
+                </TableRow>
+              )
+            })}
           </TableBody>
         </Table>
       </div>

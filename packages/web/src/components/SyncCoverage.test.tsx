@@ -1,5 +1,5 @@
 import { afterEach, expect, it } from 'vitest'
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { CoverageIndicator, formatCoverageTime, SyncCoverage } from './SyncCoverage'
 import type { CoverageDay } from './SyncCoverage'
@@ -107,3 +107,37 @@ it('formats server offset labels without treating them as IANA timezone identifi
   )
   expect(formatCoverageTime(timestamp, 'unrecognized')).toContain('UTC')
 })
+
+it.each(['checked', 'empty'] satisfies CoverageDay['status'][])(
+  'keeps stale %s details unconfirmed without erasing saved usage',
+  async (status) => {
+    const user = userEvent.setup()
+    const saved = {
+      ...day,
+      status,
+      hasUsage: status !== 'empty',
+      total: status === 'empty' ? 0 : 42,
+    }
+    const startedAt = day.checkedAt + 60_000
+    const { rerender } = render(<SyncCoverage days={[saved]} timezone="UTC" />)
+    await user.click(screen.getByText('Source coverage'))
+    const row = screen.getByRole('row', { name: /2026-09-26/ })
+    expect(row).toHaveTextContent('Awaiting current check')
+    expect(within(row).getAllByRole('cell')[1]).toHaveTextContent(status === 'empty' ? '—' : '42')
+    rerender(<SyncCoverage days={[saved]} timezone="UTC" checkedSince={startedAt} />)
+    expect(row).toHaveTextContent('Awaiting current check')
+    expect(screen.getByText(/0 \/ 1 days checked/)).toBeVisible()
+    rerender(
+      <SyncCoverage
+        days={[{ ...saved, checkedAt: startedAt }]}
+        timezone="UTC"
+        checkedSince={startedAt}
+      />,
+    )
+    expect(row).not.toHaveTextContent('Awaiting current check')
+    expect(within(row).getAllByRole('cell')[1]).toHaveTextContent(status === 'empty' ? '0' : '42')
+    expect(screen.getByText(/1 \/ 1 days checked/)).toBeVisible()
+    rerender(<SyncCoverage days={[saved]} timezone="UTC" checkedSince={0} />)
+    expect(row).not.toHaveTextContent('Awaiting current check')
+  },
+)
