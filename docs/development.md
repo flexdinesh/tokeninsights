@@ -2,6 +2,14 @@
 
 TokenInsights is a pnpm monorepo with a Go CLI and a Vite/React browser application. Use Node 26+, pnpm 11+, and Go 1.26+.
 
+## Development builds
+
+For development builds, updated automatically after pushes to `main` pass CI:
+
+```sh
+go install github.com/flexdinesh/tokeninsights/packages/cli/cmd/tokeninsights@dev
+```
+
 ## Setup
 
 ```sh
