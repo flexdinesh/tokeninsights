@@ -17,14 +17,16 @@ go install github.com/flexdinesh/tokeninsights/packages/cli/cmd/tokeninsights@la
 Specific stable version:
 
 ```sh
-go install github.com/flexdinesh/tokeninsights/packages/cli/cmd/tokeninsights@v0.0.1
+go install github.com/flexdinesh/tokeninsights/packages/cli/cmd/tokeninsights@v0.1.3
 ```
 
-Development version from `dev`:
+Development version from the latest `main` push published after CI passes:
 
 ```sh
 go install github.com/flexdinesh/tokeninsights/packages/cli/cmd/tokeninsights@dev
 ```
+
+Go resolves `@latest` from stable module tags (`packages/cli/vX.Y.Z`), independently of GitHub's Latest badge. `@dev` resolves the moving `dev` branch to a Go pseudo-version, or a stable version when that commit is tagged. Module proxies may briefly cache branch lookups; rerun the install after publication to update.
 
 ## Release
 
@@ -33,21 +35,27 @@ Required secret:
 - `HOMEBREW_TAP_TOKEN`: fine-grained token with contents write and pull request write access to `flexdinesh/homebrew-tap`.
 
 1. Merge the release-ready code to `main`.
-2. Run the **Release** workflow from GitHub Actions.
-3. The workflow creates the next patch tag in the configured release series, builds archives, writes `checksums.txt`, and publishes a GitHub Release.
+2. Run the **Release** workflow from GitHub Actions with branch `main` selected. Dispatches from other refs are skipped. The workflow checks out the latest `main` when it starts; that commit is verified and released even if `main` advances during the run.
+3. The workflow selects the next patch version, builds macOS/Linux amd64/arm64 archives, writes `checksums.txt`, then pushes the Go module tag and publishes a stable GitHub Release explicitly marked Latest. New versions and GitHub releases are published only through this manual workflow.
 4. The workflow generates `Formula/tokeninsights.rb` from the local release checksums and opens or updates a pull request against `flexdinesh/homebrew-tap`.
 
-`.release-version` contains the active `major.minor` release series. It is currently `0.1`, so the next release is `packages/cli/v0.1.0`. A rerun from the same commit reuses that commit's existing tag.
+`.release-version` contains the active `major.minor` release series. It is currently `0.1`; releases increment the highest existing patch in that series. A rerun from the same commit reuses that commit's existing tag and updates its release assets and Latest badge.
 
 To begin a new minor or major series, change `.release-version`. For example, changing it to `0.2` makes the next release `packages/cli/v0.2.0`; changing it to `1.0` makes the next release `packages/cli/v1.0.0`. Later releases automatically increment that series' patch number.
 
-React assets are committed under `packages/cli/internal/server/static` and embedded with `go:embed` in every binary, including Go installs and snapshot archives. CI/release verification rebuilds the frontend and checks for asset drift before packaging. Frontend changes must include regenerated assets (`pnpm run build:web`). The private `@tokeninsights/build-tools` workspace package under `tools/build` owns generated-asset checks and Homebrew formula generation; it is release-time tooling only.
+React assets are committed under `packages/cli/internal/server/static` and embedded with `go:embed` in every binary, including stable and dev Go installs. CI/release verification rebuilds the frontend and checks for asset drift before publication. Frontend changes must include regenerated assets (`pnpm run build:web`). The private `@tokeninsights/build-tools` workspace package under `tools/build` owns generated-asset checks, dev branch publication, and Homebrew formula generation; it is build/release-time tooling only.
 
 Release artifacts contain only the native Go binary and documentation. Production hosts need no Node.js, npm, pnpm, `node_modules`, repository JavaScript tooling, or separate web files. Go serves the embedded browser JavaScript as bytes; it executes only in the browser, and the Go runtime never invokes a JavaScript runtime.
 
 The tap branch is deterministic per version, such as `tokeninsights-v0.0.1`, so rerunning the release updates the same tap pull request. If the tap pull request cannot be created or updated, the release workflow fails after publishing the GitHub Release so the Homebrew update can be repaired manually.
 
 The tap repository owns Homebrew-native validation. Its CI should run style, audit, install, and formula test checks for changed formulae before merging the generated pull request.
+
+## Automatic dev publication
+
+Every push to `main` runs CI. After verification passes, **Publish dev** points `dev` at that exact commit, making it available through `go install ...@dev`. Pull requests only verify; pushes to `dev` no longer trigger the obsolete snapshot packaging job. Dev publication creates no tags, GitHub releases, or Homebrew updates and leaves the stable Latest release unchanged.
+
+`dev` is a generated distribution branch, not an independent development branch. The first publication replaces its obsolete history with `main`. A job whose commit has been superseded on `main` skips publication. An explicit Git lease rejects concurrent changes to `dev`; publication retries up to three times, rechecking both branches each time. Failed verification leaves `dev` unchanged. Rerun the latest `main` CI run to retry a failed publication. The job uses `GITHUB_TOKEN` with `contents: write`; branch rules must permit its update to `dev`.
 
 ## Verify Locally
 

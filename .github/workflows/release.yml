@@ -13,6 +13,7 @@ concurrency:
 jobs:
   release:
     name: Release
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout main
@@ -91,12 +92,6 @@ jobs:
           echo "version=${version}" >> "$GITHUB_OUTPUT"
           echo "create=${create}" >> "$GITHUB_OUTPUT"
 
-      - name: Create release tag
-        if: steps.tag.outputs.create == 'true'
-        run: |
-          git tag "${{ steps.tag.outputs.tag }}"
-          git push origin "${{ steps.tag.outputs.tag }}"
-
       - name: Build release archives
         shell: bash
         run: |
@@ -135,6 +130,12 @@ jobs:
             shasum -a 256 *.tar.gz > checksums.txt
           )
 
+      - name: Create release tag
+        if: steps.tag.outputs.create == 'true'
+        run: |
+          git tag "${{ steps.tag.outputs.tag }}"
+          git push origin "${{ steps.tag.outputs.tag }}"
+
       - name: Publish GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -147,11 +148,14 @@ jobs:
 
           if gh release view "${tag}" >/dev/null 2>&1; then
             gh release upload "${tag}" dist/*.tar.gz dist/checksums.txt --clobber
+            gh release edit "${tag}" --draft=false --prerelease=false --latest
           else
             gh release create "${tag}" \
               dist/*.tar.gz \
               dist/checksums.txt \
               --title "tokeninsights v${version}" \
+              --verify-tag \
+              --latest \
               --generate-notes
           fi
 
