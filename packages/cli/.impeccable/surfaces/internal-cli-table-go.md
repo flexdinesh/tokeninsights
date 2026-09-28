@@ -45,7 +45,7 @@ numeric-overflow finding was withdrawn after formatter verification; no unresolv
 finish findings remain.
 
 Reviewed captures: `.impeccable/review/{desktop-dark,desktop-light,compact-dark,wide-dark,filter-drawer,context,help,empty}.png`.
-The repository README capture at `assets/tokeninsights-view-models.png` carries
+The repository README capture at `assets/tokeninsights-tui.png` carries
 embedded synthetic-fixture PTY provenance. Terminal styling is separate from the
 unchanged browser contract in root `DESIGN.md`.
 
