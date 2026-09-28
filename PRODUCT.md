@@ -74,7 +74,7 @@ identity is recorded separately in `DESIGN.md`.
 ## Evidence on Hand
 
 - [README.md](README.md): current product description, commands, and screenshots.
-- `assets/tokeninsights-web-light.png` and `assets/tokeninsights-view-models.png`:
+- `assets/tokeninsights-web.png` and `assets/tokeninsights-tui.png`:
   committed browser and terminal captures; verify freshness before visual work.
 - `packages/web/public/tokeninsights-logo.png`: existing logo asset.
 - `packages/cli/testdata/conformance/sync-first-basic/` and `packages/web/src/mocks/`:

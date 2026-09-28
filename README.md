@@ -6,7 +6,7 @@ The Repo view groups token, model, and provider usage by repository or directory
 
 | Web                                                                                  | TUI                                                                       |
 | ------------------------------------------------------------------------------------ | ------------------------------------------------------------------------- |
-| ![TokenInsights browser dashboard with synthetic demo data](assets/tokeninsights-web-light.png) | ![TokenInsights terminal dashboard with synthetic fixture data](assets/tokeninsights-view-models.png) |
+| ![TokenInsights browser dashboard with synthetic demo data](assets/tokeninsights-web.png) | ![TokenInsights terminal dashboard with synthetic fixture data](assets/tokeninsights-tui.png) |
 
 ## Install
 
