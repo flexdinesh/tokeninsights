@@ -1,4 +1,4 @@
-package server
+package browser
 
 import (
 	"os"
@@ -38,3 +38,6 @@ func openBrowser(url string) error {
 	go func() { _ = opener.Wait() }()
 	return nil
 }
+
+// OpenBrowser opens an explicitly requested dashboard.
+func Open(url string) error { return openBrowser(url) }

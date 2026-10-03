@@ -61,32 +61,41 @@ func (a *codexJSONLAdapter) Discover(ctx context.Context, options DiscoverOption
 		return nil, err
 	}
 	var roots []string
-	sourceDir := strings.TrimSpace(options.SourceDir)
-	if sourceDir != "" {
-		harnessDir := filepath.Join(sourceDir, string(HarnessCodex))
-		if info, err := os.Stat(harnessDir); err == nil && info.IsDir() {
-			roots = append(roots, harnessDir)
-		} else if options.HarnessSubdirOnly {
-			if err != nil && !os.IsNotExist(err) {
-				return nil, err
-			}
-			return nil, nil
-		} else {
-			roots = append(roots, sourceDir)
+	if options.Sources != nil {
+		var err error
+		roots, err = options.Sources.discoveryRoots(HarnessCodex, options.HarnessSubdirOnly)
+		if err != nil {
+			return nil, err
 		}
 	} else {
-		root := strings.TrimSpace(os.Getenv("CODEX_HOME"))
-		if root == "" {
-			home := strings.TrimSpace(os.Getenv("HOME"))
-			if home == "" {
+		sourceDir := strings.TrimSpace(options.SourceDir)
+		if sourceDir != "" {
+			harnessDir := filepath.Join(sourceDir, string(HarnessCodex))
+			if info, err := os.Stat(harnessDir); err == nil && info.IsDir() {
+				roots = append(roots, harnessDir)
+			} else if options.HarnessSubdirOnly {
+				if err != nil && !os.IsNotExist(err) {
+					return nil, err
+				}
 				return nil, nil
+			} else {
+				roots = append(roots, sourceDir)
 			}
-			root = filepath.Join(home, ".codex")
+		} else {
+			root := strings.TrimSpace(os.Getenv("CODEX_HOME"))
+			if root == "" {
+				home := strings.TrimSpace(os.Getenv("HOME"))
+				if home == "" {
+					return nil, nil
+				}
+				root = filepath.Join(home, ".codex")
+			}
+			roots = append(roots,
+				filepath.Join(root, "sessions"),
+				filepath.Join(root, "archived_sessions"),
+			)
 		}
-		roots = append(roots,
-			filepath.Join(root, "sessions"),
-			filepath.Join(root, "archived_sessions"),
-		)
+
 	}
 
 	var sources []Source

@@ -12,16 +12,23 @@ func runHelp(invocation commandInvocation, _ []string) error {
 func usageText() string {
 	return `usage: tokeninsights <command> [options]
 
-commands:
-  sync              ingest local harness data
-  normalize         rebuild canonical facts from raw facts
-  reset-canonical   delete canonical facts and diagnostics
-  reset-all         recreate the local database
-  view              open the interactive TUI
-  serve             serve the React dashboard on localhost (port 8765)
+Bare invocation ensures the background service and prints its URL. No startup sync.
 
-serve: viewer flags plus --host <ipv4> and --port <0-65535>; --no-sync skips startup sync
-  opens the default browser when possible; skips SSH sessions
-  tokeninsights serve --week
-  tokeninsights serve --host 10.0.1.151 --no-sync --port 8080`
+commands:
+  service start|stop|restart|status   manage background web/API service
+  service run                       run service in foreground
+  refresh [--wait]                   request all-harness refresh
+  sync                              ingest local harness data
+  normalize                         rebuild canonical facts
+  reset-canonical                   delete canonical facts
+  reset-all                         reset application tables
+  view                              local TUI; refresh on opening
+  serve                             deprecated alias for service run
+
+  tokeninsights service start --host 0.0.0.0 --port 8765
+  tokeninsights service status --json
+  tokeninsights service restart --reload-sources
+  tokeninsights view --no-sync
+
+--host binds web/API only. Authentication and reboot autostart are not included.`
 }

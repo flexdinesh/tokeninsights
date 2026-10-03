@@ -105,8 +105,9 @@ function DashboardShell({
     revision,
     enabled,
     Boolean(controller.statusQuery.data?.running),
+    controller.identity,
   )
-  const facets = useFacets(query, revision, enabled)
+  const facets = useFacets(query, revision, enabled, '', controller.identity)
   const serverUnavailable = Boolean(
     connectionError || controller.statusQuery.error || analytics.error || facets.error,
   )
@@ -118,6 +119,8 @@ function DashboardShell({
       <DashboardHeader
         hostname={bootstrap.hostname}
         running={running}
+        refreshDisabled={controller.refreshDisabled}
+        pendingRefresh={controller.pendingRefresh}
         serverUnavailable={serverUnavailable}
         lastSynced={analytics.data?.dashboard.lastSynced}
         reloading={analytics.isFetching && enabled}
@@ -170,7 +173,12 @@ function DashboardShell({
           </div>
         )}
         <div className="studio-layout">
-          <FilterToolbar facets={facets.data} revision={revision} enabled={enabled} />
+          <FilterToolbar
+            facets={facets.data}
+            revision={revision}
+            enabled={enabled}
+            identity={controller.identity}
+          />
           <DashboardResults
             analytics={analytics}
             facets={facets}

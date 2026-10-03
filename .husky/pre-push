@@ -1,0 +1,1 @@
+exec mise run check:push </dev/null

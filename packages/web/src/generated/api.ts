@@ -139,6 +139,9 @@ export type Selection = zod.input<typeof Selection>
 export type SelectionOutput = zod.output<typeof Selection>
 
 export const InstanceResponse = zod.strictObject({
+  instanceId: zod.string().optional(),
+  dataEpoch: zod.string().optional(),
+  dataReadiness: zod.enum(['ready', 'metadata', 'recovery', 'rebuild', 'unavailable']).optional(),
   apiVersion: ApiVersion,
   serverVersion: zod.string().min(1),
   hostname: zod
@@ -177,6 +180,11 @@ export type SyncProgress = zod.input<typeof SyncProgress>
 export type SyncProgressOutput = zod.output<typeof SyncProgress>
 
 export const SyncResponse = zod.strictObject({
+  instanceId: zod.string().optional(),
+  dataEpoch: zod.string().optional(),
+  dataReadiness: zod.enum(['ready', 'metadata', 'recovery', 'rebuild', 'unavailable']).optional(),
+  pendingRefresh: zod.boolean().optional(),
+  checkRequestedAt: Count.optional(),
   running: zod.boolean(),
   phase: SyncPhase,
   harnesses: zod.record(zod.string(), HarnessSyncStatus),
@@ -258,6 +266,9 @@ export type UsageSummaryOutput = zod.output<typeof UsageSummary>
 export const usageResponsePageSizeMax = 200
 
 export const UsageResponse = zod.strictObject({
+  instanceId: zod.string().optional(),
+  dataEpoch: zod.string().optional(),
+  revision: Count.optional(),
   coverage: zod
     .array(DayCoverage)
     .optional()
@@ -288,6 +299,9 @@ export type LocationOption = zod.input<typeof LocationOption>
 export type LocationOptionOutput = zod.output<typeof LocationOption>
 
 export const UsageFacetsResponse = zod.strictObject({
+  instanceId: zod.string().optional(),
+  dataEpoch: zod.string().optional(),
+  revision: Count.optional(),
   providers: zod.array(zod.string()),
   models: zod.array(zod.string()),
   harnesses: zod.array(Harness),
@@ -323,9 +337,10 @@ export type GetSyncResponse = zod.input<typeof GetSyncResponse>
 export type GetSyncResponseOutput = zod.output<typeof GetSyncResponse>
 
 /**
- * Starts an all-harness ingest and normalization job unless one is already
- * running. Concurrent callers observe the same process-wide job.
- * @summary Start or join an all-harness sync
+ * Requests all-harness ingest and normalization using saved service sources.
+ * Callers join ordinary work before source capture. Requests after capture
+ * coalesce into one queued follow-up. Reset or shutdown rejects new demand.
+ * @summary Request shared all-harness refresh
  */
 export const StartSyncResponse = SyncResponse
 

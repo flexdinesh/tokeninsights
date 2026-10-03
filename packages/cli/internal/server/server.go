@@ -11,135 +11,63 @@ import (
 	"io/fs"
 	"net"
 	"net/http"
-	"os"
-	"os/signal"
-	"sync"
-	"syscall"
+	"net/netip"
 	"time"
 
+	application "github.com/flexdinesh/tokeninsights/packages/cli/internal/app"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/db"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/pipeline"
 	serverapi "github.com/flexdinesh/tokeninsights/packages/cli/internal/server/api"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/version"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/viewer"
 )
 
 const DefaultPort = 8765
-const shutdownTimeout = 10 * time.Second
+const logIndent = "  "
 const queryTimeout = 30 * time.Second
 
 //go:embed static
 var assets embed.FS
 
 type Options struct {
-	DBPath              string
-	NoSync              bool
-	Port                int
-	Host                string
-	ResolvePortConflict bool
-	Input               io.Reader
-	Defaults            viewer.Selection
+	DBPath   string
+	Defaults viewer.Selection
 }
 
 type syncState struct {
-	Running   bool              `json:"running"`
-	Phase     string            `json:"phase"`
-	Harnesses map[string]string `json:"harnesses"`
-	Error     string            `json:"error"`
-	Progress  *db.SyncStatus    `json:"-"`
-	Revision  uint64            `json:"revision"`
+	InstanceID       string
+	DataEpoch        string
+	DataReadiness    string
+	PendingRefresh   bool
+	CheckRequestedAt int64
+	Running          bool              `json:"running"`
+	Phase            string            `json:"phase"`
+	Harnesses        map[string]string `json:"harnesses"`
+	Error            string            `json:"error"`
+	Progress         *db.SyncStatus    `json:"-"`
+	Revision         uint64            `json:"revision"`
 }
 
 type app struct {
-	options Options
-	ctx     context.Context
-	mu      sync.Mutex
-	jobs    sync.WaitGroup
-	state   syncState
-	syncer  func(context.Context, pipeline.SyncOptions) (pipeline.Summary, error)
-	log     io.Writer
+	controller *application.Controller
+	options    Options
+	ctx        context.Context
+	log        io.Writer
 }
 
 func newApp(ctx context.Context, options Options, log io.Writer) *app {
-	return &app{options: options, ctx: ctx, log: log, syncer: pipeline.Sync, state: syncState{Phase: "ready", Harnesses: map[string]string{}}}
+	return &app{options: options, ctx: ctx, log: log}
 }
-
 func (a *app) status() syncState {
-	if a.options.DBPath != "" {
-		shared, err := db.ReadSyncStatus(a.ctx, a.options.DBPath)
-		if err == nil && (shared.JobID > 0 || shared.Revision > 0) {
-			local := a.localStatus()
-			if !local.Running || shared.Running {
-				return syncState{Running: shared.Running, Phase: shared.Phase, Harnesses: shared.Harnesses, Error: shared.Error, Revision: uint64(shared.Revision), Progress: &shared}
-			}
-			local.Revision = uint64(shared.Revision)
-			return local
+	if a.controller != nil {
+		s := a.controller.Status(a.ctx)
+		var progress *db.SyncStatus
+		if s.Progress.JobID != 0 {
+			progress = &s.Progress
 		}
+		return syncState{Running: s.Running, Phase: s.Phase, Error: s.Error, Harnesses: s.Progress.Harnesses, Revision: uint64(s.Progress.Revision), Progress: progress, InstanceID: s.InstanceID, DataEpoch: s.DataEpoch, DataReadiness: s.DataReadiness, PendingRefresh: s.PendingRefresh, CheckRequestedAt: s.CheckRequestedAt}
 	}
-	return a.localStatus()
-}
-
-func (a *app) localStatus() syncState {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	s := a.state
-	s.Harnesses = map[string]string{}
-	for k, v := range a.state.Harnesses {
-		s.Harnesses[k] = v
-	}
-	return s
-}
-
-func (a *app) startSync() {
-	if a.options.DBPath != "" {
-		shared, err := db.ReadSyncStatus(a.ctx, a.options.DBPath)
-		if err == nil && shared.Running && shared.AllHarnesses && shared.Normalize {
-			return
-		}
-	}
-	a.mu.Lock()
-	if a.state.Running || a.ctx.Err() != nil {
-		a.mu.Unlock()
-		return
-	}
-	a.state.Running, a.state.Error, a.state.Phase = true, "", "syncing"
-	a.state.Harnesses = map[string]string{}
-	for _, h := range pipeline.SupportedHarnesses {
-		a.state.Harnesses[string(h)] = "pending"
-	}
-	a.jobs.Add(1)
-	a.mu.Unlock()
-	go func() {
-		defer a.jobs.Done()
-		_, err := a.syncer(a.ctx, pipeline.SyncOptions{DBPath: a.options.DBPath, Harnesses: pipeline.SupportedHarnesses, Normalize: true, Now: time.Now(), Progress: func(e pipeline.SyncProgressEvent) {
-			a.mu.Lock()
-			defer a.mu.Unlock()
-			if a.state.Phase != string(pipeline.SyncProgressRebuilding) {
-				a.state.Phase = string(e.Status)
-			}
-			if e.Published {
-				a.state.Revision++
-			}
-			if e.Harness != "" {
-				a.state.Harnesses[string(e.Harness)] = string(e.Status)
-			}
-		}})
-		a.mu.Lock()
-		defer a.mu.Unlock()
-		a.state.Running = false
-		a.state.Revision++
-		a.state.Phase = "ready"
-		if err != nil {
-			// Pipeline errors can contain local paths; details belong in the terminal.
-			_, _ = fmt.Fprintf(a.log, "%ssync failed: %v\n", logIndent, err)
-			a.state.Error = "Sync failed. See terminal details, retry, or inspect existing data."
-			a.state.Phase = "failed"
-			if errors.Is(err, db.ErrRebuildPending) || errors.Is(err, db.ErrRecoveryRequired) || errors.Is(err, db.ErrMetadataUpgradeRequired) {
-				a.state.Error = "Usage recovery is incomplete. Retry sync with the original source configuration and database. See terminal details."
-				a.state.Phase = "rebuild_failed"
-			}
-		}
-	}()
+	shared, _ := db.ReadSyncStatus(a.ctx, a.options.DBPath)
+	return syncState{Running: shared.Running, Phase: shared.Phase, Error: shared.Error, Harnesses: shared.Harnesses, Revision: uint64(shared.Revision)}
 }
 
 func writeJSON(w http.ResponseWriter, status int, value interface{}) {
@@ -178,7 +106,9 @@ func (a *app) handler() http.Handler {
 			apiMethodNotAllowed(w, http.MethodGet)
 			return
 		}
+		state := a.status()
 		writeJSON(w, http.StatusOK, serverapi.InstanceResponse{
+			InstanceId: &state.InstanceID, DataEpoch: &state.DataEpoch, DataReadiness: readinessPointer(state.DataReadiness),
 			ApiVersion:    serverapi.V1,
 			ServerVersion: version.Version,
 			Hostname:      a.dataHostname(r.Context()),
@@ -192,7 +122,15 @@ func (a *app) handler() http.Handler {
 		case http.MethodGet:
 			writeJSON(w, http.StatusOK, apiSyncState(a.status()))
 		case http.MethodPost:
-			a.startSync()
+			if a.controller != nil {
+				if _, err := a.controller.RequestRefresh(r.Context()); err != nil {
+					apiError(w, 503, serverapi.ErrorCodeUnavailable, "Refresh unavailable while resetting or stopping.")
+					return
+				}
+			} else {
+				apiError(w, 503, serverapi.ErrorCodeUnavailable, "No refresh controller.")
+				return
+			}
 			writeJSON(w, http.StatusAccepted, apiSyncState(a.status()))
 		default:
 			apiMethodNotAllowed(w, "GET, POST")
@@ -210,12 +148,24 @@ func (a *app) handler() http.Handler {
 		}
 		ctx, cancel := context.WithTimeout(r.Context(), queryTimeout)
 		defer cancel()
+		epoch, release, permitErr := a.readPermit(ctx)
+		if permitErr != nil {
+			a.queryError(w, permitErr)
+			return
+		}
+		defer release()
 		data, err := loadDashboard(ctx, a.options.DBPath, q, time.Now())
 		if err != nil {
 			a.queryError(w, err)
 			return
 		}
-		writeJSON(w, http.StatusOK, apiDashboard(data))
+		response := apiDashboard(data)
+		if a.controller != nil {
+			instance := a.controller.Status(ctx).InstanceID
+			response.InstanceId = &instance
+			response.DataEpoch = &epoch
+		}
+		writeJSON(w, http.StatusOK, response)
 	})
 	mux.HandleFunc("/api/v1/usage/facets", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
@@ -229,6 +179,12 @@ func (a *app) handler() http.Handler {
 		}
 		ctx, cancel := context.WithTimeout(r.Context(), queryTimeout)
 		defer cancel()
+		epoch, release, permitErr := a.readPermit(ctx)
+		if permitErr != nil {
+			a.queryError(w, permitErr)
+			return
+		}
+		defer release()
 		database, err := db.Open(a.options.DBPath)
 		if err != nil {
 			a.queryError(w, err)
@@ -275,6 +231,17 @@ func (a *app) handler() http.Handler {
 			}
 			values.Repositories = apiLocationOptions(locations.Repositories)
 			values.Directories = apiLocationOptions(locations.Directories)
+		}
+		snapshotStatus, err := db.LoadSyncStatus(ctx, tx)
+		if err != nil {
+			a.queryError(w, err)
+			return
+		}
+		values.Revision = &snapshotStatus.Revision
+		if a.controller != nil {
+			instance := a.controller.Status(ctx).InstanceID
+			values.InstanceId = &instance
+			values.DataEpoch = &epoch
 		}
 		if err = tx.Commit(); err != nil {
 			a.queryError(w, err)
@@ -336,67 +303,29 @@ func (a *app) queryError(w http.ResponseWriter, err error) {
 	apiError(w, http.StatusServiceUnavailable, serverapi.ErrorCodeUnavailable, "Cannot read dashboard data. Check terminal details, then sync or reload.")
 }
 
-func Run(parent context.Context, options Options, stdout, stderr io.Writer) error {
-	return runServer(parent, options, stdout, stderr, openBrowser)
+func NewHandler(ctx context.Context, path string, controller *application.Controller, log io.Writer, bindHost string) http.Handler {
+	a := newApp(ctx, Options{DBPath: path, Defaults: viewer.Selection{Period: "month", Bucket: "day"}}, log)
+	a.controller = controller
+	handler := http.NewCrossOriginProtection().Handler(a.handler())
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ip, err := netip.ParseAddr(bindHost)
+		if bindHost == "" || err == nil && ip.IsLoopback() {
+			host, _, err := net.SplitHostPort(r.Host)
+			if err != nil {
+				host = r.Host
+			}
+			address, ipErr := netip.ParseAddr(host)
+			if host != "localhost" && (ipErr != nil || !address.IsLoopback()) {
+				apiError(w, 403, serverapi.ErrorCodeInvalidRequest, "Invalid dashboard host.")
+				return
+			}
+		}
+		handler.ServeHTTP(w, r)
+	})
 }
-
-func runServer(parent context.Context, options Options, stdout, stderr io.Writer, open func(string) error) error {
-	ctx, cancel := signal.NotifyContext(parent, os.Interrupt, syscall.SIGTERM)
-	defer cancel()
-	if options.NoSync {
-		database, err := db.Open(options.DBPath)
-		if err != nil {
-			return err
-		}
-		if err := database.Close(); err != nil {
-			return err
-		}
+func (a *app) readPermit(ctx context.Context) (string, func(), error) {
+	if a.controller == nil {
+		return "", func() {}, nil
 	}
-	listener, err := acquireListener(ctx, options, stdout)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = listener.Close() }()
-	_, port, err := net.SplitHostPort(listener.Addr().String())
-	if err != nil {
-		return err
-	}
-	if err := newConsole(stdout).startup(machineHostname(), displayURL(options.Host, port)); err != nil {
-		return err
-	}
-	a := newApp(ctx, options, stderr)
-	if !options.NoSync {
-		a.startSync()
-	}
-	httpServer := &http.Server{Handler: a.handler(), ReadHeaderTimeout: 5 * time.Second, IdleTimeout: 60 * time.Second, WriteTimeout: queryTimeout + 5*time.Second, BaseContext: func(net.Listener) context.Context { return ctx }}
-	failures := make(chan error, 1)
-	go func() { failures <- httpServer.Serve(listener) }()
-	if ctx.Err() == nil {
-		host := options.Host
-		if host == "0.0.0.0" {
-			host = ""
-		}
-		url := displayURL(host, port)
-		if openErr := open(url); openErr != nil {
-			_, _ = fmt.Fprintf(stderr, "%scould not open browser: %v; open %s manually.\n", logIndent, openErr, url)
-		}
-	}
-	select {
-	case <-ctx.Done():
-	case err = <-failures:
-		if errors.Is(err, http.ErrServerClosed) {
-			err = nil
-		}
-	}
-	cancel()
-	shutdownCtx, stop := context.WithTimeout(context.Background(), shutdownTimeout)
-	defer stop()
-	if shutdownErr := httpServer.Shutdown(shutdownCtx); shutdownErr != nil {
-		_ = httpServer.Close()
-		if err == nil {
-			err = shutdownErr
-		}
-	}
-	a.jobs.Wait()
-	return err
+	return a.controller.ReadPermit(ctx)
 }

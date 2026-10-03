@@ -33,7 +33,7 @@ claude-code
 
 `sync`
 
-Ingest local harness sources into raw tables and normalize pending canonical work by default. `view` runs an implicit all-harness sync before opening, so use explicit sync for targeted harness refreshes, dry runs, full refreshes, no-normalize workflows, or custom source directories.
+Ingest local harness sources into raw tables and normalize pending canonical work by default. `view` requests an all-harness background refresh on opening, so use explicit sync for targeted harness refreshes, dry runs, full refreshes, no-normalize workflows, or custom source directories.
 
 ```sh
 tokeninsights sync --all
@@ -48,7 +48,7 @@ With `sync --all --source-dir`, each harness is read only from its own subdirect
 
 OpenCode sync reads modern SQLite sources named `opencode.db` or `opencode-<channel>.db`, including sessions marked archived in those databases. V1 `message` and V2 `session_message` layouts share the SQLite row ID as message identity; usable V2 data replaces matching V1 data. Pi sync reads JSONL session files from `~/.pi/agent/sessions`, or from a provided Pi source directory; Pi has no harness archive and OS trash is excluded. Codex sync reads rollout JSONL session files from `${CODEX_HOME:-~/.codex}/sessions` and `${CODEX_HOME:-~/.codex}/archived_sessions`, parsing structured `event_msg` token-count records. Claude Code sync reads retained local JSONL transcript files from `${CLAUDE_CONFIG_DIR:-~/.claude}/projects` regardless of UI/server archive state; cloud-only archives are excluded. Successful refreshes persist markers: matching content and current location attribution skip parsing, regardless of source age. Eligible Pi files verify the processed prefix and parse only appended records. Size and mtime alone never prove reuse. `sync --dry-run` previews the same checks without writing; `sync --full-refresh` ignores markers for the requested harness scope without requeueing existing raw facts for canonical rebuild.
 
-Harness discovery runs concurrently. Source preparation uses a worker pool sized by Go's available CPU budget (`GOMAXPROCS`), with at most twice that many outstanding sources. Reads, parsing, and Git inspection run outside write transactions; one writer commits sources in discovery order and batches unchanged-source bookkeeping. Loading status includes content verification, so an unchanged startup still performs reads. No new CLI flags or schema upgrade are required.
+Harness discovery runs concurrently. Source preparation uses a worker pool sized by Go's available CPU budget (`GOMAXPROCS`), with at most twice that many outstanding sources. Reads, parsing, and Git inspection run outside write transactions; one writer commits sources in discovery order and batches unchanged-source bookkeeping. Loading status includes content verification, so an unchanged refresh still performs reads. Service startup performs no source reads. No schema upgrade is required.
 
 Token components are additive across harnesses: input excludes cache read/write, and output excludes separately reported reasoning. Pi legacy inclusive-input rows are corrected when their source total proves the old layout. Inconsistent source totals fall back to component sums with diagnostics; non-integer and overflowing counters are rejected.
 
@@ -88,7 +88,7 @@ tokeninsights reset-all --confirm
 
 `view`
 
-Open the interactive terminal UI over canonical token usage. By default, `view` opens into a sync progress screen, refreshes all supported Durable Sources, and processes pending normalization work before rendering the dashboard. Use `--no-sync` to skip raw ingest and normalization and open existing canonical data read-only.
+Open the local interactive terminal UI over canonical token usage. By default, `view` ensures the service and requests all-harness refresh asynchronously; compatible saved data remains usable. Closing the TUI cancels observation only. Use `--no-sync` to skip raw ingest and normalization and open existing canonical data read-only.
 
 ```sh
 tokeninsights view
@@ -99,30 +99,42 @@ tokeninsights view --year --bucket month
 tokeninsights view --month --provider openai --model gpt-5
 ```
 
-Running `tokeninsights` without a command still opens `view`, including implicit sync. `tokeninsights --no-sync` is equivalent to `tokeninsights view --no-sync`.
+Bare `tokeninsights` ensures the background service and prints its URL. Move root viewer flags to `tokeninsights view ...`; `--host`/`--port` are service options only.
 
 Every tab's pinned summary shows `sessions <shown> shown / <synced> synced`, followed by the row count and, except in Context, the filtered token total. `shown` counts distinct sessions matching all active filters across the full result, not just the visible scroll viewport. `synced` counts all distinct sessions with countable canonical usage in this database across all dates and harnesses, ignoring viewer filters. Sessions spanning multiple dates or models are counted once; sessions without countable usage are excluded from both counts.
 
 The default current-month filter can show a small subset of synced sessions. Compare `view --no-sync --month` with `view --no-sync --all-time` using the same `--db-path` to inspect date filtering without changing the database. All time removes the preset date restriction but keeps dimension filters and any explicit custom date bounds.
 
-`serve`
-
-Serve the embedded React dashboard over IPv4. By default the listener binds to localhost and prints `http://localhost:8765`. Use `--host <ipv4>` to bind to that address. Default port: `8765`; `--port 0` chooses an available port. If the default port is busy, interactive startup identifies its listening process and offers to send it `SIGTERM` before retrying. An explicitly passed busy port fails without a prompt. Ctrl+C shuts down the server.
-
-After startup, `serve` automatically opens the default browser on macOS, Windows, and Linux desktop sessions. SSH sessions skip opening, including forwarded displays; headless Linux sessions also skip it. The printed URL remains available for manual access, and a missing launcher only prints a warning. With `--host 0.0.0.0`, the browser opens localhost using the assigned port.
+`service start|stop|restart|status|run`
 
 ```sh
-tokeninsights serve --week
-tokeninsights serve --no-sync --port 8080
-tokeninsights serve --host 10.0.1.151 --week
-tokeninsights serve --month --bucket week --provider openai --harness pi
+tokeninsights                         # ensure service, print URL; no sync
+tokeninsights service start --open
+tokeninsights service start --host 0.0.0.0 --port 8765
+tokeninsights service status --json
+tokeninsights service restart --reload-sources
+tokeninsights service stop
+tokeninsights service run             # foreground; Ctrl+C stops
 ```
 
-All viewer arguments below also work with `serve`. They initialize browser filters rather than restricting which harnesses sync. Startup refreshes all supported harnesses with normalization; `--no-sync` skips startup sync and requires an existing compatible, fully recovered database. **Sync now** runs a shared refresh across browser clients, including clients accessing it over the network; **Reload data** only rereads SQLite. Ordinary sync failures keep the server available for retry or explicitly inspecting existing data. Failed compatibility recovery offers retry and hides **Inspect existing data** until recovery completes.
+Start/run accept `--db-path`, `--host`, `--port`; start also accepts `--open`. Restart accepts bind flags and `--reload-sources`. Status accepts `--db-path` and `--json`; stop accepts `--db-path`. Put flags after the service action. Default binding is `127.0.0.1:8765`; port zero reports the assigned port. Omitted settings reuse saved configuration; changing a running bind requires restart. Busy ports fail without process takeover. Start/restart never ingest or repair existing storage. `serve` is a deprecated foreground alias; its old `--no-sync` is a no-op, and viewer filters must move into the browser URL/UI.
+
+Saved service roots come from the setup environment. Ordinary dashboard refresh uses those roots. Explicit sync/normalize use the current caller's roots and preserve their options, forwarding to the live service or running standalone while ownership is free. An unreachable owner blocks mutation; it never allows a second writer to bypass the service. Status is read-only; a stopped result exits 3, usage exits 2, other failures exit 1.
+
+`refresh [--wait]`
+
+```sh
+tokeninsights refresh
+tokeninsights refresh --wait --db-path /path/to/usage.sqlite
+```
+
+Refresh ensures the service and requests all-harness ingest with normalization. Acceptance returns immediately; `--wait` reports completion/failure. Disconnecting or Ctrl+C while waiting does not cancel shared work. Requests arriving after capture queue one coalesced follow-up; there is no automatic retry without demand. Explicit reset cancels queued ordinary refresh and rejects new requests until complete. Operations and request deduplication are bounded and process-local; restart/crash loses pending demand.
+
+The web displays saved data on opening. **Refresh** requests sync; **Reload Data** only rereads SQLite. `--open` uses the actual assigned URL and skips SSH/headless browser launch. Administration is local-only over a private Unix socket, even with wildcard web binding. Authentication and login/reboot autostart remain out of scope.
 
 The web dashboard provides Tokens, Models, Providers, Harnesses, Sessions, Context, and Repo views, summary cards, charts, faceted multi-select filters, custom/open-ended dates, session-ID search, column sorting/visibility, pagination, and system/light/dark themes. Repo groups by repository or directory and lists providers, harnesses, and models in each row. Location filters apply only to Repo; missing values display as **unknown**. Unknown rows start collapsed; when recorded directories contribute, an inline control reveals them all and any missing-directory note. Unknown directory groups have no recorded directories and show **No recorded directory**. Date Range Filters and Time Buckets use the server's local timezone and Monday-start weeks. Browser URLs preserve filters, tab, bucket, sorting, and pagination; browser back/forward restores them. **Restore CLI defaults** restores the startup filters.
 
-The dashboard queries only the server serving its page, using same-origin API requests. Open the server directly by IP or DNS name; `serve --host 0.0.0.0` remains supported. Sync records the ingesting machine’s hostname in each ingest run, including unchanged-source checks. The UI displays the latest completed run’s saved hostname and the page address, with no server selector or saved host list. Older data reports `unknown` until synced again; serving a copied database does not relabel it with the server’s hostname.
+The dashboard queries only the server serving its page, using same-origin API requests. Open the server directly by IP or DNS name; `service start --host 0.0.0.0` remains supported. Sync records the ingesting machine’s hostname in each ingest run, including unchanged-source checks. The UI displays the latest completed run’s saved hostname and the page address, with no server selector or saved host list. Older data reports `unknown` until synced again; serving a copied database does not relabel it with the server’s hostname.
 
 The REST server has no authentication and does not advertise cross-origin browser access. Use network bindings only on trusted networks.
 
@@ -150,13 +162,13 @@ Default path:
 
 Override it with `--db-path` or `TOKENINSIGHTS_DB_PATH`.
 
-The CLI creates a missing database for `sync`, implicit `view`/`serve` sync, `normalize`, and reset workflows. Fresh databases start current and need no recovery. `view --no-sync` and `serve --no-sync` validate existing data read-only and reject missing, incompatible, or rebuild-pending databases.
+The service initializes an empty missing database without sync. Normal `view` ensures that service; sync/normalize/reset retain their existing create/recovery behavior. `view --no-sync` rejects missing, incompatible, or rebuild-pending data without creating files. Existing recognized older data can start the service with analytics blocked until explicit refresh/recovery.
 
 ### Compatibility Recovery
 
-V11–V13 databases upgrade additively to V14, preserving usage and leaving historical ingest hostnames unknown. Schema V14 uses data generation 5 and retains the durable rebuild-pending marker and recovery source hash. `database_lifecycle.rebuild_source_key` is NULL when ready and nonempty while pending; source artifact paths are never stored. Directory display paths use `~/` where a home directory can be identified; otherwise full directory paths may be stored. Compatibility depends on schema/data contracts, not release version numbers. Normal `sync`, `normalize`, `view`, and `serve` automatically recover recognized older schema/data by transactionally resetting application tables in place, importing all configured local harnesses, and normalizing. This reset can lose usage when original artifacts were deleted. Compatible updates preserve data; newer, unknown, or corrupt databases are rejected without automatic deletion.
+V11–V13 databases upgrade additively to V14, preserving usage and leaving historical ingest hostnames unknown. Schema V14 uses data generation 5 and retains the durable rebuild-pending marker and recovery source hash. `database_lifecycle.rebuild_source_key` is NULL when ready and nonempty while pending; source artifact paths are never stored. Directory display paths use `~/` where a home directory can be identified; otherwise full directory paths may be stored. Compatibility depends on schema/data contracts, not release version numbers. Normal `sync`, `normalize`, and requested dashboard refresh recover recognized older schema/data by transactionally resetting application tables in place, importing all configured local harnesses, and normalizing. This reset can lose usage when original artifacts were deleted. Compatible updates preserve data; newer, unknown, or corrupt databases are rejected without automatic deletion.
 
-Recovery notices appear on stderr for `sync`/`normalize`, and as resetting/rebuilding progress in the TUI/web viewer. Missing harness installations are normal skips. A failed rebuild retains partial imports and pending state. Retry with the original `--db-path`, `--source-dir` if used, and source environment settings to resume without resetting again. Default-source recovery can resume through normal dashboard startup or `sync --all`; custom-source recovery requires `sync --all --source-dir <original-root> --db-path <original-database>`. A mismatched source configuration is rejected before data writes. Full paths cannot be recovered from the stored hash. Analytics reads validate compatibility inside their read snapshot and stay unavailable until success. Only retained local sources can reconstruct history.
+Recovery notices appear on stderr for `sync`/`normalize`, and as resetting/rebuilding progress in the TUI/web viewer. Missing harness installations are normal skips. A failed rebuild retains partial imports and pending state. Retry with the original `--db-path`, `--source-dir` if used, and source environment settings to resume without resetting again. Default-source recovery can resume through normal TUI opening, explicit web Refresh, or `sync --all`; custom-source recovery requires `sync --all --source-dir <original-root> --db-path <original-database>`. A mismatched source configuration is rejected before data writes. Full paths cannot be recovered from the stored hash. Analytics reads validate compatibility inside their read snapshot and stay unavailable until success. Only retained local sources can reconstruct history.
 
 Targeted default-source commands first recover all default harnesses. `sync --all --source-dir <root>` stays bounded to `<root>/<harness>` during recovery. Single-harness custom-source commands defer recovery without changing the database; use an eligible default-source or all-harness command first. Recovery always normalizes, even before satisfying `--no-normalize`. `--dry-run` previews reset/resume without database writes or stale refresh-state suppression. `--no-sync` never repairs data. Help/version commands never access the database.
 
@@ -166,7 +178,7 @@ Source-scope matching uses normalized configuration: default recovery fingerprin
 
 `--no-sync`
 
-Skip the implicit all-harness sync before opening the TUI. This preserves read-only viewing of existing canonical data and does not process pending normalization work.
+Open existing canonical data read-only without starting a service or processing pending normalization work. This mode disables refresh requests, including `u`.
 
 `--today`
 

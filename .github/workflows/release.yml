@@ -6,6 +6,9 @@ on:
 permissions:
   contents: write
 
+env:
+  HUSKY: '0'
+
 concurrency:
   group: release-tokeninsights
   cancel-in-progress: false
@@ -22,49 +25,14 @@ jobs:
           ref: main
           fetch-depth: 0
 
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version-file: packages/cli/go.mod
-          cache-dependency-path: packages/cli/go.sum
-
-      - name: Set up pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          run_install: false
-
-      - name: Set up Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: 26
-          cache: pnpm
+      - name: Set up project tools
+        uses: jdx/mise-action@v4
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        run: mise run setup
 
-      - name: Check schema
-        run: pnpm run check-schema
-
-      - name: Check formatting
-        run: pnpm run format:check
-
-      - name: Lint
-        run: pnpm run lint
-
-      - name: Test
-        run: pnpm run test
-
-      - name: Build
-        run: pnpm run build
-
-      - name: Check embedded web assets
-        run: pnpm --filter @tokeninsights/build-tools run check:web
-
-      - name: Install test browser
-        run: pnpm --filter @tokeninsights/web exec playwright install --with-deps chromium
-
-      - name: Browser tests
-        run: pnpm run test:web-e2e
+      - name: Minimal checks
+        run: mise run check:ci
 
       - name: Select release version
         id: tag

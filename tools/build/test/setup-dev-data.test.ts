@@ -47,7 +47,13 @@ void test('materializes deterministic development sources and removes stale outp
     outputDatabase.close()
   }
 
-  const first = await setupDevData({ workspaceRoot: configuredWorkspaceRoot, sync })
+  const first = await setupDevData({
+    workspaceRoot: configuredWorkspaceRoot,
+    sync,
+    prepare: async () => {
+      await rm(outputDir, { recursive: true, force: true })
+    },
+  })
   assert.equal(first.outputDir, outputDir)
   await assert.rejects(readFile(stalePath), { code: 'ENOENT' })
   const firstFiles = await relativeFiles(outputDir)
@@ -60,7 +66,13 @@ void test('materializes deterministic development sources and removes stale outp
   assert.deepEqual(firstFiles, expectedFiles)
 
   await writeFile(join(outputDir, 'stale-again.txt'), 'stale')
-  const second = await setupDevData({ workspaceRoot: configuredWorkspaceRoot, sync })
+  const second = await setupDevData({
+    workspaceRoot: configuredWorkspaceRoot,
+    sync,
+    prepare: async () => {
+      await rm(outputDir, { recursive: true, force: true })
+    },
+  })
   const secondFiles = await relativeFiles(outputDir)
 
   assert.deepEqual(second, first)

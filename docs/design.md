@@ -40,7 +40,7 @@ Local harness data
        +----------+-----------+
        |                      |
        v                      v
- tokeninsights view   tokeninsights serve
+ tokeninsights view   tokeninsights service
  direct SQLite read   versioned REST API
        |                      |
        v                      v
@@ -62,8 +62,9 @@ TokenInsights V1 is a local Go CLI:
 
 - `sync` ingests durable local harness data into raw tables and normalizes by default.
 - `normalize` processes pending canonical work from existing raw facts.
-- `view` opens the interactive terminal UI, runs implicit all-harness sync by default, and reads canonical SQLite data directly without an HTTP server. Compatible saved usage remains available during sync; first sync and recovery show progress.
-- `serve` runs an HTTP server over the same canonical state, hosts the embedded React dashboard, performs startup all-harness sync, and exposes explicit web Sync through the REST API.
+- Bare invocation ensures the persistent background service and prints status; startup never ingests.
+- `view` opens the local TUI, ensures the service and requests all-harness refresh asynchronously. It reads canonical SQLite directly; saved usage remains usable. `view --no-sync` stays read-only and does not start a service.
+- `service start|stop|restart|status` manages one service per canonical database; `service run` runs it in the foreground. The embedded web dashboard reads saved data on opening; Refresh requests ingest. `serve` is a deprecated foreground alias without startup sync.
 - `reset-canonical` clears rebuildable canonical facts and diagnostics, then requeues raw token facts.
 - `reset-all` transactionally recreates application tables inside the existing SQLite file.
 
@@ -98,6 +99,20 @@ Known gaps are part of the current design contract:
 - diagnostics exist for parser warnings, missing canonical session identity, and some source-level suppressions such as duplicate or stale snapshots, but the full rejected/conflicting/suppressed diagnostic taxonomy is still future work;
 - the viewer is aligned to token aggregation tabs; future metric domains should stay hidden until durable canonical facts exist;
 - realtime and checkpoint plugin parity remains future-compatible only.
+
+## Persistent service ownership
+
+`internal/service` composes `internal/app`, public HTTP handlers, and private HTTP-over-Unix control. App owns refresh scheduling and typed action data; pipeline owns actual source capture and SQLite writes. The service is a detached re-execution of the Go binary with configuration/readiness passed through inherited descriptors. Foreground run uses the same ownership/runtime. Only missing storage is initialized at startup; existing compatibility checks are read-only until a requested action performs recovery.
+
+Canonical DB paths share SHA-256 identity across symlink aliases; existing hard-linked DB aliases are rejected. Persistent `<db>.service.op.lock` serializes lifecycle/admission and holds standalone mutations through completion; `<db>.service.lock` establishes daemon lifetime ownership; `<db>.lock` protects actual writes. Never unlink these lock inodes. Status opens existing ownership/control records only. Held but unreachable ownership blocks mutation. Busy ports fail without `lsof` or process takeover.
+
+Saved configuration is private versioned JSON under `$XDG_CONFIG_HOME/tokeninsights/services/<key>.json` (default `~/.config`). Logs live under `$XDG_STATE_HOME/tokeninsights` (default `~/.local/state`), bounded to 4 MiB plus three backups. Private discovery/socket files live under `$XDG_RUNTIME_DIR/tokeninsights`, or private state/runtime when unavailable. A second discovery record in state/runtime lets SSH/local clients find a daemon with a different runtime environment. Socket paths must fit the Unix limit. Runtime instance IDs and data epochs are random; stable DB keys are separate. Configuration stores bind settings and captured source roots, never transcripts or the entire environment. Omitted bind flags reuse saved values; restart can explicitly reload source environment.
+
+Ordinary refresh uses saved all-harness sources with normalization. Requests before discovery/reset capture join active ordinary work; later demands coalesce into one follow-up. Explicit sync/normalize forward caller source configuration/options or run standalone under admission when stopped. The exclusive queue is bounded to 16 waiting actions, completed results to 128/ten minutes, and refresh aliases to 256/ten minutes. Duplicate live request IDs cannot change action payload. Lost responses can be looked up; unknown/expired destructive actions are never blindly replayed. Pending demand is process-local and lost on crash; durable interrupted pipeline state remains authoritative.
+
+Explicit reset cancels queued ordinary refresh and blocks new refresh until terminal completion. Reset and automatic recovery drain public analytics read permits, change data epoch before destructive writes, and reopen reads only after action bookkeeping. Public usage/facets include their transaction revision plus instance/epoch. The TUI samples identity/readiness around local transactions and rejects stale selections/resets; quitting cancels observation only. One-second active/five-second idle observation never triggers ingest. There is no periodic pipeline work, watcher, authentication, reboot autostart, or harness plugin in this release. Future hooks can request refresh through this boundary.
+
+See [the lifecycle decision](adr/0005-persistent-service-and-explicit-refresh.md).
 
 ## Schema Contract
 
@@ -380,7 +395,7 @@ Explicit conflict precedence between competing raw facts is not implemented yet.
 
 ## Viewer
 
-`tokeninsights view` is interactive-only. By default it opens the TUI into an Implicit View Sync progress state: the same all-harness refresh behavior as `sync --all`, including default normalization and create-if-missing DB lifecycle. The TUI opens the database read-only and queries committed canonical tables during ordinary sync and after completion.
+`tokeninsights view` is interactive-only. By default it appears immediately, asynchronously ensures the service and requests an Implicit View Sync with all saved harness roots and normalization. The TUI opens the database read-only and queries committed canonical tables during ordinary sync and after completion.
 
 `view --no-sync` skips raw ingest and normalization. It preserves read-only viewer behavior and rejects a missing, incompatible, or rebuild-pending database instead of creating or modifying it.
 
@@ -432,7 +447,7 @@ Date Range Filters choose which canonical facts are included. Supported presets 
 
 Dimension Filters choose included provider, model, and harness values. Session filtering may be provided as a startup filter, but interactive session search/filtering is not part of the active viewer surface.
 
-Interactive shortcuts use `d` for Date Range Filter, `g` for Time Bucket or Repo grouping, `s` for sorting, and `p`, `m`, and `h` for provider, model, and harness filters. `f` opens the filter menu and `?` opens the keyboard guide. Tab/Shift-Tab and 1–7 select views; up/down or j/k move rows, PageUp/PageDown move a page, and left/right plus home/end scroll columns. Repo adds repository and directory facets to the filter menu. `h` remains reserved for the harness filter. `r` reloads canonical data without syncing; successful retry clears the failure state. Ctrl+C exits even while a drawer is open. During implicit sync, dashboard controls are inactive while quit remains available.
+Interactive shortcuts use `d` for Date Range Filter, `g` for Time Bucket or Repo grouping, `s` for sorting, and `p`, `m`, and `h` for provider, model, and harness filters. `f` opens the filter menu and `?` opens the keyboard guide. Tab/Shift-Tab and 1–7 select views; up/down or j/k move rows, PageUp/PageDown move a page, and left/right plus home/end scroll columns. Repo adds repository and directory facets to the filter menu. `h` remains reserved for the harness filter. `r` reloads canonical data without syncing; successful retry clears the failure state. Ctrl+C exits even while a drawer is open. During ordinary refresh, compatible saved data and dashboard controls remain usable. Recovery hides analytics while refresh/retry and quit remain available.
 
 The `context` tab sorts by `avg ctx` descending by default and supports sorting by `avg ctx`, `median ctx`, `max ctx`, `sessions`, `harness`, `provider`, and `model`.
 
@@ -444,13 +459,9 @@ Cost tracking is not part of TokenInsights and must not appear in viewer columns
 
 ## Web Viewer
 
-`tokeninsights serve` serves the React dashboard and versioned JSON REST API from one Go binary. The REST boundary reads the server's canonical SQLite state; the TUI continues to read that state directly. `serve` accepts the viewer's Date Range Filters, Time Bucket, Dimension Filters, session-ID filters, DB-path override, and `--no-sync`, plus `--host` (explicit IPv4 bind address; omitted binds to localhost) and `--port` (default `8765`, `0` requests an available port). Defaults match `view`: this month and daily buckets. Viewer flag registration and date/filter semantics are shared; browser clients can independently change their initial CLI selections.
+`tokeninsights service start` hosts the embedded React dashboard and versioned API from one native Go binary. Default IPv4 binding is `127.0.0.1:8765`; explicit `--host` affects only web/API, and `--port 0` reports the assigned port. `--open` explicitly launches the local dashboard URL; wildcard binds use loopback for that link and remote clients use the machine's IP/DNS name. The TUI is always local. Browser defaults are month/day; service commands do not accept viewer filters. `serve` is a deprecated alias for foreground `service run`; its old `--no-sync` warns and does nothing.
 
-The default server binds `127.0.0.1` and prints a colored, indented startup summary containing the TokenInsights version, machine hostname, and `http://localhost:<port>` URL. Explicit `--host` binding uses and prints only that IPv4 address; `0.0.0.0` remains available when deliberately requested. IPv6 and invalid bind addresses are rejected. When the omitted default port is busy, interactive startup identifies listeners with `lsof`, asks before sending `SIGTERM`, waits up to five seconds for release, and then starts the server. An explicitly passed busy port fails without prompting. Interrupt/termination cancels sync and request work, shuts down HTTP, and closes the listener.
-
-Once HTTP serving starts, `serve` attempts to open the default browser using macOS `open`, Windows `rundll32`, or Linux `xdg-open`. Any nonempty `SSH_CONNECTION`, `SSH_CLIENT`, or `SSH_TTY` suppresses opening, even with display forwarding. Linux also requires `DISPLAY` or `WAYLAND_DISPLAY`; unsupported platforms skip opening. The browser receives the actual assigned port and uses localhost for a wildcard bind. Launcher startup failures print a warning and manual URL without stopping the server. Launcher processes are reaped asynchronously so serving does not wait for a browser to close. Cancelled or failed startup does not open a browser.
-
-Startup serves the UI immediately and runs the existing all-harness sync/normalization pipeline, including automatic compatibility recovery. Compatible committed usage remains queryable during ordinary sync, with a visible progress state; first sync shows loading until usage exists. The web UI shows metadata-only per-harness progress and explains resetting/rebuilding phases. `serve --no-sync` validates an existing compatible, fully recovered DB and skips startup writes; **Sync now** remains enabled. Sync requests share one process-wide job, independent of client filters. **Reload data** rereads canonical data without ingest. An ordinary sync failure keeps saved usage visible with retry. Source coverage has expandable day details with server-local dates/check times, unknown values `—`, and confirmed empty values zero. Source-count progress measures checked work, independently of ready publication; it never claims a percentage of lifetime usage. Recovery-required or rebuild-pending failures use status phase `rebuild_failed`, offer retry, and hide inspection. Dashboard/filter reads reject incompatible/pending data with HTTP 503. Detailed errors stay in terminal logs, while HTTP errors omit source paths.
+Opening/reconnecting/filtering the web never POSTs refresh. **Refresh** requests all-harness normalized work; active post-capture work permits one queued follow-up. **Reload Data** rereads saved data. First startup serves an empty current DB and explains Refresh; it never performs ingest/recovery. Existing recognized older/pending DBs start with analytics unavailable until explicit refresh/recovery. Saved facts remain queryable during ordinary sync. Errors exposed over HTTP omit source paths; details go to private service logs. Shutdown cancels queued/active jobs, drains requests and releases ownership after pipeline bookkeeping; no arbitrary PID kill or forced takeover exists.
 
 During recovery, progress leaves the global `rebuilding` phase intact until completion, including normalization. Dashboard and filter reads validate lifecycle inside the transaction that reads analytics using `db.BeginAnalyticsRead`, closing the gap between preliminary open validation and the read snapshot. Recovery retry must preserve source configuration; a custom-root pending rebuild must be resumed from the CLI with the original `--source-dir` and `--db-path`.
 
@@ -466,7 +477,7 @@ The V1 REST API consists of exactly these endpoints; unversioned `/api/*` routes
 |----------|---------|
 | `GET /api/v1/instance` | API/server versions, saved data hostname, timezone, capabilities, and initial viewer defaults |
 | `GET /api/v1/sync` | Shared sync phase, per-harness progress, error, and completion revision |
-| `POST /api/v1/sync` | Start or join the server's all-harness sync job; returns HTTP 202 |
+| `POST /api/v1/sync` | Request/join all-harness refresh or queue one follow-up; returns HTTP 202 |
 | `GET /api/v1/usage` | Summary, chronological/ranked chart, sorted/paginated rows, and last sync |
 | `GET /api/v1/usage/facets` | Provider/model/harness facets and bounded session-ID search |
 
@@ -474,7 +485,7 @@ Usage/facet query parameters are `period`, `bucket`, `from`, `to`, repeated `pro
 
 [`docs/openapi.yaml`](openapi.yaml) is the authoritative, repository-only API contract; the server does not expose it at runtime. `pnpm run generate:api` generates committed Go transport models and TypeScript types/Zod schemas. `pnpm run check-api` verifies generated output has not drifted from the contract. Handwritten handlers map canonical query results into generated response models, while browser query hooks validate responses with the generated schemas. Direct Go builds consume committed generated files and do not require Node or code-generation tools.
 
-V1 API routes do not advertise cross-origin browser access or provide CORS preflight handling. The embedded dashboard uses relative, same-origin API URLs. The server has no authentication; network bindings remain intended for trusted networks.
+V1 API routes do not advertise cross-origin browser access or provide CORS preflight handling. Unsafe browser requests use Go CrossOriginProtection; loopback bindings reject non-local Host headers. This supplies no authentication. The embedded dashboard uses relative, same-origin API URLs. The server has no authentication; network bindings remain intended for trusted networks.
 
 `packages/web` uses React, strict TypeScript, Vite, Tailwind CSS, local shadcn primitives backed by Radix UI, TanStack Router/Query/Table, and Recharts. Feature components compose through `components/ui`; bespoke CSS is limited to dashboard layout, responsive behavior, and data-visualization geometry. The route path owns the active Aggregation Tab, and validated route search owns dashboard filters, sorting, and pagination. Theme, visible columns, chart metric, and transient popover/search drafts remain local UI state.
 
@@ -482,7 +493,7 @@ The dashboard composes separate header and results components. A route-query pro
 
 The chart has its own error boundary inside the persistent dashboard, preserving controls, summaries, and tables after chart rendering or chunk-loading failure. Its explicit **Reload page** action retries loading in a fresh document, retaining the URL and saved theme; transient display preferences follow normal page-reload behavior. A root route fallback also offers page reload for other render failures. Suspense handles chart loading only; ordinary API failures retain explicit query-owned retry paths.
 
-Every browser request, including **Sync now** and session search, targets the server serving the page. Users can open that server directly by IP or DNS name, including with `serve --host 0.0.0.0`. The header displays the saved data hostname as plain text; the footer includes the page origin. `/api/v1/instance.hostname` reads the latest completed ingest run, including unchanged-source checks, and returns `unknown` when no recorded hostname is available. Running or failed runs do not replace that display. It never substitutes the serving machine or browser address for the data hostname. Sync revision changes refresh instance metadata without a page reload. There is no add/remove/select-host UI, configurable browser API destination, or persisted host list. Legacy `tokeninsights.sources.v1` browser storage is ignored. Query keys retain filter scope and canonical revision; superseded requests are cancelled and route transitions preserve summary/result semantics. Connection failures offer retry.
+Every browser request, including **Refresh** and session search, targets the server serving the page. Users can open that server directly by IP or DNS name, including with `service start --host 0.0.0.0`. The header displays the saved data hostname as plain text; the footer includes the page origin. `/api/v1/instance.hostname` reads the latest completed ingest run, including unchanged-source checks, and returns `unknown` when no recorded hostname is available. Running or failed runs do not replace that display. It never substitutes the serving machine or browser address for the data hostname. Sync revision changes refresh instance metadata without a page reload. There is no add/remove/select-host UI, configurable browser API destination, or persisted host list. Legacy `tokeninsights.sources.v1` browser storage is ignored. Query keys retain filter scope, random runtime instance/data epoch, and canonical revision; destructive epoch changes cancel/remove stale analytics/facets, and delayed responses cannot populate another epoch. Focus/reconnect refresh service status before analytics; superseded requests are cancelled and route transitions preserve summary/result semantics. Connection failures offer retry.
 
 Development Vite proxies `/api` to the Go server; its browser requests also remain same-origin.
 
@@ -492,7 +503,9 @@ The React visual contract is [`DESIGN.md`](../DESIGN.md), implemented by `packag
 
 The pnpm monorepo contains Go production packages and TypeScript development/browser packages. Browser code uses Vite and React. Node scripts use native, erasable TypeScript supported by Node 26+.
 
-Vite output is checked into `packages/cli/internal/server/static` and embedded using `go:embed`, preserving direct Go installs and offline runtime use. The workspace builds React before Go; CI rebuilds and checks generated assets for drift. Node, npm, pnpm, `node_modules`, and repository TypeScript tooling are build-, test-, and development-only. Production is one native Go binary: Go serves embedded browser JavaScript as bytes, the browser executes it, and Go runtime code never invokes a host JavaScript runtime. Web analytics use the canonical token and optional location contracts; lifecycle state is local-only and not an analytics dimension.
+Vite output is checked into `packages/cli/internal/server/static` and embedded using `go:embed`, preserving direct Go installs and offline runtime use. The workspace builds React before Go; local pre-push verification rebuilds and checks generated assets for drift. Node, npm, pnpm, `node_modules`, and repository TypeScript tooling are build-, test-, and development-only. Production is one native Go binary: Go serves embedded browser JavaScript as bytes, the browser executes it, and Go runtime code never invokes a host JavaScript runtime. Web analytics use the canonical token and optional location contracts; lifecycle state is local-only and not an analytics dimension.
+
+`mise.toml` pins development tool versions and delegates tasks to root pnpm scripts. Husky registers `pre-push` through dependency installation and runs `check:push`: format/lint, schema/API contracts, unit/conformance and Go race tests, embedded asset comparison, native build, and browser E2E. GitHub CI/release run `check:ci`: formatting, schema-copy consistency, and a native build, with no test suites or browser/frontend build. Publication/packaging remain workflow-owned. Checks preserve tracked files; generated API/assets must be updated deliberately.
 
 ## Source coverage and progress
 
@@ -559,7 +572,7 @@ Can evolve with care:
 | `packages/cli/internal/cli/flags.go` | view flag parsing |
 | `packages/cli/internal/cli/serve.go` | web command flags and orchestration |
 | `packages/cli/internal/viewer/filters.go` | shared calendar and filter semantics |
-| `packages/cli/internal/server/` | HTTP lifecycle, sync coordination, generated API models, handlers, embedded assets |
+| `packages/cli/internal/server/` | Public HTTP handlers, snapshots, generated API models, embedded assets |
 | `packages/web/` | typed same-origin React dashboard, generated API schemas, and design tokens |
 | `packages/cli/internal/cli/table.go` | interactive TUI model |
 | `packages/cli/internal/cli/desk.go` | Instrument desk layout, readouts, and drawers |
@@ -613,4 +626,4 @@ Fixture sources may include harness-native durable stores, such as synthetic Ope
 
 `sync-first-basic/source/` is also the shared development source fixture. It contains compact representative OpenCode, Pi, Codex, and Claude Code data, roughly two sessions and two canonical facts per harness. Source structures reflect durable harness formats, but every retained value is synthetic. Fixtures must exclude conversation content, tool arguments/output, request headers, secrets, real user or repository paths, signatures, and other identifying data. Raw local harness databases and transcripts must never be copied into the repository.
 
-`pnpm run dev:data` builds the Go CLI without rebuilding web assets, recreates the ignored `.tokeninsights-dev/` directory, copies the sanitized JSONL sources, materializes OpenCode SQLite from its reviewable `source.sql`, and syncs all harnesses into `.tokeninsights-dev/tokeninsights.sqlite`. `dev:cli` builds and prepares that data before opening the all-time, no-sync TUI. `dev:server` builds and prepares the same data before running the Go REST server on loopback. `dev:web` runs Vite directly, binds to all IPv4 interfaces, and proxies `/api` to the Go server at `127.0.0.1:8765`. `dev:web:mock` runs Vite independently with contract-validated Mock Service Worker responses and requires no Go process or local harness data. `dev` runs both real server commands in parallel. `start:web` remains unchanged and uses normal local sources. Web browser tests retain their separate generated 80-session synthetic dataset because pagination requires more rows than the compact shared fixture.
+`pnpm run dev:data` builds the Go CLI without rebuilding web assets, recreates the ignored `.tokeninsights-dev/` directory, copies the sanitized JSONL sources, materializes OpenCode SQLite from its reviewable `source.sql`, and syncs all harnesses into `.tokeninsights-dev/tokeninsights.sqlite`. `dev:cli` builds and prepares that data before opening the all-time, no-sync TUI. `dev:server` builds/prepares the same data, then runs a foreground service on loopback with a sanitized fixture source environment. Fixture reset refuses live/unreachable ownership, resets transactionally, and preserves DB/lock inodes. `dev:web` runs Vite directly, binds to all IPv4 interfaces, and proxies `/api` to the Go server at `127.0.0.1:8765`. `dev:web:mock` runs Vite independently with contract-validated Mock Service Worker responses and requires no Go process or local harness data. `dev` runs both real server commands in parallel. `start:web` ensures the managed service with explicit browser opening and uses normal saved local sources. Web browser tests retain their separate generated 80-session synthetic dataset because pagination requires more rows than the compact shared fixture.

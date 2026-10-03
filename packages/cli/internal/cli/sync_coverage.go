@@ -7,6 +7,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/db"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/service"
 )
 
 const sharedSyncInterval = time.Second
@@ -19,7 +20,22 @@ func (m interactiveModel) cancelSync() {
 }
 
 func (m interactiveModel) sharedSyncCmd() tea.Cmd {
-	return tea.Tick(sharedSyncInterval, func(time.Time) tea.Msg {
+	interval := 5 * time.Second
+	if m.syncInFlight || m.sharedSync.Running {
+		interval = sharedSyncInterval
+	}
+	return tea.Tick(interval, func(time.Time) tea.Msg {
+		state, err := service.Probe(m.ctx, m.options.dbPath)
+		if err != nil {
+			return sharedSyncMsg{err: err}
+		}
+		if state.Status != nil {
+			s := state.Status
+			progress := s.Progress
+			progress.Running = s.Running
+			progress.Phase = s.Phase
+			return sharedSyncMsg{status: progress, instanceID: s.InstanceID, dataEpoch: s.DataEpoch, readiness: s.DataReadiness, pending: s.PendingRefresh, requested: s.CheckRequestedAt}
+		}
 		status, err := db.ReadSyncStatus(m.ctx, m.options.dbPath)
 		return sharedSyncMsg{status: status, err: err}
 	})

@@ -2,7 +2,7 @@
 
 Track local token usage for OpenCode, Pi, Codex, and Claude Code.
 
-TokenInsights is a sync-first Go CLI: `sync` ingests durable local harness data into raw SQLite tables, `normalize` writes canonical facts, and `view` opens a TUI sync progress state that runs implicit all-harness sync by default before reading canonical tables. `view --no-sync` skips ingest and normalization. Realtime and checkpoint plugins are future-compatible concepts, not active product code.
+TokenInsights is a Go CLI with a persistent local service. Bare invocation ensures the service and prints status; startup initializes an empty DB without syncing. `sync` ingests durable local harness data, `normalize` writes canonical facts, and `view` opens a local TUI that requests shared refresh while reading saved canonical data. `view --no-sync` skips the startup refresh. Web refresh is explicit. Realtime and checkpoint plugins are future-compatible concepts, not active product code.
 
 Full architecture, schema contract, pipelines, and invariants are in [`docs/design.md`](docs/design.md). Read it before any non-trivial change.
 
@@ -35,7 +35,11 @@ Full architecture, schema contract, pipelines, and invariants are in [`docs/desi
 
 ## Commands
 
+`mise.toml` pins development tools. `mise run setup` installs dependencies and Husky's pre-push hook; `mise run setup:browser` installs Chromium. Root pnpm scripts own tasks; mise delegates to them. Heavy verification runs locally before push. CI runs only formatting, schema consistency, and native build.
+
 ```sh
+mise run check:push
+mise run check:ci
 pnpm run format
 pnpm run format:check
 pnpm run lint

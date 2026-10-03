@@ -55,14 +55,15 @@ paths:
           $ref: '#/components/responses/Error'
     post:
       operationId: startSync
-      summary: Start or join an all-harness sync
+      summary: Request shared all-harness refresh
       description: |
-        Starts an all-harness ingest and normalization job unless one is already
-        running. Concurrent callers observe the same process-wide job.
+        Requests all-harness ingest and normalization using saved service sources.
+        Callers join ordinary work before source capture. Requests after capture
+        coalesce into one queued follow-up. Reset or shutdown rejects new demand.
       tags: [Sync]
       responses:
         '202':
-          description: Sync accepted or existing sync joined
+          description: Refresh accepted, joined, or queued
           content:
             application/json:
               schema:
@@ -402,6 +403,13 @@ components:
       additionalProperties: false
       required: [apiVersion, serverVersion, hostname, timezone, capabilities, defaults]
       properties:
+        instanceId:
+          type: string
+        dataEpoch:
+          type: string
+        dataReadiness:
+          type: string
+          enum: [ready, metadata, recovery, rebuild, unavailable]
         apiVersion:
           $ref: '#/components/schemas/ApiVersion'
         serverVersion:
@@ -426,6 +434,17 @@ components:
       additionalProperties: false
       required: [running, phase, harnesses, error, revision]
       properties:
+        instanceId:
+          type: string
+        dataEpoch:
+          type: string
+        dataReadiness:
+          type: string
+          enum: [ready, metadata, recovery, rebuild, unavailable]
+        pendingRefresh:
+          type: boolean
+        checkRequestedAt:
+          $ref: '#/components/schemas/Count'
         running:
           type: boolean
         phase:
@@ -608,6 +627,12 @@ components:
       additionalProperties: false
       required: [rows, chart, rowCount, page, pageSize, summary, lastSynced, range]
       properties:
+        instanceId:
+          type: string
+        dataEpoch:
+          type: string
+        revision:
+          $ref: '#/components/schemas/Count'
         coverage:
           description: Retained-source coverage in server-local days; bounded to 366 days, or the recent seven days for all-time views. Independent of usage rows and pagination.
           type: array
@@ -641,6 +666,12 @@ components:
       additionalProperties: false
       required: [providers, models, harnesses, sessions, repositories, directories]
       properties:
+        instanceId:
+          type: string
+        dataEpoch:
+          type: string
+        revision:
+          $ref: '#/components/schemas/Count'
         providers:
           type: array
           items:

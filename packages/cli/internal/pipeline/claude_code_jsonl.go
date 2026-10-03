@@ -22,29 +22,38 @@ func (a claudeCodeJSONLAdapter) Harness() Harness {
 
 func (a claudeCodeJSONLAdapter) Discover(ctx context.Context, options DiscoverOptions) ([]Source, error) {
 	var roots []string
-	sourceDir := strings.TrimSpace(options.SourceDir)
-	if sourceDir != "" {
-		harnessDir := filepath.Join(sourceDir, string(HarnessClaudeCode))
-		if info, err := os.Stat(harnessDir); err == nil && info.IsDir() {
-			roots = append(roots, harnessDir)
-		} else if options.HarnessSubdirOnly {
-			if err != nil && !os.IsNotExist(err) {
-				return nil, err
-			}
-			return nil, nil
-		} else {
-			roots = append(roots, sourceDir)
+	if options.Sources != nil {
+		var err error
+		roots, err = options.Sources.discoveryRoots(HarnessClaudeCode, options.HarnessSubdirOnly)
+		if err != nil {
+			return nil, err
 		}
 	} else {
-		root := strings.TrimSpace(os.Getenv("CLAUDE_CONFIG_DIR"))
-		if root == "" {
-			home := strings.TrimSpace(os.Getenv("HOME"))
-			if home == "" {
+		sourceDir := strings.TrimSpace(options.SourceDir)
+		if sourceDir != "" {
+			harnessDir := filepath.Join(sourceDir, string(HarnessClaudeCode))
+			if info, err := os.Stat(harnessDir); err == nil && info.IsDir() {
+				roots = append(roots, harnessDir)
+			} else if options.HarnessSubdirOnly {
+				if err != nil && !os.IsNotExist(err) {
+					return nil, err
+				}
 				return nil, nil
+			} else {
+				roots = append(roots, sourceDir)
 			}
-			root = filepath.Join(home, ".claude")
+		} else {
+			root := strings.TrimSpace(os.Getenv("CLAUDE_CONFIG_DIR"))
+			if root == "" {
+				home := strings.TrimSpace(os.Getenv("HOME"))
+				if home == "" {
+					return nil, nil
+				}
+				root = filepath.Join(home, ".claude")
+			}
+			roots = append(roots, filepath.Join(root, "projects"))
 		}
-		roots = append(roots, filepath.Join(root, "projects"))
+
 	}
 
 	var sources []Source

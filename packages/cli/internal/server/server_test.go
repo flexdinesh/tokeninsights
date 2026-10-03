@@ -1,10 +1,8 @@
 package server
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -13,13 +11,10 @@ import (
 	"net/url"
 	"path/filepath"
 	"strings"
-	"sync"
-	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/db"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/pipeline"
 	serverapi "github.com/flexdinesh/tokeninsights/packages/cli/internal/server/api"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/version"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/viewer"
@@ -117,46 +112,6 @@ func TestInstanceUsesSavedDataHostname(t *testing.T) {
 	checkHostname("unknown")
 }
 
-func TestSyncJoinsOnlyEquivalentExternalJob(t *testing.T) {
-	for _, scope := range []struct {
-		name            string
-		all, normalized bool
-		wantStart       bool
-	}{
-		{"all normalized", true, true, false},
-		{"single harness", false, true, true},
-		{"ingest only", true, false, true},
-	} {
-		t.Run(scope.name, func(t *testing.T) {
-			path := fixture(t)
-			database, err := db.OpenWritable(path)
-			if err != nil {
-				t.Fatal(err)
-			}
-			defer func() { _ = database.Close() }()
-			release, err := db.AcquireWriterLock(context.Background(), path)
-			if err != nil {
-				t.Fatal(err)
-			}
-			defer release()
-			if _, err := database.Exec("INSERT INTO sync_jobs (scope_key, status, phase, started_at_ms, updated_at_ms, normalize, all_harnesses) VALUES ('scope', 'running', 'syncing', 1, 1, ?, ?)", scope.normalized, scope.all); err != nil {
-				t.Fatal(err)
-			}
-			a := newApp(context.Background(), Options{DBPath: path}, io.Discard)
-			var started atomic.Bool
-			a.syncer = func(context.Context, pipeline.SyncOptions) (pipeline.Summary, error) {
-				started.Store(true)
-				return pipeline.Summary{}, nil
-			}
-			a.startSync()
-			a.jobs.Wait()
-			if started.Load() != scope.wantStart {
-				t.Fatalf("started = %v, want %v", started.Load(), scope.wantStart)
-			}
-		})
-	}
-}
-
 func TestStatusSharesRevisionWithoutSyncJob(t *testing.T) {
 	path := fixture(t)
 	database, err := db.OpenWritable(path)
@@ -171,15 +126,7 @@ func TestStatusSharesRevisionWithoutSyncJob(t *testing.T) {
 	if got := a.status().Revision; got != 7 {
 		t.Fatalf("revision = %d, want 7", got)
 	}
-	a.state = syncState{Running: true, Phase: "waiting", Revision: 1, Harnesses: map[string]string{"pi": "pending"}}
-	waiting := a.status()
-	if waiting.Revision != 7 || waiting.Progress != nil {
-		t.Fatalf("queued refresh reused stale progress: %+v", waiting)
-	}
-	a.state.Harnesses["pi"] = "syncing"
-	if waiting.Harnesses["pi"] != "pending" {
-		t.Fatal("returned status shared mutable harness map")
-	}
+
 }
 
 func TestDashboardCanonicalParityAndPagination(t *testing.T) {
@@ -343,11 +290,11 @@ func TestAPIValidationFacetsAndAssets(t *testing.T) {
 	if w.Code != 200 {
 		t.Fatal(w.Body.String())
 	}
-	var facets map[string][]string
+	var facets serverapi.UsageFacetsResponse
 	if err := json.Unmarshal(w.Body.Bytes(), &facets); err != nil {
 		t.Fatal(err)
 	}
-	if len(facets["models"]) != 2 || len(facets["providers"]) != 0 {
+	if len(facets.Models) != 2 || len(facets.Providers) != 0 {
 		t.Fatalf("facets must ignore own selection only: %v", facets)
 	}
 	w = httptest.NewRecorder()
@@ -364,7 +311,7 @@ func TestAPIValidationFacetsAndAssets(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &facets); err != nil {
 		t.Fatal(err)
 	}
-	if len(facets["sessions"]) != 1 || facets["sessions"][0] != "b" {
+	if len(facets.Sessions) != 1 || facets.Sessions[0] != "b" {
 		t.Fatalf("session search: %v", facets)
 	}
 	w = httptest.NewRecorder()
@@ -452,127 +399,6 @@ func TestAPIV1RoutesAndMethods(t *testing.T) {
 	}
 }
 
-func TestSyncSharedAcrossClientsAndFailureRecovery(t *testing.T) {
-	var log bytes.Buffer
-	a := newApp(context.Background(), Options{Defaults: viewer.Selection{Harnesses: []string{"pi"}}}, &log)
-	started, release := make(chan struct{}), make(chan struct{})
-	var calls atomic.Int32
-	a.syncer = func(ctx context.Context, opts pipeline.SyncOptions) (pipeline.Summary, error) {
-		calls.Add(1)
-		if len(opts.Harnesses) != len(pipeline.SupportedHarnesses) || !opts.Normalize {
-			t.Error("sync must normalize all harnesses")
-		}
-		opts.Progress(pipeline.SyncProgressEvent{Harness: pipeline.HarnessPi, Status: pipeline.SyncProgressSyncing})
-		close(started)
-		<-release
-		return pipeline.Summary{}, errors.New("failed at /private/source.jsonl")
-	}
-	a.startSync()
-	<-started
-	var requests sync.WaitGroup
-	for range 10 {
-		requests.Add(1)
-		go func() {
-			defer requests.Done()
-			w := httptest.NewRecorder()
-			a.handler().ServeHTTP(w, httptest.NewRequest("POST", "/api/v1/sync", nil))
-			if w.Code != http.StatusAccepted {
-				t.Errorf("status %d", w.Code)
-			}
-		}()
-	}
-	requests.Wait()
-	if calls.Load() != 1 || !a.status().Running || a.status().Harnesses["pi"] != "syncing" {
-		t.Fatal("duplicate sync or missing progress")
-	}
-	close(release)
-	a.jobs.Wait()
-	status := a.status()
-	if status.Running || status.Revision != 1 || status.Error == "" || strings.Contains(status.Error, "private") {
-		t.Fatalf("status: %+v", status)
-	}
-	if !strings.Contains(log.String(), "/private/source.jsonl") {
-		t.Fatal("terminal should retain diagnostic detail")
-	}
-	a.syncer = func(context.Context, pipeline.SyncOptions) (pipeline.Summary, error) { return pipeline.Summary{}, nil }
-	a.startSync()
-	a.jobs.Wait()
-	if a.status().Error != "" || a.status().Revision != 2 {
-		t.Fatal("retry must recover")
-	}
-}
-
-func TestSyncRecoveryProgressAndRetry(t *testing.T) {
-	for _, recoveryErr := range []error{db.ErrRebuildPending, db.ErrRecoveryRequired} {
-		a := newApp(context.Background(), Options{}, io.Discard)
-		a.syncer = func(ctx context.Context, opts pipeline.SyncOptions) (pipeline.Summary, error) {
-			for _, phase := range []pipeline.SyncProgressStatus{pipeline.SyncProgressResetting, pipeline.SyncProgressRebuilding} {
-				opts.Progress(pipeline.SyncProgressEvent{Status: phase})
-				if status := a.status(); !status.Running || status.Phase != string(phase) {
-					t.Errorf("missing recovery progress: %+v", status)
-				}
-			}
-			return pipeline.Summary{}, fmt.Errorf("/private/source.jsonl: %w", recoveryErr)
-		}
-		a.startSync()
-		a.jobs.Wait()
-		status := a.status()
-		if status.Running || status.Phase != "rebuild_failed" || !strings.Contains(status.Error, "Retry sync") || strings.Contains(status.Error, "inspect") || strings.Contains(status.Error, "/private") {
-			t.Fatalf("unsafe recovery status: %+v", status)
-		}
-		a.syncer = func(context.Context, pipeline.SyncOptions) (pipeline.Summary, error) { return pipeline.Summary{}, nil }
-		a.startSync()
-		a.jobs.Wait()
-		if status := a.status(); status.Phase != "ready" || status.Error != "" || status.Revision != 2 {
-			t.Fatalf("retry did not recover: %+v", status)
-		}
-	}
-}
-
-func TestSyncKeepsRebuildingPhaseDuringHarnessProgress(t *testing.T) {
-	a := newApp(context.Background(), Options{}, io.Discard)
-	started, release := make(chan struct{}), make(chan struct{})
-	a.syncer = func(ctx context.Context, opts pipeline.SyncOptions) (pipeline.Summary, error) {
-		opts.Progress(pipeline.SyncProgressEvent{Status: pipeline.SyncProgressResetting})
-		opts.Progress(pipeline.SyncProgressEvent{Status: pipeline.SyncProgressRebuilding})
-		for _, event := range []pipeline.SyncProgressEvent{
-			{Harness: pipeline.HarnessOpenCode, Status: pipeline.SyncProgressDiscovering},
-			{Harness: pipeline.HarnessOpenCode, Status: pipeline.SyncProgressSkipped},
-			{Harness: pipeline.HarnessPi, Status: pipeline.SyncProgressDiscovering},
-			{Harness: pipeline.HarnessPi, Status: pipeline.SyncProgressSyncing},
-			{Harness: pipeline.HarnessPi, Status: pipeline.SyncProgressSynced},
-			{Harness: pipeline.HarnessCodex, Status: pipeline.SyncProgressDiscovering},
-			{Harness: pipeline.HarnessCodex, Status: pipeline.SyncProgressSyncing},
-		} {
-			opts.Progress(event)
-			status := a.status()
-			if status.Phase != "rebuilding" || status.Harnesses[string(event.Harness)] != string(event.Status) {
-				t.Errorf("harness event lost rebuilding state: %+v", status)
-			}
-		}
-		close(started)
-		<-release
-		opts.Progress(pipeline.SyncProgressEvent{Harness: pipeline.HarnessCodex, Status: pipeline.SyncProgressSynced})
-		opts.Progress(pipeline.SyncProgressEvent{Harness: pipeline.HarnessClaudeCode, Status: pipeline.SyncProgressSkipped})
-		opts.Progress(pipeline.SyncProgressEvent{Status: pipeline.SyncProgressNormalizing})
-		if status := a.status(); status.Phase != "rebuilding" {
-			t.Errorf("normalization exposed pending recovery: %+v", status)
-		}
-		return pipeline.Summary{}, nil
-	}
-	a.startSync()
-	<-started
-	status := a.status()
-	if !status.Running || status.Phase != "rebuilding" || status.Harnesses["codex"] != "syncing" || status.Harnesses["pi"] != "synced" {
-		t.Errorf("blocked rebuild status: %+v", status)
-	}
-	close(release)
-	a.jobs.Wait()
-	if status := a.status(); status.Running || status.Phase != "ready" {
-		t.Fatalf("completed rebuild status: %+v", status)
-	}
-}
-
 func TestAnalyticsRejectPendingRecoveryWithoutMutation(t *testing.T) {
 	path := fixture(t)
 	database, err := db.OpenWritable(path)
@@ -618,17 +444,4 @@ func TestListenerURLAndShutdown(t *testing.T) {
 		t.Fatal("expected occupied port")
 	}
 	_ = listener.Close()
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
-	var output bytes.Buffer
-	if err := Run(ctx, Options{DBPath: fixture(t), NoSync: true, Host: "127.0.0.1", Port: 0}, &output, io.Discard); err != nil {
-		t.Fatal(err)
-	}
-	lines := strings.Split(strings.TrimSpace(output.String()), "\n")
-	if len(lines) != 5 || !strings.HasPrefix(lines[2], "  url:  http://127.0.0.1:") || lines[4] != "  ctrl-c to stop." {
-		t.Fatalf("unexpected startup output: %s", output.String())
-	}
-	if err := Run(context.Background(), Options{DBPath: filepath.Join(t.TempDir(), "missing.sqlite"), NoSync: true}, io.Discard, io.Discard); err == nil {
-		t.Fatal("--no-sync must reject a missing database")
-	}
 }

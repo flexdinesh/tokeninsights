@@ -5,6 +5,8 @@ import { Button } from './ui/button'
 export function DashboardHeader({
   hostname,
   running,
+  refreshDisabled,
+  pendingRefresh,
   serverUnavailable,
   lastSynced,
   reloading,
@@ -13,6 +15,8 @@ export function DashboardHeader({
 }: {
   hostname: string
   running: boolean
+  refreshDisabled?: boolean
+  pendingRefresh?: boolean
   serverUnavailable: boolean
   lastSynced?: number
   reloading: boolean
@@ -66,15 +70,14 @@ export function DashboardHeader({
           className="reload-button"
           aria-label="Reload Data"
           title="Reload Data"
-          disabled={running}
           onClick={onReload}
         >
           <RefreshCw size="1em" className={reloading ? 'spin' : ''} />
           <span>Reload Data</span>
         </Button>
-        <Button className="sync-button" size="sm" disabled={running} onClick={onSync}>
+        <Button className="sync-button" size="sm" disabled={refreshDisabled} onClick={onSync}>
           {running ? <LoaderCircle size="1em" className="spin" /> : <ArrowDownToLine size="1em" />}
-          <span>{running ? 'Syncing…' : 'Sync Usage'}</span>
+          <span>{pendingRefresh ? 'Refresh queued' : running ? 'Refresh again' : 'Refresh'}</span>
         </Button>
       </div>
     </header>

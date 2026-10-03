@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 
 const tempRoot = process.env.TOKENINSIGHTS_TEST_TMP ?? tmpdir()
-const localHome = await mkdtemp(join(tempRoot, 'tokeninsights-web-local-'))
+const localHome = await mkdtemp(join(tempRoot, 'ti-web-'))
 const now = new Date()
 
 async function writeSession(
@@ -56,8 +56,8 @@ function startServer(home: string, port: string) {
   return spawn(
     resolve('../cli/bin/tokeninsights'),
     [
-      'serve',
-      '--week',
+      'service',
+      'run',
       '--host',
       '0.0.0.0',
       '--port',
@@ -71,6 +71,9 @@ function startServer(home: string, port: string) {
         ...process.env,
         HOME: home,
         XDG_DATA_HOME: join(home, '.local/share'),
+        XDG_CONFIG_HOME: join(home, '.config'),
+        XDG_STATE_HOME: join(home, '.local/state'),
+        XDG_RUNTIME_DIR: '',
         CODEX_HOME: join(home, '.codex'),
         CLAUDE_CONFIG_DIR: join(home, '.claude'),
       },
@@ -78,13 +81,49 @@ function startServer(home: string, port: string) {
   )
 }
 
+await new Promise<void>((resolveRun, rejectRun) => {
+  const child = spawn(
+    resolve('../cli/bin/tokeninsights'),
+    ['sync', '--all', '--db-path', join(localHome, 'usage.sqlite')],
+    {
+      stdio: 'inherit',
+      env: {
+        ...process.env,
+        HOME: localHome,
+        XDG_DATA_HOME: join(localHome, '.local/share'),
+        CODEX_HOME: join(localHome, '.codex'),
+        CLAUDE_CONFIG_DIR: join(localHome, '.claude'),
+        XDG_CONFIG_HOME: join(localHome, '.config'),
+        XDG_STATE_HOME: join(localHome, '.local/state'),
+        XDG_RUNTIME_DIR: '',
+      },
+    },
+  )
+  child.once('error', rejectRun)
+  child.once('exit', (code) => {
+    if (code === 0) resolveRun()
+    else rejectRun(new Error('fixture sync failed'))
+  })
+})
 const children = [startServer(localHome, '18765')]
 let stopping = false
 
 async function stop(code: number) {
   if (stopping) return
   stopping = true
-  for (const child of children) child.kill('SIGTERM')
+  await Promise.all(
+    children.map(
+      (child) =>
+        new Promise<void>((resolveStop) => {
+          if (child.exitCode !== null || child.signalCode !== null) {
+            resolveStop()
+            return
+          }
+          child.once('exit', () => resolveStop())
+          child.kill('SIGTERM')
+        }),
+    ),
+  )
   await rm(localHome, { recursive: true, force: true })
   process.exitCode = code
 }

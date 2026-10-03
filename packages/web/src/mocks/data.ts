@@ -14,6 +14,9 @@ const dayThree = Date.UTC(2026, 8, 14, 10)
 
 export const mockBootstrap: Bootstrap = bootstrapSchema.parse({
   apiVersion: 'v1',
+  instanceId: 'mock-instance',
+  dataEpoch: 'mock-epoch',
+  dataReadiness: 'ready',
   serverVersion: 'dev-mock',
   hostname: 'mock.tokeninsights.local',
   timezone: 'AEST +10:00',
@@ -31,6 +34,9 @@ export const mockBootstrap: Bootstrap = bootstrapSchema.parse({
 })
 
 export const mockFacets: Facets = facetsSchema.parse({
+  instanceId: 'mock-instance',
+  dataEpoch: 'mock-epoch',
+  revision: 1,
   providers: ['anthropic', 'openai'],
   models: ['claude-sonnet-4-5', 'gpt-5', 'gpt-5-mini'],
   harnesses: ['claude-code', 'codex', 'opencode', 'pi'],
@@ -287,6 +293,9 @@ export function mockDashboard(
   const start = (page - 1) * pageSize
 
   return dashboardSchema.parse({
+    instanceId: 'mock-instance',
+    dataEpoch: 'mock-epoch',
+    revision: 1,
     rows: allRows.slice(start, start + pageSize),
     chart: allRows,
     rowCount: allRows.length,
@@ -309,6 +318,11 @@ export function mockDashboard(
 
 export function mockSyncStatus(running: boolean, revision: number): SyncStatus {
   return statusSchema.parse({
+    instanceId: 'mock-instance',
+    dataEpoch: 'mock-epoch',
+    dataReadiness: 'ready',
+    pendingRefresh: false,
+    checkRequestedAt: 0,
     running,
     phase: running ? 'syncing' : 'ready',
     harnesses: running

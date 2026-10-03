@@ -4,8 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/service"
 	"io"
 	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/cli"
@@ -13,7 +16,12 @@ import (
 )
 
 func main() {
-	if err := run(context.Background(), os.Args[1:], os.Stdout, os.Stderr); err != nil {
+	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer cancel()
+	if err := run(ctx, os.Args[1:], os.Stdout, os.Stderr); err != nil {
+		if errors.Is(err, service.ErrStopped) {
+			os.Exit(3)
+		}
 		if errors.Is(err, cli.ErrUsage) {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(2)

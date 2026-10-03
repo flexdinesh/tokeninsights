@@ -5,6 +5,7 @@
   "scripts": {
     "build": "go build -o bin/tokeninsights ./cmd/tokeninsights",
     "lint": "go tool -modfile=golangci-lint.mod golangci-lint run ./...",
-    "test": "go test ./..."
+    "test": "go test ./...",
+    "test:race": "go test -race ./..."
   }
 }

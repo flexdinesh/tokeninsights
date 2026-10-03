@@ -60,35 +60,23 @@ func recoveryFailure(compatibility db.Compatibility, err error) error {
 // cannot change a pending rebuild's scope. Full paths never enter storage.
 func recoverySourceKey(options SyncOptions) (string, error) {
 	parts := []string{"rebuild-sources-v1"}
-	if root := strings.TrimSpace(options.SourceDir); root != "" {
-		absolute, err := filepath.Abs(root)
+	c := options.Sources
+	if c == nil {
+		var err error
+		c, err = ResolveSources(options.SourceDir)
 		if err != nil {
 			return "", err
 		}
-		parts = append(parts, "override", absolute)
+	}
+	if c.Override.Path != "" {
+		parts = append(parts, "override", c.Override.Path)
 	} else {
-		home := strings.TrimSpace(os.Getenv("HOME"))
-		dataHome := configuredRoot("XDG_DATA_HOME", home, ".local", "share")
-		codexHome := configuredRoot("CODEX_HOME", home, ".codex")
-		claudeHome := configuredRoot("CLAUDE_CONFIG_DIR", home, ".claude")
 		parts = append(parts, "defaults")
-		for _, root := range []string{
-			rootChild(dataHome, "opencode"),
-			rootChild(home, ".pi", "agent", "sessions"),
-			rootChild(codexHome, "sessions"),
-			rootChild(codexHome, "archived_sessions"),
-			rootChild(claudeHome, "projects"),
-		} {
-			if root != "" {
-				absolute, err := filepath.Abs(root)
-				if err != nil {
-					return "", err
-				}
-				root = absolute
-			}
-			parts = append(parts, root)
+		for _, root := range c.Roots {
+			parts = append(parts, root.Path)
 		}
 	}
+
 	encoded, err := json.Marshal(parts)
 	if err != nil {
 		return "", err
@@ -129,7 +117,8 @@ func selectsAllHarnesses(harnesses []Harness) bool {
 func normalizationRecoveryOptions(options NormalizeOptions) SyncOptions {
 	return defaultSyncOptions(SyncOptions{
 		DBPath: options.DBPath, Harnesses: SupportedHarnesses, DryRun: options.DryRun,
-		Normalize: true, Now: options.Now, Progress: options.Progress,
+		SourceDir: options.Sources.Override.Identity,
+		Normalize: true, Now: options.Now, Progress: options.Progress, Sources: options.Sources, BeforeReset: options.BeforeReset,
 	})
 }
 
@@ -160,6 +149,11 @@ func recoverDatabase(ctx context.Context, options SyncOptions, compatibility db.
 			return Summary{Recovery: action}, recoveryFailure(compatibility, err)
 		}
 		reportSyncProgress(options, SyncProgressEvent{Status: SyncProgressResetting})
+		if options.BeforeReset != nil {
+			if err := options.BeforeReset(ctx); err != nil {
+				return Summary{Recovery: action}, err
+			}
+		}
 		if err := db.ResetForRecovery(ctx, options.DBPath, sourceKey); err != nil {
 			return Summary{Recovery: action}, errors.Join(db.ErrRecoveryRequired, err)
 		}

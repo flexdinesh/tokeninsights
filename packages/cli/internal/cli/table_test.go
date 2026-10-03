@@ -477,6 +477,22 @@ func TestViewHeightStableAcrossTabReloadRows(t *testing.T) {
 	}
 }
 
+func TestSharedStatusRetainsSnapshotFromSameServiceEpoch(t *testing.T) {
+	m := newInteractiveModel(context.Background(), tableOptions{}, time.Now(), "test")
+	loaded, _ := m.Update(reloadMsg{instanceID: "service", dataEpoch: "epoch", rows: []renderRow{{bucket: "saved"}}})
+	m = loaded.(interactiveModel)
+	updated, _ := m.Update(sharedSyncMsg{instanceID: "service", dataEpoch: "epoch", readiness: "ready"})
+	m = updated.(interactiveModel)
+	if len(m.rows) != 1 || m.rows[0].bucket != "saved" {
+		t.Fatal("first status poll discarded validated saved rows")
+	}
+	updated, _ = m.Update(sharedSyncMsg{instanceID: "service", dataEpoch: "after-reset", readiness: "recovery"})
+	m = updated.(interactiveModel)
+	if len(m.rows) != 0 {
+		t.Fatal("reset retained previous epoch rows")
+	}
+}
+
 func TestReloadUpdatesStatuslineLastSync(t *testing.T) {
 	m := interactiveModel{
 		options:    tableOptions{period: periodMonth},
@@ -927,6 +943,11 @@ func TestImplicitSyncProcessesPendingNormalizationWork(t *testing.T) {
 		t.Fatalf("unexpected setup summary: %+v", summary)
 	}
 
+	previousRefresh := refreshView
+	refreshView = func(ctx context.Context, path string) (pipeline.Summary, error) {
+		return pipeline.Sync(ctx, pipeline.SyncOptions{DBPath: path, Harnesses: pipeline.SupportedHarnesses, Normalize: true, Now: now.Add(time.Hour)})
+	}
+	t.Cleanup(func() { refreshView = previousRefresh })
 	messages := make(chan tea.Msg, syncProgressBufferSize())
 	cmd := interactiveModel{
 		ctx: ctx,

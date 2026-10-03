@@ -13,16 +13,19 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/db"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/pipeline"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/service"
 )
 
 type reloadMsg struct {
-	rows             []renderRow
-	coverage         []db.DayCoverage
-	revision         int64
-	preservePosition bool
-	lastSyncMs       int64
-	sessionCounts    db.SessionCounts
-	err              error
+	instanceID, dataEpoch string
+	selection             string
+	rows                  []renderRow
+	coverage              []db.DayCoverage
+	revision              int64
+	preservePosition      bool
+	lastSyncMs            int64
+	sessionCounts         db.SessionCounts
+	err                   error
 }
 
 type filterValuesMsg struct {
@@ -44,8 +47,12 @@ type syncDoneMsg struct {
 type snapshotMsg struct{ reloadMsg }
 
 type sharedSyncMsg struct {
-	status db.SyncStatus
-	err    error
+	instanceID, dataEpoch string
+	readiness             string
+	pending               bool
+	requested             int64
+	status                db.SyncStatus
+	err                   error
 }
 
 type startDashboardLoadMsg struct{}
@@ -84,50 +91,53 @@ const (
 )
 
 type interactiveModel struct {
-	rows             []renderRow
-	groupBy          groupByMode
-	activeTab        tabMode
-	statusline       statuslineModel
-	tableSummary     tableSummaryModel
-	sessionCounts    db.SessionCounts
-	width            int
-	height           int
-	scrollOffset     int
-	cursor           int
-	horizontalOffset int
-	popup            popupMode
-	popupCursor      int
-	filterDimension  filterDimension
-	filterValues     []string
-	filterSelections map[string]bool
-	filterValueKeys  map[string]string
-	filterLoading    bool
-	filterErr        error
-	ctx              context.Context
-	cancel           context.CancelFunc
-	statusPolling    bool
-	sharedSync       db.SyncStatus
-	coverage         []db.DayCoverage
-	coverageSinceMs  int64
-	options          tableOptions
-	now              time.Time
-	err              error
-	loading          bool
-	reloadInFlight   bool
-	syncing          bool
-	showingSnapshot  bool
-	snapshotAllowed  bool
-	syncInFlight     bool
-	syncMessages     <-chan tea.Msg
-	syncProgressRows []syncProgressRow
-	syncStatus       pipeline.SyncProgressStatus
-	syncFrame        int
-	syncSummary      pipeline.Summary
-	syncErr          error
-	lastSyncMs       int64
-	cachedWidth      int
-	baseHeight       int
-	perRowHeight     int
+	instanceID, dataEpoch string
+	serviceReadiness      string
+	pendingRefresh        bool
+	rows                  []renderRow
+	groupBy               groupByMode
+	activeTab             tabMode
+	statusline            statuslineModel
+	tableSummary          tableSummaryModel
+	sessionCounts         db.SessionCounts
+	width                 int
+	height                int
+	scrollOffset          int
+	cursor                int
+	horizontalOffset      int
+	popup                 popupMode
+	popupCursor           int
+	filterDimension       filterDimension
+	filterValues          []string
+	filterSelections      map[string]bool
+	filterValueKeys       map[string]string
+	filterLoading         bool
+	filterErr             error
+	ctx                   context.Context
+	cancel                context.CancelFunc
+	statusPolling         bool
+	sharedSync            db.SyncStatus
+	coverage              []db.DayCoverage
+	coverageSinceMs       int64
+	options               tableOptions
+	now                   time.Time
+	err                   error
+	loading               bool
+	reloadInFlight        bool
+	syncing               bool
+	showingSnapshot       bool
+	snapshotAllowed       bool
+	syncInFlight          bool
+	syncMessages          <-chan tea.Msg
+	syncProgressRows      []syncProgressRow
+	syncStatus            pipeline.SyncProgressStatus
+	syncFrame             int
+	syncSummary           pipeline.Summary
+	syncErr               error
+	lastSyncMs            int64
+	cachedWidth           int
+	baseHeight            int
+	perRowHeight          int
 }
 
 type syncProgressRow struct {
@@ -269,6 +279,13 @@ func (m interactiveModel) snapshotCmd() tea.Cmd {
 }
 
 func (m interactiveModel) loadDashboard() reloadMsg {
+	before, probeErr := service.Probe(m.ctx, m.options.dbPath)
+	if probeErr != nil {
+		return reloadMsg{err: probeErr}
+	}
+	if before.Status != nil && before.Status.DataReadiness != "ready" {
+		return reloadMsg{err: db.ErrRebuildPending}
+	}
 	database, err := db.Open(m.options.dbPath)
 	if err != nil {
 		return reloadMsg{err: err}
@@ -302,7 +319,20 @@ func (m interactiveModel) loadDashboard() reloadMsg {
 	if m.activeTab == tabTokens && m.options.bucket == bucketDay && m.groupBy == groupByNone {
 		rows = withDayCoverage(rows, coverage, m.options.sort)
 	}
-	return reloadMsg{rows: rows, coverage: coverage, revision: status.Revision, lastSyncMs: status.LastSuccessfulAtMs, sessionCounts: counts}
+	after, probeErr := service.Probe(m.ctx, m.options.dbPath)
+	if probeErr != nil {
+		return reloadMsg{err: probeErr}
+	}
+	instance, epoch := "", ""
+	if before.Status != nil {
+		if after.Status == nil || before.Status.InstanceID != after.Status.InstanceID || before.Status.DataEpoch != after.Status.DataEpoch || after.Status.DataReadiness != "ready" {
+			return reloadMsg{err: db.ErrRebuildPending}
+		}
+		instance, epoch = after.Status.InstanceID, after.Status.DataEpoch
+	} else if after.Running {
+		return reloadMsg{err: db.ErrRebuildPending}
+	}
+	return reloadMsg{instanceID: instance, dataEpoch: epoch, selection: m.selectionKey(), rows: rows, coverage: coverage, revision: status.Revision, lastSyncMs: status.LastSuccessfulAtMs, sessionCounts: counts}
 }
 
 func (m interactiveModel) filterValuesCmd(dimension filterDimension) tea.Cmd {
@@ -489,12 +519,19 @@ func (m interactiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		commands := []tea.Cmd{m.sharedSyncCmd()}
 		if msg.err == nil {
 			previous := m.sharedSync
+			epochChanged := msg.instanceID != m.instanceID || msg.dataEpoch != m.dataEpoch
+			m.instanceID, m.dataEpoch, m.serviceReadiness, m.pendingRefresh = msg.instanceID, msg.dataEpoch, msg.readiness, msg.pending
+			if epochChanged {
+				m.rows, m.coverage = nil, nil
+				m.showingSnapshot = false
+			}
+			m.coverageSinceMs = max(m.coverageSinceMs, msg.requested)
 			m.sharedSync = msg.status
-			if msg.status.Phase == "rebuilding" || msg.status.Phase == "rebuild_failed" {
+			if msg.readiness != "" && msg.readiness != "ready" || msg.status.Phase == "rebuilding" || msg.status.Phase == "rebuild_failed" {
 				m.showingSnapshot, m.snapshotAllowed = false, false
 				m.rows, m.coverage = nil, nil
 				m.syncStatus = pipeline.SyncProgressRebuilding
-			} else if !m.reloadInFlight && (msg.status.Revision != previous.Revision || msg.status.JobID != previous.JobID) {
+			} else if !m.reloadInFlight && (epochChanged || msg.status.Revision != previous.Revision || msg.status.JobID != previous.JobID) {
 				m.snapshotAllowed = true
 				m.reloadInFlight = true
 				if m.syncing {
@@ -531,7 +568,8 @@ func (m interactiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.reloadInFlight = true
 				return m, m.reloadCmd()
 			}
-			return m, tea.Quit
+			m.syncing, m.syncInFlight = false, false
+			return m, nil
 		}
 		m.syncSummary = msg.summary
 		m.syncInFlight = false
@@ -549,6 +587,10 @@ func (m interactiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m = m.measureHeights()
 		return m, m.reloadCmd()
 	case reloadMsg:
+		if msg.selection != "" && msg.selection != m.selectionKey() || msg.instanceID != "" && m.instanceID != "" && (msg.instanceID != m.instanceID || msg.dataEpoch != m.dataEpoch) {
+			m.reloadInFlight = false
+			return m, m.refreshCmd()
+		}
 		if m.sharedSync.Phase == "rebuilding" || m.sharedSync.Phase == "rebuild_failed" {
 			m.reloadInFlight = false
 			return m, nil
@@ -560,6 +602,7 @@ func (m interactiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.err = nil
+		m.instanceID, m.dataEpoch = msg.instanceID, msg.dataEpoch
 		m.rows = msg.rows
 		m.coverage = msg.coverage
 		m.sharedSync.Revision = msg.revision
@@ -575,12 +618,17 @@ func (m interactiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m = m.clampHorizontalOffset()
 		return m, nil
 	case snapshotMsg:
+		if msg.selection != "" && msg.selection != m.selectionKey() || msg.instanceID != "" && m.instanceID != "" && (msg.instanceID != m.instanceID || msg.dataEpoch != m.dataEpoch) {
+			m.reloadInFlight = false
+			return m, m.snapshotCmd()
+		}
 		m.reloadInFlight = false
 		if !m.syncing || !m.snapshotAllowed || msg.err != nil {
 			return m, nil
 		}
 		wasShowing := m.showingSnapshot
 		m.showingSnapshot = true
+		m.instanceID, m.dataEpoch = msg.instanceID, msg.dataEpoch
 		m.rows = msg.rows
 		m.coverage = msg.coverage
 		m.sharedSync.Revision = msg.revision
@@ -626,7 +674,7 @@ func (m interactiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.cancelSync()
 			return m, tea.Quit
 		}
-		if m.syncing && !m.showingSnapshot {
+		if m.syncing && !m.snapshotAllowed && msg.String() != "u" && msg.String() != "r" {
 			if msg.String() == "q" {
 				m.cancelSync()
 				return m, tea.Quit
@@ -701,7 +749,7 @@ func (m interactiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.popup, m.popupCursor = popupHelp, 0
 				return m, nil
 			case "u":
-				if m.options.noSync || m.syncInFlight || m.sharedSync.Running {
+				if m.options.noSync || m.pendingRefresh {
 					return m, nil
 				}
 				m.syncing, m.syncInFlight, m.snapshotAllowed, m.showingSnapshot = true, true, true, true
@@ -811,18 +859,8 @@ func syncProgressBufferSize() int {
 
 func (m interactiveModel) syncCmd(messages chan<- tea.Msg) tea.Cmd {
 	return func() tea.Msg {
-		summary, err := pipeline.Sync(m.ctx, pipeline.SyncOptions{
-			DBPath:    m.options.dbPath,
-			Harnesses: pipeline.SupportedHarnesses,
-			Normalize: true,
-			Now:       m.now,
-			Progress: func(event pipeline.SyncProgressEvent) {
-				select {
-				case messages <- syncProgressMsg{event: event}:
-				case <-m.ctx.Done():
-				}
-			},
-		})
+		summary, err := refreshView(m.ctx, m.options.dbPath)
+
 		select {
 		case messages <- syncDoneMsg{summary: summary, err: err}:
 		case <-m.ctx.Done():
@@ -1879,4 +1917,22 @@ func rowName(row renderRow, activeTab tabMode) string {
 	default:
 		return row.bucket
 	}
+}
+
+var refreshView = func(ctx context.Context, path string) (pipeline.Summary, error) {
+	state, err := service.Ensure(ctx, service.Options{DBPath: path})
+	if err != nil {
+		return pipeline.Summary{}, err
+	}
+	client := service.Client{Record: *state.Record}
+	operation, err := client.Refresh(ctx)
+	if err != nil {
+		return pipeline.Summary{}, err
+	}
+	operation, err = client.Wait(ctx, operation.ID)
+	return operation.Summary, err
+}
+
+func (m interactiveModel) selectionKey() string {
+	return fmt.Sprintf("%+v/%s/%s", m.options, m.groupBy, m.activeTab)
 }

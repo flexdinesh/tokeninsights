@@ -81,7 +81,12 @@ func (a opencodeSQLiteAdapter) Discover(ctx context.Context, options DiscoverOpt
 		}
 		if !info.IsDir() {
 			if isOpenCodeSQLiteDB(root) {
-				sources = append(sources, a.source(root, filepath.Dir(root)))
+				source := a.source(root, filepath.Dir(root))
+				if options.Sources != nil {
+					source = a.source(options.Sources.identityPath(root), filepath.Dir(options.Sources.identityPath(root)))
+					source.Path = root
+				}
+				sources = append(sources, source)
 			}
 			continue
 		}
@@ -98,7 +103,12 @@ func (a opencodeSQLiteAdapter) Discover(ctx context.Context, options DiscoverOpt
 			}
 			path := filepath.Join(root, entry.Name())
 			if isOpenCodeSQLiteDB(path) {
-				sources = append(sources, a.source(path, root))
+				source := a.source(path, root)
+				if options.Sources != nil {
+					source = a.source(options.Sources.identityPath(path), options.Sources.identityPath(root))
+					source.Path = path
+				}
+				sources = append(sources, source)
 			}
 		}
 	}
@@ -109,6 +119,9 @@ func (a opencodeSQLiteAdapter) Discover(ctx context.Context, options DiscoverOpt
 }
 
 func (a opencodeSQLiteAdapter) discoveryRoots(options DiscoverOptions) ([]string, error) {
+	if options.Sources != nil {
+		return options.Sources.discoveryRoots(HarnessOpenCode, options.HarnessSubdirOnly)
+	}
 	sourceDir := strings.TrimSpace(options.SourceDir)
 	if sourceDir != "" {
 		harnessDir := filepath.Join(sourceDir, string(HarnessOpenCode))

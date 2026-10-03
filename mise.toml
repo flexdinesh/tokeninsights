@@ -1,0 +1,38 @@
+[tools]
+go = "1.27.1"
+node = "26.4.0"
+pnpm = "11.6.0"
+
+[tasks.setup]
+description = "Install dependencies and local Git hooks"
+run = "pnpm install --frozen-lockfile"
+
+[tasks."setup:browser"]
+description = "Install Chromium for local browser tests"
+run = "pnpm --filter @tokeninsights/web exec playwright install chromium"
+
+[tasks."check:ci"]
+description = "Minimal CI: formatting, SQLite contract, native build"
+run = "pnpm run check:ci"
+
+[tasks."check:push"]
+description = "Full local verification before push"
+run = "pnpm run check:push"
+
+[tasks.format]
+run = "pnpm run format"
+
+[tasks.lint]
+run = "pnpm run lint"
+
+[tasks.test]
+run = "pnpm run test"
+
+[tasks."test:race"]
+run = "pnpm run test:race"
+
+[tasks.build]
+run = "pnpm run build"
+
+[tasks.dev]
+run = "pnpm run dev"

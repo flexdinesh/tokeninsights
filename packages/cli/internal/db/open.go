@@ -66,12 +66,20 @@ func ApplySchema(ctx context.Context, db *sql.DB) error {
 }
 
 func ResetAll(dbPath string) error {
-	ctx := context.Background()
+	return ResetAllContext(context.Background(), dbPath)
+}
+
+func ResetAllContext(ctx context.Context, dbPath string) error {
 	release, err := AcquireWriterLock(ctx, dbPath)
 	if err != nil {
 		return err
 	}
 	defer release()
+	return ResetAllLocked(ctx, dbPath)
+}
+
+// ResetAllLocked requires the caller to own the database writer lock.
+func ResetAllLocked(ctx context.Context, dbPath string) error {
 	absPath, err := canonicalDBPath(dbPath)
 	if err != nil {
 		return err
