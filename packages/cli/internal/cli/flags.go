@@ -128,7 +128,7 @@ func parseViewerOptions(args []string, stderr io.Writer, requirePeriod bool, def
 	}
 
 	if err := flags.Parse(args); err != nil {
-		return tableOptions{}, fmt.Errorf("%v\n%w", err, ErrUsage)
+		return tableOptions{}, fmt.Errorf("%w\n%w", err, ErrUsage)
 	}
 	if flags.NArg() > 0 {
 		return tableOptions{}, fmt.Errorf("unexpected argument %q\n%w", flags.Arg(0), ErrUsage)

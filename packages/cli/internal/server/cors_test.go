@@ -6,16 +6,10 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
-
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/pipeline"
 )
 
 func TestAPIWithoutCrossOriginAccess(t *testing.T) {
 	a := newApp(context.Background(), Options{DBPath: fixture(t)}, io.Discard)
-	a.syncer = func(context.Context, pipeline.SyncOptions) (pipeline.Summary, error) {
-		return pipeline.Summary{}, nil
-	}
-	defer a.jobs.Wait()
 	for _, route := range []struct {
 		method, path string
 		status       int
@@ -23,7 +17,7 @@ func TestAPIWithoutCrossOriginAccess(t *testing.T) {
 		{http.MethodGet, "/api/v1/instance", http.StatusOK},
 		{http.MethodGet, "/api/v1/usage", http.StatusOK},
 		{http.MethodGet, "/api/v1/usage/facets", http.StatusOK},
-		{http.MethodPost, "/api/v1/sync", http.StatusAccepted},
+		{http.MethodPost, "/api/v1/sync", http.StatusServiceUnavailable},
 		{http.MethodOptions, "/api/v1/usage", http.StatusMethodNotAllowed},
 	} {
 		t.Run(route.method+route.path, func(t *testing.T) {

@@ -145,6 +145,7 @@ type Row struct {
 }
 
 type dashboard struct {
+	Revision   int64
 	Coverage   []db.DayCoverage
 	Rows       []Row
 	Chart      []Row
@@ -355,5 +356,10 @@ func loadDashboard(ctx context.Context, path string, q query, now time.Time) (da
 	if q.Selection.From != "" || q.Selection.To != "" {
 		result.Range = q.Selection.From + ".." + q.Selection.To
 	}
+	status, err := db.LoadSyncStatus(ctx, tx)
+	if err != nil {
+		return result, err
+	}
+	result.Revision = status.Revision
 	return result, tx.Commit()
 }

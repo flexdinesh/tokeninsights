@@ -42,7 +42,11 @@ func resolveFactLocation(ctx context.Context, options SyncOptions, directory, re
 	location := &Location{}
 	if path != "" {
 		location.DirectoryKey = stableHash("directory:" + path)
-		location.DirectoryName = sanitizedLocationPath(displayPath)
+		home := ""
+		if options.Sources != nil {
+			home = options.Sources.Home
+		}
+		location.DirectoryName = sanitizedLocationPathWithHome(displayPath, home)
 	}
 	resolver := options.locationResolver
 	if resolver == nil {
@@ -218,6 +222,11 @@ func isWindowsAbsolutePath(value string) bool {
 }
 
 func sanitizedLocationPath(value string) string {
+	home, _ := os.UserHomeDir()
+	return sanitizedLocationPathWithHome(value, home)
+}
+
+func sanitizedLocationPathWithHome(value, home string) string {
 	value = strings.ReplaceAll(value, "\\", "/")
 	value = strings.Map(func(r rune) rune {
 		if r < 32 || r == 127 {
@@ -225,7 +234,7 @@ func sanitizedLocationPath(value string) string {
 		}
 		return r
 	}, value)
-	if home, err := os.UserHomeDir(); err == nil && home != "" {
+	if home != "" {
 		home = strings.TrimRight(strings.ReplaceAll(home, "\\", "/"), "/")
 		if suffix, ok := locationPathSuffix(value, home); ok {
 			return "~" + suffix

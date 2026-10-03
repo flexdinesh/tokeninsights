@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process'
 import { DatabaseSync } from 'node:sqlite'
-import { copyFile, mkdir, readFile, readdir, rm } from 'node:fs/promises'
+import { copyFile, mkdir, readFile, readdir, symlink } from 'node:fs/promises'
 import { basename, dirname, join, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -27,6 +27,7 @@ export type SyncFunction = (paths: SyncPaths) => Promise<void>
 interface SetupDevDataOptions {
   workspaceRoot?: string
   sync?: SyncFunction
+  prepare?: (binaryPath: string, dbPath: string) => Promise<void>
 }
 
 interface SetupDevDataResult {
@@ -38,6 +39,7 @@ interface SetupDevDataResult {
 export async function setupDevData({
   workspaceRoot: configuredWorkspaceRoot = workspaceRoot,
   sync = runSync,
+  prepare = prepareFixture,
 }: SetupDevDataOptions = {}): Promise<SetupDevDataResult> {
   const root = resolve(configuredWorkspaceRoot)
   const outputDir = join(root, '.tokeninsights-dev')
@@ -47,10 +49,11 @@ export async function setupDevData({
   const sourceDir = join(outputDir, 'source')
   const dbPath = join(outputDir, 'tokeninsights.sqlite')
 
-  await rm(outputDir, { recursive: true, force: true })
+  await prepare(join(root, 'packages', 'cli', 'bin', 'tokeninsights'), dbPath)
   await mkdir(sourceDir, { recursive: true })
   await copyJSONLFixtures(fixtureDir, sourceDir)
   await materializeOpenCode(fixtureDir, sourceDir)
+  await setupSourceHome(outputDir, sourceDir)
   await sync({
     binaryPath: join(root, 'packages', 'cli', 'bin', 'tokeninsights'),
     dbPath,
@@ -135,4 +138,34 @@ async function runSync({ binaryPath, dbPath, sourceDir }: SyncPaths): Promise<vo
 if (process.argv[1] !== undefined && resolve(process.argv[1]) === scriptPath) {
   const { dbPath } = await setupDevData()
   console.log(`development data ready: ${dbPath}`)
+}
+
+async function prepareFixture(binaryPath: string, dbPath: string): Promise<void> {
+  await new Promise<void>((resolveRun, rejectRun) => {
+    const child = spawn(binaryPath, ['__prepare-dev-data', '--db-path', dbPath], {
+      stdio: 'inherit',
+    })
+    child.once('error', rejectRun)
+    child.once('exit', (code) => {
+      if (code === 0) resolveRun()
+      else rejectRun(new Error('fixture preparation failed; stop development service first'))
+    })
+  })
+}
+async function setupSourceHome(outputDir: string, sourceDir: string): Promise<void> {
+  const links = [
+    [join(outputDir, 'home', '.pi', 'agent', 'sessions'), join(sourceDir, 'pi')],
+    [join(outputDir, 'home', '.codex', 'sessions'), join(sourceDir, 'codex')],
+    [join(outputDir, 'home', '.claude', 'projects'), join(sourceDir, 'claude-code')],
+    [join(outputDir, 'home', '.local', 'share', 'opencode'), join(sourceDir, 'opencode')],
+  ]
+  await Promise.all(
+    links.map(async (pair) => {
+      const link = pair[0]
+      const target = pair[1]
+      if (link === undefined || target === undefined) throw new Error('invalid fixture link')
+      await mkdir(dirname(link), { recursive: true })
+      await symlink(target, link, 'dir')
+    }),
+  )
 }

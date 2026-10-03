@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/app"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/pipeline"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/service"
 )
 
 var syncCommand = commandSpec{name: "sync", run: runSync}
@@ -28,7 +30,7 @@ func runSync(invocation commandInvocation, args []string) error {
 	flags.BoolVar(&noNormalize, "no-normalize", false, "skip canonical normalization after raw ingest")
 	flags.StringVar(&sourceDir, "source-dir", "", "override harness source directory")
 	if err := flags.Parse(args); err != nil {
-		return fmt.Errorf("%v\n%w", err, ErrUsage)
+		return fmt.Errorf("%w\n%w", err, ErrUsage)
 	}
 	if flags.NArg() > 0 {
 		return fmt.Errorf("unexpected argument %q\n%w", flags.Arg(0), ErrUsage)
@@ -37,16 +39,27 @@ func runSync(invocation commandInvocation, args []string) error {
 	if err != nil {
 		return err
 	}
-	summary, err := pipeline.Sync(invocation.context, pipeline.SyncOptions{
-		DBPath:      strings.TrimSpace(dbPath),
-		Harnesses:   selectedHarnesses,
-		DryRun:      dryRun,
-		FullRefresh: fullRefresh,
-		Normalize:   !noNormalize,
-		SourceDir:   strings.TrimSpace(sourceDir),
-		Now:         invocation.now,
-		Progress:    recoveryNotice(invocation.stderr),
-	})
+	sources, err := pipeline.ResolveSources(sourceDir)
+	if err != nil {
+		return err
+	}
+	var summary pipeline.Summary
+	if dryRun {
+		summary, err = pipeline.Sync(invocation.context, pipeline.SyncOptions{
+			DBPath:      strings.TrimSpace(dbPath),
+			Harnesses:   selectedHarnesses,
+			DryRun:      dryRun,
+			FullRefresh: fullRefresh,
+			Normalize:   !noNormalize,
+			SourceDir:   strings.TrimSpace(sourceDir),
+			Now:         invocation.now,
+			Progress:    recoveryNotice(invocation.stderr),
+		})
+	} else {
+		action := app.Action{Kind: "sync", Sources: sources, Now: invocation.now, Harnesses: selectedHarnesses, Normalize: !noNormalize, FullRefresh: fullRefresh}
+		summary, err = service.Mutate(invocation.context, strings.TrimSpace(dbPath), action, recoveryNotice(invocation.stderr))
+	}
+
 	printSummary(invocation.stdout, "sync", summary, dryRun)
 	if err != nil {
 		return err

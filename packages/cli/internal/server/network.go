@@ -42,3 +42,6 @@ func displayURL(host, port string) string {
 	}
 	return "http://" + net.JoinHostPort(host, port)
 }
+
+// Listen binds only the web/API server.
+func Listen(host string, port int) (net.Listener, error) { return listen(host, port) }

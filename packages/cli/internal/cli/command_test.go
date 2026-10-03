@@ -50,54 +50,27 @@ func TestCommandAliasesResolveToCanonicalCommand(t *testing.T) {
 	}
 }
 
-func TestNoCommandLaunchesProgressTUIBeforeImplicitSyncCompletes(t *testing.T) {
-	sourceRoot := t.TempDir()
-	t.Setenv("HOME", filepath.Join(sourceRoot, "home"))
-	t.Setenv("XDG_DATA_HOME", filepath.Join(sourceRoot, "xdg"))
-	t.Setenv("CODEX_HOME", filepath.Join(sourceRoot, "codex"))
-	t.Setenv("CLAUDE_CONFIG_DIR", filepath.Join(sourceRoot, "claude"))
-
-	dbPath := filepath.Join(sourceRoot, "xdg", "tokeninsights", "tokeninsights.sqlite")
-	var launched bool
-	restore := replaceInteractiveProgramRunnerForTest(t, func(model interactiveModel, stdout io.Writer) (interactiveModel, error) {
-		launched = true
-		if model.options.dbPath != dbPath {
-			t.Fatalf("interactive dbPath = %q, want %q", model.options.dbPath, dbPath)
-		}
-		if !model.syncing {
-			t.Fatal("expected initial model to show sync progress")
-		}
-		if _, err := os.Stat(dbPath); !errors.Is(err, os.ErrNotExist) {
-			t.Fatalf("expected default db not to exist before TUI launches, stat error = %v", err)
-		}
-		return model, nil
-	})
-	defer restore()
-
-	err := Run(context.Background(), []string{}, io.Discard, io.Discard, time.Date(2026, 6, 19, 10, 0, 0, 0, time.Local))
-	if err != nil {
-		t.Fatal(err)
+func TestRootRejectsViewerFlags(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "missing.sqlite")
+	err := Run(context.Background(), []string{"--db-path", path, "--no-sync"}, io.Discard, io.Discard, time.Now())
+	if !errors.Is(err, ErrUsage) || !strings.Contains(err.Error(), "tokeninsights view") {
+		t.Fatalf("migration error: %v", err)
 	}
-	if !launched {
-		t.Fatal("expected TUI to launch")
+	if _, err := os.Stat(path); !errors.Is(err, os.ErrNotExist) {
+		t.Fatal("root viewer flags created database")
 	}
 }
 
-func TestLeadingFlagsRouteToView(t *testing.T) {
-	dbPath := filepath.Join(t.TempDir(), "missing.sqlite")
-	var launched bool
-	restore := replaceInteractiveProgramRunnerForTest(t, func(model interactiveModel, stdout io.Writer) (interactiveModel, error) {
-		launched = true
-		return model, nil
-	})
-	defer restore()
-
-	err := Run(context.Background(), []string{"--db-path", dbPath, "--no-sync"}, io.Discard, io.Discard, time.Now())
-	if err == nil || !strings.Contains(err.Error(), "db not found") {
-		t.Fatalf("expected missing db error, got %v", err)
+func TestCommandHelpSucceedsWithoutDatabaseSideEffects(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "missing.sqlite")
+	t.Setenv("TOKENINSIGHTS_DB_PATH", path)
+	for _, command := range []string{"view", "sync", "normalize", "reset-all", "reset-canonical", "refresh", "serve"} {
+		if err := Run(context.Background(), []string{command, "--help"}, io.Discard, io.Discard, time.Now()); err != nil {
+			t.Errorf("%s help: %v", command, err)
+		}
 	}
-	if launched {
-		t.Fatal("expected TUI not to launch")
+	if _, err := os.Stat(path); !errors.Is(err, os.ErrNotExist) {
+		t.Fatal("help created database")
 	}
 }
 

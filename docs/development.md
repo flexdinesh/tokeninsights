@@ -1,6 +1,6 @@
 # Development
 
-TokenInsights is a pnpm monorepo with a Go CLI and a Vite/React browser application. Use Node 26+, pnpm 11+, and Go 1.26+.
+TokenInsights is a pnpm monorepo with a Go CLI and a Vite/React browser application. `mise.toml` pins Go, Node, and pnpm for local development and GitHub Actions. Direct Go builds still require only Go 1.26+.
 
 ## Development builds
 
@@ -15,8 +15,13 @@ go install github.com/flexdinesh/tokeninsights/packages/cli/cmd/tokeninsights@de
 ```sh
 git clone git@github.com:flexdinesh/tokeninsights.git
 cd tokeninsights
-pnpm install
+mise trust
+mise install
+mise run setup
+mise run setup:browser
 ```
+
+Install [mise](https://mise.jdx.dev/getting-started.html) first. `setup` installs frozen workspace dependencies and registers the [Husky](https://typicode.github.io/husky/get-started.html) pre-push hook through pnpm's `prepare` script. `setup:browser` installs Chromium once; Linux hosts missing browser libraries can use `mise exec -- pnpm --filter @tokeninsights/web exec playwright install --with-deps chromium`.
 
 ## Commands
 
@@ -26,6 +31,8 @@ Run commands from the repository root unless noted otherwise.
 
 | Purpose | Command |
 | --- | --- |
+| Full local pre-push verification | `mise run check:push` or `pnpm run check:push` |
+| Minimal CI verification | `mise run check:ci` or `pnpm run check:ci` |
 | Install workspace dependencies | `pnpm install` |
 | Run Go API and hot-reloading web app | `pnpm run dev` |
 | Recreate sanitized fixture data | `pnpm run dev:data` |
@@ -43,18 +50,23 @@ Run commands from the repository root unless noted otherwise.
 | Check formatting | `pnpm run format:check` |
 | Lint Go and TypeScript | `pnpm run lint` |
 | Run all tests | `pnpm run test` |
+| Run Go race-detector suite | `pnpm run test:race` |
 | Validate SQLite schema copies | `pnpm run check-schema` |
 | Validate generated API files | `pnpm run check-api` |
 | Regenerate API files | `pnpm run generate:api` |
 | Build and sync embedded web assets | `pnpm run build:web` |
 | Check committed web assets | `pnpm run check-web` |
 | Run browser end-to-end tests | `pnpm run test:web-e2e` |
-| Run all checks and build production binary | `pnpm run build` |
+| Build production binary and validate contracts | `pnpm run build` |
 
-Install Chromium once before the browser end-to-end tests:
+The pre-push hook runs `mise run check:push`: formatting, lint, SQLite/API contracts, unit/conformance tests, all Go race tests, a frontend rebuild with committed-asset comparison, native build, and browser E2E. Checks fail fast and never repair tracked files. Regenerate stale API/assets explicitly before committing and pushing. There is no pre-commit test suite.
+
+CI and the manual release workflow run `mise run check:ci`: formatting, SQLite schema-copy consistency, and a native Go build against committed browser assets. CI installs no browser and runs no lint/test suites, API generation, or frontend rebuild. Release additionally builds and publishes native archives; main retains automatic dev publication. Both workflows disable hook installation with `HUSKY=0`. Hooks run locally after dependency setup; GUI clients must have mise on PATH. Root pnpm scripts own commands; mise tasks delegate to those same scripts.
+
+Install Chromium once before browser tests when using pnpm directly:
 
 ```sh
-pnpm --filter @tokeninsights/web exec playwright install chromium
+mise run setup:browser
 ```
 
 ### Local CLI installation
@@ -76,7 +88,7 @@ Verify the installed CLI and embedded browser application:
 ```sh
 command -v tokeninsights
 tokeninsights --version
-tokeninsights serve
+tokeninsights service start --open
 ```
 
 ### Direct Go commands
@@ -96,7 +108,7 @@ Direct Go commands use the currently committed embedded web assets. Use `pnpm ru
 
 The shared fixture is under `packages/cli/testdata/conformance/sync-first-basic/source/`. It contains compact, synthetic source data for all supported harnesses and excludes conversations, tool payloads, credentials, request data, user paths, and identifying values. Never commit raw local harness databases or transcripts.
 
-`dev:data` recreates the ignored `.tokeninsights-dev/` directory and its normalized database. `dev` runs the fixture-backed Go server and Vite together. Vite proxies `/api` to `127.0.0.1:8765`. `dev:web:mock` runs without Go or local harness data.
+`dev:data` resets the ignored development database transactionally while holding admission/writer locks and recreates synthetic sources. Stop its service first; a live or unreachable owner prevents recreation. DB/WAL/SHM and lock inodes are never unlinked. `dev` runs a foreground fixture-backed service and Vite together. Its source environment points only to sanitized fixtures; Refresh cannot read normal user sources. Vite proxies `/api` to `127.0.0.1:8765`. `dev:web:mock` runs without Go or local harness data.
 
 ## Build Tooling
 

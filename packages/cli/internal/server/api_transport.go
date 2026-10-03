@@ -44,6 +44,7 @@ func apiSyncState(state syncState) serverapi.SyncResponse {
 		harnesses[harness] = serverapi.HarnessSyncStatus(status)
 	}
 	return serverapi.SyncResponse{
+		InstanceId: &state.InstanceID, DataEpoch: &state.DataEpoch, DataReadiness: syncReadinessPointer(state.DataReadiness), PendingRefresh: &state.PendingRefresh, CheckRequestedAt: &state.CheckRequestedAt,
 		Progress:  progress,
 		Running:   state.Running,
 		Phase:     serverapi.SyncPhase(state.Phase),
@@ -59,6 +60,7 @@ func apiDashboard(data dashboard) serverapi.UsageResponse {
 		coverage = append(coverage, serverapi.DayCoverage{Day: day.Day, Status: serverapi.DayCoverageStatus(day.Status), CheckedAt: day.CheckedAtMs, PendingSources: day.PendingSources, FailedSources: day.FailedSources, HasUsage: day.HasUsage, Total: day.Total})
 	}
 	return serverapi.UsageResponse{
+		Revision:   &data.Revision,
 		Coverage:   &coverage,
 		Rows:       apiUsageRows(data.Rows),
 		Chart:      apiUsageRows(data.Chart),
@@ -118,4 +120,19 @@ func apiLocationOptions(options []db.LocationOption) []serverapi.LocationOption 
 		result = append(result, serverapi.LocationOption{Key: option.Key, Name: db.LocationDisplayName(option)})
 	}
 	return result
+}
+
+func readinessPointer(value string) *serverapi.InstanceResponseDataReadiness {
+	if value == "" {
+		value = "ready"
+	}
+	r := serverapi.InstanceResponseDataReadiness(value)
+	return &r
+}
+func syncReadinessPointer(value string) *serverapi.SyncResponseDataReadiness {
+	if value == "" {
+		value = "ready"
+	}
+	r := serverapi.SyncResponseDataReadiness(value)
+	return &r
 }

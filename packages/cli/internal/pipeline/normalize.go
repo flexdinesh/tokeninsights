@@ -106,6 +106,13 @@ func staleNormalizationRules(ctx context.Context, database *sql.DB, harnesses []
 }
 
 func Normalize(ctx context.Context, options NormalizeOptions) (Summary, error) {
+	if options.Sources == nil {
+		var err error
+		options.Sources, err = ResolveSources("")
+		if err != nil {
+			return Summary{}, err
+		}
+	}
 	summary := Summary{}
 	compatibility, err := db.InspectCompatibility(ctx, options.DBPath)
 	if err != nil {

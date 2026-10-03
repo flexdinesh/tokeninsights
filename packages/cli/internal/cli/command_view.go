@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -32,6 +33,9 @@ func runView(invocation commandInvocation, args []string) error {
 	finalModel, err := runInteractiveProgram(model, invocation.stdout)
 	if err != nil {
 		return err
+	}
+	if errors.Is(finalModel.syncErr, context.Canceled) && finalModel.ctx.Err() != nil {
+		return nil // Quitting cancels local observation, not accepted refresh.
 	}
 	if finalModel.syncErr != nil {
 		printSummary(invocation.stdout, "sync", finalModel.syncSummary, false)

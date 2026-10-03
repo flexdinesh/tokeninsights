@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { z } from 'zod'
 import {
   bootstrapSchema,
@@ -40,6 +40,8 @@ export const useBootstrap = () =>
     queryKey: ['instance'],
     queryFn: ({ signal }) => getInstance(signal),
     staleTime: Infinity,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
   })
 
 export const useSyncStatus = (enabled = true) =>
@@ -52,29 +54,53 @@ export const useSyncStatus = (enabled = true) =>
 
 export const syncNow = () => request('/api/v1/sync', statusSchema, undefined, 'POST')
 
-export function useAnalytics(q: QueryState, revision: number, enabled: boolean, running = false) {
+export function useAnalytics(
+  q: QueryState,
+  revision: number,
+  enabled: boolean,
+  _running = false,
+  identity = '',
+) {
+  const client = useQueryClient()
   const params = apiQueryParams(q)
   const summaryScope = apiQueryParams(q)
   for (const key of ['bucket', 'tab', 'sort', 'direction', 'page', 'pageSize']) {
     summaryScope.delete(key)
   }
   return useQuery({
-    refetchInterval: running ? 1000 : false,
-    queryKey: ['usage', summaryScope.toString(), params.toString(), revision],
-    queryFn: async ({ signal }) => ({
-      dashboard: await request(`/api/v1/usage?${params}`, dashboardSchema, signal),
-      tab: q.tab,
-      locationGroup: q.locationGroup,
-    }),
+    queryKey: ['usage', summaryScope.toString(), params.toString(), revision, identity],
+    queryFn: async ({ signal }) => {
+      const dashboard = await request(`/api/v1/usage?${params}`, dashboardSchema, signal)
+      if (
+        identity &&
+        dashboard.instanceId !== undefined &&
+        `${dashboard.instanceId}/${dashboard.dataEpoch}` !== identity
+      ) {
+        void client.invalidateQueries({ queryKey: ['sync'] })
+        throw new Error('Data changed. Refreshing service status.')
+      }
+      return { dashboard, tab: q.tab, locationGroup: q.locationGroup }
+    },
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
     enabled,
     placeholderData: (previous, previousQuery) => {
       const previousKey = previousQuery?.queryKey
-      return previousKey?.[1] === summaryScope.toString() ? previous : undefined
+      return previousKey?.[1] === summaryScope.toString() && previousKey?.[4] === identity
+        ? previous
+        : undefined
     },
   })
 }
 
-export function useFacets(q: QueryState, revision: number, enabled: boolean, search = '') {
+export function useFacets(
+  q: QueryState,
+  revision: number,
+  enabled: boolean,
+  search = '',
+  identity = '',
+) {
+  const client = useQueryClient()
   const params = apiQueryParams(q)
   if (q.tab !== 'repo') params.delete('tab')
   params.delete('locationGroup')
@@ -84,8 +110,21 @@ export function useFacets(q: QueryState, revision: number, enabled: boolean, sea
   params.delete('pageSize')
   params.set('search', search)
   return useQuery({
-    queryKey: ['facets', params.toString(), revision],
-    queryFn: ({ signal }) => request(`/api/v1/usage/facets?${params}`, facetsSchema, signal),
+    queryKey: ['facets', params.toString(), revision, identity],
+    queryFn: async ({ signal }) => {
+      const facets = await request(`/api/v1/usage/facets?${params}`, facetsSchema, signal)
+      if (
+        identity &&
+        facets.instanceId !== undefined &&
+        `${facets.instanceId}/${facets.dataEpoch}` !== identity
+      ) {
+        void client.invalidateQueries({ queryKey: ['sync'] })
+        throw new Error('Data changed. Refreshing service status.')
+      }
+      return facets
+    },
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
     enabled,
   })
 }

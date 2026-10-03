@@ -3,7 +3,9 @@ package cli
 import (
 	"context"
 	"errors"
+	"flag"
 	"fmt"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/service"
 	"io"
 	"os"
 	"strings"
@@ -31,6 +33,8 @@ var commands = []commandSpec{
 	versionCommand,
 	viewCommand,
 	serveCommand,
+	serviceCommand,
+	refreshCommand,
 	syncCommand,
 	normalizeCommand,
 	resetCanonicalCommand,
@@ -39,15 +43,25 @@ var commands = []commandSpec{
 
 func Run(ctx context.Context, args []string, stdout io.Writer, stderr io.Writer, now time.Time) error {
 	invocation := commandInvocation{context: ctx, stdin: os.Stdin, stdout: stdout, stderr: stderr, now: now}
+	if len(args) == 3 && args[0] == "__prepare-dev-data" && args[1] == "--db-path" {
+		return service.PrepareFixture(ctx, args[2])
+	}
+	if len(args) > 0 && args[0] == "__service-run" {
+		return service.Child(ctx)
+	}
 	if len(args) == 0 {
-		return viewCommand.run(invocation, nil)
+		return runService(invocation, []string{"start"})
 	}
 
 	if command, ok := commandByName(args[0]); ok {
-		return command.run(invocation, args[1:])
+		err := command.run(invocation, args[1:])
+		if errors.Is(err, flag.ErrHelp) {
+			return nil
+		}
+		return err
 	}
 	if strings.HasPrefix(args[0], "-") {
-		return viewCommand.run(invocation, args)
+		return runService(invocation, append([]string{"start"}, args...))
 	}
 	return fmt.Errorf("unknown command %q\n%w", args[0], ErrUsage)
 }
@@ -66,4 +80,4 @@ func commandByName(name string) (commandSpec, bool) {
 	return commandSpec{}, false
 }
 
-var ErrUsage = errors.New("usage: tokeninsights <sync|normalize|reset-canonical|reset-all|view|serve> [options]")
+var ErrUsage = errors.New("usage: tokeninsights <service|refresh|sync|normalize|reset-canonical|reset-all|view> [options]")

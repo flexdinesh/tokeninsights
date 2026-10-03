@@ -32,6 +32,17 @@ type sqlRunner interface {
 }
 
 func Sync(ctx context.Context, options SyncOptions) (Summary, error) {
+	if options.Sources == nil {
+		var err error
+		options.Sources, err = ResolveSources(options.SourceDir)
+		if err != nil {
+			return Summary{}, err
+		}
+	}
+	if err := options.Sources.Validate(); err != nil {
+		return Summary{}, err
+	}
+	options.SourceDir = options.Sources.Override.Identity
 	options = defaultSyncOptions(options)
 	ctx = withSyncStats(ctx, options.stats)
 	if options.DryRun && strings.TrimSpace(options.DBPath) == "" {
@@ -113,6 +124,7 @@ func syncPrepared(ctx context.Context, options SyncOptions) (summary Summary, re
 		return summary, err
 	}
 	defer func() { resultErr = errors.Join(resultErr, finishSyncJob(database, options, resultErr)) }()
+	summary.JobID = options.jobID
 	plans, err := discoverHarnessPlans(ctx, options, func(harness Harness) error {
 		if err := setHarnessStatus(ctx, database, options, harness, SyncProgressDiscovering); err != nil {
 			return err
@@ -392,6 +404,7 @@ func parserOptionsForHarness(options SyncOptions, harness Harness) SyncOptions {
 }
 
 func reportSyncProgress(options SyncOptions, event SyncProgressEvent) {
+	event.JobID = options.jobID
 	if options.Progress != nil {
 		options.Progress(event)
 	}
@@ -706,6 +719,7 @@ func syncNowMs(now time.Time) int64 {
 func discoverOptions(options SyncOptions) DiscoverOptions {
 	return DiscoverOptions{
 		SourceDir:         options.SourceDir,
+		Sources:           options.Sources,
 		HarnessSubdirOnly: strings.TrimSpace(options.SourceDir) != "" && len(options.Harnesses) > 1,
 	}
 }

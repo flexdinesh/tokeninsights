@@ -45,7 +45,7 @@ The largest prompt-side context load observed within a session, counted as input
 _Avoid_: Context used when it could mean total tokens, output tokens, or context window size
 
 **Implicit View Sync**:
-The product behavior where opening the viewer refreshes all supported Durable Sources before showing canonical token facts. Viewer filters remain display constraints, not source selection.
+Opening the normal local TUI requests all-harness refresh from the persistent service while compatible saved canonical data remains visible. Web opening reads saved data; Refresh requests ingest. Viewer filters remain display constraints, not source selection.
 _Avoid_: Filtered sync, view-only sync
 
 **Incremental Source Refresh**:

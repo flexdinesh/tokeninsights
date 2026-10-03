@@ -28,25 +28,34 @@ func (a piJSONLAdapter) Harness() Harness {
 
 func (a piJSONLAdapter) Discover(ctx context.Context, options DiscoverOptions) ([]Source, error) {
 	var roots []string
-	sourceDir := strings.TrimSpace(options.SourceDir)
-	if sourceDir != "" {
-		harnessDir := filepath.Join(sourceDir, string(HarnessPi))
-		if info, err := os.Stat(harnessDir); err == nil && info.IsDir() {
-			roots = append(roots, harnessDir)
-		} else if options.HarnessSubdirOnly {
-			if err != nil && !os.IsNotExist(err) {
-				return nil, err
-			}
-			return nil, nil
-		} else {
-			roots = append(roots, sourceDir)
+	if options.Sources != nil {
+		var err error
+		roots, err = options.Sources.discoveryRoots(HarnessPi, options.HarnessSubdirOnly)
+		if err != nil {
+			return nil, err
 		}
 	} else {
-		home := strings.TrimSpace(os.Getenv("HOME"))
-		if home == "" {
-			return nil, nil
+		sourceDir := strings.TrimSpace(options.SourceDir)
+		if sourceDir != "" {
+			harnessDir := filepath.Join(sourceDir, string(HarnessPi))
+			if info, err := os.Stat(harnessDir); err == nil && info.IsDir() {
+				roots = append(roots, harnessDir)
+			} else if options.HarnessSubdirOnly {
+				if err != nil && !os.IsNotExist(err) {
+					return nil, err
+				}
+				return nil, nil
+			} else {
+				roots = append(roots, sourceDir)
+			}
+		} else {
+			home := strings.TrimSpace(os.Getenv("HOME"))
+			if home == "" {
+				return nil, nil
+			}
+			roots = append(roots, filepath.Join(home, ".pi", "agent", "sessions"))
 		}
-		roots = append(roots, filepath.Join(home, ".pi", "agent", "sessions"))
+
 	}
 
 	var sources []Source

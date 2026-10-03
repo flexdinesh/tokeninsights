@@ -4,14 +4,24 @@ import { mockBootstrap, mockDashboard, mockFacets, mockSyncStatus } from './data
 let revision = 1
 let syncDeadline = 0
 let completionPending = false
+let pendingRefresh = false
+let requestedAt = 0
 
 function currentSyncStatus() {
-  const running = Date.now() < syncDeadline
+  let running = Date.now() < syncDeadline
   if (!running && completionPending) {
     revision += 1
     completionPending = false
+    if (pendingRefresh) {
+      pendingRefresh = false
+      syncDeadline = Date.now() + 1500
+      completionPending = true
+      running = true
+    } else {
+      requestedAt = 0
+    }
   }
-  return mockSyncStatus(running, revision)
+  return { ...mockSyncStatus(running, revision), pendingRefresh, checkRequestedAt: requestedAt }
 }
 
 export const handlers = [
@@ -24,20 +34,26 @@ export const handlers = [
     return HttpResponse.json(currentSyncStatus())
   }),
   http.post('*/api/v1/sync', async () => {
-    syncDeadline = Date.now() + 1_500
+    if (Date.now() < syncDeadline) {
+      pendingRefresh = true
+    } else {
+      syncDeadline = Date.now() + 1_500
+    }
+    requestedAt = Date.now()
     completionPending = true
     await delay(100)
     return HttpResponse.json(currentSyncStatus(), { status: 202 })
   }),
   http.get('*/api/v1/usage/facets', async () => {
     await delay(100)
-    return HttpResponse.json(mockFacets)
+    return HttpResponse.json({ ...mockFacets, revision })
   }),
   http.get('*/api/v1/usage', async ({ request }) => {
     const params = new URL(request.url).searchParams
     await delay(150)
-    return HttpResponse.json(
-      mockDashboard(params.get('tab'), params.get('page'), params.get('pageSize')),
-    )
+    return HttpResponse.json({
+      ...mockDashboard(params.get('tab'), params.get('page'), params.get('pageSize')),
+      revision,
+    })
   }),
 ]

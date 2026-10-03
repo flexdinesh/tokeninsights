@@ -1,6 +1,9 @@
 package pipeline
 
-import "time"
+import (
+	"context"
+	"time"
+)
 
 type Harness string
 
@@ -23,6 +26,7 @@ type Source struct {
 }
 
 type DiscoverOptions struct {
+	Sources           *SourceConfig
 	SourceDir         string
 	HarnessSubdirOnly bool
 }
@@ -63,6 +67,8 @@ type Diagnostic struct {
 }
 
 type SyncOptions struct {
+	Sources          *SourceConfig
+	BeforeReset      func(context.Context) error
 	DBPath           string
 	Harnesses        []Harness
 	DryRun           bool
@@ -99,17 +105,20 @@ const (
 )
 
 type SyncProgressEvent struct {
+	JobID     int64
 	Harness   Harness
 	Status    SyncProgressStatus
 	Published bool
 }
 
 type NormalizeOptions struct {
-	DBPath    string
-	DryRun    bool
-	Harnesses []Harness
-	Now       time.Time
-	Progress  func(SyncProgressEvent)
+	Sources     *SourceConfig
+	BeforeReset func(context.Context) error
+	DBPath      string
+	DryRun      bool
+	Harnesses   []Harness
+	Now         time.Time
+	Progress    func(SyncProgressEvent)
 }
 
 type RecoveryAction string
@@ -121,6 +130,7 @@ const (
 )
 
 type Summary struct {
+	JobID              int64
 	Recovery           RecoveryAction
 	RequestedHarnesses int
 	Synced             int

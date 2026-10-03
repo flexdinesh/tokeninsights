@@ -80,6 +80,9 @@ export function DashboardResults({
         <ErrorBanner message="Filter values couldn’t load." onRetry={() => void facets.refetch()} />
       )}
       {enabled && !hasData && (!analytics.error || running) && <DashboardSkeleton />}
+      {enabled && data && data.summary.syncedSessions === 0 && !running && !analytics.error && (
+        <p role="status">No usage saved yet. Select Refresh to read local session data.</p>
+      )}
       {enabled && data && hasData && (
         <div className="analytics" aria-busy={analytics.isFetching}>
           <div className="usage-workbench">

@@ -174,6 +174,33 @@ func (e HarnessSyncStatus) Valid() bool {
 	}
 }
 
+// Defines values for InstanceResponseDataReadiness.
+const (
+	InstanceResponseDataReadinessMetadata    InstanceResponseDataReadiness = "metadata"
+	InstanceResponseDataReadinessReady       InstanceResponseDataReadiness = "ready"
+	InstanceResponseDataReadinessRebuild     InstanceResponseDataReadiness = "rebuild"
+	InstanceResponseDataReadinessRecovery    InstanceResponseDataReadiness = "recovery"
+	InstanceResponseDataReadinessUnavailable InstanceResponseDataReadiness = "unavailable"
+)
+
+// Valid indicates whether the value is a known member of the InstanceResponseDataReadiness enum.
+func (e InstanceResponseDataReadiness) Valid() bool {
+	switch e {
+	case InstanceResponseDataReadinessMetadata:
+		return true
+	case InstanceResponseDataReadinessReady:
+		return true
+	case InstanceResponseDataReadinessRebuild:
+		return true
+	case InstanceResponseDataReadinessRecovery:
+		return true
+	case InstanceResponseDataReadinessUnavailable:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for LocationGroup.
 const (
 	Directory  LocationGroup = "directory"
@@ -357,6 +384,33 @@ func (e SyncPhase) Valid() bool {
 	}
 }
 
+// Defines values for SyncResponseDataReadiness.
+const (
+	SyncResponseDataReadinessMetadata    SyncResponseDataReadiness = "metadata"
+	SyncResponseDataReadinessReady       SyncResponseDataReadiness = "ready"
+	SyncResponseDataReadinessRebuild     SyncResponseDataReadiness = "rebuild"
+	SyncResponseDataReadinessRecovery    SyncResponseDataReadiness = "recovery"
+	SyncResponseDataReadinessUnavailable SyncResponseDataReadiness = "unavailable"
+)
+
+// Valid indicates whether the value is a known member of the SyncResponseDataReadiness enum.
+func (e SyncResponseDataReadiness) Valid() bool {
+	switch e {
+	case SyncResponseDataReadinessMetadata:
+		return true
+	case SyncResponseDataReadinessReady:
+		return true
+	case SyncResponseDataReadinessRebuild:
+		return true
+	case SyncResponseDataReadinessRecovery:
+		return true
+	case SyncResponseDataReadinessUnavailable:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for UsageTab.
 const (
 	UsageTabContext   UsageTab = "context"
@@ -433,15 +487,21 @@ type HarnessSyncStatus string
 
 // InstanceResponse defines model for InstanceResponse.
 type InstanceResponse struct {
-	ApiVersion   ApiVersion   `json:"apiVersion"`
-	Capabilities []Capability `json:"capabilities"`
-	Defaults     Selection    `json:"defaults"`
+	ApiVersion    ApiVersion                     `json:"apiVersion"`
+	Capabilities  []Capability                   `json:"capabilities"`
+	DataEpoch     *string                        `json:"dataEpoch,omitempty"`
+	DataReadiness *InstanceResponseDataReadiness `json:"dataReadiness,omitempty"`
+	Defaults      Selection                      `json:"defaults"`
 
 	// Hostname Hostname recorded by the latest completed ingest run; unknown when unavailable.
-	Hostname      string `json:"hostname"`
-	ServerVersion string `json:"serverVersion"`
-	Timezone      string `json:"timezone"`
+	Hostname      string  `json:"hostname"`
+	InstanceId    *string `json:"instanceId,omitempty"`
+	ServerVersion string  `json:"serverVersion"`
+	Timezone      string  `json:"timezone"`
 }
+
+// InstanceResponseDataReadiness defines model for InstanceResponse.DataReadiness.
+type InstanceResponseDataReadiness string
 
 // LocationGroup defines model for LocationGroup.
 type LocationGroup string
@@ -497,21 +557,32 @@ type SyncProgress struct {
 
 // SyncResponse defines model for SyncResponse.
 type SyncResponse struct {
-	Error     string                       `json:"error"`
-	Harnesses map[string]HarnessSyncStatus `json:"harnesses"`
-	Phase     SyncPhase                    `json:"phase"`
-	Progress  *SyncProgress                `json:"progress,omitempty"`
-	Revision  Count                        `json:"revision"`
-	Running   bool                         `json:"running"`
+	CheckRequestedAt *Count                       `json:"checkRequestedAt,omitempty"`
+	DataEpoch        *string                      `json:"dataEpoch,omitempty"`
+	DataReadiness    *SyncResponseDataReadiness   `json:"dataReadiness,omitempty"`
+	Error            string                       `json:"error"`
+	Harnesses        map[string]HarnessSyncStatus `json:"harnesses"`
+	InstanceId       *string                      `json:"instanceId,omitempty"`
+	PendingRefresh   *bool                        `json:"pendingRefresh,omitempty"`
+	Phase            SyncPhase                    `json:"phase"`
+	Progress         *SyncProgress                `json:"progress,omitempty"`
+	Revision         Count                        `json:"revision"`
+	Running          bool                         `json:"running"`
 }
+
+// SyncResponseDataReadiness defines model for SyncResponse.DataReadiness.
+type SyncResponseDataReadiness string
 
 // UsageFacetsResponse defines model for UsageFacetsResponse.
 type UsageFacetsResponse struct {
+	DataEpoch    *string          `json:"dataEpoch,omitempty"`
 	Directories  []LocationOption `json:"directories"`
 	Harnesses    []Harness        `json:"harnesses"`
+	InstanceId   *string          `json:"instanceId,omitempty"`
 	Models       []string         `json:"models"`
 	Providers    []string         `json:"providers"`
 	Repositories []LocationOption `json:"repositories"`
+	Revision     *Count           `json:"revision,omitempty"`
 	Sessions     []string         `json:"sessions"`
 }
 
@@ -521,10 +592,13 @@ type UsageResponse struct {
 
 	// Coverage Retained-source coverage in server-local days; bounded to 366 days, or the recent seven days for all-time views. Independent of usage rows and pagination.
 	Coverage   *[]DayCoverage `json:"coverage,omitempty"`
+	DataEpoch  *string        `json:"dataEpoch,omitempty"`
+	InstanceId *string        `json:"instanceId,omitempty"`
 	LastSynced Count          `json:"lastSynced"`
 	Page       int            `json:"page"`
 	PageSize   int            `json:"pageSize"`
 	Range      string         `json:"range"`
+	Revision   *Count         `json:"revision,omitempty"`
 	RowCount   Count          `json:"rowCount"`
 	Rows       []UsageRow     `json:"rows"`
 	Summary    UsageSummary   `json:"summary"`

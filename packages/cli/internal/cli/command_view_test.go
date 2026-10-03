@@ -65,6 +65,18 @@ func TestViewLaunchesProgressTUIBeforeImplicitSyncCompletes(t *testing.T) {
 	}
 }
 
+func TestViewQuitDuringRefreshObservationSucceeds(t *testing.T) {
+	restore := replaceInteractiveProgramRunnerForTest(t, func(model interactiveModel, stdout io.Writer) (interactiveModel, error) {
+		model.cancelSync()
+		model.syncErr = fmt.Errorf("refresh observation: %w", context.Canceled)
+		return model, nil
+	})
+	defer restore()
+	if err := Run(context.Background(), []string{"view", "--db-path", filepath.Join(t.TempDir(), "usage.sqlite")}, io.Discard, io.Discard, time.Now()); err != nil {
+		t.Fatal("normal quit reported refresh failure", err)
+	}
+}
+
 func TestViewNoSyncPreservesReadOnlyMissingDBBehavior(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "missing.sqlite")
 	var launched bool
