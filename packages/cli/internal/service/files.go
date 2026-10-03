@@ -74,8 +74,15 @@ func identify(path string) (string, string, error) {
 	return canonical, hex.EncodeToString(sum[:]), nil
 }
 
+// ownedDir verifies ownership and secures private application directories.
 func ownedDir(path string, private bool) error {
-	info, err := os.Lstat(path)
+	fd, err := unix.Open(path, unix.O_RDONLY|unix.O_DIRECTORY|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0)
+	if err != nil {
+		return err
+	}
+	f := os.NewFile(uintptr(fd), path)
+	defer func() { _ = f.Close() }()
+	info, err := f.Stat()
 	if err != nil {
 		return err
 	}
@@ -86,8 +93,10 @@ func ownedDir(path string, private bool) error {
 	if !ok || int(stat.Uid) != os.Getuid() {
 		return fmt.Errorf("service directory not owned by current user: %s", path)
 	}
-	if private && info.Mode().Perm()&0o077 != 0 {
-		return fmt.Errorf("service directory must be private: %s", path)
+	if private && info.Mode().Perm() != 0o700 {
+		if err := f.Chmod(0o700); err != nil {
+			return fmt.Errorf("make service directory private: %s: %w", path, err)
+		}
 	}
 	return nil
 }
