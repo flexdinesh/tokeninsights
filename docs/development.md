@@ -4,10 +4,10 @@ TokenInsights is a pnpm monorepo with a Go CLI and a Vite/React browser applicat
 
 ## Development builds
 
-For development builds, updated automatically after pushes to `main` pass CI:
+For development builds, install directly from `main`:
 
 ```sh
-go install github.com/flexdinesh/tokeninsights/packages/cli/cmd/tokeninsights@dev
+go install github.com/flexdinesh/tokeninsights/packages/cli/cmd/tokeninsights@main
 ```
 
 ## Setup
@@ -61,7 +61,7 @@ Run commands from the repository root unless noted otherwise.
 
 The pre-push hook runs `mise run check:push`: formatting, lint, SQLite/API contracts, unit/conformance tests, all Go race tests, a frontend rebuild with committed-asset comparison, native build, and browser E2E. Checks fail fast and never repair tracked files. Regenerate stale API/assets explicitly before committing and pushing. There is no pre-commit test suite.
 
-CI and the manual release workflow run `mise run check:ci`: formatting, SQLite schema-copy consistency, and a native Go build against committed browser assets. CI installs no browser and runs no lint/test suites, API generation, or frontend rebuild. Release additionally builds and publishes native archives; main retains automatic dev publication. Both workflows disable hook installation with `HUSKY=0`. Hooks run locally after dependency setup; GUI clients must have mise on PATH. Root pnpm scripts own commands; mise tasks delegate to those same scripts.
+CI and the manual release workflow run `mise run check:ci`: formatting, SQLite schema-copy consistency, and a native Go build against committed browser assets. CI installs no browser and runs no lint/test suites, API generation, or frontend rebuild. Release additionally builds and publishes native archives. CI only verifies; development installs resolve `main` directly without publication or waiting for CI. Both workflows disable hook installation with `HUSKY=0`. Hooks run locally after dependency setup; GUI clients must have mise on PATH. Root pnpm scripts own commands; mise tasks delegate to those same scripts.
 
 Install Chromium once before browser tests when using pnpm directly:
 

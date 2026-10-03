@@ -74,7 +74,7 @@ Realtime plugins and checkpoint plugins are future-compatible concepts, not acti
 
 The repository is a polyglot monorepo with one Go module and a pnpm workspace. The Go module is the native product and release unit; pnpm coordinates build-, test-, and development-only TypeScript tooling and the browser application.
 
-Stable Go module tags (`packages/cli/vX.Y.Z`) and the Latest GitHub Release are published only by the manually dispatched Release workflow, using the latest `main` at checkout. Every push to `main` runs CI and, after successful verification, publishes that commit to the generated `dev` branch for `go install ...@dev`; superseded runs cannot roll it back. Dev publication creates no version tags or GitHub releases, so `go install ...@latest` continues resolving stable tags. See [release details](release.md).
+Stable Go module tags (`packages/cli/vX.Y.Z`) and the Latest GitHub Release are published only by the manually dispatched Release workflow, using the latest `main` at checkout. Every push to `main` runs verification-only CI. Development installs use `go install ...@main` directly, without a generated distribution branch or waiting for CI; `go install ...@latest` continues resolving stable tags. See [release details](release.md).
 
 Go dependency direction is:
 
