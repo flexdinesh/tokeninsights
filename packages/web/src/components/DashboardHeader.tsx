@@ -1,4 +1,4 @@
-import { ArrowDownToLine, LoaderCircle, Monitor, Moon, RefreshCw, Sun } from 'lucide-react'
+import { ArrowDownToLine, LoaderCircle, Monitor, Moon, Sun } from 'lucide-react'
 import { useDashboardPreferences } from '../state'
 import { Button } from './ui/button'
 
@@ -9,8 +9,6 @@ export function DashboardHeader({
   pendingRefresh,
   serverUnavailable,
   lastSynced,
-  reloading,
-  onReload,
   onSync,
 }: {
   hostname: string
@@ -19,8 +17,6 @@ export function DashboardHeader({
   pendingRefresh?: boolean
   serverUnavailable: boolean
   lastSynced?: number
-  reloading: boolean
-  onReload: () => void
   onSync: () => void
 }) {
   const { theme, setTheme } = useDashboardPreferences()
@@ -64,20 +60,9 @@ export function DashboardHeader({
             <Monitor size="1.1em" />
           )}
         </Button>
-        <Button
-          variant="outline"
-          size="sm"
-          className="reload-button"
-          aria-label="Reload Data"
-          title="Reload Data"
-          onClick={onReload}
-        >
-          <RefreshCw size="1em" className={reloading ? 'spin' : ''} />
-          <span>Reload Data</span>
-        </Button>
         <Button className="sync-button" size="sm" disabled={refreshDisabled} onClick={onSync}>
           {running ? <LoaderCircle size="1em" className="spin" /> : <ArrowDownToLine size="1em" />}
-          <span>{pendingRefresh ? 'Refresh queued' : running ? 'Refresh again' : 'Refresh'}</span>
+          <span>{pendingRefresh ? 'Sync queued' : running ? 'Sync again' : 'Sync'}</span>
         </Button>
       </div>
     </header>

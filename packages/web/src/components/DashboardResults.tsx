@@ -81,7 +81,7 @@ export function DashboardResults({
       )}
       {enabled && !hasData && (!analytics.error || running) && <DashboardSkeleton />}
       {enabled && data && data.summary.syncedSessions === 0 && !running && !analytics.error && (
-        <p role="status">No usage saved yet. Select Refresh to read local session data.</p>
+        <p role="status">No usage saved yet. Select Sync to read local session data.</p>
       )}
       {enabled && data && hasData && (
         <div className="analytics" aria-busy={analytics.isFetching}>
@@ -138,7 +138,7 @@ function SyncProgress({ status, hasData }: { status: SyncStatus; hasData: boolea
         <div>
           <h2>
             <LoaderCircle className="spin" size="1em" />
-            Refreshing usage
+            Syncing usage
           </h2>
           <p>{message}</p>
         </div>

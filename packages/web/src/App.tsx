@@ -123,8 +123,6 @@ function DashboardShell({
         pendingRefresh={controller.pendingRefresh}
         serverUnavailable={serverUnavailable}
         lastSynced={analytics.data?.dashboard.lastSynced}
-        reloading={analytics.isFetching && enabled}
-        onReload={controller.reload}
         onSync={controller.startSync}
       />
       <main id="dashboard" className="dashboard">

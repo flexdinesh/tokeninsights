@@ -14,7 +14,9 @@ import (
 	"testing"
 	"time"
 
+	application "github.com/flexdinesh/tokeninsights/packages/cli/internal/app"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/db"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/pipeline"
 	serverapi "github.com/flexdinesh/tokeninsights/packages/cli/internal/server/api"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/version"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/viewer"
@@ -396,6 +398,87 @@ func TestAPIV1RoutesAndMethods(t *testing.T) {
 	}
 	if response.Code != http.StatusOK || status.Running || status.Phase != serverapi.SyncPhaseReady || status.Harnesses == nil {
 		t.Fatalf("sync: %d %+v", response.Code, status)
+	}
+}
+
+func TestConcurrentSyncPostsJoinWhileWaitingForWriter(t *testing.T) {
+	path := fixture(t)
+	release, err := db.AcquireWriterLock(context.Background(), path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer release()
+	sources, err := pipeline.ResolveSources(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	controller := application.New(context.Background(), path, sources, application.ID(), io.Discard)
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		if err := controller.Close(ctx); err != nil {
+			t.Error(err)
+		}
+	})
+	a := newApp(context.Background(), Options{DBPath: path}, io.Discard)
+	a.controller = controller
+	handler := a.handler()
+	const requests = 32
+	start := make(chan struct{})
+	responses := make(chan *httptest.ResponseRecorder, requests)
+	for range requests {
+		go func() {
+			<-start
+			response := httptest.NewRecorder()
+			handler.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/api/v1/sync", nil))
+			responses <- response
+		}()
+	}
+	close(start)
+	for range requests {
+		response := <-responses
+		var status serverapi.SyncResponse
+		if err := json.Unmarshal(response.Body.Bytes(), &status); err != nil {
+			t.Fatal(err)
+		}
+		if response.Code != http.StatusAccepted || !status.Running {
+			t.Fatalf("sync not accepted while waiting: %d %+v", response.Code, status)
+		}
+	}
+	operation, err := controller.RequestRefresh(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	database, err := db.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = database.Close() }()
+	var jobs int
+	if err := database.QueryRow("SELECT COUNT(*) FROM sync_jobs").Scan(&jobs); err != nil || jobs != 0 {
+		t.Fatal("sync bypassed writer lock", jobs, err)
+	}
+	release()
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	ticker := time.NewTicker(time.Millisecond)
+	defer ticker.Stop()
+	for {
+		result, ok := controller.Operation(operation.ID)
+		if ok && result.State == "succeeded" {
+			break
+		}
+		if ok && result.State != "queued" && result.State != "running" {
+			t.Fatal("sync failed", result)
+		}
+		select {
+		case <-ctx.Done():
+			t.Fatal("sync did not complete", ctx.Err())
+		case <-ticker.C:
+		}
+	}
+	if err := database.QueryRow("SELECT COUNT(*) FROM sync_jobs").Scan(&jobs); err != nil || jobs != 1 {
+		t.Fatal("concurrent posts created duplicate sync jobs", jobs, err)
 	}
 }
 

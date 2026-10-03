@@ -1070,9 +1070,6 @@ tbody tr:hover {
     gap: var(--space-1);
     margin-left: auto;
   }
-  .header-actions .reload-button span {
-    display: none;
-  }
   .dashboard {
     padding-bottom: var(--space-4);
   }
@@ -1297,7 +1294,7 @@ a {
   .app-header {
     position: relative;
     display: grid;
-    grid-template-columns: minmax(0, 1fr) auto auto;
+    grid-template-columns: minmax(0, 1fr) auto;
     gap: var(--space-2);
   }
   .brand {
@@ -1306,10 +1303,6 @@ a {
   }
   .theme-button {
     grid-column: 2;
-    grid-row: 1;
-  }
-  .reload-button {
-    grid-column: 3;
     grid-row: 1;
   }
   .sync-button {

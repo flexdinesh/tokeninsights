@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"path/filepath"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -127,6 +128,96 @@ func TestRefreshCoalescesBeforeCaptureAndQueuesExactlyOneAfter(t *testing.T) {
 	case <-followup:
 	default:
 		t.Fatal("followup skipped after failure")
+	}
+}
+
+func TestConcurrentRefreshRequestsQueueAndCoalesce(t *testing.T) {
+	c := testController(t)
+	exclusiveStarted, finishExclusive := make(chan struct{}), make(chan struct{})
+	refreshCaptured, finishRefresh := make(chan struct{}), make(chan struct{})
+	var calls, active atomic.Int32
+	c.runner = func(ctx context.Context, a Action, progress func(pipeline.SyncProgressEvent), _ func(context.Context) error) (pipeline.Summary, error) {
+		running := active.Add(1)
+		defer active.Add(-1)
+		if running != 1 {
+			return pipeline.Summary{}, errors.New("actions overlapped")
+		}
+		var finish <-chan struct{}
+		switch calls.Add(1) {
+		case 1:
+			if a.Kind != "normalize" {
+				return pipeline.Summary{}, errors.New("exclusive action did not run first")
+			}
+			finish = finishExclusive
+			close(exclusiveStarted)
+		case 2:
+			progress(pipeline.SyncProgressEvent{Status: pipeline.SyncProgressDiscovering})
+			finish = finishRefresh
+			close(refreshCaptured)
+		default:
+			return pipeline.Summary{}, nil
+		}
+		select {
+		case <-finish:
+			return pipeline.Summary{}, nil
+		case <-ctx.Done():
+			return pipeline.Summary{}, ctx.Err()
+		}
+	}
+	exclusive, err := c.Submit(context.Background(), ID(), Action{Kind: "normalize", Sources: c.sources})
+	if err != nil {
+		t.Fatal(err)
+	}
+	<-exclusiveStarted
+	burst := func() Operation {
+		t.Helper()
+		const requests = 64
+		type result struct {
+			operation Operation
+			err       error
+		}
+		start := make(chan struct{})
+		results := make(chan result, requests)
+		for range requests {
+			go func() {
+				<-start
+				o, err := c.RequestRefresh(context.Background())
+				results <- result{o, err}
+			}()
+		}
+		close(start)
+		var first Operation
+		for range requests {
+			r := <-results
+			if r.err != nil || r.operation.State != "queued" {
+				t.Fatal("refresh not queued", r.operation, r.err)
+			}
+			if first.ID == "" {
+				first = r.operation
+			} else if r.operation.ID != first.ID {
+				t.Fatal("concurrent requests created duplicate work")
+			}
+		}
+		return first
+	}
+	first := burst()
+	if calls.Load() != 1 {
+		t.Fatal("refresh ran before exclusive action completed")
+	}
+	close(finishExclusive)
+	<-refreshCaptured
+	second := burst()
+	if first.ID == second.ID || calls.Load() != 2 {
+		t.Fatal("post-capture requests did not queue one follow-up")
+	}
+	close(finishRefresh)
+	for _, id := range []string{exclusive.ID, first.ID, second.ID} {
+		if o := awaitOperation(t, c, id); o.State != "succeeded" {
+			t.Fatal("queued action failed", o)
+		}
+	}
+	if calls.Load() != 3 {
+		t.Fatal("duplicate refresh ran", calls.Load())
 	}
 }
 

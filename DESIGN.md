@@ -257,7 +257,7 @@ The context legend sits outside the SVG and wraps. These are chart geometry,
 not global spacing tokens.
 
 At 55rem viewport width, tabs take the full row and sync progress uses two
-columns. At 38rem, the header becomes a relative two-row grid: brand/theme/reload
+columns. At 38rem, the header becomes a relative two-row grid: brand/theme
 above source/sync. Source name and URL stack, retaining width for the name.
 Quick dates span the row, tabs scroll horizontally, date fields stack, and
 chart controls wrap. Mobile/coarse-pointer controls grow to 2.75rem.
