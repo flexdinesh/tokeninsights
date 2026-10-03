@@ -55,7 +55,7 @@ tokeninsights view
 The terminal dashboard uses a full-width table, filtered token readouts, and a
 light/dark Instrument desk theme. Press `f` for the filter drawer or `?` for keys.
 
-The TUI requests refresh on each opening and shows saved usage while it runs. Closing it leaves the service and accepted refresh running. The web reads saved data on opening; its **Refresh** button syncs on demand. `view --no-sync` stays read-only and does not start the service.
+The TUI requests refresh on each opening and shows saved usage while it runs. Closing it leaves the service and accepted refresh running. The web reads saved data on opening; its **Sync** button syncs on demand. `view --no-sync` stays read-only and does not start the service.
 
 ```sh
 tokeninsights service start

@@ -316,10 +316,15 @@ test('table columns resize by drag and keyboard without sorting', async ({ page 
   await expect(resize).toHaveAttribute('aria-valuenow', '144')
 })
 
-test('saved usage, seven views, filtering, history, pagination, and explicit refresh', async ({
+test('saved usage, seven views, filtering, history, pagination, and explicit sync', async ({
   page,
 }) => {
   const errors: string[] = []
+  let syncRequests = 0
+  page.on('request', (request) => {
+    if (new URL(request.url()).pathname === '/api/v1/sync' && request.method() === 'POST')
+      syncRequests++
+  })
   page.on('pageerror', (error) => errors.push(error.message))
   await page.goto('/')
   await expect(page.getByRole('region', { name: 'Filtered usage summary' })).toBeVisible()
@@ -416,11 +421,14 @@ test('saved usage, seven views, filtering, history, pagination, and explicit ref
   await expect(page.locator('.results-summary')).toContainText('60 rows')
   await expect(page.locator('.session-coverage')).toHaveText('Sessions 60 shown / 80 synced')
   await expect(page.locator('.results-summary')).toContainText('258K')
-  await page.getByRole('button', { name: 'Refresh', exact: true }).click()
-  await expect(page.getByRole('button', { name: 'Refresh', exact: true })).toBeEnabled()
+  expect(syncRequests).toBe(0)
+  await page.getByRole('button', { name: 'Sync', exact: true }).click()
+  await expect(page.getByRole('button', { name: 'Sync', exact: true })).toBeEnabled()
   await expect(page.getByLabel('Total tokens: 258,000', { exact: true })).toBeVisible()
-  await page.getByRole('button', { name: 'Reload Data', exact: true }).click()
+  await expect(page.getByRole('button', { name: 'Reload Data', exact: true })).toHaveCount(0)
+  await page.reload()
   await expect(page.getByLabel('Total tokens: 258,000', { exact: true })).toBeVisible()
+  expect(syncRequests).toBe(1)
   expect(errors).toEqual([])
   await page.getByRole('button', { name: 'All time', exact: true }).click()
   await expect(page.locator('.session-coverage')).toHaveText('Sessions 80 shown / 80 synced')
@@ -581,7 +589,7 @@ test('themes, keyboard filters, mobile layout, and scalable typography', async (
   await page.keyboard.press('Escape')
   await expect(page.getByRole('button', { name: 'Harness', exact: true })).toBeFocused()
   await page.setViewportSize({ width: 390, height: 844 })
-  await expect(page.getByRole('button', { name: 'Refresh', exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Sync', exact: true })).toBeVisible()
   await expect
     .poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth))
     .toBe(true)
@@ -600,7 +608,7 @@ test('themes, keyboard filters, mobile layout, and scalable typography', async (
   await expect
     .poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth))
     .toBe(true)
-  await expect(page.getByRole('button', { name: 'Refresh', exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Sync', exact: true })).toBeVisible()
   await page.evaluate(() => {
     document.documentElement.style.fontSize = ''
   })
@@ -660,9 +668,9 @@ for (const address of ['127.0.0.1', 'localhost']) {
     const sync = page.waitForRequest(
       (request) => request.url() === `${origin}/api/v1/sync` && request.method() === 'POST',
     )
-    await page.getByRole('button', { name: 'Refresh', exact: true }).click()
+    await page.getByRole('button', { name: 'Sync', exact: true }).click()
     await sync
-    await expect(page.getByRole('button', { name: 'Refresh', exact: true })).toBeEnabled()
+    await expect(page.getByRole('button', { name: 'Sync', exact: true })).toBeEnabled()
     await page.reload()
     await expect(page.getByLabel('Total tokens: 258,000', { exact: true })).toBeVisible()
     expect(requests.every((url) => new URL(url).origin === origin)).toBe(true)

@@ -30,16 +30,21 @@ test('chart load failure preserves dashboard controls and results, and reload re
 
 test('old status reads cannot overwrite a newly started sync', async ({ page }) => {
   let running = false
+  let syncRequests = 0
   let hold = false
   let captured = false
   let delivered = false
   let release: (() => void) | undefined
   await page.route('**/api/v1/sync', async (route) => {
     const post = route.request().method() === 'POST'
-    if (post) running = true
+    if (post) {
+      running = true
+      syncRequests++
+    }
     const snapshot = {
       phase: running ? 'syncing' : 'ready',
       running,
+      pendingRefresh: syncRequests > 1,
       error: '',
       revision: running ? 100 : 99,
       harnesses: {},
@@ -59,15 +64,20 @@ test('old status reads cannot overwrite a newly started sync', async ({ page }) 
   await page.goto('/tokens')
   await expect(page.getByLabel('Total tokens: 258,000', { exact: true })).toBeVisible()
   hold = true
-  await page.getByRole('button', { name: 'Reload Data', exact: true }).click()
-  await expect.poll(() => captured).toBe(true)
-  await page.getByRole('button', { name: 'Refresh', exact: true }).click()
-  await expect(page.getByRole('button', { name: 'Refresh again', exact: true })).toBeEnabled()
+  await expect.poll(() => captured, { timeout: 10000 }).toBe(true)
+  await page.getByRole('button', { name: 'Sync', exact: true }).click()
+  await expect(page.getByRole('button', { name: 'Sync again', exact: true })).toBeEnabled()
   if (!release) throw new Error('Expected a held status request')
   release()
   await expect.poll(() => delivered).toBe(true)
   await expect(page.locator('.header-status')).toHaveText('Syncing…')
-  await expect(page.getByRole('button', { name: 'Refresh again', exact: true })).toBeEnabled()
+  await expect(page.getByRole('button', { name: 'Sync again', exact: true })).toBeEnabled()
+  await page.getByRole('button', { name: 'Sync again', exact: true }).click()
+  await expect(page.getByRole('button', { name: 'Sync queued', exact: true })).toBeDisabled()
+  expect(syncRequests).toBe(2)
+  await page.reload()
+  await expect(page.getByRole('button', { name: 'Sync queued', exact: true })).toBeDisabled()
+  expect(syncRequests).toBe(2)
 })
 
 test('old empty days remain unconfirmed in table cells and expanded coverage', async ({ page }) => {
@@ -163,7 +173,7 @@ test('sync and sorting preserve expanded Repo directories and focus', async ({ p
   await page.getByRole('button', { name: 'Show directories', exact: true }).click()
   const expanded = page.getByRole('button', { name: 'Hide directories', exact: true })
   await expect(expanded).toBeVisible()
-  await page.getByRole('button', { name: 'Refresh', exact: true }).click()
+  await page.getByRole('button', { name: 'Sync', exact: true }).click()
   await expanded.focus()
   await expect(page.getByLabel('Sources checked')).toBeVisible()
   await expect(expanded).toBeFocused()
