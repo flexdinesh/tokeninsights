@@ -20,13 +20,13 @@ Specific stable version:
 go install github.com/flexdinesh/tokeninsights/packages/cli/cmd/tokeninsights@v0.1.3
 ```
 
-Development version from the latest `main` push published after CI passes:
+Development version directly from `main`:
 
 ```sh
-go install github.com/flexdinesh/tokeninsights/packages/cli/cmd/tokeninsights@dev
+go install github.com/flexdinesh/tokeninsights/packages/cli/cmd/tokeninsights@main
 ```
 
-Go resolves `@latest` from stable module tags (`packages/cli/vX.Y.Z`), independently of GitHub's Latest badge. `@dev` resolves the moving `dev` branch to a Go pseudo-version, or a stable version when that commit is tagged. Module proxies may briefly cache branch lookups; rerun the install after publication to update.
+Go resolves `@latest` from stable module tags (`packages/cli/vX.Y.Z`), independently of GitHub's Latest badge. `@main` resolves the moving `main` branch to a Go pseudo-version, or a stable version when that commit is tagged. It does not wait for CI. Module proxies may briefly cache branch lookups; rerun the install after a push to update.
 
 ## Release
 
@@ -43,19 +43,13 @@ Required secret:
 
 To begin a new minor or major series, change `.release-version`. For example, changing it to `0.2` makes the next release `packages/cli/v0.2.0`; changing it to `1.0` makes the next release `packages/cli/v1.0.0`. Later releases automatically increment that series' patch number.
 
-React assets are committed under `packages/cli/internal/server/static` and embedded with `go:embed` in every binary, including stable and dev Go installs. Local pre-push verification rebuilds the frontend and checks asset drift. CI/release run only `mise run check:ci` before publication: formatting, SQLite contract consistency, and native build. Test suites and browser installation stay local. Frontend changes must include regenerated assets (`pnpm run build:web`). The private `@tokeninsights/build-tools` workspace package under `tools/build` owns generated-asset checks, dev branch publication, and Homebrew formula generation; it is build/release-time tooling only.
+React assets are committed under `packages/cli/internal/server/static` and embedded with `go:embed` in every binary, including stable and main Go installs. Local pre-push verification rebuilds the frontend and checks asset drift. CI/release run only `mise run check:ci`: formatting, SQLite contract consistency, and native build. Test suites and browser installation stay local. Frontend changes must include regenerated assets (`pnpm run build:web`). The private `@tokeninsights/build-tools` workspace package under `tools/build` owns generated-asset checks and Homebrew formula generation; it is build/release-time tooling only.
 
 Release artifacts contain only the native Go binary and documentation. Production hosts need no Node.js, npm, pnpm, `node_modules`, repository JavaScript tooling, or separate web files. Go serves the embedded browser JavaScript as bytes; it executes only in the browser, and the Go runtime never invokes a JavaScript runtime.
 
 The tap branch is deterministic per version, such as `tokeninsights-v0.0.1`, so rerunning the release updates the same tap pull request. If the tap pull request cannot be created or updated, the release workflow fails after publishing the GitHub Release so the Homebrew update can be repaired manually.
 
 The tap repository owns Homebrew-native validation. Its CI should run style, audit, install, and formula test checks for changed formulae before merging the generated pull request.
-
-## Automatic dev publication
-
-Every push to `main` runs CI. After verification passes, **Publish dev** points `dev` at that exact commit, making it available through `go install ...@dev`. Pull requests only verify; pushes to `dev` no longer trigger the obsolete snapshot packaging job. Dev publication creates no tags, GitHub releases, or Homebrew updates and leaves the stable Latest release unchanged.
-
-`dev` is a generated distribution branch, not an independent development branch. The first publication replaces its obsolete history with `main`. A job whose commit has been superseded on `main` skips publication. An explicit Git lease rejects concurrent changes to `dev`; publication retries up to three times, rechecking both branches each time. Failed verification leaves `dev` unchanged. Rerun the latest `main` CI run to retry a failed publication. The job uses `GITHUB_TOKEN` with `contents: write`; branch rules must permit its update to `dev`.
 
 ## Verify Locally
 
