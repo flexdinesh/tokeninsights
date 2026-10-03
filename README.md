@@ -44,6 +44,8 @@ tokeninsights --open
 
 Bare invocation starts the background service or prints its current URL. `--open` explicitly opens the dashboard when possible; SSH/headless sessions skip browser launch. Startup creates an empty database when needed and never syncs.
 
+Service startup creates private directories with mode `0700` and tightens existing service directories owned by you, including state directories from older installs. Symlinks and directories owned by another user are rejected. `service status` leaves permissions unchanged.
+
 Open the terminal dashboard:
 
 ```sh
