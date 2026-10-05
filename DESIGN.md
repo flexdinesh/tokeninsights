@@ -1,40 +1,40 @@
 ---
 name: "TokenInsights — Graphite & Lime"
-description: "Compact measurement workspace with graphite, lime feedback, and warm light surfaces."
+description: "Compact measurement workspace with graphite, electric lime feedback, and pure white light surfaces."
 colors:
-  background: "#f5f6f1"
+  background: "#ffffff"
   dark-background: "#17191b"
-  foreground: "#272d24"
+  foreground: "#242824"
   dark-foreground: "#edf0ee"
-  card: "#fdfefb"
+  card: "#ffffff"
   dark-card: "#202326"
-  popover: "#fdfefb"
+  popover: "#ffffff"
   dark-popover: "#282c2e"
-  primary: "#c5e85d"
+  primary: "#b8f500"
   dark-primary: "#c5ee62"
-  primary-foreground: "#25300f"
+  primary-foreground: "#243000"
   dark-primary-foreground: "#1c260e"
-  secondary: "#ecefe6"
+  secondary: "#f5f6f4"
   dark-secondary: "#292e2a"
-  secondary-foreground: "#46513e"
+  secondary-foreground: "#626862"
   dark-secondary-foreground: "#c2c9be"
-  muted: "#ecefe6"
+  muted: "#f5f6f4"
   dark-muted: "#292e2a"
-  muted-foreground: "#5d6657"
+  muted-foreground: "#626862"
   dark-muted-foreground: "#afb6ad"
-  accent: "#e7eecf"
+  accent: "#efffcc"
   dark-accent: "#303b21"
-  accent-foreground: "#507000"
+  accent-foreground: "#426300"
   dark-accent-foreground: "#c5ee62"
   destructive: "oklch(0.56 0.22 27)"
   dark-destructive: "oklch(0.68 0.19 23)"
   destructive-foreground: "oklch(0.985 0 0)"
   dark-destructive-foreground: "oklch(0.985 0 0)"
-  border: "#dce1d5"
+  border: "#e1e4e0"
   dark-border: "#393e39"
-  input: "#828f75"
+  input: "#858c82"
   dark-input: "#69745f"
-  ring: "#507000"
+  ring: "#426300"
   dark-ring: "#c5ee62"
   success: "oklch(0.49 0.14 155)"
   dark-success: "oklch(0.72 0.16 155)"
@@ -42,7 +42,7 @@ colors:
   dark-warning: "oklch(0.78 0.15 80)"
   error-surface: "oklch(0.96 0.025 25)"
   dark-error-surface: "oklch(0.2 0.04 25)"
-  chart-1: "#507000"
+  chart-1: "#577b00"
   dark-chart-1: "#c5ee62"
   chart-2: "#748068"
   dark-chart-2: "#9da991"
@@ -178,7 +178,7 @@ components:
 
 **Creative North Star: "Graphite & Lime"**
 
-Graphite & Lime is a compact measurement workspace: neutral graphite in dark mode, warm white in light mode, and crisp lime feedback. Fine rules, static readouts, and dense rows keep measurements close together.
+Graphite & Lime is a compact measurement workspace: neutral graphite in dark mode, pure white in light mode, and crisp lime feedback. Fine rules, static readouts, and dense rows keep measurements close together.
 
 System typography, tabular numerals, restrained motion, and explicit states support repeated inspection. Preserve the TokenInsights logo and offline assets; no remote fonts are needed.
 
@@ -190,21 +190,21 @@ Architecture remains in [docs/design.md](docs/design.md); terminal styling in
 
 **Key Characteristics:**
 
-- Graphite dark surfaces and warm light surfaces.
+- Graphite dark surfaces and pure white light surfaces.
 - Lime actions and selection; neutral readout values.
 - Flat, rule-separated analytics with compact controls.
 - Wrapping filters, scalable type, and visible keyboard focus.
 
 ## Colors
 
-Warm, lightly green neutrals contrast with graphite and one lime action accent.
+Pure white surfaces and neutral gray supporting roles contrast with graphite and Electric Lime actions in light mode.
 
 ### Primary
 
-- **Action lime**: primary fills with dark text in both themes.
-- **Lime ink**: deeper light-theme selection, focus, and principal chart line;
+- **Action lime**: Electric Lime (`#b8f500`) with dark text in light mode; the existing bright lime in dark mode.
+- **Lime ink**: deep lime (`#426300`) for light-theme selection and focus, with `#577b00` for the principal chart line;
   crisp lime in dark mode.
-- **Lime tint**: selected quick dates, chart metrics, and filters.
+- **Lime tint**: `#efffcc` for selected quick dates, chart metrics, and filters in light mode.
 
 ### Secondary
 
@@ -218,8 +218,8 @@ pair them with text or icons.
 
 ### Neutral
 
-- **Warm workspace / Graphite workspace**: page backgrounds.
-- **Warm white / Graphite surface**: header, fields, and ordinary containers.
+- **Pure white workspace / Graphite workspace**: page backgrounds.
+- **Pure white / Graphite surface**: header, fields, and ordinary containers.
 - **Raised surface**: hover regions and overlays.
 - **Main, supporting, and muted ink**: values, labels, and metadata.
 - **Fine rule / Field edge**: region separation and stronger control boundaries.

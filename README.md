@@ -32,8 +32,8 @@ Open the browser dashboard:
 
 The Graphite & Lime layout pairs a compact status header and static usage summary
 with short charts, horizontal filters, and dense tables. Dark mode uses graphite
-and bright lime; light mode uses warm white and deep lime for readable selections
-and chart lines.
+and bright lime; light mode uses pure white, Electric Lime actions (`#b8f500`),
+and deeper lime for readable selections and chart lines.
 Models, Providers, Harnesses, and Repo charts show each group's percentage of the
 full filtered token total above its bar and in its tooltip. Dimension filter labels
 also show the percentage.
