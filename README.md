@@ -71,6 +71,8 @@ Collection and delivery report separate outcomes. If delivery fails, locally com
 
 Equal token counts never establish duplicate identity. Source-native session/message/request identities distinguish facts; mutable token values are payloads. Claude's supported source-timestamp revisions replace one native request contribution; unproven or equal-revision conflicts fail explicitly. Missing stable evidence is withheld from publication with diagnostics. Source disappearance or collector reset does not delete server history.
 
+Harnesses can publish the same location with different repository provenance. When keys and display names match, the server keeps the strongest evidence (`harness`, `git-remote`, `git-common-dir`, then `opencode-project`) without changing token counts. Pending batches blocked by a provenance-only `reference_conflict` can resume with `sync --publish-only` after upgrading and restarting the server.
+
 The local web/API binds `127.0.0.1:8765` by default. The TUI uses the same REST queries as the browser, including when it connects directly to another server:
 
 ```sh

@@ -477,6 +477,13 @@ replaces, older contributes no update, equal-time differing payloads conflict.
 Other immutable fact payload conflicts reject the entire batch. No arrival-time,
 collector sequence, upload clock, or universal largest-counter precedence exists.
 Session range merging can advance server revision without adding usage.
+Location references with identical directory/repository keys and labels merge
+repository provenance using the collector's evidence priority: `harness`,
+`git-remote`, `git-common-dir`, then `opencode-project`; missing or unrecognized
+sources rank last. Weaker evidence never replaces stronger evidence. Provenance
+promotion can advance server revision without changing token contributions;
+conflicting keys or labels still reject the whole batch. Saved batches remain
+unchanged and retry through normal publication.
 
 Admission allows four concurrent ingestions, with SQLite serializing writes and
 `busy` failures remaining retryable. A rejected batch commits neither a visible
