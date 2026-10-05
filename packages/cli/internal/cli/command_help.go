@@ -12,18 +12,20 @@ func runHelp(invocation commandInvocation, _ []string) error {
 func usageText() string {
 	return `usage: tokeninsights <command> [options]
 
-Bare invocation ensures the background service and prints its URL. No startup sync.
+Bare invocation ensures local or prints configured remote URL. No startup sync.
 
 commands:
   service start|stop|restart|status   manage local web/API server
   sync                              collect all harnesses and publish normalized facts
   tui                               sync with progress, then open terminal dashboard
+  config set KEY VALUE|get KEY|remove KEY
+                                    manage client preferences
 
 advanced:
   collector normalize|reset-canonical|reset-all
                                     manage host collector data
   service run                       run local server in foreground
-  server run                        run canonical ingestion/query server
+  tokeninsights-server              separate foreground remote executable
 
   tokeninsights service start --port 8765
   tokeninsights service status --json
@@ -33,8 +35,14 @@ advanced:
   tokeninsights sync --server-url https://example.test
   tokeninsights tui --sync=false
   tokeninsights collector --help
+  tokeninsights config set server-url http://remote-machine:8765
+  tokeninsights config set host 0.0.0.0
 
 Collector: --collector-db-path (collector.sqlite). Server: --server-db-path (server.sqlite).
 Existing tokeninsights.sqlite is untouched; retained sources rebuild fresh databases.
-Explicit --server-url skips local startup. Non-loopback serving requires a token.`
+Config: --config-file PATH / TOKENINSIGHTS_CONFIG_PATH (default XDG config.json).
+Keys: server-url, host, port, collector-db-path, server-db-path.
+Runtime precedence: flags > environment > file > defaults; get reads preferences.
+Empty server-url selects local. Remote failures never start local.
+Public servers are unauthenticated, including 0.0.0.0. --token/server run removed.`
 }

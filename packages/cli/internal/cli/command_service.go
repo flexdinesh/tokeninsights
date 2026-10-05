@@ -5,8 +5,8 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/config"
 	"io"
-	"os"
 
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/browser"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/server"
@@ -21,21 +21,19 @@ type serviceOptions struct {
 }
 
 func parseServiceOptions(action string, args []string, output io.Writer) (serviceOptions, error) {
-	options := serviceOptions{Options: service.Options{DBPath: defaultServerDBPath()}}
+	return parseServiceOptionsWithDefaults(action, args, output, (commandInvocation{}).defaults())
+}
+
+func parseServiceOptionsWithDefaults(action string, args []string, output io.Writer, settings config.Settings) (serviceOptions, error) {
+	options := serviceOptions{Options: localOptions(settings.ServerDBPath, settings)}
 	flags := flag.NewFlagSet("tokeninsights service "+action, flag.ContinueOnError)
 	flags.SetOutput(output)
-	flags.StringVar(&options.DBPath, "server-db-path", defaultServerDBPath(), "path to server sqlite db")
+	flags.StringVar(&options.DBPath, "server-db-path", settings.ServerDBPath, "path to server sqlite db")
 	var host string
 	var port int
-	var token string
 	if action == "start" || action == "restart" || action == "run" {
 		flags.StringVar(&host, "host", server.DefaultHost, "web/API bind IPv4 address")
 		flags.IntVar(&port, "port", server.DefaultPort, "web/API port (0 chooses available)")
-		token = os.Getenv("TOKENINSIGHTS_SERVER_TOKEN")
-		flags.StringVar(&token, "token", token, "server authentication token")
-		if token != "" {
-			options.Token = &token
-		}
 	}
 	if action == "start" {
 		flags.BoolVar(&options.open, "open", false, "open dashboard in browser")
@@ -59,9 +57,7 @@ func parseServiceOptions(action string, args []string, output io.Writer) (servic
 		if f.Name == "port" {
 			options.Port = &port
 		}
-		if f.Name == "token" {
-			options.Token = &token
-		}
+
 	})
 	if err := server.ValidateHost(host); err != nil {
 		return options, fmt.Errorf("%v\n%w", err, ErrUsage)
@@ -98,12 +94,40 @@ func runService(invocation commandInvocation, args []string) error {
 	default:
 		return fmt.Errorf("unknown service action %q\n%w", action, ErrUsage)
 	}
-	options, err := parseServiceOptions(action, args[1:], invocation.stderr)
+	options, err := parseServiceOptionsWithDefaults(action, args[1:], invocation.stderr, invocation.defaults())
 	if errors.Is(err, flag.ErrHelp) {
 		return nil
 	}
 	if err != nil {
 		return err
+	}
+	if action == "restart" && invocation.configPath != "" {
+		host, port, legacy, err := service.LegacyBind(options.DBPath)
+		if err != nil {
+			return err
+		}
+		if legacy {
+			if err := config.Update(invocation.context, invocation.configPath, func(values *config.Values) error {
+				if values.Host == nil {
+					values.Host = &host
+				}
+				if values.Port == nil {
+					values.Port = &port
+				}
+				return values.Validate()
+			}); err != nil {
+				return err
+			}
+			overrides, err := configurationOverrides(args[1:])
+			if err != nil {
+				return err
+			}
+			settings, err := config.ResolveWithOverrides(invocation.configPath, true, overrides)
+			if err != nil {
+				return err
+			}
+			options.DefaultHost, options.DefaultPort = &settings.Host, &settings.Port
+		}
 	}
 	var state service.State
 	switch action {
@@ -124,6 +148,9 @@ func runService(invocation commandInvocation, args []string) error {
 	}
 	if err != nil {
 		return err
+	}
+	if action == "restart" {
+		_, _ = fmt.Fprintln(invocation.stderr, "Local public API is unauthenticated after restart.")
 	}
 	if err := printServiceStatus(invocation.stdout, state, options.json); err != nil {
 		return err

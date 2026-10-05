@@ -856,7 +856,7 @@ export type GetIngestionCapabilitiesResponseOutput = zod.output<
 >
 
 /**
- * Synchronous atomic ingestion: 200 means all accepted facts are queryable and the durable receipt exists. Same fact identity and payload is a no-op across streams and collector rebuilds. Conflicting immutable facts or batch bytes reject the entire batch. At most four admitted requests; overload returns 503. All non-loopback binds require a token; collectors authenticate with a bearer token.
+ * Synchronous atomic ingestion: 200 means all accepted facts are queryable and the durable receipt exists. Same fact identity and payload is a no-op across streams and collector rebuilds. Conflicting immutable facts or batch bytes reject the entire batch. At most four admitted requests; overload returns 503. Local and initial remote deployments are unauthenticated, including non-loopback binds. Remote application authentication is deferred.
  * @summary Commit one immutable normalized batch
  */
 export const IngestBatchBody = PublicationBatch

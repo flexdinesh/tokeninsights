@@ -17,17 +17,19 @@ var ensureViewServer = service.Ensure
 var runViewCollector = collector.Run
 
 func runView(invocation commandInvocation, args []string) error {
-	options, err := parseTableOptions(args, invocation.stderr, false, periodMonth)
+	options, err := parseViewerOptionsWithDefaults(args, invocation.stderr, false, periodMonth, nil, invocation.defaults())
 	if err != nil {
 		return err
 	}
 	if options.syncBeforeView {
-		if err := collector.ValidatePaths(options.collectorDBPath, options.dbPath); err != nil {
-			return err
+		if options.serverURL == "" {
+			if err := collector.ValidatePaths(options.collectorDBPath, options.dbPath); err != nil {
+				return err
+			}
 		}
 	}
 	if !options.syncBeforeView && options.serverURL == "" {
-		state, err := ensureViewServer(invocation.context, service.Options{DBPath: options.dbPath})
+		state, err := ensureViewConfiguredLocal(invocation.context, options.dbPath, invocation.defaults())
 		if err != nil {
 			return err
 		}
@@ -42,6 +44,7 @@ func runView(invocation commandInvocation, args []string) error {
 		}
 	}
 	model := newInteractiveModel(invocation.context, options, invocation.now, "unknown")
+	model.localSettings = invocation.defaults()
 	defer model.cancelSync()
 	finalModel, err := runInteractiveProgram(model, invocation.stdout)
 	if err != nil {

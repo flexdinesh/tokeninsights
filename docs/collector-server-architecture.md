@@ -41,10 +41,13 @@ flowchart LR
 
 Local and remote compose the same native Go ingestion/query core. Local is the
 default. Selecting `--server-url` publishes directly without starting a local
-server. Remote deployment and credential provisioning remain later work.
-Every non-loopback bind requires an explicit token, including managed
-`service` commands. Tokens protect public assets and APIs; private administration
-stays on the owner-only Unix socket.
+server. The separate `tokeninsights-server` binary runs remotely with the same application
+core, SQLite and synchronous receipts. Client `config set server-url URL` selects
+remote delivery/query; file, environment and flags share one resolver. Local is
+unauthenticated even on `0.0.0.0`; remote v1 is an unauthenticated shared dataset.
+Auth/accounts/backends remain future work. Local private administration stays on
+the owner-only Unix socket; remote creates no such lifecycle state. See
+[system design](system.md).
 
 | Collector owns | Server owns |
 | --- | --- |

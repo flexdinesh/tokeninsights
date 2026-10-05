@@ -134,11 +134,12 @@ async function generateFormula({ version, tag, checksums }: FormulaOptions): Pro
   end
 
   def install
-    bin.install "tokeninsights"
+    bin.install "tokeninsights", "tokeninsights-server"
   end
 
   test do
     assert_match "tokeninsights #{version}", shell_output("#{bin}/tokeninsights --version")
+    assert_match "tokeninsights-server #{version}", shell_output("#{bin}/tokeninsights-server --version")
   end
 end
 `

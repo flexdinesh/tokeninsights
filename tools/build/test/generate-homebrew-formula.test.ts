@@ -46,8 +46,9 @@ void test('generates a tokeninsights Homebrew formula from release checksums', a
   assert.match(formula, /sha256 "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"/)
   assert.match(formula, /sha256 "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"/)
   assert.match(formula, /sha256 "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"/)
-  assert.match(formula, /bin\.install "tokeninsights"/)
+  assert.match(formula, /bin\.install "tokeninsights", "tokeninsights-server"/)
   assert.match(formula, /assert_match "tokeninsights #\{version\}"/)
+  assert.match(formula, /assert_match "tokeninsights-server #\{version\}"/)
 })
 
 void test('fails when a release archive checksum is missing', async () => {

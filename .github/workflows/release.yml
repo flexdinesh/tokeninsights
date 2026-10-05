@@ -81,11 +81,13 @@ jobs:
 
             (
               cd packages/cli
-              CGO_ENABLED=0 GOOS="${goos}" GOARCH="${goarch}" go build \
+              for binary in tokeninsights tokeninsights-server; do
+                CGO_ENABLED=0 GOOS="${goos}" GOARCH="${goarch}" go build \
                 -trimpath \
                 -ldflags="-s -w -X ${module}.Version=${version} -X ${module}.Commit=${commit} -X ${module}.Date=${date}" \
-                -o "../../dist/${archive_dir}/tokeninsights" \
-                ./cmd/tokeninsights
+                -o "../../dist/${archive_dir}/${binary}" \
+                ./cmd/${binary}
+              done
             )
 
             cp README.md LICENSE "dist/${archive_dir}/"

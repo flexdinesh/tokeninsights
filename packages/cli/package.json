@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "build": "go build -o bin/tokeninsights ./cmd/tokeninsights",
+    "build": "go build -o bin/tokeninsights ./cmd/tokeninsights && go build -o bin/tokeninsights-server ./cmd/tokeninsights-server",
     "lint": "go tool -modfile=golangci-lint.mod golangci-lint run ./...",
     "test": "go test ./...",
     "test:race": "go test -race ./..."

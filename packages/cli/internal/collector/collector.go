@@ -106,8 +106,13 @@ func ValidatePaths(collectorPath, serverPath string) error {
 
 func Run(ctx context.Context, options Options) (Result, error) {
 	var result Result
-	if err := ValidatePaths(options.CollectorDBPath, options.ServerDBPath); err != nil {
-		return result, err
+	if strings.TrimSpace(options.CollectorDBPath) == "" {
+		return result, failure("configuration", "missing_database_path", nil)
+	}
+	if strings.TrimSpace(options.ServerURL) == "" {
+		if err := ValidatePaths(options.CollectorDBPath, options.ServerDBPath); err != nil {
+			return result, err
+		}
 	}
 	if strings.TrimSpace(options.ServerURL) != "" {
 		if _, err := endpoint(options.ServerURL); err != nil {

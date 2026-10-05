@@ -14,8 +14,6 @@ const child = spawn(
     '8765',
     '--server-db-path',
     join(root, 'server.sqlite'),
-    '--token',
-    '',
   ],
   {
     stdio: 'inherit',

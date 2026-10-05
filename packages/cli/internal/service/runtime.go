@@ -9,12 +9,10 @@ import (
 	"net"
 	"net/http"
 	"os"
-	"strings"
 	"time"
 
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/db"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/ingestion"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/publication"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/server"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/serverstore"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/version"
@@ -134,11 +132,8 @@ func runtime(parent context.Context, config Config, log io.Writer, onReady func(
 	record.Config.Token = ""
 	core := ingestion.NewCore(store)
 	publicHandler := server.NewHandlerWithInstance(ctx, config.DBPath, core, log, config.Host, record.InstanceID)
-	if config.Token != "" {
-		publicHandler = authenticated(publicHandler, config.Token)
-	}
 	publicHTTP := &http.Server{Handler: publicHandler, BaseContext: func(net.Listener) context.Context { return ctx }, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 35 * time.Second, WriteTimeout: 35 * time.Second, IdleTimeout: 60 * time.Second}
-	privateHTTP := &http.Server{Handler: controlHandler(record, config.Token, cancel), ReadHeaderTimeout: 5 * time.Second, IdleTimeout: 30 * time.Second}
+	privateHTTP := &http.Server{Handler: controlHandler(record, cancel), ReadHeaderTimeout: 5 * time.Second, IdleTimeout: 30 * time.Second}
 	failures := make(chan error, 2)
 	go func() { failures <- publicHTTP.Serve(public) }()
 	go func() { failures <- privateHTTP.Serve(private) }()
@@ -183,7 +178,7 @@ func runtime(parent context.Context, config Config, log io.Writer, onReady func(
 	return errors.Join(err, publicErr, privateErr)
 }
 
-func controlHandler(record Record, token string, shutdown context.CancelFunc) http.Handler {
+func controlHandler(record Record, shutdown context.CancelFunc) http.Handler {
 	mux := http.NewServeMux()
 	write := func(w http.ResponseWriter, status int, value interface{}) {
 		w.Header().Set("Content-Type", "application/json")
@@ -192,23 +187,6 @@ func controlHandler(record Record, token string, shutdown context.CancelFunc) ht
 		_ = json.NewEncoder(w).Encode(value)
 	}
 	mux.HandleFunc("GET /control/v1/instance", func(w http.ResponseWriter, r *http.Request) { write(w, 200, record) })
-	// The verified private control channel compares runtime memory, never the
-	// saved config or redacted discovery record. No secret or digest is returned.
-	mux.HandleFunc("POST /control/v1/token-match", func(w http.ResponseWriter, r *http.Request) {
-		var request struct {
-			Token *string `json:"token"`
-		}
-		r.Body = http.MaxBytesReader(w, r.Body, bodyLimit)
-		if err := decode(r.Body, &request); err != nil || request.Token == nil {
-			write(w, 400, struct {
-				Error string `json:"error"`
-			}{"invalid authentication comparison request"})
-			return
-		}
-		write(w, 200, struct {
-			Matches bool `json:"matches"`
-		}{sameToken(*request.Token, token)})
-	})
 	mux.HandleFunc("GET /control/v1/status", func(w http.ResponseWriter, r *http.Request) {
 		statusStore, err := serverstore.Open(record.Config.DBPath)
 		if err != nil {
@@ -247,27 +225,5 @@ func controlHandler(record Record, token string, shutdown context.CancelFunc) ht
 			return
 		}
 		mux.ServeHTTP(w, r)
-	})
-}
-
-func authenticated(next http.Handler, token string) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		authorized := sameToken(r.Header.Get("Authorization"), "Bearer "+token)
-		if _, password, ok := r.BasicAuth(); ok && sameToken(password, token) {
-			authorized = true
-		}
-		if !authorized {
-			w.Header().Set("WWW-Authenticate", `Basic realm="TokenInsights"`)
-			if strings.HasPrefix(r.URL.Path, "/api/v1/ingestion/") {
-				w.Header().Set("Content-Type", "application/json")
-				w.Header().Set("Cache-Control", "no-store")
-				w.WriteHeader(http.StatusUnauthorized)
-				_ = json.NewEncoder(w).Encode(publication.ErrorResponse{Code: "unauthorized", Stage: "authentication"})
-			} else {
-				http.Error(w, "Authentication required", http.StatusUnauthorized)
-			}
-			return
-		}
-		next.ServeHTTP(w, r)
 	})
 }

@@ -135,8 +135,6 @@ async function runSync({
     '127.0.0.1',
     '--port',
     '0',
-    '--token',
-    '',
   ])
   try {
     await runCommand(binaryPath, [
@@ -149,8 +147,6 @@ async function runSync({
       '--server-db-path',
       serverDBPath,
       '--server-url',
-      '',
-      '--token',
       '',
     ])
   } finally {

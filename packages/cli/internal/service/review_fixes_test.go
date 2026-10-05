@@ -73,132 +73,87 @@ func authenticatedRequest(t *testing.T, method, target, token string, body []byt
 	return response.StatusCode, payload
 }
 
-func TestRunningStartChecksRuntimeTokenAndRestartRotatesWithoutLosingReceipts(t *testing.T) {
+func TestLegacySavedAuthenticationRequiresExplicitRestartAndPreservesReceipt(t *testing.T) {
 	options := environment(t)
-	host, oldToken, newToken := "0.0.0.0", "synthetic-old-token", "synthetic-new-token"
-	options.Host, options.Token = &host, &oldToken
 	state, err := Ensure(t.Context(), options)
 	if err != nil {
 		t.Fatal(err)
 	}
 	cleanupStartedDaemon(t, *state.Record)
 	batch := savedBatch(t, state.Status.DataEpoch)
-	status, receipt := authenticatedRequest(t, http.MethodPost, state.Record.URL+"/api/v1/ingestion/batches", oldToken, batch)
-	if status != http.StatusOK {
-		t.Fatalf("initial ingestion: %d %s", status, receipt)
+	receipt := postBatch(t, state.Record.URL, batch)
+	if err := Stop(t.Context(), options.DBPath); err != nil {
+		t.Fatal(err)
 	}
-	// Runtime memory, rather than an edited saved config, governs token reuse.
 	files, err := servicePaths(state.Record.Config.DatabaseKey, false)
 	if err != nil {
 		t.Fatal(err)
 	}
-	var config Config
-	if err := readFile(files.config, &config); err != nil {
+	legacy := state.Record.Config
+	legacy.Version = 2
+	legacy.Token = "synthetic-legacy-token"
+	legacy.Host = "0.0.0.0"
+	if err := atomicFile(files.config, legacy); err != nil {
 		t.Fatal(err)
 	}
-	config.Token = newToken
-	if err := atomicFile(files.config, config); err != nil {
-		t.Fatal(err)
+	if _, err := Ensure(t.Context(), Options{DBPath: options.DBPath}); err == nil || !strings.Contains(err.Error(), "restart") {
+		t.Fatal("legacy auth silently dropped", err)
 	}
-	for name, token := range map[string]*string{"same": &oldToken, "omitted": nil} {
-		again, err := Ensure(t.Context(), Options{DBPath: options.DBPath, Token: token})
-		if err != nil || again.Record.InstanceID != state.Record.InstanceID {
-			t.Fatalf("%s token replaced/rejected running daemon: %v", name, err)
-		}
-	}
-	emptyToken := ""
-	for name, token := range map[string]*string{"different": &newToken, "empty": &emptyToken} {
-		_, err := Ensure(t.Context(), Options{DBPath: options.DBPath, Token: token})
-		if err == nil || !strings.Contains(err.Error(), "restart") {
-			t.Errorf("%s token change silently accepted: %v", name, err)
-		} else if strings.Contains(err.Error(), oldToken) || strings.Contains(err.Error(), newToken) {
-			t.Fatal("token disclosed in mismatch error")
-		}
-	}
-	if status, _ := authenticatedRequest(t, http.MethodGet, state.Record.URL+"/api/v1/instance", oldToken, nil); status != http.StatusOK {
-		t.Fatal("rejected change invalidated active token")
-	}
-	if status, _ := authenticatedRequest(t, http.MethodGet, state.Record.URL+"/api/v1/instance", newToken, nil); status != http.StatusUnauthorized {
-		t.Fatal("rejected change authorized new token")
-	}
-	restarted, err := Restart(t.Context(), Options{DBPath: options.DBPath, Token: &newToken})
+	restarted, err := Restart(t.Context(), Options{DBPath: options.DBPath})
 	if err != nil {
 		t.Fatal(err)
 	}
-	cleanupStartedDaemon(t, *restarted.Record)
-	if restarted.Record.InstanceID == state.Record.InstanceID || restarted.Status.DataEpoch != state.Status.DataEpoch {
-		t.Fatal("rotation failed to preserve database identity or replace daemon")
+	if restarted.Status.DataEpoch != state.Status.DataEpoch || restarted.Record.Config.Host != "0.0.0.0" || restarted.Record.Config.Token != "" {
+		t.Fatal("legacy upgrade changed history or bind", restarted)
 	}
-	if status, _ := authenticatedRequest(t, http.MethodGet, restarted.Record.URL+"/api/v1/instance", oldToken, nil); status != http.StatusUnauthorized {
-		t.Fatal("old token remains authorized after restart")
+	if replay := postBatch(t, restarted.Record.URL, batch); replay != receipt {
+		t.Fatal("upgrade changed receipt")
 	}
-	status, replay := authenticatedRequest(t, http.MethodPost, restarted.Record.URL+"/api/v1/ingestion/batches", newToken, batch)
-	if status != http.StatusOK || !bytes.Equal(replay, receipt) {
-		t.Fatal("rotation changed committed replay receipt", status)
+	var saved Config
+	if err := readFile(files.config, &saved); err != nil {
+		t.Fatal(err)
+	}
+	if saved.Token != "" || saved.Version != 3 {
+		t.Fatal("legacy credentials retained")
 	}
 }
 
-func TestRunningAnonymousStartRejectsAddingToken(t *testing.T) {
+func TestRunningLocalRejectsRetiredTokenOptionsWithoutReplacingOwner(t *testing.T) {
 	options := environment(t)
 	state, err := Ensure(t.Context(), options)
 	if err != nil {
 		t.Fatal(err)
 	}
 	cleanupStartedDaemon(t, *state.Record)
-	token := "synthetic-added-token"
-	if _, err := Ensure(t.Context(), Options{DBPath: options.DBPath, Token: &token}); err == nil {
-		t.Fatal("adding token to running anonymous daemon silently accepted")
+	for _, token := range []string{"synthetic-added-token", ""} {
+		if _, err := Ensure(t.Context(), Options{DBPath: options.DBPath, Token: &token}); err == nil {
+			t.Fatal("retired token accepted")
+		}
 	}
-	empty := ""
-	if again, err := Ensure(t.Context(), Options{DBPath: options.DBPath, Token: &empty}); err != nil || again.Record.InstanceID != state.Record.InstanceID {
-		t.Fatal("explicit empty token did not reuse anonymous daemon", err)
-	}
-	if status, _ := authenticatedRequest(t, http.MethodGet, state.Record.URL+"/api/v1/instance", "", nil); status != http.StatusOK {
-		t.Fatal("rejected change altered active authentication")
+	again, err := Ensure(t.Context(), Options{DBPath: options.DBPath})
+	if err != nil || again.Record.InstanceID != state.Record.InstanceID {
+		t.Fatal("rejected token replaced owner", err)
 	}
 }
 
-func TestPrivateTokenComparisonIsOwnerGuardedAndDisclosesOnlyBoolean(t *testing.T) {
+func TestPrivateTokenComparisonRemovedAndOwnerGuardPreserved(t *testing.T) {
 	options := environment(t)
-	token := "synthetic-private-runtime-token"
-	options.Token = &token
 	state, err := Ensure(t.Context(), options)
 	if err != nil {
 		t.Fatal(err)
 	}
 	cleanupStartedDaemon(t, *state.Record)
 	client := Client{Record: *state.Record}
-	for _, candidate := range []string{token, "synthetic-other-token", ""} {
-		var reply map[string]bool
-		if err := client.call(t.Context(), http.MethodPost, "/token-match", map[string]string{"token": candidate}, &reply); err != nil {
-			t.Fatal(err)
-		}
-		if len(reply) != 1 || reply["matches"] != (candidate == token) {
-			t.Fatal("token comparison reply includes more than the correct boolean", reply)
-		}
+	if err := client.call(t.Context(), http.MethodPost, "/token-match", map[string]string{"token": "synthetic-token"}, &struct{}{}); err == nil {
+		t.Fatal("retired token endpoint accepted")
 	}
 	client.Record.InstanceID = instanceID()
-	if err := client.call(t.Context(), http.MethodPost, "/token-match", map[string]string{"token": token}, &struct{}{}); err == nil {
-		t.Fatal("unverified instance compared runtime token")
-	}
-	client.Record.InstanceID = state.Record.InstanceID
-	for _, request := range []any{struct{}{}, map[string]any{"token": nil}, map[string]string{"token": token, "private": token}} {
-		var reply map[string]bool
-		if err := client.call(t.Context(), http.MethodPost, "/token-match", request, &reply); err == nil {
-			t.Fatal("invalid token comparison request accepted")
-		} else if strings.Contains(err.Error(), token) {
-			t.Fatal("token disclosed in validation error")
-		}
-	}
-	for _, endpoint := range []string{"/api/v1/instance", "/api/v1/token-match"} {
-		_, payload := authenticatedRequest(t, http.MethodGet, state.Record.URL+endpoint, token, nil)
-		if bytes.Contains(payload, []byte(token)) || bytes.Contains(payload, []byte("matches")) {
-			t.Fatal("public response exposed private authentication configuration")
-		}
+	if err := client.call(t.Context(), http.MethodPost, "/shutdown", nil, &struct{}{}); err == nil {
+		t.Fatal("unverified owner shut down server")
 	}
 	encoded, err := json.Marshal(state)
-	if err != nil || bytes.Contains(encoded, []byte(token)) {
-		t.Fatal("discovery exposed token", err)
+	if err != nil || bytes.Contains(encoded, []byte("synthetic-token")) {
+		t.Fatal("discovery disclosed credentials", err)
 	}
 }
 

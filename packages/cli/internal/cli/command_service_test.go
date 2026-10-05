@@ -34,16 +34,10 @@ func TestServiceFlags(t *testing.T) {
 	}
 }
 
-func TestServiceAuthenticationFlagsAndEnvironment(t *testing.T) {
-	t.Setenv("TOKENINSIGHTS_SERVER_TOKEN", "synthetic-environment-token")
+func TestServiceRetiredAuthenticationFlags(t *testing.T) {
 	for _, action := range []string{"start", "restart", "run"} {
-		options, err := parseServiceOptions(action, nil, io.Discard)
-		if err != nil || options.Token == nil || *options.Token != "synthetic-environment-token" {
-			t.Fatalf("environment %s: %+v %v", action, options, err)
-		}
-		options, err = parseServiceOptions(action, []string{"--token", "synthetic-flag-token"}, io.Discard)
-		if err != nil || options.Token == nil || *options.Token != "synthetic-flag-token" {
-			t.Fatalf("flag %s: %+v %v", action, options, err)
+		if _, err := parseServiceOptions(action, []string{"--token", "synthetic-token"}, io.Discard); !errors.Is(err, ErrUsage) {
+			t.Fatal("retired flag accepted", err)
 		}
 	}
 }

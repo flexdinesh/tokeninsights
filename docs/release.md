@@ -96,3 +96,11 @@ pnpm run build
 ```sh
 tokeninsights --version
 ```
+
+## Separate server executable
+
+The existing release archives and Homebrew formula contain both `tokeninsights`
+and `tokeninsights-server`. Go users install remote explicitly with
+`go install github.com/flexdinesh/tokeninsights/packages/cli/cmd/tokeninsights-server@latest`.
+Both embed committed assets and run without Node/npm/pnpm. Remote runs only when
+explicitly launched and requires `--server-db-path`; installing it starts nothing.

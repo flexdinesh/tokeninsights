@@ -126,11 +126,11 @@ func TestTUIRejectsRemovedNoSyncFlagBeforeSideEffects(t *testing.T) {
 }
 
 func TestViewParsesIndependentServerCollectorAndFilterOptions(t *testing.T) {
-	options, err := parseTableOptions([]string{"--server-url", "https://example.test", "--server-db-path", "server.sqlite", "--collector-db-path", "collector.sqlite", "--token", "test-token", "--all-time", "--provider", "fixture-provider", "--model", "fixture-model", "--harness", "pi", "--session-id", "fixture-session"}, io.Discard, false, periodMonth)
+	options, err := parseTableOptions([]string{"--server-url", "https://example.test", "--server-db-path", "server.sqlite", "--collector-db-path", "collector.sqlite", "--all-time", "--provider", "fixture-provider", "--model", "fixture-model", "--harness", "pi", "--session-id", "fixture-session"}, io.Discard, false, periodMonth)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if options.serverURL != "https://example.test" || options.dbPath != "server.sqlite" || options.collectorDBPath != "collector.sqlite" || options.token != "test-token" || !options.syncBeforeView {
+	if options.serverURL != "https://example.test" || options.dbPath != "server.sqlite" || options.collectorDBPath != "collector.sqlite" || !options.syncBeforeView {
 		t.Fatalf("wrong remote options: %+v", options)
 	}
 	expected := filters{providers: stringList{"fixture-provider"}, models: stringList{"fixture-model"}, harnesses: stringList{"pi"}, sessionIDs: stringList{"fixture-session"}}
