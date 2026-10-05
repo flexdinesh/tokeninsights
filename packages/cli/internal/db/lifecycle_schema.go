@@ -2,10 +2,11 @@ package db
 
 import (
 	"context"
+	"crypto/rand"
 	"database/sql"
+	"encoding/hex"
 	"errors"
 	"fmt"
-	"path/filepath"
 	"strings"
 	"time"
 )
@@ -33,6 +34,11 @@ func createSchema(ctx context.Context, database *sql.DB) error {
 	empty, err := schemaEmpty(ctx, conn)
 	if err != nil {
 		return err
+	}
+	if empty {
+		if err := allowEmptyCollector(ctx, conn); err != nil {
+			return err
+		}
 	}
 	if !empty {
 		state, err := inspectCompatibility(ctx, conn)
@@ -66,53 +72,6 @@ func createSchema(ctx context.Context, database *sql.DB) error {
 	return tx.Commit()
 }
 
-// UpgradeMetadata adds metadata without replacing source or usage data.
-// The caller holds the database writer lock.
-func UpgradeMetadata(ctx context.Context, path string) error {
-	state, err := InspectCompatibility(ctx, path)
-	if err != nil || !state.MigrationRequired {
-		return err
-	}
-	absPath, err := filepath.Abs(path)
-	if err != nil {
-		return err
-	}
-	database, err := openSQLiteMode(ctx, absPath, "rw")
-	if err != nil {
-		return err
-	}
-	defer func() { _ = database.Close() }()
-	tx, err := database.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = tx.Rollback() }()
-	state, err = inspectCompatibility(ctx, tx)
-	if err != nil {
-		return err
-	}
-	if !state.MigrationRequired {
-		return requireCompatible(state, false)
-	}
-	var hasHostname bool
-	if err := tx.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM pragma_table_info('ingest_runs') WHERE name = ?)", ColHostname).Scan(&hasHostname); err != nil {
-		return err
-	}
-	if !hasHostname {
-		if _, err := tx.ExecContext(ctx, "ALTER TABLE ingest_runs ADD COLUMN hostname TEXT"); err != nil {
-			return err
-		}
-	}
-	_, body, err := schemaParts()
-	if err != nil {
-		return err
-	}
-	if _, err := tx.ExecContext(ctx, body); err != nil {
-		return err
-	}
-	return tx.Commit()
-}
-
 func schemaEmpty(ctx context.Context, reader Reader) (bool, error) {
 	var version, objects int
 	if err := reader.QueryRowContext(ctx, "PRAGMA user_version").Scan(&version); err != nil {
@@ -127,6 +86,24 @@ func schemaEmpty(ctx context.Context, reader Reader) (bool, error) {
 // replaceSchema is the shared in-place reset. Automatic callers already hold
 // the writer lock; ResetAll owns it. Never unlink a database or its WAL/SHM.
 func replaceSchema(ctx context.Context, database *sql.DB, sourceKey string) error {
+	empty, err := schemaEmpty(ctx, database)
+	if err != nil {
+		return err
+	}
+	if !empty {
+		if err := requireCollectorRole(ctx, database); err != nil {
+			return err
+		}
+		var version int
+		if err := database.QueryRowContext(ctx, "PRAGMA user_version").Scan(&version); err != nil {
+			return err
+		}
+		if version != SupportedSchemaVersion {
+			return unrecognizedDatabase(version)
+		}
+	} else if err := allowEmptyCollector(ctx, database); err != nil {
+		return err
+	}
 	conn, err := database.Conn(ctx)
 	if err != nil {
 		return err
@@ -217,6 +194,35 @@ func initializeSchema(ctx context.Context, tx *sql.Tx, body string, sourceKey st
 	}
 	if _, err := tx.ExecContext(ctx, "INSERT INTO database_lifecycle (id, data_generation, rebuild_pending, rebuild_source_key, updated_at_ms) VALUES (1, ?, ?, NULLIF(?, ''), ?)", CurrentDataGeneration, sourceKey != "", sourceKey, time.Now().UnixMilli()); err != nil {
 		return fmt.Errorf("initialize database lifecycle: %w", err)
+	}
+	return initializePublicationState(ctx, tx)
+}
+
+func initializePublicationState(ctx context.Context, tx *sql.Tx) error {
+	var exists bool
+	if err := tx.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM publication_state WHERE id=1)").Scan(&exists); err != nil {
+		return err
+	}
+	if exists {
+		return nil
+	}
+	stream := make([]byte, 16)
+	if _, err := rand.Read(stream); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, "INSERT INTO publication_state (id, stream_id, identity_version, semantics_version, source_namespace, created_at_ms) VALUES (1, ?, 1, 1, 'native', ?)", hex.EncodeToString(stream), time.Now().UnixMilli()); err != nil {
+		return fmt.Errorf("initialize publication state: %w", err)
+	}
+	return nil
+}
+
+func allowEmptyCollector(ctx context.Context, reader Reader) error {
+	var role int
+	if err := reader.QueryRowContext(ctx, "PRAGMA application_id").Scan(&role); err != nil {
+		return err
+	}
+	if role != 0 && role != CollectorApplicationID {
+		return errors.New("database role is not collector; initialization refused")
 	}
 	return nil
 }

@@ -1,0 +1,109 @@
+{
+  "case_id": "F11",
+  "status": "planned-production-test",
+  "guarantees": [
+    "G06",
+    "G07",
+    "G10",
+    "G11"
+  ],
+  "initial_server": {
+    "owner_A": {
+      "sessions": [],
+      "facts": [],
+      "countable_fact_count": 0,
+      "total_tokens": 0
+    }
+  },
+  "batch": {
+    "batch_label": "batch-delayed",
+    "collector_stream": "stream-A",
+    "journal_sequences": [
+      1,
+      2
+    ],
+    "include_sessions": [
+      "session_A"
+    ],
+    "include_facts": [
+      "fact_A",
+      "fact_B"
+    ]
+  },
+  "trace": [
+    {
+      "action": "publish",
+      "fault": "admission_capacity_full",
+      "expected": {
+        "outcome": "retryable_not_accepted",
+        "no_receipt": true
+      },
+      "expected_server": {
+        "owner_A": {
+          "sessions": [],
+          "facts": [],
+          "countable_fact_count": 0,
+          "total_tokens": 0
+        }
+      },
+      "expected_collector": {
+        "delivery_cursor": 0,
+        "pending_sequences": [
+          1,
+          2
+        ]
+      }
+    },
+    {
+      "action": "manual_sync",
+      "fault": "sqlite_busy_until_request_timeout",
+      "expected": {
+        "outcome": "retryable_not_accepted"
+      },
+      "expected_server": {
+        "owner_A": {
+          "sessions": [],
+          "facts": [],
+          "countable_fact_count": 0,
+          "total_tokens": 0
+        }
+      },
+      "expected_collector": {
+        "delivery_cursor": 0,
+        "pending_sequences": [
+          1,
+          2
+        ]
+      }
+    },
+    {
+      "action": "manual_sync",
+      "expected": {
+        "outcome": "accepted"
+      },
+      "expected_server": {
+        "owner_A": {
+          "sessions": [
+            "session-A"
+          ],
+          "facts": [
+            "fact_A",
+            "fact_B"
+          ],
+          "countable_fact_count": 2,
+          "total_tokens": 200
+        }
+      },
+      "expected_collector": {
+        "delivery_cursor": 2,
+        "pending_sequences": []
+      }
+    }
+  ],
+  "boundary_checks": [
+    "Configured batch byte limit and limit+1.",
+    "Configured fact count limit and limit+1.",
+    "Queued/inflight admission bound; rejected requests retain local data.",
+    "A timeout after commit follows F02, never assumes rollback."
+  ]
+}

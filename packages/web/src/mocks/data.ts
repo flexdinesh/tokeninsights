@@ -19,8 +19,8 @@ export const mockBootstrap: Bootstrap = bootstrapSchema.parse({
   dataReadiness: 'ready',
   serverVersion: 'dev-mock',
   hostname: 'mock.tokeninsights.local',
-  timezone: 'AEST +10:00',
-  capabilities: ['usage', 'facets', 'sync'],
+  timezone: 'Australia/Sydney',
+  capabilities: ['usage', 'facets', 'ingestion'],
   defaults: {
     period: 'all',
     bucket: 'day',
@@ -316,18 +316,14 @@ export function mockDashboard(
   })
 }
 
-export function mockSyncStatus(running: boolean, revision: number): SyncStatus {
+export function mockSyncStatus(revision: number): SyncStatus {
   return statusSchema.parse({
     instanceId: 'mock-instance',
     dataEpoch: 'mock-epoch',
     dataReadiness: 'ready',
-    pendingRefresh: false,
-    checkRequestedAt: 0,
-    running,
-    phase: running ? 'syncing' : 'ready',
-    harnesses: running
-      ? { opencode: 'synced', pi: 'syncing', codex: 'pending', 'claude-code': 'pending' }
-      : {},
+    running: false,
+    phase: 'ready',
+    harnesses: {},
     error: '',
     revision,
   })

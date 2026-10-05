@@ -1,0 +1,21 @@
+{
+  "name": "@tokeninsights/plugin-opencode",
+  "version": "1.0.0",
+  "private": true,
+  "files": [
+    "dist",
+    "index.js"
+  ],
+  "type": "module",
+  "exports": "./dist/index.js",
+  "scripts": {
+    "build": "node ../../tools/build/src/build-plugins.ts opencode",
+    "typecheck": "tsc --project tsconfig.json",
+    "check:build": "node ../../tools/build/src/build-plugins.ts opencode --check"
+  },
+  "devDependencies": {
+    "@opencode/plugin": "2.0.22",
+    "@types/node": "26.4.1",
+    "typescript": "^5.9.3"
+  }
+}

@@ -68,15 +68,7 @@ func Sync(ctx context.Context, options SyncOptions) (Summary, error) {
 	if err != nil {
 		return Summary{}, err
 	}
-	if compatibility.MigrationRequired {
-		if err := db.UpgradeMetadata(ctx, options.DBPath); err != nil {
-			return Summary{}, err
-		}
-		compatibility, err = db.InspectCompatibility(ctx, options.DBPath)
-		if err != nil {
-			return Summary{}, err
-		}
-	}
+
 	if needsRecovery(compatibility) {
 		if err := validateRecoveryScope(options, compatibility); err != nil {
 			return Summary{}, err
@@ -678,7 +670,11 @@ func rawFactKey(fact RawTokenFact) string {
 		fmt.Sprint(intValueOrZero(fact.TotalTokens)),
 		fact.Parser,
 	}
-	return stableHash(strings.Join(parts, "|"))
+	if fact.Harness == HarnessClaudeCode {
+		parts = append(parts, claudeCodeRequestID(fact.MetadataJSON))
+	}
+	parts = append(parts, sourceSessionIdentity(fact.MetadataJSON))
+	return nativeTupleHash(parts...)
 }
 
 func nullableString(value *string) interface{} {

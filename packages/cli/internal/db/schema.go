@@ -1,6 +1,11 @@
 package db
 
 const (
+	TablePublicationState         = "publication_state"
+	TablePublicationEntities      = "publication_entities"
+	TablePublicationJournal       = "publication_journal"
+	TablePublicationDestinations  = "publication_destinations"
+	TablePublicationBatches       = "publication_batches"
 	TableSyncState                = "sync_state"
 	TableSyncJobs                 = "sync_jobs"
 	TableSyncHarnesses            = "sync_harnesses"
@@ -21,6 +26,29 @@ const (
 )
 
 const (
+	ColStreamId               = "stream_id"
+	ColIdentityVersion        = "identity_version"
+	ColSemanticsVersion       = "semantics_version"
+	ColSourceNamespace        = "source_namespace"
+	ColCreatedAtMs            = "created_at_ms"
+	ColSequence               = "sequence"
+	ColFactId                 = "fact_id"
+	ColPayloadHash            = "payload_hash"
+	ColPayloadJson            = "payload_json"
+	ColSourceRevisionRule     = "source_revision_rule"
+	ColSourceRevisionValue    = "source_revision_value"
+	ColDestinationId          = "destination_id"
+	ColEndpoint               = "endpoint"
+	ColDatabaseId             = "database_id"
+	ColAcknowledgedSequence   = "acknowledged_sequence"
+	ColLastReceiptJson        = "last_receipt_json"
+	ColAcknowledgedAtMs       = "acknowledged_at_ms"
+	ColBatchId                = "batch_id"
+	ColFirstSequence          = "first_sequence"
+	ColLastSequence           = "last_sequence"
+	ColRequestHash            = "request_hash"
+	ColRequestBytes           = "request_bytes"
+	ColReceiptBytes           = "receipt_bytes"
 	ColRevision               = "revision"
 	ColLastSuccessfulSyncAtMs = "last_successful_sync_at_ms"
 	ColScopeKey               = "scope_key"
@@ -108,6 +136,9 @@ const (
 	ColRepositorySource       = "repository_source"
 )
 
-const SupportedSchemaVersion = 14
+const SupportedSchemaVersion = 16
 
-const CurrentDataGeneration = 5
+// CollectorApplicationID distinguishes host storage from canonical-only server storage.
+const CollectorApplicationID = 1414091587
+
+const CurrentDataGeneration = 6

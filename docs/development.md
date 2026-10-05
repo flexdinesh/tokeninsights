@@ -108,7 +108,30 @@ Direct Go commands use the currently committed embedded web assets. Use `pnpm ru
 
 The shared fixture is under `packages/cli/testdata/conformance/sync-first-basic/source/`. It contains compact, synthetic source data for all supported harnesses and excludes conversations, tool payloads, credentials, request data, user paths, and identifying values. Never commit raw local harness databases or transcripts.
 
-`dev:data` resets the ignored development database transactionally while holding admission/writer locks and recreates synthetic sources. Stop its service first; a live or unreachable owner prevents recreation. DB/WAL/SHM and lock inodes are never unlinked. `dev` runs a foreground fixture-backed service and Vite together. Its source environment points only to sanitized fixtures; Refresh cannot read normal user sources. Vite proxies `/api` to `127.0.0.1:8765`. `dev:web:mock` runs without Go or local harness data.
+`dev:data` resets only the controlled `.tokeninsights-dev/collector.sqlite` and
+`server.sqlite` application tables, then recreates synthetic source/home
+subdirectories. Stop the fixture service first; live or unreachable ownership
+prevents recreation. DB/WAL/SHM/lock inodes, unrelated files, and the old
+`tokeninsights.sqlite` are preserved. Wrong-role databases are rejected before
+either role is reset.
+
+Fixture preparation starts the production local server on a temporary loopback
+port, runs collector sync against sanitized sources, publishes through the real
+HTTP ingestion endpoint, and stops that temporary server. No direct server raw
+writes or producer recovery stand in for ingestion. `dev:cli` invokes
+`tokeninsights tui --all-time --server-db-path .tokeninsights-dev/server.sqlite`
+to read saved REST usage; `dev:server` runs the canonical-only foreground
+server on `127.0.0.1:8765` without harness source environment settings. `dev` runs
+that server and Vite together. Browser Reload never collects sources. Vite proxies
+`/api` to the Go server; `dev:web:mock` runs without Go or local harness data.
+
+The [collector rebuild fixture](../packages/cli/testdata/conformance/collector-rebuild/README.md)
+pins independent logical facts and reparse/copy/streaming scenarios. Publication,
+collectorstore, ingestion, and integration tests exercise real SQLite/HTTP
+transactions, replay, receipts, compatibility, limits, and manual delivery
+recovery. See [the failure contract](collector-ingestion-tests.md) for executable
+coverage and remaining failure-test gaps. Fixtures must remain synthetic and
+semantic expected results must never be weakened to match duplication or loss.
 
 ## Build Tooling
 
@@ -120,7 +143,7 @@ Go uses `gofmt` and the repository-pinned `golangci-lint`. TypeScript, JavaScrip
 
 React source lives in `packages/web`. Vite stages output in ignored `packages/web/dist`; the build tooling copies it to committed `packages/cli/internal/server/static` assets for `go:embed`.
 
-Go tests cover aggregation, API behavior, sync coordination, assets, listener lifecycle, and date boundaries. React tests cover URL state, filtering, and cancelled requests. Browser tests launch the built binary with isolated synthetic data and verify the full dashboard.
+Go tests cover aggregation, API behavior, normalized ingestion/replay, collector journal/acknowledgements, assets, listener lifecycle, and date boundaries. React tests cover URL state, filtering, and cancelled requests. Browser tests launch the built binary with isolated synthetic data and verify the full dashboard.
 
 ## Skipping CI
 

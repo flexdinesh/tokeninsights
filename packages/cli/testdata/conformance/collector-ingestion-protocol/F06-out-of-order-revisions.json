@@ -1,0 +1,100 @@
+{
+  "case_id": "F06",
+  "status": "planned-production-test",
+  "guarantees": [
+    "G05",
+    "G07",
+    "G11"
+  ],
+  "policy_status": "requires-approved-within-stream-precedence",
+  "initial_server": {
+    "owner_A": {
+      "sessions": [],
+      "facts": [],
+      "countable_fact_count": 0,
+      "total_tokens": 0
+    }
+  },
+  "trace": [
+    {
+      "action": "publish",
+      "owner": "owner_A",
+      "batch": {
+        "batch_label": "batch-newer",
+        "collector_stream": "stream-A",
+        "journal_sequences": [
+          2
+        ],
+        "include_sessions": [
+          "session_A"
+        ],
+        "include_facts": [
+          "fact_A_changed"
+        ]
+      },
+      "revision_evidence": "same_stream_sequence_2",
+      "expected_server": {
+        "owner_A": {
+          "sessions": [
+            "session-A"
+          ],
+          "facts": [
+            "fact_A_changed"
+          ],
+          "countable_fact_count": 1,
+          "total_tokens": 120
+        }
+      },
+      "expected_collector": {
+        "delivery_cursor": 0,
+        "acknowledged_sequences": [
+          2
+        ],
+        "pending_sequences": [
+          1
+        ]
+      }
+    },
+    {
+      "action": "publish",
+      "owner": "owner_A",
+      "batch": {
+        "batch_label": "batch-older",
+        "collector_stream": "stream-A",
+        "journal_sequences": [
+          1
+        ],
+        "include_sessions": [
+          "session_A"
+        ],
+        "include_facts": [
+          "fact_A"
+        ]
+      },
+      "revision_evidence": "same_stream_sequence_1",
+      "expected": {
+        "outcome": "stale_no_op"
+      },
+      "expected_server": {
+        "owner_A": {
+          "sessions": [
+            "session-A"
+          ],
+          "facts": [
+            "fact_A_changed"
+          ],
+          "countable_fact_count": 1,
+          "total_tokens": 120
+        }
+      },
+      "expected_collector": {
+        "delivery_cursor": 2,
+        "pending_sequences": []
+      }
+    }
+  ],
+  "assertions": [
+    "Reverse order yields identical final payload and contribution.",
+    "Sequence comparison never crosses collector streams."
+  ]
+}

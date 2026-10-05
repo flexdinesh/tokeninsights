@@ -1,0 +1,92 @@
+{
+  "case_id": "F13",
+  "status": "planned-production-test",
+  "guarantees": [
+    "G05",
+    "G10"
+  ],
+  "initial_server": {
+    "owner_A": {
+      "sessions": [
+        "session-A"
+      ],
+      "facts": [
+        "fact_A",
+        "fact_B"
+      ],
+      "countable_fact_count": 2,
+      "total_tokens": 200
+    }
+  },
+  "trace": [
+    {
+      "action": "delete_collector_database",
+      "expected": {
+        "new_stream": "stream-rebuilt"
+      }
+    },
+    {
+      "action": "reparse_only_remaining_source",
+      "available_facts": [
+        "fact_A"
+      ],
+      "missing_facts": [
+        "fact_B"
+      ],
+      "batch": {
+        "batch_label": "batch-partial-rebuild",
+        "collector_stream": "stream-rebuilt",
+        "journal_sequences": [
+          1
+        ],
+        "include_sessions": [
+          "session_A"
+        ],
+        "include_facts": [
+          "fact_A"
+        ]
+      },
+      "expected": {
+        "outcome": "accepted",
+        "unchanged": 1
+      },
+      "expected_server": {
+        "owner_A": {
+          "sessions": [
+            "session-A"
+          ],
+          "facts": [
+            "fact_A",
+            "fact_B"
+          ],
+          "countable_fact_count": 2,
+          "total_tokens": 200
+        }
+      }
+    },
+    {
+      "action": "manual_sync_with_no_sources",
+      "expected": {
+        "publication_changes": 0
+      },
+      "expected_server": {
+        "owner_A": {
+          "sessions": [
+            "session-A"
+          ],
+          "facts": [
+            "fact_A",
+            "fact_B"
+          ],
+          "countable_fact_count": 2,
+          "total_tokens": 200
+        }
+      }
+    }
+  ],
+  "assertions": [
+    "Missing source/fact is not a deletion instruction.",
+    "Coverage describes checked available sources, not complete lifetime usage.",
+    "No retraction workflow is introduced."
+  ]
+}

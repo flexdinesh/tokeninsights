@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/db"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/serverstore"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/viewer"
 )
 
@@ -146,7 +147,7 @@ type Row struct {
 
 type dashboard struct {
 	Revision   int64
-	Coverage   []db.DayCoverage
+	DatabaseID string
 	Rows       []Row
 	Chart      []Row
 	RowCount   int
@@ -292,12 +293,12 @@ func sortRows(rows []Row, key, direction, tab string) {
 
 func loadDashboard(ctx context.Context, path string, q query, now time.Time) (dashboard, error) {
 	result := dashboard{Page: q.Page, PageSize: q.PageSize}
-	database, err := db.Open(path)
+	database, err := serverstore.Open(path)
 	if err != nil {
 		return result, err
 	}
 	defer func() { _ = database.Close() }()
-	tx, err := db.BeginAnalyticsRead(ctx, database)
+	tx, err := database.BeginRead(ctx)
 	if err != nil {
 		return result, err
 	}
@@ -314,14 +315,13 @@ func loadDashboard(ctx context.Context, path string, q query, now time.Time) (da
 	if err != nil {
 		return result, err
 	}
-	result.LastSynced, err = db.LastCompletedSync(ctx, tx)
+	metadata, err := serverstore.ReadMetadata(ctx, tx)
 	if err != nil {
 		return result, err
 	}
-	result.Coverage, err = db.ViewerDayCoverage(ctx, tx, f, now)
-	if err != nil {
-		return result, err
-	}
+	result.LastSynced = metadata.LastIngestionAtMs
+	result.Revision = metadata.Revision
+	result.DatabaseID = metadata.DatabaseID
 	result.RowCount = len(rows)
 	result.Chart = append([]Row{}, rows...)
 	if q.Tab == "sessions" {
@@ -356,10 +356,5 @@ func loadDashboard(ctx context.Context, path string, q query, now time.Time) (da
 	if q.Selection.From != "" || q.Selection.To != "" {
 		result.Range = q.Selection.From + ".." + q.Selection.To
 	}
-	status, err := db.LoadSyncStatus(ctx, tx)
-	if err != nil {
-		return result, err
-	}
-	result.Revision = status.Revision
 	return result, tx.Commit()
 }

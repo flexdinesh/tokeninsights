@@ -10,6 +10,8 @@ import (
 	"os"
 	"path/filepath"
 	"time"
+
+	_ "modernc.org/sqlite"
 )
 
 //go:embed schema/schema.sql
@@ -148,7 +150,7 @@ func openExisting(dbPath string, readOnly bool) (*sql.DB, error) {
 	info, err := os.Stat(absPath)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			return nil, fmt.Errorf("db not found: %s (run `tokeninsights sync --all` or `tokeninsights reset-all --confirm`)", absPath)
+			return nil, fmt.Errorf("db not found: %s (run `tokeninsights sync --all` or `tokeninsights collector reset-all --confirm`)", absPath)
 		}
 		return nil, err
 	}

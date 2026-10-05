@@ -1,11 +1,12 @@
 package cli
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"strings"
 
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/app"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/collector"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/pipeline"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/service"
 )
@@ -22,7 +23,13 @@ func runSync(invocation commandInvocation, args []string) error {
 	var noNormalize bool
 	var sourceDir string
 	var harnesses stringList
-	flags.StringVar(&dbPath, "db-path", defaultDBPath(), "path to tokeninsights sqlite db")
+	var serverDBPath, serverURL, token string
+	var publishOnly bool
+	flags.StringVar(&dbPath, "collector-db-path", defaultCollectorDBPath(), "collector SQLite database")
+	flags.StringVar(&serverDBPath, "server-db-path", defaultServerDBPath(), "local server SQLite database")
+	flags.StringVar(&serverURL, "server-url", defaultServerURL(), "explicit ingestion server; skips local startup")
+	flags.StringVar(&token, "token", defaultServerToken(), "server bearer token")
+	flags.BoolVar(&publishOnly, "publish-only", false, "publish retained normalized work without collecting")
 	flags.Var(&harnesses, "harness", "harness to sync: opencode, pi, codex, or claude-code")
 	flags.BoolVar(&all, "all", false, "sync all supported harnesses")
 	flags.BoolVar(&dryRun, "dry-run", false, "discover and parse without writing")
@@ -39,14 +46,9 @@ func runSync(invocation commandInvocation, args []string) error {
 	if err != nil {
 		return err
 	}
-	sources, err := pipeline.ResolveSources(sourceDir)
-	if err != nil {
-		return err
-	}
-	var summary pipeline.Summary
-	if dryRun {
-		summary, err = pipeline.Sync(invocation.context, pipeline.SyncOptions{
-			DBPath:      strings.TrimSpace(dbPath),
+	result, err := collector.Run(invocation.context, collector.Options{
+		CollectorDBPath: strings.TrimSpace(dbPath), ServerDBPath: strings.TrimSpace(serverDBPath), ServerURL: serverURL, Token: token, PublishOnly: publishOnly,
+		SyncOptions: pipeline.SyncOptions{
 			Harnesses:   selectedHarnesses,
 			DryRun:      dryRun,
 			FullRefresh: fullRefresh,
@@ -54,13 +56,19 @@ func runSync(invocation commandInvocation, args []string) error {
 			SourceDir:   strings.TrimSpace(sourceDir),
 			Now:         invocation.now,
 			Progress:    recoveryNotice(invocation.stderr),
-		})
-	} else {
-		action := app.Action{Kind: "sync", Sources: sources, Now: invocation.now, Harnesses: selectedHarnesses, Normalize: !noNormalize, FullRefresh: fullRefresh}
-		summary, err = service.Mutate(invocation.context, strings.TrimSpace(dbPath), action, recoveryNotice(invocation.stderr))
+		},
+		EnsureLocal: func(ctx context.Context) (string, error) {
+			state, err := service.Ensure(ctx, service.Options{DBPath: strings.TrimSpace(serverDBPath)})
+			if err != nil {
+				return "", err
+			}
+			return state.Record.URL, nil
+		},
+	})
+	printSummary(invocation.stdout, "sync", result.Collection, dryRun)
+	if !dryRun {
+		printDeliverySummary(invocation.stdout, result)
 	}
-
-	printSummary(invocation.stdout, "sync", summary, dryRun)
 	if err != nil {
 		return err
 	}
@@ -71,10 +79,7 @@ func syncHarnesses(all bool, values stringList) ([]pipeline.Harness, error) {
 	if all && len(values) > 0 {
 		return nil, fmt.Errorf("choose either --all or --harness, not both\n%w", ErrUsage)
 	}
-	if !all && len(values) == 0 {
-		return nil, fmt.Errorf("choose --all or --harness <harness>\n%w", ErrUsage)
-	}
-	if all {
+	if all || len(values) == 0 {
 		return pipeline.SupportedHarnesses, nil
 	}
 	if err := validateHarnesses(values); err != nil {

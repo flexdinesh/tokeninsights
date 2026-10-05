@@ -27,7 +27,7 @@ func TestRepoTabGroupsAndFiltersWithoutChangingOtherTabs(t *testing.T) {
 		t.Fatal(err)
 	}
 	insertLoadRowsCanonicalToken(t, database, now.Add(time.Second).UnixMilli(), "pi", "two", "anthropic", "claude")
-	options := tableOptions{dbPath: path, period: periodAllTime, bucket: bucketDay, repoGroup: db.RepoGroupRepository}
+	options := tableOptions{serverURL: queryServerURL(t, path), period: periodAllTime, bucket: bucketDay, repoGroup: db.RepoGroupRepository}
 	rows, err := loadRows(context.Background(), options, now, groupByNone, tabRepo)
 	if err != nil || len(rows) != 2 || (rows[0].location != "unknown" && rows[1].location != "unknown") {
 		t.Fatalf("repo rows = %+v, err = %v", rows, err)
@@ -65,7 +65,7 @@ func TestRepoTabControlsOnlyRepositoryAndDirectory(t *testing.T) {
 	if len(repoGroupOptions) != 2 || repoGroupOptions[0] != db.RepoGroupRepository || repoGroupOptions[1] != db.RepoGroupDirectory {
 		t.Fatalf("repo group options = %v", repoGroupOptions)
 	}
-	m := newInteractiveModel(context.Background(), tableOptions{noSync: true}, time.Now(), "host")
+	m := newInteractiveModel(context.Background(), tableOptions{}, time.Now(), "host")
 	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'7'}})
 	m = updated.(interactiveModel)
 	if m.activeTab != tabRepo {

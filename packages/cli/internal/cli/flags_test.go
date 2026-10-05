@@ -180,7 +180,7 @@ func TestParseTableOptionsDefaultsToMonthAndDayBucket(t *testing.T) {
 
 func TestParseTableOptionsBucket(t *testing.T) {
 	var stderr bytes.Buffer
-	opts, err := parseTableOptions([]string{"--db-path", "/tmp/test.sqlite", "--bucket", "week"}, &stderr, false, periodMonth)
+	opts, err := parseTableOptions([]string{"--server-db-path", "/tmp/test.sqlite", "--bucket", "week"}, &stderr, false, periodMonth)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -191,7 +191,7 @@ func TestParseTableOptionsBucket(t *testing.T) {
 
 func TestParseTableOptionsInvalidBucket(t *testing.T) {
 	var stderr bytes.Buffer
-	_, err := parseTableOptions([]string{"--db-path", "/tmp/test.sqlite", "--bucket", "hour"}, &stderr, false, periodMonth)
+	_, err := parseTableOptions([]string{"--server-db-path", "/tmp/test.sqlite", "--bucket", "hour"}, &stderr, false, periodMonth)
 	if err == nil {
 		t.Fatal("expected error")
 	}
@@ -202,7 +202,7 @@ func TestParseTableOptionsInvalidBucket(t *testing.T) {
 
 func TestParseTableOptionsRejectsLegacyGroupBy(t *testing.T) {
 	var stderr bytes.Buffer
-	_, err := parseTableOptions([]string{"--db-path", "/tmp/test.sqlite", "--group-by", "session"}, &stderr, false, periodMonth)
+	_, err := parseTableOptions([]string{"--server-db-path", "/tmp/test.sqlite", "--group-by", "session"}, &stderr, false, periodMonth)
 	if err == nil {
 		t.Fatal("expected error")
 	}
@@ -222,7 +222,7 @@ func TestParseTableOptionsDefaultDBPathXDGDataHome(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	want := filepath.Join(xdgDataHome, "tokeninsights", "tokeninsights.sqlite")
+	want := filepath.Join(xdgDataHome, "tokeninsights", "server.sqlite")
 	if opts.dbPath != want {
 		t.Fatalf("got dbPath %q, want %q", opts.dbPath, want)
 	}
@@ -239,7 +239,7 @@ func TestParseTableOptionsDefaultDBPathHome(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	want := filepath.Join(home, ".local", "share", "tokeninsights", "tokeninsights.sqlite")
+	want := filepath.Join(home, ".local", "share", "tokeninsights", "server.sqlite")
 	if opts.dbPath != want {
 		t.Fatalf("got dbPath %q, want %q", opts.dbPath, want)
 	}
@@ -247,7 +247,7 @@ func TestParseTableOptionsDefaultDBPathHome(t *testing.T) {
 
 func TestParseTableOptionsToday(t *testing.T) {
 	var stderr bytes.Buffer
-	opts, err := parseTableOptions([]string{"--db-path", "/tmp/test.sqlite", "--today"}, &stderr, false, periodWeek)
+	opts, err := parseTableOptions([]string{"--server-db-path", "/tmp/test.sqlite", "--today"}, &stderr, false, periodWeek)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -258,7 +258,7 @@ func TestParseTableOptionsToday(t *testing.T) {
 
 func TestParseTableOptionsAllTime(t *testing.T) {
 	var stderr bytes.Buffer
-	opts, err := parseTableOptions([]string{"--db-path", "/tmp/test.sqlite", "--all-time"}, &stderr, false, periodWeek)
+	opts, err := parseTableOptions([]string{"--server-db-path", "/tmp/test.sqlite", "--all-time"}, &stderr, false, periodWeek)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -269,7 +269,7 @@ func TestParseTableOptionsAllTime(t *testing.T) {
 
 func TestParseTableOptionsMultiplePeriods(t *testing.T) {
 	var stderr bytes.Buffer
-	_, err := parseTableOptions([]string{"--db-path", "/tmp/test.sqlite", "--today", "--week"}, &stderr, false, periodWeek)
+	_, err := parseTableOptions([]string{"--server-db-path", "/tmp/test.sqlite", "--today", "--week"}, &stderr, false, periodWeek)
 	if err == nil {
 		t.Fatal("expected error")
 	}
@@ -280,7 +280,7 @@ func TestParseTableOptionsMultiplePeriods(t *testing.T) {
 
 func TestParseTableOptionsInvalidDayFrom(t *testing.T) {
 	var stderr bytes.Buffer
-	_, err := parseTableOptions([]string{"--db-path", "/tmp/test.sqlite", "--today", "--filter-day-from", "not-a-date"}, &stderr, false, periodWeek)
+	_, err := parseTableOptions([]string{"--server-db-path", "/tmp/test.sqlite", "--today", "--filter-day-from", "not-a-date"}, &stderr, false, periodWeek)
 	if err == nil {
 		t.Fatal("expected error")
 	}
@@ -291,7 +291,7 @@ func TestParseTableOptionsInvalidDayFrom(t *testing.T) {
 
 func TestParseTableOptionsInvalidDayTo(t *testing.T) {
 	var stderr bytes.Buffer
-	_, err := parseTableOptions([]string{"--db-path", "/tmp/test.sqlite", "--today", "--filter-day-to", "bad"}, &stderr, false, periodWeek)
+	_, err := parseTableOptions([]string{"--server-db-path", "/tmp/test.sqlite", "--today", "--filter-day-to", "bad"}, &stderr, false, periodWeek)
 	if err == nil {
 		t.Fatal("expected error")
 	}
@@ -303,7 +303,7 @@ func TestParseTableOptionsInvalidDayTo(t *testing.T) {
 func TestParseTableOptionsDayFromAfterDayTo(t *testing.T) {
 	var stderr bytes.Buffer
 	_, err := parseTableOptions([]string{
-		"--db-path", "/tmp/test.sqlite",
+		"--server-db-path", "/tmp/test.sqlite",
 		"--today",
 		"--filter-day-from", "2026-04-25",
 		"--filter-day-to", "2026-04-20",
@@ -319,7 +319,7 @@ func TestParseTableOptionsDayFromAfterDayTo(t *testing.T) {
 func TestParseTableOptionsValidDayRange(t *testing.T) {
 	var stderr bytes.Buffer
 	opts, err := parseTableOptions([]string{
-		"--db-path", "/tmp/test.sqlite",
+		"--server-db-path", "/tmp/test.sqlite",
 		"--today",
 		"--filter-day-from", "2026-04-20",
 		"--filter-day-to", "2026-04-25",
@@ -337,7 +337,7 @@ func TestParseTableOptionsValidDayRange(t *testing.T) {
 
 func TestParseTableOptionsUnexpectedArgument(t *testing.T) {
 	var stderr bytes.Buffer
-	_, err := parseTableOptions([]string{"--db-path", "/tmp/test.sqlite", "--today", "unexpected"}, &stderr, false, periodWeek)
+	_, err := parseTableOptions([]string{"--server-db-path", "/tmp/test.sqlite", "--today", "unexpected"}, &stderr, false, periodWeek)
 	if err == nil {
 		t.Fatal("expected error")
 	}
@@ -361,7 +361,7 @@ func TestParseTableOptionsDefaultWeek(t *testing.T) {
 
 func TestParseTableOptionsHarness(t *testing.T) {
 	var stderr bytes.Buffer
-	opts, err := parseTableOptions([]string{"--db-path", "/tmp/test.sqlite", "--harness", "opencode,pi,codex,claude-code"}, &stderr, false, periodWeek)
+	opts, err := parseTableOptions([]string{"--server-db-path", "/tmp/test.sqlite", "--harness", "opencode,pi,codex,claude-code"}, &stderr, false, periodWeek)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -372,7 +372,7 @@ func TestParseTableOptionsHarness(t *testing.T) {
 
 func TestParseTableOptionsInvalidHarness(t *testing.T) {
 	var stderr bytes.Buffer
-	_, err := parseTableOptions([]string{"--db-path", "/tmp/test.sqlite", "--harness", "bad"}, &stderr, false, periodWeek)
+	_, err := parseTableOptions([]string{"--server-db-path", "/tmp/test.sqlite", "--harness", "bad"}, &stderr, false, periodWeek)
 	if err == nil {
 		t.Fatal("expected error")
 	}

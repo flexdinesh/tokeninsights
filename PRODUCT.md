@@ -26,24 +26,28 @@ providers, harnesses, and dates.
 
 ## Positioning
 
-TokenInsights reads durable local harness data, normalizes it into session-centric
-SQLite facts, and presents the same canonical analytics in terminal and browser
-dashboards. It does not require a separate authenticated API export or realtime
-hooks to collect retained usage.
+TokenInsights collects durable local harness data, normalizes it in host SQLite,
+and publishes session-centric facts to a canonical SQLite server. Terminal and
+browser dashboards query the same REST analytics. Manual collection does not
+require a separate authenticated harness export or realtime hooks.
 
 ## Operating Context
 
 - One native Go binary provides the CLI, TUI, and browser server. Production runs
   without Node, npm, or pnpm; browser assets are embedded and work offline.
-- `tokeninsights` opens the terminal dashboard; `tokeninsights serve` hosts the
-  browser dashboard on localhost by default.
-- Opening either viewer refreshes supported local sources by default. `--no-sync`
-  skips that refresh; browser users can explicitly request **Sync now**.
+- `tokeninsights service` manages the local server, `tokeninsights sync` collects
+  and publishes, and `tokeninsights tui` opens the terminal dashboard.
+- Viewers read committed REST data. TUI `r` and browser **Reload** only reload
+  queries; `tui --sync` explicitly collects before opening.
 - Date ranges and dimension filters constrain displayed analytics, not which
   harnesses sync. Calendar grouping uses the serving machine's local time.
-- The browser queries the server serving its page. Open that server directly by
-  IP or DNS name, including with `--host 0.0.0.0`. Remote access is intended for
-  trusted networks; the current server has no authentication.
+- The browser queries the server serving its page. Explicit CLI `--server-url`
+  selects another server and skips local startup. Every non-loopback bind
+  requires a token; clients use bearer auth and browser Basic auth. Remote TLS
+  deployment, provisioning, and multi-account administration remain later work.
+- Fresh `collector.sqlite` and `server.sqlite` have distinct roles. The old
+  `tokeninsights.sqlite` stays untouched; previous commands/schema migrations
+  are not supported. Advanced host maintenance uses the `collector` namespace.
 
 ## Capabilities and Constraints
 
@@ -59,9 +63,9 @@ hooks to collect retained usage.
   it excludes output/reasoning and is not an additive token-total metric.
 - Totals and session coverage describe the full filtered result, independently
   of table pagination. Distinguish sessions shown from all synced sessions.
-- Cost tracking is outside the active product. Realtime/checkpoint plugins are
-  future concepts. Preserve TPS concepts for durable timing data without claiming
-  currently unavailable measurements.
+- Cost tracking is outside the active product. Thin completion plugins invoke
+  the same collector sync; realtime/checkpoint accounting remains future work.
+  Preserve TPS concepts without claiming unavailable timing measurements.
 - Schema changes require explicit approval. UI changes must preserve canonical
   analytics semantics and sync behavior.
 

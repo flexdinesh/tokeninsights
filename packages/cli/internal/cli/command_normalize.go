@@ -5,20 +5,18 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/app"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/pipeline"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/service"
 )
 
 var normalizeCommand = commandSpec{name: "normalize", run: runNormalize}
 
 func runNormalize(invocation commandInvocation, args []string) error {
-	flags := flag.NewFlagSet("tokeninsights normalize", flag.ContinueOnError)
+	flags := flag.NewFlagSet("tokeninsights collector normalize", flag.ContinueOnError)
 	flags.SetOutput(invocation.stderr)
 	var dbPath string
 	var dryRun bool
 	var harnesses stringList
-	flags.StringVar(&dbPath, "db-path", defaultDBPath(), "path to tokeninsights sqlite db")
+	flags.StringVar(&dbPath, "collector-db-path", defaultCollectorDBPath(), "collector SQLite database")
 	flags.BoolVar(&dryRun, "dry-run", false, "compute without writing")
 	flags.Var(&harnesses, "harness", "optional harness filter: opencode, pi, codex, or claude-code")
 	if err := flags.Parse(args); err != nil {
@@ -30,23 +28,13 @@ func runNormalize(invocation commandInvocation, args []string) error {
 	if err := validateHarnesses(harnesses); err != nil {
 		return err
 	}
-	sources, err := pipeline.ResolveSources("")
-	if err != nil {
-		return err
-	}
-	var summary pipeline.Summary
-	if dryRun {
-		summary, err = pipeline.Normalize(invocation.context, pipeline.NormalizeOptions{
-			DBPath:    strings.TrimSpace(dbPath),
-			DryRun:    dryRun,
-			Harnesses: harnessList(harnesses),
-			Now:       invocation.now,
-			Progress:  recoveryNotice(invocation.stderr),
-		})
-	} else {
-		action := app.Action{Kind: "normalize", Sources: sources, Now: invocation.now, Harnesses: harnessList(harnesses)}
-		summary, err = service.Mutate(invocation.context, strings.TrimSpace(dbPath), action, recoveryNotice(invocation.stderr))
-	}
+	summary, err := pipeline.Normalize(invocation.context, pipeline.NormalizeOptions{
+		DBPath:    strings.TrimSpace(dbPath),
+		DryRun:    dryRun,
+		Harnesses: harnessList(harnesses),
+		Now:       invocation.now,
+		Progress:  recoveryNotice(invocation.stderr),
+	})
 
 	printSummary(invocation.stdout, "normalize", summary, dryRun)
 	return err

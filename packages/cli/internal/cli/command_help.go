@@ -15,20 +15,26 @@ func usageText() string {
 Bare invocation ensures the background service and prints its URL. No startup sync.
 
 commands:
-  service start|stop|restart|status   manage background web/API service
-  service run                       run service in foreground
-  refresh [--wait]                   request all-harness refresh
-  sync                              ingest local harness data
-  normalize                         rebuild canonical facts
-  reset-canonical                   delete canonical facts
-  reset-all                         reset application tables
-  view                              local TUI; refresh on opening
-  serve                             deprecated alias for service run
+  service start|stop|restart|status   manage local web/API server
+  sync                              collect all harnesses and publish normalized facts
+  tui                               read committed data through the same REST API as Web
 
-  tokeninsights service start --host 0.0.0.0 --port 8765
+advanced:
+  collector normalize|reset-canonical|reset-all
+                                    manage host collector data
+  service run                       run local server in foreground
+  server run                        run canonical ingestion/query server
+
+  tokeninsights service start --port 8765
   tokeninsights service status --json
-  tokeninsights service restart --reload-sources
-  tokeninsights view --no-sync
+  tokeninsights sync
+  tokeninsights tui
+  tokeninsights sync --publish-only
+  tokeninsights sync --server-url https://example.test
+  tokeninsights tui --sync
+  tokeninsights collector --help
 
---host binds web/API only. Authentication and reboot autostart are not included.`
+Collector: --collector-db-path (collector.sqlite). Server: --server-db-path (server.sqlite).
+Existing tokeninsights.sqlite is untouched; retained sources rebuild fresh databases.
+Explicit --server-url skips local startup. Non-loopback serving requires a token.`
 }

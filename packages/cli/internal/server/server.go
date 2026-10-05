@@ -5,7 +5,6 @@ import (
 	"context"
 	"embed"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"io/fs"
@@ -14,9 +13,12 @@ import (
 	"net/netip"
 	"time"
 
-	application "github.com/flexdinesh/tokeninsights/packages/cli/internal/app"
+	"crypto/rand"
+	"encoding/hex"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/db"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/ingestion"
 	serverapi "github.com/flexdinesh/tokeninsights/packages/cli/internal/server/api"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/serverstore"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/version"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/viewer"
 )
@@ -29,45 +31,56 @@ const queryTimeout = 30 * time.Second
 var assets embed.FS
 
 type Options struct {
-	DBPath   string
-	Defaults viewer.Selection
+	DBPath     string
+	Defaults   viewer.Selection
+	InstanceID string
 }
 
 type syncState struct {
-	InstanceID       string
-	DataEpoch        string
-	DataReadiness    string
-	PendingRefresh   bool
-	CheckRequestedAt int64
-	Running          bool              `json:"running"`
-	Phase            string            `json:"phase"`
-	Harnesses        map[string]string `json:"harnesses"`
-	Error            string            `json:"error"`
-	Progress         *db.SyncStatus    `json:"-"`
-	Revision         uint64            `json:"revision"`
+	InstanceID    string
+	DataEpoch     string
+	DataReadiness string
+	Running       bool              `json:"running"`
+	Phase         string            `json:"phase"`
+	Harnesses     map[string]string `json:"harnesses"`
+	Error         string            `json:"error"`
+	Revision      uint64            `json:"revision"`
 }
 
 type app struct {
-	controller *application.Controller
-	options    Options
-	ctx        context.Context
-	log        io.Writer
+	core    *ingestion.Core
+	options Options
+	ctx     context.Context
+	log     io.Writer
 }
 
 func newApp(ctx context.Context, options Options, log io.Writer) *app {
+	if options.InstanceID == "" {
+		var id [16]byte
+		if _, err := rand.Read(id[:]); err != nil {
+			panic(err)
+		}
+		options.InstanceID = hex.EncodeToString(id[:])
+	}
 	return &app{options: options, ctx: ctx, log: log}
 }
 func (a *app) status() syncState {
-	if a.controller != nil {
-		s := a.controller.Status(a.ctx)
-		var progress *db.SyncStatus
-		if s.Progress.JobID != 0 {
-			progress = &s.Progress
-		}
-		return syncState{Running: s.Running, Phase: s.Phase, Error: s.Error, Harnesses: s.Progress.Harnesses, Revision: uint64(s.Progress.Revision), Progress: progress, InstanceID: s.InstanceID, DataEpoch: s.DataEpoch, DataReadiness: s.DataReadiness, PendingRefresh: s.PendingRefresh, CheckRequestedAt: s.CheckRequestedAt}
+	state := syncState{InstanceID: a.options.InstanceID, DataReadiness: "unavailable", Phase: "ready", Harnesses: map[string]string{}}
+	store, err := serverstore.Open(a.options.DBPath)
+	if err != nil {
+		state.Error = "Server storage unavailable"
+		return state
 	}
-	shared, _ := db.ReadSyncStatus(a.ctx, a.options.DBPath)
-	return syncState{Running: shared.Running, Phase: shared.Phase, Error: shared.Error, Harnesses: shared.Harnesses, Revision: uint64(shared.Revision)}
+	defer func() { _ = store.Close() }()
+	metadata, err := store.Metadata(a.ctx)
+	if err != nil {
+		state.Error = "Server storage unavailable"
+		return state
+	}
+	state.DataReadiness = "ready"
+	state.DataEpoch = metadata.DatabaseID
+	state.Revision = uint64(metadata.Revision)
+	return state
 }
 
 func writeJSON(w http.ResponseWriter, status int, value interface{}) {
@@ -108,34 +121,30 @@ func (a *app) handler() http.Handler {
 		}
 		state := a.status()
 		writeJSON(w, http.StatusOK, serverapi.InstanceResponse{
-			InstanceId: &state.InstanceID, DataEpoch: &state.DataEpoch, DataReadiness: readinessPointer(state.DataReadiness),
+			InstanceId: state.InstanceID, DataEpoch: state.DataEpoch, DataReadiness: serverapi.InstanceResponseDataReadiness(state.DataReadiness),
 			ApiVersion:    serverapi.V1,
 			ServerVersion: version.Version,
 			Hostname:      a.dataHostname(r.Context()),
-			Timezone:      time.Now().Format("MST -07:00"),
-			Capabilities:  []serverapi.Capability{serverapi.Usage, serverapi.Facets, serverapi.Sync},
+			Timezone:      reportingTimezone(time.Local, time.Now()),
+			Capabilities:  []serverapi.Capability{serverapi.Usage, serverapi.Facets, serverapi.Capability("ingestion")},
 			Defaults:      apiSelection(a.options.Defaults),
 		})
 	})
 	mux.HandleFunc("/api/v1/sync", func(w http.ResponseWriter, r *http.Request) {
-		switch r.Method {
-		case http.MethodGet:
-			writeJSON(w, http.StatusOK, apiSyncState(a.status()))
-		case http.MethodPost:
-			if a.controller != nil {
-				if _, err := a.controller.RequestRefresh(r.Context()); err != nil {
-					apiError(w, 503, serverapi.ErrorCodeUnavailable, "Refresh unavailable while resetting or stopping.")
-					return
-				}
-			} else {
-				apiError(w, 503, serverapi.ErrorCodeUnavailable, "No refresh controller.")
-				return
-			}
-			writeJSON(w, http.StatusAccepted, apiSyncState(a.status()))
-		default:
-			apiMethodNotAllowed(w, "GET, POST")
+		if r.Method != http.MethodGet {
+			apiMethodNotAllowed(w, "GET")
+			return
 		}
+		writeJSON(w, http.StatusOK, apiSyncState(a.status()))
 	})
+	if a.core != nil {
+		mux.HandleFunc("GET /api/v1/ingestion/capabilities", a.core.HandleCapabilities)
+		mux.HandleFunc("POST /api/v1/ingestion/batches", func(w http.ResponseWriter, r *http.Request) {
+			ctx, cancel := context.WithTimeout(r.Context(), queryTimeout)
+			defer cancel()
+			a.core.HandleBatches(w, r.WithContext(ctx))
+		})
+	}
 	mux.HandleFunc("/api/v1/usage", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			apiMethodNotAllowed(w, http.MethodGet)
@@ -148,23 +157,15 @@ func (a *app) handler() http.Handler {
 		}
 		ctx, cancel := context.WithTimeout(r.Context(), queryTimeout)
 		defer cancel()
-		epoch, release, permitErr := a.readPermit(ctx)
-		if permitErr != nil {
-			a.queryError(w, permitErr)
-			return
-		}
-		defer release()
 		data, err := loadDashboard(ctx, a.options.DBPath, q, time.Now())
 		if err != nil {
 			a.queryError(w, err)
 			return
 		}
 		response := apiDashboard(data)
-		if a.controller != nil {
-			instance := a.controller.Status(ctx).InstanceID
-			response.InstanceId = &instance
-			response.DataEpoch = &epoch
-		}
+		state := a.status()
+		response.InstanceId = state.InstanceID
+		response.DataEpoch = data.DatabaseID
 		writeJSON(w, http.StatusOK, response)
 	})
 	mux.HandleFunc("/api/v1/usage/facets", func(w http.ResponseWriter, r *http.Request) {
@@ -179,19 +180,13 @@ func (a *app) handler() http.Handler {
 		}
 		ctx, cancel := context.WithTimeout(r.Context(), queryTimeout)
 		defer cancel()
-		epoch, release, permitErr := a.readPermit(ctx)
-		if permitErr != nil {
-			a.queryError(w, permitErr)
-			return
-		}
-		defer release()
-		database, err := db.Open(a.options.DBPath)
+		database, err := serverstore.Open(a.options.DBPath)
 		if err != nil {
 			a.queryError(w, err)
 			return
 		}
 		defer func() { _ = database.Close() }()
-		tx, err := db.BeginAnalyticsRead(ctx, database)
+		tx, err := database.BeginRead(ctx)
 		if err != nil {
 			a.queryError(w, err)
 			return
@@ -232,17 +227,14 @@ func (a *app) handler() http.Handler {
 			values.Repositories = apiLocationOptions(locations.Repositories)
 			values.Directories = apiLocationOptions(locations.Directories)
 		}
-		snapshotStatus, err := db.LoadSyncStatus(ctx, tx)
+		snapshotStatus, err := serverstore.ReadMetadata(ctx, tx)
 		if err != nil {
 			a.queryError(w, err)
 			return
 		}
-		values.Revision = &snapshotStatus.Revision
-		if a.controller != nil {
-			instance := a.controller.Status(ctx).InstanceID
-			values.InstanceId = &instance
-			values.DataEpoch = &epoch
-		}
+		values.Revision = snapshotStatus.Revision
+		values.InstanceId = a.options.InstanceID
+		values.DataEpoch = snapshotStatus.DatabaseID
 		if err = tx.Commit(); err != nil {
 			a.queryError(w, err)
 			return
@@ -278,34 +270,36 @@ func (a *app) handler() http.Handler {
 func (a *app) dataHostname(ctx context.Context) string {
 	ctx, cancel := context.WithTimeout(ctx, queryTimeout)
 	defer cancel()
-	database, err := db.Open(a.options.DBPath)
+	store, err := serverstore.Open(a.options.DBPath)
 	if err != nil {
 		return "unknown"
 	}
-	defer func() { _ = database.Close() }()
-	hostname, err := db.LatestIngestHostname(ctx, database)
-	if err != nil {
+	defer func() { _ = store.Close() }()
+	var count int
+	var hostname string
+	if err := store.SQL().QueryRowContext(ctx, "SELECT COUNT(DISTINCT hostname), COALESCE(MIN(hostname),'') FROM ingestion_producers WHERE hostname <> ''").Scan(&count, &hostname); err != nil {
 		return "unknown"
 	}
-	return hostname
+	if count > 1 {
+		return "multiple machines"
+	}
+	if count == 1 {
+		return hostname
+	}
+	return "unknown"
 }
 
 func (a *app) queryError(w http.ResponseWriter, err error) {
 	_, _ = fmt.Fprintf(a.log, "%sdashboard query failed: %v\n", logIndent, err)
-	if errors.Is(err, db.ErrMetadataUpgradeRequired) {
-		apiError(w, http.StatusServiceUnavailable, serverapi.ErrorCodeUnavailable, "Usage metadata upgrade is pending. Retry sync.")
-		return
-	}
-	if errors.Is(err, db.ErrRebuildPending) || errors.Is(err, db.ErrRecoveryRequired) {
-		apiError(w, http.StatusServiceUnavailable, serverapi.ErrorCodeUnavailable, "Usage recovery is incomplete. Sync to rebuild local usage data.")
-		return
-	}
-	apiError(w, http.StatusServiceUnavailable, serverapi.ErrorCodeUnavailable, "Cannot read dashboard data. Check terminal details, then sync or reload.")
+	apiError(w, http.StatusServiceUnavailable, serverapi.ErrorCodeUnavailable, "Cannot read saved usage. Check server storage and reload.")
 }
 
-func NewHandler(ctx context.Context, path string, controller *application.Controller, log io.Writer, bindHost string) http.Handler {
-	a := newApp(ctx, Options{DBPath: path, Defaults: viewer.Selection{Period: "month", Bucket: "day"}}, log)
-	a.controller = controller
+func NewHandler(ctx context.Context, path string, core *ingestion.Core, log io.Writer, bindHost string) http.Handler {
+	return NewHandlerWithInstance(ctx, path, core, log, bindHost, "")
+}
+func NewHandlerWithInstance(ctx context.Context, path string, core *ingestion.Core, log io.Writer, bindHost, instance string) http.Handler {
+	a := newApp(ctx, Options{DBPath: path, InstanceID: instance, Defaults: viewer.Selection{Period: "month", Bucket: "day"}}, log)
+	a.core = core
 	handler := http.NewCrossOriginProtection().Handler(a.handler())
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ip, err := netip.ParseAddr(bindHost)
@@ -322,10 +316,4 @@ func NewHandler(ctx context.Context, path string, controller *application.Contro
 		}
 		handler.ServeHTTP(w, r)
 	})
-}
-func (a *app) readPermit(ctx context.Context) (string, func(), error) {
-	if a.controller == nil {
-		return "", func() {}, nil
-	}
-	return a.controller.ReadPermit(ctx)
 }

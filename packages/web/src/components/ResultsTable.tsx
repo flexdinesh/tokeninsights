@@ -14,9 +14,14 @@ import { flexRender, getCoreRowModel, useReactTable } from '@tanstack/react-tabl
 import type { ColumnDef } from '@tanstack/react-table'
 import type { Dashboard, Row, Sort, Tab } from '../contracts'
 import { sortSchema } from '../contracts'
-import { CoverageIndicator, presentCoverage } from './SyncCoverage'
-import type { CoverageDay } from './SyncCoverage'
-import { exactCount, formatCount, labels } from '../format'
+import {
+  exactCount,
+  formatCount,
+  formatServerDate,
+  formatServerDateTime,
+  labels,
+  serverTimeZoneLabel,
+} from '../format'
 import { useDashboardPreferences, useDashboardQuery } from '../state'
 import { Badge } from './ui/badge'
 import { Button } from './ui/button'
@@ -164,32 +169,27 @@ export function UnknownLocation({
   )
 }
 
-type DisplayRow = Row & { coverage?: CoverageDay; placeholder?: boolean }
+type DisplayRow = Row
 
 function ResultsCell({
   row,
   spec,
   tab,
   timezone,
-  checkedSince,
 }: {
   row: DisplayRow
   spec: Column
   tab: Tab
-  timezone?: string
-  checkedSince?: number
+  timezone: string
 }): ReactNode {
-  if (
-    row.placeholder &&
-    spec.numeric &&
-    (!row.coverage || presentCoverage(row.coverage, checkedSince).status !== 'empty')
-  )
-    return <span className="numeric-value">—</span>
   const value = row[spec.id]
   if (spec.id === 'date')
     return (
-      <time title={new Date(row.date).toISOString()} dateTime={new Date(row.date).toISOString()}>
-        {new Date(row.date).toLocaleDateString()}
+      <time
+        title={`${formatServerDateTime(row.date, timezone)} · ${serverTimeZoneLabel(timezone)}`}
+        dateTime={new Date(row.date).toISOString()}
+      >
+        {formatServerDate(row.date, timezone)}
       </time>
     )
   if (spec.numeric && typeof value === 'number')
@@ -213,9 +213,6 @@ function ResultsCell({
           <span className="identity-name" title={String(value)}>
             {String(value)}
           </span>
-          {row.coverage && (
-            <CoverageIndicator day={row.coverage} timezone={timezone} checkedSince={checkedSince} />
-          )}
         </div>
         <span className="identity-detail">
           {details.map((detail) => (
@@ -240,62 +237,11 @@ function ResultsCell({
   )
 }
 
-export function ResultsTable({
-  data,
-  timezone,
-  checkedSince,
-}: {
-  data: Dashboard
-  timezone?: string
-  checkedSince?: number
-}) {
+export function ResultsTable({ data, timezone }: { data: Dashboard; timezone: string }) {
   const { query, sortBy, setPage, setPageSize } = useDashboardQuery()
   const { hiddenColumns: hidden, toggleColumn } = useDashboardPreferences()
   const specs = useMemo(() => columnsFor(query.tab), [query.tab])
-  const displayRows = useMemo<DisplayRow[]>(() => {
-    if (query.tab !== 'tokens' || query.bucket !== 'day') return data.rows
-    const coverage = data.coverage ?? []
-    const byDay = new Map(coverage.map((day) => [day.day, day]))
-    const rows: DisplayRow[] = data.rows.map((row) => ({ ...row, coverage: byDay.get(row.name) }))
-    // Calendar markers are presentation only, outside analytics/pagination counts.
-    if (data.page === 1) {
-      const markerDays = coverage.length <= 31 ? coverage : coverage.slice(-7)
-      for (const day of markerDays.filter((candidate) => !candidate.hasUsage)) {
-        rows.push({
-          key: `coverage:${day.day}`,
-          name: day.day,
-          date: 0,
-          harness: '',
-          provider: '',
-          model: '',
-          sessions: 0,
-          input: 0,
-          output: 0,
-          reasoning: 0,
-          cacheRead: 0,
-          cacheWrite: 0,
-          total: 0,
-          context: 0,
-          averageContext: 0,
-          medianContext: 0,
-          maxContext: 0,
-          locationKey: '',
-          locationName: '',
-          directoryNames: [],
-          hasUnknownDirectory: false,
-          repositoryKey: '',
-          repositoryName: '',
-          coverage: day,
-          placeholder: true,
-        })
-      }
-    }
-    if (query.sort === 'date')
-      rows.sort((a, b) =>
-        query.direction === 'asc' ? a.name.localeCompare(b.name) : b.name.localeCompare(a.name),
-      )
-    return rows
-  }, [data, query.tab, query.bucket, query.sort, query.direction])
+  const displayRows = data.rows
   const columnId = useId()
   const columns = useMemo<ColumnDef<DisplayRow>[]>(
     () =>
@@ -492,7 +438,6 @@ export function ResultsTable({
                         spec={spec}
                         tab={query.tab}
                         timezone={timezone}
-                        checkedSince={checkedSince}
                       />
                     </TableCell>
                   )

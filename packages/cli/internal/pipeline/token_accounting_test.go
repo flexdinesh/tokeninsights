@@ -99,8 +99,8 @@ func TestClaudeCodeJSONLMergesBeforeSplittingReasoning(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "tokeninsights.sqlite")
 	sourceDir := t.TempDir()
 	writeJSONL(t, filepath.Join(sourceDir, "claude-code", "project", "claude_tokens.jsonl"),
-		`{"type":"assistant","requestId":"request","timestamp":"2026-01-01T00:00:01Z","message":{"id":"message","role":"assistant","usage":{"input_tokens":100,"output_tokens":10,"cache_read_input_tokens":20,"cache_creation_input_tokens":5,"total_tokens":135}}}`,
-		`{"type":"assistant","requestId":"request","timestamp":"2026-01-01T00:00:02Z","message":{"id":"message","role":"assistant","usage":{"input_tokens":100,"output_tokens":50,"output_tokens_details":{"thinking_tokens":20},"cache_read_input_tokens":20,"cache_creation_input_tokens":5,"total_tokens":175}}}`,
+		`{"type":"assistant","sessionId":"fixture-session","requestId":"request","timestamp":"2026-01-01T00:00:01Z","message":{"id":"message","role":"assistant","usage":{"input_tokens":100,"output_tokens":10,"cache_read_input_tokens":20,"cache_creation_input_tokens":5,"total_tokens":135}}}`,
+		`{"type":"assistant","sessionId":"fixture-session","requestId":"request","timestamp":"2026-01-01T00:00:02Z","message":{"id":"message","role":"assistant","usage":{"input_tokens":100,"output_tokens":50,"output_tokens_details":{"thinking_tokens":20},"cache_read_input_tokens":20,"cache_creation_input_tokens":5,"total_tokens":175}}}`,
 	)
 
 	summary, err := Sync(ctx, SyncOptions{
@@ -114,6 +114,8 @@ func TestClaudeCodeJSONLMergesBeforeSplittingReasoning(t *testing.T) {
 
 	database := openTestDB(t, dbPath)
 	defer func() { _ = database.Close() }()
+	assertSQLCount(t, database, "SELECT COUNT(*) FROM publication_journal", 1)
+	assertSQLCount(t, database, "SELECT COUNT(*) FROM normalization_diagnostics WHERE code = 'publication_ambiguous_session_identity'", 0)
 	assertSQLCount(t, database, "SELECT COUNT(*) FROM raw_token_usage WHERE input_tokens = 100 AND output_tokens = 30 AND reasoning_tokens = 20 AND cache_read_tokens = 20 AND cache_write_tokens = 5 AND total_tokens = 175", 1)
 	assertSQLCount(t, database, "SELECT COUNT(*) FROM canonical_token_usage WHERE total_tokens = 175", 1)
 }

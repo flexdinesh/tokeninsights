@@ -31,7 +31,7 @@ func validateRecoveryScope(options SyncOptions, compatibility db.Compatibility) 
 		return nil
 	}
 	if strings.TrimSpace(options.SourceDir) != "" && !selectsAllHarnesses(options.Harnesses) {
-		return fmt.Errorf("automatic rebuild needs all harness sources; run `tokeninsights sync --all` or `tokeninsights sync --all --source-dir <all-harness-root>` using the same --db-path: %w", db.ErrRecoveryRequired)
+		return fmt.Errorf("automatic rebuild needs all harness sources; run `tokeninsights sync --all` or `tokeninsights sync --all --source-dir <all-harness-root>` using the same --collector-db-path: %w", db.ErrRecoveryRequired)
 	}
 	if compatibility.RebuildPending {
 		key, err := recoverySourceKey(options)
@@ -39,7 +39,7 @@ func validateRecoveryScope(options SyncOptions, compatibility db.Compatibility) 
 			return recoveryFailure(compatibility, err)
 		}
 		if key != compatibility.RebuildSourceKey {
-			return fmt.Errorf("rebuild source scope differs; repeat the original --source-dir, source environment and --db-path: %w", db.ErrRebuildPending)
+			return fmt.Errorf("rebuild source scope differs; repeat the original --source-dir, source environment and --collector-db-path: %w", db.ErrRebuildPending)
 		}
 	}
 	return nil

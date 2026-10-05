@@ -1,0 +1,109 @@
+{
+  "case_id": "F07",
+  "status": "planned-production-test",
+  "guarantees": [
+    "G05"
+  ],
+  "initial_server": {
+    "owner_A": {
+      "sessions": [],
+      "facts": [],
+      "countable_fact_count": 0,
+      "total_tokens": 0
+    },
+    "owner_B": {
+      "sessions": [],
+      "facts": [],
+      "countable_fact_count": 0,
+      "total_tokens": 0
+    }
+  },
+  "trace": [
+    {
+      "action": "publish",
+      "trusted_owner": "owner_A",
+      "batch": {
+        "batch_label": "batch-shared-label",
+        "collector_stream": "stream-A",
+        "journal_sequences": [
+          1
+        ],
+        "include_sessions": [
+          "session_A"
+        ],
+        "include_facts": [
+          "fact_A"
+        ]
+      },
+      "expected_server": {
+        "owner_A": {
+          "sessions": [
+            "session-A"
+          ],
+          "facts": [
+            "fact_A"
+          ],
+          "countable_fact_count": 1,
+          "total_tokens": 100
+        },
+        "owner_B": {
+          "sessions": [],
+          "facts": [],
+          "countable_fact_count": 0,
+          "total_tokens": 0
+        }
+      }
+    },
+    {
+      "action": "publish",
+      "trusted_owner": "owner_B",
+      "batch": {
+        "batch_label": "batch-shared-label",
+        "collector_stream": "stream-A",
+        "journal_sequences": [
+          1
+        ],
+        "include_sessions": [
+          "session_A"
+        ],
+        "include_facts": [
+          "fact_A"
+        ]
+      },
+      "expected_server": {
+        "owner_A": {
+          "sessions": [
+            "session-A"
+          ],
+          "facts": [
+            "fact_A"
+          ],
+          "countable_fact_count": 1,
+          "total_tokens": 100
+        },
+        "owner_B": {
+          "sessions": [
+            "session-A"
+          ],
+          "facts": [
+            "fact_A"
+          ],
+          "countable_fact_count": 1,
+          "total_tokens": 100
+        }
+      }
+    },
+    {
+      "action": "lookup_receipt",
+      "trusted_owner": "owner_B",
+      "owner_claim_in_request": "owner_A",
+      "expected": {
+        "cannot_return_owner_A_receipt": true
+      }
+    }
+  ],
+  "assertions": [
+    "Owner comes from trusted context, not submitted canonical data.",
+    "Local composition may use one configured owner; remote authentication remains deferred."
+  ]
+}

@@ -288,6 +288,10 @@ func (a piJSONLAdapter) factFromRecord(ctx context.Context, source Source, optio
 	if options.Now.IsZero() {
 		nowMs = time.Now().UnixMilli()
 	}
+	sessionSource := "filename"
+	if session.hasHeader {
+		sessionSource = "native"
+	}
 	sourceID := stableHash("pi-session:" + session.sessionID)
 	location, _ := resolveFactLocation(ctx, options, session.cwd, "", "")
 	return RawTokenFact{
@@ -311,6 +315,7 @@ func (a piJSONLAdapter) factFromRecord(ctx context.Context, source Source, optio
 		CacheWriteTokens: tokens.cacheWrite,
 		TotalTokens:      tokens.total,
 		Location:         location,
+		MetadataJSON:     sourceIdentityJSON(sessionSource, nil),
 	}, diagnostics, true
 }
 

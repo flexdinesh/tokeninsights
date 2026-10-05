@@ -194,6 +194,138 @@ void test('fixture safety scan rejects representative sensitive data', () => {
   }
 })
 
+void test('collector rebuild sources and stages contain only synthetic metadata', async () => {
+  const root = workspacePath('packages', 'cli', 'testdata', 'conformance', 'collector-rebuild')
+  const paths = (
+    await Promise.all(['source', 'stages'].map((dir) => listFiles(join(root, dir))))
+  ).flat()
+  assert.ok(paths.length > 0)
+  await Promise.all(
+    paths.map(async (path) => {
+      const contents = await readFile(path, 'utf8')
+      assertPublicSafeText(contents)
+      if (path.endsWith('.jsonl')) {
+        for (const line of contents.trim().split('\n')) {
+          validateRebuildMetadata(parseJSON(line), relative(root, path))
+        }
+        return
+      }
+      assert.ok(path.endsWith('.sql'), `${path}: unexpected source format`)
+      const database = new DatabaseSync(':memory:')
+      try {
+        database.exec(contents)
+        const tables = database
+          .prepare("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name")
+          .all()
+          .map((row) => row.name)
+        assert.deepEqual(tables, ['message', 'session_message'])
+        for (const table of ['message', 'session_message']) {
+          for (const row of database.prepare(`SELECT * FROM ${table}`).all()) {
+            validateRebuildMetadata(withoutData(row), `${path}:${table}`)
+            validateRebuildMetadata(
+              parseJSON(requireString(row.data, path)),
+              `${path}:${table}.data`,
+            )
+          }
+        }
+      } finally {
+        database.close()
+      }
+    }),
+  )
+})
+
+void test('collector rebuild metadata allowlist rejects extra fields and non-synthetic labels', () => {
+  for (const value of [
+    { conversation: 'rebuild-example' },
+    { id: 'unapproved-user-label' },
+    { usage: { opaque: 'rebuild-example' } },
+  ]) {
+    assert.throws(() => validateRebuildMetadata(value, 'adversarial source'))
+  }
+})
+
+const rebuildMetadataFields = new Set([
+  'type',
+  'version',
+  'id',
+  'session_id',
+  'sessionId',
+  'requestId',
+  'message',
+  'role',
+  'provider',
+  'providerID',
+  'model',
+  'model_provider',
+  'modelID',
+  'payload',
+  'turn_id',
+  'timestamp',
+  'usage',
+  'tokens',
+  'input',
+  'output',
+  'reasoning',
+  'cache',
+  'read',
+  'write',
+  'cacheRead',
+  'cacheWrite',
+  'totalTokens',
+  'input_tokens',
+  'output_tokens',
+  'cached_input_tokens',
+  'reasoning_output_tokens',
+  'total_tokens',
+  'cache_read_input_tokens',
+  'cache_creation_input_tokens',
+  'output_tokens_details',
+  'thinking_tokens',
+  'info',
+  'last_token_usage',
+  'total_token_usage',
+  'forked_from_id',
+  'source',
+  'subagent',
+  'thread_spawn',
+  'parent_thread_id',
+  'time',
+  'created',
+  'completed',
+  'time_created',
+  'time_updated',
+  'seq',
+])
+
+function validateRebuildMetadata(value: unknown, context: string): void {
+  if (value === null) return
+  if (typeof value === 'object' && !Array.isArray(value)) {
+    for (const [key, item] of Object.entries(value)) {
+      assert.ok(rebuildMetadataFields.has(key), `${context}: unexpected field ${key}`)
+      validateRebuildMetadata(item, `${context}.${key}`)
+    }
+    return
+  }
+  if (typeof value === 'number') {
+    assert.ok(Number.isSafeInteger(value) && value >= 0, `${context}: invalid numeric metadata`)
+    return
+  }
+  if (typeof value === 'string') {
+    assertPublicSafeText(value)
+    assert.ok(
+      allowedStructuralStrings.has(value) ||
+        value === 'fixture-provider' ||
+        value === 'fixture-model' ||
+        /^(?:request-)?rebuild-[a-z0-9-]+$/.test(value) ||
+        /^2026-01-0[12]T00:00:0[0-5]Z$/.test(value),
+      `${context}: non-synthetic metadata label`,
+    )
+    return
+  }
+  assert.fail(`${context}: unexpected metadata value`)
+}
+
 function validateRecord(harness: string, record: unknown, context: string): void {
   if (harness === 'pi') {
     validatePi(record, context)

@@ -14,40 +14,41 @@ import (
 	"syscall"
 	"time"
 
+	"crypto/rand"
+	"crypto/subtle"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/db"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/dbpath"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/pipeline"
 	"golang.org/x/sys/unix"
+	"net/netip"
 )
 
-const protocolVersion = 1
+const protocolVersion = 2
 const bodyLimit = 256 * 1024
 const callTimeout = 3 * time.Second
 const startupTimeout = 45 * time.Second
 const stopTimeout = 15 * time.Second
 
 type Config struct {
-	Version     int                    `json:"version"`
-	DBPath      string                 `json:"dbPath"`
-	DatabaseKey string                 `json:"databaseKey"`
-	Host        string                 `json:"host"`
-	Port        int                    `json:"port"`
-	Sources     *pipeline.SourceConfig `json:"sources"`
+	Version     int    `json:"version"`
+	DBPath      string `json:"dbPath"`
+	DatabaseKey string `json:"databaseKey"`
+	Host        string `json:"host"`
+	Port        int    `json:"port"`
+	Remote      bool   `json:"remote,omitempty"`
+	Token       string `json:"token,omitempty"`
 }
 
 type Record struct {
-	ActionVersion  int       `json:"actionVersion"`
-	SchemaVersion  int       `json:"schemaVersion"`
-	DataGeneration int       `json:"dataGeneration"`
-	Config         Config    `json:"config"`
-	InstanceID     string    `json:"instanceId"`
-	PID            int       `json:"pid"`
-	Protocol       int       `json:"protocol"`
-	Version        string    `json:"version"`
-	URL            string    `json:"url"`
-	Address        string    `json:"address"`
-	Socket         string    `json:"socket"`
-	StartedAt      time.Time `json:"startedAt"`
+	SchemaVersion int       `json:"schemaVersion"`
+	Config        Config    `json:"config"`
+	InstanceID    string    `json:"instanceId"`
+	PID           int       `json:"pid"`
+	Protocol      int       `json:"protocol"`
+	Version       string    `json:"version"`
+	URL           string    `json:"url"`
+	Address       string    `json:"address"`
+	Socket        string    `json:"socket"`
+	StartedAt     time.Time `json:"startedAt"`
 }
 
 type paths struct{ config, record, socket, log, fallbackRecord string }
@@ -241,8 +242,24 @@ func validateConfig(c Config) error {
 	if err != nil {
 		return err
 	}
-	if path != c.DBPath || key != c.DatabaseKey || c.Version != 1 || c.Port < 0 || c.Port > 65535 {
+	if path != c.DBPath || key != c.DatabaseKey || c.Version != 2 || c.Port < 0 || c.Port > 65535 {
 		return fmt.Errorf("invalid service configuration")
 	}
-	return c.Sources.Validate()
+	if c.Token == "" {
+		ip, err := netip.ParseAddr(c.Host)
+		if err != nil || !ip.IsLoopback() {
+			return fmt.Errorf("non-loopback binding requires --token")
+		}
+	}
+	return nil
 }
+
+func instanceID() string {
+	var value [16]byte
+	if _, err := rand.Read(value[:]); err != nil {
+		panic(err)
+	}
+	return hex.EncodeToString(value[:])
+}
+
+func sameToken(a, b string) bool { return subtle.ConstantTimeCompare([]byte(a), []byte(b)) == 1 }

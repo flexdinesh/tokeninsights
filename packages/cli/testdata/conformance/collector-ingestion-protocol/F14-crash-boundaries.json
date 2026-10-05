@@ -1,0 +1,101 @@
+{
+  "case_id": "F14",
+  "status": "planned-production-test",
+  "guarantees": [
+    "G03",
+    "G04",
+    "G05",
+    "G06",
+    "G07",
+    "G10",
+    "G11"
+  ],
+  "independent_scenarios": true,
+  "faults": [
+    {
+      "at": "before_capture_commit",
+      "after_reopen": "no_raw_facts_or_advanced_source_marker",
+      "resume": "reparse"
+    },
+    {
+      "at": "during_capture_transaction",
+      "after_reopen": "no_partial_raw_facts_or_advanced_source_marker",
+      "resume": "reparse"
+    },
+    {
+      "at": "after_capture_commit",
+      "after_reopen": "raw_facts_and_source_marker_durable_normalization_pending",
+      "resume": "normalize"
+    },
+    {
+      "at": "during_canonical_journal_transaction",
+      "after_reopen": "neither_canonical_changes_nor_journal_entries_committed",
+      "resume": "normalize"
+    },
+    {
+      "at": "after_canonical_journal_commit",
+      "after_reopen": "canonical_facts_and_pending_journal_durable",
+      "resume": "publish"
+    },
+    {
+      "at": "during_batch_preparation_transaction",
+      "after_reopen": "no_cursor_advance_any_committed_batch_is_immutable",
+      "resume": "reuse_committed_batch_or_prepare_from_pending_journal"
+    },
+    {
+      "at": "after_batch_saved_before_send",
+      "after_reopen": "immutable_batch_durable_delivery_pending",
+      "resume": "publish_exact_saved_batch"
+    },
+    {
+      "at": "during_server_transaction",
+      "after_reopen": "no_partial_server_entities_or_receipt",
+      "resume": "replay_saved_batch"
+    },
+    {
+      "at": "after_server_commit_before_response",
+      "after_reopen": "server_entities_and_receipt_durable_collector_pending",
+      "resume": "replay_saved_batch"
+    },
+    {
+      "at": "after_response_before_collector_ack_commit",
+      "after_reopen": "server_entities_and_receipt_durable_collector_pending",
+      "resume": "replay_saved_batch"
+    },
+    {
+      "at": "during_collector_ack_transaction",
+      "after_reopen": "batch_ack_state_and_contiguous_cursor_commit_together_or_neither",
+      "resume": "replay_if_pending"
+    },
+    {
+      "at": "after_collector_ack_commit",
+      "after_reopen": "cursor_corresponds_to_durable_server_receipt",
+      "resume": "next_pending_work_only"
+    }
+  ],
+  "final_after_each_manual_resume": {
+    "server": {
+      "owner_A": {
+        "sessions": [
+          "session-A"
+        ],
+        "facts": [
+          "fact_A",
+          "fact_B"
+        ],
+        "countable_fact_count": 2,
+        "total_tokens": 200
+      }
+    },
+    "collector": {
+      "delivery_cursor": 2,
+      "pending_sequences": []
+    }
+  },
+  "requirements": [
+    "Drive real subprocess/storage paths; graceful shutdown is not a crash.",
+    "Inspect reopened collector raw/canonical/journal/cursor and reopened server entities/receipts.",
+    "Verify queried component counters and full identity set, not only total.",
+    "Preexisting server history remains unchanged except accepted canonical updates."
+  ]
+}

@@ -1,0 +1,139 @@
+{
+  "status": "candidate-not-wire-contract",
+  "sessions": {
+    "session_A": {
+      "identity_label": "session-A",
+      "harness": "pi",
+      "native_session_id": "fixture-session-A"
+    }
+  },
+  "facts": {
+    "fact_A": {
+      "identity_label": "usage-A",
+      "session_identity_label": "session-A",
+      "payload": {
+        "harness": "pi",
+        "session_id": "fixture-session-A",
+        "message_id": "fixture-request-A",
+        "occurred_at_ms": 1767225600000,
+        "provider": "unknown",
+        "provider_source": "unknown",
+        "model": "unknown",
+        "usage_scope": "message",
+        "quality": "exact",
+        "is_countable": 1,
+        "input_tokens": 80,
+        "output_tokens": 20,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0,
+        "total_tokens": 100
+      }
+    },
+    "fact_B": {
+      "identity_label": "usage-B",
+      "session_identity_label": "session-A",
+      "payload": {
+        "harness": "pi",
+        "session_id": "fixture-session-A",
+        "message_id": "fixture-request-B",
+        "occurred_at_ms": 1767225600000,
+        "provider": "unknown",
+        "provider_source": "unknown",
+        "model": "unknown",
+        "usage_scope": "message",
+        "quality": "exact",
+        "is_countable": 1,
+        "input_tokens": 80,
+        "output_tokens": 20,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0,
+        "total_tokens": 100
+      }
+    },
+    "fact_A_changed": {
+      "identity_label": "usage-A",
+      "session_identity_label": "session-A",
+      "payload": {
+        "harness": "pi",
+        "session_id": "fixture-session-A",
+        "message_id": "fixture-request-A",
+        "occurred_at_ms": 1767225600000,
+        "provider": "unknown",
+        "provider_source": "unknown",
+        "model": "unknown",
+        "usage_scope": "message",
+        "quality": "exact",
+        "is_countable": 1,
+        "input_tokens": 80,
+        "output_tokens": 40,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0,
+        "total_tokens": 120
+      }
+    }
+  },
+  "invalid_variants": {
+    "negative": {
+      "base": "fact_A",
+      "replace": {
+        "output_tokens": -1,
+        "total_tokens": 79
+      }
+    },
+    "fraction": {
+      "base": "fact_A",
+      "replace": {
+        "output_tokens": 0.5,
+        "total_tokens": 80.5
+      }
+    },
+    "overflow": {
+      "base": "fact_A",
+      "replace": {
+        "output_tokens": "9223372036854775808",
+        "total_tokens": "9223372036854775888"
+      }
+    },
+    "javascript_precision_edge": {
+      "base": "fact_A",
+      "replace": {
+        "output_tokens": "9007199254740993",
+        "total_tokens": "9007199254741073"
+      },
+      "note": "Preserve exact values if supported; otherwise reject explicitly. Never round."
+    },
+    "contradictory_total": {
+      "base": "fact_A",
+      "replace": {
+        "total_tokens": 999
+      }
+    },
+    "missing_counter": {
+      "base": "fact_A",
+      "remove": [
+        "output_tokens"
+      ]
+    },
+    "dangling_session": {
+      "base": "fact_A",
+      "replace": {
+        "session_id": "fixture-missing-session"
+      },
+      "session_identity_label": "missing-session"
+    },
+    "private_fields": {
+      "base": "fact_A",
+      "add": {
+        "prompt_text": "SYNTHETIC_PRIVATE_MARKER",
+        "tool_output": "SYNTHETIC_PRIVATE_MARKER",
+        "source_path": "SYNTHETIC_PATH_MARKER",
+        "request_headers": {
+          "authorization": "SYNTHETIC_SECRET_MARKER"
+        }
+      }
+    }
+  }
+}

@@ -14,10 +14,9 @@ import (
 	"testing"
 	"time"
 
-	application "github.com/flexdinesh/tokeninsights/packages/cli/internal/app"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/db"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/pipeline"
 	serverapi "github.com/flexdinesh/tokeninsights/packages/cli/internal/server/api"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/serverstore"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/version"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/viewer"
 	_ "modernc.org/sqlite"
@@ -26,7 +25,8 @@ import (
 func fixture(t *testing.T) string {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "usage.sqlite")
-	database, _, err := db.CreateIfMissing(path)
+	store, err := serverstore.CreateIfMissing(path)
+	database := store.SQL()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -53,16 +53,8 @@ func fixture(t *testing.T) string {
 		if err != nil {
 			t.Fatal(err)
 		}
-		result, err := database.Exec(`INSERT INTO raw_token_usage (raw_fact_key,harness,source_id,source_kind,collector,parser,observed_at_ms,session_id,usage_scope,quality) VALUES (?,?,?,'test','test','test',?,?,'message','exact')`, key, f.harness, "test", day.UnixMilli(), f.session)
-		if err != nil {
-			t.Fatal(err)
-		}
-		rawID, err := result.LastInsertId()
-		if err != nil {
-			t.Fatal(err)
-		}
-		_, err = database.Exec(`INSERT INTO canonical_token_usage (semantic_key,recorded_at_ms,harness,session_id,provider,model,usage_scope,quality,is_countable,input_tokens,output_tokens,cache_read_tokens,cache_write_tokens,total_tokens,primary_raw_fact_id)
-			VALUES (?,?,?,(SELECT id FROM canonical_sessions WHERE semantic_key=?),?,?,'message','exact',?,?,?,?,?,?,?)`, key, day.UnixMilli(), f.harness, sessionKey, f.provider, f.model, f.countable, f.input, f.output, f.cacheRead, f.cacheWrite, f.total, rawID)
+		_, err = database.Exec(`INSERT INTO canonical_token_usage (semantic_key,recorded_at_ms,harness,session_id,provider,model,usage_scope,quality,is_countable,input_tokens,output_tokens,cache_read_tokens,cache_write_tokens,total_tokens,payload_hash)
+			VALUES (?,?,?,(SELECT id FROM canonical_sessions WHERE semantic_key=?),?,?,'message','exact',?,?,?,?,?,?,?)`, key, day.UnixMilli(), f.harness, sessionKey, f.provider, f.model, f.countable, f.input, f.output, f.cacheRead, f.cacheWrite, f.total, key)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -75,7 +67,8 @@ func fixture(t *testing.T) string {
 
 func TestInstanceUsesSavedDataHostname(t *testing.T) {
 	path := fixture(t)
-	database, err := db.OpenWritable(path)
+	store, err := serverstore.Open(path)
+	database := store.SQL()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -94,34 +87,28 @@ func TestInstanceUsesSavedDataHostname(t *testing.T) {
 		}
 	}
 	checkHostname("unknown")
-	for i, run := range []struct {
-		hostname, status string
-	}{
-		{"collector-workstation", "completed"},
-		{"other-workstation", "running"},
-		{"other-workstation", "failed"},
-	} {
-		if _, err := database.Exec(`INSERT INTO ingest_runs (run_id,hostname,harness,collector,parser,source_id,source_kind,status,started_at_ms)
-			VALUES (?,?,'pi','test','test','test','test',?,1000)`, fmt.Sprint(i), run.hostname, run.status); err != nil {
+	for i, hostname := range []string{"collector-workstation", "other-workstation"} {
+		if _, err := database.Exec("INSERT INTO ingestion_producers(stream_id,hostname,last_ingestion_at_ms) VALUES(?,?,1000)", fmt.Sprint(i), hostname); err != nil {
 			t.Fatal(err)
 		}
-		checkHostname("collector-workstation")
+		if i == 0 {
+			checkHostname("collector-workstation")
+		} else {
+			checkHostname("multiple machines")
+		}
 	}
-	if _, err := database.Exec(`INSERT INTO ingest_runs (run_id,harness,collector,parser,source_id,source_kind,status,started_at_ms)
-		VALUES ('legacy','pi','test','test','test','test','completed',1000)`); err != nil {
-		t.Fatal(err)
-	}
-	checkHostname("unknown")
+
 }
 
 func TestStatusSharesRevisionWithoutSyncJob(t *testing.T) {
 	path := fixture(t)
-	database, err := db.OpenWritable(path)
+	store, err := serverstore.Open(path)
+	database := store.SQL()
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer func() { _ = database.Close() }()
-	if _, err := database.Exec("UPDATE sync_state SET revision = 7 WHERE id = 1"); err != nil {
+	if _, err := database.Exec("UPDATE server_metadata SET revision = 7 WHERE id = 1"); err != nil {
 		t.Fatal(err)
 	}
 	a := newApp(context.Background(), Options{DBPath: path}, io.Discard)
@@ -258,7 +245,8 @@ func TestDashboardSessionCoverageAcrossBucketsAndDates(t *testing.T) {
 		}
 	}
 	path = filepath.Join(t.TempDir(), "empty.sqlite")
-	database, _, err := db.CreateIfMissing(path)
+	store, err := serverstore.CreateIfMissing(path)
+	database := store.SQL()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -375,7 +363,7 @@ func TestAPIV1RoutesAndMethods(t *testing.T) {
 		path, method, allow string
 	}{
 		{"/api/v1/instance", http.MethodPost, http.MethodGet},
-		{"/api/v1/sync", http.MethodPut, "GET, POST"},
+		{"/api/v1/sync", http.MethodPut, "GET"},
 		{"/api/v1/usage", http.MethodPost, http.MethodGet},
 		{"/api/v1/usage/facets", http.MethodPost, http.MethodGet},
 	} {
@@ -401,111 +389,51 @@ func TestAPIV1RoutesAndMethods(t *testing.T) {
 	}
 }
 
-func TestConcurrentSyncPostsJoinWhileWaitingForWriter(t *testing.T) {
+func TestSyncPostsCannotTriggerCollection(t *testing.T) {
 	path := fixture(t)
-	release, err := db.AcquireWriterLock(context.Background(), path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer release()
-	sources, err := pipeline.ResolveSources(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	controller := application.New(context.Background(), path, sources, application.ID(), io.Discard)
-	t.Cleanup(func() {
-		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-		defer cancel()
-		if err := controller.Close(ctx); err != nil {
-			t.Error(err)
-		}
-	})
 	a := newApp(context.Background(), Options{DBPath: path}, io.Discard)
-	a.controller = controller
-	handler := a.handler()
-	const requests = 32
-	start := make(chan struct{})
-	responses := make(chan *httptest.ResponseRecorder, requests)
-	for range requests {
-		go func() {
-			<-start
-			response := httptest.NewRecorder()
-			handler.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/api/v1/sync", nil))
-			responses <- response
-		}()
-	}
-	close(start)
-	for range requests {
-		response := <-responses
-		var status serverapi.SyncResponse
-		if err := json.Unmarshal(response.Body.Bytes(), &status); err != nil {
-			t.Fatal(err)
-		}
-		if response.Code != http.StatusAccepted || !status.Running {
-			t.Fatalf("sync not accepted while waiting: %d %+v", response.Code, status)
+	for range 8 {
+		response := httptest.NewRecorder()
+		a.handler().ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/api/v1/sync", nil))
+		if response.Code != http.StatusMethodNotAllowed || response.Header().Get("Allow") != "GET" {
+			t.Fatal(response.Code, response.Body.String())
 		}
 	}
-	operation, err := controller.RequestRefresh(context.Background())
+	store, err := serverstore.Open(path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	database, err := db.Open(path)
-	if err != nil {
+	defer func() { _ = store.Close() }()
+	var rawTables, facts int
+	if err := store.SQL().QueryRow("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name IN ('raw_token_usage','ingest_runs','sync_jobs','source_refresh_state')").Scan(&rawTables); err != nil {
 		t.Fatal(err)
 	}
-	defer func() { _ = database.Close() }()
-	var jobs int
-	if err := database.QueryRow("SELECT COUNT(*) FROM sync_jobs").Scan(&jobs); err != nil || jobs != 0 {
-		t.Fatal("sync bypassed writer lock", jobs, err)
+	if err := store.SQL().QueryRow("SELECT COUNT(*) FROM canonical_token_usage").Scan(&facts); err != nil {
+		t.Fatal(err)
 	}
-	release()
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-	defer cancel()
-	ticker := time.NewTicker(time.Millisecond)
-	defer ticker.Stop()
-	for {
-		result, ok := controller.Operation(operation.ID)
-		if ok && result.State == "succeeded" {
-			break
-		}
-		if ok && result.State != "queued" && result.State != "running" {
-			t.Fatal("sync failed", result)
-		}
-		select {
-		case <-ctx.Done():
-			t.Fatal("sync did not complete", ctx.Err())
-		case <-ticker.C:
-		}
-	}
-	if err := database.QueryRow("SELECT COUNT(*) FROM sync_jobs").Scan(&jobs); err != nil || jobs != 1 {
-		t.Fatal("concurrent posts created duplicate sync jobs", jobs, err)
+	if rawTables != 0 || facts != 6 {
+		t.Fatalf("server source dependency or mutation: raw=%d facts=%d", rawTables, facts)
 	}
 }
 
-func TestAnalyticsRejectPendingRecoveryWithoutMutation(t *testing.T) {
-	path := fixture(t)
-	database, err := db.OpenWritable(path)
+func TestAnalyticsRejectCollectorDatabaseWithoutMutation(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "collector.sqlite")
+	database, _, err := db.CreateIfMissing(path)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer func() { _ = database.Close() }()
-	if _, err := database.Exec("UPDATE database_lifecycle SET rebuild_pending = 1, rebuild_source_key = 'test-scope' WHERE id = 1"); err != nil {
-		t.Fatal(err)
-	}
 	a := newApp(context.Background(), Options{DBPath: path}, io.Discard)
 	for _, endpoint := range []string{"/api/v1/usage", "/api/v1/usage/facets"} {
-		w := httptest.NewRecorder()
-		a.handler().ServeHTTP(w, httptest.NewRequest("GET", endpoint, nil))
-		if w.Code != http.StatusServiceUnavailable || !strings.Contains(w.Body.String(), "Sync to rebuild") || strings.Contains(w.Body.String(), path) {
-			t.Fatalf("%s: %d %s", endpoint, w.Code, w.Body.String())
+		response := httptest.NewRecorder()
+		a.handler().ServeHTTP(response, httptest.NewRequest(http.MethodGet, endpoint, nil))
+		if response.Code != http.StatusServiceUnavailable || strings.Contains(response.Body.String(), path) {
+			t.Fatal(response.Code, response.Body.String())
 		}
 	}
-	var pending, facts int
-	if err := database.QueryRow("SELECT rebuild_pending, (SELECT COUNT(*) FROM canonical_token_usage) FROM database_lifecycle WHERE id = 1").Scan(&pending, &facts); err != nil {
-		t.Fatal(err)
-	}
-	if pending != 1 || facts != 6 {
-		t.Fatalf("read endpoints changed data: pending=%d facts=%d", pending, facts)
+	var rawTables int
+	if err := database.QueryRow("SELECT COUNT(*) FROM sqlite_master WHERE name='raw_token_usage'").Scan(&rawTables); err != nil || rawTables != 1 {
+		t.Fatal("collector changed", rawTables, err)
 	}
 }
 

@@ -1,0 +1,66 @@
+{
+  "case_id": "F10",
+  "status": "planned-production-test",
+  "guarantees": [
+    "G06",
+    "G11"
+  ],
+  "initial_server": {
+    "owner_A": {
+      "sessions": [],
+      "facts": [],
+      "countable_fact_count": 0,
+      "total_tokens": 0
+    }
+  },
+  "reject_variants": [
+    "negative",
+    "fraction",
+    "overflow",
+    "contradictory_total",
+    "missing_counter"
+  ],
+  "batch_pattern": {
+    "valid_first": "fact_B",
+    "invalid_second": "invalid:<variant>",
+    "include_sessions": [
+      "session_A"
+    ]
+  },
+  "expected_for_each_rejection": {
+    "outcome": "invalid_counters",
+    "no_receipt": true,
+    "server": {
+      "owner_A": {
+        "sessions": [],
+        "facts": [],
+        "countable_fact_count": 0,
+        "total_tokens": 0
+      }
+    }
+  },
+  "precision_variant": "javascript_precision_edge",
+  "allowed_precision_outcomes": [
+    {
+      "outcome": "accepted_exact",
+      "output_tokens": "9007199254740993",
+      "total_tokens": "9007199254741073"
+    },
+    {
+      "outcome": "unsupported_numeric_range",
+      "server": {
+        "owner_A": {
+          "sessions": [],
+          "facts": [],
+          "countable_fact_count": 0,
+          "total_tokens": 0
+        }
+      }
+    }
+  ],
+  "assertions": [
+    "Never coerce fractional/overflow counters.",
+    "Never round exact integers through floating-point.",
+    "No partial valid entity writes after later validation fails."
+  ]
+}

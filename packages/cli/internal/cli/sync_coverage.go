@@ -1,17 +1,15 @@
 package cli
 
 import (
-	"fmt"
+	"context"
 	"slices"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/db"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/service"
 )
 
 const sharedSyncInterval = time.Second
-const percentageScale = 100
 
 func (m interactiveModel) cancelSync() {
 	if m.cancel != nil {
@@ -24,73 +22,38 @@ func (m interactiveModel) sharedSyncCmd() tea.Cmd {
 	if m.syncInFlight || m.sharedSync.Running {
 		interval = sharedSyncInterval
 	}
+	m.ctx, m.requestID = m.queryContext(m.statusQueries)
 	return tea.Tick(interval, func(time.Time) tea.Msg {
-		state, err := service.Probe(m.ctx, m.options.dbPath)
+		message := sharedSyncMsg{requestID: m.requestID, generation: m.publicationGeneration}
+		if !m.statusQueries.current(m.requestID) {
+			message.err = context.Canceled
+			return message
+		}
+		client, err := tableClient(m.options)
 		if err != nil {
-			return sharedSyncMsg{err: err}
+			message.err = err
+			return message
 		}
-		if state.Status != nil {
-			s := state.Status
-			progress := s.Progress
-			progress.Running = s.Running
-			progress.Phase = s.Phase
-			return sharedSyncMsg{status: progress, instanceID: s.InstanceID, dataEpoch: s.DataEpoch, readiness: s.DataReadiness, pending: s.PendingRefresh, requested: s.CheckRequestedAt}
+		state, err := client.Status(m.ctx)
+		if err != nil {
+			message.err = err
+			return message
 		}
-		status, err := db.ReadSyncStatus(m.ctx, m.options.dbPath)
-		return sharedSyncMsg{status: status, err: err}
+		message.status = db.SyncStatus{Revision: state.Revision, Phase: string(state.Phase)}
+		message.instanceID, message.dataEpoch, message.readiness = state.InstanceId, state.DataEpoch, string(state.DataReadiness)
+		return message
 	})
 }
 
 func (m interactiveModel) syncWorkLabel() string {
-	s := m.sharedSync
-	if m.syncInFlight && s.StartedAtMs < m.coverageSinceMs {
-		return "Checking local sources"
-	}
-	if s.JobID == 0 {
-		if m.syncInFlight || m.sharedSync.Running {
-			return "Checking local sources"
-		}
-		return "Local sources not checked"
-	}
-	work := s.Phase
-	if s.DiscoveryComplete {
-		percent := int64(percentageScale)
-		if s.TotalSources > 0 {
-			percent = s.CheckedSources * percentageScale / s.TotalSources
-		}
-		work = fmt.Sprintf("%s · %d/%d sources · %d%% checked · %d ready · %d failed", s.Phase, s.CheckedSources, s.TotalSources, percent, s.ReadySources, s.FailedSources)
-	}
-	if !m.options.noSync && !s.Running && !m.syncInFlight {
-		work += " · u retry sync"
-	}
-	return work
-}
-
-func (m interactiveModel) coverageSummary() string {
-	checked := 0
-	for _, d := range m.coverage {
-		if (d.Status == "checked" || d.Status == "empty") && m.dayCheckConfirmed(d.CheckedAtMs) {
-			checked++
-		}
-	}
-	return fmt.Sprintf("%d/%d days checked", checked, len(m.coverage))
-}
-
-func (m interactiveModel) dayCheckConfirmed(checkedAtMs int64) bool {
-	since := m.coverageSinceMs
-	if m.sharedSync.Running {
-		since = max(since, m.sharedSync.StartedAtMs)
-	}
-	return checkedAtMs >= since
+	return "Saved server data · r Reload"
 }
 
 func (m interactiveModel) currentDayRows(rows []renderRow) []renderRow {
 	display := slices.Clone(rows)
 	for i := range display {
 		row := &display[i]
-		if (row.coverageStatus == "checked" || row.coverageStatus == "empty") && !m.dayCheckConfirmed(row.coverageCheckedAtMs) {
-			row.coverageStatus = ""
-		}
+		row.coverageStatus = ""
 	}
 	return display
 }
@@ -112,54 +75,4 @@ func dayCoverageMarker(status string) string {
 	default:
 		return ""
 	}
-}
-
-func dayCoverageLabel(d db.DayCoverage) string {
-	switch d.Status {
-	case "empty":
-		return "empty"
-	case "checked":
-		return "checked"
-	case "unverified":
-		return "unverified"
-	case "partial":
-		if d.FailedSources > 0 {
-			return "incomplete"
-		}
-		return "updating"
-	default:
-		return "pending"
-	}
-}
-
-func withDayCoverage(rows []renderRow, days []db.DayCoverage, selected sortMode) []renderRow {
-	byDay := make(map[string]db.DayCoverage, len(days))
-	seen := make(map[string]bool, len(rows))
-	for _, d := range days {
-		byDay[d.Day] = d
-	}
-	for i := range rows {
-		seen[rows[i].bucket] = true
-		if d, ok := byDay[rows[i].bucket]; ok {
-			rows[i].coverageStatus = dayCoverageLabel(d)
-			rows[i].coverageCheckedAtMs = d.CheckedAtMs
-		}
-	}
-	// Long ranges retain a compact recent calendar; every day remains in coverage.
-	visible := days
-	if len(visible) > 31 {
-		visible = visible[len(visible)-7:]
-	}
-	for _, d := range visible {
-		if seen[d.Day] || d.HasUsage {
-			continue
-		}
-		value := "—"
-		if d.Status == "empty" {
-			value = "0"
-		}
-		rows = append(rows, renderRow{bucket: d.Day, coverageStatus: dayCoverageLabel(d), coverageCheckedAtMs: d.CheckedAtMs, placeholder: true, sessions: value, inputTokens: value, outputTokens: value, reasoningTokens: value, cacheReadTokens: value, cacheWriteTokens: value, totalTokens: value})
-	}
-	sortRenderRows(rows, tabTokens, selected)
-	return rows
 }

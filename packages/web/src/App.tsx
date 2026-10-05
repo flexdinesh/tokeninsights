@@ -14,7 +14,7 @@ import type { Bootstrap, Tab } from './contracts'
 import { locationGroupSchema } from './contracts'
 import { DashboardProvider, reduceQuery, searchFromQuery, useDashboardQuery } from './state'
 import { useDashboardSync } from './useDashboardSync'
-import { labels } from './format'
+import { labels, serverTimeZoneLabel } from './format'
 import { FilterToolbar, QuickPeriods } from './components/Filters'
 import { DashboardHeader } from './components/DashboardHeader'
 import { DashboardResults } from './components/DashboardResults'
@@ -99,15 +99,9 @@ function DashboardShell({
 }) {
   const { query, setLocationGroup } = useDashboardQuery()
   const controller = useDashboardSync()
-  const { revision, analyticsEnabled: enabled, running } = controller
-  const analytics = useAnalytics(
-    query,
-    revision,
-    enabled,
-    Boolean(controller.statusQuery.data?.running),
-    controller.identity,
-  )
-  const facets = useFacets(query, revision, enabled, '', controller.identity)
+  const { revision, analyticsEnabled: enabled } = controller
+  const analytics = useAnalytics(query, revision, enabled, controller.identity)
+  const facets = useFacets(query, revision, enabled, controller.identity)
   const serverUnavailable = Boolean(
     connectionError || controller.statusQuery.error || analytics.error || facets.error,
   )
@@ -118,12 +112,11 @@ function DashboardShell({
       </a>
       <DashboardHeader
         hostname={bootstrap.hostname}
-        running={running}
-        refreshDisabled={controller.refreshDisabled}
-        pendingRefresh={controller.pendingRefresh}
+        timezone={bootstrap.timezone}
+        reloading={controller.reloading}
         serverUnavailable={serverUnavailable}
         lastSynced={analytics.data?.dashboard.lastSynced}
-        onSync={controller.startSync}
+        onReload={() => void controller.reload()}
       />
       <main id="dashboard" className="dashboard">
         <h1 className="sr-only">Token usage</h1>
@@ -189,7 +182,8 @@ function DashboardShell({
         <footer className="app-footer">
           <span>
             <span className="status-dot" />
-            {bootstrap.hostname} · {window.location.origin}
+            {bootstrap.hostname} · {window.location.origin} ·{' '}
+            {serverTimeZoneLabel(bootstrap.timezone)}
           </span>
           <span>OpenCode · Pi · Codex · Claude Code</span>
         </footer>

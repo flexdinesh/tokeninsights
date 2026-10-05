@@ -14,7 +14,7 @@ import (
 func TestResetAllWithoutConfirmDoesNotCreateDB(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "tokeninsights.sqlite")
 	var stdout bytes.Buffer
-	err := Run(context.Background(), []string{"reset-all", "--db-path", dbPath}, &stdout, io.Discard, time.Now())
+	err := Run(context.Background(), []string{"collector", "reset-all", "--collector-db-path", dbPath}, &stdout, io.Discard, time.Now())
 	if err != nil {
 		t.Fatal(err)
 	}

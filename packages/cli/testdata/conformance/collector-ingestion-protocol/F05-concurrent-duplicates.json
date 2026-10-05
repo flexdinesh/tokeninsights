@@ -1,0 +1,252 @@
+{
+  "case_id": "F05",
+  "status": "planned-production-test",
+  "guarantees": [
+    "G05",
+    "G06"
+  ],
+  "initial_server": {
+    "owner_A": {
+      "sessions": [],
+      "facts": [],
+      "countable_fact_count": 0,
+      "total_tokens": 0
+    }
+  },
+  "variants": [
+    {
+      "name": "same_batch",
+      "submissions": [
+        {
+          "batch_label": "batch-concurrent",
+          "collector_stream": "stream-A",
+          "journal_sequences": [
+            1,
+            2
+          ],
+          "include_sessions": [
+            "session_A"
+          ],
+          "include_facts": [
+            "fact_A",
+            "fact_B"
+          ]
+        },
+        {
+          "batch_label": "batch-concurrent",
+          "collector_stream": "stream-A",
+          "journal_sequences": [
+            1,
+            2
+          ],
+          "include_sessions": [
+            "session_A"
+          ],
+          "include_facts": [
+            "fact_A",
+            "fact_B"
+          ]
+        }
+      ],
+      "expected": {
+        "accepted_requests": 2,
+        "same_receipt": true
+      },
+      "expected_server": {
+        "owner_A": {
+          "sessions": [
+            "session-A"
+          ],
+          "facts": [
+            "fact_A",
+            "fact_B"
+          ],
+          "countable_fact_count": 2,
+          "total_tokens": 200
+        }
+      }
+    },
+    {
+      "name": "different_batches_fresh_publishers",
+      "submissions": [
+        {
+          "batch_label": "batch-one",
+          "collector_stream": "stream-A",
+          "journal_sequences": [
+            1,
+            2
+          ],
+          "include_sessions": [
+            "session_A"
+          ],
+          "include_facts": [
+            "fact_A",
+            "fact_B"
+          ]
+        },
+        {
+          "batch_label": "batch-two",
+          "collector_stream": "stream-rebuilt",
+          "journal_sequences": [
+            1,
+            2
+          ],
+          "include_sessions": [
+            "session_A"
+          ],
+          "include_facts": [
+            "fact_A",
+            "fact_B"
+          ]
+        }
+      ],
+      "expected": {
+        "accepted_requests": 2
+      },
+      "expected_server": {
+        "owner_A": {
+          "sessions": [
+            "session-A"
+          ],
+          "facts": [
+            "fact_A",
+            "fact_B"
+          ],
+          "countable_fact_count": 2,
+          "total_tokens": 200
+        }
+      }
+    },
+    {
+      "name": "same_batch_different_content",
+      "submissions": [
+        {
+          "batch_label": "batch-clash",
+          "collector_stream": "stream-A",
+          "journal_sequences": [
+            1
+          ],
+          "include_sessions": [
+            "session_A"
+          ],
+          "include_facts": [
+            "fact_A"
+          ]
+        },
+        {
+          "batch_label": "batch-clash",
+          "collector_stream": "stream-A",
+          "journal_sequences": [
+            1
+          ],
+          "include_sessions": [
+            "session_A"
+          ],
+          "include_facts": [
+            "fact_A_changed"
+          ]
+        }
+      ],
+      "expected": {
+        "accepted_requests": 1,
+        "conflict_requests": 1
+      },
+      "allowed_final_states": [
+        {
+          "sessions": [
+            "session-A"
+          ],
+          "facts": [
+            "fact_A"
+          ],
+          "countable_fact_count": 1,
+          "total_tokens": 100
+        },
+        {
+          "sessions": [
+            "session-A"
+          ],
+          "facts": [
+            "fact_A_changed"
+          ],
+          "countable_fact_count": 1,
+          "total_tokens": 120
+        }
+      ]
+    },
+    {
+      "name": "identical_duplicates_within_batch",
+      "submissions": [
+        {
+          "batch_label": "batch-internal-repeat",
+          "collector_stream": "stream-A",
+          "journal_sequences": [
+            1,
+            2
+          ],
+          "include_sessions": [
+            "session_A",
+            "session_A"
+          ],
+          "include_facts": [
+            "fact_A",
+            "fact_A"
+          ]
+        }
+      ],
+      "expected": {
+        "accepted_requests": 1
+      },
+      "expected_server": {
+        "owner_A": {
+          "sessions": [
+            "session-A"
+          ],
+          "facts": [
+            "fact_A"
+          ],
+          "countable_fact_count": 1,
+          "total_tokens": 100
+        }
+      }
+    },
+    {
+      "name": "conflicting_duplicates_within_batch",
+      "submissions": [
+        {
+          "batch_label": "batch-internal-conflict",
+          "collector_stream": "stream-A",
+          "journal_sequences": [
+            1,
+            2
+          ],
+          "include_sessions": [
+            "session_A"
+          ],
+          "include_facts": [
+            "fact_A",
+            "fact_A_changed"
+          ]
+        }
+      ],
+      "expected": {
+        "outcome": "conflicting_entities",
+        "no_receipt": true
+      },
+      "expected_server": {
+        "owner_A": {
+          "sessions": [],
+          "facts": [],
+          "countable_fact_count": 0,
+          "total_tokens": 0
+        }
+      }
+    }
+  ],
+  "fault_seam": "Hold submissions at pre-transaction barrier then release together.",
+  "assertions": [
+    "Exactly one receipt/body wins same-ID contention.",
+    "Run both arrival orders.",
+    "Different arrival order must not create duplicate contribution."
+  ]
+}

@@ -16,9 +16,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/app"
+	"bytes"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/db"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/pipeline"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/publication"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/serverstore"
 	_ "modernc.org/sqlite"
 )
 
@@ -73,7 +74,7 @@ func source(t *testing.T, root string) {
 	}
 }
 
-func TestLifecycleDetachedEmptyStartRefreshAndRestart(t *testing.T) {
+func TestLifecycleDetachedEmptyStartIngestAndRestart(t *testing.T) {
 	options := environment(t)
 	source(t, filepath.Join(os.Getenv("HOME"), ".pi", "agent", "sessions"))
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
@@ -85,86 +86,92 @@ func TestLifecycleDetachedEmptyStartRefreshAndRestart(t *testing.T) {
 	if !state.Running || state.Record.PID == os.Getpid() || state.Status.DataReadiness != "ready" {
 		t.Fatal(state)
 	}
-	database, err := db.Open(options.DBPath)
+	store, err := serverstore.Open(options.DBPath)
 	if err != nil {
 		t.Fatal(err)
 	}
-	var jobs int
-	if err := database.QueryRow("SELECT COUNT(*) FROM sync_jobs").Scan(&jobs); err != nil {
-		t.Fatal(err)
+	var facts int
+	if err := store.SQL().QueryRow("SELECT COUNT(*) FROM canonical_token_usage").Scan(&facts); err != nil || facts != 0 {
+		t.Fatal("startup collected", facts, err)
 	}
-	_ = database.Close()
-	if jobs != 0 {
-		t.Fatal("startup ingested")
-	}
+	_ = store.Close()
 	again, err := Ensure(ctx, Options{DBPath: options.DBPath})
 	if err != nil || again.Record.InstanceID != state.Record.InstanceID {
-		t.Fatal("ensure replaced healthy instance", err)
+		t.Fatal("healthy service replaced", err)
 	}
 	runtimeDir := os.Getenv("XDG_RUNTIME_DIR")
 	t.Setenv("XDG_RUNTIME_DIR", "")
 	fromSSH, err := Probe(ctx, options.DBPath)
 	if err != nil || fromSSH.Record.InstanceID != state.Record.InstanceID {
-		t.Fatal("runtime environment lost daemon", err)
+		t.Fatal("runtime discovery lost", err)
 	}
 	t.Setenv("XDG_RUNTIME_DIR", runtimeDir)
-	request, err := http.NewRequestWithContext(ctx, "GET", state.Record.URL+"/api/v1/usage?period=all", nil)
-	if err != nil {
-		t.Fatal(err)
+	batch := savedBatch(t, state.Status.DataEpoch)
+	first := postBatch(t, state.Record.URL, batch)
+	second := postBatch(t, state.Record.URL, batch)
+	if first != second || first.Inserted != 1 {
+		t.Fatal("replay differs", first, second)
 	}
-	response, err := http.DefaultClient.Do(request)
-	if err != nil {
-		t.Fatal(err)
-	}
-	_ = response.Body.Close()
-	if response.StatusCode != 200 {
-		t.Fatal("empty dashboard unavailable", response.StatusCode)
-	}
-	client := Client{Record: *state.Record}
-	operation, err := client.Refresh(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := client.Wait(ctx, operation.ID); err != nil {
-		t.Fatal(err)
-	}
-	database, err = db.Open(options.DBPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var facts int
-	if err := database.QueryRow("SELECT COUNT(*) FROM canonical_token_usage").Scan(&facts); err != nil {
-		t.Fatal(err)
-	}
-	_ = database.Close()
-	if facts != 1 {
-		t.Fatal("refresh failed to ingest", facts)
-	}
-	oldEpoch := state.Status.DataEpoch
-	if _, err := Mutate(ctx, options.DBPath, app.Action{Kind: "reset-all"}, nil); err != nil {
-		t.Fatal(err)
-	}
-	status, err := client.Status(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if oldEpoch == status.DataEpoch {
-		t.Fatal("reset reused data epoch")
-	}
+	before := state.Status.DataEpoch
 	restarted, err := Restart(ctx, Options{DBPath: options.DBPath})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if restarted.Record.InstanceID == state.Record.InstanceID || restarted.Record.Config.Port != 0 {
-		t.Fatal("restart lost identity/binding")
+	if restarted.Record.InstanceID == state.Record.InstanceID || restarted.Status.DataEpoch != before || restarted.Record.Config.Port != 0 {
+		t.Fatal("restart identity/binding", restarted)
+	}
+	if replay := postBatch(t, restarted.Record.URL, batch); replay != first {
+		t.Fatal("restart receipt lost", replay, first)
+	}
+	store, err = serverstore.Open(options.DBPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = store.Close() }()
+	var total int64
+	if err := store.SQL().QueryRow("SELECT COUNT(*),SUM(total_tokens) FROM canonical_token_usage").Scan(&facts, &total); err != nil || facts != 1 || total != 120 {
+		t.Fatal(facts, total, err)
 	}
 	if err := Stop(ctx, options.DBPath); err != nil {
 		t.Fatal(err)
 	}
 	stopped, err := Probe(ctx, options.DBPath)
 	if err != nil || stopped.Running {
-		t.Fatal("stop retained service", err)
+		t.Fatal(stopped, err)
 	}
+}
+
+func savedBatch(t *testing.T, databaseID string) []byte {
+	t.Helper()
+	fact := publication.Fact{Harness: "pi", Session: publication.Session{Harness: "pi", NativeID: "service-session", FirstOccurredAtMs: 1000, LastOccurredAtMs: 1000}, Message: &publication.Message{NativeID: "native-message", OccurredAtMs: 1000}, OccurredAtMs: 1000, Provider: "openai", ProviderSource: "explicit", Model: "test", UsageScope: "message", Quality: "exact", Countable: true, InputTokens: 100, OutputTokens: 20, TotalTokens: 120}
+	publication.SetIDs(&fact)
+	batch := publication.Batch{ProtocolVersion: 1, IdentityVersion: 1, SemanticsVersion: 1, DatabaseID: databaseID, StreamID: "test-stream", BatchID: "test-batch", FromSequence: 1, ToSequence: 1, Hostname: "collector-fixture", Entries: []publication.Entry{{Sequence: 1, Fact: fact}}}
+	encoded, err := publication.EncodeBatch(batch)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return encoded
+}
+
+func postBatch(t *testing.T, url string, body []byte) publication.Receipt {
+	t.Helper()
+	response, err := http.Post(url+"/api/v1/ingestion/batches", "application/json", bytes.NewReader(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = response.Body.Close() }()
+	payload, err := io.ReadAll(response.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("ingestion status%d %s", response.StatusCode, payload)
+	}
+	receipt, err := publication.DecodeReceipt(payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return receipt
 }
 
 func TestConcurrentStartAndSymlinkIdentity(t *testing.T) {
@@ -209,50 +216,25 @@ func TestConcurrentStartAndSymlinkIdentity(t *testing.T) {
 	}
 }
 
-func TestStartupPreservesRecoveryStateUntilRefresh(t *testing.T) {
+func TestStartupRejectsCollectorDatabaseWithoutMutation(t *testing.T) {
 	options := environment(t)
-	source(t, filepath.Join(os.Getenv("HOME"), ".pi", "agent", "sessions"))
 	database, _, err := db.CreateIfMissing(options.DBPath)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := database.Exec("UPDATE database_lifecycle SET data_generation = 1 WHERE id = 1"); err != nil {
-		t.Fatal(err)
-	}
 	_ = database.Close()
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	before, err := os.ReadFile(options.DBPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	state, err := Ensure(ctx, options)
-	if err != nil || state.Status == nil || state.Status.DataReadiness != "recovery" {
-		t.Fatal("recovery service unavailable", state, err)
+	if _, err := Ensure(ctx, options); err == nil {
+		t.Fatal("collector role accepted")
 	}
-	compatibility, err := db.InspectCompatibility(ctx, options.DBPath)
-	if err != nil || !compatibility.ResetRequired {
-		t.Fatal("startup repaired existing database", compatibility, err)
-	}
-	request, err := http.NewRequestWithContext(ctx, "GET", state.Record.URL+"/api/v1/usage?period=all", nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	response, err := http.DefaultClient.Do(request)
-	if err != nil {
-		t.Fatal(err)
-	}
-	_ = response.Body.Close()
-	if response.StatusCode != http.StatusServiceUnavailable {
-		t.Fatal("incompatible analytics exposed", response.StatusCode)
-	}
-	client := Client{Record: *state.Record}
-	operation, err := client.Refresh(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := client.Wait(ctx, operation.ID); err != nil {
-		t.Fatal(err)
-	}
-	status, err := client.Status(ctx)
-	if err != nil || status.DataReadiness != "ready" || status.DataEpoch == state.Status.DataEpoch {
-		t.Fatal("explicit refresh did not publish new epoch", status, err)
+	after, err := os.ReadFile(options.DBPath)
+	if err != nil || !bytes.Equal(before, after) {
+		t.Fatal("collector modified", err)
 	}
 }
 
@@ -311,7 +293,7 @@ func TestStatusMissingIsReadOnlyAndOccupiedPortDoesNotTakeOver(t *testing.T) {
 	}
 }
 
-func TestForwardingUsesCallerSourcesAndSurvivesDaemonCrash(t *testing.T) {
+func TestIngestedFactsAndReceiptSurviveDaemonCrash(t *testing.T) {
 	options := environment(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
@@ -319,16 +301,8 @@ func TestForwardingUsesCallerSourcesAndSurvivesDaemonCrash(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	custom := filepath.Join(os.Getenv("HOME"), "custom")
-	source(t, custom)
-	sources, err := pipeline.ResolveSources(custom)
-	if err != nil {
-		t.Fatal(err)
-	}
-	summary, err := Mutate(ctx, options.DBPath, app.Action{Kind: "sync", Sources: sources, Harnesses: []pipeline.Harness{pipeline.HarnessPi}, Normalize: true, FullRefresh: true, Now: time.Now()}, nil)
-	if err != nil || summary.Canonical != 1 {
-		t.Fatal("caller scope changed", summary, err)
-	}
+	batch := savedBatch(t, state.Status.DataEpoch)
+	receipt := postBatch(t, state.Record.URL, batch)
 	process, err := os.FindProcess(state.Record.PID)
 	if err != nil {
 		t.Fatal(err)
@@ -339,7 +313,7 @@ func TestForwardingUsesCallerSourcesAndSurvivesDaemonCrash(t *testing.T) {
 	ticker := time.NewTicker(10 * time.Millisecond)
 	defer ticker.Stop()
 	for {
-		f, held, err := lifetime(state.Record.Config.DBPath, false)
+		f, held, err := lifetime(options.DBPath, false)
 		if f != nil {
 			_ = f.Close()
 		}
@@ -359,6 +333,9 @@ func TestForwardingUsesCallerSourcesAndSurvivesDaemonCrash(t *testing.T) {
 	if err != nil || restarted.Record.InstanceID == state.Record.InstanceID {
 		t.Fatal("stale runtime prevented restart", err)
 	}
+	if replay := postBatch(t, restarted.Record.URL, batch); replay != receipt {
+		t.Fatal("crash lost durable receipt", replay, receipt)
+	}
 }
 
 func TestPrivateControlRejectsWrongNonceAndInvalidJSON(t *testing.T) {
@@ -368,8 +345,8 @@ func TestPrivateControlRejectsWrongNonceAndInvalidJSON(t *testing.T) {
 		t.Fatal(err)
 	}
 	client := Client{Record: *state.Record}
-	client.Record.InstanceID = app.ID()
-	if _, err := client.Refresh(context.Background()); err == nil {
+	client.Record.InstanceID = instanceID()
+	if _, err := client.Status(context.Background()); err == nil {
 		t.Fatal("wrong instance accepted")
 	}
 	p, key, err := identify(options.DBPath)
@@ -390,6 +367,19 @@ func TestPrivateControlRejectsWrongNonceAndInvalidJSON(t *testing.T) {
 	}
 	if len(data) > bodyLimit {
 		t.Fatal("oversized configuration")
+	}
+	if bytes.Contains(data, []byte("sources")) || bytes.Contains(data, []byte(os.Getenv("CODEX_HOME"))) {
+		t.Fatal("server config retained source configuration")
+	}
+	client.Record.InstanceID = state.Record.InstanceID
+	var rejected struct {
+		Error string `json:"error"`
+	}
+	if err := client.call(t.Context(), http.MethodPost, "/shutdown", map[string]string{"unexpected": "synthetic-private-marker"}, &rejected); err == nil {
+		t.Fatal("invalid shutdown JSON accepted")
+	}
+	if _, err := client.Status(t.Context()); err != nil {
+		t.Fatal("invalid shutdown stopped service", err)
 	}
 }
 
@@ -472,60 +462,157 @@ func TestForegroundShutdownUsesSameOwnership(t *testing.T) {
 	}
 }
 
-func TestForwardedCancellationCancelsOriginalOperationWhileWaitingForWriter(t *testing.T) {
+func TestAllCompositionsRequireAuthenticationForExposedBinding(t *testing.T) {
 	options := environment(t)
-	state, err := Ensure(context.Background(), options)
+	host := "0.0.0.0"
+	options.Host = &host
+	for _, remote := range []bool{false, true} {
+		options.Remote = remote
+		if _, err := configuration(options); err == nil {
+			t.Fatalf("exposed binding accepted without token: remote=%v", remote)
+		}
+	}
+	if _, err := os.Stat(options.DBPath); !errors.Is(err, os.ErrNotExist) {
+		t.Fatal("validation touched database", err)
+	}
+	token := "synthetic-remote-token"
+	options.Token = &token
+	if _, err := configuration(options); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestSavedExposedConfigurationCannotBypassAuthentication(t *testing.T) {
+	options := environment(t)
+	config, err := configuration(options)
 	if err != nil {
 		t.Fatal(err)
 	}
-	release, err := db.AcquireWriterLock(context.Background(), options.DBPath)
+	config.Host = "0.0.0.0"
+	config.Remote = false
+	files, err := servicePaths(config.DatabaseKey, true)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer release()
-	sources, err := pipeline.ResolveSources("")
+	if err := atomicFile(files.config, config); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := configuration(options); err == nil {
+		t.Fatal("saved unauthenticated public binding accepted")
+	}
+	if _, err := os.Stat(options.DBPath); !errors.Is(err, os.ErrNotExist) {
+		t.Fatal("validation touched database", err)
+	}
+}
+
+func TestRemoteAuthenticationAndCredentialPrivacy(t *testing.T) {
+	options := environment(t)
+	token := "synthetic-private-token"
+	options.Token = &token
+	options.Remote = true
+	state, err := Ensure(t.Context(), options)
 	if err != nil {
 		t.Fatal(err)
 	}
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	done := make(chan error, 1)
-	go func() {
-		_, err := Mutate(ctx, options.DBPath, app.Action{Kind: "sync", Sources: sources, Harnesses: pipeline.SupportedHarnesses, Normalize: true}, nil)
-		done <- err
-	}()
-	client := Client{Record: *state.Record}
-	deadline, stop := context.WithTimeout(context.Background(), 5*time.Second)
-	defer stop()
-	ticker := time.NewTicker(10 * time.Millisecond)
-	defer ticker.Stop()
-	var id string
-	for id == "" {
-		status, err := client.Status(deadline)
+	payload, err := json.Marshal(state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Contains(payload, []byte(token)) {
+		t.Fatal("discovery/status disclosed token")
+	}
+	for _, mode := range []string{"none", "incorrect", "bearer", "basic"} {
+		request, err := http.NewRequestWithContext(t.Context(), http.MethodGet, state.Record.URL+"/api/v1/instance", nil)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if status.Active != nil {
-			id = status.Active.ID
-			break
+		switch mode {
+		case "incorrect":
+			request.Header.Set("Authorization", "Bearer wrong")
+		case "bearer":
+			request.Header.Set("Authorization", "Bearer "+token)
+		case "basic":
+			request.SetBasicAuth("tokeninsights", token)
 		}
-		select {
-		case <-deadline.Done():
-			t.Fatal("mutation never admitted")
-		case <-ticker.C:
+		response, err := http.DefaultClient.Do(request)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := io.Copy(io.Discard, response.Body); err != nil {
+			t.Fatal(err)
+		}
+		_ = response.Body.Close()
+		want := http.StatusUnauthorized
+		if mode == "bearer" || mode == "basic" {
+			want = http.StatusOK
+		}
+		if response.StatusCode != want {
+			t.Fatalf("%s status%d want%d", mode, response.StatusCode, want)
 		}
 	}
-	cancel()
-	select {
-	case err := <-done:
-		if err == nil {
-			t.Fatal("cancelled CLI succeeded")
-		}
-	case <-deadline.Done():
-		t.Fatal("cancelled CLI stuck")
+	client := Client{Record: *state.Record}
+	var rejected struct {
+		Error string `json:"error"`
 	}
-	operation, err := client.Operation(deadline, id)
-	if err != nil || operation.State != "cancelled" {
-		t.Fatal("original action not cancelled", operation, err)
+	for _, route := range []string{"/refresh", "/operations"} {
+		if err := client.call(t.Context(), http.MethodPost, route, struct{}{}, &rejected); err == nil {
+			t.Fatalf("server control still accepts %s", route)
+		}
+	}
+}
+
+func TestHardLinkedServerIdentityRejected(t *testing.T) {
+	options := environment(t)
+	store, err := serverstore.CreateIfMissing(options.DBPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = store.Close()
+	alias := filepath.Join(filepath.Dir(options.DBPath), "hardlink.sqlite")
+	if err := os.Link(options.DBPath, alias); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := identify(options.DBPath); err == nil {
+		t.Fatal("hard-linked server accepted")
+	}
+	// Remove the test alias before cleanup probes the original service path.
+	if err := os.Remove(alias); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestIngestionUnauthorizedMatchesErrorContract(t *testing.T) {
+	options := environment(t)
+	token := "synthetic-auth-token"
+	options.Token = &token
+	options.Remote = true
+	state, err := Ensure(t.Context(), options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, test := range []struct{ method, path string }{{http.MethodGet, "/api/v1/ingestion/capabilities"}, {http.MethodPost, "/api/v1/ingestion/batches"}} {
+		request, err := http.NewRequestWithContext(t.Context(), test.method, state.Record.URL+test.path, bytes.NewBufferString("synthetic-private-body"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		response, err := http.DefaultClient.Do(request)
+		if err != nil {
+			t.Fatal(err)
+		}
+		body, err := io.ReadAll(response.Body)
+		_ = response.Body.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+		var failure publication.ErrorResponse
+		if err := json.Unmarshal(body, &failure); err != nil {
+			t.Fatal(err)
+		}
+		if response.StatusCode != http.StatusUnauthorized || response.Header.Get("Content-Type") != "application/json" || failure.Code != "unauthorized" || failure.Stage != "authentication" {
+			t.Fatalf("%s: status%d body%s", test.path, response.StatusCode, body)
+		}
+		if bytes.Contains(body, []byte(token)) || bytes.Contains(body, []byte("synthetic-private-body")) {
+			t.Fatal("authentication response leaked content")
+		}
 	}
 }

@@ -1,0 +1,83 @@
+{
+  "case_id": "F03",
+  "status": "planned-production-test",
+  "guarantees": [
+    "G05",
+    "G11"
+  ],
+  "initial_server": {
+    "owner_A": {
+      "sessions": [],
+      "facts": [],
+      "countable_fact_count": 0,
+      "total_tokens": 0
+    }
+  },
+  "trace": [
+    {
+      "action": "publish",
+      "owner": "owner_A",
+      "batch": {
+        "batch_label": "batch-reused",
+        "collector_stream": "stream-A",
+        "journal_sequences": [
+          1
+        ],
+        "include_sessions": [
+          "session_A"
+        ],
+        "include_facts": [
+          "fact_A"
+        ]
+      },
+      "expected_server": {
+        "owner_A": {
+          "sessions": [
+            "session-A"
+          ],
+          "facts": [
+            "fact_A"
+          ],
+          "countable_fact_count": 1,
+          "total_tokens": 100
+        }
+      }
+    },
+    {
+      "action": "publish",
+      "owner": "owner_A",
+      "batch": {
+        "batch_label": "batch-reused",
+        "collector_stream": "stream-A",
+        "journal_sequences": [
+          1
+        ],
+        "include_sessions": [
+          "session_A"
+        ],
+        "include_facts": [
+          "fact_A_changed"
+        ]
+      },
+      "expected": {
+        "outcome": "batch_content_conflict",
+        "original_receipt_unchanged": true
+      },
+      "expected_server": {
+        "owner_A": {
+          "sessions": [
+            "session-A"
+          ],
+          "facts": [
+            "fact_A"
+          ],
+          "countable_fact_count": 1,
+          "total_tokens": 100
+        }
+      }
+    }
+  ],
+  "assertions": [
+    "Different body under one batch identity is never treated as a successful replay."
+  ]
+}

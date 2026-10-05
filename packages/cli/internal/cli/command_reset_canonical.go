@@ -5,18 +5,17 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/app"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/service"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/db"
 )
 
 var resetCanonicalCommand = commandSpec{name: "reset-canonical", run: runResetCanonical}
 
 func runResetCanonical(invocation commandInvocation, args []string) error {
-	flags := flag.NewFlagSet("tokeninsights reset-canonical", flag.ContinueOnError)
+	flags := flag.NewFlagSet("tokeninsights collector reset-canonical", flag.ContinueOnError)
 	flags.SetOutput(invocation.stderr)
 	var dbPath string
 	var confirm bool
-	flags.StringVar(&dbPath, "db-path", defaultDBPath(), "path to tokeninsights sqlite db")
+	flags.StringVar(&dbPath, "collector-db-path", defaultCollectorDBPath(), "collector SQLite database")
 	flags.BoolVar(&confirm, "confirm", false, "confirm deletion")
 	if err := flags.Parse(args); err != nil {
 		return fmt.Errorf("%w\n%w", err, ErrUsage)
@@ -29,8 +28,17 @@ func runResetCanonical(invocation commandInvocation, args []string) error {
 		return err
 	}
 	path := strings.TrimSpace(dbPath)
-	_, err := service.Mutate(invocation.context, path, app.Action{Kind: "reset-canonical"}, nil)
+	release, err := db.AcquireWriterLock(invocation.context, path)
 	if err != nil {
+		return err
+	}
+	defer release()
+	database, err := db.OpenWritable(path)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = database.Close() }()
+	if err := db.ResetCanonical(invocation.context, database); err != nil {
 		return err
 	}
 

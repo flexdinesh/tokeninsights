@@ -8,19 +8,14 @@ import (
 	"fmt"
 	"net"
 	"net/http"
-	"time"
-
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/app"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/db"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/pipeline"
 )
 
 var ErrStopped = errors.New("service stopped")
 
 type State struct {
-	Running bool        `json:"running"`
-	Record  *Record     `json:"service,omitempty"`
-	Status  *app.Status `json:"status,omitempty"`
+	Running bool    `json:"running"`
+	Record  *Record `json:"service,omitempty"`
+	Status  *Status `json:"status,omitempty"`
 }
 
 type Client struct{ Record Record }
@@ -63,6 +58,22 @@ func (c Client) call(ctx context.Context, method, path string, input, output int
 }
 
 func Probe(ctx context.Context, path string) (State, error) {
+	state, err := probeOwner(ctx, path)
+	if err != nil || !state.Running {
+		return state, err
+	}
+	client := Client{Record: *state.Record}
+	status, err := client.Status(ctx)
+	if err != nil {
+		return state, err
+	}
+	state.Status = &status
+	return state, nil
+}
+
+// probeOwner verifies the held lifetime lock and private runtime identity without
+// requiring healthy analytics storage. Only this verified owner can be stopped.
+func probeOwner(ctx context.Context, path string) (State, error) {
 	canonical, key, err := identify(path)
 	if err != nil {
 		return State{}, err
@@ -97,129 +108,34 @@ func Probe(ctx context.Context, path string) (State, error) {
 		if err := client.call(ctx, "GET", "/instance", nil, &instance); err != nil {
 			continue
 		}
-		if instance.InstanceID != record.InstanceID || instance.Config.DatabaseKey != key || instance.Protocol != protocolVersion {
+		if instance.InstanceID != record.InstanceID || instance.Config != record.Config || instance.Socket != record.Socket || instance.PID != record.PID || instance.SchemaVersion != record.SchemaVersion || instance.Protocol != protocolVersion {
 			continue
 		}
-		status, err := client.Status(ctx)
-		if err != nil {
-			return State{Running: true, Record: &record}, err
-		}
-		return State{Running: true, Record: &record, Status: &status}, nil
+		return State{Running: true, Record: &record}, nil
 	}
 	return State{Running: true}, fmt.Errorf("service owns database but control socket is unreachable; inspect service logs")
 }
 
-func (c Client) Status(ctx context.Context) (app.Status, error) {
-	var s app.Status
+func (c Client) matchesToken(ctx context.Context, token string) (bool, error) {
+	var response struct {
+		Matches bool `json:"matches"`
+	}
+	err := c.call(ctx, http.MethodPost, "/token-match", struct {
+		Token string `json:"token"`
+	}{Token: token}, &response)
+	return response.Matches, err
+}
+
+type Status struct {
+	InstanceID        string `json:"instanceId"`
+	DataEpoch         string `json:"dataEpoch"`
+	DataReadiness     string `json:"dataReadiness"`
+	Revision          int64  `json:"revision"`
+	LastIngestionAtMS int64  `json:"lastIngestionAtMs"`
+}
+
+func (c Client) Status(ctx context.Context) (Status, error) {
+	var s Status
 	err := c.call(ctx, "GET", "/status", nil, &s)
 	return s, err
-}
-func (c Client) Refresh(ctx context.Context) (app.Operation, error) {
-	id := app.ID()
-	var o app.Operation
-	err := c.call(ctx, "POST", "/refresh", struct {
-		ID string `json:"id"`
-	}{id}, &o)
-	if err != nil && ctx.Err() == nil {
-		lookupErr := c.call(ctx, "GET", "/requests/"+id, nil, &o)
-		if lookupErr == nil {
-			return o, nil
-		}
-	}
-	return o, err
-}
-
-func (c Client) Submit(ctx context.Context, id string, action app.Action) (app.Operation, error) {
-	if c.Record.ActionVersion != 1 || c.Record.SchemaVersion != db.SupportedSchemaVersion || c.Record.DataGeneration != db.CurrentDataGeneration {
-		return app.Operation{}, fmt.Errorf("service action contract incompatible; restart service")
-	}
-	var o app.Operation
-	err := c.call(ctx, "POST", "/operations", struct {
-		ID     string     `json:"id"`
-		Action app.Action `json:"action"`
-	}{id, action}, &o)
-	return o, err
-}
-func (c Client) Operation(ctx context.Context, id string) (app.Operation, error) {
-	var o app.Operation
-	err := c.call(ctx, "GET", "/operations/"+id, nil, &o)
-	return o, err
-}
-func (c Client) Wait(ctx context.Context, id string) (app.Operation, error) {
-	ticker := time.NewTicker(100 * time.Millisecond)
-	defer ticker.Stop()
-	for {
-		o, err := c.Operation(ctx, id)
-		if err != nil {
-			return o, err
-		}
-		switch o.State {
-		case "succeeded":
-			return o, nil
-		case "failed", "cancelled":
-			err := errors.New(o.Error)
-			if o.ErrorCode == "recovery" {
-				err = errors.Join(err, db.ErrRebuildPending)
-			}
-			return o, err
-		}
-		select {
-		case <-ctx.Done():
-			return o, ctx.Err()
-		case <-ticker.C:
-		}
-	}
-}
-
-// Mutate forwards exactly the caller's action or holds admission for its entire
-// standalone execution. An unreachable owner never permits bypass.
-func Mutate(ctx context.Context, path string, action app.Action, progress func(pipeline.SyncProgressEvent)) (pipeline.Summary, error) {
-	canonical, _, err := identify(path)
-	if err != nil {
-		return pipeline.Summary{}, err
-	}
-	release, err := admission(ctx, canonical)
-	if err != nil {
-		return pipeline.Summary{}, err
-	}
-	state, err := Probe(ctx, canonical)
-	if err != nil {
-		release()
-		return pipeline.Summary{}, err
-	}
-	if !state.Running {
-		defer release()
-		return app.Execute(ctx, canonical, action, progress, nil)
-	}
-	c := Client{Record: *state.Record}
-	id := app.ID()
-	o, err := c.Submit(ctx, id, action)
-	release()
-	if err != nil { // Lost response: query this ID, never blindly resubmit.
-		if ctx.Err() != nil {
-			c.cancelExclusive(id)
-			return pipeline.Summary{}, ctx.Err()
-		}
-		lookup, lookupErr := c.Operation(ctx, id)
-		if lookupErr != nil {
-			return pipeline.Summary{}, fmt.Errorf("submission outcome unknown: %w", err)
-		}
-		o = lookup
-	}
-	o, err = c.Wait(ctx, o.ID)
-	if ctx.Err() != nil {
-		// A cancelled status HTTP call can return a zero Operation. Use the
-		// original request ID, which also identifies this exclusive action.
-		c.cancelExclusive(id)
-	}
-	return o.Summary, err
-}
-
-func (c Client) cancelExclusive(id string) {
-	ctx, cancel := context.WithTimeout(context.Background(), callTimeout)
-	defer cancel()
-	var result app.Operation
-	if c.call(ctx, "POST", "/operations/"+id+"/cancel", nil, &result) == nil {
-		_, _ = c.Wait(ctx, id)
-	}
 }

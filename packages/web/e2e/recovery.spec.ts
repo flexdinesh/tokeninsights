@@ -1,17 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { dashboardSchema } from '../src/contracts'
-
-const progress = (startedAt: number) => ({
-  jobId: 99,
-  startedAt,
-  updatedAt: startedAt + 1000,
-  lastSuccessfulAt: 0,
-  totalSources: 2,
-  checkedSources: 1,
-  readySources: 1,
-  failedSources: 0,
-  discoveryComplete: true,
-})
+import { statusSchema } from '../src/contracts'
 
 test('chart load failure preserves dashboard controls and results, and reload recovers', async ({
   page,
@@ -28,103 +16,36 @@ test('chart load failure preserves dashboard controls and results, and reload re
   await expect(page.getByRole('region', { name: 'Usage over time', exact: true })).toBeVisible()
 })
 
-test('old status reads cannot overwrite a newly started sync', async ({ page }) => {
-  let running = false
-  let syncRequests = 0
+test('Reload cancels an older status read and never submits collection', async ({ page }) => {
   let hold = false
   let captured = false
-  let delivered = false
   let release: (() => void) | undefined
+  const methods: string[] = []
   await page.route('**/api/v1/sync', async (route) => {
-    const post = route.request().method() === 'POST'
-    if (post) {
-      running = true
-      syncRequests++
-    }
-    const snapshot = {
-      phase: running ? 'syncing' : 'ready',
-      running,
-      pendingRefresh: syncRequests > 1,
-      error: '',
-      revision: running ? 100 : 99,
-      harnesses: {},
-      progress: progress(running ? 2000 : 1000),
-    }
-    if (!post && hold && !captured) {
+    methods.push(route.request().method())
+    const upstream = await route.fetch()
+    const snapshot = statusSchema.parse(await upstream.json())
+    if (hold && !captured) {
+      expect(snapshot.revision).toBeGreaterThan(0)
+      snapshot.revision -= 1
       captured = true
       await new Promise<void>((resolve) => {
         release = resolve
       })
-      await route.fulfill({ json: snapshot })
-      delivered = true
-      return
     }
-    await route.fulfill({ status: post ? 202 : 200, json: snapshot })
+    await route.fulfill({ json: snapshot })
   })
   await page.goto('/tokens')
   await expect(page.getByLabel('Total tokens: 258,000', { exact: true })).toBeVisible()
   hold = true
   await expect.poll(() => captured, { timeout: 10000 }).toBe(true)
-  await page.getByRole('button', { name: 'Sync', exact: true }).click()
-  await expect(page.getByRole('button', { name: 'Sync again', exact: true })).toBeEnabled()
+  // Status polling does not disable Reload; it can supersede an older read.
+  await page.getByRole('button', { name: 'Reload', exact: true }).click()
   if (!release) throw new Error('Expected a held status request')
   release()
-  await expect.poll(() => delivered).toBe(true)
-  await expect(page.locator('.header-status')).toHaveText('Syncing…')
-  await expect(page.getByRole('button', { name: 'Sync again', exact: true })).toBeEnabled()
-  await page.getByRole('button', { name: 'Sync again', exact: true }).click()
-  await expect(page.getByRole('button', { name: 'Sync queued', exact: true })).toBeDisabled()
-  expect(syncRequests).toBe(2)
-  await page.reload()
-  await expect(page.getByRole('button', { name: 'Sync queued', exact: true })).toBeDisabled()
-  expect(syncRequests).toBe(2)
-})
-
-test('old empty days remain unconfirmed in table cells and expanded coverage', async ({ page }) => {
-  await page.route('**/api/v1/sync', (route) =>
-    route.fulfill({
-      json: {
-        phase: 'syncing',
-        running: true,
-        error: '',
-        revision: 99,
-        harnesses: {},
-        progress: progress(2000),
-      },
-    }),
-  )
-  await page.route('**/api/v1/usage?*', async (route) => {
-    const response = await route.fetch()
-    const data = dashboardSchema.parse(await response.json())
-    await route.fulfill({
-      json: {
-        ...data,
-        coverage: [
-          {
-            day: '2026-09-20',
-            status: 'empty',
-            checkedAt: 1000,
-            pendingSources: 0,
-            failedSources: 0,
-            hasUsage: false,
-            total: 0,
-          },
-        ],
-      },
-    })
-  })
-  await page.goto('/tokens')
-  const row = page
-    .getByRole('region', { name: 'Scrollable results' })
-    .getByRole('row', { name: /2026-09-20/ })
-  await expect(row.locator('td.numeric')).toHaveText(['—', '—', '—', '—', '—', '—', '—'])
-  await expect(row.getByRole('img')).toHaveCount(0)
-  await page.getByText('Source coverage', { exact: true }).click()
-  const coverage = page.getByRole('region', { name: 'Daily source coverage' })
-  await expect(coverage).toContainText('Awaiting current check')
-  await expect(coverage).not.toContainText('No usage found')
-  await expect(coverage.locator('td.numeric')).toHaveText('—')
+  await expect(page.getByRole('button', { name: 'Reload', exact: true })).toBeEnabled()
   await expect(page.getByLabel('Total tokens: 258,000', { exact: true })).toBeVisible()
+  expect(methods.every((method) => method === 'GET')).toBe(true)
 })
 
 test('session search failure keeps its draft and selection and supports retry', async ({
@@ -154,28 +75,14 @@ test('session search failure keeps its draft and selection and supports retry', 
   await expect(page).toHaveURL(/session=web-session-000/)
 })
 
-test('sync and sorting preserve expanded Repo directories and focus', async ({ page }) => {
-  let running = false
-  await page.route('**/api/v1/sync', (route) => {
-    if (route.request().method() === 'POST') running = true
-    return route.fulfill({
-      json: {
-        phase: running ? 'syncing' : 'ready',
-        running,
-        error: '',
-        revision: 99,
-        harnesses: {},
-        progress: progress(running ? 2000 : 1000),
-      },
-    })
-  })
+test('Reload and sorting preserve expanded Repo directories and focus', async ({ page }) => {
   await page.goto('/repo')
   await page.getByRole('button', { name: 'Show directories', exact: true }).click()
   const expanded = page.getByRole('button', { name: 'Hide directories', exact: true })
   await expect(expanded).toBeVisible()
-  await page.getByRole('button', { name: 'Sync', exact: true }).click()
+  await page.getByRole('button', { name: 'Reload', exact: true }).click()
   await expanded.focus()
-  await expect(page.getByLabel('Sources checked')).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Reload', exact: true })).toBeEnabled()
   await expect(expanded).toBeFocused()
   await expect(page.getByRole('list', { name: 'Recorded directories' })).toBeVisible()
   await page

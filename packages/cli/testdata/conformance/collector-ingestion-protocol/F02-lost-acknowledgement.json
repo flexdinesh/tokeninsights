@@ -1,0 +1,90 @@
+{
+  "case_id": "F02",
+  "status": "planned-production-test",
+  "guarantees": [
+    "G05",
+    "G06",
+    "G07",
+    "G10"
+  ],
+  "initial_server": {
+    "owner_A": {
+      "sessions": [],
+      "facts": [],
+      "countable_fact_count": 0,
+      "total_tokens": 0
+    }
+  },
+  "batch": {
+    "batch_label": "batch-lost-response",
+    "collector_stream": "stream-A",
+    "journal_sequences": [
+      1,
+      2
+    ],
+    "include_sessions": [
+      "session_A"
+    ],
+    "include_facts": [
+      "fact_A",
+      "fact_B"
+    ]
+  },
+  "trace": [
+    {
+      "action": "publish",
+      "owner": "owner_A",
+      "fault": "drop_response_after_server_commit",
+      "expected_server": {
+        "owner_A": {
+          "sessions": [
+            "session-A"
+          ],
+          "facts": [
+            "fact_A",
+            "fact_B"
+          ],
+          "countable_fact_count": 2,
+          "total_tokens": 200
+        }
+      },
+      "expected_collector": {
+        "delivery_cursor": 0,
+        "pending_sequences": [
+          1,
+          2
+        ]
+      }
+    },
+    {
+      "action": "restart_server",
+      "expected": {
+        "receipt_survives": true
+      }
+    },
+    {
+      "action": "manual_sync_replay_exact_batch",
+      "expected": {
+        "outcome": "accepted",
+        "same_receipt": true
+      },
+      "expected_server": {
+        "owner_A": {
+          "sessions": [
+            "session-A"
+          ],
+          "facts": [
+            "fact_A",
+            "fact_B"
+          ],
+          "countable_fact_count": 2,
+          "total_tokens": 200
+        }
+      },
+      "expected_collector": {
+        "delivery_cursor": 2,
+        "pending_sequences": []
+      }
+    }
+  ]
+}

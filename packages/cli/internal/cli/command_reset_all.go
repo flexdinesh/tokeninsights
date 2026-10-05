@@ -5,18 +5,17 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/app"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/service"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/db"
 )
 
 var resetAllCommand = commandSpec{name: "reset-all", run: runResetAll}
 
 func runResetAll(invocation commandInvocation, args []string) error {
-	flags := flag.NewFlagSet("tokeninsights reset-all", flag.ContinueOnError)
+	flags := flag.NewFlagSet("tokeninsights collector reset-all", flag.ContinueOnError)
 	flags.SetOutput(invocation.stderr)
 	var dbPath string
 	var confirm bool
-	flags.StringVar(&dbPath, "db-path", defaultDBPath(), "path to tokeninsights sqlite db")
+	flags.StringVar(&dbPath, "collector-db-path", defaultCollectorDBPath(), "collector SQLite database")
 	flags.BoolVar(&confirm, "confirm", false, "confirm deletion")
 	if err := flags.Parse(args); err != nil {
 		return fmt.Errorf("%w\n%w", err, ErrUsage)
@@ -28,7 +27,7 @@ func runResetAll(invocation commandInvocation, args []string) error {
 		_, err := fmt.Fprintf(invocation.stdout, "Would transactionally reset application tables in %s. Re-run with --confirm to apply.\n", strings.TrimSpace(dbPath))
 		return err
 	}
-	if _, err := service.Mutate(invocation.context, strings.TrimSpace(dbPath), app.Action{Kind: "reset-all"}, nil); err != nil {
+	if err := db.ResetAllContext(invocation.context, strings.TrimSpace(dbPath)); err != nil {
 		return err
 	}
 	_, err := fmt.Fprintln(invocation.stdout, "reset-all complete")

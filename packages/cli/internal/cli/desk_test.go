@@ -26,7 +26,7 @@ func TestReadoutsUseExactFilteredComponentsAcrossViews(t *testing.T) {
 	insertLoadRowsCanonicalTokenWithCounts(t, database, now.UnixMilli(), "pi", "excluded", "other", "other-model", 99, 0, 0, 0, 0, 99)
 	for _, tab := range []tabMode{tabTokens, tabModels, tabProviders, tabHarnesses, tabSessions} {
 		t.Run(tab.String(), func(t *testing.T) {
-			rows, err := loadRows(context.Background(), tableOptions{dbPath: path, period: periodAllTime, bucket: bucketDay, filters: filters{harnesses: stringList{"codex"}}}, now, groupByNone, tab)
+			rows, err := loadRows(context.Background(), tableOptions{serverURL: queryServerURL(t, path), period: periodAllTime, bucket: bucketDay, filters: filters{harnesses: stringList{"codex"}}}, now, groupByNone, tab)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -220,7 +220,7 @@ func TestDeskRetryClearsFailureAfterSuccessfulReload(t *testing.T) {
 	if cmd == nil || !retry.loading || retry.err != nil {
 		t.Fatal("retry did not start")
 	}
-	model, _ = retry.Update(reloadMsg{rows: []renderRow{{totalValue: 42}}})
+	model, _ = retry.Update(reloadMsg{instanceID: "fixture", dataEpoch: "fixture-epoch", rows: []renderRow{{totalValue: 42}}})
 	loaded := model.(interactiveModel)
 	if loaded.err != nil || loaded.loading || len(loaded.rows) != 1 {
 		t.Fatal("reload did not recover")

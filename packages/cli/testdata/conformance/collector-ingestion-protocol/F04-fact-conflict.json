@@ -1,0 +1,63 @@
+{
+  "case_id": "F04",
+  "status": "planned-production-test",
+  "guarantees": [
+    "G05",
+    "G11"
+  ],
+  "policy_status": "candidate-conservative-policy-ordering-not-approved",
+  "initial_server": {
+    "owner_A": {
+      "sessions": [
+        "session-A"
+      ],
+      "facts": [
+        "fact_A"
+      ],
+      "countable_fact_count": 1,
+      "total_tokens": 100
+    }
+  },
+  "trace": [
+    {
+      "action": "publish",
+      "owner": "owner_A",
+      "batch": {
+        "batch_label": "batch-unordered-change",
+        "collector_stream": "stream-rebuilt",
+        "journal_sequences": [
+          1
+        ],
+        "include_sessions": [
+          "session_A"
+        ],
+        "include_facts": [
+          "fact_A_changed"
+        ]
+      },
+      "revision_evidence": "none",
+      "expected": {
+        "outcome": "fact_conflict",
+        "diagnostic_fact_identity": "usage-A",
+        "delivery_cursor_must_not_claim_unqualified_success": true
+      },
+      "expected_server": {
+        "owner_A": {
+          "sessions": [
+            "session-A"
+          ],
+          "facts": [
+            "fact_A"
+          ],
+          "countable_fact_count": 1,
+          "total_tokens": 100
+        }
+      }
+    }
+  ],
+  "assertions": [
+    "Preserve existing contribution.",
+    "Never append a second countable fact for usage-A.",
+    "Receipt/conflict acknowledgement semantics remain unresolved; keep local conflict work visible."
+  ]
+}

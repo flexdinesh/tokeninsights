@@ -6,7 +6,7 @@ describe('mock API data', () => {
   it('provides every dashboard view through generated contracts', () => {
     expect(mockBootstrap.hostname).toBe('mock.tokeninsights.local')
     expect(mockFacets.harnesses).toHaveLength(4)
-    expect(mockSyncStatus(false, 2).revision).toBe(2)
+    expect(mockSyncStatus(2).revision).toBe(2)
 
     for (const tab of mockTabs) {
       expect(dashboardSchema.safeParse(mockDashboard(tab)).success).toBe(true)

@@ -31,20 +31,17 @@ type commandSpec struct {
 var commands = []commandSpec{
 	helpCommand,
 	versionCommand,
-	viewCommand,
-	serveCommand,
+	tuiCommand,
 	serviceCommand,
-	refreshCommand,
+	serverCommand,
 	syncCommand,
-	normalizeCommand,
-	resetCanonicalCommand,
-	resetAllCommand,
+	collectorCommand,
 }
 
 func Run(ctx context.Context, args []string, stdout io.Writer, stderr io.Writer, now time.Time) error {
 	invocation := commandInvocation{context: ctx, stdin: os.Stdin, stdout: stdout, stderr: stderr, now: now}
-	if len(args) == 3 && args[0] == "__prepare-dev-data" && args[1] == "--db-path" {
-		return service.PrepareFixture(ctx, args[2])
+	if len(args) == 5 && args[0] == "__prepare-dev-data" && args[1] == "--collector-db-path" && args[3] == "--server-db-path" {
+		return service.PrepareFixture(ctx, args[2], args[4])
 	}
 	if len(args) > 0 && args[0] == "__service-run" {
 		return service.Child(ctx)
@@ -80,4 +77,4 @@ func commandByName(name string) (commandSpec, bool) {
 	return commandSpec{}, false
 }
 
-var ErrUsage = errors.New("usage: tokeninsights <service|refresh|sync|normalize|reset-canonical|reset-all|view> [options]")
+var ErrUsage = errors.New("usage: tokeninsights <service|sync|tui|collector|server> [options]")

@@ -1,0 +1,2 @@
+{"type":"session","version":1,"id":"rebuild-pi-other"}
+{"type":"message","id":"rebuild-pi-c","message":{"role":"assistant","usage":{"input":20,"output":10,"reasoning":3,"cacheRead":4,"cacheWrite":2,"totalTokens":36},"timestamp":1767225603000}}

@@ -9,8 +9,14 @@ export const selectionSchema = generated.Selection
 export const rowSchema = generated.UsageRow
 export const summarySchema = generated.UsageSummary
 export const dashboardSchema = generated.UsageResponse
-export const bootstrapSchema = generated.InstanceResponse
-export const statusSchema = generated.SyncResponse
+export const bootstrapSchema = generated.InstanceResponse.refine(
+  (response) => response.dataReadiness !== 'ready' || response.dataEpoch.length > 0,
+  { message: 'Ready server response requires a database identity', path: ['dataEpoch'] },
+)
+export const statusSchema = generated.SyncResponse.refine(
+  (response) => response.dataReadiness !== 'ready' || response.dataEpoch.length > 0,
+  { message: 'Ready server response requires a database identity', path: ['dataEpoch'] },
+)
 export const facetsSchema = generated.UsageFacetsResponse
 export const errorSchema = generated.ErrorResponse
 

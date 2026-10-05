@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "if \"${TOKENINSIGHTS_BINARY:-tokeninsights}\" sync </dev/null >/dev/null 2>&1; then printf '%s\\n' '{}'; else printf '%s\\n' 'TokenInsights sync failed; run tokeninsights sync for details.' >&2; printf '%s\\n' '{}'; fi",
+            "timeout": 60
+          }
+        ]
+      }
+    ]
+  }
+}

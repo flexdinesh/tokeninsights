@@ -2,149 +2,81 @@ import { expect, test } from '@playwright/test'
 import { InstanceResponse, UsageResponse } from '../src/generated/api'
 import { dashboardSchema } from '../src/contracts'
 
-test('saved day completion stays blank until the current sync confirms it', async ({ page }) => {
-  let phase: 'waiting' | 'started' | 'updating' | 'complete' = 'waiting'
-  await page.route('**/api/v1/sync', (route) =>
-    route.fulfill({
-      json: {
-        phase: phase === 'complete' ? 'ready' : 'syncing',
-        running: phase !== 'complete',
-        error: '',
-        revision: phase === 'complete' ? 101 : 100,
-        harnesses: {},
-        progress:
-          phase === 'waiting'
-            ? undefined
-            : {
-                jobId: 100,
-                startedAt: 2000,
-                updatedAt: phase === 'updating' ? 4000 : phase === 'complete' ? 5000 : 3000,
-                lastSuccessfulAt: phase === 'complete' ? 3000 : 1000,
-                totalSources: 2,
-                checkedSources: phase === 'complete' ? 2 : 1,
-                readySources: phase === 'complete' ? 2 : 1,
-                failedSources: 0,
-                discoveryComplete: true,
-              },
-      },
-    }),
-  )
-  await page.route('**/api/v1/usage?*', async (route) => {
-    const response = await route.fetch()
-    const data = dashboardSchema.parse(await response.json())
-    const row = data.rows[0]
-    if (!row) throw new Error('Expected retained day usage')
-    await route.fulfill({
-      json: {
-        ...data,
-        coverage: [
-          {
-            day: row.name,
-            status: phase === 'updating' ? 'partial' : 'checked',
-            checkedAt: phase === 'complete' ? 3000 : phase === 'updating' ? 0 : 1000,
-            pendingSources: phase === 'updating' ? 1 : 0,
-            failedSources: 0,
-            hasUsage: true,
-            total: row.total,
-          },
-        ],
-      },
+test.describe('server reporting timezone', () => {
+  test.use({ timezoneId: 'America/Los_Angeles' })
+
+  test('UTC server dates stay UTC in a non-UTC browser', async ({ page }) => {
+    const instant = Date.parse('2026-01-01T00:30:00Z')
+    await page.route('**/api/v1/instance', async (route) => {
+      const response = await route.fetch()
+      const instance = InstanceResponse.parse(await response.json())
+      await route.fulfill({ json: { ...instance, timezone: 'UTC' } })
     })
+    await page.route('**/api/v1/usage?*', async (route) => {
+      const response = await route.fetch()
+      const data = dashboardSchema.parse(await response.json())
+      const row = data.rows[0]
+      if (!row) throw new Error('Expected a saved session fixture')
+      await route.fulfill({
+        json: { ...data, rows: [{ ...row, date: instant }], lastSynced: instant },
+      })
+    })
+    await page.goto('/sessions?period=all')
+    await expect(page.locator('.table-panel time')).toHaveText('Jan 1, 2026')
+    await expect(page.locator('.app-header time')).toHaveText('Last ingestion Jan 1, 2026, 00:30')
+    await expect(page.locator('.app-footer')).toContainText('UTC')
+    expect(await page.evaluate(() => Intl.DateTimeFormat().resolvedOptions().timeZone)).toBe(
+      'America/Los_Angeles',
+    )
   })
-  await page.goto('/tokens')
-  const results = page.getByRole('region', { name: 'Scrollable results' })
-  await expect(results.locator('tbody tr').first()).toBeVisible()
-  await expect(results.locator('.coverage-indicator')).toHaveCount(0)
-  phase = 'started'
-  await expect(page.getByLabel('Sources checked')).toHaveAttribute('value', '1')
-  await expect(results.locator('.coverage-indicator')).toHaveCount(0)
-  phase = 'updating'
-  await expect(results.getByRole('img', { name: 'Partial · updating' })).toBeVisible()
-  phase = 'complete'
-  await expect(results.getByRole('img', { name: /^Checked / })).toBeVisible()
 })
 
-test('pending calendar days keep absent usage visible during sync', async ({ page }, testInfo) => {
-  const pendingDay = '2026-09-26'
-  await page.route('**/api/v1/sync', (route) =>
-    route.fulfill({
-      json: {
-        phase: 'syncing',
-        running: true,
-        error: '',
-        revision: 99,
-        harnesses: { codex: 'syncing', pi: 'synced' },
-        progress: {
-          jobId: 99,
-          totalSources: 10,
-          checkedSources: 5,
-          readySources: 3,
-          failedSources: 0,
-          discoveryComplete: true,
-          startedAt: 1000,
-          updatedAt: 5000,
-          lastSuccessfulAt: 0,
-        },
-      },
-    }),
-  )
+test('saved ingestion shows available rows without source completeness markers', async ({
+  page,
+}) => {
+  await page.goto('/tokens')
+  await expect(page.getByLabel('Total tokens: 258,000', { exact: true })).toBeVisible()
+  await expect(page.locator('.coverage-indicator')).toHaveCount(0)
+  await expect(page.getByText('Source coverage', { exact: true })).toHaveCount(0)
+  await expect(page.getByLabel('Sources checked')).toHaveCount(0)
+  await expect(page.getByText('Last ingestion', { exact: false })).toBeVisible()
+})
+
+test('empty server explains manual collection without a browser mutation', async ({ page }) => {
   await page.route('**/api/v1/usage?*', async (route) => {
     const response = await route.fetch()
     const data = dashboardSchema.parse(await response.json())
     await route.fulfill({
       json: {
         ...data,
-        rows: data.rows.map((row) => ({ ...row, name: '2026-09-25' })),
-        coverage: [
-          {
-            day: '2026-09-25',
-            status: 'partial',
-            checkedAt: 0,
-            pendingSources: 5,
-            failedSources: 0,
-            hasUsage: true,
-            total: data.summary.total,
-          },
-          {
-            day: pendingDay,
-            status: 'pending',
-            checkedAt: 0,
-            pendingSources: 5,
-            failedSources: 0,
-            hasUsage: false,
-            total: null,
-          },
-        ],
+        rows: [],
+        chart: [],
+        rowCount: 0,
+        lastSynced: 0,
+        summary: {
+          total: 0,
+          input: 0,
+          output: 0,
+          cacheRead: 0,
+          cacheWrite: 0,
+          reasoning: 0,
+          sessions: 0,
+          syncedSessions: 0,
+        },
       },
     })
   })
-  await page.goto('/tokens')
-  await expect(page.getByLabel('Sources checked')).toHaveAttribute('value', '5')
-  const pending = page
-    .getByRole('region', { name: 'Scrollable results' })
-    .getByRole('row', { name: /2026-09-26.*Pending/ })
-  await expect(pending).toBeVisible()
-  await expect(pending.getByRole('img', { name: 'Pending · 5 sources' })).toHaveAttribute(
-    'title',
-    'Pending · 5 sources',
-  )
-  await expect(pending.locator('td.numeric')).toHaveText(['—', '—', '—', '—', '—', '—', '—'])
-  await expect(page.getByRole('region', { name: 'Daily source coverage' })).not.toBeVisible()
-  const gutter = await pending
-    .locator('td')
-    .first()
-    .evaluate((cell) => getComputedStyle(cell).paddingLeft)
-  expect(Number.parseFloat(gutter)).toBeGreaterThan(0)
-  await page.locator('.sync-coverage summary').click()
-  await expect(page.getByRole('region', { name: 'Daily source coverage' })).toBeVisible()
-  await expect(page.locator('.recharts-surface')).toBeVisible()
-  await page.screenshot({ path: testInfo.outputPath('coverage-desktop.png'), fullPage: true })
-  await page.setViewportSize({ width: 390, height: 844 })
-  await page.screenshot({ path: testInfo.outputPath('coverage-mobile.png'), fullPage: true })
-  await page.evaluate(() => {
-    document.documentElement.style.fontSize = '200%'
+  const mutations: string[] = []
+  page.on('request', (request) => {
+    if (new URL(request.url()).pathname.startsWith('/api/') && request.method() !== 'GET') {
+      mutations.push(request.method())
+    }
   })
-  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+  await page.goto('/tokens')
+  await expect(page.getByText('No usage saved yet. Run tokeninsights sync.')).toBeVisible()
+  await page.getByRole('button', { name: 'Reload', exact: true }).click()
+  await expect(page.getByRole('button', { name: 'Reload', exact: true })).toBeEnabled()
+  expect(mutations).toEqual([])
 })
 
 test('dimension charts show filtered token shares on bars, labels, and tooltips', async ({
@@ -316,7 +248,7 @@ test('table columns resize by drag and keyboard without sorting', async ({ page 
   await expect(resize).toHaveAttribute('aria-valuenow', '144')
 })
 
-test('saved usage, seven views, filtering, history, pagination, and explicit sync', async ({
+test('saved usage, seven views, filtering, history, pagination, and read-only Reload', async ({
   page,
 }) => {
   const errors: string[] = []
@@ -378,13 +310,13 @@ test('saved usage, seven views, filtering, history, pagination, and explicit syn
         items.map((item) => item.getBoundingClientRect().top),
       )
       expect(providerLines[1]).toBeGreaterThan(providerLines[0] ?? 0)
-      await expect(totalRow.getByText('~/workspace/project-0')).toBeHidden()
+      await expect(totalRow.getByText('project-0')).toBeHidden()
       await expect(totalRow.getByText('Some usage has no recorded directory')).toHaveCount(0)
       await totalRow.getByRole('button', { name: 'Show directories' }).click()
-      await expect(totalRow.getByText('~/workspace/project-0')).toBeVisible()
-      await expect(totalRow.getByText('~/workspace/project-1')).toBeVisible()
-      await expect(totalRow.getByText('~/workspace/project-2')).toBeVisible()
-      await expect(totalRow.getByText('~/workspace/project-3')).toBeVisible()
+      await expect(totalRow.getByText('project-0')).toBeVisible()
+      await expect(totalRow.getByText('project-1')).toBeVisible()
+      await expect(totalRow.getByText('project-2')).toBeVisible()
+      await expect(totalRow.getByText('project-3')).toBeVisible()
       await expect(totalRow.getByText('Some usage has no recorded directory')).toBeVisible()
       await page.getByRole('combobox', { name: 'Group by location' }).click()
       await page.getByRole('option', { name: 'Directory' }).click()
@@ -422,13 +354,13 @@ test('saved usage, seven views, filtering, history, pagination, and explicit syn
   await expect(page.locator('.session-coverage')).toHaveText('Sessions 60 shown / 80 synced')
   await expect(page.locator('.results-summary')).toContainText('258K')
   expect(syncRequests).toBe(0)
-  await page.getByRole('button', { name: 'Sync', exact: true }).click()
-  await expect(page.getByRole('button', { name: 'Sync', exact: true })).toBeEnabled()
+  await page.getByRole('button', { name: 'Reload', exact: true }).click()
+  await expect(page.getByRole('button', { name: 'Reload', exact: true })).toBeEnabled()
   await expect(page.getByLabel('Total tokens: 258,000', { exact: true })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Reload Data', exact: true })).toHaveCount(0)
   await page.reload()
   await expect(page.getByLabel('Total tokens: 258,000', { exact: true })).toBeVisible()
-  expect(syncRequests).toBe(1)
+  expect(syncRequests).toBe(0)
   expect(errors).toEqual([])
   await page.getByRole('button', { name: 'All time', exact: true }).click()
   await expect(page.locator('.session-coverage')).toHaveText('Sessions 80 shown / 80 synced')
@@ -589,7 +521,7 @@ test('themes, keyboard filters, mobile layout, and scalable typography', async (
   await page.keyboard.press('Escape')
   await expect(page.getByRole('button', { name: 'Harness', exact: true })).toBeFocused()
   await page.setViewportSize({ width: 390, height: 844 })
-  await expect(page.getByRole('button', { name: 'Sync', exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Reload', exact: true })).toBeVisible()
   await expect
     .poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth))
     .toBe(true)
@@ -608,7 +540,7 @@ test('themes, keyboard filters, mobile layout, and scalable typography', async (
   await expect
     .poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth))
     .toBe(true)
-  await expect(page.getByRole('button', { name: 'Sync', exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Reload', exact: true })).toBeVisible()
   await page.evaluate(() => {
     document.documentElement.style.fontSize = ''
   })
@@ -636,7 +568,7 @@ for (const address of ['127.0.0.1', 'localhost']) {
               hostname: 'obsolete-host',
               apiVersion: 'v1',
               serverVersion: 'test',
-              capabilities: ['usage', 'facets', 'sync'],
+              capabilities: ['usage', 'facets', 'ingestion'],
               defaults: {
                 period: 'week',
                 bucket: 'day',
@@ -666,11 +598,11 @@ for (const address of ['127.0.0.1', 'localhost']) {
     await expect(page.getByRole('checkbox', { name: 'web-session-059', exact: true })).toBeVisible()
     await page.getByRole('button', { name: 'Done', exact: true }).click()
     const sync = page.waitForRequest(
-      (request) => request.url() === `${origin}/api/v1/sync` && request.method() === 'POST',
+      (request) => request.url() === `${origin}/api/v1/sync` && request.method() === 'GET',
     )
-    await page.getByRole('button', { name: 'Sync', exact: true }).click()
+    await page.getByRole('button', { name: 'Reload', exact: true }).click()
     await sync
-    await expect(page.getByRole('button', { name: 'Sync', exact: true })).toBeEnabled()
+    await expect(page.getByRole('button', { name: 'Reload', exact: true })).toBeEnabled()
     await page.reload()
     await expect(page.getByLabel('Total tokens: 258,000', { exact: true })).toBeVisible()
     expect(requests.every((url) => new URL(url).origin === origin)).toBe(true)
@@ -679,7 +611,7 @@ for (const address of ['127.0.0.1', 'localhost']) {
   })
 }
 
-test('custom dates, session search, and saved usage after sync failure', async ({ page }) => {
+test('custom dates, session search, and saved usage after status failure', async ({ page }) => {
   await page.goto('/')
   await expect(page.getByRole('region', { name: 'Filtered usage summary' })).toBeVisible()
   await page.getByRole('button', { name: 'This month', exact: true }).click()
@@ -696,20 +628,9 @@ test('custom dates, session search, and saved usage after sync failure', async (
   await expect(page.getByLabel('Total tokens: 4,300', { exact: true })).toBeVisible()
   await expect(page.locator('.session-coverage')).toHaveText('Sessions 1 shown / 80 synced')
   await page.route('**/api/v1/sync', (route) =>
-    route.fulfill({
-      json: {
-        running: false,
-        phase: 'failed',
-        harnesses: { pi: 'failed' },
-        error: 'Sync failed. See terminal details, retry, or inspect existing data.',
-        revision: 99,
-      },
-    }),
+    route.fulfill({ status: 503, json: { code: 'unavailable', message: 'Status unavailable' } }),
   )
-  await page.reload()
-  await expect(page.getByRole('button', { name: 'Retry Sync', exact: true })).toBeVisible()
-  await expect(
-    page.getByRole('button', { name: 'Inspect Existing Data', exact: true }),
-  ).toHaveCount(0)
+  await page.getByRole('button', { name: 'Reload', exact: true }).click()
+  await expect(page.getByRole('button', { name: 'Retry Request', exact: true })).toBeVisible()
   await expect(page.getByLabel('Total tokens: 4,300', { exact: true })).toBeVisible()
 })

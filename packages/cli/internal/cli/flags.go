@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -23,7 +22,6 @@ const (
 	periodMonth     period = "month"
 	periodYear      period = "year"
 	periodAllTime   period = "all"
-	defaultDBName          = "tokeninsights.sqlite"
 )
 
 type timeBucket string
@@ -81,13 +79,16 @@ type filters struct {
 }
 
 type tableOptions struct {
-	dbPath    string
-	noSync    bool
-	period    period
-	bucket    timeBucket
-	sort      sortMode
-	repoGroup db.RepoGroup
-	filters   filters
+	dbPath          string
+	serverURL       string
+	token           string
+	collectorDBPath string
+	syncBeforeView  bool
+	period          period
+	bucket          timeBucket
+	sort            sortMode
+	repoGroup       db.RepoGroup
+	filters         filters
 }
 
 func parseTableOptions(args []string, stderr io.Writer, requirePeriod bool, defaultPeriod period) (tableOptions, error) {
@@ -95,7 +96,7 @@ func parseTableOptions(args []string, stderr io.Writer, requirePeriod bool, defa
 }
 
 func parseViewerOptions(args []string, stderr io.Writer, requirePeriod bool, defaultPeriod period, extra func(*flag.FlagSet)) (tableOptions, error) {
-	flags := flag.NewFlagSet("tokeninsights", flag.ContinueOnError)
+	flags := flag.NewFlagSet("tokeninsights tui", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 
 	var dbPath string
@@ -105,11 +106,15 @@ func parseViewerOptions(args []string, stderr io.Writer, requirePeriod bool, def
 	var month bool
 	var year bool
 	var allTime bool
-	var noSync bool
+	var syncBeforeView bool
+	var serverURL, token, collectorDBPath string
 	var bucket string
 	var queryFilters filters
-	flags.StringVar(&dbPath, "db-path", defaultDBPath(), "path to tokeninsights sqlite db")
-	flags.BoolVar(&noSync, "no-sync", false, "skip startup sync before opening the dashboard")
+	flags.StringVar(&dbPath, "server-db-path", defaultServerDBPath(), "local query server database path")
+	flags.StringVar(&collectorDBPath, "collector-db-path", defaultCollectorDBPath(), "collector database used by explicit --sync")
+	flags.StringVar(&serverURL, "server-url", os.Getenv("TOKENINSIGHTS_SERVER_URL"), "query an existing server; skip local server startup")
+	flags.StringVar(&token, "token", os.Getenv("TOKENINSIGHTS_SERVER_TOKEN"), "server bearer token")
+	flags.BoolVar(&syncBeforeView, "sync", false, "collect and publish local data before opening the dashboard")
 	flags.BoolVar(&today, "today", false, "show today")
 	flags.BoolVar(&yesterday, "yesterday", false, "show yesterday")
 	flags.BoolVar(&week, "week", false, "show current calendar week (Mon-Sun)")
@@ -135,7 +140,7 @@ func parseViewerOptions(args []string, stderr io.Writer, requirePeriod bool, def
 	}
 	selectedDBPath := strings.TrimSpace(dbPath)
 	if selectedDBPath == "" {
-		selectedDBPath = defaultDBPath()
+		selectedDBPath = defaultServerDBPath()
 	}
 
 	selected, err := selectedPeriod(today, yesterday, week, month, year, allTime, requirePeriod, defaultPeriod)
@@ -170,47 +175,7 @@ func parseViewerOptions(args []string, stderr io.Writer, requirePeriod bool, def
 		}
 	}
 
-	return tableOptions{dbPath: selectedDBPath, noSync: noSync, period: selected, bucket: selectedBucket, filters: queryFilters}, nil
-}
-
-func selectionFromOptions(options tableOptions) viewer.Selection {
-	return viewer.Selection{
-		Period:    string(options.period),
-		Bucket:    string(options.bucket),
-		From:      options.filters.dayFrom,
-		To:        options.filters.dayTo,
-		Providers: append([]string{}, options.filters.providers...),
-		Models:    append([]string{}, options.filters.models...),
-		Harnesses: append([]string{}, options.filters.harnesses...),
-		Sessions:  append([]string{}, options.filters.sessionIDs...),
-	}
-}
-
-func defaultDBPath() string {
-	envPath := strings.TrimSpace(os.Getenv("TOKENINSIGHTS_DB_PATH"))
-	if envPath != "" {
-		return envPath
-	}
-	return filepath.Join(defaultDataPath(), defaultDBName)
-}
-
-func defaultDataPath() string {
-	xdgDataHome := strings.TrimSpace(os.Getenv("XDG_DATA_HOME"))
-	if xdgDataHome != "" {
-		return filepath.Join(xdgDataHome, "tokeninsights")
-	}
-
-	home := strings.TrimSpace(os.Getenv("HOME"))
-	if home != "" {
-		return filepath.Join(home, ".local", "share", "tokeninsights")
-	}
-
-	cwd, err := os.Getwd()
-	if err == nil && strings.TrimSpace(cwd) != "" {
-		return filepath.Join(cwd, ".tokeninsights-data")
-	}
-
-	return filepath.Join(".", ".tokeninsights-data")
+	return tableOptions{dbPath: selectedDBPath, serverURL: strings.TrimSpace(serverURL), token: token, collectorDBPath: collectorDBPath, syncBeforeView: syncBeforeView, period: selected, bucket: selectedBucket, filters: queryFilters}, nil
 }
 
 func selectedPeriod(today bool, yesterday bool, week bool, month bool, year bool, allTime bool, required bool, fallback period) (period, error) {

@@ -144,7 +144,7 @@ func TestOpenRejectsIncompatibleDB(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected schema version error")
 	}
-	if !strings.Contains(err.Error(), "reset-all --confirm") {
+	if !strings.Contains(err.Error(), "fresh collector.sqlite") {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }

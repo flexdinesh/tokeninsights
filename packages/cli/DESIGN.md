@@ -151,13 +151,10 @@ readouts, table, coverage and shortcuts. The footer reserves four rows: spacer,
 coverage, horizontal divider and shortcuts. Remaining height belongs to the
 table, whose column header consumes one row. Multiline dimension values consume
 their actual line count; the viewport clips oversized rows to retain footer space.
-Source freshness uses one muted line beneath status: compact days checked and
-source work share it. Daily dates have inline markers: `✓` checked, `○` empty,
-`…` pending, `↻` updating, `!` incomplete, `?` unverified. Busy markers use sky,
-failed markers use danger, and other markers use muted ink. Help explains every
-symbol. Day status consumes no extra table row.
-On startup and retry, saved completed markers stay blank until a fresh day check
-confirms them; usage remains visible. `--no-sync` retains saved markers.
+`tokeninsights tui` reads the same REST analytics as the browser. Status describes
+saved server data and query progress, never checked source days. Reload performs
+GET requests only; source completeness and collector progress are absent.
+`tui --sync` explicitly collects and publishes before opening the dashboard.
 
 - At **30 rows or more**, add a blank row after status and navigation.
 - Readouts appear at **24 rows or more** and **72 content cells or more**.
@@ -183,8 +180,8 @@ vertical rule separates a drawer; a single horizontal rule precedes shortcuts.
 There are no shadows. Drawers overlay the right side of the current dashboard,
 preserving visible context on the left.
 
-Transitions are immediate. Only real sync activity animates: pending dots and
-the ASCII spinner update every 120 ms. Loading data uses a textual table state.
+Transitions are immediate. Loading and query progress use functional status
+feedback; decorative transitions do not delay interaction.
 
 **The Flat Desk Rule.** Use whitespace and sparse rules to separate surfaces;
 keep the table free of decorative containers.
@@ -200,11 +197,11 @@ focused row. Ellipses indicate truncated content; the table can scroll sideways.
 
 ### Status and navigation
 
-The status line places the bold product name beside muted host and sync
-information. Six numbered views remain available: Tokens, Models, Providers,
-Harnesses, Sessions and Context. Inactive tabs use text on the canvas with one
+The status line places the bold product name beside muted producer and ingestion
+information. Seven numbered views remain available: Tokens, Models, Providers,
+Harnesses, Sessions, Context and Repo. Inactive tabs use text on the canvas with one
 cell of horizontal padding; the active tab uses bold inverse sky blue and brackets.
-Use 1–6 directly or Tab / Shift+Tab to cycle.
+Use 1–7 directly or Tab / Shift+Tab to cycle.
 
 ### Scope controls
 
@@ -256,17 +253,13 @@ table interaction. No selected values means all values. The filter menu uses
 Enter Edit; help uses Escape Close. Help remains reachable with ? when compact
 shortcuts omit individual commands.
 
-### Loading, empty, error and sync states
+### Loading, empty and error states
 
 Loading preserves table headers and shows Loading data. An empty filtered result
-offers date/filter recovery; a database with no synced sessions directs the user
-to sync and reopen. Query failure shows Could not load usky blue, error detail and
-r Retry / q Quit; stale coverage is hidden. Filter-value failures appear within
-the drawer with cancellation and reopen guidance.
-
-Initial sync centers progress on the same canvas. Status text accompanies
-pending dots, busy spinner, completed check, skipped dash and failed cross.
-These are functional terminal status marks, not decorative glyph icons.
+offers date/filter recovery; a server with no usage directs the user to
+`tokeninsights sync`. Query failures offer r Retry / q Quit and preserve filters
+and available saved rows. Filter-value failures appear within the drawer with
+cancellation and retry guidance. Viewer recovery never opens collector storage.
 
 ## Do's and Don'ts
 
@@ -284,4 +277,3 @@ These are functional terminal status marks, not decorative glyph icons.
 - **Don't** derive totals from abbreviated cell text or the visible viewport.
 - **Don't** impose browser type scales, pixel breakpoints or font choices.
 - **Don't** add decorative shadows, rounded cards or animation to this flat desk.
-

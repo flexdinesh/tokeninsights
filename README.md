@@ -1,6 +1,6 @@
 # TokenInsights
 
-TokenInsights is a local token usage dashboard for OpenCode, Pi, Codex, and Claude Code. It reads durable local session data and presents usage in terminal and browser dashboards.
+TokenInsights is a local token usage dashboard for OpenCode, Pi, Codex, and Claude Code. A host collector reads durable session data, normalizes it locally, and publishes canonical facts to a SQLite server. Terminal and browser dashboards query that server.
 
 The Repo view groups token, model, and provider usage by repository or directory. Location filters apply only there. Missing location data appears as **unknown**; the web view lets you expand an unknown row to see recorded contributing directories when available.
 
@@ -28,6 +28,8 @@ See [release channels and workflow](docs/release.md).
 
 ## Run
 
+Use `service` for the local server, `sync` for manual collection, and `tui` for the terminal dashboard. The TUI and browser read the same REST API.
+
 Open the browser dashboard:
 
 The Graphite & Lime layout pairs a compact status header and static usage summary
@@ -39,71 +41,89 @@ full filtered token total above its bar and in its tooltip. Dimension filter lab
 also show the percentage.
 
 ```sh
-tokeninsights --open
+tokeninsights service start --open
 ```
 
-Bare invocation starts the background service or prints its current URL. `--open` explicitly opens the dashboard when possible; SSH/headless sessions skip browser launch. Startup creates an empty database when needed and never syncs.
+`service start` starts the local query/ingestion service or prints its URL. `--open` opens the dashboard when possible; SSH/headless sessions skip browser launch. Bare invocation also ensures the local server. Startup creates an empty server database when needed and never collects harness data.
 
-Service startup creates private directories with mode `0700` and tightens existing service directories owned by you, including state directories from older installs. Symlinks and directories owned by another user are rejected. `service status` leaves permissions unchanged.
-
-Open the terminal dashboard:
+Collect and publish, then open the terminal dashboard:
 
 ```sh
-tokeninsights view
+tokeninsights sync
+tokeninsights tui
 ```
 
-The terminal dashboard uses a full-width table, filtered token readouts, and a
-light/dark Instrument desk theme. Press `f` for the filter drawer or `?` for keys.
+`sync` defaults to all four harnesses. The collector retains metadata-only raw facts, normalized usage, source continuity, and a durable publication journal in its own SQLite database. Only normalized facts and their session/message references cross ingestion. The server never reads harness files or runs parsers.
 
-The TUI requests refresh on each opening and shows saved usage while it runs. Closing it leaves the service and accepted refresh running. The web reads saved data on opening; its **Sync** button syncs on demand. `view --no-sync` stays read-only and does not start the service.
+Both dashboards read committed server data. Browser **Reload** and TUI `r` reload queries; neither starts collection. `tui --sync` explicitly collects and publishes before opening. Viewer filters select saved results, not which harnesses get collected.
 
 ```sh
+tokeninsights sync --harness codex
+tokeninsights sync --publish-only           # retry retained uploads, no source discovery
+tokeninsights tui --sync
 tokeninsights service start
 tokeninsights service status
 tokeninsights service stop
 tokeninsights service restart
-tokeninsights service start --host 0.0.0.0 --port 8765
-tokeninsights refresh --wait
 ```
 
-The web/API binds `127.0.0.1:8765` by default. `--host` affects only that listener; the TUI always uses local SQLite and a private Unix socket. Wildcard binding supports remote browsers on trusted networks. Binding and source roots persist across restarts. Use `service restart --reload-sources` to capture changed source environment settings. Login/reboot autostart and authentication are deferred.
+Collection and delivery report separate outcomes. If delivery fails, locally committed facts and pending batches remain for the next manual `sync` or `sync --publish-only`. There is no automatic background retry. An acknowledgement means the batch's facts and receipt committed together and are queryable. Lost acknowledgements replay the saved request; reconstructed stable fact IDs also dedupe uploads after collector storage is deleted and rebuilt.
 
-Requests made after source capture queue one shared follow-up refresh. Explicit CLI sync/normalize keep their caller's options and sources. An explicit reset cancels pending ordinary refresh, preventing automatic reimport. Unfinished queued requests are lost on a daemon crash; durable pipeline work retains interrupted status. The service performs no periodic ingest.
+Equal token counts never establish duplicate identity. Source-native session/message/request identities distinguish facts; mutable token values are payloads. Claude's supported source-timestamp revisions replace one native request contribution; unproven or equal-revision conflicts fail explicitly. Missing stable evidence is withheld from publication with diagnostics. Source disappearance or collector reset does not delete server history.
 
-Sync progress persists across restarts and is shared by CLI, TUI, and web. It distinguishes discovery, source checks, normalization, failures, and interrupted jobs. Daily coverage shows unknown/pending/partial/checked states; missing usage is not presented as zero before sources are checked. Last sync means a successful normalized all-harness refresh. Large JSONL tool-output records no longer hit a fixed 16 MiB Scanner limit, and a failed source does not prevent later sources from syncing. Active files are read to a captured extent; incomplete trailing records wait for the next sync.
+The local web/API binds `127.0.0.1:8765` by default. The TUI uses the same REST queries as the browser, including when it connects directly to another server:
 
-Daily source coverage is shared by TUI and web. Unknown days show `—`, confirmed empty days show zero; calendar markers never affect usage totals. The TUI polls committed revisions and offers `u` to retry sync (disabled with `--no-sync`). Ordinary failures retain saved usage.
+```sh
+tokeninsights tui --server-url https://example.test
+tokeninsights sync --server-url https://example.test
+```
 
-Daily sync status appears beside dates as compact markers. Web markers expose status and check time on hover and to screen readers; detailed source coverage stays collapsed below results. The TUI keeps days checked on the sync progress line; `?` explains its day markers.
+An explicit server URL skips local startup. `tokeninsights server run` provides the shared foreground server composition. Non-loopback serving requires a token; CLI clients use `--token` or `TOKENINSIGHTS_SERVER_TOKEN`, and browser authentication uses the same token as its Basic-auth password. Remote provisioning, TLS deployment, account management, and login/reboot autostart remain later work.
 
-When a new sync starts, previous completed day markers stay blank until the current check confirms them. Saved usage remains visible; pending/updating/failure markers reflect actual source work. `--no-sync` retains saved coverage markers.
+Service state/discovery directories remain private. Saved configuration contains server settings, not harness roots; `--reload-sources` and the old `refresh` command are removed. Neither startup nor viewer reconnection can collect local sources.
 
-The browser also withholds stale empty-day zeros and completion labels in expanded coverage until the current check confirms them. Session search failures offer retry without clearing the search or selected filters. Chart load failures keep navigation, summaries, and tables available, with an explicit page reload to recover.
+Repeated collection verifies persisted continuity and skips unchanged sources. Eligible Pi files parse verified appended records; Codex replay verifies complete ancestry; OpenCode fingerprints parser-relevant SQLite rows. Changed sources fall back to full parsing where needed. Active JSONL files are read to a captured extent, and incomplete trailing records wait for a later sync. Collector progress and source diagnostics remain local; the server displays available usage without claiming that missing uploads prove empty or checked days.
 
-Repeated syncs verify persisted markers and skip unchanged sources after a successful ingest. Codex fork markers also verify the complete parent chain, avoiding repeated replay parsing. OpenCode checks parser-relevant SQLite rows, so unrelated database writes do not reparse messages. Eligible Pi session files use a verified byte cursor to parse only appended records. Verification still reads source content to detect rewrites; loading progress includes these checks. Discovery and source preparation use multiple cores, with bounded workers and one SQLite writer that batches unchanged-source bookkeeping. Normalization skips identifier refresh when its rule marker is current. Changed sources retain full parsing where incremental replay is unsafe. CLI and schema remain unchanged; existing fork sources establish their new markers on the next sync. The V11–V13-to-V14 metadata upgrade preserves existing usage; older incompatible upgrades rebuild from retained source artifacts.
+The terminal dashboard uses a full-width table, filtered token readouts, and a light/dark Instrument desk theme. Press `f` for filters or `?` for keys. Server ingestion failures retain saved usage; failed reads offer Reload while preserving filters.
 
 Common filters:
 
 ```sh
-tokeninsights view --today
-tokeninsights view --week --harness codex
-tokeninsights view --provider openai --model gpt-5
-tokeninsights view --all-time
+tokeninsights tui --today
+tokeninsights tui --week --harness codex
+tokeninsights tui --provider openai --model gpt-5
+tokeninsights tui --all-time
 ```
 
 Supported periods are `--today`, `--yesterday`, `--week`, `--month`, `--year`, and `--all-time`. See the [CLI reference](packages/cli/README.md) for all commands and options.
 
+Advanced host maintenance lives under `tokeninsights collector normalize|reset-canonical|reset-all`. Previous command names and flags are removed; use the role-specific commands and database flags.
+
 ## Privacy
 
-TokenInsights keeps data on your machine. It stores usage metadata such as token counts, timestamps, models, providers, session identifiers, ingesting-machine hostnames, hashed location keys, and display names. Directory paths use `~/` where a home directory can be identified; otherwise a full directory path may be stored. It does not store prompts, responses, tool arguments, tool output, source artifact paths, or full remote URLs.
+Local mode keeps data on your machine. Selecting another server publishes normalized usage metadata to that destination. It stores usage metadata such as token counts, timestamps, models, providers, session identifiers, ingesting-machine hostnames, hashed location keys, and display names. Directory paths use `~/` where a home directory can be identified; otherwise a full directory path may remain in collector storage. It does not store prompts, responses, tool arguments, tool output, source artifact paths, or full Git remote URLs.
 
-The default database is `~/.local/share/tokeninsights/tokeninsights.sqlite`. Override it with `--db-path` or `TOKENINSIGHTS_DB_PATH`.
+Default files under `${XDG_DATA_HOME:-~/.local/share}/tokeninsights/`:
+
+| Role | File | Flag / environment |
+| --- | --- | --- |
+| Host collector | `collector.sqlite` | `--collector-db-path` / `TOKENINSIGHTS_COLLECTOR_DB_PATH` |
+| Canonical server | `server.sqlite` | `--server-db-path` / `TOKENINSIGHTS_SERVER_DB_PATH` |
+
+The old `tokeninsights.sqlite` remains untouched. Retained sources rebuild the fresh collector and populate the fresh server through ingestion; legacy import is outside this change. The two files cannot alias one another. Server storage cannot be opened as collector storage or subjected to collector recovery.
+
+Storage accepts only the current collector schema 16 and server schema 2. Previous schemas are rejected without mutation. Current-schema collector data-generation rebuilds remain local; they cannot delete server history.
+
+Rebuild earlier PR databases from retained sources into fresh files. Normalized source times must be valid Unix milliseconds; invalid observations remain collector-local diagnostics. Filename-derived Pi/Claude sessions remain raw-only until native session evidence exists. Changing a running service token requires `service restart`.
 
 Raw provider and model values retain the harness names. Stored canonical values used by filters and dashboards map Pi `openai-codex` to `openai`, map `fireworks-ai` to `fireworks`, and shorten Fireworks model names by removing `accounts/fireworks/models/`. Normal sync also updates previously stored canonical names.
 
-The web server exposes usage metadata to clients that can reach it. Its default localhost binding limits access to this machine. Only use `--host` with a trusted network address.
+The server exposes normalized usage metadata to its authorized clients. Default localhost binding keeps the local experience on this machine. Publication sends directory basenames and stable location keys, not collector-local directory paths or raw facts.
 
 ## Documentation
 
 - [CLI reference](packages/cli/README.md)
 - [Development guide](docs/development.md)
+- [Collector/server architecture](docs/collector-server-architecture.md) — ownership, normalized publication, storage roles, and recovery guarantees.
+- [Collector/ingestion failure tests](docs/collector-ingestion-tests.md) — guarantees, synthetic fixtures, executable coverage, and future acceptance gates.
+- [Completion plugins](docs/plugins.md) — thin completion hooks, install artifacts, and host verification scope.

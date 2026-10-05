@@ -1,0 +1,25 @@
+{
+  "name": "@tokeninsights/plugin-pi",
+  "version": "1.0.0",
+  "private": true,
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "exports": "./dist/index.js",
+  "scripts": {
+    "build": "node ../../tools/build/src/build-plugins.ts pi",
+    "typecheck": "tsc --project tsconfig.json",
+    "check:build": "node ../../tools/build/src/build-plugins.ts pi --check"
+  },
+  "devDependencies": {
+    "@earendil-works/pi-coding-agent": "1.0.0",
+    "@types/node": "26.4.1",
+    "typescript": "^5.9.3"
+  },
+  "pi": {
+    "extensions": [
+      "./dist/index.js"
+    ]
+  }
+}

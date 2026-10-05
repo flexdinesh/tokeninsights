@@ -169,7 +169,6 @@ func tokenColumns() []column {
 
 type renderRow struct {
 	coverageStatus           string
-	coverageCheckedAtMs      int64
 	placeholder              bool
 	location                 string
 	bucket                   string

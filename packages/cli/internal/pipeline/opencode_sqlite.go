@@ -412,7 +412,7 @@ func (a opencodeSQLiteAdapter) factFromMessage(source Source, options SyncOption
 		CacheWriteTokens: opencodeCacheWrite(messageData.Tokens),
 		TotalTokens:      nil,
 		MetadataJSON:     nil,
-		DedupeKey:        opencodeDedupeKey(messageData.ProviderID, messageData.ModelID, messageData.Tokens, messageData.Time, occurredAt),
+		DedupeKey:        opencodeDedupeKey(sessionID, rowMessageID, messageData.ProviderID, messageData.ModelID, messageData.Tokens, messageData.Time, occurredAt),
 	}, diagnostics, true
 }
 
@@ -468,7 +468,7 @@ func (a opencodeSQLiteAdapter) factFromV2Message(source Source, options SyncOpti
 		CacheWriteTokens: opencodeCacheWrite(messageData.Tokens),
 		TotalTokens:      nil,
 		MetadataJSON:     nil,
-		DedupeKey:        opencodeDedupeKey(providerID, modelID, messageData.Tokens, messageData.Time, occurredAt),
+		DedupeKey:        opencodeDedupeKey(trimSQLString(rowSessionID), rowMessageID, providerID, modelID, messageData.Tokens, messageData.Time, occurredAt),
 	}, diagnostics, true
 }
 
@@ -639,13 +639,15 @@ func opencodeCacheWrite(tokens *opencodeTokenData) *int64 {
 	return tokens.Cache.Write
 }
 
-func opencodeDedupeKey(providerID string, modelID string, tokens *opencodeTokenData, times *opencodeMessageTimes, occurredAt *int64) string {
+func opencodeDedupeKey(sessionID string, messageID string, providerID string, modelID string, tokens *opencodeTokenData, times *opencodeMessageTimes, occurredAt *int64) string {
 	completedAt := ""
 	if times != nil && times.Completed != nil {
 		completedAt = fmt.Sprint(*times.Completed)
 	}
 	parts := []string{
 		"opencode-sqlite-message",
+		strings.TrimSpace(sessionID),
+		strings.TrimSpace(messageID),
 		intPtrValue(occurredAt),
 		completedAt,
 		strings.TrimSpace(providerID),
@@ -656,7 +658,7 @@ func opencodeDedupeKey(providerID string, modelID string, tokens *opencodeTokenD
 		intPtrValue(opencodeCacheRead(tokens)),
 		intPtrValue(opencodeCacheWrite(tokens)),
 	}
-	return stableHash(strings.Join(parts, "|"))
+	return nativeTupleHash(parts...)
 }
 
 func intPtrValue(value *int64) string {

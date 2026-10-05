@@ -15,9 +15,8 @@ export async function request<T>(
   path: string,
   schema: z.ZodType<T>,
   signal?: AbortSignal,
-  method = 'GET',
 ): Promise<T> {
-  const response = await fetch(path, { signal, method })
+  const response = await fetch(path, { signal, method: 'GET' })
   let body: unknown
   try {
     body = await response.json()
@@ -49,18 +48,10 @@ export const useSyncStatus = (enabled = true) =>
     queryKey: ['sync'],
     queryFn: ({ signal }) => request('/api/v1/sync', statusSchema, signal),
     enabled,
-    refetchInterval: (query) => (query.state.data?.running ? 1000 : 5000),
+    refetchInterval: 5000,
   })
 
-export const syncNow = () => request('/api/v1/sync', statusSchema, undefined, 'POST')
-
-export function useAnalytics(
-  q: QueryState,
-  revision: number,
-  enabled: boolean,
-  _running = false,
-  identity = '',
-) {
+export function useAnalytics(q: QueryState, revision: number, enabled: boolean, identity: string) {
   const client = useQueryClient()
   const params = apiQueryParams(q)
   const summaryScope = apiQueryParams(q)
@@ -72,13 +63,13 @@ export function useAnalytics(
     queryFn: async ({ signal }) => {
       const dashboard = await request(`/api/v1/usage?${params}`, dashboardSchema, signal)
       if (
-        identity &&
-        dashboard.instanceId !== undefined &&
-        `${dashboard.instanceId}/${dashboard.dataEpoch}` !== identity
+        `${dashboard.instanceId}/${dashboard.dataEpoch}` !== identity ||
+        dashboard.revision < revision
       ) {
         void client.invalidateQueries({ queryKey: ['sync'] })
         throw new Error('Data changed. Refreshing service status.')
       }
+      if (dashboard.revision > revision) void client.invalidateQueries({ queryKey: ['sync'] })
       return { dashboard, tab: q.tab, locationGroup: q.locationGroup }
     },
     refetchOnWindowFocus: false,
@@ -97,8 +88,8 @@ export function useFacets(
   q: QueryState,
   revision: number,
   enabled: boolean,
+  identity: string,
   search = '',
-  identity = '',
 ) {
   const client = useQueryClient()
   const params = apiQueryParams(q)
@@ -113,14 +104,11 @@ export function useFacets(
     queryKey: ['facets', params.toString(), revision, identity],
     queryFn: async ({ signal }) => {
       const facets = await request(`/api/v1/usage/facets?${params}`, facetsSchema, signal)
-      if (
-        identity &&
-        facets.instanceId !== undefined &&
-        `${facets.instanceId}/${facets.dataEpoch}` !== identity
-      ) {
+      if (`${facets.instanceId}/${facets.dataEpoch}` !== identity || facets.revision < revision) {
         void client.invalidateQueries({ queryKey: ['sync'] })
         throw new Error('Data changed. Refreshing service status.')
       }
+      if (facets.revision > revision) void client.invalidateQueries({ queryKey: ['sync'] })
       return facets
     },
     refetchOnWindowFocus: false,
