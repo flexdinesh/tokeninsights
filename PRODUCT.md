@@ -37,8 +37,10 @@ require a separate authenticated harness export or realtime hooks.
   without Node, npm, or pnpm; browser assets are embedded and work offline.
 - `tokeninsights service` manages the local server, `tokeninsights sync` collects
   and publishes, and `tokeninsights tui` opens the terminal dashboard.
-- Viewers read committed REST data. TUI `r` and browser **Reload** only reload
-  queries; `tui --sync` explicitly collects before opening.
+- Viewers read committed REST data. TUI startup collects and publishes within
+  a progress screen; `tui --sync=false` skips collection. Dashboard `r` and
+  browser **Reload** only reload queries. Startup errors offer Retry, View saved
+  data, and Quit.
 - Date ranges and dimension filters constrain displayed analytics, not which
   harnesses sync. Calendar grouping uses the serving machine's local time.
 - The browser queries the server serving its page. Explicit CLI `--server-url`

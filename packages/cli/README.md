@@ -1,6 +1,6 @@
 # tokeninsights
 
-Collect local token usage, normalize it in host SQLite, publish canonical facts to a SQLite server, and query terminal/browser dashboards. Run `tokeninsights sync`, then `tokeninsights tui`. Viewing is read-only by default.
+Collect local token usage, normalize it in host SQLite, publish canonical facts to a SQLite server, and query terminal/browser dashboards. Run `tokeninsights tui` to sync in a loading screen and open the dashboard; `--sync=false` views saved data only.
 
 ## Install
 
@@ -97,11 +97,13 @@ tokeninsights collector reset-all --confirm
 
 `tui`
 
-Open the interactive terminal UI over the same REST analytics API as the browser. Without a server URL it ensures the local server; explicit remote transport needs no local database. Default `tui`, query Reload, and filters never collect or normalize. `--sync` performs caller-side all-harness collection/publication before opening; it stops on failure.
+Open the interactive terminal UI. Its loading screen runs all-harness collection/publication, then reads the same REST analytics API as the browser. Without a server URL it ensures the local server; an explicit URL publishes local collection to that server without starting a local server. `--sync=false` skips collection; query-only remote viewing opens neither local database. Dashboard Reload and filters only query saved data.
+
+Startup shows per-harness activity, committed upload batches, and pending entries. Failure offers `r Retry`, `v View saved` when a server endpoint is available, and `q Quit`/Ctrl+C. Viewing saved data skips collection. Quitting cancels active work and preserves committed collector/server data; later sync resumes pending delivery. Retrying a data-read failure only retries the query.
 
 ```sh
 tokeninsights tui
-tokeninsights tui --sync                 # explicit collection before opening
+tokeninsights tui --sync=false           # query saved usage without collecting
 tokeninsights tui --server-url https://example.test
 tokeninsights tui --today
 tokeninsights tui --yesterday
@@ -170,7 +172,7 @@ Default role paths:
 
 The former `tokeninsights.sqlite` remains untouched. Retained harness artifacts populate fresh collector/server storage through normal collection and ingestion; no legacy import is implemented. Role checks precede mutation; a collector file cannot serve queries and a server file cannot enter producer recovery/reset. Identical, symlink-equivalent, and existing hard-linked collector/server paths are rejected.
 
-Use `--collector-db-path` for collection and maintenance, and `--server-db-path` for server storage. `tui --sync` can select both roles. Previous command names, `--db-path`, and `--no-sync` are rejected. Legacy `TOKENINSIGHTS_DB_PATH` does not select either new default.
+Use `--collector-db-path` for collection and maintenance, and `--server-db-path` for server storage. `tui` can select both roles. Previous command names, `--db-path`, and `--no-sync` are rejected. Legacy `TOKENINSIGHTS_DB_PATH` does not select either new default.
 
 Collector schema V15/data generation 6 retains metadata-only raw facts, continuity, normalization work, canonical usage, journal snapshots, saved batches, and per-destination acknowledgements. Server schema V1 retains canonical query tables, producer labels, persistent database identity/revision, and durable receipts; it has no harness/source/raw tables. Protocol, identity, and semantics versions are independently validated at ingestion.
 
@@ -184,7 +186,7 @@ Local delivery binds an endpoint plus server database ID, allowing a replacement
 
 `--sync`
 
-Collect and publish all harnesses before opening. Without this flag, the TUI only queries saved data. Query filters do not narrow collection.
+Collect and publish all harnesses inside the TUI before showing data. Enabled by default; `--sync=false` only queries saved data. Query filters do not narrow collection.
 
 `--server-url URL`, `--token TOKEN`
 
@@ -192,7 +194,7 @@ Select an existing server and authentication token. Defaults come from `TOKENINS
 
 `--server-db-path PATH`, `--collector-db-path PATH`
 
-Select local server storage and the collector used only by explicit `--sync`. Default read-only remote TUI opens neither file.
+Select local server storage and the collector used by startup sync. Remote TUI with `--sync=false` opens neither file.
 
 `--today`
 

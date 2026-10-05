@@ -84,9 +84,10 @@ work can still be delivered after a collection error. Earlier acknowledged
 batches remain acknowledged when a later batch fails. Collection and delivery
 outcomes are reported separately; no autonomous retry worker is implied.
 
-Bare invocation ensures the local query service. `tui` is read-only by default;
-`tui --sync` explicitly collects first. TUI reload and web Reload fetch saved
-server data. `GET /api/v1/sync` reports readiness and revision; POST returns 405.
+Bare invocation ensures the local query service. `tui` collects and publishes
+inside a startup progress screen, then queries saved data. `--sync=false` skips
+collection. Startup errors offer Retry, View saved data, and Quit. TUI dashboard
+reload and web Reload fetch saved server data. `GET /api/v1/sync` reports readiness and revision; POST returns 405.
 The UI points to `tokeninsights sync` for collection. Query snapshots include
 process instance, durable database epoch and analytics revision. A TUI snapshot
 spanning pages retries when those change. TPS tabs and average, mean and median

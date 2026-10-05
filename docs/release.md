@@ -72,8 +72,8 @@ collector recovery, and resets cannot retract committed server facts.
 
 Everyday commands are `service`, `sync`, and `tui`. Advanced operations are
 `collector normalize`, `collector reset-canonical`, and `collector reset-all`.
-The TUI and browser read committed REST data; `tui --sync` explicitly collects
-first. Previous commands and `--db-path` / `--no-sync` are removed. Explicit
+The TUI and browser read committed REST data; `tui` syncs within a loading screen
+first, while `--sync=false` skips collection. Previous commands and `--db-path` / `--no-sync` are removed. Explicit
 collector resets require current-role/current-schema storage or a brand-new empty
 file. Role paths default to `collector.sqlite` and `server.sqlite`.
 

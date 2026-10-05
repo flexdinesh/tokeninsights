@@ -114,18 +114,27 @@ func TestReceiptMismatchKeepsExactBatchForNextManualSync(t *testing.T) {
 	}))
 	defer server.Close()
 	options := Options{CollectorDBPath: collectorPath, ServerDBPath: filepath.Join(root, "server.sqlite"), ServerURL: server.URL, PublishOnly: true}
+	var progress []DeliveryProgress
+	options.DeliveryProgress = func(value DeliveryProgress) { progress = append(progress, value) }
 	first, err := Run(context.Background(), options)
 	if err == nil || first.Pending != 1 || first.Batches != 0 {
 		t.Fatalf("invalid receipt advanced progress: %+v %v", first, err)
+	}
+	if len(progress) != 2 || progress[1] != (DeliveryProgress{Pending: 1, PendingKnown: true}) {
+		t.Fatalf("unacknowledged receipt changed visible progress: %+v", progress)
 	}
 	incompatible = true
 	if _, err := Run(context.Background(), options); err == nil || len(requests) != 1 {
 		t.Fatalf("incompatible capabilities submitted pending batch: %v", err)
 	}
 	incompatible = false
+	progress = nil
 	second, err := Run(context.Background(), options)
 	if err != nil || second.Pending != 0 || second.Batches != 1 {
 		t.Fatalf("resume: %+v %v", second, err)
+	}
+	if len(progress) != 3 || progress[2] != (DeliveryProgress{Batches: 1, PendingKnown: true}) {
+		t.Fatalf("acknowledged batch missing from visible progress: %+v", progress)
 	}
 	if len(requests) != 2 || string(requests[0]) != string(requests[1]) {
 		t.Fatal("retry changed saved request bytes")

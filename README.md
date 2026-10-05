@@ -55,12 +55,12 @@ tokeninsights tui
 
 `sync` defaults to all four harnesses. The collector retains metadata-only raw facts, normalized usage, source continuity, and a durable publication journal in its own SQLite database. Only normalized facts and their session/message references cross ingestion. The server never reads harness files or runs parsers.
 
-Both dashboards read committed server data. Browser **Reload** and TUI `r` reload queries; neither starts collection. `tui --sync` explicitly collects and publishes before opening. Viewer filters select saved results, not which harnesses get collected.
+`tui` collects and publishes all four harnesses inside a loading screen before showing committed server data. It shows per-harness activity and acknowledged upload progress. Failures offer **r Retry**, **v View saved**, and **q Quit**; viewing saved data skips collection. Use `tui --sync=false` for query-only startup. Browser **Reload** and dashboard `r` query saved data; viewer filters never narrow collection.
 
 ```sh
 tokeninsights sync --harness codex
 tokeninsights sync --publish-only           # retry retained uploads, no source discovery
-tokeninsights tui --sync
+tokeninsights tui --sync=false             # query saved usage without collection
 tokeninsights service start
 tokeninsights service status
 tokeninsights service stop
@@ -82,7 +82,7 @@ tokeninsights sync --server-url https://example.test
 
 An explicit server URL skips local startup. `tokeninsights server run` provides the shared foreground server composition. Non-loopback serving requires a token; CLI clients use `--token` or `TOKENINSIGHTS_SERVER_TOKEN`, and browser authentication uses the same token as its Basic-auth password. Remote provisioning, TLS deployment, account management, and login/reboot autostart remain later work.
 
-Service state/discovery directories remain private. Saved configuration contains server settings, not harness roots; `--reload-sources` and the old `refresh` command are removed. Neither startup nor viewer reconnection can collect local sources.
+Service state/discovery directories remain private. Saved configuration contains server settings, not harness roots; `--reload-sources` and the old `refresh` command are removed. Server startup and viewer reconnection never collect; TUI startup runs sync unless `--sync=false` is set.
 
 Repeated collection verifies persisted continuity and skips unchanged sources. Eligible Pi files parse verified appended records; Codex replay verifies complete ancestry; OpenCode fingerprints parser-relevant SQLite rows. Changed sources fall back to full parsing where needed. Active JSONL files are read to a captured extent, and incomplete trailing records wait for a later sync. Collector progress and source diagnostics remain local; the server displays available usage without claiming that missing uploads prove empty or checked days.
 

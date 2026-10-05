@@ -55,3 +55,31 @@ Terminal backgrounds must stay visible through ordinary surfaces; selection alon
 uses a fill. Token readouts have equal top/bottom blank insets without reducing
 table space. User selected sky + pink: sky blue marks interaction, pink marks totals, and
 blue-tinted selection fills retain focus. Both light and dark terminals are supported.
+
+## Startup extension — 2026-10-05
+
+`tui` now collects and publishes all four harnesses inside the loading screen,
+then opens committed REST data in the same alternate screen. Viewer filters apply
+after sync. `--sync=false` opens saved data directly; dashboard `r` remains GET-only.
+The extension reuses the Instrument desk: transparent terminal background,
+adaptive sky action/busy text, pink ready states, warning-red failures, ANSI bold,
+terminal-owned cell geometry, quiet whitespace and the existing divider/footer.
+ASCII progress represents actual work; no estimated percentage is shown.
+
+Per-harness states cover discovery, reading, normalization and completion.
+`No new usage` covers absent sources and unchanged snapshots. Delivery shows
+acknowledged batches and remaining pending entries. Failures retain a safe delivery
+code and diagnostic route, with `r Retry`, `v View saved` when a query endpoint is
+available, and `q Quit`/Ctrl+C. Saved-data recovery and failed-query retries skip
+collection. Quitting cancels and joins the worker; committed work stays durable.
+Compact layouts shorten supporting text and split delivery counts while keeping
+recovery controls and the safe error code visible.
+
+Evidence: `internal/cli/table_startup.go`, `command_view.go`, `theme.go`, and
+`table_startup_test.go`; current behavior contract in root `docs/design.md`.
+Reviewed native-grid captures: `.impeccable/review/startup-{dark,light,compact,failure,failure-compact}.png`,
+paired with the actual Go ANSI fixture output. Final finish review: **ship**;
+the misleading skipped label and missing delivery reason were resolved.
+A separate PTY runtime check confirmed publication and display of 100 fixture
+tokens. Existing native `DESIGN.md` and `.impeccable/design.json` remain the visual
+authority; this extension introduces no system tokens.
