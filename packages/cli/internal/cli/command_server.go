@@ -9,21 +9,6 @@ import (
 	"strings"
 )
 
-var serveCommand = commandSpec{name: "serve", run: runServe}
-
-func runServe(invocation commandInvocation, args []string) error {
-	filtered := make([]string, 0, len(args))
-	for _, arg := range args {
-		if arg == "--no-sync" {
-			_, _ = fmt.Fprintln(invocation.stderr, "serve --no-sync is obsolete; service startup never syncs")
-			continue
-		}
-		filtered = append(filtered, arg)
-	}
-	_, _ = fmt.Fprintln(invocation.stderr, "serve is deprecated; use tokeninsights service run")
-	return runService(invocation, append([]string{"run"}, filtered...))
-}
-
 var serverCommand = commandSpec{name: "server", run: runServer}
 
 func runServer(invocation commandInvocation, args []string) error {
@@ -39,7 +24,7 @@ func runServer(invocation commandInvocation, args []string) error {
 	flags.IntVar(&port, "port", server.DefaultPort, "web/API port (0 chooses available)")
 	flags.StringVar(&token, "token", strings.TrimSpace(os.Getenv("TOKENINSIGHTS_SERVER_TOKEN")), "authentication token; required for non-loopback remote server")
 	if err := flags.Parse(args[1:]); err != nil {
-		return err
+		return fmt.Errorf("%w\n%w", err, ErrUsage)
 	}
 	if flags.NArg() != 0 {
 		return ErrUsage

@@ -32,14 +32,10 @@ var commands = []commandSpec{
 	helpCommand,
 	versionCommand,
 	tuiCommand,
-	serveCommand,
 	serviceCommand,
 	serverCommand,
 	syncCommand,
 	collectorCommand,
-	normalizeCommand,
-	resetCanonicalCommand,
-	resetAllCommand,
 }
 
 func Run(ctx context.Context, args []string, stdout io.Writer, stderr io.Writer, now time.Time) error {

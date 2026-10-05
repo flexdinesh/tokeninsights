@@ -151,15 +151,7 @@ func Normalize(ctx context.Context, options NormalizeOptions) (Summary, error) {
 	if err != nil {
 		return summary, err
 	}
-	if compatibility.MigrationRequired {
-		if err := db.UpgradeMetadata(ctx, options.DBPath); err != nil {
-			return summary, err
-		}
-		compatibility, err = db.InspectCompatibility(ctx, options.DBPath)
-		if err != nil {
-			return summary, err
-		}
-	}
+
 	if needsRecovery(compatibility) {
 		return recoverDatabase(ctx, normalizationRecoveryOptions(options), compatibility)
 	}

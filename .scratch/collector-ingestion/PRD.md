@@ -14,11 +14,12 @@ Collector SQLite owns metadata-only raw facts, canonical facts, source continuit
 
 One canonical-only ingestion/query core serves local and remote compositions. Stable native identities survive collector deletion; delivery stream/batch IDs do not identify facts. Receipts acknowledge committed queryable state. Equal payloads are no-ops; Claude source-timed revisions update one contribution; unsupported changed values conflict. Ambiguous native identity stays local with publication diagnostics.
 
-Local remains default. `service` manages the local server, `sync` collects and publishes, and `tui` queries committed data through REST without implicit collection. Advanced normalize/reset operations belong under `collector`; former names remain deprecated aliases. Explicit remote URL skips local startup. Browser Reload never triggers a producer. Thin completion adapters invoke the same finite `sync` command. Remote provisioning, multi-tenant authorization, autonomous retry, retention, retractions, and backflow remain future work.
+Local remains default. `service` manages the local server, `sync` collects and publishes, and `tui` queries committed data through REST without implicit collection. Advanced normalize/reset operations belong under `collector`; former commands and `--db-path` / `--no-sync` are removed. Explicit remote URL skips local startup. Browser Reload never triggers a producer. Thin completion adapters invoke the same finite `sync` command. Remote provisioning, multi-tenant authorization, autonomous retry, retention, retractions, and backflow remain future work.
 
 ## Implemented deliverables
 
 - Separate role-checked collector/server schemas, independent versions and fresh defaults.
+- Accept only collector schema 15/server schema 1; reject previous schemas untouched. Preserve current-schema collector data-generation rebuild/resume, without affecting server history.
 - Native identity fixes, synthetic raw harness fixtures, independently reviewed 12-fact/1102-token oracle.
 - Atomic normalization+journal writes, immutable batches, per-destination cursors and validated receipts.
 - Atomic server fact/reference/receipt commits, bounded admission, strict privacy/numeric/version validation.

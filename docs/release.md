@@ -55,13 +55,33 @@ The tap repository owns Homebrew-native validation. Its CI should run style, aud
 
 ### Database Compatibility
 
-Schema V8 introduces singleton lifecycle state: current data generation 1, a durable rebuild-pending marker, and `rebuild_source_key`, a hash of the normalized source configuration. The key is NULL when ready and nonempty while pending; no paths are persisted. Bump schema version for table/column/constraint changes; bump data generation for breaking token semantics or raw/canonical identity changes that require reingestion. Compatible releases do neither. Release version numbers do not drive recovery.
+Collector and server storage have separate SQLite application IDs and schemas.
+Only collector schema 15 and server schema 1 are accepted; older, unknown,
+wrong-role, corrupt, and newer schema contracts fail before mutation. The former
+`tokeninsights.sqlite` stays untouched. Releases do not import legacy history or
+migrate previous schemas. Release version numbers do not drive recovery.
 
-The first normal sync, normalize, or TUI/web startup after an incompatible update automatically resets recognized older data transactionally inside the existing SQLite file, then reimports and normalizes all configured harnesses. Skipped generations need one rebuild to current. Fresh/current databases need no reset. Missing harnesses are normal skips; only retained local sources can reconstruct history. Unknown/corrupt/newer databases are rejected without automatic deletion.
+Within the current collector schema, an older data generation can rebuild from
+retained sources, while a current-generation pending rebuild resumes using its
+saved source-scope fingerprint. Current data generation is 6; newer generations
+are rejected. Failed rebuilds preserve committed collector work and pending
+state. Retry with the original `--collector-db-path`, source directory, and source
+environment settings. Changed scopes are rejected; `--dry-run` never repairs.
+Only retained sources reconstruct collector history. Server storage never uses
+collector recovery, and resets cannot retract committed server facts.
 
-Failed recovery retains partial imports, pending state, and the source-scope fingerprint. Retry with the original `--db-path`, `--source-dir` if used, and source environment settings to resume without resetting again. Default keys include all effective harness roots; custom all-harness keys use the normalized canonical absolute root. Mismatched attempts are rejected before data writes, including attempts to finish a custom-root rebuild through default-source dashboard startup or normalize. Full paths cannot be recovered from the hash. Read-only `--no-sync` never repairs data, and `--dry-run` previews without writes. Targeted default-source recovery expands to all defaults; all-harness custom roots stay bounded; single-harness custom roots defer recovery. Explicit `reset-all --confirm` remains available, including when changed Codex parent transcript availability requires historical reconciliation. `reset-canonical` cannot repair incompatible usage.
+Everyday commands are `service`, `sync`, and `tui`. Advanced operations are
+`collector normalize`, `collector reset-canonical`, and `collector reset-all`.
+The TUI and browser read committed REST data; `tui --sync` explicitly collects
+first. Previous commands and `--db-path` / `--no-sync` are removed. Explicit
+collector resets require current-role/current-schema storage or a brand-new empty
+file. Role paths default to `collector.sqlite` and `server.sqlite`.
 
-Release verification should cover legacy/old-generation rebuild, current/fresh preservation, failed-rebuild same-scope resume, mismatched-scope rejection, dry-run/no-sync nonmutation, source boundaries, and lifecycle validation inside analytics read snapshots. The Codex correction counts verified parent replay once using explicit ancestry and complete token metadata, including rewritten timestamps; uncertain history is retained with diagnostics. Forks/subagents reparse each sync and cache linked parent parses within that run.
+Release verification covers rejection without mutation for previous schemas and
+wrong roles; fresh/current preservation; current-schema rebuild/resume and scope
+rejection; read-only viewer and dry-run behavior; and stable fact/receipt replay
+when collector storage is rebuilt. Keep adapter accounting, ancestry, source
+continuity, and every token component pinned by synthetic fixtures.
 
 ### Checks
 

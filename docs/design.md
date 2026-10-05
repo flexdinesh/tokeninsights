@@ -65,17 +65,17 @@ the fresh files. Aliased paths and wrong database roles are rejected.
   Startup initializes only missing server storage and never collects.
 - `tui` queries saved server data through REST. Without a server URL it ensures
   the local server; an explicit URL bypasses local storage/discovery.
-  `--no-sync` aliases this read-only default. `--sync` explicitly runs caller-side
+  `--sync` explicitly runs caller-side
   collection/publication before opening. TUI `r` and browser Reload query only.
 - `service start|stop|restart|status|run` manages the local server.
   `server run` provides the shared foreground remote composition; non-loopback
-  binding requires a token. `serve` remains a deprecated foreground alias.
+  binding requires a token.
 - `collector reset-canonical` and `collector reset-all` affect collector storage only. Rebuilding a
   collector does not remove server facts or publish implicit retractions.
 - Everyday commands are `service`, `sync`, and `tui`. Advanced maintenance uses
   the `collector` namespace; bare `collector` or `collector --help` shows its
-  commands. `view` and the former top-level maintenance commands remain
-  deprecated aliases with the same behavior and flags.
+  commands. Previous commands and `--db-path` / `--no-sync` are removed: use
+  `tui`, the `collector` namespace, and role-specific database flags.
 - Completion plugins are thin triggers for the same Go `sync`, never alternate
   parsers or transports. Manual collection remains primary; host hooks do not
   prove that every durable write was available. See [plugins](plugins.md) for
@@ -177,33 +177,24 @@ Structural or cross-language contract changes require explicit approval. Update
 source SQL, embedded copies, role/version constants, tests, and affected docs
 in one task; `pnpm run check-schema` checks both contracts.
 
-### Historical collector schema evolution
+### Current role validation and collector rebuilds
 
-The following records earlier mixed/local schema decisions. They do not promise
-legacy-file migration into the new collector/server roles.
+Only collector schema 15 with the collector application ID and server schema 1
+with the server application ID are supported. Pre-split schemas and unknown or
+newer schemas are rejected before mutation. No previous-schema migration,
+metadata upgrade, or schema-reset fallback is implemented.
 
-Schema V4 adds the persisted `claude-code` harness value. Existing V3 databases reject that value physically through SQLite `CHECK` constraints.
+Within collector schema 15, an older data generation can rebuild transactionally
+from retained sources; a current-generation pending rebuild can resume with the
+same source scope. Newer data generations are rejected. This recovery is local
+to the collector and cannot delete server history. Explicit collector resets
+accept only current-role/current-schema storage or a brand-new empty file.
 
-Schema V5 adds canonical provider provenance through `canonical_token_usage.provider_source`.
-
-Schema V6 adds `normalization_work_queue` for pending canonical-domain work.
-
-Schema V7 adds `source_refresh_state` for Local-only Continuity Metadata used by Recent Source Refresh.
-
-Schema V8 adds `database_lifecycle` for local compatibility and resumable rebuild state. Recognized older schema/data now recover automatically through a transactional in-place application-table reset and all-harness normalized reingestion. This supersedes the former manual top-level `reset-all` upgrade requirement; it is not a row-preserving schema migration.
-
-Schema V10 retains optional `usage_locations` metadata and `location_id` on raw and canonical token facts, with only repository and directory identities. Data generation 3 introduced location attribution; generation 4 refreshed display paths; generation 5 removes worktree and branch attribution. Each upgrade triggers a full reset and resync. The database is reconstructable from retained source artifacts; usage whose artifacts were deleted may disappear after recovery. Sync checks recorded source directories against current Git metadata when those directories exist. A path reused by a different repository can therefore attribute older facts to the checkout present at sync time; provenance records the origin of repository values.
-
-Schema V11 adds `source_cursor_state` for verified Pi JSONL byte offsets and same-version source fingerprints. Upgrading from V10 uses the existing full reset and resync recovery, so usage whose original source artifacts are gone may disappear.
-
-Schema V12 adds per-harness `normalization_rule_state`. V11 databases upgrade transactionally without deleting raw or canonical usage; normalization then refreshes identifier rules once. Older incompatible schemas retain reset and resync recovery.
-
-V15 adds immutable normalized publication journal/entities, per-destination
-acknowledgements, saved batches/receipts, and an explicit collector application
-role. Data generation 6 includes native OpenCode distinction and Claude
-source-timed native-request identity/revision rules. Server V1 contains only
-canonical sessions/messages/locations/usage, server metadata, producer labels,
-and durable ingestion receipts.
+Collector storage includes immutable normalized publication journal/entities,
+per-destination acknowledgements, saved batches/receipts, and native OpenCode
+identity plus Claude source-timed native-request revision rules. Server storage
+contains only canonical sessions/messages/locations/usage, server metadata,
+producer labels, and durable ingestion receipts.
 
 ## Data Model
 
@@ -212,16 +203,16 @@ and durable ingestion receipts.
 Singleton Local-only Continuity Metadata, excluded from server ingestion and analytics:
 
 - `id`: constrained to `1`.
-- `data_generation`: current semantic/identity compatibility generation. Generation `1` corrected Codex cumulative/replay accounting; generation `2` makes input/cache and output/reasoning components additive across harnesses, hardens source counters, and aligns OpenCode V1/V2 message identity; generation `3` rebuilds raw and canonical facts with location attribution; generation `4` rebuilds display paths; generation `5` rebuilds repository/directory identities without worktree/branch fields; generation `6` establishes native identity/revision compatibility and normalized publication.
+- `data_generation`: collector semantic/identity generation, currently `6`, covering native identity/revision rules and normalized publication. Older generations within the current collector schema require a local rebuild; newer generations are rejected.
 - `rebuild_pending`: recovery remains incomplete until all configured harnesses sync and normalize successfully.
 - `rebuild_source_key`: hash of the normalized recovery source configuration, NULL when ready and nonempty while pending; stores no source paths.
 - `updated_at_ms`: lifecycle update time.
 
 Fresh databases start at the current generation with no pending rebuild and a NULL source key. Reset commits the current schema/generation, pending state, and source-scope fingerprint atomically. Failed recovery preserves that state and any committed partial imports for a same-scope retry; successful completion clears pending state and the source key together.
 
-Collector `ingest_runs.hostname`, introduced in V14, records the collecting machine on source attempts, including unchanged-source checks; missing lookups remain NULL. Server producer labels are separately recorded from committed normalized delivery metadata.
+Collector `ingest_runs.hostname` records the collecting machine on source attempts, including unchanged-source checks; missing lookups remain NULL. Server producer labels are separately recorded from committed normalized delivery metadata.
 
-### Collector-local sync status (introduced in V13)
+### Collector-local sync status
 
 `sync_state` is a local singleton with a durable collector normalization revision and the last successful normalized all-harness sync time. It advances in the canonical transaction, including standalone normalization and canonical resets, and when terminal harness/job coverage commits. Existing per-source ingest completion is no longer presented as overall sync success.
 
@@ -548,7 +539,7 @@ Claude native session/message/request identity has explicit source-timestamp pre
 
 `tokeninsights tui` is interactive-only and reads the server API. Without an
 explicit server URL it ensures the local query server; `--server-url` bypasses
-local bootstrap/storage. `--no-sync` aliases the read-only default.
+local bootstrap/storage. Viewing is read-only by default.
 `tui --sync` invokes caller-side all-harness collection/publication before
 opening and stops on an unresolved failure. Viewer filters constrain queries,
 never collection scope.
@@ -652,7 +643,7 @@ The V1 REST API has these public endpoints; unversioned routes are unsupported:
 | `POST /api/v1/ingestion/batches` | Atomic canonical ingestion; committed receipt on success |
 
 `POST /api/v1/sync` is rejected. Legacy query field names such as `lastSynced` and
-`summary.syncedSessions` remain transport compatibility names; they describe
+`summary.syncedSessions` remain transport field names; they describe
 server ingestion and saved canonical session counts, not source completeness.
 
 Usage/facet query parameters are `period`, `bucket`, `from`, `to`, repeated `provider`, `model`, `harness`, and `session`, plus `tab`, `sort`, `direction`, `page`, and `pageSize`. Repo adds `locationGroup` and repeated `repository` and `directory` stable-key filters. The latter parameters require `tab=repo`; other views ignore location selections. Repo API rows include sorted distinct `directoryNames` and `hasUnknownDirectory` for their contributing facts; other tabs return an empty list and false. Session lookup adds literal substring `search`, returning at most 100 values. Facet queries apply all other filters while omitting their own Dimension Filter. React retains selected values even when other facets exclude them. API inputs are validated, sort fields allowlisted, database reads have request deadlines, and failures use the standard `{ code, message }` JSON body. Unknown API routes also return JSON errors.
@@ -712,8 +703,8 @@ independent of collection/viewer clocks.
   or mutation. Collector analytics reads revalidate compatible local state inside
   a transaction. CLI collect/normalize/reset share a context-aware writer lock.
 - Fresh defaults leave the legacy mixed file untouched. Existing wrong-role,
-  unknown, corrupt, or newer contracts fail explicitly. Legacy role-zero files
-  are not silently migrated into either new role.
+  unknown, corrupt, or unsupported schema contracts fail explicitly without
+  mutation. Pre-split and role-zero files are not migrated or reset.
 - Collector compatibility/reset machinery applies only to collector storage.
   Explicit resets recreate application tables transactionally without unlinking
   DB/WAL/SHM/lock inodes. `collector reset-canonical` preserves raw facts and publication
@@ -774,7 +765,7 @@ Can evolve with care:
 | `packages/cli/cmd/tokeninsights/main.go` | CLI executable entry point |
 | `packages/cli/internal/cli/commands.go` | command dispatch and thin orchestration |
 | `packages/cli/internal/cli/flags.go` | TUI flag parsing |
-| `packages/cli/internal/cli/serve.go` | web command flags and orchestration |
+| `packages/cli/internal/cli/command_service.go` | local server lifecycle commands |
 | `packages/cli/internal/viewer/filters.go` | shared calendar and filter semantics |
 | `packages/cli/internal/server/` | Public HTTP handlers, snapshots, generated API models, embedded assets |
 | `packages/web/` | typed same-origin React dashboard, generated API schemas, and design tokens |

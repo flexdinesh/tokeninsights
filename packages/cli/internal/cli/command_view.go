@@ -10,7 +10,7 @@ import (
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/service"
 )
 
-var tuiCommand = commandSpec{name: "tui", aliases: []string{"view"}, run: runView}
+var tuiCommand = commandSpec{name: "tui", run: runView}
 
 var ensureViewServer = service.Ensure
 var runViewSync = runSync

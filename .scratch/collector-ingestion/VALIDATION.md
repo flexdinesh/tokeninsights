@@ -121,3 +121,11 @@ Canonical daily commands are `service`, `sync`, and `tui`; advanced normalizatio
 Published directory/repository labels must be basenames on every host OS. Fourteen real HTTP cases reject Unix, drive, UNC, relative and home paths atomically without echoing or storing private labels; valid basename and optional SQL NULL behavior remain covered. OpenAPI, generated clients and embedded browser assets were regenerated together.
 
 Root format, lint, full unit tests and build pass after this follow-up: 27 build-tools tests, 31 web tests, all Go packages, schema/API consistency and plugin artifacts. Direct Go build and the isolated native workflow pass again with JavaScript absent from PATH, including `tui`/`collector` help, database reconstruction and offline manual retry. Mandatory pre-push race/browser gates run again during publication.
+
+## Removal of previous architecture compatibility
+
+User requested removal rather than deprecation. Removed `view`, `serve`, top-level normalize/reset commands, `--db-path`, and `--no-sync`. Only grouped collector operations and role-specific path flags remain. Conventional help/version flags remain. Removed the unused source-aware application controller and pre-split schema recognition/metadata migration code; no schema/table structures changed.
+
+`TestRemovedCommandsRejectWithoutStorageOrServiceSideEffects` and `TestRemovedFlagsRejectBeforeSideEffects` prove rejection before state creation or existing-file mutation. `TestLegacySchemasRejectWithoutMutation` covers versions 0–14, with either no role or the current collector role, across inspect/open/create/recovery/reset paths. Current-schema collector generation recovery/resume still passes; current sync, REST TUI and publication fault coverage remain active.
+
+Root format, lint, full unit tests and build pass; focused CLI and DB race tests pass. Direct Go build/native smoke rejects twelve removed command/flag forms with usage exit 2 and no storage/service work, then verifies empty startup, collector deletion/replay and offline manual retry with unchanged facts and no JavaScript on PATH. Current docs and failure matrix were updated; historical ADRs and earlier evidence remain historical. Normal pre-push runs the full race/browser gates again.

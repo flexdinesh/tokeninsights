@@ -26,7 +26,6 @@ func runSync(invocation commandInvocation, args []string) error {
 	var serverDBPath, serverURL, token string
 	var publishOnly bool
 	flags.StringVar(&dbPath, "collector-db-path", defaultCollectorDBPath(), "collector SQLite database")
-	flags.StringVar(&dbPath, "db-path", defaultCollectorDBPath(), "alias for --collector-db-path")
 	flags.StringVar(&serverDBPath, "server-db-path", defaultServerDBPath(), "local server SQLite database")
 	flags.StringVar(&serverURL, "server-url", defaultServerURL(), "explicit ingestion server; skips local startup")
 	flags.StringVar(&token, "token", defaultServerToken(), "server bearer token")

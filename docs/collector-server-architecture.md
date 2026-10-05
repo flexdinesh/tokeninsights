@@ -5,6 +5,12 @@ The approved split creates fresh `collector.sqlite` and `server.sqlite` files.
 The old `tokeninsights.sqlite` file stays untouched; this change does not import
 legacy history or migrate legacy identities.
 
+Only current collector schema 15 and server schema 1 are supported; previous
+schemas reject without mutation. Within current collector schema, older data
+generations can rebuild from retained sources, pending current-generation
+rebuilds resume with the same scope, and newer generations reject. Server
+history never participates in collector recovery.
+
 [design.md](design.md) describes the product; [ADR 0006](adr/0006-collector-server-ingestion.md)
 records this decision. The [storage contract](../.scratch/collector-ingestion/STORAGE-CONTRACT-PROPOSAL.md)
 defines persistence and wire details. The [failure contract](collector-ingestion-tests.md)
@@ -80,7 +86,7 @@ outcomes are reported separately; no autonomous retry worker is implied.
 
 Bare invocation ensures the local query service. `tui` is read-only by default;
 `tui --sync` explicitly collects first. TUI reload and web Reload fetch saved
-server data. `GET /api/v1/sync` remains compatibility status; POST returns 405.
+server data. `GET /api/v1/sync` reports readiness and revision; POST returns 405.
 The UI points to `tokeninsights sync` for collection. Query snapshots include
 process instance, durable database epoch and analytics revision. A TUI snapshot
 spanning pages retries when those change. TPS tabs and average, mean and median
@@ -95,8 +101,8 @@ or `multiple machines`; absent producer metadata never becomes serving hostname.
 Root commands are `service`, `sync`, `tui` and `server`. Advanced producer
 maintenance uses `collector normalize`, `collector reset-canonical` and
 `collector reset-all`. These operate on collector state and preserve server
-history. `view` and the former top-level maintenance commands remain deprecated
-aliases.
+history. Previous commands and `--db-path` / `--no-sync` are removed; use role
+flags and the read-only `tui` default.
 
 ## Identity and canonical values
 

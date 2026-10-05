@@ -26,6 +26,13 @@ rejected without resetting their contents. Server opening verifies its durable
 metadata and current identity/semantics versions; it never invokes collector
 recovery or attempts to reconstruct server history from source files.
 
+Accept only collector schema 15 and server schema 1. Pre-split schemas are
+rejected without mutation; no previous-schema or metadata migration and no
+schema-reset fallback is implemented. Older data generations within current
+collector schema can rebuild locally, current-generation pending rebuilds resume
+with the same source scope, and newer generations reject. Explicit collector
+resets accept only current-role/current-schema storage or a brand-new empty file.
+
 Protocol, identity and accounting semantics are separate versions, currently all
 1. Current compatibility requires an exact supported match; no mixed-version
 acceptance or automatic identity migration is advertised. An incompatible change
@@ -213,8 +220,8 @@ read query APIs. `tokeninsights tui` is the read-only REST viewer;
 `tui --sync` explicitly runs collection first. Root commands are `service`,
 `sync`, `tui` and `server`. Advanced producer maintenance uses
 `collector normalize`, `collector reset-canonical` and `collector reset-all`;
-it preserves server history. Former `view` and top-level maintenance names remain
-deprecated aliases. `GET /api/v1/sync` is read-only readiness/revision compatibility
+it preserves server history. Former commands and `--db-path` / `--no-sync` are
+removed. `GET /api/v1/sync` is read-only readiness/revision
 status; POST is removed. Server saved configuration contains database/bind/auth
 settings, not source roots. Producer labels never imply source completeness.
 

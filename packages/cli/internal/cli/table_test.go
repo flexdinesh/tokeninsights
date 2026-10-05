@@ -1089,7 +1089,7 @@ func TestDashboardSessionCoverageAcrossDateFilters(t *testing.T) {
 		insertLoadRowsCanonicalToken(t, database, recordedAt.UnixMilli(), "opencode", fmt.Sprintf("session-%d", i), "openai", "model-a")
 	}
 
-	options := tableOptions{serverURL: queryServerURL(t, dbPath), noSync: true, period: periodMonth, bucket: bucketDay}
+	options := tableOptions{serverURL: queryServerURL(t, dbPath), period: periodMonth, bucket: bucketDay}
 	m := newInteractiveModel(context.Background(), options, now, "test-host")
 	m.width, m.height = 100, 24
 	for _, test := range []struct {

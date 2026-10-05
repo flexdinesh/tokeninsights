@@ -15,7 +15,7 @@ The user chose fresh collector/server files rebuilt from retained sources. Prese
 | T06/T07 composition/CLI | Shared local/remote core; default all-harness manual sync, publish-only, host-only resets, fresh paths implemented. |
 | T08/T09 viewers | REST TUI and browser Reload implemented; no implicit source collection. |
 | T10 plugins | Native packaging/runner completion tracked in [plugin plan](PLUGIN-PLAN.md); isolated real-host installation remains deferred. |
-| T11 compatibility | Fresh role databases; legacy preserved; wrong-role/newer schemas reject without destructive recovery. |
+| T11 compatibility | Fresh role databases; legacy preserved; only collector schema 15/server schema 1 accepted. Previous/wrong-role/unknown/newer schemas reject untouched; current-schema collector generation rebuilds remain local. |
 | T12 failures | Production contract tests plus 12 named subprocess kill/reopen barriers implemented. |
 | T13 docs/tooling | Current runtime docs, separate dev fixtures, embedded assets and repository gates complete. |
 
@@ -33,7 +33,7 @@ Normalized self-contained batches share one ingestion core in local and remote c
 
 ## Gate 4: Workflow and viewers
 
-`sync` defaults to all harnesses. Collection and delivery summaries report their separate outcomes. `--publish-only` requires no source discovery; explicit server URL never boots local service. `service` manages the local server; `tui` reads the same REST API as the browser. Optional `tui --sync` invokes caller-side collection explicitly. Advanced normalize/reset commands belong under `collector`; resets affect only collector storage. Former command names remain deprecated aliases. Reload observes saved state only.
+`sync` defaults to all harnesses. Collection and delivery summaries report their separate outcomes. `--publish-only` requires no source discovery; explicit server URL never boots local service. `service` manages the local server; `tui` reads the same REST API as the browser. Optional `tui --sync` invokes caller-side collection explicitly. Advanced normalize/reset commands belong under `collector`; resets affect only collector storage. Former command names and `--db-path` / `--no-sync` are removed. Reload observes saved state only.
 
 ## Gate 5: Verification/release
 

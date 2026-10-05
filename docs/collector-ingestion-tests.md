@@ -86,7 +86,7 @@ go test ./internal/collector -run '^TestCollectorContract' -count=1
 go test -race ./internal/collector ./internal/collectorstore ./internal/ingestion ./internal/serverstore
 ```
 
-Repository gates: `pnpm run format`, `pnpm run lint`, `pnpm run test`, `pnpm run build`, then `mise run check:push`. Fixture privacy checks remain part of root tests. Browser/TUI tests prove GET-only reload and remote query access without collector files. CLI tests exercise `tui` and deprecated `view` against saved REST data, grouped collector resets against real databases, and help without storage side effects.
+Repository gates: `pnpm run format`, `pnpm run lint`, `pnpm run test`, `pnpm run build`, then `mise run check:push`. Fixture privacy checks remain part of root tests. Browser/TUI tests prove GET-only reload and remote query access without collector files. CLI tests exercise `tui` against saved REST data, grouped collector resets against real databases, help without storage side effects, and rejection of removed commands/flags before storage or service work.
 
 Future regressions must name Fxx/Gxx and a fault seam, retain independent exact identity/value assertions, reopen persisted state, and specify the manual replay. Do not replace these with a simulated second ingestion engine, snapshot-generated goldens, skipped failures, or total-only assertions.
 

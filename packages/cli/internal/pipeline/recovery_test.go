@@ -21,7 +21,7 @@ func TestRecoveryTargetedSyncRebuildsAllDefaultsOnce(t *testing.T) {
 	root := recoveryDefaultRoots(t)
 	writePiAssistantSession(t, filepath.Join(root, "home", ".pi", "agent", "sessions", "project", "date_pi.jsonl"), "pi", "pi-message", 10, 2)
 	writeCodexTokenSession(t, filepath.Join(root, "codex", "sessions", "rollout-2026-01-01T00-00-00-codex.jsonl"), "codex", "turn", "gpt", 20, 3)
-	path := recoveryOldDatabase(t, false)
+	path := recoveryOldDatabase(t)
 	var events []SyncProgressStatus
 	options := SyncOptions{DBPath: path, Harnesses: []Harness{HarnessCodex}, Normalize: false, Progress: func(event SyncProgressEvent) {
 		events = append(events, event.Status)
@@ -113,7 +113,7 @@ func TestCollectorGenerationRecoveryUsesAllHarnessOverride(t *testing.T) {
 	writePiAssistantSession(t, filepath.Join(root, "home", ".pi", "agent", "sessions", "date_excluded.jsonl"), "excluded", "excluded", 999, 0)
 	sourceRoot := t.TempDir()
 	writePiAssistantSession(t, filepath.Join(sourceRoot, "pi", "date_included.jsonl"), "included", "included", 7, 0)
-	path := recoveryOldDatabase(t, false)
+	path := recoveryOldDatabase(t)
 	summary, err := Sync(context.Background(), SyncOptions{DBPath: path, Harnesses: SupportedHarnesses, SourceDir: sourceRoot})
 	if err != nil {
 		t.Fatal(err)
@@ -128,7 +128,7 @@ func TestCollectorGenerationRecoveryUsesAllHarnessOverride(t *testing.T) {
 }
 
 func TestRecoveryCustomSingleHarnessDefersWithoutChanges(t *testing.T) {
-	path := recoveryOldDatabase(t, false)
+	path := recoveryOldDatabase(t)
 	before := recoverySnapshot(t, path)
 	for _, dryRun := range []bool{false, true} {
 		_, err := Sync(context.Background(), SyncOptions{DBPath: path, Harnesses: []Harness{HarnessPi}, SourceDir: t.TempDir(), DryRun: dryRun})
@@ -144,7 +144,7 @@ func TestRecoveryCustomSingleHarnessDefersWithoutChanges(t *testing.T) {
 func TestCollectorGenerationDryRunsPreviewWithoutResetting(t *testing.T) {
 	root := recoveryDefaultRoots(t)
 	writePiAssistantSession(t, filepath.Join(root, "home", ".pi", "agent", "sessions", "date_pi.jsonl"), "pi", "pi", 5, 0)
-	path := recoveryOldDatabase(t, false)
+	path := recoveryOldDatabase(t)
 	before := recoverySnapshot(t, path)
 	summary, err := Sync(context.Background(), SyncOptions{DBPath: path, Harnesses: []Harness{HarnessCodex}, DryRun: true})
 	if err != nil {
@@ -172,7 +172,7 @@ func TestRecoveryRetriesFailedHarnessWithoutErasingProgress(t *testing.T) {
 	writePiAssistantSession(t, piPath, "pi", "pi", 12, 0)
 	brokenSource := filepath.Join(root, "xdg", "opencode", "opencode.db")
 	writeJSONL(t, brokenSource, "not a SQLite database")
-	path := recoveryOldDatabase(t, false)
+	path := recoveryOldDatabase(t)
 	options := SyncOptions{DBPath: path, Harnesses: SupportedHarnesses, Normalize: true}
 	summary, err := Sync(ctx, options)
 	if !errors.Is(err, db.ErrRebuildPending) || summary.Recovery != RecoveryReset {
@@ -219,7 +219,7 @@ func TestRecoveryRetriesFailedHarnessWithoutErasingProgress(t *testing.T) {
 func TestRecoveryNormalizeRebuildsInsteadOfReusingOldFacts(t *testing.T) {
 	root := recoveryDefaultRoots(t)
 	writePiAssistantSession(t, filepath.Join(root, "home", ".pi", "agent", "sessions", "date_pi.jsonl"), "pi", "pi", 9, 0)
-	path := recoveryOldDatabase(t, false)
+	path := recoveryOldDatabase(t)
 	summary, err := Normalize(context.Background(), NormalizeOptions{DBPath: path, Harnesses: []Harness{HarnessCodex}})
 	if err != nil {
 		t.Fatal(err)
@@ -237,7 +237,7 @@ func TestRecoveryNormalizationFailureResumesPendingWork(t *testing.T) {
 	ctx := context.Background()
 	root := recoveryDefaultRoots(t)
 	writePiAssistantSession(t, filepath.Join(root, "home", ".pi", "agent", "sessions", "date_pi.jsonl"), "pi", "pi", 11, 0)
-	path := recoveryOldDatabase(t, false)
+	path := recoveryOldDatabase(t)
 	options := SyncOptions{DBPath: path, Harnesses: SupportedHarnesses, Normalize: true}
 	options.Progress = func(event SyncProgressEvent) {
 		if event.Status != SyncProgressNormalizing {
@@ -282,7 +282,7 @@ func TestRecoveryNormalizationFailureResumesPendingWork(t *testing.T) {
 func TestRecoveryConcurrentSyncsResetOnlyOnce(t *testing.T) {
 	root := recoveryDefaultRoots(t)
 	writePiAssistantSession(t, filepath.Join(root, "home", ".pi", "agent", "sessions", "date_pi.jsonl"), "pi", "pi", 8, 0)
-	path := recoveryOldDatabase(t, false)
+	path := recoveryOldDatabase(t)
 	start := make(chan struct{})
 	results := make(chan Summary, 2)
 	errorsFound := make(chan error, 2)
@@ -321,7 +321,7 @@ func TestRecoveryConcurrentSyncsResetOnlyOnce(t *testing.T) {
 }
 
 func TestRecoveryRejectsNewerGenerationWithoutResetting(t *testing.T) {
-	path := recoveryOldDatabase(t, false)
+	path := recoveryOldDatabase(t)
 	database, err := sql.Open("sqlite", path)
 	if err != nil {
 		t.Fatal(err)
@@ -347,7 +347,7 @@ func TestRecoveryRetriesRequireOriginalCustomRoot(t *testing.T) {
 	writePiAssistantSession(t, filepath.Join(root, "pi", "date_pi.jsonl"), "pi", "pi", 13, 0)
 	broken := filepath.Join(root, "opencode", "opencode.db")
 	writeJSONL(t, broken, "not SQLite")
-	path := recoveryOldDatabase(t, false)
+	path := recoveryOldDatabase(t)
 	options := SyncOptions{DBPath: path, Harnesses: SupportedHarnesses, SourceDir: root, Normalize: true}
 	if _, err := Sync(context.Background(), options); !errors.Is(err, db.ErrRebuildPending) {
 		t.Fatalf("expected interrupted custom-root rebuild, got %v", err)
@@ -387,7 +387,7 @@ func TestRecoveryRetriesRequireOriginalDefaultRootConfiguration(t *testing.T) {
 	root := recoveryDefaultRoots(t)
 	broken := filepath.Join(root, "xdg", "opencode", "opencode.db")
 	writeJSONL(t, broken, "not SQLite")
-	path := recoveryOldDatabase(t, false)
+	path := recoveryOldDatabase(t)
 	options := SyncOptions{DBPath: path, Harnesses: SupportedHarnesses, Normalize: true}
 	if _, err := Sync(context.Background(), options); !errors.Is(err, db.ErrRebuildPending) {
 		t.Fatalf("expected interrupted default rebuild, got %v", err)
@@ -410,7 +410,7 @@ func TestRecoveryLockFailuresPreserveCompatibilityClassification(t *testing.T) {
 		for _, normalize := range []bool{false, true} {
 			t.Run(fmt.Sprintf("pending=%v/normalize=%v", pending, normalize), func(t *testing.T) {
 				recoveryDefaultRoots(t)
-				path := recoveryOldDatabase(t, false)
+				path := recoveryOldDatabase(t)
 				options := SyncOptions{DBPath: path, Harnesses: SupportedHarnesses}
 				expected := db.ErrRecoveryRequired
 				if pending {
@@ -458,7 +458,7 @@ func recoveryDefaultRoots(t *testing.T) string {
 	return root
 }
 
-func recoveryOldDatabase(t *testing.T, legacySchema bool) string {
+func recoveryOldDatabase(t *testing.T) string {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "usage.sqlite")
 	root := t.TempDir()
@@ -472,9 +472,6 @@ func recoveryOldDatabase(t *testing.T, legacySchema bool) string {
 	}
 	defer func() { _ = database.Close() }()
 	statement := "UPDATE database_lifecycle SET data_generation = 0"
-	if legacySchema {
-		statement = "DROP TABLE database_lifecycle; PRAGMA user_version = 7"
-	}
 	if _, err := database.Exec(statement); err != nil {
 		t.Fatal(err)
 	}

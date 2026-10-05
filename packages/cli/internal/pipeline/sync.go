@@ -68,15 +68,7 @@ func Sync(ctx context.Context, options SyncOptions) (Summary, error) {
 	if err != nil {
 		return Summary{}, err
 	}
-	if compatibility.MigrationRequired {
-		if err := db.UpgradeMetadata(ctx, options.DBPath); err != nil {
-			return Summary{}, err
-		}
-		compatibility, err = db.InspectCompatibility(ctx, options.DBPath)
-		if err != nil {
-			return Summary{}, err
-		}
-	}
+
 	if needsRecovery(compatibility) {
 		if err := validateRecoveryScope(options, compatibility); err != nil {
 			return Summary{}, err

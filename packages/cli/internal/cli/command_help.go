@@ -34,8 +34,6 @@ advanced:
   tokeninsights tui --sync
   tokeninsights collector --help
 
-Deprecated aliases: view, normalize, reset-canonical, reset-all, serve.
-
 Collector: --collector-db-path (collector.sqlite). Server: --server-db-path (server.sqlite).
 Existing tokeninsights.sqlite is untouched; retained sources rebuild fresh databases.
 Explicit --server-url skips local startup. Non-loopback serving requires a token.`

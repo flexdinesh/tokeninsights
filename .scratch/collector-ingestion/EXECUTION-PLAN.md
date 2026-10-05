@@ -17,7 +17,7 @@ Manual `sync` remains primary. Hook adapters use the same collector operation. O
 | Current boundary | Required change and implication |
 | --- | --- |
 | `internal/cli/command_sync.go` delegates writes to `service.Mutate` | Replace with host-owned collector orchestration; delivery follows local normalization. Server lifecycle admission cannot own collector mutation. |
-| `internal/app/app.go` owns `pipeline.SourceConfig`, sync actions, reset/recovery scheduling | Keep collector orchestration on producer side; remove source-aware controller from server composition. A bounded ingestion admission queue replaces server collection scheduling. |
+| `internal/app/app.go` owns `pipeline.SourceConfig`, sync actions, reset/recovery scheduling | Collector orchestration stays on producer side; the unused source-aware controller package has been removed. A bounded ingestion admission queue replaces server collection scheduling. |
 | `internal/service/files.go`, `manager.go`, `runtime.go` persist sources and expose private refresh/action routes | Version saved server config/discovery; retain lifecycle locks, private directory protections, readiness, detached launch, and stop semantics. Remove source configuration and collection routes. |
 | `internal/server/server.go` implements `POST /api/v1/sync` and reads controller state | Replace collection endpoint/capability with read-only ingestion status and canonical ingestion POST. No endpoint launches a collector. |
 | `internal/server/data.go` reads canonical queries plus `LastCompletedSync`, `ViewerDayCoverage`, `LoadSyncStatus` | Reuse canonical analytics, but replace local-source status with server revision and last committed ingestion. Omit source-day coverage rather than implying absent uploads prove empty days. |
@@ -45,7 +45,7 @@ Use these defaults; routine command details do not require another approval. Sto
 | Completion plugin invocation | Run the existing `tokeninsights sync` directly with a bounded host deadline. No separate hook CLI or durable trigger queue. |
 | `tokeninsights collector reset-canonical\|reset-all` | Scope explicitly to collector state. Resetting/deleting collector cannot delete server history. Server destructive reset is not an alias for producer reset. |
 
-Root commands are `service`, `sync`, `tui` and `server`, with advanced producer maintenance grouped under `collector`. Keep `view` and former top-level maintenance names as deprecated aliases.
+Root commands are `service`, `sync`, `tui` and `server`, with advanced producer maintenance grouped under `collector`. Remove former commands and `--db-path` / `--no-sync`; role-specific flags and the read-only `tui` default are the public interface.
 
 Use unambiguous `--collector-db-path` and `--server-db-path` flags rather than one `--db-path` changing ownership by command. Use fresh `collector.sqlite` and `server.sqlite` files. Leave original `tokeninsights.sqlite` untouched; legacy import/migration is outside this implementation. Reject aliasing the two files, including canonical symlink aliases and existing hard links. Saved server config contains bind/database/auth settings only; private producer config can contain source roots and selected destination. Never persist the full process environment.
 
@@ -106,6 +106,8 @@ Create fresh `collector.sqlite` and `server.sqlite` under the selected data dire
 
 Reject opening a collector database as server storage and vice versa; reject identical/symlink/hard-linked database aliases. Server schema/data compatibility checks preserve historical facts and receipts; they cannot assume producer artifacts remain available or use destructive reset/resync recovery. Rebuilding/deleting collector storage replays retained sources without retracting existing server history. Unsupported schema/data generations fail clearly without changing original storage.
 
+Accept only current collector schema 15 and server schema 1; pre-split schemas reject untouched. Remove previous-schema migrations, metadata upgrades, and schema-reset fallbacks. Within current collector schema, older generations can rebuild locally; current-generation pending rebuilds resume with the same scope; newer generations reject. Explicit collector resets accept only current-role/current-schema storage or a brand-new empty file.
+
 ## Real verification gates
 
 1. **Identity:** CFI001–009 run through real adapters/persistence. Both reds become green with reviewed expected identities/counters, plus adjacent copy/revision cases. Add exact stable publication IDs to independent expected facts. Missing-native-ID ambiguity stays explicit; do not turn it into an arbitrary count oracle.
@@ -119,4 +121,4 @@ Update [VALIDATION.md](VALIDATION.md) with actual commands and outcomes, and the
 
 ## Unresolved questions
 
-None for current scope. Fresh database roles, publication contract, native identity/revision policies, and CLI defaults are decided. Remote provisioning and any future legacy migration remain later work.
+None for current scope. Fresh database roles, publication contract, native identity/revision policies, and CLI defaults are decided. Remote provisioning and future version upgrades within the new database roles remain later work. No previous-architecture migration is planned.

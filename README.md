@@ -55,7 +55,7 @@ tokeninsights tui
 
 `sync` defaults to all four harnesses. The collector retains metadata-only raw facts, normalized usage, source continuity, and a durable publication journal in its own SQLite database. Only normalized facts and their session/message references cross ingestion. The server never reads harness files or runs parsers.
 
-Both dashboards read committed server data. Browser **Reload** and TUI `r` reload queries; neither starts collection. `tui --no-sync` is an alias for the read-only default. `tui --sync` explicitly collects and publishes before opening. Viewer filters select saved results, not which harnesses get collected.
+Both dashboards read committed server data. Browser **Reload** and TUI `r` reload queries; neither starts collection. `tui --sync` explicitly collects and publishes before opening. Viewer filters select saved results, not which harnesses get collected.
 
 ```sh
 tokeninsights sync --harness codex
@@ -97,7 +97,7 @@ tokeninsights tui --all-time
 
 Supported periods are `--today`, `--yesterday`, `--week`, `--month`, `--year`, and `--all-time`. See the [CLI reference](packages/cli/README.md) for all commands and options.
 
-Advanced host maintenance lives under `tokeninsights collector normalize|reset-canonical|reset-all`. `view` and the former top-level maintenance commands remain deprecated aliases.
+Advanced host maintenance lives under `tokeninsights collector normalize|reset-canonical|reset-all`. Previous command names and flags are removed; use the role-specific commands and database flags.
 
 ## Privacy
 
@@ -111,6 +111,8 @@ Default files under `${XDG_DATA_HOME:-~/.local/share}/tokeninsights/`:
 | Canonical server | `server.sqlite` | `--server-db-path` / `TOKENINSIGHTS_SERVER_DB_PATH` |
 
 The old `tokeninsights.sqlite` remains untouched. Retained sources rebuild the fresh collector and populate the fresh server through ingestion; legacy import is outside this change. The two files cannot alias one another. Server storage cannot be opened as collector storage or subjected to collector recovery.
+
+Storage accepts only the current collector schema 15 and server schema 1. Previous schemas are rejected without mutation. Current-schema collector data-generation rebuilds remain local; they cannot delete server history.
 
 Raw provider and model values retain the harness names. Stored canonical values used by filters and dashboards map Pi `openai-codex` to `openai`, map `fireworks-ai` to `fireworks`, and shorten Fireworks model names by removing `accounts/fireworks/models/`. Normal sync also updates previously stored canonical names.
 

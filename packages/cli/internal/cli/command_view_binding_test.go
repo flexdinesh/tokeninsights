@@ -57,7 +57,7 @@ func TestViewExplicitSyncPreservesLocalAndRemoteDestinationBinding(t *testing.T)
 				return model, nil
 			})
 			defer restore()
-			args := []string{"view", "--sync", "--collector-db-path", collectorPath, "--server-db-path", serverPath}
+			args := []string{"tui", "--sync", "--collector-db-path", collectorPath, "--server-db-path", serverPath}
 			if remote {
 				args = append(args, "--server-url", queryServer.URL)
 			}

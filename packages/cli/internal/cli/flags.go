@@ -22,7 +22,6 @@ const (
 	periodMonth     period = "month"
 	periodYear      period = "year"
 	periodAllTime   period = "all"
-	defaultDBName          = "tokeninsights.sqlite"
 )
 
 type timeBucket string
@@ -85,7 +84,6 @@ type tableOptions struct {
 	token           string
 	collectorDBPath string
 	syncBeforeView  bool
-	noSync          bool
 	period          period
 	bucket          timeBucket
 	sort            sortMode
@@ -98,7 +96,7 @@ func parseTableOptions(args []string, stderr io.Writer, requirePeriod bool, defa
 }
 
 func parseViewerOptions(args []string, stderr io.Writer, requirePeriod bool, defaultPeriod period, extra func(*flag.FlagSet)) (tableOptions, error) {
-	flags := flag.NewFlagSet("tokeninsights", flag.ContinueOnError)
+	flags := flag.NewFlagSet("tokeninsights tui", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 
 	var dbPath string
@@ -108,18 +106,15 @@ func parseViewerOptions(args []string, stderr io.Writer, requirePeriod bool, def
 	var month bool
 	var year bool
 	var allTime bool
-	var noSync bool
 	var syncBeforeView bool
 	var serverURL, token, collectorDBPath string
 	var bucket string
 	var queryFilters filters
-	flags.StringVar(&dbPath, "db-path", defaultServerDBPath(), "local query server database path")
 	flags.StringVar(&dbPath, "server-db-path", defaultServerDBPath(), "local query server database path")
 	flags.StringVar(&collectorDBPath, "collector-db-path", defaultCollectorDBPath(), "collector database used by explicit --sync")
 	flags.StringVar(&serverURL, "server-url", os.Getenv("TOKENINSIGHTS_SERVER_URL"), "query an existing server; skip local server startup")
 	flags.StringVar(&token, "token", os.Getenv("TOKENINSIGHTS_SERVER_TOKEN"), "server bearer token")
 	flags.BoolVar(&syncBeforeView, "sync", false, "collect and publish local data before opening the dashboard")
-	flags.BoolVar(&noSync, "no-sync", false, "read saved server data (default)")
 	flags.BoolVar(&today, "today", false, "show today")
 	flags.BoolVar(&yesterday, "yesterday", false, "show yesterday")
 	flags.BoolVar(&week, "week", false, "show current calendar week (Mon-Sun)")
@@ -180,10 +175,7 @@ func parseViewerOptions(args []string, stderr io.Writer, requirePeriod bool, def
 		}
 	}
 
-	if noSync && syncBeforeView {
-		return tableOptions{}, fmt.Errorf("--sync and --no-sync conflict\n%w", ErrUsage)
-	}
-	return tableOptions{dbPath: selectedDBPath, serverURL: strings.TrimSpace(serverURL), token: token, collectorDBPath: collectorDBPath, syncBeforeView: syncBeforeView, noSync: noSync, period: selected, bucket: selectedBucket, filters: queryFilters}, nil
+	return tableOptions{dbPath: selectedDBPath, serverURL: strings.TrimSpace(serverURL), token: token, collectorDBPath: collectorDBPath, syncBeforeView: syncBeforeView, period: selected, bucket: selectedBucket, filters: queryFilters}, nil
 }
 
 func selectedPeriod(today bool, yesterday bool, week bool, month bool, year bool, allTime bool, required bool, fallback period) (period, error) {

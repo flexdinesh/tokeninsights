@@ -32,6 +32,13 @@ prevent wrong-role opening/recovery. Collector/server paths cannot alias,
 including symlinks and existing hard links. Server history never uses producer
 reset/rebuild behavior.
 
+Only collector schema 15 and server schema 1 are supported. Previous schemas
+reject without mutation; there are no metadata migrations or schema-reset
+fallbacks. Older data generations within current collector schema can rebuild
+from retained sources; pending current-generation rebuilds resume with the same
+scope, and newer generations reject. Explicit collector resets accept only
+current-role/current-schema storage or a brand-new empty file.
+
 Collector SQLite retains metadata-only raw and normalized facts. Canonical
 normalization and publication journal snapshots commit together. An immutable
 pending request is saved before delivery. Each destination has its own durable
@@ -74,15 +81,15 @@ Journal and receipts are retained indefinitely initially.
 TUI and browser query REST snapshots. `tui` is read-only by default, with
 `--sync` explicit. TUI reload and browser Reload only fetch saved data. Public
 sync POST and private collection actions are removed; sync GET remains read-only
-compatibility status. Instance/database/revision metadata guards multi-page
+readiness/revision status. Instance/database/revision metadata guards multi-page
 snapshots. Producer labels and last ingestion describe saved available data,
 never source completeness. Server reporting timezone governs client displays;
 IANA names preserve historical DST where available. TPS concepts remain intact.
 
 Root commands are `service`, `sync`, `tui` and `server`; advanced producer
 maintenance is grouped under `collector normalize`, `collector reset-canonical`
-and `collector reset-all`. `view` and former top-level maintenance names remain
-deprecated aliases. Collector maintenance does not delete server history.
+and `collector reset-all`. Previous commands and `--db-path` / `--no-sync` are
+removed. Collector maintenance does not delete server history.
 
 Retain detached native startup, lifecycle/admission locks, private directories,
 private Unix administration, occupied-port checks and ownership protection.

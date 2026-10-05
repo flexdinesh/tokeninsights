@@ -12,15 +12,13 @@ import (
 )
 
 var ErrRecoveryRequired = errors.New("database recovery required: run `tokeninsights sync --all`")
-var ErrRebuildPending = errors.New("database rebuild pending: repeat `tokeninsights sync --all` with the original source options and database path to resume")
-var ErrMetadataUpgradeRequired = errors.New("database metadata upgrade required: run `tokeninsights sync` or `tokeninsights normalize`")
+var ErrRebuildPending = errors.New("database rebuild pending: repeat `tokeninsights sync --all` with the original source options and --collector-db-path to resume")
 
 type Compatibility struct {
-	Exists            bool
-	ResetRequired     bool
-	MigrationRequired bool
-	RebuildPending    bool
-	RebuildSourceKey  string
+	Exists           bool
+	ResetRequired    bool
+	RebuildPending   bool
+	RebuildSourceKey string
 }
 
 // InspectCompatibility never creates a database or changes its contents.
@@ -58,7 +56,7 @@ func inspectDatabase(ctx context.Context, database *sql.DB, checkIntegrity bool)
 	}
 	defer func() { _ = tx.Rollback() }()
 	state, err := inspectCompatibility(ctx, tx)
-	if err != nil || !checkIntegrity || (!state.ResetRequired && !state.MigrationRequired) {
+	if err != nil || !checkIntegrity || !state.ResetRequired {
 		return state, err
 	}
 	// Scan before destructive recovery. Compatible refreshes and analytics opens
@@ -103,127 +101,74 @@ func inspectCompatibility(ctx context.Context, reader Reader) (Compatibility, er
 	if version > SupportedSchemaVersion {
 		return result, fmt.Errorf("database schema %d is newer than supported schema %d; upgrade TokenInsights", version, SupportedSchemaVersion)
 	}
-	if version < 2 {
+	if version != SupportedSchemaVersion {
 		return result, unrecognizedDatabase(version)
 	}
 	if err := recognizeSchema(ctx, reader, version); err != nil {
 		return result, err
 	}
-	if version >= 15 {
-		if err := inspectPublicationState(ctx, reader); err != nil {
-			return result, err
-		}
-	}
-	var hasLifecycle bool
-	if err := reader.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM sqlite_schema WHERE type = 'table' AND name = ?)", TableDatabaseLifecycle).Scan(&hasLifecycle); err != nil {
+	if err := inspectPublicationState(ctx, reader); err != nil {
 		return result, err
 	}
-	if hasLifecycle {
-		var id, generation, pending int
-		var updated int64
-		var sourceKey sql.NullString
-		var count int
-		if err := reader.QueryRowContext(ctx, "SELECT COUNT(*) FROM database_lifecycle").Scan(&count); err != nil {
-			return result, err
-		}
-		if count != 1 {
-			return result, errors.New("invalid database lifecycle singleton; automatic recovery refused")
-		}
-		if err := reader.QueryRowContext(ctx, "SELECT id, data_generation, rebuild_pending, rebuild_source_key, updated_at_ms FROM database_lifecycle").Scan(&id, &generation, &pending, &sourceKey, &updated); err != nil {
-			return result, fmt.Errorf("invalid database lifecycle: %w", err)
-		}
-		if id != 1 || generation < 0 || (pending != 0 && pending != 1) || updated < 0 {
-			return result, errors.New("invalid database lifecycle state; automatic recovery refused")
-		}
-		if (pending == 0 && sourceKey.Valid) || (pending == 1 && (!sourceKey.Valid || sourceKey.String == "")) {
-			return result, errors.New("invalid database rebuild source key; automatic recovery refused")
-		}
-		if generation > CurrentDataGeneration {
-			return result, fmt.Errorf("database data generation %d is newer than supported generation %d; upgrade TokenInsights", generation, CurrentDataGeneration)
-		}
-		result.ResetRequired = generation < CurrentDataGeneration
-		result.RebuildPending = pending == 1
-		result.RebuildSourceKey = sourceKey.String
+	var id, generation, pending int
+	var updated int64
+	var sourceKey sql.NullString
+	var count int
+	if err := reader.QueryRowContext(ctx, "SELECT COUNT(*) FROM database_lifecycle").Scan(&count); err != nil {
+		return result, err
 	}
-	result.ResetRequired = result.ResetRequired || version < 11
-	result.MigrationRequired = version >= 11 && version < SupportedSchemaVersion && !result.ResetRequired
+	if count != 1 {
+		return result, errors.New("invalid database lifecycle singleton; automatic recovery refused")
+	}
+	if err := reader.QueryRowContext(ctx, "SELECT id, data_generation, rebuild_pending, rebuild_source_key, updated_at_ms FROM database_lifecycle").Scan(&id, &generation, &pending, &sourceKey, &updated); err != nil {
+		return result, fmt.Errorf("invalid database lifecycle: %w", err)
+	}
+	if id != 1 || generation < 0 || (pending != 0 && pending != 1) || updated < 0 {
+		return result, errors.New("invalid database lifecycle state; automatic recovery refused")
+	}
+	if (pending == 0 && sourceKey.Valid) || (pending == 1 && (!sourceKey.Valid || sourceKey.String == "")) {
+		return result, errors.New("invalid database rebuild source key; automatic recovery refused")
+	}
+	if generation > CurrentDataGeneration {
+		return result, fmt.Errorf("database data generation %d is newer than supported generation %d; upgrade TokenInsights", generation, CurrentDataGeneration)
+	}
+	result.ResetRequired = generation < CurrentDataGeneration
+	result.RebuildPending = pending == 1
+	result.RebuildSourceKey = sourceKey.String
 	return result, nil
 }
 
 func unrecognizedDatabase(version int) error {
-	return fmt.Errorf("unrecognized database schema version %d; automatic recovery refused (use `tokeninsights reset-all --confirm` for an explicit reset)", version)
+	return fmt.Errorf("unsupported or invalid collector schema version %d; use a fresh database with --collector-db-path; existing contents preserved", version)
 }
 
-// Signatures come from the shipped V2 event schema and V3+ sync-first schema.
-// Require the complete table family and identifying columns, rather than
-// trusting user_version on an arbitrary SQLite file. Unknown tables and views
-// are rejected. Current databases may have user or failure-injection triggers.
+// Require the current collector table family and identifying columns rather
+// than trusting user_version. Old architecture schemas are never migrated.
+// Unknown tables/views are rejected; user/failure-injection triggers are allowed.
 func recognizeSchema(ctx context.Context, reader Reader, version int) error {
 	required := map[string]string{
-		TableIngestRuns:               "id run_id harness collector parser source_id source_kind status started_at_ms raw_fact_count observation_count canonical_count diagnostic_count",
-		TableRawTokenUsage:            "id raw_fact_key harness source_id source_kind collector parser observed_at_ms session_id message_id provider model usage_scope quality input_tokens output_tokens reasoning_tokens cache_read_tokens cache_write_tokens total_tokens",
+		TableIngestRuns:               "id run_id harness collector parser source_id source_kind status started_at_ms raw_fact_count observation_count canonical_count diagnostic_count hostname",
+		TableRawTokenUsage:            "id raw_fact_key harness source_id source_kind collector parser observed_at_ms session_id message_id provider model usage_scope quality input_tokens output_tokens reasoning_tokens cache_read_tokens cache_write_tokens total_tokens location_id location_conflicts",
 		TableRawObservations:          "id ingest_run_id raw_fact_id observed_at_ms observation_key",
 		TableCanonicalSessions:        "id semantic_key harness session_id first_seen_at_ms last_seen_at_ms primary_raw_fact_id",
 		TableCanonicalMessages:        "id semantic_key session_id harness harness_message_id primary_raw_fact_id",
-		TableCanonicalTokenUsage:      "id semantic_key recorded_at_ms harness session_id message_id provider model usage_scope quality is_countable input_tokens output_tokens reasoning_tokens cache_read_tokens cache_write_tokens total_tokens primary_raw_fact_id ingest_run_id",
+		TableCanonicalTokenUsage:      "id semantic_key recorded_at_ms harness session_id message_id provider provider_source model usage_scope quality is_countable input_tokens output_tokens reasoning_tokens cache_read_tokens cache_write_tokens total_tokens primary_raw_fact_id ingest_run_id location_id",
 		TableNormalizationDiagnostics: "id diagnostic_key recorded_at_ms harness raw_fact_id ingest_run_id severity code message",
-	}
-	optional := map[string]string{}
-	if version == 2 {
-		required = map[string]string{}
-		for _, prefix := range []string{"oc_", "pi_"} {
-			common := "id recorded_at recorded_at_ms session_id message_id provider model "
-			required[prefix+"token_events"] = common + "input_tokens output_tokens reasoning_tokens cache_read_tokens cache_write_tokens total_tokens"
-			required[prefix+"tps_samples"] = common + "output_tokens reasoning_tokens total_tokens duration_ms ttft_ms tokens_per_second"
-			required[prefix+"llm_requests"] = common + "attempt_index thinking_level"
-			required[prefix+"tool_calls"] = common + "tool_call_id tool_name status"
-		}
-		required["oc_token_events"] += " part_id source"
-	} else {
-		if version >= 15 {
-			required[TablePublicationState] = "id stream_id identity_version semantics_version source_namespace created_at_ms"
-			required[TablePublicationEntities] = "fact_id payload_hash sequence source_revision_rule source_revision_value"
-			required[TablePublicationJournal] = "sequence fact_id payload_hash payload_json identity_version semantics_version source_revision_rule source_revision_value created_at_ms"
-			required[TablePublicationDestinations] = "destination_id endpoint database_id acknowledged_sequence last_receipt_json acknowledged_at_ms"
-			required[TablePublicationBatches] = "batch_id destination_id stream_id database_id first_sequence last_sequence request_hash request_bytes receipt_bytes acknowledged_at_ms"
-		}
-		if version >= 14 {
-			required[TableIngestRuns] += " hostname"
-		}
-		if version >= 5 {
-			required[TableCanonicalTokenUsage] += " provider_source"
-		}
-		if version >= 9 {
-			required[TableRawTokenUsage] += " location_id location_conflicts"
-			required[TableCanonicalTokenUsage] += " location_id"
-		}
-		for _, state := range []struct {
-			table   string
-			columns string
-			since   int
-		}{
-			{TableNormalizationWorkQueue, "id raw_fact_id domain enqueued_at_ms", 6},
-			{TableSourceRefreshState, "id harness source_kind source_state_key collector parser last_successful_refresh_at_ms source_mtime_ms source_size_bytes updated_at_ms", 7},
-			{TableSourceCursorState, "id harness source_kind source_state_key collector parser cursor_kind byte_offset source_mtime_ms source_size_bytes prefix_hash boundary_hash location_fingerprint updated_at_ms", 11},
-			{TableNormalizationRuleState, "harness rule_signature updated_at_ms", 12},
-			{TableSyncState, "id revision last_successful_sync_at_ms", 13},
-			{TableSyncJobs, "id scope_key status phase started_at_ms completed_at_ms updated_at_ms normalize all_harnesses error_code", 13},
-			{TableSyncHarnesses, "job_id harness status discovered total_sources checked_sources failed_sources checked_at_ms", 13},
-			{TableSyncSources, "job_id harness source_id source_kind status error_code min_occurred_at_ms max_occurred_at_ms updated_at_ms", 13},
-			{TableDatabaseLifecycle, "id data_generation rebuild_pending rebuild_source_key updated_at_ms", 8},
-			{TableUsageLocations, "id semantic_key directory_key directory_name repository_key repository_name repository_source worktree_key worktree_name worktree_source branch_key branch_value_key branch_name branch_source", 9},
-		} {
-			if version >= state.since {
-				required[state.table] = state.columns
-			} else {
-				optional[state.table] = state.columns
-			}
-		}
-		if version >= 10 {
-			required[TableUsageLocations] = "id semantic_key directory_key directory_name repository_key repository_name repository_source"
-		} else if version < 9 {
-			optional[TableUsageLocations] = "id semantic_key directory_key directory_name repository_key repository_name repository_source"
-		}
+		TablePublicationState:         "id stream_id identity_version semantics_version source_namespace created_at_ms",
+		TablePublicationEntities:      "fact_id payload_hash sequence source_revision_rule source_revision_value",
+		TablePublicationJournal:       "sequence fact_id payload_hash payload_json identity_version semantics_version source_revision_rule source_revision_value created_at_ms",
+		TablePublicationDestinations:  "destination_id endpoint database_id acknowledged_sequence last_receipt_json acknowledged_at_ms",
+		TablePublicationBatches:       "batch_id destination_id stream_id database_id first_sequence last_sequence request_hash request_bytes receipt_bytes acknowledged_at_ms",
+		TableNormalizationWorkQueue:   "id raw_fact_id domain enqueued_at_ms",
+		TableSourceRefreshState:       "id harness source_kind source_state_key collector parser last_successful_refresh_at_ms source_mtime_ms source_size_bytes updated_at_ms",
+		TableSourceCursorState:        "id harness source_kind source_state_key collector parser cursor_kind byte_offset source_mtime_ms source_size_bytes prefix_hash boundary_hash location_fingerprint updated_at_ms",
+		TableNormalizationRuleState:   "harness rule_signature updated_at_ms",
+		TableSyncState:                "id revision last_successful_sync_at_ms",
+		TableSyncJobs:                 "id scope_key status phase started_at_ms completed_at_ms updated_at_ms normalize all_harnesses error_code",
+		TableSyncHarnesses:            "job_id harness status discovered total_sources checked_sources failed_sources checked_at_ms",
+		TableSyncSources:              "job_id harness source_id source_kind status error_code min_occurred_at_ms max_occurred_at_ms updated_at_ms",
+		TableDatabaseLifecycle:        "id data_generation rebuild_pending rebuild_source_key updated_at_ms",
+		TableUsageLocations:           "id semantic_key directory_key directory_name repository_key repository_name repository_source",
 	}
 	rows, err := reader.QueryContext(ctx, "SELECT type, name FROM sqlite_schema WHERE type IN ('table', 'view', 'trigger') AND name NOT GLOB 'sqlite_*'")
 	if err != nil {
@@ -236,10 +181,10 @@ func recognizeSchema(ctx context.Context, reader Reader, version int) error {
 			_ = rows.Close()
 			return err
 		}
-		if kind == "trigger" && version >= 11 {
+		if kind == "trigger" {
 			continue
 		}
-		if kind != "table" || (required[name] == "" && optional[name] == "") {
+		if kind != "table" || required[name] == "" {
 			_ = rows.Close()
 			return unrecognizedDatabase(version)
 		}
@@ -257,9 +202,6 @@ func recognizeSchema(ctx context.Context, reader Reader, version int) error {
 	}
 	for table := range tables {
 		columns := required[table]
-		if columns == "" {
-			columns = optional[table]
-		}
 		// Names and column lists are internal constants, never database content.
 		rows, err := reader.QueryContext(ctx, "SELECT "+strings.Join(strings.Fields(columns), ", ")+" FROM "+table+" LIMIT 0")
 		if err != nil {
@@ -273,9 +215,6 @@ func recognizeSchema(ctx context.Context, reader Reader, version int) error {
 func requireCompatible(state Compatibility, analytics bool) error {
 	if state.ResetRequired {
 		return ErrRecoveryRequired
-	}
-	if state.MigrationRequired {
-		return ErrMetadataUpgradeRequired
 	}
 	if analytics && state.RebuildPending {
 		return ErrRebuildPending

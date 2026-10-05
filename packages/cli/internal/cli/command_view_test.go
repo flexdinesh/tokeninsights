@@ -21,65 +21,55 @@ import (
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/service"
 )
 
-func TestTUIAndViewAliasReadSavedServerUsageWithoutCollection(t *testing.T) {
-	for _, alias := range []bool{false, true} {
-		name := "default"
-		if alias {
-			name = "no-sync"
-		}
-		t.Run(name, func(t *testing.T) {
-			remote, store, requests := newViewQueryServer(t, true)
-			replaceViewEnsure(t, func(context.Context, service.Options) (service.State, error) {
-				t.Fatal("remote viewer bootstrapped local server")
-				return service.State{}, nil
-			})
-			root := t.TempDir()
-			localPath := filepath.Join(root, "local-server.sqlite")
-			collectorPath := filepath.Join(root, "collector.sqlite")
-			isolateViewSources(t, root)
-			restore := replaceInteractiveProgramRunnerForTest(t, func(model interactiveModel, _ io.Writer) (interactiveModel, error) {
-				if model.syncing || !model.loading {
-					t.Fatalf("expected read loading without collection progress: syncing=%v loading=%v", model.syncing, model.loading)
-				}
-				if model.options.serverURL != remote.URL {
-					t.Fatalf("server URL=%q", model.options.serverURL)
-				}
-				loaded := model.loadDashboard()
-				if loaded.err != nil {
-					t.Fatal(loaded.err)
-				}
-				if len(loaded.rows) != 1 || loaded.rows[0].totalValue != 100 {
-					t.Fatalf("saved server facts=%+v", loaded.rows)
-				}
-				if len(loaded.coverage) != 0 {
-					t.Fatalf("server query invented source coverage: %+v", loaded.coverage)
-				}
-				if loaded.sessionCounts.Shown != 1 || loaded.sessionCounts.Synced != 1 {
-					t.Fatalf("session counts=%+v", loaded.sessionCounts)
-				}
-				return model, nil
-			})
-			defer restore()
-			args := []string{"tui", "--server-url", remote.URL, "--server-db-path", localPath, "--collector-db-path", collectorPath, "--all-time"}
-			if alias {
-				args[0] = "view"
-				args = append(args, "--no-sync")
-			}
-			var stdout bytes.Buffer
-			if err := Run(context.Background(), args, &stdout, io.Discard, time.Now()); err != nil {
-				t.Fatal(err)
-			}
-			if stdout.Len() != 0 {
-				t.Fatalf("read-only viewer printed collection output: %q", stdout.String())
-			}
-			assertViewMissingPath(t, localPath)
-			assertViewMissingPath(t, collectorPath)
-			if requests.posts.Load() != 0 || requests.gets.Load() == 0 {
-				t.Fatalf("requests GET=%d POST=%d", requests.gets.Load(), requests.posts.Load())
-			}
-			assertCLIQueryCount(t, store.SQL(), "SELECT COUNT(*) FROM ingestion_receipts", 1)
+func TestTUIReadsSavedServerUsageWithoutCollection(t *testing.T) {
+	t.Run("default", func(t *testing.T) {
+		remote, store, requests := newViewQueryServer(t, true)
+		replaceViewEnsure(t, func(context.Context, service.Options) (service.State, error) {
+			t.Fatal("remote viewer bootstrapped local server")
+			return service.State{}, nil
 		})
-	}
+		root := t.TempDir()
+		localPath := filepath.Join(root, "local-server.sqlite")
+		collectorPath := filepath.Join(root, "collector.sqlite")
+		isolateViewSources(t, root)
+		restore := replaceInteractiveProgramRunnerForTest(t, func(model interactiveModel, _ io.Writer) (interactiveModel, error) {
+			if model.syncing || !model.loading {
+				t.Fatalf("expected read loading without collection progress: syncing=%v loading=%v", model.syncing, model.loading)
+			}
+			if model.options.serverURL != remote.URL {
+				t.Fatalf("server URL=%q", model.options.serverURL)
+			}
+			loaded := model.loadDashboard()
+			if loaded.err != nil {
+				t.Fatal(loaded.err)
+			}
+			if len(loaded.rows) != 1 || loaded.rows[0].totalValue != 100 {
+				t.Fatalf("saved server facts=%+v", loaded.rows)
+			}
+			if len(loaded.coverage) != 0 {
+				t.Fatalf("server query invented source coverage: %+v", loaded.coverage)
+			}
+			if loaded.sessionCounts.Shown != 1 || loaded.sessionCounts.Synced != 1 {
+				t.Fatalf("session counts=%+v", loaded.sessionCounts)
+			}
+			return model, nil
+		})
+		defer restore()
+		args := []string{"tui", "--server-url", remote.URL, "--server-db-path", localPath, "--collector-db-path", collectorPath, "--all-time"}
+		var stdout bytes.Buffer
+		if err := Run(context.Background(), args, &stdout, io.Discard, time.Now()); err != nil {
+			t.Fatal(err)
+		}
+		if stdout.Len() != 0 {
+			t.Fatalf("read-only viewer printed collection output: %q", stdout.String())
+		}
+		assertViewMissingPath(t, localPath)
+		assertViewMissingPath(t, collectorPath)
+		if requests.posts.Load() != 0 || requests.gets.Load() == 0 {
+			t.Fatalf("requests GET=%d POST=%d", requests.gets.Load(), requests.posts.Load())
+		}
+		assertCLIQueryCount(t, store.SQL(), "SELECT COUNT(*) FROM ingestion_receipts", 1)
+	})
 }
 
 func TestViewRemoteDoesNotOpenInvalidLocalDatabasePath(t *testing.T) {
@@ -90,7 +80,7 @@ func TestViewRemoteDoesNotOpenInvalidLocalDatabasePath(t *testing.T) {
 		return model, result.err
 	})
 	defer restore()
-	if err := Run(context.Background(), []string{"view", "--server-url", remote.URL, "--server-db-path", invalidLocal}, io.Discard, io.Discard, time.Now()); err != nil {
+	if err := Run(context.Background(), []string{"tui", "--server-url", remote.URL, "--server-db-path", invalidLocal}, io.Discard, io.Discard, time.Now()); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -102,7 +92,7 @@ func TestViewQuitCancelsServerReadsWithoutReportingFailure(t *testing.T) {
 		return model, nil
 	})
 	defer restore()
-	if err := Run(context.Background(), []string{"view", "--server-url", "http://127.0.0.1:1"}, io.Discard, io.Discard, time.Now()); err != nil {
+	if err := Run(context.Background(), []string{"tui", "--server-url", "http://127.0.0.1:1"}, io.Discard, io.Discard, time.Now()); err != nil {
 		t.Fatalf("normal quit reported cancellation: %v", err)
 	}
 }
@@ -119,7 +109,7 @@ func TestViewReturnsProgramAndServerErrors(t *testing.T) {
 				return model, nil
 			})
 			defer restore()
-			if err := Run(context.Background(), []string{"view", "--server-url", "http://127.0.0.1:1"}, io.Discard, io.Discard, time.Now()); !errors.Is(err, expected) {
+			if err := Run(context.Background(), []string{"tui", "--server-url", "http://127.0.0.1:1"}, io.Discard, io.Discard, time.Now()); !errors.Is(err, expected) {
 				t.Fatalf("viewer error=%v", err)
 			}
 		})
@@ -157,7 +147,7 @@ func TestViewExplicitSyncCollectsAndPublishesBeforeLaunch(t *testing.T) {
 		return model, nil
 	})
 	defer restore()
-	if err := Run(context.Background(), []string{"view", "--sync", "--server-url", remote.URL, "--collector-db-path", collectorPath, "--server-db-path", serverPath, "--all-time"}, io.Discard, io.Discard, time.Now()); err != nil {
+	if err := Run(context.Background(), []string{"tui", "--sync", "--server-url", remote.URL, "--collector-db-path", collectorPath, "--server-db-path", serverPath, "--all-time"}, io.Discard, io.Discard, time.Now()); err != nil {
 		t.Fatal(err)
 	}
 	if !launched || requests.posts.Load() == 0 {
@@ -174,15 +164,15 @@ func TestViewExplicitSyncFailureDoesNotLaunchViewer(t *testing.T) {
 		return model, nil
 	})
 	defer restore()
-	err := Run(context.Background(), []string{"view", "--sync", "--server-url", "http://127.0.0.1:1", "--collector-db-path", filepath.Join(root, "collector.sqlite")}, io.Discard, io.Discard, time.Now())
+	err := Run(context.Background(), []string{"tui", "--sync", "--server-url", "http://127.0.0.1:1", "--collector-db-path", filepath.Join(root, "collector.sqlite")}, io.Discard, io.Discard, time.Now())
 	if err == nil {
 		t.Fatal("expected delivery failure")
 	}
 }
 
-func TestViewRejectsConflictingSyncFlagsBeforeSideEffects(t *testing.T) {
+func TestTUIRejectsRemovedNoSyncFlagBeforeSideEffects(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "server.sqlite")
-	err := Run(context.Background(), []string{"view", "--sync", "--no-sync", "--server-db-path", path}, io.Discard, io.Discard, time.Now())
+	err := Run(context.Background(), []string{"tui", "--sync", "--no-sync", "--server-db-path", path}, io.Discard, io.Discard, time.Now())
 	if !errors.Is(err, ErrUsage) {
 		t.Fatalf("expected usage error, got %v", err)
 	}
@@ -285,7 +275,7 @@ func TestViewDefaultBootstrapsLocalQueryServerWithoutCollection(t *testing.T) {
 		return model, nil
 	})
 	defer restore()
-	if err := Run(context.Background(), []string{"view", "--server-db-path", serverPath, "--collector-db-path", collectorPath, "--all-time"}, io.Discard, io.Discard, time.Now()); err != nil {
+	if err := Run(context.Background(), []string{"tui", "--server-db-path", serverPath, "--collector-db-path", collectorPath, "--all-time"}, io.Discard, io.Discard, time.Now()); err != nil {
 		t.Fatal(err)
 	}
 	if calls != 1 || requests.posts.Load() != 0 {
@@ -303,7 +293,7 @@ func TestViewLocalStartupFailureDoesNotLaunchViewer(t *testing.T) {
 		return model, nil
 	})
 	defer restore()
-	if err := Run(context.Background(), []string{"view"}, io.Discard, io.Discard, time.Now()); !errors.Is(err, expected) {
+	if err := Run(context.Background(), []string{"tui"}, io.Discard, io.Discard, time.Now()); !errors.Is(err, expected) {
 		t.Fatalf("startup error=%v", err)
 	}
 }
@@ -318,7 +308,7 @@ func TestViewLocalStartupRequiresDiscoveryRecord(t *testing.T) {
 		return model, nil
 	})
 	defer restore()
-	if err := Run(context.Background(), []string{"view"}, io.Discard, io.Discard, time.Now()); err == nil {
+	if err := Run(context.Background(), []string{"tui"}, io.Discard, io.Discard, time.Now()); err == nil {
 		t.Fatal("missing record accepted")
 	}
 }

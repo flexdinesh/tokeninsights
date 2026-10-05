@@ -17,7 +17,6 @@ func runNormalize(invocation commandInvocation, args []string) error {
 	var dryRun bool
 	var harnesses stringList
 	flags.StringVar(&dbPath, "collector-db-path", defaultCollectorDBPath(), "collector SQLite database")
-	flags.StringVar(&dbPath, "db-path", defaultCollectorDBPath(), "alias for --collector-db-path")
 	flags.BoolVar(&dryRun, "dry-run", false, "compute without writing")
 	flags.Var(&harnesses, "harness", "optional harness filter: opencode, pi, codex, or claude-code")
 	if err := flags.Parse(args); err != nil {

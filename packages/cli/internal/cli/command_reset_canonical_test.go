@@ -22,7 +22,7 @@ func TestResetCanonicalRejectsPendingRecovery(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err = Run(context.Background(), []string{"reset-canonical", "--confirm", "--db-path", path}, io.Discard, io.Discard, time.Now())
+	err = Run(context.Background(), []string{"collector", "reset-canonical", "--confirm", "--collector-db-path", path}, io.Discard, io.Discard, time.Now())
 	if !errors.Is(err, db.ErrRebuildPending) {
 		t.Fatalf("expected pending recovery error, got %v", err)
 	}

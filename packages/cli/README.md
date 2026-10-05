@@ -31,7 +31,7 @@ claude-code
 
 ## Commands
 
-Everyday commands are `service`, `sync`, and `tui`. Advanced host maintenance uses `collector normalize|reset-canonical|reset-all`; `tokeninsights collector --help` lists that namespace. `view`, `normalize`, `reset-canonical`, and `reset-all` remain deprecated top-level aliases with identical behavior and flags.
+Everyday commands are `service`, `sync`, and `tui`. Advanced host maintenance uses `collector normalize|reset-canonical|reset-all`; `tokeninsights collector --help` lists that namespace. Previous command names and flags are removed. Use `tui`, the `collector` namespace, and role-specific database flags.
 
 `sync`
 
@@ -97,11 +97,10 @@ tokeninsights collector reset-all --confirm
 
 `tui`
 
-Open the interactive terminal UI over the same REST analytics API as the browser. Without a server URL it ensures the local server; explicit remote transport needs no local database. Default `tui`, `--no-sync`, query Reload, and filters never collect or normalize. `--sync` performs caller-side all-harness collection/publication before opening; it stops on failure.
+Open the interactive terminal UI over the same REST analytics API as the browser. Without a server URL it ensures the local server; explicit remote transport needs no local database. Default `tui`, query Reload, and filters never collect or normalize. `--sync` performs caller-side all-harness collection/publication before opening; it stops on failure.
 
 ```sh
 tokeninsights tui
-tokeninsights tui --no-sync              # alias for read-only default
 tokeninsights tui --sync                 # explicit collection before opening
 tokeninsights tui --server-url https://example.test
 tokeninsights tui --today
@@ -114,7 +113,7 @@ Bare `tokeninsights` ensures the background service and prints its URL. Move roo
 
 Every tab's pinned summary shows `sessions <shown> shown / <synced> synced`, followed by the row count and, except in Context, the filtered token total. `shown` counts distinct sessions matching all active filters across the full result, not just the visible scroll viewport. `synced` counts all distinct sessions with countable canonical usage in this database across all dates and harnesses, ignoring viewer filters. Sessions spanning multiple dates or models are counted once; sessions without countable usage are excluded from both counts.
 
-The default current-month filter can show a small subset of synced sessions. Compare `tui --no-sync --month` with `tui --no-sync --all-time` using the same `--server-db-path` to inspect date filtering without changing the database. All time removes the preset date restriction but keeps dimension filters and any explicit custom date bounds.
+The default current-month filter can show a small subset of synced sessions. Compare `tui --month` with `tui --all-time` using the same `--server-db-path` to inspect date filtering without changing the database. All time removes the preset date restriction but keeps dimension filters and any explicit custom date bounds.
 
 `service start|stop|restart|status|run`
 
@@ -129,7 +128,7 @@ tokeninsights                         # also ensure local server and print URL
 
 Use `--server-db-path` after the service action. Start/run/restart accept `--host`, `--port`, and `--token` / `TOKENINSIGHTS_SERVER_TOKEN`; start also accepts `--open`. Default binding is `127.0.0.1:8765`; port zero reports the assigned port. Non-loopback binding requires a token. Omitted bind settings reuse saved configuration, and changing a running bind requires restart. Startup never collects or imports legacy storage; incompatible server files are rejected without deletion. Saved configuration contains server settings, not harness roots. `--reload-sources` and `refresh` are removed.
 
-Private lifecycle control uses a Unix socket; public REST handles normalized ingestion and queries only. Held/unreachable ownership and busy ports fail without process takeover. Status is read-only; stopped status exits 3, usage exits 2, other failures exit 1. `serve` is a deprecated alias for `service run`; its old `--no-sync` is obsolete because startup never collects.
+Private lifecycle control uses a Unix socket; public REST handles normalized ingestion and queries only. Held/unreachable ownership and busy ports fail without process takeover. Status is read-only; stopped status exits 3, usage exits 2, other failures exit 1.
 
 `server run`
 
@@ -150,7 +149,7 @@ Producer hostname comes from committed normalized delivery metadata, returning `
 | Endpoint | Purpose |
 | --- | --- |
 | `GET /api/v1/instance` | Versions, runtime/database identity, producer labels, reporting timezone, defaults |
-| `GET /api/v1/sync` | Read-only readiness and canonical revision; compatibility-named status |
+| `GET /api/v1/sync` | Read-only readiness and canonical revision; status |
 | `GET /api/v1/usage` | Filtered summary, chart, rows, revision, last committed ingestion |
 | `GET /api/v1/usage/facets` | Filter facets/session search |
 | `GET /api/v1/ingestion/capabilities` | Supported normalized versions/limits and database identity |
@@ -171,9 +170,11 @@ Default role paths:
 
 The former `tokeninsights.sqlite` remains untouched. Retained harness artifacts populate fresh collector/server storage through normal collection and ingestion; no legacy import is implemented. Role checks precede mutation; a collector file cannot serve queries and a server file cannot enter producer recovery/reset. Identical, symlink-equivalent, and existing hard-linked collector/server paths are rejected.
 
-Prefer role flags. `sync`, `collector normalize`, and collector reset retain `--db-path` as a collector-path alias; `tui` retains it as a server-path alias. Service/server commands use `--server-db-path`. Legacy `TOKENINSIGHTS_DB_PATH` does not select either new default.
+Use `--collector-db-path` for collection and maintenance, and `--server-db-path` for server storage. `tui --sync` can select both roles. Previous command names, `--db-path`, and `--no-sync` are rejected. Legacy `TOKENINSIGHTS_DB_PATH` does not select either new default.
 
 Collector schema V15/data generation 6 retains metadata-only raw facts, continuity, normalization work, canonical usage, journal snapshots, saved batches, and per-destination acknowledgements. Server schema V1 retains canonical query tables, producer labels, persistent database identity/revision, and durable receipts; it has no harness/source/raw tables. Protocol, identity, and semantics versions are independently validated at ingestion.
+
+Only these role/schema versions are supported. Previous schemas reject without mutation; there is no previous-schema migration or reset fallback. Within current collector schema, an older data generation can rebuild from retained sources, a pending current-generation rebuild resumes with the same source scope, and newer generations reject. Explicit collector resets accept only current-role/current-schema storage or a brand-new empty file.
 
 Collector recovery is local and depends on retained sources. Server compatibility cannot reset/resync history from source artifacts; incompatible storage is rejected without deletion. Resetting collector canonical state retains publication history; resetting all collector state starts a new stream. Ordinary reupload still dedupes stable fact IDs, and neither action deletes server facts.
 
@@ -181,13 +182,9 @@ Local delivery binds an endpoint plus server database ID, allowing a replacement
 
 ## TUI Arguments
 
-`--no-sync`
-
-Alias for the read-only default. It may start the local query server, but never discovers sources, normalizes, or publishes. An explicit server URL skips local startup.
-
 `--sync`
 
-Collect and publish all harnesses before opening. Conflicts with `--no-sync`. Query filters do not narrow collection.
+Collect and publish all harnesses before opening. Without this flag, the TUI only queries saved data. Query filters do not narrow collection.
 
 `--server-url URL`, `--token TOKEN`
 

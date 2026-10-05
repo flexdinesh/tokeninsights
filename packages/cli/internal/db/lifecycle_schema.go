@@ -7,7 +7,6 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"path/filepath"
 	"strings"
 	"time"
 )
@@ -73,56 +72,6 @@ func createSchema(ctx context.Context, database *sql.DB) error {
 	return tx.Commit()
 }
 
-// UpgradeMetadata adds metadata without replacing source or usage data.
-// The caller holds the database writer lock.
-func UpgradeMetadata(ctx context.Context, path string) error {
-	state, err := InspectCompatibility(ctx, path)
-	if err != nil || !state.MigrationRequired {
-		return err
-	}
-	absPath, err := filepath.Abs(path)
-	if err != nil {
-		return err
-	}
-	database, err := openSQLiteMode(ctx, absPath, "rw")
-	if err != nil {
-		return err
-	}
-	defer func() { _ = database.Close() }()
-	tx, err := database.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = tx.Rollback() }()
-	state, err = inspectCompatibility(ctx, tx)
-	if err != nil {
-		return err
-	}
-	if !state.MigrationRequired {
-		return requireCompatible(state, false)
-	}
-	var hasHostname bool
-	if err := tx.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM pragma_table_info('ingest_runs') WHERE name = ?)", ColHostname).Scan(&hasHostname); err != nil {
-		return err
-	}
-	if !hasHostname {
-		if _, err := tx.ExecContext(ctx, "ALTER TABLE ingest_runs ADD COLUMN hostname TEXT"); err != nil {
-			return err
-		}
-	}
-	_, body, err := schemaParts()
-	if err != nil {
-		return err
-	}
-	if _, err := tx.ExecContext(ctx, body); err != nil {
-		return err
-	}
-	if err := initializePublicationState(ctx, tx); err != nil {
-		return err
-	}
-	return tx.Commit()
-}
-
 func schemaEmpty(ctx context.Context, reader Reader) (bool, error) {
 	var version, objects int
 	if err := reader.QueryRowContext(ctx, "PRAGMA user_version").Scan(&version); err != nil {
@@ -144,6 +93,13 @@ func replaceSchema(ctx context.Context, database *sql.DB, sourceKey string) erro
 	if !empty {
 		if err := requireCollectorRole(ctx, database); err != nil {
 			return err
+		}
+		var version int
+		if err := database.QueryRowContext(ctx, "PRAGMA user_version").Scan(&version); err != nil {
+			return err
+		}
+		if version != SupportedSchemaVersion {
+			return unrecognizedDatabase(version)
 		}
 	} else if err := allowEmptyCollector(ctx, database); err != nil {
 		return err
