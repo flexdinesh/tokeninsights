@@ -1,0 +1,4 @@
+{"type":"assistant","requestId":"fixture-request","timestamp":"2026-01-01T00:00:00Z","message":{"id":"fixture-message","role":"assistant","model":"fixture-model","usage":{"input_tokens":10,"output_tokens":6}}}
+{"type":"assistant","requestId":"fixture-request","timestamp":"2026-01-01T00:00:01Z","message":{"id":"fixture-message","role":"assistant","model":"fixture-model","usage":{"input_tokens":10,"output_tokens":7}}}
+{"type":"assistant","requestId":"fixture-request","timestamp":"2026-01-01T00:00:02Z","message":{"id":"fixture-message","role":"assistant","model":"fixture-model","usage":{"input_tokens":10,"output_tokens":8}}}
+{"type":"assistant","sessionId":"fixture-session","requestId":"fixture-request","timestamp":"2026-01-01T00:00:01Z","message":{"id":"fixture-message","role":"assistant","model":"fixture-model","usage":{"input_tokens":10,"output_tokens":10,"output_tokens_details":{"thinking_tokens":2}}}}

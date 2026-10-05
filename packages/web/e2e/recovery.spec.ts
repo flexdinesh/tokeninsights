@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test'
+import { statusSchema } from '../src/contracts'
 
 test('chart load failure preserves dashboard controls and results, and reload recovers', async ({
   page,
@@ -16,15 +17,17 @@ test('chart load failure preserves dashboard controls and results, and reload re
 })
 
 test('Reload cancels an older status read and never submits collection', async ({ page }) => {
-  let revision = 99
   let hold = false
   let captured = false
   let release: (() => void) | undefined
   const methods: string[] = []
   await page.route('**/api/v1/sync', async (route) => {
     methods.push(route.request().method())
-    const snapshot = { phase: 'ready', running: false, error: '', revision, harnesses: {} }
+    const upstream = await route.fetch()
+    const snapshot = statusSchema.parse(await upstream.json())
     if (hold && !captured) {
+      expect(snapshot.revision).toBeGreaterThan(0)
+      snapshot.revision -= 1
       captured = true
       await new Promise<void>((resolve) => {
         release = resolve
@@ -36,7 +39,6 @@ test('Reload cancels an older status read and never submits collection', async (
   await expect(page.getByLabel('Total tokens: 258,000', { exact: true })).toBeVisible()
   hold = true
   await expect.poll(() => captured, { timeout: 10000 }).toBe(true)
-  revision = 100
   // Status polling does not disable Reload; it can supersede an older read.
   await page.getByRole('button', { name: 'Reload', exact: true }).click()
   if (!release) throw new Error('Expected a held status request')

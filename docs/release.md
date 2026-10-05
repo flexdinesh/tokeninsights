@@ -56,7 +56,7 @@ The tap repository owns Homebrew-native validation. Its CI should run style, aud
 ### Database Compatibility
 
 Collector and server storage have separate SQLite application IDs and schemas.
-Only collector schema 15 and server schema 1 are accepted; older, unknown,
+Only collector schema 16 and server schema 2 are accepted; older, unknown,
 wrong-role, corrupt, and newer schema contracts fail before mutation. The former
 `tokeninsights.sqlite` stays untouched. Releases do not import legacy history or
 migrate previous schemas. Release version numbers do not drive recovery.

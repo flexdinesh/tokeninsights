@@ -28,7 +28,7 @@ func TestNativeIdentitySeparatorsDoNotCollideInLocalCanonicalBridge(t *testing.T
 	}
 }
 
-func TestFilenameDerivedSessionsRemainLocalAfterArtifactCopies(t *testing.T) {
+func TestFilenameDerivedSessionsRemainRawOnlyAfterArtifactCopies(t *testing.T) {
 	for _, harness := range []string{"pi", "claude-code"} {
 		t.Run(harness, func(t *testing.T) {
 			source := t.TempDir()
@@ -45,7 +45,9 @@ func TestFilenameDerivedSessionsRemainLocalAfterArtifactCopies(t *testing.T) {
 			database := openTestDB(t, path)
 			defer func() { _ = database.Close() }()
 			assertSQLCount(t, database, "SELECT COUNT(*) FROM raw_token_usage", 2)
-			assertSQLCount(t, database, "SELECT COUNT(*) FROM canonical_token_usage", 2)
+			assertSQLCount(t, database, "SELECT COUNT(*) FROM canonical_token_usage", 0)
+			assertSQLCount(t, database, "SELECT COUNT(*) FROM canonical_sessions", 0)
+			assertSQLCount(t, database, "SELECT COUNT(*) FROM canonical_messages", 0)
 			assertSQLCount(t, database, "SELECT COUNT(*) FROM publication_journal", 0)
 			assertSQLCount(t, database, "SELECT COUNT(*) FROM normalization_diagnostics WHERE code = 'publication_ambiguous_session_identity'", 2)
 		})

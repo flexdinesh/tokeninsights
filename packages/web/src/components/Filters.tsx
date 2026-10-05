@@ -163,12 +163,12 @@ function SessionFilter({
   values,
   revision,
   enabled,
-  identity = '',
+  identity,
 }: {
   values: string[]
   revision: number
   enabled: boolean
-  identity?: string
+  identity: string
 }) {
   const { query, updateSelection } = useDashboardQuery()
   const [search, setSearch] = useState('')
@@ -177,7 +177,7 @@ function SessionFilter({
     const timer = setTimeout(() => setDebounced(search), 200)
     return () => clearTimeout(timer)
   }, [search])
-  const sessionFacets = useFacets(query, revision, enabled && debounced !== '', debounced, identity)
+  const sessionFacets = useFacets(query, revision, enabled && debounced !== '', identity, debounced)
   const current = search === debounced
   const searching = search !== ''
   return (
@@ -299,12 +299,12 @@ export function FilterToolbar({
   facets,
   revision,
   enabled,
-  identity = '',
+  identity,
 }: {
   facets?: Facets
   revision: number
   enabled: boolean
-  identity?: string
+  identity: string
 }) {
   const { query, updateSelection, updateLocations, clearFilters } = useDashboardQuery()
   const hasFilters =

@@ -24,9 +24,12 @@ const (
 	maxRows        = 100000
 	maxBodyBytes   = 16 << 20
 	requestTimeout = 30 * time.Second
+	maxRevision    = 9007199254740991
 )
 
 var ErrSnapshotChanged = errors.New("server analytics changed during pagination; retry")
+
+var ErrUnavailable = errors.New("server analytics unavailable")
 
 // StatusError exposes only the HTTP status, never remote response text or URLs.
 type StatusError struct{ StatusCode int }
@@ -126,16 +129,19 @@ func (c *Client) allUsage(ctx context.Context, params api.GetUsageParams) (api.U
 	if err != nil {
 		return api.UsageResponse{}, err
 	}
+	if instance.DataReadiness != api.InstanceResponseDataReadinessReady {
+		return api.UsageResponse{}, ErrUnavailable
+	}
 	page, size := 1, pageSize
 	params.Page, params.PageSize = &page, &size
 	result, err := c.Usage(ctx, params)
 	if err != nil {
 		return api.UsageResponse{}, err
 	}
-	if !equalIdentity(instance.InstanceId, result.InstanceId) || !equalIdentity(instance.DataEpoch, result.DataEpoch) {
+	if instance.InstanceId != result.InstanceId || instance.DataEpoch != result.DataEpoch {
 		return api.UsageResponse{}, ErrSnapshotChanged
 	}
-	if result.Revision == nil || result.RowCount < 0 || result.RowCount > maxRows {
+	if result.RowCount < 0 || result.RowCount > maxRows {
 		return api.UsageResponse{}, errors.New("server analytics count or revision is invalid")
 	}
 	seen := make(map[string]bool)
@@ -148,7 +154,7 @@ func (c *Client) allUsage(ctx context.Context, params api.GetUsageParams) (api.U
 		if err != nil {
 			return api.UsageResponse{}, err
 		}
-		if !equal(result.Revision, next.Revision) || !equal(result.InstanceId, next.InstanceId) || !equal(result.DataEpoch, next.DataEpoch) || next.RowCount != result.RowCount {
+		if result.Revision != next.Revision || result.InstanceId != next.InstanceId || result.DataEpoch != next.DataEpoch || next.RowCount != result.RowCount {
 			return api.UsageResponse{}, ErrSnapshotChanged
 		}
 		if err := validatePage(next, page, size, seen); err != nil {
@@ -160,7 +166,7 @@ func (c *Client) allUsage(ctx context.Context, params api.GetUsageParams) (api.U
 	if err != nil {
 		return api.UsageResponse{}, err
 	}
-	if !equal(instance.InstanceId, latest.InstanceId) || !equal(instance.DataEpoch, latest.DataEpoch) {
+	if instance.InstanceId != latest.InstanceId || instance.DataEpoch != latest.DataEpoch || latest.DataReadiness != api.InstanceResponseDataReadinessReady {
 		return api.UsageResponse{}, ErrSnapshotChanged
 	}
 	return result, nil
@@ -180,20 +186,41 @@ func validatePage(response api.UsageResponse, page, size int, seen map[string]bo
 	return nil
 }
 
-func equal[T comparable](a, b *T) bool {
-	if a == nil || b == nil {
-		return a == nil && b == nil
+// Required generated values decode omitted fields as zero values. Decode the
+// publication envelope separately to distinguish a missing revision from zero.
+func validateEnvelope(body []byte, metadata, revisionRequired bool) error {
+	var envelope struct {
+		InstanceID *string `json:"instanceId"`
+		DataEpoch  *string `json:"dataEpoch"`
+		Readiness  *string `json:"dataReadiness"`
+		Revision   *int64  `json:"revision"`
 	}
-	return *a == *b
-}
-
-// Legacy handlers expose empty instance/epoch values on /instance and omit
-// those optional fields on /usage. A nonempty identity must still match.
-func equalIdentity(a, b *string) bool {
-	if a == nil || *a == "" {
-		return b == nil || *b == ""
+	invalid := errors.New("server query publication envelope is invalid")
+	if json.Unmarshal(body, &envelope) != nil || envelope.InstanceID == nil || *envelope.InstanceID == "" || envelope.DataEpoch == nil {
+		return invalid
 	}
-	return b != nil && *a == *b
+	if revisionRequired && (envelope.Revision == nil || *envelope.Revision < 0 || *envelope.Revision > maxRevision) {
+		return invalid
+	}
+	if !metadata {
+		if *envelope.DataEpoch == "" {
+			return invalid
+		}
+		return nil
+	}
+	if envelope.Readiness == nil {
+		return invalid
+	}
+	switch *envelope.Readiness {
+	case "ready":
+		if *envelope.DataEpoch == "" {
+			return invalid
+		}
+	case "metadata", "recovery", "rebuild", "unavailable":
+	default:
+		return invalid
+	}
+	return nil
 }
 
 func (c *Client) get(ctx context.Context, endpoint string, values url.Values, target interface{}) error {
@@ -241,7 +268,7 @@ func (c *Client) get(ctx context.Context, endpoint string, values url.Values, ta
 	if decoder.Decode(&trailing) != io.EOF {
 		return errors.New("server query returned trailing data")
 	}
-	return nil
+	return validateEnvelope(body, endpoint == "/api/v1/instance" || endpoint == "/api/v1/sync", endpoint != "/api/v1/instance")
 }
 
 func setValue[T ~string | ~int](values url.Values, key string, value *T) {

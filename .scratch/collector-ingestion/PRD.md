@@ -19,7 +19,7 @@ Local remains default. `service` manages the local server, `sync` collects and p
 ## Implemented deliverables
 
 - Separate role-checked collector/server schemas, independent versions and fresh defaults.
-- Accept only collector schema 15/server schema 1; reject previous schemas untouched. Preserve current-schema collector data-generation rebuild/resume, without affecting server history.
+- Accept only collector schema 16/server schema 2; reject previous schemas untouched. Preserve current-schema collector data-generation rebuild/resume, without affecting server history.
 - Native identity fixes, synthetic raw harness fixtures, independently reviewed 12-fact/1102-token oracle.
 - Atomic normalization+journal writes, immutable batches, per-destination cursors and validated receipts.
 - Atomic server fact/reference/receipt commits, bounded admission, strict privacy/numeric/version validation.

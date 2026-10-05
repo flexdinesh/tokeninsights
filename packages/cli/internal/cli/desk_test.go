@@ -220,7 +220,7 @@ func TestDeskRetryClearsFailureAfterSuccessfulReload(t *testing.T) {
 	if cmd == nil || !retry.loading || retry.err != nil {
 		t.Fatal("retry did not start")
 	}
-	model, _ = retry.Update(reloadMsg{rows: []renderRow{{totalValue: 42}}})
+	model, _ = retry.Update(reloadMsg{instanceID: "fixture", dataEpoch: "fixture-epoch", rows: []renderRow{{totalValue: 42}}})
 	loaded := model.(interactiveModel)
 	if loaded.err != nil || loaded.loading || len(loaded.rows) != 1 {
 		t.Fatal("reload did not recover")

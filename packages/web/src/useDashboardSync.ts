@@ -9,8 +9,7 @@ export function useDashboardSync() {
   const reloadPending = useRef(false)
   const status = statusQuery.data
   const revision = status?.revision ?? 0
-  const identity =
-    status?.instanceId && status.dataEpoch ? `${status.instanceId}/${status.dataEpoch}` : ''
+  const identity = status ? `${status.instanceId}/${status.dataEpoch}` : ''
   const previousIdentity = useRef(identity)
   const previousRevision = useRef(revision)
   useEffect(() => {
@@ -52,8 +51,6 @@ export function useDashboardSync() {
     reloading,
     revision,
     identity,
-    analyticsEnabled: Boolean(
-      status && (!status.dataReadiness || status.dataReadiness === 'ready'),
-    ),
+    analyticsEnabled: status?.dataReadiness === 'ready',
   }
 }

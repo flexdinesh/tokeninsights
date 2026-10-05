@@ -2,15 +2,17 @@ package pipeline
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
-	"reflect"
 	"sort"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/publication"
 )
 
 const (
@@ -211,6 +213,9 @@ func (a claudeCodeJSONLAdapter) factFromRecord(ctx context.Context, source Sourc
 	if occurredAt == nil {
 		return RawTokenFact{}, []Diagnostic{claudeCodeDiagnostic("claude_code_jsonl_missing_time", "skipped Claude Code assistant token row with no usable timestamp", "warning")}, false
 	}
+	if !publication.ValidTimestampMs(*occurredAt) {
+		tokenDiagnostics = append(tokenDiagnostics, claudeCodeDiagnostic("claude_code_jsonl_invalid_time", "retained raw Claude Code assistant token row with a timestamp outside the supported range", "warning"))
+	}
 	sessionID := fallbackSessionID
 	if sourceSessionID := stringField(record, "sessionId", "session_id"); sourceSessionID != nil {
 		sessionID = *sourceSessionID
@@ -309,7 +314,8 @@ func claudeCodeRequestID(metadata *string) string {
 }
 
 func claudeCodeStreamingMergeKey(fact RawTokenFact) string {
-	if fact.MessageID == nil {
+	if fact.MessageID == nil || sourceSessionIdentity(fact.MetadataJSON) != "native" ||
+		fact.OccurredAtMs == nil || !publication.ValidTimestampMs(*fact.OccurredAtMs) {
 		return ""
 	}
 	return nativeTupleHash(stringValueOrEmpty(fact.SessionID), *fact.MessageID, claudeCodeRequestID(fact.MetadataJSON))
@@ -324,14 +330,9 @@ func mergeClaudeCodeStreamingFact(existing *RawTokenFact, next RawTokenFact) (bo
 	if *existing.OccurredAtMs == *next.OccurredAtMs && !claudeCodeSameUsage(*existing, next) {
 		return false, fmt.Errorf("claude code native request has conflicting usage at the same source timestamp")
 	}
-	hasNativeSession := sourceSessionIdentity(existing.MetadataJSON) == "native" || sourceSessionIdentity(next.MetadataJSON) == "native"
 	location, conflicts, _, conflict := mergeLocations(existing.Location, next.Location, existing.locationConflicts)
 	if *next.OccurredAtMs > *existing.OccurredAtMs {
 		*existing = next
-	}
-	if hasNativeSession {
-		request := claudeCodeRequestID(existing.MetadataJSON)
-		existing.MetadataJSON = sourceIdentityJSON("native", stringPtrFromTrimmed(request))
 	}
 	existing.Location = location
 	existing.locationConflicts = conflicts
@@ -339,13 +340,32 @@ func mergeClaudeCodeStreamingFact(existing *RawTokenFact, next RawTokenFact) (bo
 }
 
 func claudeCodeSameUsage(left RawTokenFact, right RawTokenFact) bool {
-	return reflect.DeepEqual(left.InputTokens, right.InputTokens) &&
-		reflect.DeepEqual(left.OutputTokens, right.OutputTokens) &&
-		reflect.DeepEqual(left.ReasoningTokens, right.ReasoningTokens) &&
-		reflect.DeepEqual(left.CacheReadTokens, right.CacheReadTokens) &&
-		reflect.DeepEqual(left.CacheWriteTokens, right.CacheWriteTokens) &&
-		reflect.DeepEqual(left.TotalTokens, right.TotalTokens) &&
-		reflect.DeepEqual(left.Provider, right.Provider) && reflect.DeepEqual(left.Model, right.Model)
+	leftUsage, leftValid := claudeCodeCanonicalUsage(left)
+	rightUsage, rightValid := claudeCodeCanonicalUsage(right)
+	return leftValid && rightValid && sameCanonicalUsage(leftUsage, rightUsage)
+}
+
+// Only unfinalized parser snapshots use this projection. Finalization mutates
+// the clone's pointer fields, leaving the original inclusive output untouched.
+// Retained raw facts have already split reasoning and must never pass here.
+func claudeCodeCanonicalUsage(fact RawTokenFact) (canonicalTokenValues, bool) {
+	if _, ok := finalizeClaudeCodeFact(&fact); !ok {
+		return canonicalTokenValues{}, false
+	}
+	row := rawTokenRow{
+		Harness: fact.Harness, UsageScope: fact.UsageScope,
+		Provider: sql.NullString{String: stringValueOrEmpty(fact.Provider), Valid: fact.Provider != nil},
+		Model:    sql.NullString{String: stringValueOrEmpty(fact.Model), Valid: fact.Model != nil},
+	}
+	provider, providerSource := canonicalProvider(row)
+	total, _ := tokenComponentSum(fact.InputTokens, fact.OutputTokens, fact.ReasoningTokens, fact.CacheReadTokens, fact.CacheWriteTokens)
+	return canonicalTokenValues{
+		Provider: provider, ProviderSource: providerSource, Model: canonicalModel(row.Model, provider),
+		Quality: fact.Quality, Countable: countable(row),
+		InputTokens: intValueOrZero(fact.InputTokens), OutputTokens: intValueOrZero(fact.OutputTokens),
+		ReasoningTokens: intValueOrZero(fact.ReasoningTokens), CacheReadTokens: intValueOrZero(fact.CacheReadTokens),
+		CacheWriteTokens: intValueOrZero(fact.CacheWriteTokens), TotalTokens: total,
+	}, true
 }
 
 func finalizeClaudeCodeFact(fact *RawTokenFact) ([]Diagnostic, bool) {

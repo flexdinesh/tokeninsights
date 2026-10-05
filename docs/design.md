@@ -109,7 +109,7 @@ through `db.Reader`, without opening collector databases from viewer paths.
 
 ## Current Implementation Status
 
-Collector schema V15/data generation 6 and server schema V1 are separate roles.
+Collector schema V16/data generation 6 and server schema V2 are separate roles.
 The normalized journal, saved batches, manual HTTP publication, transactional
 server ingestion/receipts, REST TUI, and read-only browser are implemented.
 Verified continuity and exact additive token accounting remain adapter-owned.
@@ -144,6 +144,14 @@ a fallback discovery record for SSH/local clients. Config stores bind/database
 settings, never source roots or the full environment. Runtime instance identity
 is transient; the server database ID persists across restarts and binds delivery.
 
+Starting an existing service reuses its credentials when no token is requested.
+An explicitly different token fails and requires `service restart`; comparison
+uses the verified private control channel and running configuration. Control
+responses never expose tokens or credential hashes. Owner discovery validates
+the held lifetime lock and private instance independently of database health, so
+`service stop` remains usable when storage is missing or corrupt. Restart creates
+missing storage but refuses to replace an existing corrupt or incompatible file.
+
 Startup creates private service directories with mode `0700` and tightens owned
 legacy directories through descriptors without following a final symlink.
 Symlinks, non-directories, and other-user ownership are rejected; shared XDG
@@ -162,8 +170,8 @@ is historical; its server-owned refresh workflow is superseded by the
 `packages/cli/internal/db/schema/schema.sql`; `schema/server.sql` defines server
 tables and is embedded at `packages/cli/internal/serverstore/schema/server.sql`.
 Compatibility validates `PRAGMA application_id` before mutation and
-`PRAGMA user_version` plus role-specific metadata. Collector schema is `15`,
-data generation `6`; server schema is `1`, with identity/semantics version `1`.
+`PRAGMA user_version` plus role-specific metadata. Collector schema is `16`,
+data generation `6`; server schema is `2`, with identity/semantics version `1`.
 Release versions are not compatibility markers.
 
 Fresh collector/server databases replace the default use of the legacy mixed
@@ -179,12 +187,12 @@ in one task; `pnpm run check-schema` checks both contracts.
 
 ### Current role validation and collector rebuilds
 
-Only collector schema 15 with the collector application ID and server schema 1
+Only collector schema 16 with the collector application ID and server schema 2
 with the server application ID are supported. Pre-split schemas and unknown or
 newer schemas are rejected before mutation. No previous-schema migration,
 metadata upgrade, or schema-reset fallback is implemented.
 
-Within collector schema 15, an older data generation can rebuild transactionally
+Within collector schema 16, an older data generation can rebuild transactionally
 from retained sources; a current-generation pending rebuild can resume with the
 same source scope. Newer data generations are rejected. This recovery is local
 to the collector and cannot delete server history. Explicit collector resets
@@ -432,10 +440,25 @@ or competing unsupported native revisions are withheld with metadata-only
 parser provenance, diagnostics, cursors, transcript text, or collector-local
 full directory paths. Location references publish stable keys and basename labels.
 
+Pi and Claude filename-derived session evidence remains raw-only, diagnosed
+before canonical references are created. Weak Claude observations do not join
+native streaming merges. Native Claude equal-time snapshots compare a pure
+canonical projection: omitted zero-valued counters do not introduce conflicts,
+and reasoning is removed from inclusive output exactly once.
+
+Normalized occurrence timestamps, session bounds, message times and Claude
+source revisions use integer Unix milliseconds in `0..253402214399999`
+(through `9999-12-30T23:59:59.999Z`). The last day provides timezone headroom for
+calendar queries. Collector validation runs before snapshot selection and
+canonical reference writes; invalid raw metadata remains inspectable with safe
+diagnostics while valid siblings continue. Publication validation and canonical
+SQLite CHECK constraints enforce the same domain. Source units are never guessed,
+rescaled, clamped or replaced with collection time.
+
 Delivery negotiates protocol/identity/semantics V1 and the destination database
 ID. Batches are self-contained fact/reference snapshots with contiguous journal
 ranges, at most 256 entries and 1 MiB encoded body. Strings are at most 256 bytes;
-integers and aggregate token columns stay within `0..9007199254740991`.
+counters, sequences and analytics revisions stay within `0..9007199254740991`.
 Explicit counter presence, integer type, additive totals, and reference identity
 are validated. Unknown/private fields, duplicate JSON keys, incompatible versions,
 invalid references, and excessive bodies fail before success acknowledgement.
@@ -696,6 +719,16 @@ batch commit, not harness coverage. Last ingestion is server commit time, never 
 claim that all producers are current. Reporting calendar filters use the server
 local timezone consistently; occurrence timestamps and stable identity remain
 independent of collection/viewer clocks.
+
+Usage and facet responses require nonempty `instanceId`/`dataEpoch` and an explicit
+nonnegative safe revision. Instance/status require `instanceId`, `dataEpoch` and
+`dataReadiness`; a ready response requires a nonempty epoch. Unavailable metadata
+may explicitly carry an empty epoch but never authorizes analytics. Omitted
+revision is invalid even though explicit revision zero is valid for empty history.
+TUI identity changes centrally invalidate rows/facets and obsolete request
+generations, including initial loading. Delayed status cannot restore an older
+identity or revision; replacement refreshes are coalesced rather than recursively
+retried.
 
 ## DB Lifecycle
 

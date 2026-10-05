@@ -80,6 +80,15 @@ func Ensure(ctx context.Context, options Options) (State, error) {
 		if options.Host != nil && normalizedHost(*options.Host) != state.Record.Config.Host || options.Port != nil && *options.Port != state.Record.Config.Port {
 			return state, fmt.Errorf("service already running at %s; use service restart to change binding", state.Record.URL)
 		}
+		if options.Token != nil {
+			matches, err := (Client{Record: *state.Record}).matchesToken(ctx, *options.Token)
+			if err != nil {
+				return state, err
+			}
+			if !matches {
+				return state, fmt.Errorf("service already running; use service restart to change authentication")
+			}
+		}
 		return state, nil
 	}
 	config, err := configuration(options)
@@ -177,7 +186,7 @@ func spawn(ctx context.Context, config Config) (State, error) {
 }
 
 func stop(ctx context.Context, path string) error {
-	state, err := Probe(ctx, path)
+	state, err := probeOwner(ctx, path)
 	if err != nil {
 		return err
 	}

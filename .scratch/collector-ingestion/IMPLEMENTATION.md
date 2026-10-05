@@ -15,7 +15,7 @@ The user chose fresh collector/server files rebuilt from retained sources. Prese
 | T06/T07 composition/CLI | Shared local/remote core; default all-harness manual sync, publish-only, host-only resets, fresh paths implemented. |
 | T08/T09 viewers | REST TUI and browser Reload implemented; no implicit source collection. |
 | T10 plugins | Native packaging/runner completion tracked in [plugin plan](PLUGIN-PLAN.md); isolated real-host installation remains deferred. |
-| T11 compatibility | Fresh role databases; legacy preserved; only collector schema 15/server schema 1 accepted. Previous/wrong-role/unknown/newer schemas reject untouched; current-schema collector generation rebuilds remain local. |
+| T11 compatibility | Fresh role databases; legacy preserved; only collector schema 16/server schema 2 accepted. Previous/wrong-role/unknown/newer schemas reject untouched; current-schema collector generation rebuilds remain local. |
 | T12 failures | Production contract tests plus 12 named subprocess kill/reopen barriers implemented. |
 | T13 docs/tooling | Current runtime docs, separate dev fixtures, embedded assets and repository gates complete. |
 

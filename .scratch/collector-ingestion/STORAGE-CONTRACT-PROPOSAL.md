@@ -17,8 +17,8 @@ symlink resolution and existing hard-link identity checks, including remote sync
 
 | Role | Authoritative schema | Embedded checked copy | Current version |
 | --- | --- | --- | --- |
-| Collector | `schema/schema.sql` | `packages/cli/internal/db/schema/schema.sql` | SQLite 15; data generation 6; application ID 1414091587 |
-| Server | `schema/server.sql` | `packages/cli/internal/serverstore/schema/server.sql` | SQLite 1; application ID 1414091606 |
+| Collector | `schema/schema.sql` | `packages/cli/internal/db/schema/schema.sql` | SQLite 16; data generation 6; application ID 1414091587 |
+| Server | `schema/server.sql` | `packages/cli/internal/serverstore/schema/server.sql` | SQLite 2; application ID 1414091606 |
 
 `check-schema` verifies both contracts. Role checks precede writes or producer
 recovery. Existing wrong-role, unknown, unsupported or corrupt databases are
@@ -26,7 +26,7 @@ rejected without resetting their contents. Server opening verifies its durable
 metadata and current identity/semantics versions; it never invokes collector
 recovery or attempts to reconstruct server history from source files.
 
-Accept only collector schema 15 and server schema 1. Pre-split schemas are
+Accept only collector schema 16 and server schema 2. Pre-split schemas are
 rejected without mutation; no previous-schema or metadata migration and no
 schema-reset fallback is implemented. Older data generations within current
 collector schema can rebuild locally, current-generation pending rebuilds resume

@@ -1,6 +1,6 @@
 # Collector/server execution plan
 
-Status: Implementing approved fresh-database storage/publication contract. All implementation belongs to [PR #53](https://github.com/flexdinesh/tokeninsights/pull/53).
+Status: Implemented and verified, including review hardening R01–R08. All implementation belongs to [PR #53](https://github.com/flexdinesh/tokeninsights/pull/53).
 
 This plan expands the [PRD](PRD.md) into parallel implementation boundaries. The [architecture proposal](../../docs/collector-server-architecture.md), [failure matrix](../../docs/collector-ingestion-tests.md), and [identity audit](IDENTITY-AUDIT.md) supply stable Gxx, Fxx, and CFIxxx references. Concrete approved storage and wire contracts supersede candidate JSON traces; update the traces explicitly when a decision changes them. User approved fresh collector/server databases; original storage remains untouched.
 
@@ -106,7 +106,7 @@ Create fresh `collector.sqlite` and `server.sqlite` under the selected data dire
 
 Reject opening a collector database as server storage and vice versa; reject identical/symlink/hard-linked database aliases. Server schema/data compatibility checks preserve historical facts and receipts; they cannot assume producer artifacts remain available or use destructive reset/resync recovery. Rebuilding/deleting collector storage replays retained sources without retracting existing server history. Unsupported schema/data generations fail clearly without changing original storage.
 
-Accept only current collector schema 15 and server schema 1; pre-split schemas reject untouched. Remove previous-schema migrations, metadata upgrades, and schema-reset fallbacks. Within current collector schema, older generations can rebuild locally; current-generation pending rebuilds resume with the same scope; newer generations reject. Explicit collector resets accept only current-role/current-schema storage or a brand-new empty file.
+Accept only current collector schema 16 and server schema 2; pre-split schemas reject untouched. Remove previous-schema migrations, metadata upgrades, and schema-reset fallbacks. Within current collector schema, older generations can rebuild locally; current-generation pending rebuilds resume with the same scope; newer generations reject. Explicit collector resets accept only current-role/current-schema storage or a brand-new empty file.
 
 ## Real verification gates
 

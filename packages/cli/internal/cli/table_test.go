@@ -461,7 +461,7 @@ func TestViewHeightStableAcrossTabReloadRows(t *testing.T) {
 		{model: "llama-4", providers: "meta", harnesses: "opencode", sessions: "1", inputTokens: "100", totalTokens: "136", totalValue: 136},
 	}
 	lastSync := time.Date(2026, 4, 24, 16, 30, 0, 0, time.Local).UnixMilli()
-	model, _ = pending.Update(reloadMsg{rows: loadedRows, lastSyncMs: lastSync})
+	model, _ = pending.Update(reloadMsg{instanceID: "fixture", dataEpoch: "fixture-epoch", rows: loadedRows, lastSyncMs: lastSync})
 	loaded, ok := model.(interactiveModel)
 	if !ok {
 		t.Fatalf("got model %T, want interactiveModel", model)
@@ -481,12 +481,12 @@ func TestServerStatusRetainsSnapshotUntilDatabaseIdentityChanges(t *testing.T) {
 	m := newInteractiveModel(context.Background(), tableOptions{}, time.Now(), "test")
 	loaded, _ := m.Update(reloadMsg{instanceID: "service", dataEpoch: "epoch", rows: []renderRow{{bucket: "saved"}}})
 	m = loaded.(interactiveModel)
-	updated, _ := m.Update(sharedSyncMsg{instanceID: "service", dataEpoch: "epoch", readiness: "ready"})
+	updated, _ := m.Update(sharedSyncMsg{generation: m.publicationGeneration, instanceID: "service", dataEpoch: "epoch", readiness: "ready"})
 	m = updated.(interactiveModel)
 	if len(m.rows) != 1 || m.rows[0].bucket != "saved" {
 		t.Fatal("first status poll discarded validated saved rows")
 	}
-	updated, _ = m.Update(sharedSyncMsg{instanceID: "service", dataEpoch: "replacement-database", readiness: "ready"})
+	updated, _ = m.Update(sharedSyncMsg{generation: m.publicationGeneration, instanceID: "service", dataEpoch: "replacement-database", readiness: "ready"})
 	m = updated.(interactiveModel)
 	if len(m.rows) != 0 {
 		t.Fatal("replacement server database retained previous snapshot rows")
@@ -501,7 +501,7 @@ func TestReloadUpdatesStatuslineLastSync(t *testing.T) {
 	}
 	lastSync := time.Date(2026, 7, 10, 17, 48, 0, 0, time.Local).UnixMilli()
 
-	model, cmd := m.Update(reloadMsg{lastSyncMs: lastSync})
+	model, cmd := m.Update(reloadMsg{instanceID: "fixture", dataEpoch: "fixture-epoch", lastSyncMs: lastSync})
 	updated, ok := model.(interactiveModel)
 	if !ok {
 		t.Fatalf("got model %T, want interactiveModel", model)
@@ -822,7 +822,7 @@ func TestReloadResetsCursorToTop(t *testing.T) {
 		height:       30,
 		options:      tableOptions{period: periodMonth, bucket: bucketDay},
 	}
-	model, _ := m.Update(reloadMsg{rows: []renderRow{{bucket: "c"}}})
+	model, _ := m.Update(reloadMsg{instanceID: "fixture", dataEpoch: "fixture-epoch", rows: []renderRow{{bucket: "c"}}})
 	updated, ok := model.(interactiveModel)
 	if !ok {
 		t.Fatalf("got model %T, want interactiveModel", model)
@@ -1164,7 +1164,7 @@ func TestContextSortPopupShowsContextSortOptions(t *testing.T) {
 }
 
 func TestHarnessShortcutOpensValueSelection(t *testing.T) {
-	m := interactiveModel{}
+	m := interactiveModel{instanceID: "fixture", dataEpoch: "fixture-epoch", serviceReadiness: "ready"}
 
 	model, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("h")})
 	updated, ok := model.(interactiveModel)

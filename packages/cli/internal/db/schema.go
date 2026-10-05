@@ -136,7 +136,7 @@ const (
 	ColRepositorySource       = "repository_source"
 )
 
-const SupportedSchemaVersion = 15
+const SupportedSchemaVersion = 16
 
 // CollectorApplicationID distinguishes host storage from canonical-only server storage.
 const CollectorApplicationID = 1414091587

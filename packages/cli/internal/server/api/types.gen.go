@@ -697,16 +697,18 @@ type IngestionReceipt struct {
 
 // InstanceResponse defines model for InstanceResponse.
 type InstanceResponse struct {
-	ApiVersion    ApiVersion                     `json:"apiVersion"`
-	Capabilities  []Capability                   `json:"capabilities"`
-	DataEpoch     *string                        `json:"dataEpoch,omitempty"`
-	DataReadiness *InstanceResponseDataReadiness `json:"dataReadiness,omitempty"`
-	Defaults      Selection                      `json:"defaults"`
+	ApiVersion   ApiVersion   `json:"apiVersion"`
+	Capabilities []Capability `json:"capabilities"`
+
+	// DataEpoch Durable database identity; nonempty when dataReadiness is ready.
+	DataEpoch     string                        `json:"dataEpoch"`
+	DataReadiness InstanceResponseDataReadiness `json:"dataReadiness"`
+	Defaults      Selection                     `json:"defaults"`
 
 	// Hostname Producer hostname: unknown before ingestion; multiple machines when distinct producer labels are present.
-	Hostname      string  `json:"hostname"`
-	InstanceId    *string `json:"instanceId,omitempty"`
-	ServerVersion string  `json:"serverVersion"`
+	Hostname      string `json:"hostname"`
+	InstanceId    string `json:"instanceId"`
+	ServerVersion string `json:"serverVersion"`
 
 	// Timezone Server reporting timezone, preferably an IANA name with historical DST rules. Unnamed system zones use an explicit UTC offset fallback.
 	Timezone string `json:"timezone"`
@@ -784,8 +786,10 @@ type PublicationFact struct {
 
 	// NativeRequestId At most 256 UTF-8 bytes; no control characters.
 	NativeRequestId *string `json:"nativeRequestId,omitempty"`
-	OccurredAtMs    int64   `json:"occurredAtMs"`
-	OutputTokens    int64   `json:"outputTokens"`
+
+	// OccurredAtMs Unix milliseconds through 9999-12-30T23:59:59.999Z. One day of headroom preserves calendar query support after timezone conversion. Source units are never guessed or rescaled.
+	OccurredAtMs TimestampMs `json:"occurredAtMs"`
+	OutputTokens int64       `json:"outputTokens"`
 
 	// Provider At most 256 UTF-8 bytes; no control characters.
 	Provider        string                        `json:"provider"`
@@ -836,14 +840,18 @@ type PublicationMessage struct {
 	Id string `json:"id"`
 
 	// NativeId At most 256 UTF-8 bytes; no control characters.
-	NativeId     string `json:"nativeId"`
-	OccurredAtMs int64  `json:"occurredAtMs"`
+	NativeId string `json:"nativeId"`
+
+	// OccurredAtMs Unix milliseconds through 9999-12-30T23:59:59.999Z. One day of headroom preserves calendar query support after timezone conversion. Source units are never guessed or rescaled.
+	OccurredAtMs TimestampMs `json:"occurredAtMs"`
 }
 
 // PublicationRevision Only Claude Code facts with native request and message IDs can carry this source timestamp revision; value equals occurredAtMs.
 type PublicationRevision struct {
-	Rule  PublicationRevisionRule `json:"rule"`
-	Value int64                   `json:"value"`
+	Rule PublicationRevisionRule `json:"rule"`
+
+	// Value Unix milliseconds through 9999-12-30T23:59:59.999Z. One day of headroom preserves calendar query support after timezone conversion. Source units are never guessed or rescaled.
+	Value TimestampMs `json:"value"`
 }
 
 // PublicationRevisionRule defines model for PublicationRevision.Rule.
@@ -851,12 +859,15 @@ type PublicationRevisionRule string
 
 // PublicationSession defines model for PublicationSession.
 type PublicationSession struct {
-	FirstOccurredAtMs int64   `json:"firstOccurredAtMs"`
-	Harness           Harness `json:"harness"`
+	// FirstOccurredAtMs Unix milliseconds through 9999-12-30T23:59:59.999Z. One day of headroom preserves calendar query support after timezone conversion. Source units are never guessed or rescaled.
+	FirstOccurredAtMs TimestampMs `json:"firstOccurredAtMs"`
+	Harness           Harness     `json:"harness"`
 
 	// Id At most 256 UTF-8 bytes; no control characters.
-	Id               string `json:"id"`
-	LastOccurredAtMs int64  `json:"lastOccurredAtMs"`
+	Id string `json:"id"`
+
+	// LastOccurredAtMs Unix milliseconds through 9999-12-30T23:59:59.999Z. One day of headroom preserves calendar query support after timezone conversion. Source units are never guessed or rescaled.
+	LastOccurredAtMs TimestampMs `json:"lastOccurredAtMs"`
 
 	// NativeId At most 256 UTF-8 bytes; no control characters.
 	NativeId string `json:"nativeId"`
@@ -889,11 +900,12 @@ type SyncPhase string
 
 // SyncResponse defines model for SyncResponse.
 type SyncResponse struct {
-	DataEpoch     *string                      `json:"dataEpoch,omitempty"`
-	DataReadiness *SyncResponseDataReadiness   `json:"dataReadiness,omitempty"`
+	// DataEpoch Durable database identity; nonempty when dataReadiness is ready.
+	DataEpoch     string                       `json:"dataEpoch"`
+	DataReadiness SyncResponseDataReadiness    `json:"dataReadiness"`
 	Error         string                       `json:"error"`
 	Harnesses     map[string]HarnessSyncStatus `json:"harnesses"`
-	InstanceId    *string                      `json:"instanceId,omitempty"`
+	InstanceId    string                       `json:"instanceId"`
 	Phase         SyncPhase                    `json:"phase"`
 	Revision      Count                        `json:"revision"`
 	Running       bool                         `json:"running"`
@@ -902,31 +914,34 @@ type SyncResponse struct {
 // SyncResponseDataReadiness defines model for SyncResponse.DataReadiness.
 type SyncResponseDataReadiness string
 
+// TimestampMs Unix milliseconds through 9999-12-30T23:59:59.999Z. One day of headroom preserves calendar query support after timezone conversion. Source units are never guessed or rescaled.
+type TimestampMs = int64
+
 // UsageFacetsResponse defines model for UsageFacetsResponse.
 type UsageFacetsResponse struct {
-	DataEpoch    *string          `json:"dataEpoch,omitempty"`
+	DataEpoch    string           `json:"dataEpoch"`
 	Directories  []LocationOption `json:"directories"`
 	Harnesses    []Harness        `json:"harnesses"`
-	InstanceId   *string          `json:"instanceId,omitempty"`
+	InstanceId   string           `json:"instanceId"`
 	Models       []string         `json:"models"`
 	Providers    []string         `json:"providers"`
 	Repositories []LocationOption `json:"repositories"`
-	Revision     *Count           `json:"revision,omitempty"`
+	Revision     Count            `json:"revision"`
 	Sessions     []string         `json:"sessions"`
 }
 
 // UsageResponse defines model for UsageResponse.
 type UsageResponse struct {
 	Chart      []UsageRow `json:"chart"`
-	DataEpoch  *string    `json:"dataEpoch,omitempty"`
-	InstanceId *string    `json:"instanceId,omitempty"`
+	DataEpoch  string     `json:"dataEpoch"`
+	InstanceId string     `json:"instanceId"`
 
 	// LastSynced Time of the last committed ingestion, in Unix milliseconds; zero for an empty server.
 	LastSynced Count        `json:"lastSynced"`
 	Page       int          `json:"page"`
 	PageSize   int          `json:"pageSize"`
 	Range      string       `json:"range"`
-	Revision   *Count       `json:"revision,omitempty"`
+	Revision   Count        `json:"revision"`
 	RowCount   Count        `json:"rowCount"`
 	Rows       []UsageRow   `json:"rows"`
 	Summary    UsageSummary `json:"summary"`

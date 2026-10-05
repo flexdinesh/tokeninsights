@@ -4,7 +4,7 @@ import { stripTypeScriptTypes } from 'node:module'
 import { promisify } from 'node:util'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { pathToFileURL } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 
 const harness = process.argv[2]
 if (harness !== 'pi' && harness !== 'opencode')
@@ -15,28 +15,29 @@ const check = process.argv[3] === '--check'
 const temporary = check ? await mkdtemp(join(tmpdir(), 'tokeninsights-plugin-build-')) : undefined
 const output =
   temporary === undefined ? new URL('dist/', packageRoot) : pathToFileURL(`${temporary}/`)
-await mkdir(output, { recursive: true })
-const files = [
-  { input: new URL('src/index.ts', packageRoot), name: 'index.js' },
-  { input: new URL('src/completion.ts', packageRoot), name: 'completion.js' },
-  { input: new URL('src/lifecycle.ts', packageRoot), name: 'lifecycle.js' },
-  { input: new URL('plugin-runner.ts', import.meta.url), name: 'runner.js' },
-]
-await Promise.all(
-  files.map(async (file) => {
-    const source = await readFile(file.input, 'utf8')
-    const javascript = stripTypeScriptTypes(source, { mode: 'strip' })
-      .replaceAll('../../../tools/build/src/plugin-runner.ts', './runner.js')
-      .replaceAll('./completion.ts', './completion.js')
-      .replaceAll('./lifecycle.ts', './lifecycle.js')
-    await writeFile(new URL(file.name, output), javascript)
-  }),
-)
-await promisify(execFile)(new URL('../../../node_modules/.bin/oxfmt', import.meta.url).pathname, [
-  output.pathname,
-])
-if (temporary !== undefined) {
-  try {
+try {
+  await mkdir(output, { recursive: true })
+  const files = [
+    { input: new URL('src/index.ts', packageRoot), name: 'index.js' },
+    { input: new URL('src/completion.ts', packageRoot), name: 'completion.js' },
+    { input: new URL('src/lifecycle.ts', packageRoot), name: 'lifecycle.js' },
+    { input: new URL('plugin-runner.ts', import.meta.url), name: 'runner.js' },
+  ]
+  await Promise.all(
+    files.map(async (file) => {
+      const source = await readFile(file.input, 'utf8')
+      const javascript = stripTypeScriptTypes(source, { mode: 'strip' })
+        .replaceAll('../../../tools/build/src/plugin-runner.ts', './runner.js')
+        .replaceAll('./completion.ts', './completion.js')
+        .replaceAll('./lifecycle.ts', './lifecycle.js')
+      await writeFile(new URL(file.name, output), javascript)
+    }),
+  )
+  await promisify(execFile)(
+    fileURLToPath(new URL('../../../node_modules/.bin/oxfmt', import.meta.url)),
+    [fileURLToPath(output)],
+  )
+  if (temporary !== undefined) {
     await Promise.all(
       files.map(async (file) => {
         const [built, committed] = await Promise.all([
@@ -49,7 +50,7 @@ if (temporary !== undefined) {
           )
       }),
     )
-  } finally {
-    await rm(temporary, { recursive: true, force: true })
   }
+} finally {
+  if (temporary !== undefined) await rm(temporary, { recursive: true, force: true })
 }

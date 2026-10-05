@@ -32,7 +32,7 @@ prevent wrong-role opening/recovery. Collector/server paths cannot alias,
 including symlinks and existing hard links. Server history never uses producer
 reset/rebuild behavior.
 
-Only collector schema 15 and server schema 1 are supported. Previous schemas
+Only collector schema 16 and server schema 2 are supported. Previous schemas
 reject without mutation; there are no metadata migrations or schema-reset
 fallbacks. Older data generations within current collector schema can rebuild
 from retained sources; pending current-generation rebuilds resume with the same

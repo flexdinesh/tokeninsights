@@ -138,7 +138,7 @@ func runtime(parent context.Context, config Config, log io.Writer, onReady func(
 		publicHandler = authenticated(publicHandler, config.Token)
 	}
 	publicHTTP := &http.Server{Handler: publicHandler, BaseContext: func(net.Listener) context.Context { return ctx }, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 35 * time.Second, WriteTimeout: 35 * time.Second, IdleTimeout: 60 * time.Second}
-	privateHTTP := &http.Server{Handler: controlHandler(record, cancel), ReadHeaderTimeout: 5 * time.Second, IdleTimeout: 30 * time.Second}
+	privateHTTP := &http.Server{Handler: controlHandler(record, config.Token, cancel), ReadHeaderTimeout: 5 * time.Second, IdleTimeout: 30 * time.Second}
 	failures := make(chan error, 2)
 	go func() { failures <- publicHTTP.Serve(public) }()
 	go func() { failures <- privateHTTP.Serve(private) }()
@@ -183,7 +183,7 @@ func runtime(parent context.Context, config Config, log io.Writer, onReady func(
 	return errors.Join(err, publicErr, privateErr)
 }
 
-func controlHandler(record Record, shutdown context.CancelFunc) http.Handler {
+func controlHandler(record Record, token string, shutdown context.CancelFunc) http.Handler {
 	mux := http.NewServeMux()
 	write := func(w http.ResponseWriter, status int, value interface{}) {
 		w.Header().Set("Content-Type", "application/json")
@@ -192,6 +192,23 @@ func controlHandler(record Record, shutdown context.CancelFunc) http.Handler {
 		_ = json.NewEncoder(w).Encode(value)
 	}
 	mux.HandleFunc("GET /control/v1/instance", func(w http.ResponseWriter, r *http.Request) { write(w, 200, record) })
+	// The verified private control channel compares runtime memory, never the
+	// saved config or redacted discovery record. No secret or digest is returned.
+	mux.HandleFunc("POST /control/v1/token-match", func(w http.ResponseWriter, r *http.Request) {
+		var request struct {
+			Token *string `json:"token"`
+		}
+		r.Body = http.MaxBytesReader(w, r.Body, bodyLimit)
+		if err := decode(r.Body, &request); err != nil || request.Token == nil {
+			write(w, 400, struct {
+				Error string `json:"error"`
+			}{"invalid authentication comparison request"})
+			return
+		}
+		write(w, 200, struct {
+			Matches bool `json:"matches"`
+		}{sameToken(*request.Token, token)})
+	})
 	mux.HandleFunc("GET /control/v1/status", func(w http.ResponseWriter, r *http.Request) {
 		statusStore, err := serverstore.Open(record.Config.DBPath)
 		if err != nil {

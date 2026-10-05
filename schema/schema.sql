@@ -211,8 +211,8 @@ CREATE TABLE IF NOT EXISTS canonical_sessions (
   semantic_key TEXT NOT NULL UNIQUE,
   harness TEXT NOT NULL CHECK (harness IN ('opencode', 'pi', 'codex', 'claude-code')),
   session_id TEXT NOT NULL,
-  first_seen_at_ms INTEGER NOT NULL,
-  last_seen_at_ms INTEGER NOT NULL,
+  first_seen_at_ms INTEGER NOT NULL CHECK (typeof(first_seen_at_ms) = 'integer' AND first_seen_at_ms BETWEEN 0 AND 253402214399999),
+  last_seen_at_ms INTEGER NOT NULL CHECK (typeof(last_seen_at_ms) = 'integer' AND last_seen_at_ms BETWEEN 0 AND 253402214399999),
   primary_raw_fact_id INTEGER,
   FOREIGN KEY (primary_raw_fact_id) REFERENCES raw_token_usage(id) ON DELETE SET NULL,
   CHECK (last_seen_at_ms >= first_seen_at_ms)
@@ -226,7 +226,7 @@ CREATE TABLE IF NOT EXISTS canonical_messages (
   session_id INTEGER NOT NULL,
   harness TEXT NOT NULL CHECK (harness IN ('opencode', 'pi', 'codex', 'claude-code')),
   harness_message_id TEXT NOT NULL,
-  occurred_at_ms INTEGER,
+  occurred_at_ms INTEGER CHECK (occurred_at_ms IS NULL OR (typeof(occurred_at_ms) = 'integer' AND occurred_at_ms BETWEEN 0 AND 253402214399999)),
   primary_raw_fact_id INTEGER,
   FOREIGN KEY (session_id) REFERENCES canonical_sessions(id) ON DELETE CASCADE,
   FOREIGN KEY (primary_raw_fact_id) REFERENCES raw_token_usage(id) ON DELETE SET NULL
@@ -237,7 +237,7 @@ CREATE INDEX IF NOT EXISTS canonical_messages_session_idx ON canonical_messages 
 CREATE TABLE IF NOT EXISTS canonical_token_usage (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   semantic_key TEXT NOT NULL UNIQUE,
-  recorded_at_ms INTEGER NOT NULL,
+  recorded_at_ms INTEGER NOT NULL CHECK (typeof(recorded_at_ms) = 'integer' AND recorded_at_ms BETWEEN 0 AND 253402214399999),
   harness TEXT NOT NULL CHECK (harness IN ('opencode', 'pi', 'codex', 'claude-code')),
   session_id INTEGER NOT NULL,
   message_id INTEGER,
@@ -307,7 +307,7 @@ CREATE TABLE IF NOT EXISTS publication_journal (
   source_revision_rule TEXT,
   source_revision_value INTEGER,
   created_at_ms INTEGER NOT NULL CHECK (created_at_ms >= 0),
-  CHECK ((source_revision_rule IS NULL AND source_revision_value IS NULL) OR (source_revision_rule IS NOT NULL AND source_revision_value IS NOT NULL AND source_revision_rule = 'claude-source-timestamp-v1' AND source_revision_value >= 0 AND source_revision_value <= 9007199254740991))
+  CHECK ((source_revision_rule IS NULL AND source_revision_value IS NULL) OR (source_revision_rule IS NOT NULL AND source_revision_value IS NOT NULL AND source_revision_rule = 'claude-source-timestamp-v1' AND typeof(source_revision_value) = 'integer' AND source_revision_value BETWEEN 0 AND 253402214399999))
 );
 CREATE TABLE IF NOT EXISTS publication_entities (
   fact_id TEXT PRIMARY KEY CHECK (length(fact_id) BETWEEN 1 AND 256),
@@ -316,7 +316,7 @@ CREATE TABLE IF NOT EXISTS publication_entities (
   source_revision_rule TEXT,
   source_revision_value INTEGER,
   FOREIGN KEY (sequence) REFERENCES publication_journal(sequence),
-  CHECK ((source_revision_rule IS NULL AND source_revision_value IS NULL) OR (source_revision_rule IS NOT NULL AND source_revision_value IS NOT NULL AND source_revision_rule = 'claude-source-timestamp-v1' AND source_revision_value >= 0 AND source_revision_value <= 9007199254740991))
+  CHECK ((source_revision_rule IS NULL AND source_revision_value IS NULL) OR (source_revision_rule IS NOT NULL AND source_revision_value IS NOT NULL AND source_revision_rule = 'claude-source-timestamp-v1' AND typeof(source_revision_value) = 'integer' AND source_revision_value BETWEEN 0 AND 253402214399999))
 );
 CREATE TABLE IF NOT EXISTS publication_destinations (
   destination_id TEXT PRIMARY KEY CHECK (length(destination_id) BETWEEN 1 AND 256),
@@ -346,4 +346,4 @@ CREATE TRIGGER IF NOT EXISTS publication_journal_immutable_update BEFORE UPDATE 
 CREATE TRIGGER IF NOT EXISTS publication_journal_immutable_delete BEFORE DELETE ON publication_journal BEGIN SELECT RAISE(ABORT, 'publication journal is immutable'); END;
 CREATE TRIGGER IF NOT EXISTS publication_batches_immutable BEFORE UPDATE OF batch_id, destination_id, stream_id, database_id, first_sequence, last_sequence, request_hash, request_bytes ON publication_batches BEGIN SELECT RAISE(ABORT, 'publication request is immutable'); END;
 PRAGMA application_id = 1414091587;
-PRAGMA user_version = 15;
+PRAGMA user_version = 16;

@@ -31,8 +31,8 @@ CREATE TABLE IF NOT EXISTS canonical_sessions (
   semantic_key TEXT NOT NULL UNIQUE,
   harness TEXT NOT NULL CHECK (harness IN ('opencode', 'pi', 'codex', 'claude-code')),
   session_id TEXT NOT NULL,
-  first_seen_at_ms INTEGER NOT NULL CHECK (first_seen_at_ms BETWEEN 0 AND 9007199254740991),
-  last_seen_at_ms INTEGER NOT NULL CHECK (last_seen_at_ms BETWEEN 0 AND 9007199254740991),
+  first_seen_at_ms INTEGER NOT NULL CHECK (typeof(first_seen_at_ms) = 'integer' AND first_seen_at_ms BETWEEN 0 AND 253402214399999),
+  last_seen_at_ms INTEGER NOT NULL CHECK (typeof(last_seen_at_ms) = 'integer' AND last_seen_at_ms BETWEEN 0 AND 253402214399999),
   CHECK (last_seen_at_ms >= first_seen_at_ms)
 );
 
@@ -44,7 +44,7 @@ CREATE TABLE IF NOT EXISTS canonical_messages (
   session_id INTEGER NOT NULL,
   harness TEXT NOT NULL CHECK (harness IN ('opencode', 'pi', 'codex', 'claude-code')),
   harness_message_id TEXT NOT NULL,
-  occurred_at_ms INTEGER NOT NULL CHECK (occurred_at_ms BETWEEN 0 AND 9007199254740991),
+  occurred_at_ms INTEGER NOT NULL CHECK (typeof(occurred_at_ms) = 'integer' AND occurred_at_ms BETWEEN 0 AND 253402214399999),
   FOREIGN KEY (session_id) REFERENCES canonical_sessions(id) ON DELETE CASCADE
 );
 
@@ -53,7 +53,7 @@ CREATE INDEX IF NOT EXISTS canonical_messages_session_idx ON canonical_messages 
 CREATE TABLE IF NOT EXISTS canonical_token_usage (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   semantic_key TEXT NOT NULL UNIQUE,
-  recorded_at_ms INTEGER NOT NULL CHECK (recorded_at_ms BETWEEN 0 AND 9007199254740991),
+  recorded_at_ms INTEGER NOT NULL CHECK (typeof(recorded_at_ms) = 'integer' AND recorded_at_ms BETWEEN 0 AND 253402214399999),
   harness TEXT NOT NULL CHECK (harness IN ('opencode', 'pi', 'codex', 'claude-code')),
   session_id INTEGER NOT NULL,
   message_id INTEGER,
@@ -71,7 +71,7 @@ CREATE TABLE IF NOT EXISTS canonical_token_usage (
   total_tokens INTEGER NOT NULL DEFAULT 0 CHECK (total_tokens >= 0 AND total_tokens <= 9007199254740991),
   payload_hash TEXT NOT NULL,
   revision_rule TEXT NOT NULL DEFAULT '',
-  revision_value INTEGER NOT NULL DEFAULT 0 CHECK (revision_value BETWEEN 0 AND 9007199254740991),
+  revision_value INTEGER NOT NULL DEFAULT 0 CHECK (typeof(revision_value) = 'integer' AND revision_value BETWEEN 0 AND 253402214399999),
   location_id INTEGER,
   FOREIGN KEY (session_id) REFERENCES canonical_sessions(id) ON DELETE CASCADE,
   FOREIGN KEY (message_id) REFERENCES canonical_messages(id) ON DELETE SET NULL,
@@ -108,4 +108,4 @@ CREATE TABLE IF NOT EXISTS ingestion_producers (
 );
 
 PRAGMA application_id = 1414091606;
-PRAGMA user_version = 1;
+PRAGMA user_version = 2;

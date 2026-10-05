@@ -121,9 +121,11 @@ export type Selection = zod.input<typeof Selection>
 export type SelectionOutput = zod.output<typeof Selection>
 
 export const InstanceResponse = zod.strictObject({
-  instanceId: zod.string().optional(),
-  dataEpoch: zod.string().optional(),
-  dataReadiness: zod.enum(['ready', 'metadata', 'recovery', 'rebuild', 'unavailable']).optional(),
+  instanceId: zod.string().min(1),
+  dataEpoch: zod
+    .string()
+    .describe('Durable database identity; nonempty when dataReadiness is ready.'),
+  dataReadiness: zod.enum(['ready', 'metadata', 'recovery', 'rebuild', 'unavailable']),
   apiVersion: ApiVersion,
   serverVersion: zod.string().min(1),
   hostname: zod
@@ -154,9 +156,11 @@ export type Count = zod.input<typeof Count>
 export type CountOutput = zod.output<typeof Count>
 
 export const SyncResponse = zod.strictObject({
-  instanceId: zod.string().optional(),
-  dataEpoch: zod.string().optional(),
-  dataReadiness: zod.enum(['ready', 'metadata', 'recovery', 'rebuild', 'unavailable']).optional(),
+  instanceId: zod.string().min(1),
+  dataEpoch: zod
+    .string()
+    .describe('Durable database identity; nonempty when dataReadiness is ready.'),
+  dataReadiness: zod.enum(['ready', 'metadata', 'recovery', 'rebuild', 'unavailable']),
   running: zod.boolean(),
   phase: SyncPhase,
   harnesses: zod.record(zod.string(), HarnessSyncStatus),
@@ -166,6 +170,20 @@ export const SyncResponse = zod.strictObject({
 
 export type SyncResponse = zod.input<typeof SyncResponse>
 export type SyncResponseOutput = zod.output<typeof SyncResponse>
+
+export const TimestampMsMin = 0
+export const TimestampMsMax = 253402214399999
+
+export const TimestampMs = zod
+  .int()
+  .min(TimestampMsMin)
+  .max(TimestampMsMax)
+  .describe(
+    'Unix milliseconds through 9999-12-30T23:59:59.999Z. One day of headroom preserves calendar query support after timezone conversion. Source units are never guessed or rescaled.',
+  )
+
+export type TimestampMs = zod.input<typeof TimestampMs>
+export type TimestampMsOutput = zod.output<typeof TimestampMs>
 
 export const UsageRow = zod.strictObject({
   key: zod.string(),
@@ -221,9 +239,9 @@ export type UsageSummaryOutput = zod.output<typeof UsageSummary>
 export const usageResponsePageSizeMax = 200
 
 export const UsageResponse = zod.strictObject({
-  instanceId: zod.string().optional(),
-  dataEpoch: zod.string().optional(),
-  revision: Count.optional(),
+  instanceId: zod.string().min(1),
+  dataEpoch: zod.string().min(1),
+  revision: Count,
   rows: zod.array(UsageRow),
   chart: zod.array(UsageRow),
   rowCount: Count,
@@ -248,9 +266,9 @@ export type LocationOption = zod.input<typeof LocationOption>
 export type LocationOptionOutput = zod.output<typeof LocationOption>
 
 export const UsageFacetsResponse = zod.strictObject({
-  instanceId: zod.string().optional(),
-  dataEpoch: zod.string().optional(),
-  revision: Count.optional(),
+  instanceId: zod.string().min(1),
+  dataEpoch: zod.string().min(1),
+  revision: Count,
   providers: zod.array(zod.string()),
   models: zod.array(zod.string()),
   harnesses: zod.array(Harness),
@@ -294,12 +312,6 @@ export const publicationSessionIdMax = 256
 
 export const publicationSessionNativeIdMax = 256
 
-export const publicationSessionFirstOccurredAtMsMin = 0
-export const publicationSessionFirstOccurredAtMsMax = 9007199254740991
-
-export const publicationSessionLastOccurredAtMsMin = 0
-export const publicationSessionLastOccurredAtMsMax = 9007199254740991
-
 export const PublicationSession = zod.strictObject({
   id: zod
     .string()
@@ -312,14 +324,8 @@ export const PublicationSession = zod.strictObject({
     .min(1)
     .max(publicationSessionNativeIdMax)
     .describe('At most 256 UTF-8 bytes; no control characters.'),
-  firstOccurredAtMs: zod
-    .int()
-    .min(publicationSessionFirstOccurredAtMsMin)
-    .max(publicationSessionFirstOccurredAtMsMax),
-  lastOccurredAtMs: zod
-    .int()
-    .min(publicationSessionLastOccurredAtMsMin)
-    .max(publicationSessionLastOccurredAtMsMax),
+  firstOccurredAtMs: TimestampMs,
+  lastOccurredAtMs: TimestampMs,
 })
 
 export type PublicationSession = zod.input<typeof PublicationSession>
@@ -328,9 +334,6 @@ export type PublicationSessionOutput = zod.output<typeof PublicationSession>
 export const publicationMessageIdMax = 256
 
 export const publicationMessageNativeIdMax = 256
-
-export const publicationMessageOccurredAtMsMin = 0
-export const publicationMessageOccurredAtMsMax = 9007199254740991
 
 export const PublicationMessage = zod.strictObject({
   id: zod
@@ -343,10 +346,7 @@ export const PublicationMessage = zod.strictObject({
     .min(1)
     .max(publicationMessageNativeIdMax)
     .describe('At most 256 UTF-8 bytes; no control characters.'),
-  occurredAtMs: zod
-    .int()
-    .min(publicationMessageOccurredAtMsMin)
-    .max(publicationMessageOccurredAtMsMax),
+  occurredAtMs: TimestampMs,
 })
 
 export type PublicationMessage = zod.input<typeof PublicationMessage>
@@ -410,13 +410,10 @@ export const PublicationLocation = zod.strictObject({
 export type PublicationLocation = zod.input<typeof PublicationLocation>
 export type PublicationLocationOutput = zod.output<typeof PublicationLocation>
 
-export const publicationRevisionValueMin = 0
-export const publicationRevisionValueMax = 9007199254740991
-
 export const PublicationRevision = zod
   .strictObject({
     rule: zod.enum(['claude-source-timestamp-v1']),
-    value: zod.int().min(publicationRevisionValueMin).max(publicationRevisionValueMax),
+    value: TimestampMs,
   })
   .describe(
     'Only Claude Code facts with native request and message IDs can carry this source timestamp revision; value equals occurredAtMs.',
@@ -428,9 +425,6 @@ export type PublicationRevisionOutput = zod.output<typeof PublicationRevision>
 export const publicationFactIdMax = 256
 
 export const publicationFactNativeRequestIdMax = 256
-
-export const publicationFactOccurredAtMsMin = 0
-export const publicationFactOccurredAtMsMax = 9007199254740991
 
 export const publicationFactProviderMax = 256
 
@@ -470,7 +464,7 @@ export const PublicationFact = zod
       .max(publicationFactNativeRequestIdMax)
       .optional()
       .describe('At most 256 UTF-8 bytes; no control characters.'),
-    occurredAtMs: zod.int().min(publicationFactOccurredAtMsMin).max(publicationFactOccurredAtMsMax),
+    occurredAtMs: TimestampMs,
     provider: zod
       .string()
       .min(1)

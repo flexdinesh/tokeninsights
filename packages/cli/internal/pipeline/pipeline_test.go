@@ -1148,7 +1148,7 @@ func TestClaudeCodeJSONLSyncsMainSessionTokenUsage(t *testing.T) {
 	sourceDir := t.TempDir()
 	now := time.Date(2026, 4, 24, 15, 0, 0, 0, time.UTC)
 	writeJSONL(t, filepath.Join(sourceDir, "claude-code", "project-a", "claude_main.jsonl"),
-		`{"type":"assistant","uuid":"uuid_a","requestId":"req_a","timestamp":"2026-01-01T00:00:02.000Z","message":{"id":"msg_api_a","role":"assistant","model":"claude-sonnet-4-5","usage":{"input_tokens":100,"output_tokens":50,"cache_read_input_tokens":20,"cache_creation_input_tokens":5}}}`,
+		`{"type":"assistant","sessionId":"claude_main","uuid":"uuid_a","requestId":"req_a","timestamp":"2026-01-01T00:00:02.000Z","message":{"id":"msg_api_a","role":"assistant","model":"claude-sonnet-4-5","usage":{"input_tokens":100,"output_tokens":50,"cache_read_input_tokens":20,"cache_creation_input_tokens":5}}}`,
 	)
 
 	summary, err := Sync(ctx, SyncOptions{
@@ -1167,13 +1167,13 @@ func TestClaudeCodeJSONLSyncsMainSessionTokenUsage(t *testing.T) {
 		RawFacts:           1,
 		Observations:       1,
 		Canonical:          1,
-		Diagnostics:        2,
+		Diagnostics:        1,
 	})
 
 	database := openTestDB(t, dbPath)
 	defer func() { _ = database.Close() }()
-	assertSQLCount(t, database, "SELECT COUNT(*) FROM publication_journal", 0)
-	assertSQLCount(t, database, "SELECT COUNT(*) FROM normalization_diagnostics WHERE code = 'publication_ambiguous_session_identity'", 1)
+	assertSQLCount(t, database, "SELECT COUNT(*) FROM publication_journal", 1)
+	assertSQLCount(t, database, "SELECT COUNT(*) FROM normalization_diagnostics WHERE code = 'publication_ambiguous_session_identity'", 0)
 	assertEqualJSON(t, queryRawTokenUsage(t, database), []expectedRawTokenUsage{
 		{
 			Harness:          "claude-code",
@@ -1219,8 +1219,8 @@ func TestClaudeCodeJSONLMergesStreamingDuplicateAssistantUsage(t *testing.T) {
 	sourceDir := t.TempDir()
 	path := filepath.Join(sourceDir, "project-a", "claude_main.jsonl")
 	writeJSONL(t, path,
-		`{"type":"assistant","uuid":"uuid_a","requestId":"req_a","timestamp":"2026-01-01T00:00:02.000Z","message":{"id":"msg_api_a","role":"assistant","model":"claude-sonnet-4-5","usage":{"input_tokens":100,"output_tokens":10,"cache_read_input_tokens":20,"cache_creation_input_tokens":5}}}`,
-		`{"type":"assistant","uuid":"uuid_a","requestId":"req_a","timestamp":"2026-01-01T00:00:03.000Z","message":{"id":"msg_api_a","role":"assistant","model":"claude-sonnet-4-5","usage":{"input_tokens":100,"output_tokens":50,"cache_read_input_tokens":20,"cache_creation_input_tokens":5}}}`,
+		`{"type":"assistant","sessionId":"claude_main","uuid":"uuid_a","requestId":"req_a","timestamp":"2026-01-01T00:00:02.000Z","message":{"id":"msg_api_a","role":"assistant","model":"claude-sonnet-4-5","usage":{"input_tokens":100,"output_tokens":10,"cache_read_input_tokens":20,"cache_creation_input_tokens":5}}}`,
+		`{"type":"assistant","sessionId":"claude_main","uuid":"uuid_a","requestId":"req_a","timestamp":"2026-01-01T00:00:03.000Z","message":{"id":"msg_api_a","role":"assistant","model":"claude-sonnet-4-5","usage":{"input_tokens":100,"output_tokens":50,"cache_read_input_tokens":20,"cache_creation_input_tokens":5}}}`,
 	)
 
 	adapter := claudeCodeJSONLAdapter{}
@@ -1412,7 +1412,7 @@ func TestPiJSONLUsesFilenameSessionFallbackWhenHeaderIsMissing(t *testing.T) {
 		Synced:             1,
 		RawFacts:           1,
 		Observations:       1,
-		Canonical:          1,
+		Canonical:          0,
 		Diagnostics:        2,
 	})
 
@@ -1420,8 +1420,9 @@ func TestPiJSONLUsesFilenameSessionFallbackWhenHeaderIsMissing(t *testing.T) {
 	defer func() { _ = database.Close() }()
 	assertSQLCount(t, database, "SELECT COUNT(*) FROM publication_journal", 0)
 	assertSQLCount(t, database, "SELECT COUNT(*) FROM normalization_diagnostics WHERE code = 'publication_ambiguous_session_identity'", 1)
-	assertSQLCount(t, database, "SELECT COUNT(*) FROM canonical_sessions WHERE session_id = 'pi_fallback'", 1)
-	assertSQLCount(t, database, "SELECT COUNT(*) FROM canonical_token_usage WHERE provider = 'unknown' AND model = 'unknown'", 1)
+	assertSQLCount(t, database, "SELECT COUNT(*) FROM raw_token_usage WHERE session_id = 'pi_fallback' AND provider IS NULL AND model IS NULL", 1)
+	assertSQLCount(t, database, "SELECT COUNT(*) FROM canonical_sessions", 0)
+	assertSQLCount(t, database, "SELECT COUNT(*) FROM canonical_token_usage", 0)
 	assertSQLCount(t, database, "SELECT COUNT(*) FROM normalization_diagnostics WHERE code = 'pi_jsonl_missing_session_header'", 1)
 }
 

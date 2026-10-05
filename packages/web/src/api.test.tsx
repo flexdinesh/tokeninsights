@@ -9,6 +9,8 @@ import { initialQuery } from './state'
 import type { QueryState } from './state'
 import type { Bootstrap, Dashboard, SyncStatus } from './contracts'
 
+const testIdentity = { instanceId: 'test-instance', dataEpoch: 'test-database' }
+
 let testRouter = createAppRouter(createMemoryHistory({ initialEntries: ['/tokens'] }))
 
 beforeEach(() => {
@@ -27,7 +29,7 @@ function requestURL(input: RequestInfo | URL): string {
 }
 
 function AnalyticsExample({ query }: { query: QueryState }) {
-  const data = useAnalytics(query, 0, true)
+  const data = useAnalytics(query, 1, true, 'test-instance/test-database')
   return (
     <output data-tab={data.data?.tab} data-placeholder={data.isPlaceholderData}>
       {data.data ? data.data.dashboard.summary.total : 'Loading'}
@@ -37,6 +39,8 @@ function AnalyticsExample({ query }: { query: QueryState }) {
 
 function dashboard(total: number): Dashboard {
   return {
+    ...testIdentity,
+    revision: 1,
     rows: [],
     chart: [],
     rowCount: 0,
@@ -59,6 +63,8 @@ function dashboard(total: number): Dashboard {
 
 it('uses server defaults on first load', async () => {
   const bootstrap: Bootstrap = {
+    ...testIdentity,
+    dataReadiness: 'ready',
     apiVersion: 'v1',
     serverVersion: 'test',
     hostname: 'first-load',
@@ -76,6 +82,8 @@ it('uses server defaults on first load', async () => {
     },
   }
   const status: SyncStatus = {
+    ...testIdentity,
+    dataReadiness: 'ready',
     phase: 'ready',
     running: false,
     error: '',
@@ -106,6 +114,8 @@ it('uses server defaults on first load', async () => {
 
 it('shows saved ingested usage without a collector', async () => {
   const bootstrap: Bootstrap = {
+    ...testIdentity,
+    dataReadiness: 'ready',
     apiVersion: 'v1',
     serverVersion: 'test',
     hostname: 'local',
@@ -123,6 +133,8 @@ it('shows saved ingested usage without a collector', async () => {
     },
   }
   const status: SyncStatus = {
+    ...testIdentity,
+    dataReadiness: 'ready',
     phase: 'ready',
     running: false,
     error: '',
@@ -138,6 +150,8 @@ it('shows saved ingested usage without a collector', async () => {
     const path = requestURL(input)
     const body = path.includes('/usage/facets')
       ? {
+          ...testIdentity,
+          revision: 1,
           providers: [],
           models: [],
           harnesses: [],
@@ -170,6 +184,8 @@ it('shows saved ingested usage without a collector', async () => {
 
 it('removes the final route filter after direct load', async () => {
   const bootstrap: Bootstrap = {
+    ...testIdentity,
+    dataReadiness: 'ready',
     apiVersion: 'v1',
     serverVersion: 'test',
     hostname: 'direct-load',
@@ -187,6 +203,8 @@ it('removes the final route filter after direct load', async () => {
     },
   }
   const status: SyncStatus = {
+    ...testIdentity,
+    dataReadiness: 'ready',
     phase: 'ready',
     running: false,
     error: '',
@@ -226,6 +244,8 @@ it('removes the final route filter after direct load', async () => {
 
 it('refreshes producer labels when ingestion commits a new revision', async () => {
   const bootstrap: Bootstrap = {
+    ...testIdentity,
+    dataReadiness: 'ready',
     apiVersion: 'v1',
     serverVersion: 'test',
     hostname: 'unknown',
@@ -243,6 +263,8 @@ it('refreshes producer labels when ingestion commits a new revision', async () =
     },
   }
   const status: SyncStatus = {
+    ...testIdentity,
+    dataReadiness: 'ready',
     phase: 'ready',
     running: false,
     error: '',
@@ -262,6 +284,8 @@ it('refreshes producer labels when ingestion commits a new revision', async () =
         ? { ...bootstrap, hostname: 'collector-workstation' }
         : path.includes('/usage/facets')
           ? {
+              ...testIdentity,
+              revision: 1,
               providers: [],
               models: [],
               harnesses: [],
@@ -319,6 +343,8 @@ it('cancels obsolete filter requests and only renders the current result', async
           })
         })
       const data: Dashboard = {
+        ...testIdentity,
+        revision: 1,
         rows: [],
         chart: [],
         rowCount: 0,

@@ -5,7 +5,7 @@ The approved split creates fresh `collector.sqlite` and `server.sqlite` files.
 The old `tokeninsights.sqlite` file stays untouched; this change does not import
 legacy history or migrate legacy identities.
 
-Only current collector schema 15 and server schema 1 are supported; previous
+Only current collector schema 16 and server schema 2 are supported; previous
 schemas reject without mutation. Within current collector schema, older data
 generations can rebuild from retained sources, pending current-generation
 rebuilds resume with the same scope, and newer generations reject. Server
@@ -180,6 +180,23 @@ most 1 MiB, batches at most 256 contiguous facts, strings at most 256 UTF-8 byte
 Exact nonnegative integers are bounded by 9,007,199,254,740,991. Component sums,
 aggregate bounds and revision are checked before commit. Receipts and journal
 have no retention cleanup initially.
+
+Canonical source timestamps have a separate Unix-millisecond bound,
+`0..253402214399999`, through `9999-12-30T23:59:59.999Z`. The one-day margin
+preserves calendar bucketing after timezone conversion. Collector checks precede
+streaming revision selection and canonical references; server validation and
+canonical SQLite constraints reject invalid dates. Invalid raw metadata stays
+local with diagnostics and cannot poison valid sibling facts or session bounds.
+
+Pi/Claude filename-derived sessions remain raw-only. Weak Claude observations
+do not merge with native requests; equal-time native requests compare canonical
+usage, including zero-equivalent optional counters and exclusive reasoning.
+
+Usage/facet responses require nonempty instance/database identity and explicit
+revision. Instance/status require identity and readiness fields; unavailable
+storage may explicitly report an empty database epoch and never enables analytics.
+Clients discard obsolete request generations and validate identity before joining
+pages or applying facets. Revision zero is valid; an omitted revision is not.
 
 Retries cannot repair corruption, vanished undelivered source data, absent native
 identity or native-ID collisions. The initial fixed `default` namespace assumes

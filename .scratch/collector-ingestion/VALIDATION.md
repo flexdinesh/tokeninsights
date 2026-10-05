@@ -4,7 +4,7 @@ Date: 5 October 2026. Base: `e5ec2c7`. Branch: `codex/collector-ingestion-contra
 
 Worktree: `/home/dee/workspace/tokeninsights/wt-codex-collector-ingestion-contract`.
 
-Current status: approved collector/server implementation complete; repository gates pass. Fresh collector/server databases rebuild retained sources; original database remains untouched. Historical foundation and kickoff results below do not constitute current implementation signoff.
+Current status: review hardening R01–R08 complete; schema 16/2 and strict response contracts approved. Full repository gates pass. User has not run the PR and approved rebuilding all prior PR data. Historical results below remain evidence for their recorded heads.
 
 ## Scope
 
@@ -129,3 +129,61 @@ User requested removal rather than deprecation. Removed `view`, `serve`, top-lev
 `TestRemovedCommandsRejectWithoutStorageOrServiceSideEffects` and `TestRemovedFlagsRejectBeforeSideEffects` prove rejection before state creation or existing-file mutation. `TestLegacySchemasRejectWithoutMutation` covers versions 0–14, with either no role or the current collector role, across inspect/open/create/recovery/reset paths. Current-schema collector generation recovery/resume still passes; current sync, REST TUI and publication fault coverage remain active.
 
 Root format, lint, full unit tests and build pass; focused CLI and DB race tests pass. Direct Go build/native smoke rejects twelve removed command/flag forms with usage exit 2 and no storage/service work, then verifies empty startup, collector deletion/replay and offline manual retry with unchanged facts and no JavaScript on PATH. Current docs and failure matrix were updated; historical ADRs and earlier evidence remain historical. Normal pre-push runs the full race/browser gates again.
+
+
+## Review hardening R01–R08
+
+User approved bounded canonical timestamps, required query response identities,
+and collector/server schema versions 16/2. No earlier PR databases contain user
+history; retained sources may rebuild fresh files. No compatibility aliases,
+schema migration or receipt rewriting was introduced.
+
+Four independent implementation lanes covered timestamp/storage validation,
+harness normalization, service/tooling and query clients; an additional web lane
+tightened consumers. Independent cross-reviews found no remaining actionable
+introduced bugs. Exact test mappings are in docs/collector-ingestion-tests.md and
+issues/04-review-hardening.md.
+
+- R01: shared epoch-ms domain 0..253402214399999; validation before Claude merge,
+  canonical envelopes and publication; matching SQL integer/range guards.
+  Invalid raw time evidence remains inspectable. Actual ingestion/REST calendar
+  buckets and native hourly queries pass across six isolated timezone processes.
+  Valid prior collector15/server1 contracts reject with byte-identical files.
+- R02/R03: weak Pi/Claude sessions raw-only; all 24 Claude record permutations,
+  separate syncs and raw-only replay converge. Canonical projection avoids nil/0
+  conflicts and repeated reasoning subtraction. Real native counter/attribution
+  conflicts still roll back. Original CFI001 oracle remains unchanged.
+- R04/R05: runtime credential comparison uses the owner-verified private socket,
+  returns only a boolean and ignores edited persisted credentials. Real HTTP
+  authorization rotates through restart while receipts remain exact. Verified
+  stop works with missing/malformed storage; corrupt restart refuses unchanged;
+  unknown/forged owners remain protected.
+- R06/R08: required query envelopes distinguish missing revision from zero;
+  unavailable metadata remains explicit. TUI generations discard old facets,
+  status and snapshots; valid HTTP restart adopts the new instance with four
+  GETs and no recursive reload. Web consumers reject invalid/stale tags and accept
+  newer revisions. Initial facets wait for validated identity.
+- R07: both real plugin builds/checks pass with spaces/percent/hash in workspace
+  and temporary paths; formatter failure cleanup leaves no temporary artifacts.
+
+Root verification passes: pnpm run format; pnpm run lint (0 issues);
+pnpm run check-schema; pnpm run check-api; pnpm run test (30 build-tool, 50 web,
+all Go suites); pnpm run build; mise run check:push (full Go race, embedded-asset
+consistency, native build, all 19 browser E2E tests in 31.1s). The first full gate
+exposed an E2E status mock missing required identity/readiness. That regression
+now uses validated real server metadata while delaying an older revision.
+Focused recovery test passes (7.5s), followed by the complete passing gate.
+Go race pipeline ran 192.888s; no races reported.
+
+Direct Go build from packages/cli and the built project binary --help both run
+with PATH=/nonexistent. Isolated native CLI smoke passes empty startup, nine
+removed command/flag rejections, the complete 12-fact/1102-token oracle, collector
+deletion/recollection and repeated publication with unchanged full stable IDs,
+payload hashes and server revision. Role versions are16/2 and the server has no
+raw tables. Codex fixture message IDs are documented prefixes: the smoke checks
+the prefix plus full 64-hex witness, then compares actual IDs across reconstruction.
+An initial literal-prefix assertion was corrected in the temporary smoke harness;
+repository fixtures/oracles were not altered. Fixture service/storage cleaned.
+
+Remote provisioning, real harness install/trust/flush, retention and physical
+media/power-loss simulation remain outside this PR. Normal push hooks stay enabled.

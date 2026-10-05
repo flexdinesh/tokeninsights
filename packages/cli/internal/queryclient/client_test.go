@@ -95,11 +95,11 @@ func serveJSON(w http.ResponseWriter, value interface{}) {
 }
 
 func instanceResponse(identity string) api.InstanceResponse {
-	return api.InstanceResponse{ApiVersion: api.V1, InstanceId: pointer(identity), DataEpoch: pointer("epoch")}
+	return api.InstanceResponse{ApiVersion: api.V1, InstanceId: identity, DataEpoch: "epoch", DataReadiness: api.InstanceResponseDataReadinessReady}
 }
 
 func usagePage(page int, revision int64, identity string) api.UsageResponse {
-	response := api.UsageResponse{Page: page, PageSize: pageSize, RowCount: pageSize + 1, Revision: pointer(revision), InstanceId: pointer(identity), DataEpoch: pointer("epoch"), Summary: api.UsageSummary{Total: 12345}}
+	response := api.UsageResponse{Page: page, PageSize: pageSize, RowCount: pageSize + 1, Revision: revision, InstanceId: identity, DataEpoch: "epoch", Summary: api.UsageSummary{Total: 12345}}
 	for i := (page - 1) * pageSize; i < min(page*pageSize, pageSize+1); i++ {
 		response.Rows = append(response.Rows, api.UsageRow{Key: strconv.Itoa(i), Total: int64(i)})
 	}
@@ -121,11 +121,11 @@ func TestAllUsageRetriesWholeSnapshot(t *testing.T) {
 				if calls == 2 {
 					switch changed {
 					case "revision":
-						response.Revision = pointer(int64(2))
+						response.Revision = 2
 					case "instance":
-						response.InstanceId = pointer("restarted")
+						response.InstanceId = "restarted"
 					case "epoch":
-						response.DataEpoch = pointer("reset")
+						response.DataEpoch = "reset"
 					}
 				}
 				serveJSON(w, response)
@@ -202,7 +202,7 @@ func TestAllUsageRejectsInvalidPagination(t *testing.T) {
 				case "count-limit":
 					response.RowCount = maxRows + 1
 				case "revision":
-					response.Revision = nil
+					response.Revision = -1
 				}
 				serveJSON(w, response)
 			}))
@@ -243,7 +243,7 @@ func TestQueryEncodingPreservesRepeatedFilters(t *testing.T) {
 		if r.Method != http.MethodGet || r.URL.Path != "/api/v1/usage" || !reflect.DeepEqual(r.URL.Query(), want) {
 			t.Errorf("unexpected query %s %s", r.Method, r.URL)
 		}
-		serveJSON(w, api.UsageResponse{})
+		serveJSON(w, api.UsageResponse{InstanceId: "stable", DataEpoch: "epoch", Revision: 0})
 	}))
 	if _, err := c.Usage(t.Context(), params); err != nil {
 		t.Fatal(err)
@@ -268,7 +268,7 @@ func TestReadOnlyStatusAndBearerClientCopy(t *testing.T) {
 		}
 		requests <- r.Header.Get("Authorization")
 		if r.URL.Path == "/api/v1/sync" {
-			serveJSON(w, api.SyncResponse{Revision: 7})
+			serveJSON(w, api.SyncResponse{Revision: 7, InstanceId: "stable", DataEpoch: "epoch", DataReadiness: api.SyncResponseDataReadinessReady})
 			return
 		}
 		serveJSON(w, instanceResponse("stable"))
@@ -312,7 +312,9 @@ func TestResponseBoundsAndSafeErrors(t *testing.T) {
 				case "oversized":
 					_, _ = io.WriteString(w, strings.Repeat(" ", maxBodyBytes+1))
 				case "version":
-					serveJSON(w, api.InstanceResponse{ApiVersion: "v999"})
+					response := instanceResponse("stable")
+					response.ApiVersion = "v999"
+					serveJSON(w, response)
 				}
 			}))
 			_, err := c.Instance(t.Context())

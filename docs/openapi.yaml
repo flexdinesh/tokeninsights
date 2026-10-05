@@ -535,6 +535,9 @@ components:
       type: object
       additionalProperties: false
       required:
+        - instanceId
+        - dataEpoch
+        - dataReadiness
         - apiVersion
         - serverVersion
         - hostname
@@ -544,8 +547,10 @@ components:
       properties:
         instanceId:
           type: string
+          minLength: 1
         dataEpoch:
           type: string
+          description: Durable database identity; nonempty when dataReadiness is ready.
         dataReadiness:
           type: string
           enum:
@@ -582,6 +587,9 @@ components:
       type: object
       additionalProperties: false
       required:
+        - instanceId
+        - dataEpoch
+        - dataReadiness
         - running
         - phase
         - harnesses
@@ -590,8 +598,10 @@ components:
       properties:
         instanceId:
           type: string
+          minLength: 1
         dataEpoch:
           type: string
+          description: Durable database identity; nonempty when dataReadiness is ready.
         dataReadiness:
           type: string
           enum:
@@ -617,6 +627,13 @@ components:
       format: int64
       minimum: 0
       maximum: 9007199254740991
+    TimestampMs:
+      type: integer
+      format: int64
+      minimum: 0
+      maximum: 253402214399999
+      description: Unix milliseconds through 9999-12-30T23:59:59.999Z. One day of headroom preserves
+        calendar query support after timezone conversion. Source units are never guessed or rescaled.
     UsageRow:
       type: object
       additionalProperties: false
@@ -731,6 +748,9 @@ components:
       type: object
       additionalProperties: false
       required:
+        - instanceId
+        - dataEpoch
+        - revision
         - rows
         - chart
         - rowCount
@@ -742,8 +762,10 @@ components:
       properties:
         instanceId:
           type: string
+          minLength: 1
         dataEpoch:
           type: string
+          minLength: 1
         revision:
           $ref: '#/components/schemas/Count'
         rows:
@@ -775,6 +797,9 @@ components:
       type: object
       additionalProperties: false
       required:
+        - instanceId
+        - dataEpoch
+        - revision
         - providers
         - models
         - harnesses
@@ -784,8 +809,10 @@ components:
       properties:
         instanceId:
           type: string
+          minLength: 1
         dataEpoch:
           type: string
+          minLength: 1
         revision:
           $ref: '#/components/schemas/Count'
         providers:
@@ -906,15 +933,9 @@ components:
           description: At most 256 UTF-8 bytes; no control characters.
           minLength: 1
         firstOccurredAtMs:
-          type: integer
-          format: int64
-          minimum: 0
-          maximum: 9007199254740991
+          $ref: '#/components/schemas/TimestampMs'
         lastOccurredAtMs:
-          type: integer
-          format: int64
-          minimum: 0
-          maximum: 9007199254740991
+          $ref: '#/components/schemas/TimestampMs'
     PublicationMessage:
       type: object
       additionalProperties: false
@@ -934,10 +955,7 @@ components:
           description: At most 256 UTF-8 bytes; no control characters.
           minLength: 1
         occurredAtMs:
-          type: integer
-          format: int64
-          minimum: 0
-          maximum: 9007199254740991
+          $ref: '#/components/schemas/TimestampMs'
     PublicationLocation:
       type: object
       additionalProperties: false
@@ -989,10 +1007,7 @@ components:
           enum:
             - claude-source-timestamp-v1
         value:
-          type: integer
-          format: int64
-          minimum: 0
-          maximum: 9007199254740991
+          $ref: '#/components/schemas/TimestampMs'
       description:
         Only Claude Code facts with native request and message IDs can carry this source timestamp
         revision; value equals occurredAtMs.
@@ -1034,10 +1049,7 @@ components:
           description: At most 256 UTF-8 bytes; no control characters.
           minLength: 1
         occurredAtMs:
-          type: integer
-          format: int64
-          minimum: 0
-          maximum: 9007199254740991
+          $ref: '#/components/schemas/TimestampMs'
         provider:
           type: string
           maxLength: 256

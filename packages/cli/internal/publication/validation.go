@@ -15,6 +15,9 @@ func validString(value string, required bool) bool {
 
 func validInteger(value int64) bool { return value >= 0 && value <= SafeInteger }
 
+// ValidTimestampMs accepts normalized Unix milliseconds with localtime headroom.
+func ValidTimestampMs(value int64) bool { return value >= 0 && value <= MaxTimestampMs }
+
 // Published location labels are basenames, independent of the server OS.
 func validLocationLabel(value string) bool {
 	return validString(value, false) && !strings.ContainsAny(value, `/\`)
@@ -56,15 +59,18 @@ func ValidateFact(f Fact) error {
 	if f.Session.Harness != f.Harness || !validString(f.Session.NativeID, true) || f.Session.ID != SessionID(f.Harness, f.Session.NativeID) {
 		return invalid("invalid_identity", "session")
 	}
-	if !validInteger(f.Session.FirstOccurredAtMs) || !validInteger(f.Session.LastOccurredAtMs) ||
-		f.Session.FirstOccurredAtMs > f.Session.LastOccurredAtMs || !validInteger(f.OccurredAtMs) ||
+	if !ValidTimestampMs(f.Session.FirstOccurredAtMs) || !ValidTimestampMs(f.Session.LastOccurredAtMs) ||
+		f.Session.FirstOccurredAtMs > f.Session.LastOccurredAtMs || !ValidTimestampMs(f.OccurredAtMs) ||
 		f.OccurredAtMs < f.Session.FirstOccurredAtMs || f.OccurredAtMs > f.Session.LastOccurredAtMs {
 		return invalid("invalid_request", "occurredAtMs")
 	}
 	if !validString(f.NativeRequestID, false) || (f.Message == nil && f.NativeRequestID == "") {
 		return invalid("invalid_identity", "nativeIdentity")
 	}
-	if f.Message != nil && (!validString(f.Message.NativeID, true) || !validInteger(f.Message.OccurredAtMs) ||
+	if f.Message != nil && !ValidTimestampMs(f.Message.OccurredAtMs) {
+		return invalid("invalid_request", "message.occurredAtMs")
+	}
+	if f.Message != nil && (!validString(f.Message.NativeID, true) ||
 		f.Message.ID != MessageID(f.Harness, f.Session.NativeID, f.Message.NativeID)) {
 		return invalid("invalid_identity", "message")
 	}
@@ -96,7 +102,7 @@ func ValidateFact(f Fact) error {
 		return invalid("invalid_tokens", "totalTokens")
 	}
 	if f.Revision != nil && (f.Harness != "claude-code" || f.NativeRequestID == "" || f.Message == nil ||
-		f.Revision.Rule != ClaudeRevisionRule || f.Revision.Value != f.OccurredAtMs) {
+		f.Revision.Rule != ClaudeRevisionRule || !ValidTimestampMs(f.Revision.Value) || f.Revision.Value != f.OccurredAtMs) {
 		return invalid("invalid_revision", "revision")
 	}
 	if f.Location != nil {

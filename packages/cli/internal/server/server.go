@@ -121,7 +121,7 @@ func (a *app) handler() http.Handler {
 		}
 		state := a.status()
 		writeJSON(w, http.StatusOK, serverapi.InstanceResponse{
-			InstanceId: &state.InstanceID, DataEpoch: &state.DataEpoch, DataReadiness: readinessPointer(state.DataReadiness),
+			InstanceId: state.InstanceID, DataEpoch: state.DataEpoch, DataReadiness: serverapi.InstanceResponseDataReadiness(state.DataReadiness),
 			ApiVersion:    serverapi.V1,
 			ServerVersion: version.Version,
 			Hostname:      a.dataHostname(r.Context()),
@@ -164,8 +164,8 @@ func (a *app) handler() http.Handler {
 		}
 		response := apiDashboard(data)
 		state := a.status()
-		response.InstanceId = &state.InstanceID
-		response.DataEpoch = &data.DatabaseID
+		response.InstanceId = state.InstanceID
+		response.DataEpoch = data.DatabaseID
 		writeJSON(w, http.StatusOK, response)
 	})
 	mux.HandleFunc("/api/v1/usage/facets", func(w http.ResponseWriter, r *http.Request) {
@@ -232,9 +232,9 @@ func (a *app) handler() http.Handler {
 			a.queryError(w, err)
 			return
 		}
-		values.Revision = &snapshotStatus.Revision
-		values.InstanceId = &a.options.InstanceID
-		values.DataEpoch = &snapshotStatus.DatabaseID
+		values.Revision = snapshotStatus.Revision
+		values.InstanceId = a.options.InstanceID
+		values.DataEpoch = snapshotStatus.DatabaseID
 		if err = tx.Commit(); err != nil {
 			a.queryError(w, err)
 			return

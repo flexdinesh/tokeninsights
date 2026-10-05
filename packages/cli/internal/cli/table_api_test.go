@@ -17,10 +17,10 @@ func TestReloadCancelsObsoleteSameSelectionAndRejectsLateError(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		if r.URL.Path == "/api/v1/instance" {
-			_ = json.NewEncoder(w).Encode(api.InstanceResponse{ApiVersion: api.V1, InstanceId: apiPointer("instance"), DataEpoch: apiPointer("epoch"), Hostname: "producer", Timezone: "UTC +00:00"})
+			_ = json.NewEncoder(w).Encode(api.InstanceResponse{ApiVersion: api.V1, InstanceId: "instance", DataEpoch: "epoch", DataReadiness: api.InstanceResponseDataReadinessReady, Hostname: "producer", Timezone: "UTC +00:00"})
 			return
 		}
-		_ = json.NewEncoder(w).Encode(api.UsageResponse{InstanceId: apiPointer("instance"), DataEpoch: apiPointer("epoch"), Revision: apiPointer(int64(1)), Page: 1, PageSize: 200, RowCount: 1, Rows: []api.UsageRow{{Key: "one", Name: "2026-01-01", Total: 42}}, Summary: api.UsageSummary{Total: 42, Sessions: 1, SyncedSessions: 1}})
+		_ = json.NewEncoder(w).Encode(api.UsageResponse{InstanceId: "instance", DataEpoch: "epoch", Revision: 1, Page: 1, PageSize: 200, RowCount: 1, Rows: []api.UsageRow{{Key: "one", Name: "2026-01-01", Total: 42}}, Summary: api.UsageSummary{Total: 42, Sessions: 1, SyncedSessions: 1}})
 	}))
 	defer server.Close()
 	m := newInteractiveModel(t.Context(), tableOptions{serverURL: server.URL, dbPath: "/unusable/local/path", period: periodAllTime, bucket: bucketDay}, time.Now(), "unknown")
@@ -110,6 +110,8 @@ func TestLocationFacetsUseRepoAPIAndInactiveFiltersDoNotHideOtherTabs(t *testing
 	options.filters.directories = stringList{"fixture-directory"}
 	m := newInteractiveModel(t.Context(), options, now, "unknown")
 	defer m.cancelSync()
+	loaded, _ := m.Update(m.loadDashboard())
+	m = loaded.(interactiveModel)
 	m.activeTab = tabRepo
 	repoMessage, ok := m.filterValuesCmd(filterProvider)().(filterValuesMsg)
 	if !ok || repoMessage.err != nil || !reflect.DeepEqual(repoMessage.values, []string{"provider-one"}) {

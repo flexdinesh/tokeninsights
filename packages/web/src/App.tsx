@@ -100,8 +100,8 @@ function DashboardShell({
   const { query, setLocationGroup } = useDashboardQuery()
   const controller = useDashboardSync()
   const { revision, analyticsEnabled: enabled } = controller
-  const analytics = useAnalytics(query, revision, enabled, false, controller.identity)
-  const facets = useFacets(query, revision, enabled, '', controller.identity)
+  const analytics = useAnalytics(query, revision, enabled, controller.identity)
+  const facets = useFacets(query, revision, enabled, controller.identity)
   const serverUnavailable = Boolean(
     connectionError || controller.statusQuery.error || analytics.error || facets.error,
   )

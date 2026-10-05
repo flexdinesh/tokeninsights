@@ -74,6 +74,23 @@ Both previously failing CFI007/008 are fixed without weakening expected facts. A
 
 Codex keeps its deterministic immutable event witness, including typed token-field presence. This is an explicit adapter exception, not permission to hash mutable counters into every fact identity.
 
+## Review hardening regressions
+
+R01–R08 supplement F01–F14; schema 16/2 and stricter response fields were
+explicitly approved. The [review issue](../.scratch/collector-ingestion/issues/04-review-hardening.md)
+records parallel ownership. Expected values remain independent of parser output.
+
+| Review | Production tests | Required outcome |
+| --- | --- | --- |
+| R01 source timestamps (F08/F10) | `publication.TestTimestampDomainAcrossNormalizedFields`; `ingestion.TestInvalidTimestampBatchDoesNotMutateSavedData`; `db.TestCollectorCanonicalTimestampConstraints`; `pipeline.TestClaudeInvalidTimestampCannotReplaceValidRequest`; `pipeline.TestNormalizeInvalidTimestampCannotPoisonNativeSession`; `server.TestTimestampBucketsAcrossTimezones`; collector/server `TestUnbounded*SchemaRemainsUntouched` | Invalid dates remain raw-only; do not affect snapshot selection/references; encoding, SQLite and HTTP reject outside the shared millisecond range; rejected batches preserve saved state. Actual HTTP/native calendar buckets work at boundaries in six timezones; earlier schemas reject unchanged. |
+| R02 weak identity (F01/F04) | `pipeline.TestClaudeWeakIdentityCannotBlockNativeInAnyRecordOrder`; `pipeline.TestClaudeWeakIdentityAcrossSyncsAndRetainedRaw`; `pipeline.TestClaudeWeakRawReparseAndFreshRebuildPreservePublication`; `pipeline.TestPiWeakIdentityCannotWidenNativeEnvelopes`; `pipeline.TestConflictingWeakClaudeRowsDoNotBlockUnrelatedNative` | All 24 record permutations, separate syncs, retained-raw normalization, copies, 100 reparses and reconstruction publish native facts once; weak session evidence creates no canonical references or blocks unrelated native usage. |
+| R03 equivalent usage (F04/F06) | `pipeline.TestClaudeEquivalentOptionalCountersDoNotConflict`; existing Claude source-revision/conflict tests | Missing optional zero counters and consistent totals converge; reasoning remains exclusive; real same-time native conflicts still fail atomically. |
+| R04 running credentials | `service.TestRunningStartChecksRuntimeTokenAndRestartRotatesWithoutLosingReceipts`; `service.TestRunningAnonymousStartRejectsAddingToken`; `service.TestPrivateTokenComparisonIsOwnerGuardedAndDisclosesOnlyBoolean` | Running configuration is authoritative despite edited saved config; changed tokens require restart; actual HTTP auth rotates and receipts survive; private comparison reveals no secret. |
+| R05 unhealthy lifecycle | `service.TestStopVerifiedDaemonDespiteMissingOrMalformedDatabase`; `service.TestRestartMissingDatabaseCreatesFreshAndMalformedDatabaseRemainsUntouched`; `service.TestStopDoesNotTakeOverHeldUnreachableOwnership` | Stop uses verified ownership, not query health; missing storage can restart; corrupt storage remains unchanged; unreachable owners remain protected. |
+| R06 stale readers | `cli.TestInitialFilterWaitsForValidatedPublication`; `cli.TestDashboardReplacementAcceptsSnapshotAndInvalidatesOldReaders`; `cli.TestInitialDashboardIdentityRejectsEarlierFacetsAndStatus`; `cli.TestSamePublicationRevisionCannotMoveBackwards` | Initial and replacement identities invalidate earlier response generations; old facets/status cannot roll back publication or revision; valid replacement snapshots do not recursively retry. |
+| R07 encoded paths | `tools/build/test/plugin-build.test.ts` | Real Pi/OpenCode builds and artifact checks support spaces/percent/hash in workspace and temporary paths; failures clean temporary output. |
+| R08 response contract (F09) | `queryclient.TestQueryResponsesRequirePublicationEnvelope`; `queryclient.TestQueryEnvelopeAcceptsZeroRevisionAndExplicitUnavailableMetadata`; `server.TestQueryIdentityContractForEmptyAndUnavailableStorage`; `packages/web/src/contracts.test.ts`; `packages/web/src/api_identity.test.tsx` | Untagged/missing/null/empty analytics identities and omitted revisions reject; explicit zero succeeds; unavailable metadata cannot enable analytics; newer tagged responses remain usable. |
+
 ## Reproduction and maintenance
 
 From `packages/cli`:

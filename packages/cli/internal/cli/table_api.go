@@ -87,13 +87,6 @@ func tableFacetsParams(options tableOptions) api.GetUsageFacetsParams {
 	return api.GetUsageFacetsParams{Tab: params.Tab, Period: params.Period, Bucket: params.Bucket, From: params.From, To: params.To, Provider: params.Provider, Model: params.Model, Harness: params.Harness, Session: params.Session, Repository: params.Repository, Directory: params.Directory}
 }
 
-func apiText(value *string) string {
-	if value == nil {
-		return ""
-	}
-	return *value
-}
-
 func formatServerIngestion(value int64, timezone string) string {
 	if value <= 0 {
 		return "never"
@@ -142,7 +135,7 @@ func (m interactiveModel) loadServerDashboard() reloadMsg {
 	if err != nil {
 		return reloadMsg{selection: m.selectionKey(), err: err}
 	}
-	if apiText(instance.InstanceId) != apiText(result.InstanceId) || apiText(instance.DataEpoch) != apiText(result.DataEpoch) {
+	if instance.InstanceId != result.InstanceId || instance.DataEpoch != result.DataEpoch {
 		return reloadMsg{selection: m.selectionKey(), err: queryclient.ErrSnapshotChanged}
 	}
 	rows := apiRenderRows(result.Rows, m.activeTab)
@@ -154,11 +147,7 @@ func (m interactiveModel) loadServerDashboard() reloadMsg {
 		}
 	}
 	sortRenderRows(rows, m.activeTab, m.options.sort)
-	revision := int64(0)
-	if result.Revision != nil {
-		revision = *result.Revision
-	}
-	return reloadMsg{instanceID: apiText(result.InstanceId), dataEpoch: apiText(result.DataEpoch), selection: m.selectionKey(), rows: rows, revision: revision, lastSyncMs: result.LastSynced, sessionCounts: db.SessionCounts{Shown: result.Summary.Sessions, Synced: result.Summary.SyncedSessions}, hostname: instance.Hostname, timezone: instance.Timezone}
+	return reloadMsg{instanceID: result.InstanceId, dataEpoch: result.DataEpoch, selection: m.selectionKey(), rows: rows, revision: result.Revision, lastSyncMs: result.LastSynced, sessionCounts: db.SessionCounts{Shown: result.Summary.Sessions, Synced: result.Summary.SyncedSessions}, hostname: instance.Hostname, timezone: instance.Timezone}
 }
 
 func apiRenderRows(source []api.UsageRow, tab tabMode) []renderRow {
@@ -187,50 +176,55 @@ func loadRows(ctx context.Context, options tableOptions, _ time.Time, _ groupByM
 	return rows, nil
 }
 
-func loadFilterValues(ctx context.Context, options tableOptions, _ time.Time, dimension filterDimension) ([]string, error) {
+func loadFacets(ctx context.Context, options tableOptions) (api.UsageFacetsResponse, error) {
 	client, err := tableClient(options)
 	if err != nil {
-		return nil, err
+		return api.UsageFacetsResponse{}, err
 	}
-	response, err := client.Facets(ctx, tableFacetsParams(options))
-	if err != nil {
-		return nil, err
+	return client.Facets(ctx, tableFacetsParams(options))
+}
+
+func (m interactiveModel) loadFacetValues(options tableOptions, dimension filterDimension) filterValuesMsg {
+	response, err := loadFacets(m.ctx, options)
+	msg := filterValuesMsg{requestID: m.requestID, generation: m.publicationGeneration, selection: m.selectionKey(), dimension: dimension, instanceID: response.InstanceId, dataEpoch: response.DataEpoch, revision: response.Revision, err: err}
+	if err == nil {
+		msg.values, msg.keys, msg.err = facetValues(response, dimension)
 	}
+	return msg
+}
+
+func facetValues(response api.UsageFacetsResponse, dimension filterDimension) ([]string, map[string]string, error) {
 	switch dimension {
 	case filterProvider:
-		return response.Providers, nil
+		return response.Providers, nil, nil
 	case filterModel:
-		return response.Models, nil
+		return response.Models, nil, nil
 	case filterHarness:
 		values := make([]string, 0, len(response.Harnesses))
 		for _, harness := range response.Harnesses {
 			values = append(values, string(harness))
 		}
-		return values, nil
+		return values, nil, nil
+	case filterRepository, filterDirectory:
+		source := response.Repositories
+		if dimension == filterDirectory {
+			source = response.Directories
+		}
+		locations := make([]db.LocationOption, 0, len(source))
+		for _, value := range source {
+			locations = append(locations, db.LocationOption{Key: value.Key, Name: value.Name})
+		}
+		values, keys := locationFilterLabels(locations)
+		return values, keys, nil
 	default:
-		return nil, errors.New("unsupported filter")
+		return nil, nil, errors.New("unsupported filter")
 	}
 }
 
 func loadLocationFilterValues(ctx context.Context, options tableOptions, _ time.Time, dimension filterDimension) ([]string, map[string]string, error) {
-	client, err := tableClient(options)
+	response, err := loadFacets(ctx, options)
 	if err != nil {
 		return nil, nil, err
 	}
-	response, err := client.Facets(ctx, tableFacetsParams(options))
-	if err != nil {
-		return nil, nil, err
-	}
-	var source []api.LocationOption
-	if dimension == filterRepository {
-		source = response.Repositories
-	} else {
-		source = response.Directories
-	}
-	locations := make([]db.LocationOption, 0, len(source))
-	for _, value := range source {
-		locations = append(locations, db.LocationOption{Key: value.Key, Name: value.Name})
-	}
-	values, keys := locationFilterLabels(locations)
-	return values, keys, nil
+	return facetValues(response, dimension)
 }

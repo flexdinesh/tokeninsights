@@ -58,6 +58,22 @@ func (c Client) call(ctx context.Context, method, path string, input, output int
 }
 
 func Probe(ctx context.Context, path string) (State, error) {
+	state, err := probeOwner(ctx, path)
+	if err != nil || !state.Running {
+		return state, err
+	}
+	client := Client{Record: *state.Record}
+	status, err := client.Status(ctx)
+	if err != nil {
+		return state, err
+	}
+	state.Status = &status
+	return state, nil
+}
+
+// probeOwner verifies the held lifetime lock and private runtime identity without
+// requiring healthy analytics storage. Only this verified owner can be stopped.
+func probeOwner(ctx context.Context, path string) (State, error) {
 	canonical, key, err := identify(path)
 	if err != nil {
 		return State{}, err
@@ -92,16 +108,22 @@ func Probe(ctx context.Context, path string) (State, error) {
 		if err := client.call(ctx, "GET", "/instance", nil, &instance); err != nil {
 			continue
 		}
-		if instance.InstanceID != record.InstanceID || instance.Config.DatabaseKey != key || instance.Protocol != protocolVersion {
+		if instance.InstanceID != record.InstanceID || instance.Config != record.Config || instance.Socket != record.Socket || instance.PID != record.PID || instance.SchemaVersion != record.SchemaVersion || instance.Protocol != protocolVersion {
 			continue
 		}
-		status, err := client.Status(ctx)
-		if err != nil {
-			return State{Running: true, Record: &record}, err
-		}
-		return State{Running: true, Record: &record, Status: &status}, nil
+		return State{Running: true, Record: &record}, nil
 	}
 	return State{Running: true}, fmt.Errorf("service owns database but control socket is unreachable; inspect service logs")
+}
+
+func (c Client) matchesToken(ctx context.Context, token string) (bool, error) {
+	var response struct {
+		Matches bool `json:"matches"`
+	}
+	err := c.call(ctx, http.MethodPost, "/token-match", struct {
+		Token string `json:"token"`
+	}{Token: token}, &response)
+	return response.Matches, err
 }
 
 type Status struct {

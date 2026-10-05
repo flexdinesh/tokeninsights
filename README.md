@@ -112,7 +112,9 @@ Default files under `${XDG_DATA_HOME:-~/.local/share}/tokeninsights/`:
 
 The old `tokeninsights.sqlite` remains untouched. Retained sources rebuild the fresh collector and populate the fresh server through ingestion; legacy import is outside this change. The two files cannot alias one another. Server storage cannot be opened as collector storage or subjected to collector recovery.
 
-Storage accepts only the current collector schema 15 and server schema 1. Previous schemas are rejected without mutation. Current-schema collector data-generation rebuilds remain local; they cannot delete server history.
+Storage accepts only the current collector schema 16 and server schema 2. Previous schemas are rejected without mutation. Current-schema collector data-generation rebuilds remain local; they cannot delete server history.
+
+Rebuild earlier PR databases from retained sources into fresh files. Normalized source times must be valid Unix milliseconds; invalid observations remain collector-local diagnostics. Filename-derived Pi/Claude sessions remain raw-only until native session evidence exists. Changing a running service token requires `service restart`.
 
 Raw provider and model values retain the harness names. Stored canonical values used by filters and dashboards map Pi `openai-codex` to `openai`, map `fireworks-ai` to `fireworks`, and shorten Fireworks model names by removing `accounts/fireworks/models/`. Normal sync also updates previously stored canonical names.
 

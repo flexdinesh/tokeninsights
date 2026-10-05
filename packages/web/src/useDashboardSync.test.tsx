@@ -21,11 +21,11 @@ const ready: SyncStatus = {
   dataReadiness: 'ready',
 }
 
-function setup() {
+function setup(initial: SyncStatus | null = ready) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false, staleTime: Infinity } },
   })
-  client.setQueryData(['sync'], ready)
+  if (initial) client.setQueryData(['sync'], initial)
   function Wrapper({ children }: { children: ReactNode }) {
     return <QueryClientProvider client={client}>{children}</QueryClientProvider>
   }
@@ -75,6 +75,44 @@ it('a committed ingestion revision invalidates saved queries and producer labels
   for (const key of ['usage', 'facets', 'instance']) {
     expect(client.getQueryState([key, 'saved'])?.isInvalidated).toBe(true)
   }
+  unmount()
+  client.clear()
+})
+
+for (const readiness of ['metadata', 'recovery', 'rebuild', 'unavailable']) {
+  it(`${readiness} status with an explicitly absent database disables analytics and clears replaced data`, async () => {
+    const fetcher = vi.fn<typeof fetch>(() =>
+      Promise.resolve(
+        new Response(JSON.stringify({ ...ready, dataReadiness: readiness, dataEpoch: '' })),
+      ),
+    )
+    vi.stubGlobal('fetch', fetcher)
+    const { result, client, unmount } = setup()
+    client.setQueryData(['usage', 'old'], { saved: true })
+    client.setQueryData(['facets', 'old'], { saved: true })
+    await act(() => result.current.reload())
+    await waitFor(() => expect(result.current.analyticsEnabled).toBe(false))
+    expect(result.current.identity).toBe('instance/')
+    expect(client.getQueryData(['usage', 'old'])).toBeUndefined()
+    expect(client.getQueryData(['facets', 'old'])).toBeUndefined()
+    expect(fetcher.mock.calls.every(([, init]) => init?.method === 'GET')).toBe(true)
+    unmount()
+    client.clear()
+  })
+}
+
+it('missing readiness in a status response cannot enable analytics', async () => {
+  const malformed = Object.fromEntries(
+    Object.entries(ready).filter(([key]) => key !== 'dataReadiness'),
+  )
+  vi.stubGlobal(
+    'fetch',
+    vi.fn<typeof fetch>(() => Promise.resolve(new Response(JSON.stringify(malformed)))),
+  )
+  const { result, client, unmount } = setup(null)
+  await waitFor(() => expect(result.current.statusQuery.isError).toBe(true))
+  expect(result.current.analyticsEnabled).toBe(false)
+  expect(result.current.identity).toBe('')
   unmount()
   client.clear()
 })

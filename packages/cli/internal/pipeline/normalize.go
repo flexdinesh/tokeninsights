@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/db"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/publication"
 )
 
 type rawTokenRow struct {
@@ -133,7 +134,7 @@ func Normalize(ctx context.Context, options NormalizeOptions) (Summary, error) {
 			return summary, err
 		}
 		for _, row := range rows {
-			if !row.SessionID.Valid || strings.TrimSpace(row.SessionID.String) == "" {
+			if rawTokenNormalizationDiagnostic(row) != nil {
 				summary.Diagnostics++
 				continue
 			}
@@ -354,15 +355,8 @@ func completeNormalizationWork(ctx context.Context, runner sqlRunner, row rawTok
 }
 
 func normalizeRawTokenRow(ctx context.Context, runner sqlRunner, row rawTokenRow, options NormalizeOptions) (int, int, error) {
-	if !row.SessionID.Valid || strings.TrimSpace(row.SessionID.String) == "" {
-		diagnostic := Diagnostic{
-			Harness:    row.Harness,
-			RawFactKey: row.RawFactKey,
-			Severity:   "warning",
-			Code:       "missing_session",
-			Message:    "raw token fact skipped because no stable session identity is available",
-		}
-		inserted, err := insertDiagnostic(ctx, runner, diagnostic, &row.ID, rawRunPointer(row), nowMs(options))
+	if diagnostic := rawTokenNormalizationDiagnostic(row); diagnostic != nil {
+		inserted, err := insertDiagnostic(ctx, runner, *diagnostic, &row.ID, rawRunPointer(row), nowMs(options))
 		if err != nil {
 			return 0, 0, err
 		}
@@ -394,6 +388,23 @@ func normalizeRawTokenRow(ctx context.Context, runner sqlRunner, row rawTokenRow
 		return 1, 0, nil
 	}
 	return 0, 0, nil
+}
+
+// Check source evidence before creating session/message envelopes. Filename
+// guesses remain raw-only; they cannot widen or conflict with native identity.
+func rawTokenNormalizationDiagnostic(row rawTokenRow) *Diagnostic {
+	var code, message string
+	switch {
+	case !row.SessionID.Valid || strings.TrimSpace(row.SessionID.String) == "":
+		code, message = "missing_session", "raw token fact skipped because no stable session identity is available"
+	case !publication.ValidTimestampMs(canonicalTime(row)):
+		code, message = "invalid_occurrence", "raw token fact skipped because its timestamp is outside the supported range"
+	case (row.Harness == HarnessPi || row.Harness == HarnessClaudeCode) && sourceSessionIdentity(rawMetadataPointer(row)) != "native":
+		code, message = "publication_ambiguous_session_identity", "raw token fact withheld from canonical data because native session evidence is unavailable"
+	default:
+		return nil
+	}
+	return &Diagnostic{Harness: row.Harness, RawFactKey: row.RawFactKey, Severity: "warning", Code: code, Message: message}
 }
 
 func upsertCanonicalSession(ctx context.Context, runner sqlRunner, row rawTokenRow) (int64, error) {
@@ -443,18 +454,6 @@ func upsertCanonicalMessage(ctx context.Context, runner sqlRunner, row rawTokenR
 
 func upsertCanonicalTokenUsage(ctx context.Context, runner sqlRunner, row rawTokenRow, sessionDBID int64, messageDBID *int64) (bool, error) {
 	values := canonicalTokenValuesFor(row, sessionDBID, messageDBID)
-	if (row.Harness == HarnessPi || row.Harness == HarnessClaudeCode) && sourceSessionIdentity(rawMetadataPointer(row)) != "native" {
-		var hasNativeSession bool
-		if err := runner.QueryRowContext(ctx, `SELECT EXISTS(
-			SELECT 1 FROM canonical_token_usage c JOIN raw_token_usage r ON r.id = c.primary_raw_fact_id
-			WHERE c.semantic_key = ? AND json_extract(r.metadata_json, '$.session_source') = 'native'
-		)`, values.Key).Scan(&hasNativeSession); err != nil {
-			return false, err
-		}
-		if hasNativeSession {
-			return false, nil
-		}
-	}
 	if row.Harness == HarnessClaudeCode && row.MessageID.Valid && row.MessageID.String != "" {
 		apply, err := acceptClaudeCodeCanonicalRevision(ctx, runner, values, claudeCodeRequestID(rawMetadataPointer(row)) != "")
 		if err != nil || !apply {
@@ -527,15 +526,18 @@ func acceptClaudeCodeCanonicalRevision(ctx context.Context, runner sqlRunner, ne
 	if previous.RecordedAtMs > next.RecordedAtMs {
 		return false, nil
 	}
-	if previous.RecordedAtMs == next.RecordedAtMs &&
-		(previous.Provider != next.Provider || previous.ProviderSource != next.ProviderSource ||
-			previous.Model != next.Model || previous.Quality != next.Quality || previous.Countable != next.Countable ||
-			previous.InputTokens != next.InputTokens || previous.OutputTokens != next.OutputTokens ||
-			previous.ReasoningTokens != next.ReasoningTokens || previous.CacheReadTokens != next.CacheReadTokens ||
-			previous.CacheWriteTokens != next.CacheWriteTokens || previous.TotalTokens != next.TotalTokens) {
+	if previous.RecordedAtMs == next.RecordedAtMs && !sameCanonicalUsage(previous, next) {
 		return false, fmt.Errorf("claude code native request has conflicting usage at the same source timestamp")
 	}
 	return true, nil
+}
+
+func sameCanonicalUsage(left, right canonicalTokenValues) bool {
+	return left.Provider == right.Provider && left.ProviderSource == right.ProviderSource &&
+		left.Model == right.Model && left.Quality == right.Quality && left.Countable == right.Countable &&
+		left.InputTokens == right.InputTokens && left.OutputTokens == right.OutputTokens &&
+		left.ReasoningTokens == right.ReasoningTokens && left.CacheReadTokens == right.CacheReadTokens &&
+		left.CacheWriteTokens == right.CacheWriteTokens && left.TotalTokens == right.TotalTokens
 }
 
 func canonicalTokenValuesFor(row rawTokenRow, sessionDBID int64, messageDBID *int64) canonicalTokenValues {

@@ -13,10 +13,12 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/db"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/pipeline"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/queryclient"
 )
 
 type reloadMsg struct {
 	requestID             uint64
+	generation            uint64
 	instanceID, dataEpoch string
 	selection             string
 	rows                  []renderRow
@@ -30,12 +32,15 @@ type reloadMsg struct {
 }
 
 type filterValuesMsg struct {
-	requestID uint64
-	selection string
-	dimension filterDimension
-	values    []string
-	keys      map[string]string
-	err       error
+	requestID             uint64
+	generation            uint64
+	instanceID, dataEpoch string
+	revision              int64
+	selection             string
+	dimension             filterDimension
+	values                []string
+	keys                  map[string]string
+	err                   error
 }
 
 type syncProgressMsg struct {
@@ -50,10 +55,11 @@ type syncDoneMsg struct {
 type snapshotMsg struct{ reloadMsg }
 
 type sharedSyncMsg struct {
+	requestID             uint64
+	generation            uint64
 	instanceID, dataEpoch string
 	readiness             string
 	pending               bool
-	requested             int64
 	status                db.SyncStatus
 	err                   error
 }
@@ -95,6 +101,8 @@ const (
 
 type interactiveModel struct {
 	instanceID, dataEpoch string
+	publicationGeneration uint64
+	observedRevision      int64
 	timezone              string
 	serviceReadiness      string
 	pendingRefresh        bool
@@ -120,12 +128,12 @@ type interactiveModel struct {
 	ctx                   context.Context
 	queries               *tableRequests
 	filterQueries         *tableRequests
+	statusQueries         *tableRequests
 	requestID             uint64
 	cancel                context.CancelFunc
 	statusPolling         bool
 	sharedSync            db.SyncStatus
 	coverage              []db.DayCoverage
-	coverageSinceMs       int64
 	options               tableOptions
 	now                   time.Time
 	err                   error
@@ -205,6 +213,7 @@ func newInteractiveModel(ctx context.Context, options tableOptions, now time.Tim
 		ctx:              syncContext,
 		queries:          &tableRequests{},
 		filterQueries:    &tableRequests{},
+		statusQueries:    &tableRequests{},
 		cancel:           cancel,
 		options:          options,
 		now:              now,
@@ -291,10 +300,14 @@ func (m interactiveModel) snapshotCmd() tea.Cmd {
 func (m interactiveModel) loadDashboard() reloadMsg {
 	result := m.loadServerDashboard()
 	result.requestID = m.requestID
+	result.generation = m.publicationGeneration
 	return result
 }
 
 func (m interactiveModel) filterValuesCmd(dimension filterDimension) tea.Cmd {
+	if m.instanceID == "" || m.dataEpoch == "" || m.serviceReadiness != "ready" {
+		return nil
+	}
 	m.ctx, m.requestID = m.queryContext(m.filterQueries)
 	queryOptions := m.options
 	if m.activeTab != tabRepo {
@@ -302,13 +315,45 @@ func (m interactiveModel) filterValuesCmd(dimension filterDimension) tea.Cmd {
 		queryOptions.filters.directories = nil
 	}
 	return func() tea.Msg {
-		if dimension >= filterRepository {
-			values, keys, err := loadLocationFilterValues(m.ctx, queryOptions, m.now, dimension)
-			return filterValuesMsg{requestID: m.requestID, selection: m.selectionKey(), dimension: dimension, values: values, keys: keys, err: err}
-		}
-		values, err := loadFilterValues(m.ctx, queryOptions, m.now, dimension)
-		return filterValuesMsg{requestID: m.requestID, selection: m.selectionKey(), dimension: dimension, values: values, err: err}
+		return m.loadFacetValues(queryOptions, dimension)
 	}
+}
+
+// A completed status or dashboard read may establish a publication. Requests
+// captured before an identity transition cannot establish it again later.
+func (m interactiveModel) transitionPublication(instanceID, dataEpoch string, revision int64, fromStatus bool) (interactiveModel, []tea.Cmd) {
+	identityChanged := instanceID != m.instanceID || dataEpoch != m.dataEpoch
+	advanced := identityChanged || revision > m.observedRevision
+	var commands []tea.Cmd
+	m.serviceReadiness = "ready"
+	if identityChanged {
+		m.publicationGeneration++
+		m.instanceID, m.dataEpoch = instanceID, dataEpoch
+		m.queries.invalidate()
+		m.statusQueries.invalidate()
+		m.rows, m.coverage = nil, nil
+		m.sessionCounts, m.lastSyncMs = db.SessionCounts{}, 0
+		m.showingSnapshot, m.reloadInFlight = false, false
+		if fromStatus {
+			m.loading = true
+		}
+		m.err = nil
+		if !fromStatus && m.statusPolling {
+			commands = append(commands, m.sharedSyncCmd())
+		}
+	}
+	if advanced {
+		m.observedRevision = revision
+		m.sharedSync.Revision = revision
+		m.filterQueries.invalidate()
+		m.filterValues, m.filterValueKeys = nil, nil
+		m.filterErr = nil
+		if m.popup == popupFilterValues {
+			m.filterLoading = true
+			commands = append(commands, m.filterValuesCmd(m.filterDimension))
+		}
+	}
+	return m, commands
 }
 
 func (m interactiveModel) maxVisibleRows() int {
@@ -481,37 +526,47 @@ func (m interactiveModel) tableContentWidth(rows []renderRow) int {
 func (m interactiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case sharedSyncMsg:
-		commands := []tea.Cmd{m.sharedSyncCmd()}
-		if msg.err == nil {
-			previous := m.sharedSync
-			epochChanged := msg.instanceID != m.instanceID || msg.dataEpoch != m.dataEpoch
-			m.instanceID, m.dataEpoch, m.serviceReadiness, m.pendingRefresh = msg.instanceID, msg.dataEpoch, msg.readiness, msg.pending
-			if epochChanged {
-				m.rows, m.coverage = nil, nil
-				m.showingSnapshot = false
+		if msg.generation != m.publicationGeneration || !m.statusQueries.current(msg.requestID) {
+			return m, nil
+		}
+		if msg.err != nil {
+			return m, m.sharedSyncCmd()
+		}
+		previousReadiness := m.serviceReadiness
+		if msg.readiness != "ready" {
+			if previousReadiness != msg.readiness {
+				m.publicationGeneration++
+				m.queries.invalidate()
 				m.filterQueries.invalidate()
-				m.filterValues, m.filterValueKeys = nil, nil
-				if m.popup == popupFilterValues {
-					m.filterLoading = true
-					commands = append(commands, m.filterValuesCmd(m.filterDimension))
-				}
+				m.rows, m.coverage, m.filterValues, m.filterValueKeys = nil, nil, nil, nil
+				m.showingSnapshot, m.reloadInFlight = false, false
 			}
-			m.coverageSinceMs = max(m.coverageSinceMs, msg.requested)
-			m.sharedSync = msg.status
-			if msg.readiness != "" && msg.readiness != "ready" || msg.status.Phase == "rebuilding" || msg.status.Phase == "rebuild_failed" {
-				m.showingSnapshot, m.snapshotAllowed = false, false
-				m.rows, m.coverage = nil, nil
-				m.syncStatus = pipeline.SyncProgressRebuilding
-			} else if !m.reloadInFlight && (epochChanged || msg.status.Revision != previous.Revision || msg.status.JobID != previous.JobID) {
-				m.snapshotAllowed = true
-				m.reloadInFlight = true
-				if m.syncing {
-					commands = append(commands, m.snapshotCmd())
-				} else {
-					commands = append(commands, m.refreshCmd())
-				}
+			m.serviceReadiness = msg.readiness
+			m.loading, m.filterLoading = false, false
+			m.err, m.filterErr = queryclient.ErrUnavailable, queryclient.ErrUnavailable
+			return m, m.sharedSyncCmd()
+		}
+		if msg.instanceID == "" || msg.dataEpoch == "" || msg.status.Revision < 0 {
+			return m, m.sharedSyncCmd()
+		}
+		identityChanged := msg.instanceID != m.instanceID || msg.dataEpoch != m.dataEpoch
+		if !identityChanged && msg.status.Revision < m.observedRevision {
+			return m, m.sharedSyncCmd()
+		}
+		advanced := identityChanged || msg.status.Revision > m.observedRevision
+		var commands []tea.Cmd
+		m, commands = m.transitionPublication(msg.instanceID, msg.dataEpoch, msg.status.Revision, true)
+		m.sharedSync = msg.status
+		m.pendingRefresh = msg.pending
+		if !m.reloadInFlight && (advanced || previousReadiness != "ready" || m.err != nil) {
+			m.snapshotAllowed, m.reloadInFlight = true, true
+			if m.syncing {
+				commands = append(commands, m.snapshotCmd())
+			} else {
+				commands = append(commands, m.refreshCmd())
 			}
 		}
+		commands = append(commands, m.sharedSyncCmd())
 		return m, tea.Batch(commands...)
 	case syncProgressMsg:
 		m = m.withSyncProgress(msg.event)
@@ -558,28 +613,26 @@ func (m interactiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m = m.measureHeights()
 		return m, m.reloadCmd()
 	case reloadMsg:
-		if !m.queries.current(msg.requestID) {
+		if msg.generation != m.publicationGeneration || !m.queries.current(msg.requestID) {
 			return m, nil
 		}
-		if msg.selection != "" && msg.selection != m.selectionKey() || msg.instanceID != "" && m.instanceID != "" && (msg.instanceID != m.instanceID || msg.dataEpoch != m.dataEpoch) {
-			m.reloadInFlight = false
-			return m, m.refreshCmd()
-		}
-		if m.sharedSync.Phase == "rebuilding" || m.sharedSync.Phase == "rebuild_failed" {
-			m.reloadInFlight = false
+		if msg.selection != "" && msg.selection != m.selectionKey() {
 			return m, nil
 		}
-		m.loading = false
-		m.reloadInFlight = false
+		m.loading, m.reloadInFlight = false, false
 		if msg.err != nil {
 			m.err = msg.err
 			return m, nil
 		}
+		if msg.instanceID == "" || msg.dataEpoch == "" || msg.revision < 0 || msg.instanceID == m.instanceID && msg.dataEpoch == m.dataEpoch && msg.revision < m.observedRevision {
+			m.err = queryclient.ErrSnapshotChanged
+			return m, nil
+		}
+		var commands []tea.Cmd
+		m, commands = m.transitionPublication(msg.instanceID, msg.dataEpoch, msg.revision, false)
 		m.err = nil
-		m.instanceID, m.dataEpoch = msg.instanceID, msg.dataEpoch
 		m.rows = msg.rows
 		m.coverage = nil
-		m.sharedSync.Revision = msg.revision
 		m.sessionCounts = msg.sessionCounts
 		m.lastSyncMs = msg.lastSyncMs
 		m.timezone = msg.timezone
@@ -592,27 +645,30 @@ func (m interactiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m = m.resetRowPosition()
 		}
 		m = m.clampHorizontalOffset()
-		return m, nil
+		return m, tea.Batch(commands...)
 	case snapshotMsg:
-		if !m.queries.current(msg.requestID) {
+		if msg.generation != m.publicationGeneration || !m.queries.current(msg.requestID) {
 			return m, nil
 		}
-		if msg.selection != "" && msg.selection != m.selectionKey() || msg.instanceID != "" && m.instanceID != "" && (msg.instanceID != m.instanceID || msg.dataEpoch != m.dataEpoch) {
-			m.reloadInFlight = false
-			return m, m.snapshotCmd()
+		if msg.selection != "" && msg.selection != m.selectionKey() {
+			return m, nil
 		}
 		m.reloadInFlight = false
 		if !m.syncing || !m.snapshotAllowed || msg.err != nil {
 			return m, nil
 		}
+		if msg.instanceID == "" || msg.dataEpoch == "" || msg.revision < 0 || msg.instanceID == m.instanceID && msg.dataEpoch == m.dataEpoch && msg.revision < m.observedRevision {
+			return m, nil
+		}
 		wasShowing := m.showingSnapshot
+		var commands []tea.Cmd
+		m, commands = m.transitionPublication(msg.instanceID, msg.dataEpoch, msg.revision, false)
 		m.showingSnapshot = true
-		m.instanceID, m.dataEpoch = msg.instanceID, msg.dataEpoch
 		m.rows = msg.rows
-		m.coverage = msg.coverage
-		m.sharedSync.Revision = msg.revision
+		m.coverage = nil
 		m.sessionCounts = msg.sessionCounts
-		m.lastSyncMs = msg.lastSyncMs
+		m.lastSyncMs, m.timezone = msg.lastSyncMs, msg.timezone
+		m.statusline = m.statusline.withValue(statuslineHostname, normalizeHostname(msg.hostname, nil))
 		m = m.reconcileStatusline()
 		m = m.reconcileTableSummary()
 		if wasShowing {
@@ -620,9 +676,9 @@ func (m interactiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		} else {
 			m = m.resetRowPosition()
 		}
-		return m, nil
+		return m, tea.Batch(commands...)
 	case filterValuesMsg:
-		if !m.filterQueries.current(msg.requestID) {
+		if msg.generation != m.publicationGeneration || !m.filterQueries.current(msg.requestID) {
 			return m, nil
 		}
 		if msg.selection != "" && msg.selection != m.selectionKey() {
@@ -634,6 +690,10 @@ func (m interactiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.filterLoading = false
 		m.filterErr = msg.err
 		if msg.err != nil {
+			return m, nil
+		}
+		if m.instanceID == "" || msg.instanceID != m.instanceID || msg.dataEpoch != m.dataEpoch || msg.revision < m.observedRevision {
+			m.filterErr = queryclient.ErrSnapshotChanged
 			return m, nil
 		}
 		current := m.currentFilterValues(m.filterDimension)

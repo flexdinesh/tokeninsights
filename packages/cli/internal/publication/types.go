@@ -2,13 +2,15 @@
 package publication
 
 const (
-	ProtocolVersion          = 1
-	IdentityVersion          = 1
-	SemanticsVersion         = 1
-	MaxBodyBytes             = 1 << 20
-	MaxEntries               = 256
-	MaxStringBytes           = 256
-	SafeInteger        int64 = 9007199254740991
+	ProtocolVersion        = 1
+	IdentityVersion        = 1
+	SemanticsVersion       = 1
+	MaxBodyBytes           = 1 << 20
+	MaxEntries             = 256
+	MaxStringBytes         = 256
+	SafeInteger      int64 = 9007199254740991
+	// Leave one day before SQLite's year-10000 boundary for local date buckets.
+	MaxTimestampMs     int64 = 253402214399999 // 9999-12-30T23:59:59.999Z
 	ClaudeRevisionRule       = "claude-source-timestamp-v1"
 )
 
