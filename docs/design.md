@@ -59,19 +59,23 @@ the fresh files. Aliased paths and wrong database roles are rejected.
   collection. Collection and delivery report independently.
 - `sync --publish-only` sends retained journal work without discovering sources.
   Retry is manual; offline publication stays durable until another invocation.
-- `normalize` processes retained collector raw facts and journals canonical
+- `collector normalize` processes retained collector raw facts and journals canonical
   changes. It does not publish; a subsequent sync performs delivery.
 - Bare invocation ensures the local canonical server and prints its URL.
   Startup initializes only missing server storage and never collects.
-- `view` queries saved server data through REST. Without a server URL it ensures
+- `tui` queries saved server data through REST. Without a server URL it ensures
   the local server; an explicit URL bypasses local storage/discovery.
   `--no-sync` aliases this read-only default. `--sync` explicitly runs caller-side
   collection/publication before opening. TUI `r` and browser Reload query only.
 - `service start|stop|restart|status|run` manages the local server.
   `server run` provides the shared foreground remote composition; non-loopback
   binding requires a token. `serve` remains a deprecated foreground alias.
-- `reset-canonical` and `reset-all` affect collector storage only. Rebuilding a
+- `collector reset-canonical` and `collector reset-all` affect collector storage only. Rebuilding a
   collector does not remove server facts or publish implicit retractions.
+- Everyday commands are `service`, `sync`, and `tui`. Advanced maintenance uses
+  the `collector` namespace; bare `collector` or `collector --help` shows its
+  commands. `view` and the former top-level maintenance commands remain
+  deprecated aliases with the same behavior and flags.
 - Completion plugins are thin triggers for the same Go `sync`, never alternate
   parsers or transports. Manual collection remains primary; host hooks do not
   prove that every durable write was available. See [plugins](plugins.md) for
@@ -186,7 +190,7 @@ Schema V6 adds `normalization_work_queue` for pending canonical-domain work.
 
 Schema V7 adds `source_refresh_state` for Local-only Continuity Metadata used by Recent Source Refresh.
 
-Schema V8 adds `database_lifecycle` for local compatibility and resumable rebuild state. Recognized older schema/data now recover automatically through a transactional in-place application-table reset and all-harness normalized reingestion. This supersedes the former manual `reset-all` upgrade requirement; it is not a row-preserving schema migration.
+Schema V8 adds `database_lifecycle` for local compatibility and resumable rebuild state. Recognized older schema/data now recover automatically through a transactional in-place application-table reset and all-harness normalized reingestion. This supersedes the former manual top-level `reset-all` upgrade requirement; it is not a row-preserving schema migration.
 
 Schema V10 retains optional `usage_locations` metadata and `location_id` on raw and canonical token facts, with only repository and directory identities. Data generation 3 introduced location attribution; generation 4 refreshed display paths; generation 5 removes worktree and branch attribution. Each upgrade triggers a full reset and resync. The database is reconstructable from retained source artifacts; usage whose artifacts were deleted may disappear after recovery. Sync checks recorded source directories against current Git metadata when those directories exist. A path reused by a different repository can therefore attribute older facts to the checkout present at sync time; provenance records the origin of repository values.
 
@@ -282,7 +286,7 @@ Current source state properties:
 - records parser/collector provenance used to decide whether a cursor can be trusted;
 - stores last successful source refresh time, observed source file modification time, and observed source file size;
 - avoids raw JSONL lines and full source paths unless a specific adapter cannot maintain continuity without them;
-- is cleared by `reset-all --confirm` and preserved by `reset-canonical --confirm`.
+- is cleared by `collector reset-all --confirm` and preserved by `collector reset-canonical --confirm`.
 
 `source_cursor_state` is separate Local-only Continuity Metadata. Eligible Pi files persist a byte offset, file size, mtime, parser/collector identity, hashes of the processed prefix and prior boundary, and a hashed location fingerprint. Ordinary Codex and Claude Code sources persist a full content fingerprint and current location fingerprint. Codex forks use `cursor_kind='codex-ancestry-v1'`: `prefix_hash` binds child content, `location_fingerprint` binds child attribution, and `boundary_hash` binds the complete ancestry's content, locations, source/session identities, parent links, and parser/collector provenance. Existing fork sources establish these markers once, without resetting usage or upgrading schema. Missing, conflicting, cyclic, unreadable, or unstable ancestry cannot establish reusable markers.
 
@@ -297,12 +301,12 @@ If source continuity cannot be trusted, the pipeline must fall back to a full pa
 Work queue rules:
 
 - `sync --no-normalize` still enqueues work for newly inserted raw facts;
-- ordinary `normalize` processes pending work rather than scanning all raw facts;
-- `normalize --dry-run` reports pending work by default;
+- ordinary `collector normalize` processes pending work rather than scanning all raw facts;
+- `collector normalize --dry-run` reports pending work by default;
 - work is removed only in the same transaction that writes the canonical fact or diagnostic;
 - missing-session diagnostics complete their work item;
-- `reset-canonical --confirm` marks all existing raw facts dirty so canonical data and diagnostics can be rebuilt from raw facts;
-- `reset-all --confirm` clears the queue with the rest of the database.
+- `collector reset-canonical --confirm` marks all existing raw facts dirty so canonical data and diagnostics can be rebuilt from raw facts;
+- `collector reset-all --confirm` clears the queue with the rest of the database.
 
 ### `canonical_sessions`
 
@@ -392,7 +396,7 @@ Workers derive their budget from `GOMAXPROCS`, with at most twice that many sour
 
 `sync --full-refresh` ignores source refresh state for the requested harness scope and full-parses discovered sources using the existing parser behavior. Successful source ingest updates source refresh state after commit. Full refresh does not requeue all existing raw facts for canonical rebuild by default; only newly inserted raw facts enqueue pending normalization work.
 
-Identifier rules apply while writing canonical facts. Normal sync and `normalize` also refresh previously written canonical identifiers from linked raw facts, including when no new raw work is pending. Raw source identifiers remain unchanged.
+Identifier rules apply while writing canonical facts. Normal sync and `collector normalize` also refresh previously written canonical identifiers from linked raw facts, including when no new raw work is pending. Raw source identifiers remain unchanged.
 
 Source continuity rules:
 
@@ -413,7 +417,7 @@ JSONL readers use Reader with a captured file extent, cancellation checks betwee
 
 With `sync --all --source-dir <root>`, harness discovery is bounded to `<root>/<harness>`. Harnesses whose subdirectory is absent are skipped. Single-harness sync with `--source-dir` still scans the provided directory directly for ad hoc fixtures.
 
-Before normal data work, public sync/normalize coordinate compatibility recovery under a database-scoped writer lock. Targeted default-source commands recover all default harnesses first; all-harness `--source-dir` recovery stays within the specified root. Single-harness custom-source recovery defers without changing the database. Recovery always normalizes before satisfying the requested scope, including `--no-normalize`; missing installations remain normal skips. Failed recovery preserves partial imports but keeps analytics unavailable until the all-harness rebuild succeeds.
+Before normal data work, public sync/collector normalize coordinate compatibility recovery under a database-scoped writer lock. Targeted default-source commands recover all default harnesses first; all-harness `--source-dir` recovery stays within the specified root. Single-harness custom-source recovery defers without changing the database. Recovery always normalizes before satisfying the requested scope, including `--no-normalize`; missing installations remain normal skips. Failed recovery preserves partial imports but keeps analytics unavailable until the all-harness rebuild succeeds.
 
 Pending recovery must resume with the same normalized source configuration. Default-source keys fingerprint the effective OpenCode, Pi, Codex, and Claude Code roots, including environment overrides. Custom all-harness keys fingerprint the normalized canonical absolute root. Only a hash is persisted; full paths cannot be reconstructed from it. Mismatched retries, including dry-run attempts, are rejected before data writes. Repeat the original `--source-dir` and `--collector-db-path`, preserving source environment settings. Default-source normalization cannot finish a custom-root rebuild; server/TUI/browser startup never performs collector recovery.
 
@@ -519,7 +523,7 @@ Uneven metric coverage is valid. An adapter should produce diagnostics for unava
 
 ## Normalization Pipeline
 
-`tokeninsights normalize`:
+`tokeninsights collector normalize`:
 
 1. Loads raw token facts, optionally filtered by harness.
 2. Rejects facts without stable session identity and writes a diagnostic.
@@ -534,18 +538,18 @@ Normalization must be idempotent: repeated runs should converge on the same cano
 
 Current normalization is work-queue incremental. It loads pending `token_usage` work for the selected harness filter, upserts canonical rows by semantic key, removes completed work in the same transaction, and increments ingest-run canonical/diagnostic counters only for newly inserted canonical facts or diagnostics. Existing canonical rows may be updated deterministically when the same semantic key is requeued by an explicit rebuild path.
 
-Incremental normalization processes pending raw-fact work. A per-harness signature of current provider/model rules triggers one refresh of existing canonical identifiers when missing or changed; matching signatures with no pending work return before a write transaction. Rule markers commit with normalization, and `reset-canonical` clears them. Explicit rebuild paths mark raw facts dirty and use the same work mechanism. Deterministic updates remain allowed for dirty raw facts.
+Incremental normalization processes pending raw-fact work. A per-harness signature of current provider/model rules triggers one refresh of existing canonical identifiers when missing or changed; matching signatures with no pending work return before a write transaction. Rule markers commit with normalization, and `collector reset-canonical` clears them. Explicit rebuild paths mark raw facts dirty and use the same work mechanism. Deterministic updates remain allowed for dirty raw facts.
 
 Claude native session/message/request identity has explicit source-timestamp precedence: the latest entire snapshot replaces older usage; equal-time conflicting snapshots fail. Other competing normalized payloads without an approved source revision are withheld or rejected at publication/ingestion rather than ordered by arrival time.
 
-`normalize --dry-run` computes candidate canonical and diagnostic counts without writing.
+`collector normalize --dry-run` computes candidate canonical and diagnostic counts without writing.
 
 ## Viewer
 
-`tokeninsights view` is interactive-only and reads the server API. Without an
+`tokeninsights tui` is interactive-only and reads the server API. Without an
 explicit server URL it ensures the local query server; `--server-url` bypasses
 local bootstrap/storage. `--no-sync` aliases the read-only default.
-`view --sync` invokes caller-side all-harness collection/publication before
+`tui --sync` invokes caller-side all-harness collection/publication before
 opening and stops on an unresolved failure. Viewer filters constrain queries,
 never collection scope.
 
@@ -712,8 +716,8 @@ independent of collection/viewer clocks.
   are not silently migrated into either new role.
 - Collector compatibility/reset machinery applies only to collector storage.
   Explicit resets recreate application tables transactionally without unlinking
-  DB/WAL/SHM/lock inodes. `reset-canonical` preserves raw facts and publication
-  history while requeuing raw normalization work; `reset-all` clears collector
+  DB/WAL/SHM/lock inodes. `collector reset-canonical` preserves raw facts and publication
+  history while requeuing raw normalization work; `collector reset-all` clears collector
   journal/cursors and establishes a fresh delivery stream. Neither retracts
   committed server usage.
 - Supported local rebuilds retain a pending marker/source-scope fingerprint for
@@ -746,7 +750,7 @@ Must not change silently:
 - default token analytics use only countable canonical token rows;
 - unavailable metric domains must not appear as empty active viewer tabs;
 - cost tracking must stay out of the active product;
-- TUI/browser query committed server data through REST; Reload never collects, and explicit caller-side `view --sync` is the only view-start collection path.
+- TUI/browser query committed server data through REST; Reload never collects, and explicit caller-side `tui --sync` is the only view-start collection path.
 
 Can evolve with care:
 
@@ -769,7 +773,7 @@ Can evolve with care:
 | `tools/build/` | private Node 26+ native TypeScript build/test/development tooling package |
 | `packages/cli/cmd/tokeninsights/main.go` | CLI executable entry point |
 | `packages/cli/internal/cli/commands.go` | command dispatch and thin orchestration |
-| `packages/cli/internal/cli/flags.go` | view flag parsing |
+| `packages/cli/internal/cli/flags.go` | TUI flag parsing |
 | `packages/cli/internal/cli/serve.go` | web command flags and orchestration |
 | `packages/cli/internal/viewer/filters.go` | shared calendar and filter semantics |
 | `packages/cli/internal/server/` | Public HTTP handlers, snapshots, generated API models, embedded assets |

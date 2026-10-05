@@ -21,7 +21,7 @@ import (
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/service"
 )
 
-func TestViewReadsSavedServerUsageWithoutCollectorOrLocalDatabase(t *testing.T) {
+func TestTUIAndViewAliasReadSavedServerUsageWithoutCollection(t *testing.T) {
 	for _, alias := range []bool{false, true} {
 		name := "default"
 		if alias {
@@ -60,8 +60,9 @@ func TestViewReadsSavedServerUsageWithoutCollectorOrLocalDatabase(t *testing.T) 
 				return model, nil
 			})
 			defer restore()
-			args := []string{"view", "--server-url", remote.URL, "--server-db-path", localPath, "--collector-db-path", collectorPath, "--all-time"}
+			args := []string{"tui", "--server-url", remote.URL, "--server-db-path", localPath, "--collector-db-path", collectorPath, "--all-time"}
 			if alias {
+				args[0] = "view"
 				args = append(args, "--no-sync")
 			}
 			var stdout bytes.Buffer

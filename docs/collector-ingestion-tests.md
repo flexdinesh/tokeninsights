@@ -27,7 +27,7 @@ All names below are executable production tests under `packages/cli/internal`.
 | F09 Unsupported publication/storage version | G09, G11 | `ingestion.TestFailureContractValidationPrivacyAndCompatibility`; `db.TestLegacySchemasRejectWithoutMutation`; serverstore role/version tests | Wire incompatibility rejects before mutation; legacy/wrong-role/unknown storage remains unchanged. |
 | F10 Invalid counters/aggregate overflow | G06, G11 | `ingestion.TestFailureContractValidationPrivacyAndCompatibility`; `ingestion.TestFailureContractAggregateOverflowIsAtomic`; publication codec tests | Negative, fractional, missing, unsafe, overflow, contradictory totals reject; aggregate sums cannot exceed the safe integer domain. |
 | F11 Admission/body/entry bounds; writer busy | G06, G07, G10, G11 | `ingestion.TestFailureContractAdmissionBodyAndBusyRetry`; `collectorstore.TestBatchEntryBoundAndContiguity`; `ingestion.TestFailureContractLimitsAtBoundary` | Four admissions, 1 MiB body, 256 entries; boundary and over-limit checks. Busy work receives no success and resumes manually. |
-| F12 Private/raw fields | G08, G11 | `ingestion.TestFailureContractValidationPrivacyAndCompatibility`; publication strict-codec tests; `collector.TestCollectorContractRawContentNeverEntersPublication` | Allowlist excludes conversation/source data; unknown/private fields reject; safe errors never echo submitted content. |
+| F12 Private/raw fields | G08, G11 | `ingestion.TestFailureContractValidationPrivacyAndCompatibility`; `ingestion.TestLocationPathRejectionIsAtomicAndDoesNotPersistPrivateLabels`; `publication.TestLocationLabelsRequirePortableBasenames`; publication strict-codec tests; `collector.TestCollectorContractRawContentNeverEntersPublication` | Allowlist excludes conversation/source data; unknown/private fields and path-bearing location labels reject; safe errors never echo submitted content. |
 | F13 Sources disappear | G05, G10 | `ingestion.TestFailureContractSubsetUploadRetainsHistory`; `collector.TestCollectorContractMissingSourcesRetainServerFacts` | Missing sources do not delete committed history; no retraction. |
 | F14 Process crash | G03–G07, G10, G11 | `collector.TestCollectorContractCrashBoundaries`, twelve subtests below | Real killed subprocesses, SQLite/WAL reopening, and manual resume preserve atomic facts/work/progress. |
 
@@ -86,7 +86,7 @@ go test ./internal/collector -run '^TestCollectorContract' -count=1
 go test -race ./internal/collector ./internal/collectorstore ./internal/ingestion ./internal/serverstore
 ```
 
-Repository gates: `pnpm run format`, `pnpm run lint`, `pnpm run test`, `pnpm run build`, then `mise run check:push`. Fixture privacy checks remain part of root tests. Browser/TUI tests prove GET-only reload and remote query access without collector files.
+Repository gates: `pnpm run format`, `pnpm run lint`, `pnpm run test`, `pnpm run build`, then `mise run check:push`. Fixture privacy checks remain part of root tests. Browser/TUI tests prove GET-only reload and remote query access without collector files. CLI tests exercise `tui` and deprecated `view` against saved REST data, grouped collector resets against real databases, and help without storage side effects.
 
 Future regressions must name Fxx/Gxx and a fault seam, retain independent exact identity/value assertions, reopen persisted state, and specify the manual replay. Do not replace these with a simulated second ingestion engine, snapshot-generated goldens, skipped failures, or total-only assertions.
 

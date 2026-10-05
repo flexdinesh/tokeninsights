@@ -33,7 +33,7 @@ Normalized self-contained batches share one ingestion core in local and remote c
 
 ## Gate 4: Workflow and viewers
 
-`sync` defaults to all harnesses. Collection and delivery summaries report their separate outcomes. `--publish-only` requires no source discovery; explicit server URL never boots local service. Producer resets affect only collector storage. TUI/browser query through REST; optional `view --sync` invokes caller-side collection explicitly. Reload observes saved state only.
+`sync` defaults to all harnesses. Collection and delivery summaries report their separate outcomes. `--publish-only` requires no source discovery; explicit server URL never boots local service. `service` manages the local server; `tui` reads the same REST API as the browser. Optional `tui --sync` invokes caller-side collection explicitly. Advanced normalize/reset commands belong under `collector`; resets affect only collector storage. Former command names remain deprecated aliases. Reload observes saved state only.
 
 ## Gate 5: Verification/release
 

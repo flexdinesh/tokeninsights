@@ -957,7 +957,10 @@ components:
         directoryName:
           type: string
           maxLength: 256
-          description: At most 256 UTF-8 bytes; no control characters.
+          description:
+            Sanitized basename label, at most 256 UTF-8 bytes; no path separators or control
+            characters.
+          pattern: ^[^/\\]*$
         repositoryKey:
           type: string
           maxLength: 256
@@ -966,7 +969,10 @@ components:
         repositoryName:
           type: string
           maxLength: 256
-          description: At most 256 UTF-8 bytes; no control characters.
+          description:
+            Sanitized basename label, at most 256 UTF-8 bytes; no path separators or control
+            characters.
+          pattern: ^[^/\\]*$
         repositorySource:
           type: string
           maxLength: 256

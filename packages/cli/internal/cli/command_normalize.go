@@ -11,7 +11,7 @@ import (
 var normalizeCommand = commandSpec{name: "normalize", run: runNormalize}
 
 func runNormalize(invocation commandInvocation, args []string) error {
-	flags := flag.NewFlagSet("tokeninsights normalize", flag.ContinueOnError)
+	flags := flag.NewFlagSet("tokeninsights collector normalize", flag.ContinueOnError)
 	flags.SetOutput(invocation.stderr)
 	var dbPath string
 	var dryRun bool

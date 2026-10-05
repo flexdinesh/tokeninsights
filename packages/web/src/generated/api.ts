@@ -358,10 +358,12 @@ export const publicationLocationDirectoryKeyMax = 256
 
 export const publicationLocationDirectoryNameMax = 256
 
+export const publicationLocationDirectoryNameRegExp = new RegExp('^[^/\\\\]*$')
 export const publicationLocationRepositoryKeyMax = 256
 
 export const publicationLocationRepositoryNameMax = 256
 
+export const publicationLocationRepositoryNameRegExp = new RegExp('^[^/\\\\]*$')
 export const publicationLocationRepositorySourceMax = 256
 
 export const PublicationLocation = zod.strictObject({
@@ -379,8 +381,11 @@ export const PublicationLocation = zod.strictObject({
   directoryName: zod
     .string()
     .max(publicationLocationDirectoryNameMax)
+    .regex(publicationLocationDirectoryNameRegExp)
     .optional()
-    .describe('At most 256 UTF-8 bytes; no control characters.'),
+    .describe(
+      'Sanitized basename label, at most 256 UTF-8 bytes; no path separators or control characters.',
+    ),
   repositoryKey: zod
     .string()
     .min(1)
@@ -390,8 +395,11 @@ export const PublicationLocation = zod.strictObject({
   repositoryName: zod
     .string()
     .max(publicationLocationRepositoryNameMax)
+    .regex(publicationLocationRepositoryNameRegExp)
     .optional()
-    .describe('At most 256 UTF-8 bytes; no control characters.'),
+    .describe(
+      'Sanitized basename label, at most 256 UTF-8 bytes; no path separators or control characters.',
+    ),
   repositorySource: zod
     .string()
     .max(publicationLocationRepositorySourceMax)

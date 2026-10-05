@@ -118,8 +118,9 @@ either role is reset.
 Fixture preparation starts the production local server on a temporary loopback
 port, runs collector sync against sanitized sources, publishes through the real
 HTTP ingestion endpoint, and stops that temporary server. No direct server raw
-writes or producer recovery stand in for ingestion. `dev:cli` opens all-time
-REST usage from `server.sqlite`; `dev:server` runs the canonical-only foreground
+writes or producer recovery stand in for ingestion. `dev:cli` invokes
+`tokeninsights tui --all-time --server-db-path .tokeninsights-dev/server.sqlite`
+to read saved REST usage; `dev:server` runs the canonical-only foreground
 server on `127.0.0.1:8765` without harness source environment settings. `dev` runs
 that server and Vite together. Browser Reload never collects sources. Vite proxies
 `/api` to the Go server; `dev:web:mock` runs without Go or local harness data.

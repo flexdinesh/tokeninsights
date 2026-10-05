@@ -814,7 +814,7 @@ type PublicationLocation struct {
 	// DirectoryKey At most 256 UTF-8 bytes; no control characters.
 	DirectoryKey *string `json:"directoryKey,omitempty"`
 
-	// DirectoryName At most 256 UTF-8 bytes; no control characters.
+	// DirectoryName Sanitized basename label, at most 256 UTF-8 bytes; no path separators or control characters.
 	DirectoryName *string `json:"directoryName,omitempty"`
 
 	// Id At most 256 UTF-8 bytes; no control characters.
@@ -823,7 +823,7 @@ type PublicationLocation struct {
 	// RepositoryKey At most 256 UTF-8 bytes; no control characters.
 	RepositoryKey *string `json:"repositoryKey,omitempty"`
 
-	// RepositoryName At most 256 UTF-8 bytes; no control characters.
+	// RepositoryName Sanitized basename label, at most 256 UTF-8 bytes; no path separators or control characters.
 	RepositoryName *string `json:"repositoryName,omitempty"`
 
 	// RepositorySource At most 256 UTF-8 bytes; no control characters.

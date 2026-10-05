@@ -15,6 +15,11 @@ func validString(value string, required bool) bool {
 
 func validInteger(value int64) bool { return value >= 0 && value <= SafeInteger }
 
+// Published location labels are basenames, independent of the server OS.
+func validLocationLabel(value string) bool {
+	return validString(value, false) && !strings.ContainsAny(value, `/\`)
+}
+
 func NewCapabilities(databaseID string) Capabilities {
 	return Capabilities{ProtocolVersion: ProtocolVersion, IdentityVersion: IdentityVersion, SemanticsVersion: SemanticsVersion,
 		DatabaseID: databaseID, MaxBodyBytes: MaxBodyBytes, MaxEntries: MaxEntries, MaxStringBytes: MaxStringBytes, MaxInteger: SafeInteger}
@@ -97,10 +102,9 @@ func ValidateFact(f Fact) error {
 	if f.Location != nil {
 		l := *f.Location
 		if (l.DirectoryKey == "" && l.RepositoryKey == "") || l.ID != LocationID(l) ||
-			!validString(l.DirectoryKey, false) || !validString(l.DirectoryName, false) ||
-			!validString(l.RepositoryKey, false) || !validString(l.RepositoryName, false) || !validString(l.RepositorySource, false) ||
-			(l.DirectoryKey == "" && l.DirectoryName != "") || (l.RepositoryKey == "" && (l.RepositoryName != "" || l.RepositorySource != "")) ||
-			strings.HasPrefix(l.DirectoryName, "/") || strings.Contains(l.DirectoryName, ":\\") {
+			!validString(l.DirectoryKey, false) || !validLocationLabel(l.DirectoryName) ||
+			!validString(l.RepositoryKey, false) || !validLocationLabel(l.RepositoryName) || !validString(l.RepositorySource, false) ||
+			(l.DirectoryKey == "" && l.DirectoryName != "") || (l.RepositoryKey == "" && (l.RepositoryName != "" || l.RepositorySource != "")) {
 			return invalid("invalid_request", "location")
 		}
 	}

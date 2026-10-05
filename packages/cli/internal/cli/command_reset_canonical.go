@@ -11,7 +11,7 @@ import (
 var resetCanonicalCommand = commandSpec{name: "reset-canonical", run: runResetCanonical}
 
 func runResetCanonical(invocation commandInvocation, args []string) error {
-	flags := flag.NewFlagSet("tokeninsights reset-canonical", flag.ContinueOnError)
+	flags := flag.NewFlagSet("tokeninsights collector reset-canonical", flag.ContinueOnError)
 	flags.SetOutput(invocation.stderr)
 	var dbPath string
 	var confirm bool

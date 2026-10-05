@@ -14,7 +14,7 @@ Collector SQLite owns metadata-only raw facts, canonical facts, source continuit
 
 One canonical-only ingestion/query core serves local and remote compositions. Stable native identities survive collector deletion; delivery stream/batch IDs do not identify facts. Receipts acknowledge committed queryable state. Equal payloads are no-ops; Claude source-timed revisions update one contribution; unsupported changed values conflict. Ambiguous native identity stays local with publication diagnostics.
 
-Local remains default. Explicit remote URL skips local startup. Views query committed server data without implicit collection; browser Reload never triggers a producer. Thin completion adapters invoke the same finite `sync` command. Remote provisioning, multi-tenant authorization, autonomous retry, retention, retractions, and backflow remain future work.
+Local remains default. `service` manages the local server, `sync` collects and publishes, and `tui` queries committed data through REST without implicit collection. Advanced normalize/reset operations belong under `collector`; former names remain deprecated aliases. Explicit remote URL skips local startup. Browser Reload never triggers a producer. Thin completion adapters invoke the same finite `sync` command. Remote provisioning, multi-tenant authorization, autonomous retry, retention, retractions, and backflow remain future work.
 
 ## Implemented deliverables
 

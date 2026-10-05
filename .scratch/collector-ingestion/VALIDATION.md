@@ -113,3 +113,11 @@ Normal pre-push verification stays enabled. Final publication reruns mandatory c
 Remaining scope: remote provisioning/multi-tenancy; real harness installation/trust/event-flush smoke tests; future receipt/journal retention and new adapter revision policies. No physical media corruption or power-loss simulation is claimed. Unnamed system timezone fallback is an explicit fixed offset; historical DST requires an identifiable IANA reporting zone.
 
 Final pre-push initially caught an asynchronous plugin descendant assertion: the test observed process state immediately after SIGKILL. The assertion now waits at most three seconds for disappearance or a non-running zombie, and cleans up on failure. Removing the production group SIGKILL still makes the test fail. All 27 build-tools tests then passed five consecutive runs with Git-local environment variables cleared; formatting, lint and typecheck pass. The normal push reruns the complete mandatory gate.
+
+## CLI and location privacy follow-up
+
+Canonical daily commands are `service`, `sync`, and `tui`; advanced normalization/reset commands are grouped under `collector`. Deprecated aliases remain. Tests verify both TUI names read saved REST data, grouped and legacy resets operate on actual collector databases, and help creates no storage.
+
+Published directory/repository labels must be basenames on every host OS. Fourteen real HTTP cases reject Unix, drive, UNC, relative and home paths atomically without echoing or storing private labels; valid basename and optional SQL NULL behavior remain covered. OpenAPI, generated clients and embedded browser assets were regenerated together.
+
+Root format, lint, full unit tests and build pass after this follow-up: 27 build-tools tests, 31 web tests, all Go packages, schema/API consistency and plugin artifacts. Direct Go build and the isolated native workflow pass again with JavaScript absent from PATH, including `tui`/`collector` help, database reconstruction and offline manual retry. Mandatory pre-push race/browser gates run again during publication.

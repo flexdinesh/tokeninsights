@@ -71,13 +71,18 @@ JavaScript safe-integer domain. Protocol/identity/semantics versions are all 1
 and require exact support; incompatible versions return 422 without mutation.
 Journal and receipts are retained indefinitely initially.
 
-TUI and browser query REST snapshots. `view` is read-only by default, with
+TUI and browser query REST snapshots. `tui` is read-only by default, with
 `--sync` explicit. TUI reload and browser Reload only fetch saved data. Public
 sync POST and private collection actions are removed; sync GET remains read-only
 compatibility status. Instance/database/revision metadata guards multi-page
 snapshots. Producer labels and last ingestion describe saved available data,
 never source completeness. Server reporting timezone governs client displays;
 IANA names preserve historical DST where available. TPS concepts remain intact.
+
+Root commands are `service`, `sync`, `tui` and `server`; advanced producer
+maintenance is grouped under `collector normalize`, `collector reset-canonical`
+and `collector reset-all`. `view` and former top-level maintenance names remain
+deprecated aliases. Collector maintenance does not delete server history.
 
 Retain detached native startup, lifecycle/admission locks, private directories,
 private Unix administration, occupied-port checks and ownership protection.

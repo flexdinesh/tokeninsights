@@ -1,6 +1,6 @@
 # tokeninsights
 
-Collect local token usage, normalize it in host SQLite, publish canonical facts to a SQLite server, and query terminal/browser dashboards. Run `tokeninsights sync`, then `tokeninsights view`. Viewing is read-only by default.
+Collect local token usage, normalize it in host SQLite, publish canonical facts to a SQLite server, and query terminal/browser dashboards. Run `tokeninsights sync`, then `tokeninsights tui`. Viewing is read-only by default.
 
 ## Install
 
@@ -30,6 +30,8 @@ claude-code
 ```
 
 ## Commands
+
+Everyday commands are `service`, `sync`, and `tui`. Advanced host maintenance uses `collector normalize|reset-canonical|reset-all`; `tokeninsights collector --help` lists that namespace. `view`, `normalize`, `reset-canonical`, and `reset-all` remain deprecated top-level aliases with identical behavior and flags.
 
 `sync`
 
@@ -61,68 +63,68 @@ Token components are additive across harnesses: input excludes cache read/write,
 
 Codex forks/subagents reuse versioned markers only when their content, location, parser/collector identity, and complete parent chain match. Existing fork sources parse once to establish these markers. Missing, conflicting, cyclic, unreadable, or unstable ancestry falls back to parsing; shared parent parses and verification are cached within the run. Explicit ancestry plus matching turn, provider/model, and complete last/cumulative token metadata identifies replay; rewritten timestamps are not match keys. Verified copies retain the original parent fact identity/time, while uncertain history is retained with diagnostics. Distinct snapshots use deterministic identity fingerprints, with line identity when cumulative identity is absent.
 
-`normalize`
+`collector normalize`
 
-Process pending canonical work from collector raw facts, and journal supported normalized changes in the canonical transaction. After `reset-canonical`, rebuild from requeued raw facts. Publication occurs on a later `sync` or `sync --publish-only`; the server has no normalization command.
+Process pending canonical work from collector raw facts, and journal supported normalized changes in the canonical transaction. After `collector reset-canonical`, rebuild from requeued raw facts. Publication occurs on a later `sync` or `sync --publish-only`; the server has no normalization command.
 
-Raw provider and model names remain unchanged. Canonical rows used by queries map Pi `openai-codex` to `openai`, map `fireworks-ai` to `fireworks`, and strip `accounts/fireworks/models/` from Fireworks model names. Normal sync and `normalize` also refresh previously stored canonical names.
+Raw provider and model names remain unchanged. Canonical rows used by queries map Pi `openai-codex` to `openai`, map `fireworks-ai` to `fireworks`, and strip `accounts/fireworks/models/` from Fireworks model names. Normal sync and `collector normalize` also refresh previously stored canonical names.
 
 ```sh
-tokeninsights normalize
-tokeninsights normalize --harness codex
-tokeninsights normalize --dry-run
+tokeninsights collector normalize
+tokeninsights collector normalize --harness codex
+tokeninsights collector normalize --dry-run
 ```
 
-`reset-canonical`
+`collector reset-canonical`
 
 Delete collector canonical sessions/messages/usage and normalization diagnostics while retaining raw facts, observations, source continuity, and publication history. Raw facts are requeued for normalization. This does not delete server facts or receipts.
 
 Requires compatible data with no unfinished recovery. It cannot repair incompatible raw token semantics or identities.
 
 ```sh
-tokeninsights reset-canonical
-tokeninsights reset-canonical --confirm
+tokeninsights collector reset-canonical
+tokeninsights collector reset-canonical --confirm
 ```
 
-`reset-all`
+`collector reset-all`
 
 Transactionally recreate collector application tables inside its SQLite file. This clears raw/canonical facts, pending normalization, continuity, journal, and delivery markers. A later sync reparses retained sources under a new stream and server stable IDs dedupe identical facts. Server history and receipts remain untouched. Reset is not an implicit server retraction or reconciliation policy.
 
 ```sh
-tokeninsights reset-all
-tokeninsights reset-all --confirm
+tokeninsights collector reset-all
+tokeninsights collector reset-all --confirm
 ```
 
-`view`
+`tui`
 
-Open the interactive terminal UI over REST analytics. Without a server URL it ensures the local server; explicit remote transport needs no local database. Default view, `--no-sync`, query Reload, and filters never collect or normalize. `--sync` performs caller-side all-harness collection/publication before opening; it stops on failure.
+Open the interactive terminal UI over the same REST analytics API as the browser. Without a server URL it ensures the local server; explicit remote transport needs no local database. Default `tui`, `--no-sync`, query Reload, and filters never collect or normalize. `--sync` performs caller-side all-harness collection/publication before opening; it stops on failure.
 
 ```sh
-tokeninsights view
-tokeninsights view --no-sync              # alias for read-only default
-tokeninsights view --sync                 # explicit collection before opening
-tokeninsights view --server-url https://example.test
-tokeninsights view --today
-tokeninsights view --yesterday
-tokeninsights view --year --bucket month
-tokeninsights view --month --provider openai --model gpt-5
+tokeninsights tui
+tokeninsights tui --no-sync              # alias for read-only default
+tokeninsights tui --sync                 # explicit collection before opening
+tokeninsights tui --server-url https://example.test
+tokeninsights tui --today
+tokeninsights tui --yesterday
+tokeninsights tui --year --bucket month
+tokeninsights tui --month --provider openai --model gpt-5
 ```
 
-Bare `tokeninsights` ensures the background service and prints its URL. Move root viewer flags to `tokeninsights view ...`; `--host`/`--port` are service options only.
+Bare `tokeninsights` ensures the background service and prints its URL. Move root viewer flags to `tokeninsights tui ...`; `--host`/`--port` are service options only.
 
 Every tab's pinned summary shows `sessions <shown> shown / <synced> synced`, followed by the row count and, except in Context, the filtered token total. `shown` counts distinct sessions matching all active filters across the full result, not just the visible scroll viewport. `synced` counts all distinct sessions with countable canonical usage in this database across all dates and harnesses, ignoring viewer filters. Sessions spanning multiple dates or models are counted once; sessions without countable usage are excluded from both counts.
 
-The default current-month filter can show a small subset of synced sessions. Compare `view --no-sync --month` with `view --no-sync --all-time` using the same `--server-db-path` to inspect date filtering without changing the database. All time removes the preset date restriction but keeps dimension filters and any explicit custom date bounds.
+The default current-month filter can show a small subset of synced sessions. Compare `tui --no-sync --month` with `tui --no-sync --all-time` using the same `--server-db-path` to inspect date filtering without changing the database. All time removes the preset date restriction but keeps dimension filters and any explicit custom date bounds.
 
 `service start|stop|restart|status|run`
 
 ```sh
-tokeninsights                         # local query server, print URL; no collection
 tokeninsights service start --open
 tokeninsights service status --json
 tokeninsights service restart
 tokeninsights service stop
 tokeninsights service run             # foreground; Ctrl+C stops
+tokeninsights                         # also ensure local server and print URL
 ```
 
 Use `--server-db-path` after the service action. Start/run/restart accept `--host`, `--port`, and `--token` / `TOKENINSIGHTS_SERVER_TOKEN`; start also accepts `--open`. Default binding is `127.0.0.1:8765`; port zero reports the assigned port. Non-loopback binding requires a token. Omitted bind settings reuse saved configuration, and changing a running bind requires restart. Startup never collects or imports legacy storage; incompatible server files are rejected without deletion. Saved configuration contains server settings, not harness roots. `--reload-sources` and `refresh` are removed.
@@ -169,7 +171,7 @@ Default role paths:
 
 The former `tokeninsights.sqlite` remains untouched. Retained harness artifacts populate fresh collector/server storage through normal collection and ingestion; no legacy import is implemented. Role checks precede mutation; a collector file cannot serve queries and a server file cannot enter producer recovery/reset. Identical, symlink-equivalent, and existing hard-linked collector/server paths are rejected.
 
-Prefer role flags. `sync`, `normalize`, and collector reset retain `--db-path` as a collector-path alias; `view` retains it as a server-path alias. Service/server commands use `--server-db-path`. Legacy `TOKENINSIGHTS_DB_PATH` does not select either new default.
+Prefer role flags. `sync`, `collector normalize`, and collector reset retain `--db-path` as a collector-path alias; `tui` retains it as a server-path alias. Service/server commands use `--server-db-path`. Legacy `TOKENINSIGHTS_DB_PATH` does not select either new default.
 
 Collector schema V15/data generation 6 retains metadata-only raw facts, continuity, normalization work, canonical usage, journal snapshots, saved batches, and per-destination acknowledgements. Server schema V1 retains canonical query tables, producer labels, persistent database identity/revision, and durable receipts; it has no harness/source/raw tables. Protocol, identity, and semantics versions are independently validated at ingestion.
 
@@ -177,7 +179,7 @@ Collector recovery is local and depends on retained sources. Server compatibilit
 
 Local delivery binds an endpoint plus server database ID, allowing a replacement local server to replay retained journal work under a new binding. Explicit remote destinations refuse silent database-ID changes rather than advance an old cursor against a different dataset. No automatic backflow/retraction is implemented. Authentication tokens and credentials stay outside journal payloads, receipts, and canonical IDs; authenticated endpoint selection does not change fact identity.
 
-## View Arguments
+## TUI Arguments
 
 `--no-sync`
 
@@ -193,7 +195,7 @@ Select an existing server and authentication token. Defaults come from `TOKENINS
 
 `--server-db-path PATH`, `--collector-db-path PATH`
 
-Select local server storage and the collector used only by explicit `--sync`. Default read-only remote view opens neither file.
+Select local server storage and the collector used only by explicit `--sync`. Default read-only remote TUI opens neither file.
 
 `--today`
 

@@ -11,7 +11,7 @@ import (
 var resetAllCommand = commandSpec{name: "reset-all", run: runResetAll}
 
 func runResetAll(invocation commandInvocation, args []string) error {
-	flags := flag.NewFlagSet("tokeninsights reset-all", flag.ContinueOnError)
+	flags := flag.NewFlagSet("tokeninsights collector reset-all", flag.ContinueOnError)
 	flags.SetOutput(invocation.stderr)
 	var dbPath string
 	var confirm bool

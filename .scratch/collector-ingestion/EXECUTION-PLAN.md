@@ -38,12 +38,14 @@ Use these defaults; routine command details do not require another approval. Sto
 | `tokeninsights` | Ensure local query/ingestion service; print status/URL. No source collection. |
 | `tokeninsights sync` | Default all harnesses: collect changed sources, normalize, journal changes, prepare/send pending batches, report collection and delivery separately. `--harness` narrows collection. |
 | `tokeninsights sync --publish-only` | Send previously journaled work without source discovery; useful during source loss or delivery repair. |
-| `tokeninsights normalize` | Normalize retained local raw work and journal canonical changes. Publication occurs on `sync`; no server normalization action. |
-| `tokeninsights view` | Ensure local server, then query API. Read-only default: no startup collection. `r` reloads committed data. Explicit `--sync` performs caller-side sync before opening. |
+| `tokeninsights collector normalize` | Normalize retained local raw work and journal canonical changes. Publication occurs on `sync`; no server normalization action. |
+| `tokeninsights tui` | Ensure local server, then query API. Read-only default: no startup collection. `r` reloads committed data. Explicit `--sync` performs caller-side sync before opening. |
 | `tokeninsights service start\|stop\|restart\|status\|run` | Manage local server and server database only. Remove `--reload-sources`; every non-loopback bind requires `--token` or `TOKENINSIGHTS_SERVER_TOKEN`. |
 | `tokeninsights server run` | Foreground composition with canonical ingestion/query core. Bind loopback by default; every non-loopback exposure requires a token. Remote provisioning/TLS deployment remains later work. |
 | Completion plugin invocation | Run the existing `tokeninsights sync` directly with a bounded host deadline. No separate hook CLI or durable trigger queue. |
-| Collector reset commands | Scope explicitly to collector state. Resetting/deleting collector cannot delete server history. Server destructive reset is not an alias for producer reset. |
+| `tokeninsights collector reset-canonical\|reset-all` | Scope explicitly to collector state. Resetting/deleting collector cannot delete server history. Server destructive reset is not an alias for producer reset. |
+
+Root commands are `service`, `sync`, `tui` and `server`, with advanced producer maintenance grouped under `collector`. Keep `view` and former top-level maintenance names as deprecated aliases.
 
 Use unambiguous `--collector-db-path` and `--server-db-path` flags rather than one `--db-path` changing ownership by command. Use fresh `collector.sqlite` and `server.sqlite` files. Leave original `tokeninsights.sqlite` untouched; legacy import/migration is outside this implementation. Reject aliasing the two files, including canonical symlink aliases and existing hard links. Saved server config contains bind/database/auth settings only; private producer config can contain source roots and selected destination. Never persist the full process environment.
 

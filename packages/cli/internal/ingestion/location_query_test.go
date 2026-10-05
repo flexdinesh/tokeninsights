@@ -16,8 +16,8 @@ func TestIngestedUnknownRepositoryRetainsDirectoryDisclosure(t *testing.T) {
 	server := httptest.NewServer(NewHandler(NewCore(s)))
 	defer server.Close()
 	one, two, missing := contractFact("fixture-request-A"), contractFact("fixture-request-B"), contractFact("fixture-request-C")
-	one.Location = &publication.Location{DirectoryKey: "fixture-directory-one", DirectoryName: "~/fixture/one"}
-	two.Location = &publication.Location{DirectoryKey: "fixture-directory-two", DirectoryName: "~/fixture/two"}
+	one.Location = &publication.Location{DirectoryKey: "fixture-directory-one", DirectoryName: "one"}
+	two.Location = &publication.Location{DirectoryKey: "fixture-directory-two", DirectoryName: "two"}
 	publication.SetIDs(&one)
 	publication.SetIDs(&two)
 	contractPost(t, server, contractBatch(t, s, "stream", "locations", one, two, missing), http.StatusOK)
@@ -26,14 +26,14 @@ func TestIngestedUnknownRepositoryRetainsDirectoryDisclosure(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(rows) != 1 || rows[0].Key != db.UnknownLocationKey || rows[0].RepositoryKey != db.UnknownLocationKey || rows[0].Name != "unknown" || rows[0].TotalTokens != 300 || !rows[0].HasUnknownDirectory || !reflect.DeepEqual(rows[0].DirectoryNames, []string{"~/fixture/one", "~/fixture/two"}) {
+	if len(rows) != 1 || rows[0].Key != db.UnknownLocationKey || rows[0].RepositoryKey != db.UnknownLocationKey || rows[0].Name != "unknown" || rows[0].TotalTokens != 300 || !rows[0].HasUnknownDirectory || !reflect.DeepEqual(rows[0].DirectoryNames, []string{"one", "two"}) {
 		t.Fatalf("unknown repository disclosure: %+v", rows)
 	}
 	filtered, err := db.ViewerRepoGroups(ctx, s.SQL(), db.Filter{RepositoryKeys: []string{db.UnknownLocationKey}, DirectoryKeys: []string{"fixture-directory-one"}}, db.RepoGroupRepository)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(filtered) != 1 || filtered[0].Key != db.UnknownLocationKey || filtered[0].TotalTokens != 100 || filtered[0].Name != "unknown · ~/fixture/one" || filtered[0].HasUnknownDirectory || !reflect.DeepEqual(filtered[0].DirectoryNames, []string{"~/fixture/one"}) {
+	if len(filtered) != 1 || filtered[0].Key != db.UnknownLocationKey || filtered[0].TotalTokens != 100 || filtered[0].Name != "unknown · one" || filtered[0].HasUnknownDirectory || !reflect.DeepEqual(filtered[0].DirectoryNames, []string{"one"}) {
 		t.Fatalf("filtered directory disclosure: %+v", filtered)
 	}
 	options, err := db.AvailableLocations(ctx, s.SQL(), db.Filter{})

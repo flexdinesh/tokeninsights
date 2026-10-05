@@ -31,11 +31,12 @@ type commandSpec struct {
 var commands = []commandSpec{
 	helpCommand,
 	versionCommand,
-	viewCommand,
+	tuiCommand,
 	serveCommand,
 	serviceCommand,
 	serverCommand,
 	syncCommand,
+	collectorCommand,
 	normalizeCommand,
 	resetCanonicalCommand,
 	resetAllCommand,
@@ -80,4 +81,4 @@ func commandByName(name string) (commandSpec, bool) {
 	return commandSpec{}, false
 }
 
-var ErrUsage = errors.New("usage: tokeninsights <service|server|sync|normalize|reset-canonical|reset-all|view> [options]")
+var ErrUsage = errors.New("usage: tokeninsights <service|sync|tui|collector|server> [options]")

@@ -15,21 +15,26 @@ func usageText() string {
 Bare invocation ensures the background service and prints its URL. No startup sync.
 
 commands:
-  service start|stop|restart|status   manage background web/API service
-  service run                       run service in foreground
-  server run                        run canonical ingestion/query server
+  service start|stop|restart|status   manage local web/API server
   sync                              collect all harnesses and publish normalized facts
-  normalize                         normalize retained collector raw facts
-  reset-canonical                   reset collector canonical facts only
-  reset-all                         reset collector database only
-  view                              read committed data through server API
-  serve                             deprecated alias for service run
+  tui                               read committed data through the same REST API as Web
+
+advanced:
+  collector normalize|reset-canonical|reset-all
+                                    manage host collector data
+  service run                       run local server in foreground
+  server run                        run canonical ingestion/query server
 
   tokeninsights service start --port 8765
   tokeninsights service status --json
+  tokeninsights sync
+  tokeninsights tui
   tokeninsights sync --publish-only
   tokeninsights sync --server-url https://example.test
-  tokeninsights view --sync
+  tokeninsights tui --sync
+  tokeninsights collector --help
+
+Deprecated aliases: view, normalize, reset-canonical, reset-all, serve.
 
 Collector: --collector-db-path (collector.sqlite). Server: --server-db-path (server.sqlite).
 Existing tokeninsights.sqlite is untouched; retained sources rebuild fresh databases.

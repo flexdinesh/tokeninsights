@@ -28,6 +28,8 @@ See [release channels and workflow](docs/release.md).
 
 ## Run
 
+Use `service` for the local server, `sync` for manual collection, and `tui` for the terminal dashboard. The TUI and browser read the same REST API.
+
 Open the browser dashboard:
 
 The Graphite & Lime layout pairs a compact status header and static usage summary
@@ -39,26 +41,26 @@ full filtered token total above its bar and in its tooltip. Dimension filter lab
 also show the percentage.
 
 ```sh
-tokeninsights --open
+tokeninsights service start --open
 ```
 
-Bare invocation starts the local query/ingestion service or prints its URL. `--open` opens the dashboard when possible; SSH/headless sessions skip browser launch. Startup creates an empty server database when needed and never collects harness data.
+`service start` starts the local query/ingestion service or prints its URL. `--open` opens the dashboard when possible; SSH/headless sessions skip browser launch. Bare invocation also ensures the local server. Startup creates an empty server database when needed and never collects harness data.
 
 Collect and publish, then open the terminal dashboard:
 
 ```sh
 tokeninsights sync
-tokeninsights view
+tokeninsights tui
 ```
 
 `sync` defaults to all four harnesses. The collector retains metadata-only raw facts, normalized usage, source continuity, and a durable publication journal in its own SQLite database. Only normalized facts and their session/message references cross ingestion. The server never reads harness files or runs parsers.
 
-Both dashboards read committed server data. Browser **Reload** and TUI `r` reload queries; neither starts collection. `view --no-sync` is an alias for the read-only default. `view --sync` explicitly collects and publishes before opening. Viewer filters select saved results, not which harnesses get collected.
+Both dashboards read committed server data. Browser **Reload** and TUI `r` reload queries; neither starts collection. `tui --no-sync` is an alias for the read-only default. `tui --sync` explicitly collects and publishes before opening. Viewer filters select saved results, not which harnesses get collected.
 
 ```sh
 tokeninsights sync --harness codex
 tokeninsights sync --publish-only           # retry retained uploads, no source discovery
-tokeninsights view --sync
+tokeninsights tui --sync
 tokeninsights service start
 tokeninsights service status
 tokeninsights service stop
@@ -72,7 +74,7 @@ Equal token counts never establish duplicate identity. Source-native session/mes
 The local web/API binds `127.0.0.1:8765` by default. The TUI uses the same REST queries as the browser, including when it connects directly to another server:
 
 ```sh
-tokeninsights view --server-url https://example.test
+tokeninsights tui --server-url https://example.test
 tokeninsights sync --server-url https://example.test
 ```
 
@@ -87,13 +89,15 @@ The terminal dashboard uses a full-width table, filtered token readouts, and a l
 Common filters:
 
 ```sh
-tokeninsights view --today
-tokeninsights view --week --harness codex
-tokeninsights view --provider openai --model gpt-5
-tokeninsights view --all-time
+tokeninsights tui --today
+tokeninsights tui --week --harness codex
+tokeninsights tui --provider openai --model gpt-5
+tokeninsights tui --all-time
 ```
 
 Supported periods are `--today`, `--yesterday`, `--week`, `--month`, `--year`, and `--all-time`. See the [CLI reference](packages/cli/README.md) for all commands and options.
+
+Advanced host maintenance lives under `tokeninsights collector normalize|reset-canonical|reset-all`. `view` and the former top-level maintenance commands remain deprecated aliases.
 
 ## Privacy
 

@@ -47,7 +47,7 @@ func parseServiceOptions(action string, args []string, output io.Writer) (servic
 		if errors.Is(err, flag.ErrHelp) {
 			return options, err
 		}
-		return options, fmt.Errorf("%v; viewer flags require tokeninsights view\n%w", err, ErrUsage)
+		return options, fmt.Errorf("%v; viewer flags require tokeninsights tui\n%w", err, ErrUsage)
 	}
 	if flags.NArg() != 0 {
 		return options, fmt.Errorf("unexpected argument\n%w", ErrUsage)

@@ -78,8 +78,8 @@ work can still be delivered after a collection error. Earlier acknowledged
 batches remain acknowledged when a later batch fails. Collection and delivery
 outcomes are reported separately; no autonomous retry worker is implied.
 
-Bare invocation ensures the local query service. `view` is read-only by default;
-`view --sync` explicitly collects first. TUI reload and web Reload fetch saved
+Bare invocation ensures the local query service. `tui` is read-only by default;
+`tui --sync` explicitly collects first. TUI reload and web Reload fetch saved
 server data. `GET /api/v1/sync` remains compatibility status; POST returns 405.
 The UI points to `tokeninsights sync` for collection. Query snapshots include
 process instance, durable database epoch and analytics revision. A TUI snapshot
@@ -91,6 +91,12 @@ name where resolvable, preserving historical daylight-saving rules. Otherwise
 it explicitly returns the current fixed UTC offset; that fallback cannot
 describe historical DST. Producer labels are `unknown`, a sole known hostname,
 or `multiple machines`; absent producer metadata never becomes serving hostname.
+
+Root commands are `service`, `sync`, `tui` and `server`. Advanced producer
+maintenance uses `collector normalize`, `collector reset-canonical` and
+`collector reset-all`. These operate on collector state and preserve server
+history. `view` and the former top-level maintenance commands remain deprecated
+aliases.
 
 ## Identity and canonical values
 

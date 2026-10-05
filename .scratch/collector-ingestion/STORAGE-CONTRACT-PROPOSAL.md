@@ -209,7 +209,12 @@ autonomous retry agent, retraction or producer backflow is implemented.
 ## Composition and follow-ups
 
 Local startup creates empty server projection and never collects. TUI and web
-read query APIs. `GET /api/v1/sync` is read-only readiness/revision compatibility
+read query APIs. `tokeninsights tui` is the read-only REST viewer;
+`tui --sync` explicitly runs collection first. Root commands are `service`,
+`sync`, `tui` and `server`. Advanced producer maintenance uses
+`collector normalize`, `collector reset-canonical` and `collector reset-all`;
+it preserves server history. Former `view` and top-level maintenance names remain
+deprecated aliases. `GET /api/v1/sync` is read-only readiness/revision compatibility
 status; POST is removed. Server saved configuration contains database/bind/auth
 settings, not source roots. Producer labels never imply source completeness.
 
