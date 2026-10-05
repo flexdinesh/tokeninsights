@@ -93,6 +93,9 @@ func BeginAnalyticsRead(ctx context.Context, database *sql.DB) (*sql.Tx, error) 
 
 func inspectCompatibility(ctx context.Context, reader Reader) (Compatibility, error) {
 	result := Compatibility{Exists: true}
+	if err := requireCollectorRole(ctx, reader); err != nil {
+		return result, err
+	}
 	var version int
 	if err := reader.QueryRowContext(ctx, "PRAGMA user_version").Scan(&version); err != nil {
 		return result, fmt.Errorf("schema version check failed: %w", err)
@@ -105,6 +108,11 @@ func inspectCompatibility(ctx context.Context, reader Reader) (Compatibility, er
 	}
 	if err := recognizeSchema(ctx, reader, version); err != nil {
 		return result, err
+	}
+	if version >= 15 {
+		if err := inspectPublicationState(ctx, reader); err != nil {
+			return result, err
+		}
 	}
 	var hasLifecycle bool
 	if err := reader.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM sqlite_schema WHERE type = 'table' AND name = ?)", TableDatabaseLifecycle).Scan(&hasLifecycle); err != nil {
@@ -172,6 +180,13 @@ func recognizeSchema(ctx context.Context, reader Reader, version int) error {
 		}
 		required["oc_token_events"] += " part_id source"
 	} else {
+		if version >= 15 {
+			required[TablePublicationState] = "id stream_id identity_version semantics_version source_namespace created_at_ms"
+			required[TablePublicationEntities] = "fact_id payload_hash sequence source_revision_rule source_revision_value"
+			required[TablePublicationJournal] = "sequence fact_id payload_hash payload_json identity_version semantics_version source_revision_rule source_revision_value created_at_ms"
+			required[TablePublicationDestinations] = "destination_id endpoint database_id acknowledged_sequence last_receipt_json acknowledged_at_ms"
+			required[TablePublicationBatches] = "batch_id destination_id stream_id database_id first_sequence last_sequence request_hash request_bytes receipt_bytes acknowledged_at_ms"
+		}
 		if version >= 14 {
 			required[TableIngestRuns] += " hostname"
 		}
@@ -333,4 +348,35 @@ func CompleteRecovery(ctx context.Context, database *sql.DB) error {
 		return err
 	}
 	return tx.Commit()
+}
+
+// Role is checked before schema recognition or destructive recovery.
+func requireCollectorRole(ctx context.Context, reader Reader) error {
+	var role int
+	if err := reader.QueryRowContext(ctx, "PRAGMA application_id").Scan(&role); err != nil {
+		return err
+	}
+	if role != CollectorApplicationID {
+		return errors.New("not a collector database; use fresh collector.sqlite and server.sqlite files; legacy tokeninsights.sqlite remains unchanged")
+	}
+	return nil
+}
+
+func inspectPublicationState(ctx context.Context, reader Reader) error {
+	var count, id, identity, semantics int
+	var stream, namespace string
+	var created int64
+	if err := reader.QueryRowContext(ctx, "SELECT COUNT(*) FROM publication_state").Scan(&count); err != nil {
+		return err
+	}
+	if count != 1 {
+		return errors.New("invalid publication state singleton; recovery refused")
+	}
+	if err := reader.QueryRowContext(ctx, "SELECT id,stream_id,identity_version,semantics_version,source_namespace,created_at_ms FROM publication_state").Scan(&id, &stream, &identity, &semantics, &namespace, &created); err != nil {
+		return err
+	}
+	if id != 1 || len(stream) == 0 || len(stream) > 256 || identity != 1 || semantics != 1 || len(namespace) == 0 || len(namespace) > 256 || created < 0 {
+		return errors.New("invalid publication state; recovery refused")
+	}
+	return nil
 }

@@ -18,7 +18,8 @@ const fixtureRelativePath = join(
 
 export interface SyncPaths {
   binaryPath: string
-  dbPath: string
+  collectorDBPath: string
+  serverDBPath: string
   sourceDir: string
 }
 
@@ -27,11 +28,12 @@ export type SyncFunction = (paths: SyncPaths) => Promise<void>
 interface SetupDevDataOptions {
   workspaceRoot?: string
   sync?: SyncFunction
-  prepare?: (binaryPath: string, dbPath: string) => Promise<void>
+  prepare?: (binaryPath: string, collectorDBPath: string, serverDBPath: string) => Promise<void>
 }
 
 interface SetupDevDataResult {
-  dbPath: string
+  collectorDBPath: string
+  serverDBPath: string
   outputDir: string
   sourceDir: string
 }
@@ -47,20 +49,26 @@ export async function setupDevData({
 
   const fixtureDir = join(root, fixtureRelativePath)
   const sourceDir = join(outputDir, 'source')
-  const dbPath = join(outputDir, 'tokeninsights.sqlite')
+  const collectorDBPath = join(outputDir, 'collector.sqlite')
+  const serverDBPath = join(outputDir, 'server.sqlite')
 
-  await prepare(join(root, 'packages', 'cli', 'bin', 'tokeninsights'), dbPath)
+  await prepare(
+    join(root, 'packages', 'cli', 'bin', 'tokeninsights'),
+    collectorDBPath,
+    serverDBPath,
+  )
   await mkdir(sourceDir, { recursive: true })
   await copyJSONLFixtures(fixtureDir, sourceDir)
   await materializeOpenCode(fixtureDir, sourceDir)
   await setupSourceHome(outputDir, sourceDir)
   await sync({
     binaryPath: join(root, 'packages', 'cli', 'bin', 'tokeninsights'),
-    dbPath,
+    collectorDBPath,
+    serverDBPath,
     sourceDir,
   })
 
-  return { dbPath, outputDir, sourceDir }
+  return { collectorDBPath, serverDBPath, outputDir, sourceDir }
 }
 
 function assertControlledOutput(configuredWorkspaceRoot: string, outputDir: string): void {
@@ -111,13 +119,48 @@ async function materializeOpenCode(fixtureDir: string, sourceDir: string): Promi
   }
 }
 
-async function runSync({ binaryPath, dbPath, sourceDir }: SyncPaths): Promise<void> {
+async function runSync({
+  binaryPath,
+  collectorDBPath,
+  serverDBPath,
+  sourceDir,
+}: SyncPaths): Promise<void> {
+  // Port zero isolates fixture publication from a user's normal local service.
+  await runCommand(binaryPath, [
+    'service',
+    'start',
+    '--server-db-path',
+    serverDBPath,
+    '--host',
+    '127.0.0.1',
+    '--port',
+    '0',
+    '--token',
+    '',
+  ])
+  try {
+    await runCommand(binaryPath, [
+      'sync',
+      '--all',
+      '--source-dir',
+      sourceDir,
+      '--collector-db-path',
+      collectorDBPath,
+      '--server-db-path',
+      serverDBPath,
+      '--server-url',
+      '',
+      '--token',
+      '',
+    ])
+  } finally {
+    await runCommand(binaryPath, ['service', 'stop', '--server-db-path', serverDBPath])
+  }
+}
+
+async function runCommand(binaryPath: string, args: string[]): Promise<void> {
   await new Promise<void>((resolveRun, rejectRun) => {
-    const child = spawn(
-      binaryPath,
-      ['sync', '--all', '--source-dir', sourceDir, '--db-path', dbPath],
-      { stdio: 'inherit' },
-    )
+    const child = spawn(binaryPath, args, { stdio: 'inherit' })
     child.once('error', rejectRun)
     child.once('exit', (code, signal) => {
       if (code === 0) {
@@ -127,8 +170,8 @@ async function runSync({ binaryPath, dbPath, sourceDir }: SyncPaths): Promise<vo
       rejectRun(
         new Error(
           signal === null
-            ? `tokeninsights sync exited with code ${code}`
-            : `tokeninsights sync exited with signal ${signal}`,
+            ? `tokeninsights fixture command exited with code ${code}`
+            : `tokeninsights fixture command exited with signal ${signal}`,
         ),
       )
     })
@@ -136,15 +179,29 @@ async function runSync({ binaryPath, dbPath, sourceDir }: SyncPaths): Promise<vo
 }
 
 if (process.argv[1] !== undefined && resolve(process.argv[1]) === scriptPath) {
-  const { dbPath } = await setupDevData()
-  console.log(`development data ready: ${dbPath}`)
+  const { collectorDBPath, serverDBPath } = await setupDevData()
+  console.log(`development data ready: collector=${collectorDBPath} server=${serverDBPath}`)
 }
 
-async function prepareFixture(binaryPath: string, dbPath: string): Promise<void> {
+async function prepareFixture(
+  binaryPath: string,
+  collectorDBPath: string,
+  serverDBPath: string,
+): Promise<void> {
   await new Promise<void>((resolveRun, rejectRun) => {
-    const child = spawn(binaryPath, ['__prepare-dev-data', '--db-path', dbPath], {
-      stdio: 'inherit',
-    })
+    const child = spawn(
+      binaryPath,
+      [
+        '__prepare-dev-data',
+        '--collector-db-path',
+        collectorDBPath,
+        '--server-db-path',
+        serverDBPath,
+      ],
+      {
+        stdio: 'inherit',
+      },
+    )
     child.once('error', rejectRun)
     child.once('exit', (code) => {
       if (code === 0) resolveRun()

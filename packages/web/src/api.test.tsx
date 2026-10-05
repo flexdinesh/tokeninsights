@@ -63,7 +63,7 @@ it('uses server defaults on first load', async () => {
     serverVersion: 'test',
     hostname: 'first-load',
     timezone: 'UTC',
-    capabilities: ['usage', 'facets', 'sync'],
+    capabilities: ['usage', 'facets', 'ingestion'],
     defaults: {
       period: 'week',
       bucket: 'day',
@@ -76,8 +76,8 @@ it('uses server defaults on first load', async () => {
     },
   }
   const status: SyncStatus = {
-    phase: 'syncing',
-    running: true,
+    phase: 'ready',
+    running: false,
     error: '',
     revision: 1,
     harnesses: {},
@@ -104,13 +104,13 @@ it('uses server defaults on first load', async () => {
   client.clear()
 })
 
-it('shows saved usage while ordinary sync runs', async () => {
+it('shows saved ingested usage without a collector', async () => {
   const bootstrap: Bootstrap = {
     apiVersion: 'v1',
     serverVersion: 'test',
     hostname: 'local',
     timezone: 'UTC',
-    capabilities: ['usage', 'facets', 'sync'],
+    capabilities: ['usage', 'facets', 'ingestion'],
     defaults: {
       period: 'month',
       bucket: 'day',
@@ -123,8 +123,8 @@ it('shows saved usage while ordinary sync runs', async () => {
     },
   }
   const status: SyncStatus = {
-    phase: 'syncing',
-    running: true,
+    phase: 'ready',
+    running: false,
     error: '',
     revision: 1,
     harnesses: {},
@@ -159,9 +159,6 @@ it('shows saved usage while ordinary sync runs', async () => {
     </QueryClientProvider>,
   )
 
-  expect(
-    await screen.findByText('Saved usage remains available while this runs.', { exact: false }),
-  ).toBeVisible()
   await waitFor(() =>
     expect(fetcher.mock.calls.some(([input]) => requestURL(input).includes('/api/v1/usage?'))).toBe(
       true,
@@ -177,7 +174,7 @@ it('removes the final route filter after direct load', async () => {
     serverVersion: 'test',
     hostname: 'direct-load',
     timezone: 'UTC',
-    capabilities: ['usage', 'facets', 'sync'],
+    capabilities: ['usage', 'facets', 'ingestion'],
     defaults: {
       period: 'week',
       bucket: 'day',
@@ -190,8 +187,8 @@ it('removes the final route filter after direct load', async () => {
     },
   }
   const status: SyncStatus = {
-    phase: 'syncing',
-    running: true,
+    phase: 'ready',
+    running: false,
     error: '',
     revision: 1,
     harnesses: {},
@@ -227,13 +224,13 @@ it('removes the final route filter after direct load', async () => {
   client.clear()
 })
 
-it('refreshes the saved hostname when sync publishes a new revision', async () => {
+it('refreshes producer labels when ingestion commits a new revision', async () => {
   const bootstrap: Bootstrap = {
     apiVersion: 'v1',
     serverVersion: 'test',
     hostname: 'unknown',
     timezone: 'UTC',
-    capabilities: ['usage', 'facets', 'sync'],
+    capabilities: ['usage', 'facets', 'ingestion'],
     defaults: {
       period: 'week',
       bucket: 'day',
@@ -246,8 +243,8 @@ it('refreshes the saved hostname when sync publishes a new revision', async () =
     },
   }
   const status: SyncStatus = {
-    phase: 'syncing',
-    running: true,
+    phase: 'ready',
+    running: false,
     error: '',
     revision: 1,
     harnesses: {},
@@ -307,155 +304,6 @@ it('offers retry when the page server is unavailable', async () => {
   await userEvent.click(screen.getByRole('button', { name: 'Retry Connection' }))
   await waitFor(() => expect(fetcher).toHaveBeenCalledTimes(2))
   expect(fetcher.mock.calls.every(([input]) => requestURL(input) === '/api/v1/instance')).toBe(true)
-  client.clear()
-})
-
-it.each<{ phase: SyncStatus['phase']; running: boolean; message: string }>([
-  { phase: 'resetting', running: true, message: 'Resetting usage data for compatibility…' },
-  {
-    phase: 'rebuilding',
-    running: true,
-    message: 'Rebuilding usage from all configured harnesses…',
-  },
-  {
-    phase: 'rebuild_failed',
-    running: false,
-    message:
-      'Usage recovery is incomplete. Retry sync with the original source configuration and database. See terminal details.',
-  },
-])(
-  'explains $phase and prevents analytics inspection during recovery',
-  async ({ phase, running, message }) => {
-    const client = new QueryClient({
-      defaultOptions: { queries: { retry: false, staleTime: Infinity } },
-    })
-    const bootstrap: Bootstrap = {
-      apiVersion: 'v1',
-      serverVersion: 'test',
-      capabilities: ['usage', 'facets', 'sync'],
-      defaults: {
-        period: 'month',
-        bucket: 'day',
-        from: '',
-        to: '',
-        providers: [],
-        models: [],
-        harnesses: [],
-        sessions: [],
-      },
-      hostname: 'local',
-      timezone: 'UTC',
-    }
-    const status: SyncStatus = {
-      phase,
-      running,
-      error: running ? '' : message,
-      revision: 1,
-      harnesses: { codex: 'pending' },
-    }
-    client.setQueryData(['instance'], bootstrap)
-    client.setQueryData(['sync'], status)
-    const fetcher = vi.fn<typeof fetch>()
-    vi.stubGlobal('fetch', fetcher)
-    render(
-      <QueryClientProvider client={client}>
-        <RouterProvider router={testRouter} />
-      </QueryClientProvider>,
-    )
-    expect(await screen.findByText(message)).toBeVisible()
-    expect(screen.queryByRole('button', { name: 'Inspect Existing Data' })).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Retry Sync' }) === null).toBe(running)
-    expect(fetcher).not.toHaveBeenCalled()
-    client.clear()
-  },
-)
-
-it('shows saved usage and pending days after an ordinary sync failure', async () => {
-  const client = new QueryClient({
-    defaultOptions: { queries: { retry: false, staleTime: Infinity } },
-  })
-  const bootstrap: Bootstrap = {
-    apiVersion: 'v1',
-    serverVersion: 'test',
-    capabilities: ['usage', 'facets', 'sync'],
-    defaults: {
-      period: 'month',
-      bucket: 'day',
-      from: '',
-      to: '',
-      providers: [],
-      models: [],
-      harnesses: [],
-      sessions: [],
-    },
-    hostname: 'local',
-    timezone: 'UTC',
-  }
-  const status: SyncStatus = {
-    phase: 'failed',
-    running: false,
-    error: 'Sync failed.',
-    revision: 1,
-    harnesses: {},
-  }
-  client.setQueryData(['instance'], bootstrap)
-  client.setQueryData(['sync'], status)
-  vi.stubGlobal(
-    'fetch',
-    vi.fn<typeof fetch>(() =>
-      Promise.resolve(
-        new Response(
-          JSON.stringify({
-            ...dashboard(881),
-            coverage: [
-              {
-                day: '2026-09-25',
-                status: 'empty',
-                checkedAt: 1000,
-                pendingSources: 0,
-                failedSources: 0,
-                hasUsage: false,
-                total: 0,
-              },
-              {
-                day: '2026-09-26',
-                status: 'pending',
-                checkedAt: 0,
-                pendingSources: 2,
-                failedSources: 0,
-                hasUsage: false,
-                total: null,
-              },
-            ],
-          }),
-          { headers: { 'Content-Type': 'application/json' } },
-        ),
-      ),
-    ),
-  )
-  render(
-    <QueryClientProvider client={client}>
-      <RouterProvider router={testRouter} />
-    </QueryClientProvider>,
-  )
-  expect(await screen.findByRole('button', { name: 'Retry Sync' })).toBeEnabled()
-  expect(await screen.findByText('Source coverage')).toBeVisible()
-  const results = await screen.findByRole('region', { name: 'Scrollable results' })
-  const pending = within(results).getByRole('row', { name: /2026-09-26.*Pending/ })
-  expect(
-    within(pending)
-      .getAllByRole('cell')
-      .slice(1)
-      .every((cell) => cell.textContent === '—'),
-  ).toBe(true)
-  const empty = within(results).getByRole('row', { name: /2026-09-25.*No usage found/ })
-  expect(
-    within(empty)
-      .getAllByRole('cell')
-      .slice(1)
-      .every((cell) => cell.textContent === '0'),
-  ).toBe(true)
-  expect(screen.queryByRole('button', { name: 'Inspect Existing Data' })).not.toBeInTheDocument()
   client.clear()
 })
 

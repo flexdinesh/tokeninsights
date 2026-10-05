@@ -1,6 +1,7 @@
 # Execute publication failure traces against real ingestion
 
-Status: needs-info
+Status: ready-for-agent
+Implementation: Production-path failure tests implemented; repository verification passed.
 
 ## Dependencies
 
@@ -18,8 +19,10 @@ Status: needs-info
 
 ## Unresolved questions
 
-- Fault-injection seams after approved contract?
+None blocking. Twelve deterministic subprocess kill barriers cover capture through acknowledgement.
 
 ## Comments
 
-Protocol traces currently specify future behavior. Fixture syntax/arithmetic checks do not count as production ingestion verification.
+Real file-backed SQLite/HTTP tests now cover native fixture reconstruction, 100 reparses, exact lost-response retries, concurrent duplicates, whole-batch failures, privacy/numeric/version rejection, source absence and independent destinations. Process-kill tests inspect durable intermediate state at twelve named barriers, reopen databases without deleting WAL, and resume actual collector delivery.
+
+Focused suites passed during implementation. Full PR gates remain recorded separately in [VALIDATION.md](../VALIDATION.md). Candidate trace syntax/arithmetic checks do not replace executable production-path assertions. Controlled mutation experiments and deferred multi-tenant/real-host behaviors are not claimed.

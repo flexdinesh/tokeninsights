@@ -35,17 +35,12 @@ func nonNilStrings(values []string) []string {
 }
 
 func apiSyncState(state syncState) serverapi.SyncResponse {
-	var progress *serverapi.SyncProgress
-	if p := state.Progress; p != nil {
-		progress = &serverapi.SyncProgress{JobId: p.JobID, StartedAt: p.StartedAtMs, UpdatedAt: p.UpdatedAtMs, LastSuccessfulAt: p.LastSuccessfulAtMs, TotalSources: p.TotalSources, CheckedSources: p.CheckedSources, ReadySources: p.ReadySources, FailedSources: p.FailedSources, DiscoveryComplete: p.DiscoveryComplete}
-	}
 	harnesses := make(map[string]serverapi.HarnessSyncStatus, len(state.Harnesses))
 	for harness, status := range state.Harnesses {
 		harnesses[harness] = serverapi.HarnessSyncStatus(status)
 	}
 	return serverapi.SyncResponse{
-		InstanceId: &state.InstanceID, DataEpoch: &state.DataEpoch, DataReadiness: syncReadinessPointer(state.DataReadiness), PendingRefresh: &state.PendingRefresh, CheckRequestedAt: &state.CheckRequestedAt,
-		Progress:  progress,
+		InstanceId: &state.InstanceID, DataEpoch: &state.DataEpoch, DataReadiness: syncReadinessPointer(state.DataReadiness),
 		Running:   state.Running,
 		Phase:     serverapi.SyncPhase(state.Phase),
 		Harnesses: harnesses,
@@ -55,13 +50,8 @@ func apiSyncState(state syncState) serverapi.SyncResponse {
 }
 
 func apiDashboard(data dashboard) serverapi.UsageResponse {
-	coverage := make([]serverapi.DayCoverage, 0, len(data.Coverage))
-	for _, day := range data.Coverage {
-		coverage = append(coverage, serverapi.DayCoverage{Day: day.Day, Status: serverapi.DayCoverageStatus(day.Status), CheckedAt: day.CheckedAtMs, PendingSources: day.PendingSources, FailedSources: day.FailedSources, HasUsage: day.HasUsage, Total: day.Total})
-	}
 	return serverapi.UsageResponse{
 		Revision:   &data.Revision,
-		Coverage:   &coverage,
 		Rows:       apiUsageRows(data.Rows),
 		Chart:      apiUsageRows(data.Chart),
 		RowCount:   int64(data.RowCount),

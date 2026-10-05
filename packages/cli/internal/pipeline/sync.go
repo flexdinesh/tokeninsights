@@ -680,9 +680,9 @@ func rawFactKey(fact RawTokenFact) string {
 	}
 	if fact.Harness == HarnessClaudeCode {
 		parts = append(parts, claudeCodeRequestID(fact.MetadataJSON))
-		return nativeTupleHash(parts...)
 	}
-	return stableHash(strings.Join(parts, "|"))
+	parts = append(parts, sourceSessionIdentity(fact.MetadataJSON))
+	return nativeTupleHash(parts...)
 }
 
 func nullableString(value *string) interface{} {

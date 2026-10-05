@@ -1,4 +1,6 @@
 import { readFile } from 'node:fs/promises'
+import { resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 const SCHEMA_SQL_PATH = new URL('../../../schema/schema.sql', import.meta.url).pathname
 const EMBEDDED_SCHEMA_SQL_PATH = new URL(
@@ -7,6 +9,16 @@ const EMBEDDED_SCHEMA_SQL_PATH = new URL(
 ).pathname
 const SCHEMA_GO_PATH = new URL('../../../packages/cli/internal/db/schema.go', import.meta.url)
   .pathname
+
+const SERVER_SCHEMA_SQL_PATH = new URL('../../../schema/server.sql', import.meta.url).pathname
+const EMBEDDED_SERVER_SCHEMA_SQL_PATH = new URL(
+  '../../../packages/cli/internal/serverstore/schema/server.sql',
+  import.meta.url,
+).pathname
+const SERVER_SCHEMA_GO_PATH = new URL(
+  '../../../packages/cli/internal/serverstore/store.go',
+  import.meta.url,
+).pathname
 
 const SQL_KEYWORDS = new Set([
   'PRIMARY',
@@ -49,11 +61,13 @@ function extractSchemaSqlIdentifiers(sql: string): {
   columns: Set<string>
   indexes: Set<string>
   version: number
+  applicationID: number
 } {
   const tables = new Set<string>()
   const columns = new Set<string>()
   const indexes = new Set<string>()
   let version = 0
+  let applicationID = 0
   let insideTable = false
 
   for (const rawLine of sql.split('\n')) {
@@ -65,6 +79,12 @@ function extractSchemaSqlIdentifiers(sql: string): {
       continue
     }
 
+    const applicationMatch = line.match(/^PRAGMA\s+application_id\s*=\s*(0x[0-9a-f]+|\d+)/i)
+    if (applicationMatch) {
+      applicationID = Number(applicationMatch[1])
+      continue
+    }
+
     const tableMatch = line.match(/^CREATE\s+TABLE\s+IF\s+NOT\s+EXISTS\s+(\S+)/i)
     if (tableMatch) {
       tables.add(tableMatch[1])
@@ -72,7 +92,7 @@ function extractSchemaSqlIdentifiers(sql: string): {
       continue
     }
 
-    const indexMatch = line.match(/^CREATE\s+INDEX\s+IF\s+NOT\s+EXISTS\s+(\S+)/i)
+    const indexMatch = line.match(/^CREATE\s+(?:UNIQUE\s+)?INDEX\s+IF\s+NOT\s+EXISTS\s+(\S+)/i)
     if (indexMatch) {
       indexes.add(indexMatch[1])
       continue
@@ -95,7 +115,7 @@ function extractSchemaSqlIdentifiers(sql: string): {
     }
   }
 
-  return { tables, columns, indexes, version }
+  return { tables, columns, indexes, version, applicationID }
 }
 
 function extractGoConsts(go: string): { strings: Map<string, string>; ints: Map<string, number> } {
@@ -109,9 +129,9 @@ function extractGoConsts(go: string): { strings: Map<string, string>; ints: Map<
       strings.set(strMatch[1], strMatch[2])
       continue
     }
-    const intMatch = line.match(/^const\s+(\w+)\s*=\s*(\d+)/)
+    const intMatch = line.match(/^const\s+(\w+)\s*=\s*(0x[0-9a-fA-F]+|\d+)/)
     if (intMatch) {
-      ints.set(intMatch[1], Number.parseInt(intMatch[2], 10))
+      ints.set(intMatch[1], Number(intMatch[2]))
     }
   }
 
@@ -129,9 +149,9 @@ function extractGoConsts(go: string): { strings: Map<string, string>; ints: Map<
         continue
       }
 
-      const intMatch = line.match(/^(\w+)\s*=\s*(\d+)/)
+      const intMatch = line.match(/^(\w+)\s*=\s*(0x[0-9a-fA-F]+|\d+)/)
       if (intMatch) {
-        ints.set(intMatch[1], Number.parseInt(intMatch[2], 10))
+        ints.set(intMatch[1], Number(intMatch[2]))
       }
     }
   }
@@ -139,43 +159,74 @@ function extractGoConsts(go: string): { strings: Map<string, string>; ints: Map<
   return { strings, ints }
 }
 
-async function main() {
-  const sql = await readText(SCHEMA_SQL_PATH)
-  const embeddedSQL = await readText(EMBEDDED_SCHEMA_SQL_PATH)
-  const go = await readText(SCHEMA_GO_PATH)
-
-  const { tables, columns, indexes, version } = extractSchemaSqlIdentifiers(sql)
+export function schemaContractMismatches(
+  sql: string,
+  embeddedSQL: string,
+  go: string,
+  applicationConstant: string,
+  checkIdentifiers = true,
+): string[] {
+  const { tables, columns, indexes, version, applicationID } = extractSchemaSqlIdentifiers(sql)
   const { strings: goStrings, ints: goInts } = extractGoConsts(go)
   const allSqlIdentifiers = new Set([...tables, ...columns, ...indexes])
   const mismatches: string[] = []
-
   if (sql !== embeddedSQL) {
-    mismatches.push('embedded Go schema copy does not match schema/schema.sql')
+    mismatches.push('embedded Go schema copy differs from authoritative SQL')
   }
-
-  for (const [constName, value] of goStrings) {
-    if (!allSqlIdentifiers.has(value)) {
-      mismatches.push(`Go const ${constName} = "${value}" not found in schema.sql`)
-    }
-  }
-
-  for (const table of tables) {
-    let found = false
+  if (checkIdentifiers) {
     for (const [constName, value] of goStrings) {
-      if (value === table && constName.startsWith('Table')) {
-        found = true
-        break
+      if (!allSqlIdentifiers.has(value)) {
+        mismatches.push(`Go const ${constName} = "${value}" not found in schema.sql`)
       }
     }
-    if (!found) {
-      mismatches.push(`Table "${table}" has no matching Go Table* constant`)
+
+    for (const table of tables) {
+      let found = false
+      for (const [constName, value] of goStrings) {
+        if (value === table && constName.startsWith('Table')) {
+          found = true
+          break
+        }
+      }
+      if (!found) {
+        mismatches.push(`Table "${table}" has no matching Go Table* constant`)
+      }
     }
   }
-
   if (goInts.get('SupportedSchemaVersion') !== version) {
     mismatches.push(`SupportedSchemaVersion does not match schema user_version ${version}`)
   }
+  if (applicationID === 0 || goInts.get(applicationConstant) !== applicationID) {
+    mismatches.push(`${applicationConstant} does not match schema application_id ${applicationID}`)
+  }
+  return mismatches
+}
 
+async function main() {
+  const [sql, embeddedSQL, go, serverSQL, embeddedServerSQL, serverGo] = await Promise.all(
+    [
+      SCHEMA_SQL_PATH,
+      EMBEDDED_SCHEMA_SQL_PATH,
+      SCHEMA_GO_PATH,
+      SERVER_SCHEMA_SQL_PATH,
+      EMBEDDED_SERVER_SCHEMA_SQL_PATH,
+      SERVER_SCHEMA_GO_PATH,
+    ].map(readText),
+  )
+  const mismatches = [
+    ...schemaContractMismatches(sql, embeddedSQL, go, 'CollectorApplicationID').map(
+      (message) => `collector: ${message}`,
+    ),
+    ...schemaContractMismatches(serverSQL, embeddedServerSQL, serverGo, 'ApplicationID', false).map(
+      (message) => `server: ${message}`,
+    ),
+  ]
+  if (
+    extractSchemaSqlIdentifiers(sql).applicationID ===
+    extractSchemaSqlIdentifiers(serverSQL).applicationID
+  ) {
+    mismatches.push('collector and server application_id must differ')
+  }
   if (mismatches.length > 0) {
     for (const mismatch of mismatches) {
       console.error(mismatch)
@@ -186,7 +237,6 @@ async function main() {
   console.log('schema contract OK')
 }
 
-main().catch((error: unknown) => {
-  console.error(error)
-  process.exit(1)
-})
+if (process.argv[1] !== undefined && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  await main()
+}

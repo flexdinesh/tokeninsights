@@ -40,7 +40,12 @@ void test('materializes deterministic development sources and removes stale outp
       sourceDatabase.close()
     }
 
-    const outputDatabase = new DatabaseSync(paths.dbPath)
+    const collectorDatabase = new DatabaseSync(paths.collectorDBPath)
+    collectorDatabase.exec(
+      "CREATE TABLE raw_marker (value TEXT NOT NULL); INSERT INTO raw_marker VALUES ('local');",
+    )
+    collectorDatabase.close()
+    const outputDatabase = new DatabaseSync(paths.serverDBPath)
     outputDatabase.exec(
       "CREATE TABLE marker (value TEXT NOT NULL); INSERT INTO marker VALUES ('ready');",
     )
@@ -61,7 +66,8 @@ void test('materializes deterministic development sources and removes stale outp
   const expectedFiles = [
     ...fixtureFiles.filter((path) => path.endsWith('.jsonl')).map((path) => join('source', path)),
     join('source', 'opencode', 'opencode.db'),
-    'tokeninsights.sqlite',
+    'collector.sqlite',
+    'server.sqlite',
   ].toSorted()
   assert.deepEqual(firstFiles, expectedFiles)
 
@@ -79,11 +85,18 @@ void test('materializes deterministic development sources and removes stale outp
   assert.deepEqual(secondFiles, firstFiles)
   assert.equal(syncCalls.length, 2)
   assert.deepEqual(syncCalls[0], syncCalls[1])
-  const outputDatabase = new DatabaseSync(first.dbPath, { readOnly: true })
+  assert.notEqual(first.collectorDBPath, first.serverDBPath)
+  const outputDatabase = new DatabaseSync(first.serverDBPath, { readOnly: true })
   try {
     const row = outputDatabase.prepare('SELECT value FROM marker').get()
     assert.notEqual(row, undefined)
     assert.equal(row?.value, 'ready')
+    assert.equal(
+      outputDatabase
+        .prepare("SELECT COUNT(*) AS count FROM sqlite_master WHERE name = 'raw_marker'")
+        .get()?.count,
+      0,
+    )
   } finally {
     outputDatabase.close()
   }

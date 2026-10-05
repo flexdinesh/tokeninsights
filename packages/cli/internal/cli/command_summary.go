@@ -4,8 +4,21 @@ import (
 	"fmt"
 	"io"
 
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/collector"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/pipeline"
 )
+
+func printDeliverySummary(stdout io.Writer, result collector.Result) {
+	state := "committed"
+	if result.DeliveryError != nil {
+		state = "failed"
+	}
+	pending := "unknown"
+	if result.PendingKnown {
+		pending = fmt.Sprint(result.Pending)
+	}
+	_, _ = fmt.Fprintf(stdout, "delivery: status=%s batches=%d inserted=%d updated=%d noop=%d pending=%s\n", state, result.Batches, result.Inserted, result.Updated, result.Noop, pending)
+}
 
 func printSummary(stdout io.Writer, command string, summary pipeline.Summary, dryRun bool) {
 	prefix := command

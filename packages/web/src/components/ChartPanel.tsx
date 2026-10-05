@@ -21,7 +21,15 @@ function ChartError() {
   )
 }
 
-export function ChartPanel({ rows, totalTokens }: { rows: Row[]; totalTokens: number }) {
+export function ChartPanel({
+  rows,
+  totalTokens,
+  timezone,
+}: {
+  rows: Row[]
+  totalTokens: number
+  timezone: string
+}) {
   const { query } = useDashboardQuery()
   const resetKey = apiQueryParams(query).toString()
   return (
@@ -29,7 +37,7 @@ export function ChartPanel({ rows, totalTokens }: { rows: Row[]; totalTokens: nu
       <Suspense
         fallback={<Skeleton className="skeleton-chart" role="status" aria-label="Loading chart" />}
       >
-        <UsageChart rows={rows} totalTokens={totalTokens} />
+        <UsageChart rows={rows} totalTokens={totalTokens} timezone={timezone} />
       </Suspense>
     </CatchBoundary>
   )

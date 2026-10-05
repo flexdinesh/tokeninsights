@@ -1,58 +1,44 @@
 # Collector/server implementation gates
 
-Status: Implementation started in PR #53. CFI001–009 and the full pipeline suite pass; storage/ingestion/migration approval pending.
+Status: Runtime path complete in PR #53; repository verification passed.
 
-See [PRD](PRD.md), [architecture proposal](../../docs/collector-server-architecture.md), [failure matrix](../../docs/collector-ingestion-tests.md), and [identity audit](IDENTITY-AUDIT.md).
+See [PRD](PRD.md), [execution plan](EXECUTION-PLAN.md), [approved contract](STORAGE-CONTRACT-PROPOSAL.md), [architecture](../../docs/collector-server-architecture.md), [failure matrix](../../docs/collector-ingestion-tests.md), and [validation evidence](VALIDATION.md).
 
-[Execution plan](EXECUTION-PLAN.md) specifies parallel tasks T01–T13 and dependencies. [Storage contract proposal](STORAGE-CONTRACT-PROPOSAL.md) is the approval gate. [Failure-test plan](FAILURE-TEST-PLAN.md) specifies production SQLite/HTTP tests and process-kill seams; [plugin plan](PLUGIN-PLAN.md) tracks thin adapter readiness. Planned tasks are not completed ingestion coverage.
+The user chose fresh collector/server files rebuilt from retained sources. Preserve legacy `tokeninsights.sqlite`; no history import or legacy alias migration. Collector/server role checks run before recovery or mutation.
 
 | Work | State |
 | --- | --- |
-| T01 parser regressions | Code and real pipeline tests pass; compatibility migration still required. |
-| T02 storage/wire review | Concrete proposal prepared; explicit approval requested. |
-| T03–T07, T11–T12 stores/ingestion/composition/migration | Pending approved contracts; named test seams and independent oracles specified. |
-| T08 query client | Existing-API client implemented and tested against real SQLite/HTTP pagination; TUI wiring pending. |
-| T09 browser | Transition to query Reload planned; implementation pending. |
-| T10 plugins | Codex/Claude isolated wrappers tested; Pi/OpenCode routing scaffolds tested; runners/packages/host verification pending. |
-| T13 docs/tooling | Plans and coverage updated incrementally; final contract/asset/runtime changes pending. |
+| T01 native identities | OpenCode/Claude regressions fixed; CFI001–009 preserved. Weak identity has explicit publication diagnostics. |
+| T02 contract | Approved; separate schemas and normalized wire protocol implemented. |
+| T03 collector journal | Atomic canonical+journal writes, immutable saved batches, independent destination progress implemented and focused-tested. |
+| T04/T05 protocol/server | Strict decoder and bounded transactional ingestion implemented; receipt, dedupe, conflict and privacy tests execute real SQLite/HTTP. |
+| T06/T07 composition/CLI | Shared local/remote core; default all-harness manual sync, publish-only, host-only resets, fresh paths implemented. |
+| T08/T09 viewers | REST TUI and browser Reload implemented; no implicit source collection. |
+| T10 plugins | Native packaging/runner completion tracked in [plugin plan](PLUGIN-PLAN.md); isolated real-host installation remains deferred. |
+| T11 compatibility | Fresh role databases; legacy preserved; wrong-role/newer schemas reject without destructive recovery. |
+| T12 failures | Production contract tests plus 12 named subprocess kill/reopen barriers implemented. |
+| T13 docs/tooling | Current runtime docs, separate dev fixtures, embedded assets and repository gates complete. |
 
-## Gate 1: Prove source identities
+## Gate 1: Source identities
 
-Run synthetic fixtures through the real adapters. Compare exact logical identities, timestamps, attribution, token components, countability, and totals after repeated sync and fresh-DB reconstruction. Distinguish identical-source guarantees from changed-source scenarios. Preserve legitimate equal-token requests; suppress only proven copies.
+Real adapters compare native identity, canonical timestamps, token components and totals across repeated/full parse and fresh databases. CFI007 preserves distinct equal-counter OpenCode requests; CFI008 replaces one native Claude request snapshot. CFI009 preserves ambiguous raw evidence; it does not invent two published facts. Missing occurrence/native identity or unsupported changed values create explicit publication diagnostics.
 
-Do not accept aggregate totals alone, generated goldens, skipped regression tests, or a simulated ingestion engine as evidence of production correctness. Genuine failures stay explicit until fixed with reviewed semantics. Identity/accounting fixes must move tests, README, and design together; storage changes require explicit approval.
+## Gate 2: Durable publication
 
-## Gate 2: Approve storage and publication contract
+Canonical mutation and journal snapshot share one transaction. Unchanged normalization creates no journal entry; mergeable reference-envelope changes remain deliverable. Saved request bytes never change during retry. Receipt validation precedes the atomic cursor/receipt commit. Acknowledged prefixes persist across suffix failure.
 
-Specify collector journal/cursors, server canonical entity identity, transactional batch receipts, and schema compatibility/migration. Review changed-payload and missing-native-ID policy. Obtain explicit approval before changing SQLite structures or cross-language schema contracts.
+## Gate 3: Canonical server
 
-The canonical envelope must exclude local raw facts, transcript content, secrets, and source paths. Manual sync is the trigger. No retraction or reverse synchronization system is required.
+Normalized self-contained batches share one ingestion core in local and remote compositions. Validation, canonical references/facts, analytics revision and receipt commit atomically. Duplicate batch replay returns its original receipt; a fresh stream repeats no contribution. Claude timestamp evidence governs revisions; stream sequence is never source precedence. Missing producer artifacts cannot cause server reconstruction or historical deletion.
 
-## Gate 3: Implement durable collection/publication
+## Gate 4: Workflow and viewers
 
-Commit raw facts and source continuity safely; commit canonical publication changes with normalization. Save immutable batches before delivery; advance a destination cursor only after a committed receipt. Inject failures at each boundary, reopen actual databases, and verify retained work.
+`sync` defaults to all harnesses. Collection and delivery summaries report their separate outcomes. `--publish-only` requires no source discovery; explicit server URL never boots local service. Producer resets affect only collector storage. TUI/browser query through REST; optional `view --sync` invokes caller-side collection explicitly. Reload observes saved state only.
 
-## Gate 4: Implement canonical server ingestion
+## Gate 5: Verification/release
 
-Use one ingestion operation for local and remote compositions. Validate before committing; atomically apply canonical records and retry identity. A receipt means query-visible data. Run candidate failure traces against real SQLite/HTTP code, including fresh publisher streams, lost responses, concurrent replay, reference integrity, and incompatible schemas.
-
-Bound admission and transactions. Keep parsing and harness source inspection in the collector. Do not substitute mock-only tests for storage crash/reopen coverage.
-
-## Gate 5: Switch clients and CLI
-
-Route manual sync through local collection and canonical publication; preserve useful per-stage failure reporting. Define viewer/refresh behavior and transport migration explicitly. Update CLI docs, API contracts, generated output, dashboard tests, and design together.
-
-## Completion criteria
-
-- Every guarantee and failure ID maps to runnable tests or an explicit pending implementation issue.
-- Independent expected IDs/components/totals remain stable across reruns and fresh collector DBs.
-- Server retries and recollection never add duplicate contributions.
-- Failed transactions and lost responses do not lose queued facts or falsely advance delivery progress.
-- Format, lint, focused tests, full tests, schema/API checks, and build results are recorded in [validation evidence](VALIDATION.md).
+Focused tests are evidence for their own packages only. Complete root formatting/lint, full tests, schema/API checks, generated assets, native build/runtime, race and browser gates. Record exact outcomes in [VALIDATION.md](VALIDATION.md); do not claim final completion until those gates pass. Mutation experiments and real-host plugin installation are separate evidence and must not be claimed unless performed.
 
 ## Unresolved questions
 
-- Missing-native-ID policy?
-- Changed-payload precedence?
-- Exact journal/receipt schema and migration?
-- Viewer transport/refresh migration?
+None blocking approved implementation. Future work: isolated plugin host verification and remote setup/authentication.

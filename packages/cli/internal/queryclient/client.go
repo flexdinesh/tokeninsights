@@ -36,8 +36,16 @@ func (e *StatusError) Error() string {
 }
 
 type Client struct {
-	base url.URL
-	http http.Client
+	base  url.URL
+	http  http.Client
+	token string
+}
+
+// WithToken returns a client copy authenticated by a bearer token.
+func (c *Client) WithToken(token string) *Client {
+	copy := *c
+	copy.token = token
+	return &copy
 }
 
 // New accepts an HTTP(S) origin or path prefix without URL credentials or queries.
@@ -84,8 +92,16 @@ func (c *Client) Usage(ctx context.Context, params api.GetUsageParams) (api.Usag
 func (c *Client) Facets(ctx context.Context, params api.GetUsageFacetsParams) (api.UsageFacetsResponse, error) {
 	var response api.UsageFacetsResponse
 	values := selectionValues(params.Period, params.Bucket, params.From, params.To, params.Provider, params.Model, params.Harness, params.Session, params.Repository, params.Directory)
+	setValue(values, "tab", params.Tab)
 	setValue(values, "search", params.Search)
 	err := c.get(ctx, "/api/v1/usage/facets", values, &response)
+	return response, err
+}
+
+// Status observes published data readiness and revision without requesting work.
+func (c *Client) Status(ctx context.Context) (api.SyncResponse, error) {
+	var response api.SyncResponse
+	err := c.get(ctx, "/api/v1/sync", nil, &response)
 	return response, err
 }
 
@@ -189,6 +205,9 @@ func (c *Client) get(ctx context.Context, endpoint string, values url.Values, ta
 		return errors.New("cannot create server query")
 	}
 	req.Header.Set("Accept", "application/json")
+	if c.token != "" {
+		req.Header.Set("Authorization", "Bearer "+c.token)
+	}
 	response, err := c.http.Do(req)
 	if err != nil {
 		if ctx.Err() != nil {

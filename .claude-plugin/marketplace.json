@@ -1,0 +1,11 @@
+{
+  "name": "tokeninsights",
+  "owner": { "name": "tokeninsights" },
+  "plugins": [
+    {
+      "name": "tokeninsights",
+      "source": "./packages/plugin-claude",
+      "description": "Collect and sync local token usage after agent completion."
+    }
+  ]
+}

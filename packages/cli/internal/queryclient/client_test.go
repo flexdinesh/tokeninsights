@@ -15,9 +15,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/db"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/server"
 	api "github.com/flexdinesh/tokeninsights/packages/cli/internal/server/api"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/serverstore"
 	_ "modernc.org/sqlite"
 )
 
@@ -36,26 +36,19 @@ func newClient(t *testing.T, handler http.Handler) *Client {
 
 func TestRealServerPaginationAndComponents(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "server.sqlite")
-	database, _, err := db.CreateIfMissing(path)
+	store, err := serverstore.CreateIfMissing(path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() { _ = database.Close() }()
+	defer func() { _ = store.Close() }()
+	database := store.SQL()
 	const sessions = 225
 	for i := 0; i < sessions; i++ {
 		key := fmt.Sprintf("synthetic-%03d", i)
 		if _, err := database.Exec(`INSERT INTO canonical_sessions (semantic_key,harness,session_id,first_seen_at_ms,last_seen_at_ms) VALUES (?,'pi',?,1000,1000)`, key, key); err != nil {
 			t.Fatal(err)
 		}
-		raw, err := database.Exec(`INSERT INTO raw_token_usage (raw_fact_key,harness,source_id,source_kind,collector,parser,observed_at_ms,session_id,usage_scope,quality) VALUES (?,'pi','synthetic','test','test','test',1000,?,'message','exact')`, key, key)
-		if err != nil {
-			t.Fatal(err)
-		}
-		rawID, err := raw.LastInsertId()
-		if err != nil {
-			t.Fatal(err)
-		}
-		if _, err := database.Exec(`INSERT INTO canonical_token_usage (semantic_key,recorded_at_ms,harness,session_id,provider,model,usage_scope,quality,is_countable,input_tokens,output_tokens,reasoning_tokens,cache_read_tokens,cache_write_tokens,total_tokens,primary_raw_fact_id) VALUES (?,1000,'pi',(SELECT id FROM canonical_sessions WHERE semantic_key=?),'synthetic-provider','synthetic-model','message','exact',1,10,2,3,4,5,24,?)`, key, key, rawID); err != nil {
+		if _, err := database.Exec(`INSERT INTO canonical_token_usage (semantic_key,recorded_at_ms,harness,session_id,provider,model,usage_scope,quality,is_countable,input_tokens,output_tokens,reasoning_tokens,cache_read_tokens,cache_write_tokens,total_tokens,payload_hash) VALUES (?,1000,'pi',(SELECT id FROM canonical_sessions WHERE semantic_key=?),'synthetic-provider','synthetic-model','message','exact',1,10,2,3,4,5,24,?)`, key, key, key); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -263,6 +256,37 @@ func TestURLValidation(t *testing.T) {
 			t.Errorf("accepted invalid URL %q", raw)
 		} else if strings.Contains(err.Error(), "secret") {
 			t.Errorf("error leaked URL credentials: %v", err)
+		}
+	}
+}
+
+func TestReadOnlyStatusAndBearerClientCopy(t *testing.T) {
+	requests := make(chan string, 3)
+	c := newClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			t.Errorf("query mutated server: %s", r.Method)
+		}
+		requests <- r.Header.Get("Authorization")
+		if r.URL.Path == "/api/v1/sync" {
+			serveJSON(w, api.SyncResponse{Revision: 7})
+			return
+		}
+		serveJSON(w, instanceResponse("stable"))
+	}))
+	authenticated := c.WithToken("synthetic-token")
+	status, err := authenticated.Status(t.Context())
+	if err != nil || status.Revision != 7 {
+		t.Fatalf("status=%#v error=%v", status, err)
+	}
+	if _, err := authenticated.Instance(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.Instance(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"Bearer synthetic-token", "Bearer synthetic-token", ""} {
+		if got := <-requests; got != want {
+			t.Fatalf("authorization=%q want%q", got, want)
 		}
 	}
 }

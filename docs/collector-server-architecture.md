@@ -1,155 +1,213 @@
-# Collector/server architecture proposal
+# Collector/server architecture
 
-Status: **IMPLEMENTATION IN PROGRESS; server boundary not yet implemented.** Reviewed direction: 5 October 2026. PR #53 owns design, fixtures, parser fixes, and the collector/server implementation. Storage and cross-language changes await explicit contract approval.
+Status: **Accepted; implemented in PR #53.** Decision: 5 October 2026.
+The approved split creates fresh `collector.sqlite` and `server.sqlite` files.
+The old `tokeninsights.sqlite` file stays untouched; this change does not import
+legacy history or migrate legacy identities.
 
-[design.md](design.md) describes today's product. This proposal does not change its current behavior, SQLite contracts, or REST API. The [PRD](../.scratch/collector-ingestion/PRD.md) records implementation gates; the [failure contract](collector-ingestion-tests.md) owns failure cases and their verification status.
+[design.md](design.md) describes the product; [ADR 0006](adr/0006-collector-server-ingestion.md)
+records this decision. The [storage contract](../.scratch/collector-ingestion/STORAGE-CONTRACT-PROPOSAL.md)
+defines persistence and wire details. The [failure contract](collector-ingestion-tests.md)
+and [validation record](../.scratch/collector-ingestion/VALIDATION.md) distinguish
+implemented assertions from remaining coverage. A guarantee alone does not prove
+every related failure has been tested.
 
-The [storage proposal](../.scratch/collector-ingestion/STORAGE-CONTRACT-PROPOSAL.md) makes table, migration, wire, and conflict choices reviewable. The [executable failure plan](../.scratch/collector-ingestion/FAILURE-TEST-PLAN.md) specifies real SQLite/HTTP assertions and process-crash seams; it is planned coverage until those tests execute against production code.
-
-## Responsibility change
-
-Today the persistent service can discover local Durable Sources, run sync/normalization, and serve canonical data from the same SQLite database. The TUI reads that database directly. The proposed server cannot inspect producer files: the host collector owns capture and normalization, then publishes canonical entities into a separate server database.
+## Ownership and compositions
 
 ```mermaid
 flowchart LR
-    Command[Manual sync] --> Collector
-    Hooks[Future thin harness hooks] --> Collector
-    Sources[Local Durable Sources] --> Collector
-    Collector[Host collection and normalization] --> Local[(Collector SQLite: raw facts and canonical data)]
-    Local --> Journal[Durable canonical change journal]
-    Journal --> Delivery[Bounded batch delivery]
-    Delivery --> Ingestion[Canonical ingestion]
-    subgraph Server[Shared server core: local or remote composition]
-        Ingestion --> QueryDB[(Server SQLite: canonical query data and receipts)]
-        QueryDB --> REST[REST analytics]
-        Assets[Embedded web assets]
+    Manual[Manual sync] --> Collector
+    Hooks[Thin harness hooks] --> Collector
+    Sources[Host durable sources] --> Collector
+    Collector[Capture and normalization] --> Local[(Collector SQLite)]
+    Local --> Journal[Durable publication journal]
+    Journal --> Delivery[Saved bounded batches]
+    Delivery --> Ingestion[Transactional ingestion]
+    subgraph Server[Shared local or remote server core]
+        Ingestion --> QueryDB[(Server SQLite and receipts)]
+        QueryDB --> REST[Read-only analytics API]
+        Assets[Embedded browser assets]
     end
     Browser[Web dashboard] --> REST
     Browser --> Assets
-    Client[TUI and query CLI] --> REST
+    TUI[TUI] --> REST
 ```
 
-Local and remote are two compositions of one server core, not two servers required on every machine. Local is the default destination. Remote composition and transport boundaries are prepared now; remote deployment, authentication provisioning, and setup remain later work. Selecting a remote destination must not implicitly start a local server or relay through it.
+Local and remote compose the same native Go ingestion/query core. Local is the
+default. Selecting `--server-url` publishes directly without starting a local
+server. Remote deployment and credential provisioning remain later work.
+Every non-loopback bind requires an explicit token, including managed
+`service` commands. Tokens protect public assets and APIs; private administration
+stays on the owner-only Unix socket.
 
 | Collector owns | Server owns |
 | --- | --- |
-| Durable Source discovery and harness adapters | Canonical ingestion validation |
-| Metadata-only raw facts and observations | Stable-entity dedupe and batch replay identity |
-| Continuity proofs and parsing cursors | Atomic persistence and receipts |
-| Canonical normalization and diagnostics | Canonical query indexes and analytics |
-| Reproducible published entity IDs | REST endpoints and embedded web assets |
-| Change journal and destination delivery progress | Deployment-established ownership scope |
+| Harness discovery, parsing, ancestry and continuity | Strict normalized-publication validation |
+| Metadata-only raw facts, normalization and diagnostics | Stable fact dedupe and durable batch receipts |
+| Source cursors and canonical facts | Atomic canonical persistence and analytics revision |
+| Source identity derivation and publication journal | Canonical queries, REST and embedded web assets |
+| Destination binding, saved requests and acknowledgement cursor | One database-established owner, initially `default` |
 
-Raw facts remain metadata-only locally: retaining raw facts does not authorize storing transcripts, provider payloads, full source paths, secrets, or tool contents. Only allowlisted canonical data crosses ingestion. Collector-local row IDs, source cursors, and continuity markers never become server dependencies.
+Multiple machines may publish for that owner. Hostname is a display label, never
+identity; copied native histories dedupe independently of the publishing host.
+The server has no application controller, source discovery, parser, source-root
+configuration or startup normalization. Shared analytics SQL reads canonical
+tables through a server-owned read transaction. The server makes no claim about
+source completeness.
 
-## Agreed scope
+## Manual workflow and viewers
 
-- Primary workflow is manually invoked `sync`: collect, normalize locally, publish pending canonical changes, report outcomes.
-- Collector SQLite retains raw and canonical facts. Source continuity is an optimization; full parsing remains the correctness fallback.
-- Server stores already-normalized entities; it has no harness parser or raw-fact normalization worker.
-- Stable entity identity dedupes reconstructed uploads after collector database deletion. Batch identity dedupes delivery retries.
-- Canonical changes and publication journal records commit together. Delivery progress is destination-specific.
-- Successful server acknowledgement means committed and queryable. No separate asynchronous server inbox is required initially; admission and transaction sizes remain bounded.
-- Queries show committed available data. Neither viewer queries nor server startup scan producer files or promise account-wide completeness.
-- Thin future plugins invoke the same collector path. Hooks are additional triggers, not another source of accounting logic.
-- No retractions, producer backflow, autonomous retry agent, or automatic completeness reconciliation is required in this scope. Source disappearance does not delete server history.
-- Compatibility is explicit: compatible versions are accepted; incompatible versions require an approved upgrade/migration or rejection without data loss.
+1. `sync` captures durable source changes and normalizes them in collector SQLite.
+   Proven continuity allows incremental parsing; uncertainty falls back to full
+   parsing. Capture progress commits with captured facts and pending work.
+2. Normalization records publishable snapshots in its canonical writer
+   transaction. Initially it scans the canonical snapshot inside that transaction
+   and suppresses unchanged journal values. Missing occurrence/native identity
+   evidence is withheld with a safe local diagnostic.
+3. Delivery discovers capabilities and durable server database identity. It
+   saves an immutable pending batch before sending. Unknown outcomes retain the
+   exact bytes for the next manual attempt.
+4. Ingestion commits facts, merged references, producer labels, metadata and
+   receipt together. Success means committed and queryable; rejection exposes
+   no partial batch.
+5. The collector validates receipt identity, range, exact request hash and counts,
+   then atomically saves the receipt and advances a contiguous destination cursor.
 
-This supersedes the earlier discussion of uploading extracted raw observations for server-side normalization and an asynchronous server normalization queue. It also proposes replacing today's service-owned collection and TUI SQLite reads. Those changes are not implemented by these documents.
+`sync --publish-only` resumes delivery without collection. Previously committed
+work can still be delivered after a collection error. Earlier acknowledged
+batches remain acknowledged when a later batch fails. Collection and delivery
+outcomes are reported separately; no autonomous retry worker is implied.
 
-## Stable identity and canonical value
+Bare invocation ensures the local query service. `view` is read-only by default;
+`view --sync` explicitly collects first. TUI reload and web Reload fetch saved
+server data. `GET /api/v1/sync` remains compatibility status; POST returns 405.
+The UI points to `tokeninsights sync` for collection. Query snapshots include
+process instance, durable database epoch and analytics revision. A TUI snapshot
+spanning pages retries when those change. TPS tabs and average, mean and median
+concepts remain available when normalized timing data is absent.
 
-The invariant is conditional and testable: **the same retained source set, including attribution/ancestry dependencies, under the same supported parsing and accounting rules produces the same published entity IDs and normalized values, regardless of collector database state.** Source content changes and incompatible accounting changes are separate cases.
+Queries use the server reporting timezone. Instance metadata returns an IANA
+name where resolvable, preserving historical daylight-saving rules. Otherwise
+it explicitly returns the current fixed UTC offset; that fallback cannot
+describe historical DST. Producer labels are `unknown`, a sole known hostname,
+or `multiple machines`; absent producer metadata never becomes serving hostname.
 
-Derive IDs from harness-native identity wherever available. Sessions, optional messages, usage facts, and other actually published entities need their own identity rules. Conceptually, a usage fact identifies the harness, originating native session, native message/request/event, and usage kind. Reporting parent session is a relationship, separate from originating identity. Exact fields and hash encoding remain adapter-contract work, not a new schema in this proposal.
+## Identity and canonical values
 
-Exclude token values, collection time, local row IDs, producer installation/stream IDs, batch IDs, filesystem paths, and mutable attribution from fact identity. Source namespaces needed to distinguish native-ID collisions must themselves survive reconstruction; an installation-generated UUID alone cannot provide that guarantee. Hostname is a label. Server-established ownership scopes uniqueness without trusting an arbitrary owner supplied by a producer.
+Reproducibility assumes the same retained source set, including ancestry and
+attribution dependencies, under the same supported parsing/accounting rules.
+Deleting collector SQLite changes its stream and delivery state, not identities
+derived from those sources.
 
-Use deterministic unambiguous encoding before hashing. A canonical payload hash identifies equal normalized values independently of JSON object ordering or delivery metadata; it does not replace fact identity. Equal token counters do not prove equal requests.
+IDs are SHA-256 of UTF-8 JSON string-array tuples:
 
-| Incoming publication | Intended server outcome |
+| Entity | Tuple, in order |
 | --- | --- |
-| New stable identity | Insert canonical entity |
-| Existing identity, equal canonical value | Successful no-op |
-| Reused batch identity, identical batch | Return matching durable receipt |
-| Reused batch identity, changed batch | Reject replay conflict without mutation |
-| Existing fact identity, changed value | Never add a second contribution; update precedence requires its own rule |
+| Session | `session-v1`, `default`, harness, native session ID |
+| Message | `message-v1`, `default`, harness, native session ID, native message ID |
+| Fact | `fact-v1`, `default`, harness, native session ID, native message ID or empty string, native request ID or empty string, usage scope |
+| Location | `location-v1`, normalized directory key, normalized repository key |
 
-Changed-value precedence remains unresolved where native revision evidence is insufficient. A collector sequence orders its own journal, not independent streams or a recreated database. Arrival time, installation time, and largest-counter-wins are not accepted universal precedence rules. Until an adapter/version-specific policy is approved and tested, conflicts must be explicit and existing totals preserved. No generic retraction machinery is proposed.
+Usage scope accepts only `message`. Each fact resolves to a stable session and
+requires a nonempty native message or request identity. Tokens, sequence,
+installation/stream/batch IDs, observation clock, hostname and location labels
+do not enter this fact tuple. The canonical payload hash includes the normalized
+contribution but zeros mergeable session first/last and message occurrence
+envelopes. The exact-byte request hash binds delivery, not accounting identity.
 
-Native-ID absence, mutable source events, copied histories, and independently colliding native IDs need fixtures and documented adapter rules. The proposal does not claim all existing adapters already meet the publication identity invariant.
+Adapter evidence qualifies the native-ID rule:
 
-Deterministic identity is distinct from collision-free accounting: two native facts can deterministically collapse to the same canonical key, producing repeatable but incorrect totals. The identity audit examines current OpenCode copy suppression, Pi records without native message IDs, and Claude request identity. Codex snapshot hashing remains deterministic for unchanged input and distinguishes some same-time events; changing counters changes the input. The current canonical observation-time fallback is a latent boundary risk, because active adapters require usable occurrence timestamps.
+- OpenCode native session/message identities distinguish equal-valued requests.
+- Pi records without usable native message identity are withheld with diagnostics.
+- Codex retains its existing adapter-derived immutable event witness in message
+  identity. The witness includes source snapshot token values and field presence.
+  Proven inherited replay retains the original owning identity. Distinct
+  same-time snapshots remain distinct; changed counters change the witness.
+  Line-based fallbacks assume unchanged layout.
+- Claude retains request identity where present. Only a fact with native session,
+  message, request and source occurrence can use `claude-source-timestamp-v1`.
+  Newer source timestamps replace one contribution; older ones are stale no-ops;
+  equal timestamps with different canonical payloads conflict. Collector sequence
+  is never revision evidence.
 
-## Manual sync and persistence boundaries
-
-1. Resolve collector configuration and selected destination. Serialize collector mutation using existing writer ownership concepts.
-2. Discover Durable Sources and validate continuity. Parse changed data from stable source extents or a consistent source database snapshot; uncertain continuity falls back to full parsing.
-3. Commit captured raw facts, observations, normalization work, and applicable source progress together. Failed preparation cannot advance source progress.
-4. Normalize pending work. Commit canonical changes, completed normalization work, and corresponding journal records together. A diagnostic can complete unsuitable raw work without manufacturing a usage fact.
-5. Prepare a bounded immutable publication batch from pending journal entries, including required referenced entities. Persist its retry identity and exact payload before sending.
-6. Discover/start the local server only for local delivery. Remote delivery uses the configured destination directly. Collection remains useful if delivery is unavailable.
-7. Server validates compatibility, entity invariants, references, ownership scope, and replay identity. One transaction commits all accepted canonical changes and the receipt, or neither. Concurrent duplicate uploads serialize through durable uniqueness, not a process-local cache.
-8. Return success after commit. Collector validates the receipt against the destination, batch, and submitted range before advancing its contiguous delivery cursor transactionally.
-9. Report collection, normalization, delivery, and diagnostics separately. A subsequent manual `sync` resumes pending work. No background wakeup is implied.
-
-Acknowledged prefixes can progress before a later batch fails. The failed suffix remains pending; a sync error does not roll back already-committed earlier batches. Explicit conflicts cannot be presented as fully successful delivery; their receipt/cursor treatment is a contract decision still pending.
-
-| Crash boundary | Durable state and required recovery |
+| Incoming publication | Outcome |
 | --- | --- |
-| Before captured source commit | No progress advance; reread source |
-| After capture, before normalization | Raw facts and pending work survive; normalize next invocation |
-| Before canonical/journal commit | Both roll back; pending normalization remains |
-| After canonical/journal commit, before send | Pending canonical publication survives |
-| Server failure before ingestion commit | No accepted batch; retry saved payload |
-| Server commit before response arrives | Data is queryable; replay returns matching receipt |
-| Receipt arrives before collector progress commit | Retry safely; no duplicate contribution |
-| Collector database removed | Reparse retained sources with new delivery state and unchanged entity IDs |
+| New stable fact | Insert one contribution |
+| Same identity and canonical payload | No-op contribution; merge occurrence references if needed |
+| Same stream/batch and exact bytes | Return original durable receipt |
+| Same stream/batch, changed bytes | 409, no mutation |
+| Changed value, supported newer Claude revision | Replace one contribution |
+| Changed value without supported ordering | 409; preserve data and pending collector suffix |
 
-These are proposed acceptance conditions. SQLite/disk corruption, deletion of undelivered collector data whose sources no longer exist, or unavailable native identities are not made recoverable by retries. Failure tests must state their assumptions rather than claim universal failure immunity.
+Session ranges merge source minima/maxima; message occurrence merges the earliest
+source time. Reference changes can advance analytics revision for a no-op fact.
+An entirely identical new batch does not advance revision, though its receipt,
+producer label and last ingestion time commit. Exact batch replay changes none
+of those timestamps.
+
+## Failure boundaries and limits
+
+| Boundary | Durable recovery |
+| --- | --- |
+| Capture fails before commit | No source progress; reread |
+| Capture commits before normalization | Raw facts and pending work survive |
+| Canonical/journal transaction fails | Both roll back |
+| Journal commits before sending | Publication remains pending |
+| Server fails before commit | Retry exact saved bytes; no partial batch |
+| Server commits before response | Replay original receipt |
+| Response precedes collector acknowledgement commit | Replay safely; cursor remains unadvanced |
+| Collector database deleted | Reparse retained sources; stable facts dedupe |
+| Source disappears | Committed server history remains |
+| Local server database replaced | New binding replays journal from zero |
+| Remote database changes at same URL | Reject binding; deliberate destination update required |
+
+The collector journal is the durable queue. Server admission accepts at most four
+concurrent requests using one SQLite connection; excess requests receive 503.
+There is no asynchronous inbox acknowledged before persistence. Bodies are at
+most 1 MiB, batches at most 256 contiguous facts, strings at most 256 UTF-8 bytes.
+Exact nonnegative integers are bounded by 9,007,199,254,740,991. Component sums,
+aggregate bounds and revision are checked before commit. Receipts and journal
+have no retention cleanup initially.
+
+Retries cannot repair corruption, vanished undelivered source data, absent native
+identity or native-ID collisions. The initial fixed `default` namespace assumes
+native IDs are unique within a harness's owner history. Profile namespaces need
+a separate identity contract. No retraction, backflow or completeness
+reconciliation is included.
 
 ## Traceable guarantees
 
-Guarantee IDs below are stable review/test references. They describe required future behavior; the failure document distinguishes existing pipeline tests from proposed server coverage.
+IDs remain stable review/test references. Coverage and verification status belong
+to the failure and validation documents.
 
-| ID | Required guarantee | Primary failure cases |
+| ID | Guarantee | Failure references |
 | --- | --- | --- |
-| G01 | Published identity is source-derived and reproducible after collector database deletion; distinct native facts stay distinct | F01, F07 |
-| G02 | Same complete retained source set and compatible rules yield equal normalized payloads and totals | F01, F04 |
-| G03 | Source capture progress advances only with committed raw capture and normalization work | F14 |
-| G04 | Canonical mutations and publication journal entries are atomic | F14 |
-| G05 | Durable batch replay and stable fact dedupe work independently of collector delivery state | F01, F02, F03, F05 |
-| G06 | Successful acknowledgement means the batch and receipt are committed and queryable; invalid batches expose no partial changes | F02, F08, F10, F14 |
-| G07 | Destination delivery progress advances only through validated acknowledgements of contiguous submitted work | F02, F06, F14 |
-| G08 | Uploads exclude raw source content and local-only continuity data | F12 |
-| G09 | Unsupported compatibility is rejected without mutation; incompatible changes require explicit upgrade/migration | F09 |
-| G10 | Pending work survives ordinary failures and resumes on manual invocation; missing sources preserve server history | F11, F13, F14 |
-| G11 | Diagnostics distinguish capture, normalization, compatibility, replay, identity conflict, and delivery failures without leaking source content | F03, F04, F08, F09, F10, F11, F12, F14 |
+| G01 | Source-derived identity survives collector deletion; distinct facts stay distinct | F01, F07 |
+| G02 | Same retained sources and rules yield equal payloads/totals | F01, F04 |
+| G03 | Capture progress commits with facts and pending normalization work | F14 |
+| G04 | Canonical mutations and publication journal commit together | F14 |
+| G05 | Batch replay and fact dedupe are independent of collector progress | F01, F02, F03, F05 |
+| G06 | Acknowledgement means committed/queryable; rejection is atomic | F02, F08, F10, F14 |
+| G07 | Cursor advances only through validated contiguous acknowledgements | F02, F06, F14 |
+| G08 | Uploads exclude raw content and local continuity state | F12 |
+| G09 | Unsupported versions reject without mutation; incompatible changes need migration | F09 |
+| G10 | Ordinary failures preserve pending work; source loss preserves server history | F11, F13, F14 |
+| G11 | Fixed stage/code diagnostics distinguish failures without leaking raw content | F03, F04, F08, F09, F10, F11, F12, F14 |
 
-## Test-driven implementation gates
+Tests use synthetic harness fixtures, independently reviewed expected components,
+real SQLite/HTTP and explicit crash seams. Check persisted identities, totals,
+receipts and cursor state, not only row counts or fake transport success.
 
-1. **Evidence first:** retain synthetic harness-native fixtures, hand-reviewed expected facts/totals, stable fixture/scenario IDs, and an identity audit. Add database deletion/reparse, full versus incremental parsing, relocation, duplicate streaming, ancestry, malformed input, and missing-identity tests. Record genuine current defects instead of changing expected results to match them.
-2. **Contract review:** choose adapter identity rules, canonical entity boundaries, changed-value handling, compatibility categories, and limits. Write expected receipts and query outcomes for the failure matrix. Obtain explicit approval before modifying SQLite or cross-language schema contracts.
-3. **Collector persistence:** implement the approved journal/delivery storage and atomic boundaries. Inject failures before and after commits; reopen SQLite and verify persisted rows/progress. Tests must check totals and identity, not just row counts.
-4. **Server ingestion:** implement canonical validation, stable fact uniqueness, durable batch receipts, and synchronous transactional publication. Exercise real server persistence with duplicate/reordered/concurrent uploads and lost responses; a fake server alone is insufficient.
-5. **Local composition:** move collection out of server runtime, route viewers through query APIs, and preserve native Go builds. Exercise manual sync failure/resume and independent collector rebuild against an existing server.
-6. **Remote readiness:** reuse the server core and ingestion client in a foreground composition. Remote setup and plugins follow separately; they reuse the established contract and regression suite.
+Servediff informed the collection/server boundary and shared compositions.
+Its finite hook worker and disposable snapshots were not adopted. Initial thin
+plugins invoke bounded collector sync with a 60-second hook deadline; interrupted
+work resumes manually. Plugins contain no parser or independent delivery queue.
 
-Trace each test to fixture, scenario Fxx, and guarantee Gxx. Preserve reviewable expected values separately from generated output. Mutation/fault tests should demonstrate the suite catches duplicate inserts, early acknowledgements, premature progress advances, and partial batch visibility. Full suite success today must never be described as proof of an unimplemented ingestion path.
+## Outstanding follow-up scope
 
-## Prior art and compatibility
+- Remote setup, credential provisioning and multi-tenant authorization.
+- Retention/compaction and explicit schema/identity migration tooling.
+- Native profile namespaces if real collisions require them.
+- Optional asynchronous hook execution and richer timing publication.
 
-Servediff's inspected architecture/system documents separate Git-aware collection from local/remote compositions of one ingestion/query core. Its current hook engine writes a small trigger before a finite worker performs collection/delivery. Those boundaries transfer. Its content-snapshot reuse, expiry, bounded disposable pending payloads, and arrival-based freshness do not define TokenInsights historical accounting or stable fact identity.
-
-Current TokenInsights ADRs [0004](adr/0004-incremental-source-refresh-and-local-continuity-state.md) and [0005](adr/0005-persistent-service-and-explicit-refresh.md) remain historical/implemented evidence. Existing verified continuity, metadata privacy, session-centric canonical facts, additive token semantics, provider/model fallbacks, TPS concepts, and Go-only runtime constraints carry forward. Server-side schema upgrades cannot assume that discarded producer files remain available for rebuilding historical data. Migration specifics remain pending.
-
-## Unresolved questions
-
-- Stable fallback/native-ID namespace per harness?
-- Which canonical entities cross ingestion?
-- Changed-value precedence without native revisions?
-- Conflict receipt and cursor behavior?
-- Compatibility categories and identity migration?
-- Batch/admission limits and diagnostic retention?
-- Local DB locations and migration from today's single DB?
-- CLI/viewer transition and reporting timezone?
+No unresolved implementation decisions require approval for this accepted scope.

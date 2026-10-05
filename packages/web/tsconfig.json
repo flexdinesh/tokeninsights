@@ -13,6 +13,7 @@
     "verbatimModuleSyntax": true,
     "erasableSyntaxOnly": true,
     "noEmit": true,
+    "allowImportingTsExtensions": true,
     "paths": { "@/*": ["./src/*"] }
   },
   "include": ["src", "vite.config.ts", "playwright.config.ts", "e2e/*.ts"]

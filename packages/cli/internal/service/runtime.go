@@ -12,9 +12,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/app"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/db"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/ingestion"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/publication"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/server"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/serverstore"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/version"
 )
 
@@ -105,24 +107,16 @@ func runtime(parent context.Context, config Config, log io.Writer, onReady func(
 		return err
 	}
 	defer func() { _ = public.Close() }()
-	state, err := db.InspectCompatibility(parent, config.DBPath)
+	release, err := db.AcquireWriterLock(parent, config.DBPath)
 	if err != nil {
 		return err
 	}
-	if !state.Exists {
-		release, err := db.AcquireWriterLock(parent, config.DBPath)
-		if err != nil {
-			return err
-		}
-		database, _, err := db.CreateIfMissing(config.DBPath)
-		if database != nil {
-			_ = database.Close()
-		}
-		release()
-		if err != nil {
-			return err
-		}
+	store, err := serverstore.CreateIfMissing(config.DBPath)
+	release()
+	if err != nil {
+		return err
 	}
+	defer func() { _ = store.Close() }()
 	if err := validateConfig(config); err != nil {
 		return err
 	}
@@ -136,15 +130,15 @@ func runtime(parent context.Context, config Config, log io.Writer, onReady func(
 	if host == "0.0.0.0" || host == "" {
 		host = server.DefaultHost
 	}
-	record := Record{ActionVersion: 1, SchemaVersion: db.SupportedSchemaVersion, DataGeneration: db.CurrentDataGeneration, Config: config, InstanceID: app.ID(), PID: os.Getpid(), Protocol: protocolVersion, Version: version.Version, URL: "http://" + net.JoinHostPort(host, port), Address: public.Addr().String(), Socket: p.socket, StartedAt: time.Now()}
-	controller := app.New(ctx, config.DBPath, config.Sources, record.InstanceID, log)
-	defer func() {
-		closeCtx, cancel := context.WithTimeout(context.Background(), stopTimeout)
-		defer cancel()
-		_ = controller.Close(closeCtx)
-	}()
-	publicHTTP := &http.Server{Handler: server.NewHandler(ctx, config.DBPath, controller, log, config.Host), ReadHeaderTimeout: 5 * time.Second, WriteTimeout: 35 * time.Second, IdleTimeout: 60 * time.Second}
-	privateHTTP := &http.Server{Handler: controlHandler(controller, record, cancel), ReadHeaderTimeout: 5 * time.Second, IdleTimeout: 30 * time.Second}
+	record := Record{SchemaVersion: serverstore.SupportedSchemaVersion, Config: config, InstanceID: instanceID(), PID: os.Getpid(), Protocol: protocolVersion, Version: version.Version, URL: "http://" + net.JoinHostPort(host, port), Address: public.Addr().String(), Socket: p.socket, StartedAt: time.Now()}
+	record.Config.Token = ""
+	core := ingestion.NewCore(store)
+	publicHandler := server.NewHandlerWithInstance(ctx, config.DBPath, core, log, config.Host, record.InstanceID)
+	if config.Token != "" {
+		publicHandler = authenticated(publicHandler, config.Token)
+	}
+	publicHTTP := &http.Server{Handler: publicHandler, BaseContext: func(net.Listener) context.Context { return ctx }, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 35 * time.Second, WriteTimeout: 35 * time.Second, IdleTimeout: 60 * time.Second}
+	privateHTTP := &http.Server{Handler: controlHandler(record, cancel), ReadHeaderTimeout: 5 * time.Second, IdleTimeout: 30 * time.Second}
 	failures := make(chan error, 2)
 	go func() { failures <- publicHTTP.Serve(public) }()
 	go func() { failures <- privateHTTP.Serve(private) }()
@@ -181,111 +175,82 @@ func runtime(parent context.Context, config Config, log io.Writer, onReady func(
 	}
 	shutdownCtx, stop := context.WithTimeout(context.Background(), stopTimeout)
 	defer stop()
-	controllerErr := controller.Close(shutdownCtx)
 	publicErr := publicHTTP.Shutdown(shutdownCtx)
 	privateErr := privateHTTP.Shutdown(shutdownCtx)
 	if errors.Is(err, http.ErrServerClosed) {
 		err = nil
 	}
-	return errors.Join(err, controllerErr, publicErr, privateErr)
+	return errors.Join(err, publicErr, privateErr)
 }
 
-func controlHandler(controller *app.Controller, record Record, shutdown context.CancelFunc) http.Handler {
+func controlHandler(record Record, shutdown context.CancelFunc) http.Handler {
 	mux := http.NewServeMux()
-	write := func(w http.ResponseWriter, status int, v interface{}) {
+	write := func(w http.ResponseWriter, status int, value interface{}) {
 		w.Header().Set("Content-Type", "application/json")
 		w.Header().Set("Cache-Control", "no-store")
 		w.WriteHeader(status)
-		_ = json.NewEncoder(w).Encode(v)
-	}
-	fail := func(w http.ResponseWriter, err error) {
-		code := http.StatusBadRequest
-		if errors.Is(err, app.ErrClosed) || errors.Is(err, app.ErrReset) {
-			code = http.StatusServiceUnavailable
-		}
-		if errors.Is(err, app.ErrCapacity) {
-			code = http.StatusTooManyRequests
-		}
-		write(w, code, struct {
-			Error string `json:"error"`
-		}{err.Error()})
+		_ = json.NewEncoder(w).Encode(value)
 	}
 	mux.HandleFunc("GET /control/v1/instance", func(w http.ResponseWriter, r *http.Request) { write(w, 200, record) })
-	mux.HandleFunc("GET /control/v1/status", func(w http.ResponseWriter, r *http.Request) { write(w, 200, controller.Status(r.Context())) })
-	mux.HandleFunc("POST /control/v1/refresh", func(w http.ResponseWriter, r *http.Request) {
-		var request struct {
-			ID string `json:"id"`
-		}
-		r.Body = http.MaxBytesReader(w, r.Body, bodyLimit)
-		if err := decode(r.Body, &request); err != nil {
-			fail(w, err)
-			return
-		}
-		o, err := controller.RequestRefreshID(r.Context(), request.ID)
+	mux.HandleFunc("GET /control/v1/status", func(w http.ResponseWriter, r *http.Request) {
+		statusStore, err := serverstore.Open(record.Config.DBPath)
 		if err != nil {
-			fail(w, err)
-			return
-		}
-		write(w, 202, o)
-	})
-	mux.HandleFunc("GET /control/v1/requests/{id}", func(w http.ResponseWriter, r *http.Request) {
-		o, ok := controller.RefreshRequest(r.PathValue("id"))
-		if !ok {
-			write(w, 404, struct {
+			write(w, 503, struct {
 				Error string `json:"error"`
-			}{"refresh request unknown or expired"})
+			}{"server storage unavailable"})
 			return
 		}
-		write(w, 200, o)
-	})
-	mux.HandleFunc("POST /control/v1/operations", func(w http.ResponseWriter, r *http.Request) {
-		var request struct {
-			ID     string     `json:"id"`
-			Action app.Action `json:"action"`
-		}
-		r.Body = http.MaxBytesReader(w, r.Body, bodyLimit)
-		if err := decode(r.Body, &request); err != nil {
-			fail(w, err)
-			return
-		}
-		o, err := controller.Submit(r.Context(), request.ID, request.Action)
+		defer func() { _ = statusStore.Close() }()
+		metadata, err := statusStore.Metadata(r.Context())
 		if err != nil {
-			fail(w, err)
-			return
-		}
-		write(w, 202, o)
-	})
-	mux.HandleFunc("GET /control/v1/operations/{id}", func(w http.ResponseWriter, r *http.Request) {
-		o, ok := controller.Operation(r.PathValue("id"))
-		if !ok {
-			write(w, 404, struct {
+			write(w, 503, struct {
 				Error string `json:"error"`
-			}{"operation unknown or expired"})
+			}{"server storage unavailable"})
 			return
 		}
-		write(w, 200, o)
-	})
-	mux.HandleFunc("POST /control/v1/operations/{id}/cancel", func(w http.ResponseWriter, r *http.Request) {
-		if err := controller.CancelOperation(r.PathValue("id")); err != nil {
-			fail(w, err)
-			return
-		}
-		o, _ := controller.Operation(r.PathValue("id"))
-		write(w, 202, o)
+		write(w, 200, Status{InstanceID: record.InstanceID, DataEpoch: metadata.DatabaseID, DataReadiness: "ready", Revision: metadata.Revision, LastIngestionAtMS: metadata.LastIngestionAtMs})
 	})
 	mux.HandleFunc("POST /control/v1/shutdown", func(w http.ResponseWriter, r *http.Request) {
+		if err := decode(r.Body, &struct{}{}); err != nil && err != io.EOF {
+			write(w, 400, struct {
+				Error string `json:"error"`
+			}{"invalid shutdown request"})
+			return
+		}
 		write(w, 202, struct {
 			Accepted bool `json:"accepted"`
 		}{true})
 		go shutdown()
 	})
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !strings.HasPrefix(r.URL.Path, "/control/v1/") || r.Header.Get("X-TokenInsights-Instance") != record.InstanceID {
+		if r.Header.Get("X-TokenInsights-Instance") != record.InstanceID {
 			write(w, 409, struct {
 				Error string `json:"error"`
 			}{"service identity mismatch"})
 			return
 		}
 		mux.ServeHTTP(w, r)
+	})
+}
+
+func authenticated(next http.Handler, token string) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		authorized := sameToken(r.Header.Get("Authorization"), "Bearer "+token)
+		if _, password, ok := r.BasicAuth(); ok && sameToken(password, token) {
+			authorized = true
+		}
+		if !authorized {
+			w.Header().Set("WWW-Authenticate", `Basic realm="TokenInsights"`)
+			if strings.HasPrefix(r.URL.Path, "/api/v1/ingestion/") {
+				w.Header().Set("Content-Type", "application/json")
+				w.Header().Set("Cache-Control", "no-store")
+				w.WriteHeader(http.StatusUnauthorized)
+				_ = json.NewEncoder(w).Encode(publication.ErrorResponse{Code: "unauthorized", Stage: "authentication"})
+			} else {
+				http.Error(w, "Authentication required", http.StatusUnauthorized)
+			}
+			return
+		}
+		next.ServeHTTP(w, r)
 	})
 }

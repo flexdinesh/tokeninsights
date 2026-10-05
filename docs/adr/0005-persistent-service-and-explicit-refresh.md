@@ -1,5 +1,12 @@
 # Persistent service with explicit refresh
 
+Status: **Historical; collection ownership and viewer refresh superseded by
+[ADR 0006](0006-collector-server-ingestion.md)** on 5 October 2026. Lifecycle
+ownership, private administration, native detached startup and read-only startup
+remain applicable. The text below preserves the earlier decision; service-owned
+source configuration/collection, shared refresh actions, mixed storage and TUI
+SQLite reads are no longer the active architecture.
+
 TokenInsights runs one native Go service per canonical database path. Bare invocation ensures that service and prints its URL; `view` is the local TUI. Managed startup re-executes the binary with inherited configuration/readiness descriptors, detaches the child, and returns only after ownership and listeners are ready. `service run` uses the same runtime in the foreground. Startup initializes missing storage but never discovers sources, syncs, or repairs existing data.
 
 The service composes a transport-independent application controller, public HTTP handlers, and a private Unix control socket. A lifecycle admission lock prevents simultaneous startup and standalone maintenance; a lifetime lock establishes ownership; the existing writer lock protects actual pipeline/reset writes. Lock inodes remain persistent. Status verifies ownership and a live instance handshake without creating files. Occupied ports and unreachable owners fail without killing another process or bypassing ownership.

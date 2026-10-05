@@ -3,153 +3,177 @@ package cli
 import (
 	"context"
 	"errors"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"path/filepath"
+	"reflect"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/ansi"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/db"
 )
 
-func TestDayPlaceholdersDoNotInventUsage(t *testing.T) {
-	rows := withDayCoverage([]renderRow{{bucket: "2026-09-24", totalValue: 42, totalTokens: "42"}}, []db.DayCoverage{
-		{Day: "2026-09-24", Status: "partial", HasUsage: true},
-		{Day: "2026-09-25", Status: "empty"},
-		{Day: "2026-09-26", Status: "pending"},
-	}, sortDate)
-	if len(rows) != 3 || rows[0].bucket != "2026-09-26" || rows[1].totalTokens != "0" || rows[0].totalTokens != "—" {
-		t.Fatalf("unexpected calendar: %+v", rows)
+func TestReadOnlyViewerLoadsSavedUsageWithoutSourceCoverage(t *testing.T) {
+	remote, _, requests := newViewQueryServer(t, true)
+	root := t.TempDir()
+	isolateViewSources(t, root)
+	options := tableOptions{serverURL: remote.URL, dbPath: filepath.Join(root, "unopened.sqlite"), collectorDBPath: filepath.Join(root, "collector.sqlite"), period: periodAllTime, bucket: bucketDay}
+	model := newInteractiveModel(context.Background(), options, time.Now(), "unknown")
+	defer model.cancelSync()
+	if model.syncing || model.syncInFlight || !model.loading {
+		t.Fatalf("initial read state: syncing=%v collection=%v loading=%v", model.syncing, model.syncInFlight, model.loading)
 	}
-	summary := newTableSummaryModel(rows, tabTokens, false)
-	if summary.rowCount != 1 || summary.totalValue != 42 {
-		t.Fatalf("placeholders counted as facts: %+v", summary)
+	loaded := model.loadDashboard()
+	if loaded.err != nil {
+		t.Fatal(loaded.err)
 	}
-	view := renderTable(rows, groupByNone, tabTokens)
-	if !strings.Contains(ansi.Strip(view), "2026-09-26 …") {
-		t.Fatalf("missing pending day status: %s", view)
+	updated, _ := model.Update(loaded)
+	shown := updated.(interactiveModel)
+	shown.width, shown.height = 120, 35
+	if shown.loading || len(shown.rows) != 1 || shown.rows[0].totalValue != 100 || len(shown.coverage) != 0 {
+		t.Fatalf("saved view=%+v", shown.rows)
+	}
+	view := ansi.Strip(shown.View())
+	for _, invented := range []string{"days checked", "sources checked", "Checking local sources", "Local sources not checked", "retry sync"} {
+		if strings.Contains(view, invented) {
+			t.Fatalf("query-only server claims source coverage %q: %s", invented, view)
+		}
+	}
+	if requests.posts.Load() != 0 {
+		t.Fatal("view requested server collection")
+	}
+	assertViewMissingPath(t, options.dbPath)
+	assertViewMissingPath(t, options.collectorDBPath)
+}
+
+func TestViewerReloadReadsServerAndPreservesFilters(t *testing.T) {
+	remote, _, requests := newViewQueryServer(t, true)
+	selected := filters{providers: stringList{"fixture-provider"}, models: stringList{"fixture-model"}, harnesses: stringList{"pi"}, sessionIDs: stringList{"fixture-view-session"}}
+	options := tableOptions{serverURL: remote.URL, period: periodAllTime, bucket: bucketDay, filters: selected}
+	model := newInteractiveModel(context.Background(), options, time.Now(), "unknown")
+	defer model.cancelSync()
+	updated, _ := model.Update(model.loadDashboard())
+	model = updated.(interactiveModel)
+	model.rows[0].totalValue = 0 // Successful reload must replace saved presentation.
+	updated, cmd := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'r'}})
+	model = updated.(interactiveModel)
+	if cmd == nil {
+		t.Fatal("reload shortcut did not request data")
+	}
+	updated, _ = model.Update(cmd())
+	model = updated.(interactiveModel)
+	if model.err != nil || len(model.rows) != 1 || model.rows[0].totalValue != 100 || !reflect.DeepEqual(model.options.filters, selected) {
+		t.Fatalf("reload lost saved data/filter scope: err=%v filters=%+v rows=%+v", model.err, model.options.filters, model.rows)
+	}
+	if requests.posts.Load() != 0 {
+		t.Fatal("reload wrote server data")
 	}
 }
 
-func TestDayCoverageStaysInlineAndPreservesDates(t *testing.T) {
-	days := []db.DayCoverage{
-		{Day: "2026-09-21", Status: "checked", HasUsage: true},
-		{Day: "2026-09-22", Status: "empty"},
-		{Day: "2026-09-23", Status: "pending"},
-		{Day: "2026-09-24", Status: "partial"},
-		{Day: "2026-09-25", Status: "partial", FailedSources: 1},
-		{Day: "2026-09-26", Status: "unverified"},
-	}
-	rows := withDayCoverage([]renderRow{{bucket: "2026-09-21", totalTokens: "42", totalValue: 42}}, days, sortDate)
-	view := ansi.Strip(renderTableViewportWithSortAndFocus(rows, rows, groupByNone, tabTokens, sortDate, 120, 0, len(rows), 0))
-	lines := strings.Split(strings.TrimSuffix(view, "\n"), "\n")
-	if len(lines) != len(days)+1 {
-		t.Fatalf("day status added table lines: %q", view)
-	}
-	for _, want := range []string{"2026-09-21 ✓", "2026-09-22 ○", "2026-09-23 …", "2026-09-24 ↻", "2026-09-25 !", "2026-09-26 ?"} {
-		if !strings.Contains(view, want) {
-			t.Fatalf("missing inline status %q: %s", want, view)
-		}
-	}
-	for _, row := range rows {
-		if renderRowLineCount(row, columnsForModeAndTab(groupByNone, tabTokens)) != 1 {
-			t.Fatalf("status makes date multiline: %+v", row)
-		}
+func TestViewerOldSyncShortcutDoesNotCollect(t *testing.T) {
+	remote, _, requests := newViewQueryServer(t, true)
+	model := newInteractiveModel(context.Background(), tableOptions{serverURL: remote.URL, period: periodAllTime, bucket: bucketDay}, time.Now(), "unknown")
+	defer model.cancelSync()
+	before := requests.gets.Load()
+	updated, cmd := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'u'}})
+	model = updated.(interactiveModel)
+	if cmd != nil || model.syncing || model.syncInFlight || requests.posts.Load() != 0 || requests.gets.Load() != before {
+		t.Fatal("obsolete sync shortcut triggered work")
 	}
 }
 
-func TestSourceCoverageSharesSyncWorkLine(t *testing.T) {
-	m := interactiveModel{
-		width: 120, height: 35,
-		coverage:   []db.DayCoverage{{Status: "checked"}, {Status: "pending"}},
-		sharedSync: db.SyncStatus{JobID: 1, Phase: "ready", DiscoveryComplete: true, TotalSources: 2, CheckedSources: 2, ReadySources: 2},
+func TestViewerQueryFailureRetainsSavedRowsAndFilters(t *testing.T) {
+	var fail atomic.Bool
+	remote, _, _ := newViewQueryServer(t, true)
+	proxy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if fail.Load() {
+			http.Error(w, "unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		target := remote.URL + r.URL.RequestURI()
+		request, err := http.NewRequestWithContext(r.Context(), r.Method, target, nil)
+		if err != nil {
+			t.Error(err)
+			return
+		}
+		response, err := http.DefaultClient.Do(request)
+		if err != nil {
+			t.Error(err)
+			return
+		}
+		defer func() { _ = response.Body.Close() }()
+		for key, values := range response.Header {
+			for _, value := range values {
+				w.Header().Add(key, value)
+			}
+		}
+		w.WriteHeader(response.StatusCode)
+		_, _ = io.Copy(w, response.Body)
+	}))
+	defer proxy.Close()
+	selected := filters{providers: stringList{"fixture-provider"}, models: stringList{"fixture-model"}}
+	model := newInteractiveModel(context.Background(), tableOptions{serverURL: proxy.URL, period: periodAllTime, bucket: bucketDay, filters: selected}, time.Now(), "unknown")
+	defer model.cancelSync()
+	loaded := model.loadDashboard()
+	if loaded.err != nil {
+		t.Fatal(loaded.err)
 	}
-	header := m.deskHeader()
-	work := ansi.Strip(header[1])
-	if !strings.Contains(work, "1/2 days checked · ready · 2/2 sources") || strings.Contains(strings.Join(header, "\n"), "Source coverage") {
-		t.Fatalf("coverage not compact within sync work: %q", header)
+	updated, _ := model.Update(loaded)
+	model = updated.(interactiveModel)
+	fail.Store(true)
+	updated, cmd := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'r'}})
+	model = updated.(interactiveModel)
+	if cmd == nil {
+		t.Fatal("retry missing query")
 	}
-	if header[2] != "" {
-		t.Fatalf("coverage added a separate header row: %q", header)
+	updated, _ = model.Update(cmd())
+	model = updated.(interactiveModel)
+	if model.err == nil || len(model.rows) != 1 || model.rows[0].totalValue != 100 || !reflect.DeepEqual(model.options.filters, selected) {
+		t.Fatalf("query error discarded filters/data: err=%v filters=%+v rows=%+v", model.err, model.options.filters, model.rows)
+	}
+	fail.Store(false)
+	updated, cmd = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'r'}})
+	model = updated.(interactiveModel)
+	if cmd == nil {
+		t.Fatal("recovery retry missing query")
+	}
+	updated, _ = model.Update(cmd())
+	model = updated.(interactiveModel)
+	if model.err != nil || len(model.rows) != 1 || model.rows[0].totalValue != 100 {
+		t.Fatalf("query retry failed: %v", model.err)
 	}
 }
 
-func TestFirstSyncPublishesSnapshotBeforeOverallSuccess(t *testing.T) {
-	m := newInteractiveModel(context.Background(), tableOptions{}, time.Now(), "local")
-	defer m.cancelSync()
-	model, _ := m.Update(snapshotMsg{reloadMsg{rows: []renderRow{{totalValue: 42}}, revision: 1}})
-	shown := model.(interactiveModel)
-	if !shown.showingSnapshot || len(shown.rows) != 1 || shown.lastSyncMs != 0 {
-		t.Fatal("first publication hidden until overall success")
+func TestQuitCancelsOutstandingViewerReads(t *testing.T) {
+	started := make(chan struct{})
+	remote := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		close(started)
+		<-r.Context().Done()
+	}))
+	defer remote.Close()
+	model := newInteractiveModel(context.Background(), tableOptions{serverURL: remote.URL, period: periodAllTime, bucket: bucketDay}, time.Now(), "unknown")
+	defer model.cancelSync()
+	finished := make(chan reloadMsg, 1)
+	go func() { finished <- model.loadDashboard() }()
+	select {
+	case <-started:
+	case <-time.After(2 * time.Second):
+		t.Fatal("viewer did not begin server read")
 	}
-	model, cmd := shown.Update(syncDoneMsg{err: errors.New("one source failed")})
-	failed := model.(interactiveModel)
-	if failed.syncing || cmd == nil || len(failed.rows) != 1 {
-		t.Fatal("ordinary failure discarded partial results")
+	_, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
+	if !errors.Is(model.ctx.Err(), context.Canceled) {
+		t.Fatal("quit left query context running")
 	}
-}
-
-func TestQuitCancelsImplicitSync(t *testing.T) {
-	m := newInteractiveModel(context.Background(), tableOptions{}, time.Now(), "local")
-	_, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
-	if !errors.Is(m.ctx.Err(), context.Canceled) {
-		t.Fatal("quit left sync running")
-	}
-}
-
-func TestStartupDayMarkersWaitForCurrentCheck(t *testing.T) {
-	m := newInteractiveModel(context.Background(), tableOptions{bucket: bucketDay}, time.UnixMilli(2000), "local")
-	defer m.cancelSync()
-	m.width, m.height = 120, 35
-	m.syncInFlight = true
-	m.sharedSync = db.SyncStatus{JobID: 1, Phase: "ready", StartedAtMs: 1000}
-	for _, step := range []struct {
-		status      string
-		checkedAtMs int64
-		marker      string
-		checkedDays string
-	}{
-		{"checked", 1000, "", "0/1 days checked"},
-		{"partial", 0, "↻", "0/1 days checked"},
-		{"checked", 3000, "✓", "1/1 days checked"},
-	} {
-		coverage := []db.DayCoverage{{Day: "2026-09-26", Status: step.status, CheckedAtMs: step.checkedAtMs, HasUsage: true}}
-		rows := withDayCoverage([]renderRow{{bucket: "2026-09-26", totalTokens: "42", totalValue: 42}}, coverage, sortDate)
-		model, _ := m.Update(snapshotMsg{reloadMsg{rows: rows, coverage: coverage}})
-		m = model.(interactiveModel)
-		view := ansi.Strip(m.View())
-		if step.marker == "" && strings.Contains(view, "✓") {
-			t.Fatalf("startup showed a previous check: %s", view)
+	select {
+	case result := <-finished:
+		if !errors.Is(result.err, context.Canceled) {
+			t.Fatalf("query cancellation=%v", result.err)
 		}
-		if strings.Contains(view, "· ready") {
-			t.Fatalf("startup showed the previous job as ready: %s", view)
-		}
-		if !strings.Contains(view, "2026-09-26 "+step.marker) || !strings.Contains(view, step.checkedDays) || !strings.Contains(view, "total 42") {
-			t.Fatalf("wrong marker or saved usage for %s: %s", step.status, view)
-		}
-		if m.rows[0].coverageStatus != dayCoverageLabel(coverage[0]) {
-			t.Fatal("presentation altered retained coverage")
-		}
-	}
-}
-
-func TestNoSyncRetainsSavedDayMarkersAndRetryClearsThem(t *testing.T) {
-	coverage := []db.DayCoverage{{Day: "2026-09-26", Status: "checked", CheckedAtMs: 1000, HasUsage: true}, {Day: "2026-09-25", Status: "empty", CheckedAtMs: 1000}}
-	rows := withDayCoverage([]renderRow{{bucket: "2026-09-26", totalTokens: "42", totalValue: 42}}, coverage, sortDate)
-	m := newInteractiveModel(context.Background(), tableOptions{noSync: true, bucket: bucketDay}, time.UnixMilli(2000), "local")
-	defer m.cancelSync()
-	m.width, m.height = 120, 35
-	model, _ := m.Update(reloadMsg{rows: rows, coverage: coverage})
-	m = model.(interactiveModel)
-	view := ansi.Strip(m.View())
-	if !strings.Contains(view, "2026-09-26 ✓") || !strings.Contains(view, "2026-09-25 ○") {
-		t.Fatalf("no-sync hid saved markers: %s", view)
-	}
-	m.options.noSync = false
-	model, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'u'}})
-	m = model.(interactiveModel)
-	view = ansi.Strip(m.View())
-	if cmd == nil || strings.Contains(view, "✓") || strings.Contains(view, "○") || !strings.Contains(view, "total 42") {
-		t.Fatalf("retry showed stale completion or hid usage: %s", view)
+	case <-time.After(2 * time.Second):
+		t.Fatal("quit left HTTP query running")
 	}
 }

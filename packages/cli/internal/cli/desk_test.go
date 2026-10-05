@@ -26,7 +26,7 @@ func TestReadoutsUseExactFilteredComponentsAcrossViews(t *testing.T) {
 	insertLoadRowsCanonicalTokenWithCounts(t, database, now.UnixMilli(), "pi", "excluded", "other", "other-model", 99, 0, 0, 0, 0, 99)
 	for _, tab := range []tabMode{tabTokens, tabModels, tabProviders, tabHarnesses, tabSessions} {
 		t.Run(tab.String(), func(t *testing.T) {
-			rows, err := loadRows(context.Background(), tableOptions{dbPath: path, period: periodAllTime, bucket: bucketDay, filters: filters{harnesses: stringList{"codex"}}}, now, groupByNone, tab)
+			rows, err := loadRows(context.Background(), tableOptions{serverURL: queryServerURL(t, path), period: periodAllTime, bucket: bucketDay, filters: filters{harnesses: stringList{"codex"}}}, now, groupByNone, tab)
 			if err != nil {
 				t.Fatal(err)
 			}

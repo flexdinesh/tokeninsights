@@ -17,7 +17,7 @@ func TestAPIWithoutCrossOriginAccess(t *testing.T) {
 		{http.MethodGet, "/api/v1/instance", http.StatusOK},
 		{http.MethodGet, "/api/v1/usage", http.StatusOK},
 		{http.MethodGet, "/api/v1/usage/facets", http.StatusOK},
-		{http.MethodPost, "/api/v1/sync", http.StatusServiceUnavailable},
+		{http.MethodPost, "/api/v1/sync", http.StatusMethodNotAllowed},
 		{http.MethodOptions, "/api/v1/usage", http.StatusMethodNotAllowed},
 	} {
 		t.Run(route.method+route.path, func(t *testing.T) {

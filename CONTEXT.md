@@ -1,6 +1,6 @@
 # TokenInsights
 
-TokenInsights tracks local token usage across coding harnesses through durable local data that can be synced, normalized, and viewed over time.
+TokenInsights tracks local token usage across coding harnesses through host collection and normalization, canonical-only ingestion, and server queries over retained history.
 
 ## Language
 
@@ -33,20 +33,36 @@ A read-only summary of countable canonical token facts for one aggregation tab a
 _Avoid_: Pre-aggregated rollup, metric domain
 
 **Syncable Analytics Data**:
-Usage facts, diagnostics, and derived facts governed by the analytics privacy contract; future cloud export should be canonical-first by default.
+Normalized usage facts and their stable session/message/location references governed by the publication privacy contract. Raw facts, parsing diagnostics, and continuity metadata remain local to the collector.
 _Avoid_: Local cursor data, source continuity state
 
 **Local-only Continuity Metadata**:
-Operational source refresh state used only to resume local Durable Source parsing and never used for viewer analytics or future cloud export.
+Operational source refresh state used only to resume local Durable Source parsing and never sent to the canonical server or used for server analytics.
 _Avoid_: Analytics data, canonical data, syncable data
 
 **Session Peak Context Load**:
 The largest prompt-side context load observed within a session, counted as input tokens plus cache read tokens plus cache write tokens and excluding output and reasoning tokens.
 _Avoid_: Context used when it could mean total tokens, output tokens, or context window size
 
-**Implicit View Sync**:
-Opening the normal local TUI requests all-harness refresh from the persistent service while compatible saved canonical data remains visible. Web opening reads saved data; Sync requests ingest. Viewer filters remain display constraints, not source selection.
-_Avoid_: Filtered sync, view-only sync
+**Collector**:
+The host-side Go workflow that discovers Durable Sources, captures metadata-only raw facts, normalizes usage in collector SQLite, and publishes its durable canonical journal.
+_Avoid_: Server-side source parsing, raw ingestion into server
+
+**Canonical Server**:
+The shared local/remote Go server core that transactionally ingests normalized facts, dedupes stable IDs, persists receipts, and serves REST analytics plus embedded web assets.
+_Avoid_: Collector service, server-side normalization
+
+**Read-only View**:
+Opening the TUI or browser reads committed server data. Reload requests queries only. Explicit `view --sync` performs caller-side collection/publication first; viewer filters remain display constraints.
+_Avoid_: Implicit View Sync, dashboard source refresh
+
+**Durable Publication**:
+Immutable normalized journal entries and saved upload batches in collector SQLite, acknowledged per destination only after server commit. Later manual sync retries pending delivery.
+_Avoid_: Best-effort upload marker, insert-only export
+
+**Stable Fact Identity**:
+A reproducible source-native session/message/request tuple independent of collector installation, SQLite row IDs, delivery batches, and capture time.
+_Avoid_: Payload hash as request identity, equal token counts as dedupe evidence
 
 **Incremental Source Refresh**:
 A best-effort source refresh that reads newly available usage facts from a Durable Source when prior source continuity can be trusted, while preserving a full-refresh fallback when continuity cannot be trusted.

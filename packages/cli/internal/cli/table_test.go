@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -18,20 +17,18 @@ import (
 	_ "modernc.org/sqlite"
 
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/db"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/pipeline"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/serverstore"
 )
 
 func newLoadRowsTestDB(t *testing.T) (*sql.DB, string) {
 	t.Helper()
-	dbPath := filepath.Join(t.TempDir(), "tokeninsights.sqlite")
-	if err := db.ResetAll(dbPath); err != nil {
-		t.Fatal(err)
-	}
-	database, err := db.OpenWritable(dbPath)
+	path := filepath.Join(t.TempDir(), "server.sqlite")
+	store, err := serverstore.CreateIfMissing(path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	return database, dbPath
+	t.Cleanup(func() { _ = store.Close() })
+	return store.SQL(), path
 }
 
 func insertLoadRowsCanonicalToken(t *testing.T, database *sql.DB, recordedAtMs int64, harness string, sessionID string, provider string, model string) {
@@ -57,54 +54,18 @@ func insertLoadRowsCanonicalTokenWithCounts(t *testing.T, database *sql.DB, reco
 		t.Fatal(err)
 	}
 
-	rawKey := fmt.Sprintf("%s:%d:%s:%s", sessionKey, recordedAtMs, provider, model)
+	factKey := fmt.Sprintf("%s:%d:%s:%s", sessionKey, recordedAtMs, provider, model)
 	_, err = database.Exec(`
-		INSERT INTO raw_token_usage (
-			raw_fact_key, harness, source_id, source_kind, collector, parser, observed_at_ms,
-			session_id, provider, model, usage_scope, quality, input_tokens, output_tokens,
-			reasoning_tokens, cache_read_tokens, cache_write_tokens, total_tokens
-		) VALUES (?, ?, ?, 'test', 'test', 'test', ?, ?, ?, ?, 'message', 'exact', ?, ?, ?, ?, ?, ?)
-	`, rawKey, harness, sessionID, recordedAtMs, sessionID, provider, model, input, output, reasoning, cacheRead, cacheWrite, total)
+  INSERT INTO canonical_token_usage (
+   semantic_key, recorded_at_ms, harness, session_id, provider, model, usage_scope, quality,
+   is_countable, input_tokens, output_tokens, reasoning_tokens, cache_read_tokens,
+   cache_write_tokens, total_tokens, payload_hash
+  ) VALUES (?, ?, ?, ?, ?, ?, 'message', 'exact', 1, ?, ?, ?, ?, ?, ?, 'fixture-payload')
+ `, factKey, recordedAtMs, harness, canonicalSessionID, provider, model, input, output, reasoning, cacheRead, cacheWrite, total)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	var rawID int64
-	if err := database.QueryRow("SELECT id FROM raw_token_usage WHERE raw_fact_key = ?", rawKey).Scan(&rawID); err != nil {
-		t.Fatal(err)
-	}
-
-	_, err = database.Exec(`
-		INSERT INTO canonical_token_usage (
-			semantic_key, recorded_at_ms, harness, session_id, provider, model, usage_scope, quality,
-			is_countable, input_tokens, output_tokens, reasoning_tokens, cache_read_tokens,
-			cache_write_tokens, total_tokens, primary_raw_fact_id
-		) VALUES (?, ?, ?, ?, ?, ?, 'message', 'exact', 1, ?, ?, ?, ?, ?, ?, ?)
-	`, rawKey+":canonical", recordedAtMs, harness, canonicalSessionID, provider, model, input, output, reasoning, cacheRead, cacheWrite, total, rawID)
-	if err != nil {
-		t.Fatal(err)
-	}
-}
-
-func writeTableTestPiAssistantSession(t *testing.T, path string) {
-	t.Helper()
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	content := strings.Join([]string{
-		`{"type":"session","version":1,"id":"pi_s1","timestamp":"2026-01-01T00:00:00.000Z","cwd":"/redacted/project"}`,
-		`{"type":"message","id":"msg_a","parentId":null,"timestamp":"2026-01-01T00:00:01.000Z","message":{"role":"assistant","content":[],"provider":"anthropic","model":"claude-sonnet-4","usage":{"input":100,"output":50,"cacheRead":0,"cacheWrite":0,"totalTokens":150},"timestamp":1770000001000}}`,
-	}, "\n") + "\n"
-	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
-		t.Fatal(err)
-	}
-}
-
-func setTableTestFileModTime(t *testing.T, path string, modTime time.Time) {
-	t.Helper()
-	if err := os.Chtimes(path, modTime, modTime); err != nil {
-		t.Fatal(err)
-	}
 }
 
 func assertTableTestCount(t *testing.T, database *sql.DB, table string, want int) {
@@ -124,7 +85,7 @@ func TestLoadRowsTokenTabUsesCanonicalTokens(t *testing.T) {
 	recordedAt := time.Date(2026, 4, 24, 12, 0, 0, 0, time.Local)
 	insertLoadRowsCanonicalToken(t, database, recordedAt.UnixMilli(), "opencode", "ses_1", "openai", "gpt-5")
 
-	rows, err := loadRows(context.Background(), tableOptions{dbPath: dbPath, period: periodAllTime, bucket: bucketDay}, recordedAt, groupByNone, tabTokens)
+	rows, err := loadRows(context.Background(), tableOptions{serverURL: queryServerURL(t, dbPath), period: periodAllTime, bucket: bucketDay}, recordedAt, groupByNone, tabTokens)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -145,7 +106,7 @@ func TestLoadRowsSessionTabIncludesContextUsed(t *testing.T) {
 	recordedAt := time.Date(2026, 4, 24, 12, 0, 0, 0, time.Local)
 	insertLoadRowsCanonicalToken(t, database, recordedAt.UnixMilli(), "opencode", "ses_1", "openai", "gpt-5")
 
-	rows, err := loadRows(context.Background(), tableOptions{dbPath: dbPath, period: periodAllTime, bucket: bucketDay}, recordedAt, groupByNone, tabSessions)
+	rows, err := loadRows(context.Background(), tableOptions{serverURL: queryServerURL(t, dbPath), period: periodAllTime, bucket: bucketDay}, recordedAt, groupByNone, tabSessions)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -164,7 +125,7 @@ func TestLoadRowsTokenTabUsesTimeBucket(t *testing.T) {
 	insertLoadRowsCanonicalToken(t, database, time.Date(2026, 4, 20, 9, 0, 0, 0, time.Local).UnixMilli(), "opencode", "ses_1", "openai", "gpt-5")
 	insertLoadRowsCanonicalToken(t, database, time.Date(2026, 4, 24, 9, 0, 0, 0, time.Local).UnixMilli(), "pi", "ses_2", "anthropic", "claude")
 
-	rows, err := loadRows(context.Background(), tableOptions{dbPath: dbPath, period: periodAllTime, bucket: bucketWeek}, now, groupByNone, tabTokens)
+	rows, err := loadRows(context.Background(), tableOptions{serverURL: queryServerURL(t, dbPath), period: periodAllTime, bucket: bucketWeek}, now, groupByNone, tabTokens)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -179,19 +140,19 @@ func TestLoadRowsTokenTabUsesTimeBucket(t *testing.T) {
 func TestLoadRowsYesterdayPeriodExcludesToday(t *testing.T) {
 	database, dbPath := newLoadRowsTestDB(t)
 	defer func() { _ = database.Close() }()
-	now := time.Date(2026, 4, 24, 12, 0, 0, 0, time.Local)
+	now := time.Now()
 	insertLoadRowsCanonicalToken(t, database, now.AddDate(0, 0, -1).UnixMilli(), "opencode", "ses_1", "openai", "gpt-5")
 	insertLoadRowsCanonicalToken(t, database, now.UnixMilli(), "pi", "ses_2", "anthropic", "claude")
 
-	rows, err := loadRows(context.Background(), tableOptions{dbPath: dbPath, period: periodYesterday, bucket: bucketDay}, now, groupByNone, tabTokens)
+	rows, err := loadRows(context.Background(), tableOptions{serverURL: queryServerURL(t, dbPath), period: periodYesterday, bucket: bucketDay}, now, groupByNone, tabTokens)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(rows) != 1 {
 		t.Fatalf("got %d rows, want 1: %+v", len(rows), rows)
 	}
-	if rows[0].bucket != "2026-04-23" {
-		t.Fatalf("got bucket %q, want 2026-04-23", rows[0].bucket)
+	if rows[0].bucket != now.AddDate(0, 0, -1).Format("2006-01-02") {
+		t.Fatalf("got bucket %q, want yesterday", rows[0].bucket)
 	}
 }
 
@@ -203,9 +164,9 @@ func TestLoadRowsCustomDayBoundsOverridePreset(t *testing.T) {
 	insertLoadRowsCanonicalToken(t, database, now.UnixMilli(), "pi", "ses_2", "anthropic", "claude")
 
 	rows, err := loadRows(context.Background(), tableOptions{
-		dbPath: dbPath,
-		period: periodMonth,
-		bucket: bucketDay,
+		serverURL: queryServerURL(t, dbPath),
+		period:    periodMonth,
+		bucket:    bucketDay,
 		filters: filters{
 			dayFrom: "2026-03-15",
 			dayTo:   "2026-03-15",
@@ -229,7 +190,7 @@ func TestLoadRowsModelTabAggregatesByModel(t *testing.T) {
 	insertLoadRowsCanonicalToken(t, database, recordedAt.UnixMilli(), "opencode", "ses_1", "openai", "gpt-5")
 	insertLoadRowsCanonicalToken(t, database, recordedAt.Add(time.Second).UnixMilli(), "pi", "ses_2", "azure", "gpt-5")
 
-	rows, err := loadRows(context.Background(), tableOptions{dbPath: dbPath, period: periodAllTime, bucket: bucketDay}, recordedAt, groupByNone, tabModels)
+	rows, err := loadRows(context.Background(), tableOptions{serverURL: queryServerURL(t, dbPath), period: periodAllTime, bucket: bucketDay}, recordedAt, groupByNone, tabModels)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -250,7 +211,7 @@ func TestLoadRowsContextTabShowsSessionPeakContextLoadStats(t *testing.T) {
 	insertLoadRowsCanonicalTokenWithCounts(t, database, recordedAt.Add(2*time.Second).UnixMilli(), "codex", "ses_2", "openai", "gpt-5", 50, 5, 1, 5, 0, 61)
 	insertLoadRowsCanonicalTokenWithCounts(t, database, recordedAt.Add(3*time.Second).UnixMilli(), "opencode", "ses_3", "openai", "gpt-5", 500, 50, 10, 0, 0, 560)
 
-	rows, err := loadRows(context.Background(), tableOptions{dbPath: dbPath, period: periodAllTime, bucket: bucketDay}, recordedAt, groupByNone, tabContext)
+	rows, err := loadRows(context.Background(), tableOptions{serverURL: queryServerURL(t, dbPath), period: periodAllTime, bucket: bucketDay}, recordedAt, groupByNone, tabContext)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -262,6 +223,45 @@ func TestLoadRowsContextTabShowsSessionPeakContextLoadStats(t *testing.T) {
 	}
 	if rows[1].harness != "codex" || rows[1].sessions != "2" || rows[1].averageContextUsedTokens != "143" || rows[1].medianContextUsedTokens != "143" || rows[1].maxContextUsedTokens != "232" {
 		t.Fatalf("unexpected second context row: %+v", rows[1])
+	}
+}
+
+func TestDashboardReadsServerWithoutCollectorDatabase(t *testing.T) {
+	database, path := newLoadRowsTestDB(t)
+	now := time.Now()
+	insertLoadRowsCanonicalToken(t, database, now.UnixMilli(), "pi", "saved-session", "unknown", "unknown")
+	options := tableOptions{serverURL: queryServerURL(t, path), dbPath: filepath.Join(t.TempDir(), "missing-collector.sqlite"), period: periodAllTime, bucket: bucketDay}
+	m := newInteractiveModel(context.Background(), options, now, "unused-client-host")
+	result := m.loadDashboard()
+	if result.err != nil || len(result.rows) != 1 || result.rows[0].totalValue != 136 {
+		t.Fatalf("saved API snapshot = %+v", result)
+	}
+	assertTableTestCount(t, database, "canonical_token_usage", 1)
+	assertTableTestCount(t, database, "ingestion_receipts", 0)
+}
+
+func TestDashboardCancellationPreservesSavedSnapshot(t *testing.T) {
+	database, path := newLoadRowsTestDB(t)
+	now := time.Now()
+	insertLoadRowsCanonicalToken(t, database, now.UnixMilli(), "pi", "saved-session", "unknown", "unknown")
+	m := newInteractiveModel(context.Background(), tableOptions{serverURL: queryServerURL(t, path), period: periodAllTime, bucket: bucketDay}, now, "test")
+	result := m.loadDashboard()
+	if result.err != nil {
+		t.Fatal(result.err)
+	}
+	loaded, _ := m.Update(result)
+	m = loaded.(interactiveModel)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	m.ctx = ctx
+	result = m.loadDashboard()
+	if !errors.Is(result.err, context.Canceled) {
+		t.Fatalf("request cancellation = %v", result.err)
+	}
+	updated, _ := m.Update(result)
+	m = updated.(interactiveModel)
+	if len(m.rows) != 1 || m.rows[0].totalValue != 136 || !errors.Is(m.err, context.Canceled) {
+		t.Fatal("failed API read changed saved contribution")
 	}
 }
 
@@ -477,7 +477,7 @@ func TestViewHeightStableAcrossTabReloadRows(t *testing.T) {
 	}
 }
 
-func TestSharedStatusRetainsSnapshotFromSameServiceEpoch(t *testing.T) {
+func TestServerStatusRetainsSnapshotUntilDatabaseIdentityChanges(t *testing.T) {
 	m := newInteractiveModel(context.Background(), tableOptions{}, time.Now(), "test")
 	loaded, _ := m.Update(reloadMsg{instanceID: "service", dataEpoch: "epoch", rows: []renderRow{{bucket: "saved"}}})
 	m = loaded.(interactiveModel)
@@ -486,10 +486,10 @@ func TestSharedStatusRetainsSnapshotFromSameServiceEpoch(t *testing.T) {
 	if len(m.rows) != 1 || m.rows[0].bucket != "saved" {
 		t.Fatal("first status poll discarded validated saved rows")
 	}
-	updated, _ = m.Update(sharedSyncMsg{instanceID: "service", dataEpoch: "after-reset", readiness: "recovery"})
+	updated, _ = m.Update(sharedSyncMsg{instanceID: "service", dataEpoch: "replacement-database", readiness: "ready"})
 	m = updated.(interactiveModel)
 	if len(m.rows) != 0 {
-		t.Fatal("reset retained previous epoch rows")
+		t.Fatal("replacement server database retained previous snapshot rows")
 	}
 }
 
@@ -651,361 +651,6 @@ func TestTableSummaryIgnoresHorizontalScroll(t *testing.T) {
 	lastSummary, lastIndex := viewSummaryLine(m.View())
 	if firstSummary != lastSummary || firstIndex != lastIndex {
 		t.Fatalf("summary changed during horizontal scroll:\nfirst %d: %q\nlast  %d: %q", firstIndex, firstSummary, lastIndex, lastSummary)
-	}
-}
-
-func TestImplicitSyncProgressViewShowsHarnessStatusIcons(t *testing.T) {
-	m := interactiveModel{
-		activeTab:        tabTokens,
-		width:            80,
-		height:           24,
-		options:          tableOptions{period: periodMonth},
-		syncing:          true,
-		syncProgressRows: initialSyncProgressRows(),
-	}
-
-	output := m.View()
-	stripped := ansi.Strip(output)
-	for _, want := range []string{"Syncing data", "OpenCode", "Pi", "Codex", "Claude Code", ".   OpenCode"} {
-		if !strings.Contains(output, want) {
-			t.Fatalf("sync progress view missing %q:\n%s", want, output)
-		}
-	}
-	if !strings.Contains(stripped, "pending") {
-		t.Fatalf("sync progress must name pending state independently of color: %s", stripped)
-	}
-	if strings.Contains(output, "Loading data...") {
-		t.Fatalf("sync progress view rendered table loading state:\n%s", output)
-	}
-}
-
-func TestImplicitSyncRecoveryProgressExplainsActiveWork(t *testing.T) {
-	for _, test := range []struct {
-		status  pipeline.SyncProgressStatus
-		message string
-	}{{pipeline.SyncProgressResetting, "Resetting local usage data for compatibility"}, {pipeline.SyncProgressRebuilding, "Rebuilding usage from all configured local harnesses"}} {
-		m := interactiveModel{width: 80, height: 24, syncing: true, syncProgressRows: initialSyncProgressRows()}
-		m = m.withSyncProgress(pipeline.SyncProgressEvent{Status: test.status})
-		output := ansi.Strip(m.View())
-		if !strings.Contains(output, test.message) || !strings.Contains(output, "|   "+string(test.status)) {
-			t.Fatalf("expected active recovery progress, got %s", output)
-		}
-	}
-}
-
-func TestImplicitSyncRebuildingSurvivesHarnessProgress(t *testing.T) {
-	m := interactiveModel{width: 80, height: 24, syncing: true, syncProgressRows: initialSyncProgressRows()}
-	m = m.withSyncProgress(pipeline.SyncProgressEvent{Status: pipeline.SyncProgressResetting})
-	m = m.withSyncProgress(pipeline.SyncProgressEvent{Status: pipeline.SyncProgressRebuilding})
-	for _, status := range []pipeline.SyncProgressStatus{pipeline.SyncProgressDiscovering, pipeline.SyncProgressSyncing, pipeline.SyncProgressSynced, pipeline.SyncProgressSkipped, pipeline.SyncProgressFailed} {
-		m = m.withSyncProgress(pipeline.SyncProgressEvent{Harness: pipeline.HarnessOpenCode, Status: status})
-		if m.syncStatus != pipeline.SyncProgressRebuilding || m.syncProgressRows[0].status != status {
-			t.Fatalf("harness progress lost recovery phase: %s, %+v", m.syncStatus, m.syncProgressRows)
-		}
-	}
-	m = m.withSyncProgress(pipeline.SyncProgressEvent{Status: pipeline.SyncProgressNormalizing})
-	if m.syncStatus != pipeline.SyncProgressNormalizing {
-		t.Fatalf("global phase did not advance: %s", m.syncStatus)
-	}
-}
-
-func TestTUIReadsUseValidatedSnapshotDuringRecovery(t *testing.T) {
-	writer, path := newLoadRowsTestDB(t)
-	defer func() { _ = writer.Close() }()
-	now := time.Date(2026, 9, 9, 12, 0, 0, 0, time.Local)
-	insertLoadRowsCanonicalToken(t, writer, now.UnixMilli(), "pi", "session", "provider", "model")
-	reader, err := db.Open(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = reader.Close() }()
-	tx, err := db.BeginAnalyticsRead(context.Background(), reader)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = tx.Rollback() }()
-	if _, err := writer.Exec("UPDATE database_lifecycle SET rebuild_pending = 1, rebuild_source_key = 'test-scope' WHERE id = 1; DELETE FROM canonical_token_usage"); err != nil {
-		t.Fatal(err)
-	}
-	options := tableOptions{dbPath: path, period: periodMonth, bucket: bucketDay}
-	for _, tab := range []tabMode{tabTokens, tabModels, tabProviders, tabHarnesses, tabSessions, tabContext} {
-		rows, err := loadRowsFromReader(context.Background(), tx, options, now, groupByNone, tab)
-		if err != nil || len(rows) != 1 {
-			t.Fatalf("tab %v lost validated snapshot: rows=%d err=%v", tab, len(rows), err)
-		}
-		if _, err := loadRows(context.Background(), options, now, groupByNone, tab); !errors.Is(err, db.ErrRebuildPending) {
-			t.Fatalf("tab %v fresh read accepted pending recovery: %v", tab, err)
-		}
-	}
-	for _, dimension := range []filterDimension{filterProvider, filterModel, filterHarness} {
-		if _, err := loadFilterValues(context.Background(), options, now, dimension); !errors.Is(err, db.ErrRebuildPending) {
-			t.Fatalf("filter %v accepted pending recovery: %v", dimension, err)
-		}
-	}
-	if _, err := loadLastCompletedSync(context.Background(), options); !errors.Is(err, db.ErrRebuildPending) {
-		t.Fatalf("sync history accepted pending recovery: %v", err)
-	}
-	m := interactiveModel{ctx: context.Background(), options: options, now: now, activeTab: tabTokens}
-	if result := m.loadDashboard(); !errors.Is(result.err, db.ErrRebuildPending) {
-		t.Fatalf("dashboard accepted pending recovery: %v", result.err)
-	}
-}
-
-func TestImplicitSyncProgressUsesAppBackground(t *testing.T) {
-	m := interactiveModel{
-		activeTab:        tabTokens,
-		width:            80,
-		height:           24,
-		options:          tableOptions{period: periodMonth},
-		syncing:          true,
-		syncProgressRows: initialSyncProgressRows(),
-	}
-
-	output := m.View()
-	if !strings.Contains(ansi.Strip(output), "OpenCode") {
-		t.Fatalf("sync progress missing harness row:\n%q", output)
-	}
-	for _, line := range strings.Split(output, "\n") {
-		if width := ansi.StringWidth(line); width != 80 {
-			t.Fatalf("sync progress line width = %d, want 80 for %q", width, line)
-		}
-	}
-}
-
-func TestImplicitSyncProgressUpdatesHarnessStatus(t *testing.T) {
-	m := interactiveModel{
-		activeTab:        tabTokens,
-		width:            80,
-		height:           24,
-		options:          tableOptions{period: periodMonth},
-		syncing:          true,
-		syncProgressRows: initialSyncProgressRows(),
-	}
-
-	model, _ := m.Update(syncProgressMsg{event: pipeline.SyncProgressEvent{
-		Harness: pipeline.HarnessOpenCode,
-		Status:  pipeline.SyncProgressDiscovering,
-	}})
-	updated, ok := model.(interactiveModel)
-	if !ok {
-		t.Fatalf("got model %T, want interactiveModel", model)
-	}
-
-	output := updated.View()
-	if !strings.Contains(output, "|   OpenCode") {
-		t.Fatalf("sync progress view missing updated status icon:\n%s", output)
-	}
-	if !strings.Contains(ansi.Strip(output), "discovering") {
-		t.Fatalf("sync progress view missing status text:\n%s", output)
-	}
-}
-
-func TestImplicitSyncProgressRendersTerminalStatusIcons(t *testing.T) {
-	m := interactiveModel{
-		activeTab: tabTokens,
-		width:     80,
-		height:    24,
-		options:   tableOptions{period: periodMonth},
-		syncing:   true,
-		syncProgressRows: []syncProgressRow{
-			{harness: pipeline.HarnessOpenCode, label: "OpenCode", status: pipeline.SyncProgressSynced},
-			{harness: pipeline.HarnessPi, label: "Pi", status: pipeline.SyncProgressSkipped},
-			{harness: pipeline.HarnessCodex, label: "Codex", status: pipeline.SyncProgressFailed},
-		},
-	}
-
-	output := ansi.Strip(m.View())
-	for _, want := range []string{"✓   OpenCode", "-   Pi", "✗   Codex"} {
-		if !strings.Contains(output, want) {
-			t.Fatalf("sync progress view missing %q:\n%s", want, output)
-		}
-	}
-}
-
-func TestImplicitSyncAnimationTickAdvancesWhileSyncing(t *testing.T) {
-	m := interactiveModel{
-		activeTab:        tabTokens,
-		width:            80,
-		height:           24,
-		options:          tableOptions{period: periodMonth},
-		syncing:          true,
-		syncProgressRows: initialSyncProgressRows(),
-	}
-
-	model, cmd := m.Update(syncAnimationTickMsg{})
-	updated, ok := model.(interactiveModel)
-	if !ok {
-		t.Fatalf("got model %T, want interactiveModel", model)
-	}
-	if updated.syncFrame != 1 {
-		t.Fatalf("syncFrame = %d, want 1", updated.syncFrame)
-	}
-	if cmd == nil {
-		t.Fatal("expected another animation tick while syncing")
-	}
-}
-
-func TestImplicitSyncSuccessTransitionsThroughLoadingDashboardToTableLoading(t *testing.T) {
-	m := interactiveModel{
-		activeTab:        tabTokens,
-		width:            80,
-		height:           24,
-		options:          tableOptions{period: periodMonth},
-		syncing:          true,
-		syncProgressRows: initialSyncProgressRows(),
-	}
-
-	model, cmd := m.Update(syncDoneMsg{})
-	updated, ok := model.(interactiveModel)
-	if !ok {
-		t.Fatalf("got model %T, want interactiveModel", model)
-	}
-	if cmd == nil {
-		t.Fatal("expected deferred dashboard loading command")
-	}
-	if !strings.Contains(updated.View(), "loading dashboard") {
-		t.Fatalf("sync progress view missing loading dashboard status:\n%s", updated.View())
-	}
-
-	model, cmd = updated.Update(startDashboardLoadMsg{})
-	loading, ok := model.(interactiveModel)
-	if !ok {
-		t.Fatalf("got model %T, want interactiveModel", model)
-	}
-	if loading.syncing {
-		t.Fatal("expected sync progress to be finished")
-	}
-	if !loading.loading || !loading.reloadInFlight {
-		t.Fatalf("expected table loading state after sync: %+v", loading)
-	}
-	if cmd == nil {
-		t.Fatal("expected dashboard reload command")
-	}
-	if !strings.Contains(loading.View(), "Loading data...") {
-		t.Fatalf("expected existing table loading state:\n%s", loading.View())
-	}
-
-	model, cmd = loading.Update(syncAnimationTickMsg{})
-	stopped, ok := model.(interactiveModel)
-	if !ok {
-		t.Fatalf("got model %T, want interactiveModel", model)
-	}
-	if stopped.syncFrame != loading.syncFrame+1 {
-		t.Fatalf("syncFrame = %d, want %d", stopped.syncFrame, loading.syncFrame+1)
-	}
-	if cmd != nil {
-		t.Fatal("expected animation ticks to stop after sync progress exits")
-	}
-}
-
-func TestImplicitSyncShowsSavedSnapshotAndHidesItForRecovery(t *testing.T) {
-	m := newInteractiveModel(context.Background(), tableOptions{period: periodMonth}, time.Now(), "local")
-	m.width, m.height = 80, 24
-	model, _ := m.Update(snapshotMsg{reloadMsg{lastSyncMs: 1, sessionCounts: db.SessionCounts{Synced: 1}}})
-	shown := model.(interactiveModel)
-	if !shown.showingSnapshot || !strings.Contains(shown.View(), "syncing · saved data") {
-		t.Fatalf("saved snapshot not shown during sync:\n%s", shown.View())
-	}
-	model, cmd := shown.Update(tea.KeyMsg{Type: tea.KeyTab})
-	if next := model.(interactiveModel); next.activeTab != tabModels || cmd == nil {
-		t.Fatal("saved snapshot is not interactive")
-	}
-	model, _ = shown.Update(syncProgressMsg{event: pipeline.SyncProgressEvent{Status: pipeline.SyncProgressRebuilding}})
-	rebuilding := model.(interactiveModel)
-	if rebuilding.showingSnapshot || rebuilding.snapshotAllowed || !strings.Contains(rebuilding.View(), "Rebuilding") {
-		t.Fatalf("recovery exposed saved data:\n%s", rebuilding.View())
-	}
-}
-
-func TestImplicitSyncProcessesPendingNormalizationWork(t *testing.T) {
-	ctx := context.Background()
-	sourceRoot := t.TempDir()
-	t.Setenv("HOME", filepath.Join(sourceRoot, "home"))
-	t.Setenv("XDG_DATA_HOME", filepath.Join(sourceRoot, "xdg"))
-	t.Setenv("CODEX_HOME", filepath.Join(sourceRoot, "codex"))
-	t.Setenv("CLAUDE_CONFIG_DIR", filepath.Join(sourceRoot, "claude"))
-	dbPath := filepath.Join(t.TempDir(), "tokeninsights.sqlite")
-	now := time.Date(2026, 4, 24, 15, 0, 0, 0, time.UTC)
-	sourcePath := filepath.Join(sourceRoot, "home", ".pi", "agent", "sessions", "project", "2026-01-01T00-00-00_pi_s1.jsonl")
-	writeTableTestPiAssistantSession(t, sourcePath)
-	setTableTestFileModTime(t, sourcePath, now.Add(-72*time.Hour))
-
-	summary, err := pipeline.Sync(ctx, pipeline.SyncOptions{
-		DBPath:    dbPath,
-		Harnesses: []pipeline.Harness{pipeline.HarnessPi},
-		Normalize: false,
-		Now:       now,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if summary.RawFacts != 1 || summary.Canonical != 0 {
-		t.Fatalf("unexpected setup summary: %+v", summary)
-	}
-
-	previousRefresh := refreshView
-	refreshView = func(ctx context.Context, path string) (pipeline.Summary, error) {
-		return pipeline.Sync(ctx, pipeline.SyncOptions{DBPath: path, Harnesses: pipeline.SupportedHarnesses, Normalize: true, Now: now.Add(time.Hour)})
-	}
-	t.Cleanup(func() { refreshView = previousRefresh })
-	messages := make(chan tea.Msg, syncProgressBufferSize())
-	cmd := interactiveModel{
-		ctx: ctx,
-		options: tableOptions{
-			dbPath: dbPath,
-			period: periodMonth,
-		},
-		now: now.Add(time.Hour),
-	}.syncCmd(messages)
-	msg := cmd()
-	if msg != nil {
-		t.Fatalf("sync command returned %T, want nil", msg)
-	}
-	var done syncDoneMsg
-	for queued := range messages {
-		if value, ok := queued.(syncDoneMsg); ok {
-			done = value
-		}
-	}
-	if done.err != nil {
-		t.Fatal(done.err)
-	}
-	if done.summary.Canonical != 1 {
-		t.Fatalf("implicit sync summary = %+v, want canonical work processed", done.summary)
-	}
-
-	database, err := db.OpenWritable(dbPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = database.Close() }()
-	assertTableTestCount(t, database, "canonical_token_usage", 1)
-	assertTableTestCount(t, database, "normalization_work_queue", 0)
-}
-
-func TestImplicitSyncStartsAfterWindowSize(t *testing.T) {
-	m := interactiveModel{
-		ctx:              context.Background(),
-		activeTab:        tabTokens,
-		options:          tableOptions{period: periodMonth, dbPath: filepath.Join(t.TempDir(), "tokeninsights.sqlite")},
-		syncing:          true,
-		syncProgressRows: initialSyncProgressRows(),
-	}
-
-	if cmd := m.Init(); cmd != nil {
-		t.Fatal("implicit sync should wait until the terminal size is known")
-	}
-
-	model, cmd := m.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
-	updated, ok := model.(interactiveModel)
-	if !ok {
-		t.Fatalf("got model %T, want interactiveModel", model)
-	}
-	if cmd == nil {
-		t.Fatal("expected implicit sync command after window size")
-	}
-	if !updated.syncing || !updated.syncInFlight {
-		t.Fatalf("expected sync progress in flight: %+v", updated)
 	}
 }
 
@@ -1433,18 +1078,18 @@ func viewSummaryLine(output string) (string, int) {
 func TestDashboardSessionCoverageAcrossDateFilters(t *testing.T) {
 	database, dbPath := newLoadRowsTestDB(t)
 	defer func() { _ = database.Close() }()
-	now := time.Date(2026, 9, 9, 12, 0, 0, 0, time.Local)
+	now := time.Now()
 	const syncedSessions = 214
 	const monthSessions = 5
 	for i := 0; i < syncedSessions; i++ {
-		recordedAt := now.AddDate(0, -1, 0)
+		recordedAt := now.AddDate(0, -2, 0)
 		if i < monthSessions {
 			recordedAt = now
 		}
 		insertLoadRowsCanonicalToken(t, database, recordedAt.UnixMilli(), "opencode", fmt.Sprintf("session-%d", i), "openai", "model-a")
 	}
 
-	options := tableOptions{dbPath: dbPath, noSync: true, period: periodMonth, bucket: bucketDay}
+	options := tableOptions{serverURL: queryServerURL(t, dbPath), noSync: true, period: periodMonth, bucket: bucketDay}
 	m := newInteractiveModel(context.Background(), options, now, "test-host")
 	m.width, m.height = 100, 24
 	for _, test := range []struct {
@@ -1474,9 +1119,8 @@ func TestDashboardSessionCoverageAcrossDateFilters(t *testing.T) {
 			}
 		}
 	}
-	assertTableTestCount(t, database, "raw_token_usage", syncedSessions)
 	assertTableTestCount(t, database, "canonical_token_usage", syncedSessions)
-	assertTableTestCount(t, database, "ingest_runs", 0)
+	assertTableTestCount(t, database, "ingestion_receipts", 0)
 }
 
 func TestSortPopupSpaceAppliesSelection(t *testing.T) {

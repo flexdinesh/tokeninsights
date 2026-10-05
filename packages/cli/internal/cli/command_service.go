@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"os"
 
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/browser"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/server"
@@ -13,7 +14,6 @@ import (
 )
 
 var serviceCommand = commandSpec{name: "service", run: runService}
-var refreshCommand = commandSpec{name: "refresh", run: runRefresh}
 
 type serviceOptions struct {
 	service.Options
@@ -21,24 +21,27 @@ type serviceOptions struct {
 }
 
 func parseServiceOptions(action string, args []string, output io.Writer) (serviceOptions, error) {
-	options := serviceOptions{Options: service.Options{DBPath: defaultDBPath()}}
+	options := serviceOptions{Options: service.Options{DBPath: defaultServerDBPath()}}
 	flags := flag.NewFlagSet("tokeninsights service "+action, flag.ContinueOnError)
 	flags.SetOutput(output)
-	flags.StringVar(&options.DBPath, "db-path", defaultDBPath(), "path to tokeninsights sqlite db")
+	flags.StringVar(&options.DBPath, "server-db-path", defaultServerDBPath(), "path to server sqlite db")
 	var host string
 	var port int
+	var token string
 	if action == "start" || action == "restart" || action == "run" {
 		flags.StringVar(&host, "host", server.DefaultHost, "web/API bind IPv4 address")
 		flags.IntVar(&port, "port", server.DefaultPort, "web/API port (0 chooses available)")
+		token = os.Getenv("TOKENINSIGHTS_SERVER_TOKEN")
+		flags.StringVar(&token, "token", token, "server authentication token")
+		if token != "" {
+			options.Token = &token
+		}
 	}
 	if action == "start" {
 		flags.BoolVar(&options.open, "open", false, "open dashboard in browser")
 	}
 	if action == "status" {
 		flags.BoolVar(&options.json, "json", false, "print JSON status")
-	}
-	if action == "restart" {
-		flags.BoolVar(&options.ReloadSources, "reload-sources", false, "save source roots from current environment")
 	}
 	if err := flags.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
@@ -55,6 +58,9 @@ func parseServiceOptions(action string, args []string, output io.Writer) (servic
 		}
 		if f.Name == "port" {
 			options.Port = &port
+		}
+		if f.Name == "token" {
+			options.Token = &token
 		}
 	})
 	if err := server.ValidateHost(host); err != nil {
@@ -131,38 +137,4 @@ func runService(invocation commandInvocation, args []string) error {
 		}
 	}
 	return nil
-}
-
-func runRefresh(invocation commandInvocation, args []string) error {
-	flags := flag.NewFlagSet("tokeninsights refresh", flag.ContinueOnError)
-	flags.SetOutput(invocation.stderr)
-	var path string
-	var wait bool
-	flags.StringVar(&path, "db-path", defaultDBPath(), "path to tokeninsights sqlite db")
-	flags.BoolVar(&wait, "wait", false, "wait for refresh completion")
-	if err := flags.Parse(args); err != nil {
-		if errors.Is(err, flag.ErrHelp) {
-			return nil
-		}
-		return fmt.Errorf("%v\n%w", err, ErrUsage)
-	}
-	if flags.NArg() != 0 {
-		return ErrUsage
-	}
-	state, err := service.Ensure(invocation.context, service.Options{DBPath: path})
-	if err != nil {
-		return err
-	}
-	client := service.Client{Record: *state.Record}
-	operation, err := client.Refresh(invocation.context)
-	if err != nil {
-		return err
-	}
-	if !wait {
-		_, err := fmt.Fprintf(invocation.stdout, "Refresh accepted: %s\n", operation.ID)
-		return err
-	}
-	operation, err = client.Wait(invocation.context, operation.ID)
-	printSummary(invocation.stdout, "sync", operation.Summary, false)
-	return err
 }

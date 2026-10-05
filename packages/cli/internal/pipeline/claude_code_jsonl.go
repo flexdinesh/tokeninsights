@@ -289,25 +289,19 @@ func claudeCodeTokensFromUsage(usage map[string]interface{}) (claudeCodeTokenCou
 	return counts, nil, true
 }
 
-type claudeCodeIdentity struct {
-	RequestID *string `json:"request_id,omitempty"`
-}
-
 func claudeCodeIdentityMetadata(record map[string]interface{}) *string {
-	requestID := stringField(record, "requestId", "request_id")
-	if requestID == nil {
-		return nil
+	sessionSource := "filename"
+	if stringField(record, "sessionId", "session_id") != nil {
+		sessionSource = "native"
 	}
-	encoded, _ := json.Marshal(claudeCodeIdentity{RequestID: requestID})
-	metadata := string(encoded)
-	return &metadata
+	return sourceIdentityJSON(sessionSource, stringField(record, "requestId", "request_id"))
 }
 
 func claudeCodeRequestID(metadata *string) string {
 	if metadata == nil {
 		return ""
 	}
-	var identity claudeCodeIdentity
+	var identity sourceIdentityMetadata
 	if json.Unmarshal([]byte(*metadata), &identity) != nil {
 		return ""
 	}
@@ -324,12 +318,20 @@ func claudeCodeStreamingMergeKey(fact RawTokenFact) string {
 // Claude records for one native request are snapshots. Source time orders them;
 // merging counters independently could synthesize usage never present in source.
 func mergeClaudeCodeStreamingFact(existing *RawTokenFact, next RawTokenFact) (bool, error) {
+	if claudeCodeRequestID(existing.MetadataJSON) == "" && *existing.OccurredAtMs != *next.OccurredAtMs {
+		return false, fmt.Errorf("claude code message has no native request revision evidence")
+	}
 	if *existing.OccurredAtMs == *next.OccurredAtMs && !claudeCodeSameUsage(*existing, next) {
 		return false, fmt.Errorf("claude code native request has conflicting usage at the same source timestamp")
 	}
+	hasNativeSession := sourceSessionIdentity(existing.MetadataJSON) == "native" || sourceSessionIdentity(next.MetadataJSON) == "native"
 	location, conflicts, _, conflict := mergeLocations(existing.Location, next.Location, existing.locationConflicts)
 	if *next.OccurredAtMs > *existing.OccurredAtMs {
 		*existing = next
+	}
+	if hasNativeSession {
+		request := claudeCodeRequestID(existing.MetadataJSON)
+		existing.MetadataJSON = sourceIdentityJSON("native", stringPtrFromTrimmed(request))
 	}
 	existing.Location = location
 	existing.locationConflicts = conflicts
@@ -369,6 +371,7 @@ func finalizeClaudeCodeFact(fact *RawTokenFact) ([]Diagnostic, bool) {
 		input: fact.InputTokens, output: fact.OutputTokens, reasoning: fact.ReasoningTokens,
 		cacheRead: fact.CacheReadTokens, cacheWrite: fact.CacheWriteTokens, total: fact.TotalTokens,
 	})
+	fact.DedupeKey = nativeTupleHash(fact.DedupeKey, sourceSessionIdentity(fact.MetadataJSON))
 	return diagnostics, true
 }
 

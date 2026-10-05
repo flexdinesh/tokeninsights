@@ -220,6 +220,11 @@ func normalizePrepared(ctx context.Context, database *sql.DB, options NormalizeO
 			}
 		}
 	}
+	diagnostics, err := journalCanonicalFacts(ctx, tx, nowMs(options))
+	if err != nil {
+		return summary, err
+	}
+	summary.Diagnostics += diagnostics
 	if err := db.AdvanceAnalyticsRevision(ctx, tx); err != nil {
 		return summary, err
 	}
@@ -400,7 +405,7 @@ func normalizeRawTokenRow(ctx context.Context, runner sqlRunner, row rawTokenRow
 }
 
 func upsertCanonicalSession(ctx context.Context, runner sqlRunner, row rawTokenRow) (int64, error) {
-	key := stableHash(fmt.Sprintf("session:%s:%s", row.Harness, row.SessionID.String))
+	key := nativeTupleHash("session", string(row.Harness), row.SessionID.String)
 	timestamp := canonicalTime(row)
 	_, err := runner.ExecContext(ctx, `
 		INSERT INTO canonical_sessions (
@@ -425,7 +430,7 @@ func upsertCanonicalMessage(ctx context.Context, runner sqlRunner, row rawTokenR
 	if !row.MessageID.Valid || strings.TrimSpace(row.MessageID.String) == "" {
 		return nil, nil
 	}
-	key := stableHash(fmt.Sprintf("message:%s:%s:%s", row.Harness, row.SessionID.String, row.MessageID.String))
+	key := nativeTupleHash("message", string(row.Harness), row.SessionID.String, row.MessageID.String)
 	_, err := runner.ExecContext(ctx, `
 		INSERT INTO canonical_messages (
 			semantic_key, session_id, harness, harness_message_id, occurred_at_ms, primary_raw_fact_id
@@ -446,8 +451,20 @@ func upsertCanonicalMessage(ctx context.Context, runner sqlRunner, row rawTokenR
 
 func upsertCanonicalTokenUsage(ctx context.Context, runner sqlRunner, row rawTokenRow, sessionDBID int64, messageDBID *int64) (bool, error) {
 	values := canonicalTokenValuesFor(row, sessionDBID, messageDBID)
+	if (row.Harness == HarnessPi || row.Harness == HarnessClaudeCode) && sourceSessionIdentity(rawMetadataPointer(row)) != "native" {
+		var hasNativeSession bool
+		if err := runner.QueryRowContext(ctx, `SELECT EXISTS(
+			SELECT 1 FROM canonical_token_usage c JOIN raw_token_usage r ON r.id = c.primary_raw_fact_id
+			WHERE c.semantic_key = ? AND json_extract(r.metadata_json, '$.session_source') = 'native'
+		)`, values.Key).Scan(&hasNativeSession); err != nil {
+			return false, err
+		}
+		if hasNativeSession {
+			return false, nil
+		}
+	}
 	if row.Harness == HarnessClaudeCode && row.MessageID.Valid && row.MessageID.String != "" {
-		apply, err := acceptClaudeCodeCanonicalRevision(ctx, runner, values)
+		apply, err := acceptClaudeCodeCanonicalRevision(ctx, runner, values, claudeCodeRequestID(rawMetadataPointer(row)) != "")
 		if err != nil || !apply {
 			return false, err
 		}
@@ -497,7 +514,7 @@ func upsertCanonicalTokenUsage(ctx context.Context, runner sqlRunner, row rawTok
 
 // The adapter's occurrence timestamp is source revision evidence for a native
 // Claude request. Local collection order must never replace a newer snapshot.
-func acceptClaudeCodeCanonicalRevision(ctx context.Context, runner sqlRunner, next canonicalTokenValues) (bool, error) {
+func acceptClaudeCodeCanonicalRevision(ctx context.Context, runner sqlRunner, next canonicalTokenValues, hasRevision bool) (bool, error) {
 	var previous canonicalTokenValues
 	err := runner.QueryRowContext(ctx, `
 		SELECT recorded_at_ms, provider, provider_source, model, quality, is_countable,
@@ -511,6 +528,9 @@ func acceptClaudeCodeCanonicalRevision(ctx context.Context, runner sqlRunner, ne
 	}
 	if err != nil {
 		return false, err
+	}
+	if !hasRevision && previous.RecordedAtMs != next.RecordedAtMs {
+		return false, fmt.Errorf("claude code message has no native request revision evidence")
 	}
 	if previous.RecordedAtMs > next.RecordedAtMs {
 		return false, nil
@@ -597,7 +617,7 @@ func canonicalTokenKey(row rawTokenRow) string {
 		fmt.Sprint(canonicalTime(row)),
 		row.UsageScope,
 	}
-	return stableHash(strings.Join(parts, "|"))
+	return nativeTupleHash(parts...)
 }
 
 func rawMetadataPointer(row rawTokenRow) *string {

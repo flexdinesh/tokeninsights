@@ -83,6 +83,7 @@ func TestLifecycleMissingAndFresh(t *testing.T) {
 
 func TestV13HostnameUpgradePreservesUsage(t *testing.T) {
 	database, path := newTestDB(t)
+	dropPublicationTables(t, database)
 	insertCanonicalToken(t, database, 2000, "pi", "retained", "openai", "gpt", 7, 1, 0, 0, 0, 8)
 	execLifecycleSQL(t, database, `
 		ALTER TABLE ingest_runs DROP COLUMN hostname;
@@ -124,6 +125,7 @@ func TestV13HostnameUpgradePreservesUsage(t *testing.T) {
 
 func TestV12SyncMetadataUpgradePreservesUsage(t *testing.T) {
 	database, path := newTestDB(t)
+	dropPublicationTables(t, database)
 	insertCanonicalToken(t, database, 2000, "pi", "retained", "openai", "gpt", 7, 1, 0, 0, 0, 8)
 	execLifecycleSQL(t, database, "DROP TABLE sync_sources; DROP TABLE sync_harnesses; DROP TABLE sync_jobs; DROP TABLE sync_state; PRAGMA user_version = 12")
 	if got := inspectLifecycle(t, path); got != (Compatibility{Exists: true, MigrationRequired: true}) {
@@ -148,6 +150,7 @@ func TestV12SyncMetadataUpgradePreservesUsage(t *testing.T) {
 
 func TestV11MetadataUpgradePreservesUsage(t *testing.T) {
 	database, path := newTestDB(t)
+	dropPublicationTables(t, database)
 	insertCanonicalToken(t, database, 2000, "pi", "retained", "openai", "gpt", 7, 1, 0, 0, 0, 8)
 	execLifecycleSQL(t, database, "CREATE TRIGGER retained_trigger AFTER INSERT ON ingest_runs BEGIN SELECT 1; END")
 	execLifecycleSQL(t, database, "DROP TABLE normalization_rule_state; PRAGMA user_version = 11")
@@ -181,7 +184,9 @@ func TestV11MetadataUpgradePreservesUsage(t *testing.T) {
 	}
 }
 
-func TestRecoveryLegacySchemas(t *testing.T) {
+// Untagged historical files are preserved. Fresh collector/server stores are
+// the explicitly selected migration policy for the split architecture.
+func TestLegacySchemasRejectWithoutMutation(t *testing.T) {
 	for version := 2; version < SupportedSchemaVersion; version++ {
 		t.Run(fmt.Sprintf("v%d", version), func(t *testing.T) {
 			path := filepath.Join(t.TempDir(), "legacy.sqlite")
@@ -191,29 +196,43 @@ func TestRecoveryLegacySchemas(t *testing.T) {
 			}
 			execLifecycleSQL(t, database, legacySchema(t, version))
 			_ = database.Close()
-			if got := inspectLifecycle(t, path); got != (Compatibility{Exists: true, ResetRequired: true}) {
-				t.Fatalf("legacy compatibility: %+v", got)
+			before, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := InspectCompatibility(context.Background(), path); err == nil {
+				t.Fatal("legacy inspection accepted")
 			}
 			for _, open := range []func(string) (*sql.DB, error){Open, OpenWritable} {
-				if database, err := open(path); !errors.Is(err, ErrRecoveryRequired) {
-					if database != nil {
-						_ = database.Close()
-					}
-					t.Fatalf("legacy open error = %v", err)
+				if opened, err := open(path); err == nil {
+					_ = opened.Close()
+					t.Fatal("legacy open accepted")
 				}
 			}
-			if database, _, err := CreateIfMissing(path); !errors.Is(err, ErrRecoveryRequired) {
-				if database != nil {
-					_ = database.Close()
-				}
-				t.Fatalf("legacy create error = %v", err)
+			if opened, _, err := CreateIfMissing(path); err == nil {
+				_ = opened.Close()
+				t.Fatal("legacy initialization accepted")
 			}
-			recoverLifecycle(t, path)
-			if got := inspectLifecycle(t, path); got != (Compatibility{Exists: true, RebuildPending: true, RebuildSourceKey: testRebuildSourceKey}) {
-				t.Fatalf("recovered compatibility: %+v", got)
+			if err := ResetForRecovery(context.Background(), path, testRebuildSourceKey); err == nil {
+				t.Fatal("legacy recovery accepted")
+			}
+			if err := ResetAll(path); err == nil {
+				t.Fatal("legacy reset accepted")
+			}
+			after, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !bytes.Equal(before, after) {
+				t.Fatal("legacy database changed")
 			}
 		})
 	}
+}
+
+func dropPublicationTables(t *testing.T, database *sql.DB) {
+	t.Helper()
+	execLifecycleSQL(t, database, "DROP TABLE publication_batches; DROP TABLE publication_destinations; DROP TABLE publication_entities; DROP TABLE publication_journal; DROP TABLE publication_state")
 }
 
 func TestRecoveryGenerationAndResume(t *testing.T) {
@@ -271,7 +290,7 @@ func TestRecoveryGenerationAndResume(t *testing.T) {
 }
 
 func TestRecoveryRefusesUnsafeFilesWithoutChangingContents(t *testing.T) {
-	for _, kind := range []string{"newer-schema", "newer-generation", "foreign", "foreign-current-version", "foreign-extra-table", "corrupt", "missing-lifecycle", "missing-singleton"} {
+	for _, kind := range []string{"newer-schema", "newer-generation", "foreign", "foreign-current-version", "foreign-extra-table", "corrupt", "missing-lifecycle", "missing-singleton", "missing-publication-state"} {
 		t.Run(kind, func(t *testing.T) {
 			database, path := newTestDB(t)
 			switch kind {
@@ -293,6 +312,8 @@ func TestRecoveryRefusesUnsafeFilesWithoutChangingContents(t *testing.T) {
 				}
 			case "foreign-extra-table":
 				execLifecycleSQL(t, database, "CREATE TABLE notes (id INTEGER PRIMARY KEY); UPDATE database_lifecycle SET data_generation = 0")
+			case "missing-publication-state":
+				execLifecycleSQL(t, database, "DELETE FROM publication_state")
 			case "missing-lifecycle":
 				execLifecycleSQL(t, database, "DROP TABLE database_lifecycle")
 			case "missing-singleton":
@@ -671,8 +692,9 @@ func legacySchema(t *testing.T, version int) string {
 	if err != nil {
 		t.Fatal(err)
 	}
+	historical, _, _ := strings.Cut(string(schema), "-- Durable normalized publication;")
 	var statements []string
-	for _, statement := range strings.Split(string(schema), ";") {
+	for _, statement := range strings.Split(historical, ";") {
 		if (version < 13 && (strings.Contains(statement, "sync_state") || strings.Contains(statement, "sync_jobs") || strings.Contains(statement, "sync_harnesses") || strings.Contains(statement, "sync_sources"))) ||
 			(version < 8 && strings.Contains(statement, "database_lifecycle")) ||
 			(version < 6 && strings.Contains(statement, "normalization_work_queue")) ||
@@ -759,3 +781,37 @@ CREATE TABLE pi_tool_calls (
 INSERT INTO oc_token_events (id, session_id, total_tokens) VALUES (1, 'legacy', 42);
 PRAGMA user_version = 2;
 `
+
+func TestServerRoleRejectsCollectorMutationWithoutChangingContents(t *testing.T) {
+	database, path := newTestDB(t)
+	insertCanonicalToken(t, database, 1000, "codex", "retained", "openai", "gpt", 10, 2, 0, 0, 0, 12)
+	execLifecycleSQL(t, database, "PRAGMA application_id = 1414091606")
+	_ = database.Close()
+	before, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, open := range []func(string) (*sql.DB, error){Open, OpenWritable} {
+		if opened, err := open(path); err == nil {
+			_ = opened.Close()
+			t.Fatal("server role opened as collector")
+		}
+	}
+	if opened, _, err := CreateIfMissing(path); err == nil {
+		_ = opened.Close()
+		t.Fatal("server role initialized as collector")
+	}
+	if err := ResetAll(path); err == nil {
+		t.Fatal("server role reset as collector")
+	}
+	if err := ResetForRecovery(context.Background(), path, testRebuildSourceKey); err == nil {
+		t.Fatal("server role recovered as collector")
+	}
+	after, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(before, after) {
+		t.Fatal("server database mutated by collector")
+	}
+}

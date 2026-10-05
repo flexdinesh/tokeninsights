@@ -35,7 +35,7 @@ var (
 		"←→          Scroll columns", "Home / End  First / last column",
 		"d           Date range", "g           Bucket / Repo group", "s           Sort",
 		"f           Filters", "p / m / h   Provider/model/harness",
-		"r           Reload usage", "u           Sync / retry (unless --no-sync)", "q / Ctrl+C  Quit",
+		"r           Reload saved server usage", "q / Ctrl+C  Quit",
 		"Day status  ✓ checked · ○ empty",
 		"            … pending · ↻ updating",
 		"            ! incomplete",
@@ -111,12 +111,8 @@ func tokenReadouts(rows []renderRow) []deskMetric {
 func (m interactiveModel) deskHeader() []string {
 	width := m.tableViewportWidth()
 	lines := []string{m.renderStatusline()}
-	if len(m.coverage) > 0 || m.sharedSync.JobID > 0 {
-		work := m.syncWorkLabel()
-		if len(m.coverage) > 0 {
-			work = m.coverageSummary() + " · " + work
-		}
-		lines = append(lines, hintStyle.Render(truncateCell(work, width)))
+	if m.timezone != "" {
+		lines = append(lines, hintStyle.Render(truncateCell("Server time: "+m.timezone+" · r Reload saved usage", width)))
 	}
 	roomy := m.height >= deskRoomyHeight
 	if roomy {
@@ -232,7 +228,7 @@ func (m interactiveModel) renderDesk() string {
 	case len(m.rows) == 0:
 		message, recovery := "No rows match the current scope.", "d Change date range · f Adjust filters"
 		if m.sessionCounts.Synced == 0 {
-			message, recovery = "No synced usage yet.", "Quit and run tokeninsights sync --all, then reopen."
+			message, recovery = "No ingested usage yet.", "Run tokeninsights sync, then press r to reload."
 		}
 		table = m.deskMessage(message, "", recovery, visible+1)
 	default:
@@ -287,14 +283,6 @@ func (m interactiveModel) deskFooter() string {
 		position = "r Retry"
 	} else if len(m.rows) > 0 {
 		position = fmt.Sprintf("%d–%d / %d", m.scrollOffset+1, m.scrollOffset+len(m.visibleRows()), len(m.rows))
-	}
-	if m.syncing && m.showingSnapshot {
-		position = "syncing · saved data · " + position
-	} else if m.syncErr != nil {
-		position = "sync failed · saved data · " + position
-		if !m.options.noSync {
-			position = "u Retry · " + position
-		}
 	}
 	if maxOffset := m.maxHorizontalOffset(m.rows); maxOffset > 0 {
 		position += fmt.Sprintf(" · x %d/%d", m.horizontalOffset+1, maxOffset+1)

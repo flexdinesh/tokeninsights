@@ -1,79 +1,43 @@
 # Completion plugin implementation
 
-Status: native command adapters started; Pi/OpenCode routing scaffolds started.
-Scope: same PR as collector/server ingestion. Manual sync remains primary.
+Status: Native manifests, lifecycle runners and standalone package artifacts implemented; package builds, SDK typechecks, reproducible artifact checks and repository gates pass. Isolated real-host installation remains deferred.
+Scope: PR #53 collector/server ingestion. Manual sync remains primary.
 
 ## Responsibilities
 
-- Collector owns parsing, normalization, SQLite, outbox and delivery.
-- Thin host adapters request the same `tokeninsights sync`; no direct HTTP or
-  database writes, no hook transcript fields forwarded.
-- Server dedupe handles repeated completion triggers. Hook execution itself
-  supplies no exactly-once guarantee and no usage identity.
-- Hook failure must not ask the coding agent to continue. Users retain manual
-  sync and host debug logs for diagnosis.
+The collector owns parsing, normalization, SQLite, publication and delivery. Thin adapters invoke `tokeninsights sync` directly and pass no hook payload, transcript path or conversation content. Fact/batch dedupe makes repeated collection converge; completion dispatch itself supplies no exactly-once guarantee. A later manual sync collects late retained records and retries durable publication.
 
-## Prior art and evidence
+## Implemented artifacts
 
-Read `/home/dee/workspace/servediff/main/docs/plugins.md`,
-`docs/agent-plugins-plan.md` and all four native packages. Servediff schedules a
-detached Go worker; TokenInsights initially performs bounded finite sync instead
-of copying that separate worker/state architecture.
+- Codex/Claude native manifests and Stop hooks: finite synchronous command, quoted binary override, discarded stdin/output, empty decision JSON and a 60-second host deadline.
+- Pi extension entry and package metadata: `agent_settled` awaits collection; `session_shutdown` closes active runner. SDK declarations pinned to `@earendil-works/pi-coding-agent` 1.0.0.
+- OpenCode V2 plugin entry/root loader: abortable event subscription selects idle `session.status`; cleanup aborts subscription and child. SDK declarations pinned to `@opencode/plugin` 2.0.22.
+- Shared bounded spawn runner bundled into committed standalone package output. Argument arrays and `shell: false`; overlapping callbacks coalesce; deadline/cleanup terminate the child/process group with bounded escalation. No retry daemon or durable trigger scheduler.
 
-Checked official host docs on 2026-10-05: [Codex hooks](https://developers.openai.com/codex/hooks),
-[Claude hooks](https://code.claude.com/docs/en/hooks),
-[Pi extensions](https://github.com/badlogic/pi-mono/blob/main/packages/coding-agent/docs/extensions.md),
-[OpenCode V2 plugins](https://opencode.ai/v2/docs/build/plugins).
-Local installed Pi declaration confirms `agent_settled`. No supported interface
-guarantees every durable source write has flushed before our trigger.
+Pinned declarations and buildable artifacts establish an implementation target, not verified universal host compatibility. No user plugin registration is installed or modified automatically. Go production code never invokes JavaScript tooling.
 
-## Implementation gates
+## Traceable test requirements
 
-1. Command wrappers: native Stop manifests; quoted runtime binary override;
-   stdin discarded; output suppressed; empty decision JSON; fixed failure
-   marker; synchronous 60-second host deadline.
-2. Pi runner: await finite Go CLI process from `agent_settled`; terminate on
-   deadline; surface generic host UI error without event content. Register no
-   model tool, agent continuation, timer or process during extension factory.
-3. OpenCode V2 runner: consume idle `session.status` events, ignore legacy idle
-   duplicates, busy/retry and malformed events; bounded/coalesced triggering;
-   cleanup aborts stream and active child; host-owned logs only.
-4. Native host type checks and standalone install artifacts. Add narrowly
-   scoped plugin workspace/build checks with integration owner; no bundled
-   Node runtime or JavaScript dependency from Go production code.
-5. Isolated real-host smoke tests for installation/trust, event delivery,
-   late/truncated source writes, failure reporting, timeout and teardown.
-   Preserve existing host registrations. Install to temporary host roots only.
-
-## Traceable tests
-
-`tools/build/test/plugin-adapters.test.ts` currently verifies native Stop
-selection/deadline, literal binary paths, PATH fallback, zero forwarded stdin,
-exact `sync` arguments, hidden CLI output, nonzero/missing-binary isolation,
-Pi settled routing/waiting and OpenCode V2 idle filtering. Fake binaries and
-synthetic markers supply all inputs. These tests do not prove native host
-timeout enforcement or that source writes flush before hook dispatch.
-
-| ID | Invariant | Coverage |
+| ID | Invariant | Verification |
 | --- | --- | --- |
-| PL01 | Stop invokes only the shared sync command | Codex/Claude executable tests |
-| PL02 | Hook content never reaches collector stdin or output | Codex/Claude executable tests |
-| PL03 | Literal runtime binary paths preserve argument boundaries | Codex/Claude executable tests |
-| PL04 | Missing/nonzero CLI cannot request agent continuation | Codex/Claude executable tests |
-| PL05 | Settled callbacks await collection rather than acknowledge scheduling | Pi routing test |
-| PL06 | Idle only; legacy, busy, retry and malformed events ignored | OpenCode event test |
-| PL07 | Deadline/teardown terminates work without leaked children | Real-host tests pending |
-| PL08 | Late durable source writes remain collectable on later sync | Collector integration pending |
+| PL01 | Stop invokes shared sync only | Codex/Claude isolated executable tests |
+| PL02 | Hook content/output never crosses into collection arguments/stdin/logs | Synthetic private sentinels and discarded streams |
+| PL03 | Literal executable paths preserve argument boundaries | Paths with spaces/metacharacters and PATH fallback |
+| PL04 | Missing/nonzero executable never requests continuation | Empty decision JSON and fixed failure marker |
+| PL05 | Pi settled handler waits; shutdown closes work | Native lifecycle entry with fake runner/executable |
+| PL06 | OpenCode idle only; unrelated/malformed events ignored | Routing and abortable subscription tests |
+| PL07 | Deadline/teardown/coalescing contain child lifetime | Bounded fake-child process tests; native host deadline enforcement remains deferred |
+| PL08 | Late source writes and delivery failure remain recoverable | Real collector source/retry tests; real host flush timing deferred |
+| PL09 | Package works outside workspace | Standalone committed artifacts; native host installation/trust deferred |
 
-Required next cases: host lifecycle teardown; bounded child kill; overlapping
-triggers converge through collector writer/admission; source trailing record
-finishes after hook; unavailable destination leaves durable retry; lost ack
-then repeated hook dedupes; no conversation content in local diagnostics or
-published payload; package works outside workspace without build tools.
+Existing `tools/build/test/plugin-adapters.test.ts` covers wrapper privacy, argument boundaries, failures and completion selection. Lifecycle/process/package tests must execute the actual committed runner/entry path. Record completed commands in [VALIDATION.md](VALIDATION.md); this checklist alone does not claim every case passed.
+
+## Deferred host verification
+
+Use isolated temporary host roots when later verifying installation/trust, native event delivery, host-enforced deadlines, teardown and late durable writes. Preserve existing registrations. Completion may arrive before final source data is durable; no adapter promises complete turn accounting. This deferred host exercise is distinct from deterministic fake-executable and production collector tests.
+
+Prior art: servediff native manifests and completion adapters informed registration, while TokenInsights uses direct finite sync rather than a detached worker/state architecture. References: [Codex hooks](https://developers.openai.com/codex/hooks), [Claude hooks](https://code.claude.com/docs/en/hooks), [Pi lifecycle](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/extensions.md), [OpenCode V2 events](https://opencode.ai/v2/docs/build/plugins/#events).
 
 ## Unresolved questions
 
-- Supported host version baselines?
-- Keep synchronous hook wait, or later detached Go worker?
-
-Defaults: recent native interfaces only; finite synchronous command hooks now.
+None blocking finite completion adapters. Later: isolated host support verification and remote setup/authentication.

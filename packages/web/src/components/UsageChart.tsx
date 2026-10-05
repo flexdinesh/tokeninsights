@@ -12,7 +12,7 @@ import {
   YAxis,
 } from 'recharts'
 import type { Row, Sort } from '../contracts'
-import { exactCount, formatCount } from '../format'
+import { exactCount, formatCount, formatServerDateTime, serverTimeZoneLabel } from '../format'
 import { useDashboardPreferences, useDashboardQuery } from '../state'
 import { BucketControl } from './Filters'
 import { Button } from './ui/button'
@@ -113,7 +113,15 @@ const contextLegend = [
   { label: 'Maximum', color: 'var(--chart-3)' },
 ]
 
-export function UsageChart({ rows, totalTokens }: { rows: Row[]; totalTokens: number }) {
+export function UsageChart({
+  rows,
+  totalTokens,
+  timezone,
+}: {
+  rows: Row[]
+  totalTokens: number
+  timezone: string
+}) {
   const { query, updateSelection } = useDashboardQuery()
   const { chartMetric: metric, setChartMetric } = useDashboardPreferences()
   const timeline = query.tab === 'tokens' || query.tab === 'sessions'
@@ -219,6 +227,12 @@ export function UsageChart({ rows, totalTokens }: { rows: Row[]; totalTokens: nu
                 />
                 <Tooltip
                   formatter={tooltipFormatter}
+                  labelFormatter={(label: unknown) => {
+                    const row = chartRows.find((candidate) => candidate.label === label)
+                    return row && row.date > 0
+                      ? `${row.label} · ${formatServerDateTime(row.date, timezone)} · ${serverTimeZoneLabel(timezone)}`
+                      : String(label)
+                  }}
                   contentStyle={tooltipStyle}
                   itemStyle={{ color: 'var(--color-text-primary)' }}
                 />

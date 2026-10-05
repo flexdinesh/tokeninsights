@@ -1,8 +1,9 @@
 # tokeninsights Design
 
-This document describes the current implementation. The [collector/server architecture proposal](collector-server-architecture.md) describes the proposed canonical-only ingestion boundary; its [failure-test matrix](collector-ingestion-tests.md) separates executable collector coverage from planned server acceptance tests. No collector/server schema or runtime migration has been implemented.
-
-PR #53 is implementing that transition. Its pipeline fixes use native session/message identity for OpenCode copy suppression and retained Claude request metadata for timestamp-independent fact identity. Claude records for one request are source-timed snapshots: replace the entire snapshot with the newer one, ignore older copies, and reject equal-time conflicting usage. Native tuples use unambiguous encoding. Existing database identity compatibility/migration remains an approval gate before release; current schema/generation constants have not changed. Session/message occurrence envelopes may retain earlier partial history even when the latest fact matches a fresh final parse.
+Current collector/server architecture and storage contract. See the
+[architecture overview](collector-server-architecture.md) and
+[failure-test matrix](collector-ingestion-tests.md) for traceable decisions,
+production coverage, and remaining verification gaps.
 
 ## North Star
 
@@ -15,116 +16,167 @@ Token usage is the active V1 viewer domain. TPS remains a future-compatible data
 ## System Architecture
 
 ```text
-Local harness data
-  OpenCode        Pi        Codex      Claude Code
-     |            |          |             |
-     +------------+----------+-------------+
-                  |
-                  v
-        tokeninsights sync
-        - discover sources
-        - parse metadata-only facts
-        - write ingest runs
-        - dedupe raw facts
-        - record observations
-                  |
-                  v
-          SQLite raw tables
-                  |
-                  v
-      tokeninsights normalize
-        - resolve sessions/messages
-        - choose countable token facts
-        - write diagnostics
-                  |
-                  v
-        SQLite canonical tables
-                  |
-                  v
-       +----------+-----------+
-       |                      |
-       v                      v
- tokeninsights view   tokeninsights service
- direct SQLite read   versioned REST API
-       |                      |
-       v                      v
- terminal TUI          embedded React UI
-                       same-origin API
+Durable harness sources: OpenCode / Pi / Codex / Claude Code
+                            |
+                   host collector: sync
+            discover -> parse -> normalize -> journal
+                            |
+                      collector.sqlite
+               raw facts + canonical facts + continuity
+                 immutable journal + saved upload batches
+                            |
+              normalized-only versioned ingestion API
+                            |
+             shared local / foreground remote server
+                 validate -> dedupe -> atomic commit
+                            |
+                        server.sqlite
+             canonical history + durable receipts + revision
+                            |
+                 REST queries and embedded assets
+                     /                   \
+                  TUI                   browser
 ```
 
-Default storage is:
+The collector owns harness parsing and normalization. The server cannot discover
+sources, interpret raw harness facts, or launch collection. Local is the default
+deployment; explicit remote transport uses the same normalized contract and
+skips local startup. Provisioning and TLS deployment remain later work.
 
-```text
-~/.local/share/tokeninsights/tokeninsights.sqlite
-```
-
-`TOKENINSIGHTS_DB_PATH` and `--db-path` override the database path. `TOKENINSIGHTS_RETENTION_DAYS` is not part of sync-first V1 behavior.
+Defaults under `${XDG_DATA_HOME:-~/.local/share}/tokeninsights/` are
+`collector.sqlite` and `server.sqlite`. Override them with `--collector-db-path` /
+`TOKENINSIGHTS_COLLECTOR_DB_PATH` and `--server-db-path` /
+`TOKENINSIGHTS_SERVER_DB_PATH`. `TOKENINSIGHTS_SERVER_URL` selects an explicit
+endpoint and `TOKENINSIGHTS_SERVER_TOKEN` supplies its token. Flags override
+environment defaults. Legacy `TOKENINSIGHTS_DB_PATH` does not select either new
+role. The old `tokeninsights.sqlite` remains untouched; retained sources rebuild
+the fresh files. Aliased paths and wrong database roles are rejected.
 
 ## Product Boundary
 
-TokenInsights V1 is a local Go CLI:
-
-- `sync` ingests durable local harness data into raw tables and normalizes by default.
-- `normalize` processes pending canonical work from existing raw facts.
-- Bare invocation ensures the persistent background service and prints status; startup never ingests.
-- `view` opens the local TUI, ensures the service and requests all-harness refresh asynchronously. It reads canonical SQLite directly; saved usage remains usable. `view --no-sync` stays read-only and does not start a service.
-- `service start|stop|restart|status` manages one service per canonical database; `service run` runs it in the foreground. The embedded web dashboard reads saved data on opening; Sync requests ingest. `serve` is a deprecated foreground alias without startup sync.
-- `reset-canonical` clears rebuildable canonical facts and diagnostics, then requeues raw token facts.
-- `reset-all` transactionally recreates application tables inside the existing SQLite file.
-
-Realtime plugins and checkpoint plugins are future-compatible concepts, not active product code in this repository. The old direct-write OpenCode and Pi plugin packages are removed from the active workspace.
+- `sync` defaults to all harnesses: capture changed durable data, normalize,
+  journal canonical changes, then publish pending batches. `--harness` narrows
+  collection. Collection and delivery report independently.
+- `sync --publish-only` sends retained journal work without discovering sources.
+  Retry is manual; offline publication stays durable until another invocation.
+- `normalize` processes retained collector raw facts and journals canonical
+  changes. It does not publish; a subsequent sync performs delivery.
+- Bare invocation ensures the local canonical server and prints its URL.
+  Startup initializes only missing server storage and never collects.
+- `view` queries saved server data through REST. Without a server URL it ensures
+  the local server; an explicit URL bypasses local storage/discovery.
+  `--no-sync` aliases this read-only default. `--sync` explicitly runs caller-side
+  collection/publication before opening. TUI `r` and browser Reload query only.
+- `service start|stop|restart|status|run` manages the local server.
+  `server run` provides the shared foreground remote composition; non-loopback
+  binding requires a token. `serve` remains a deprecated foreground alias.
+- `reset-canonical` and `reset-all` affect collector storage only. Rebuilding a
+  collector does not remove server facts or publish implicit retractions.
+- Completion plugins are thin triggers for the same Go `sync`, never alternate
+  parsers or transports. Manual collection remains primary; host hooks do not
+  prove that every durable write was available. See [plugins](plugins.md) for
+  native artifacts, supported surfaces, and remaining real-host verification.
 
 ## Code And Process Boundaries
 
-The repository is a polyglot monorepo with one Go module and a pnpm workspace. The Go module is the native product and release unit; pnpm coordinates build-, test-, and development-only TypeScript tooling and the browser application.
-
-Stable Go module tags (`packages/cli/vX.Y.Z`) and the Latest GitHub Release are published only by the manually dispatched Release workflow, using the latest `main` at checkout. Every push to `main` runs verification-only CI. Development installs use `go install ...@main` directly, without a generated distribution branch or waiting for CI; `go install ...@latest` continues resolving stable tags. See [release details](release.md).
-
-Go dependency direction is:
+One Go module owns the native product and release lifecycle; pnpm owns browser
+and plugin development/build tooling. Browser JavaScript is prebuilt, committed,
+embedded with `go:embed`, and executed only in the browser. The Go binary never
+invokes Node, npm, or pnpm. Stable Go tags and releases remain manually published
+from `main`; see [release details](release.md).
 
 ```text
-commands and transports -> application semantics -> pipeline and database
+collector CLI -> internal/collector -> pipeline + collectorstore
+                                       |          |
+                                       +-> publication contract <-+
+                                                                 |
+local/remote runtime -> ingestion -> serverstore -> canonical SQL |
+       |                                                         |
+       +-> REST queries -> Go queryclient / embedded React         |
 ```
 
-Protocol handlers must not become the reusable application boundary. Future transports such as MCP should share protocol-independent analytics and sync behavior with the REST server rather than call REST internally or duplicate database queries. Multiple commands that share one release lifecycle should remain in the existing Go module. A second Go module and root `go.work` become appropriate only when a component needs an independent dependency or release lifecycle.
-
-SQLite is the durable state boundary. Durable job status and canonical revisions coordinate HTTP, CLI, and TUI processes through the database writer lock. Transport-local startup/recovery feedback covers the interval before compatible operational metadata exists.
-
-The OpenAPI document and SQLite schema remain language-neutral contracts. Deployable browser applications may share narrowly scoped workspace packages such as UI primitives or API clients after a second consumer exists; generic shared packages and application-feature coupling should be avoided.
+`internal/publication` owns the normalized domain/codec/identity contract without
+harness or storage dependencies. `internal/collectorstore` owns journal snapshots,
+destinations, saved request bytes, and acknowledgement progress.
+`internal/ingestion` owns validation, stable fact uniqueness, transactional
+receipts, and bounded admission; `internal/serverstore` owns canonical-only
+storage compatibility. Existing canonical query implementations are reused
+through `db.Reader`, without opening collector databases from viewer paths.
 
 ## Current Implementation Status
 
-The sync-first canonical path is the active product path. Schema V14, automatic schema/data compatibility recovery, `sync`, verified unchanged-source reuse across all harnesses (including Codex ancestry), Pi JSONL byte cursors, bounded parallel source preparation, batched single-writer persistence, pending-work `normalize`, reset commands, canonical token aggregation, optional fact-level location attribution, and fixture-style pipeline conformance tests are implemented.
+Collector schema V15/data generation 6 and server schema V1 are separate roles.
+The normalized journal, saved batches, manual HTTP publication, transactional
+server ingestion/receipts, REST TUI, and read-only browser are implemented.
+Verified continuity and exact additive token accounting remain adapter-owned.
 
-Known gaps are part of the current design contract:
-
-- verified source continuity covers OpenCode V1/V2 SQLite plus Pi, Codex, and Claude Code JSONL Durable Sources; byte cursors cover eligible Pi files, while changed OpenCode, Codex, and Claude Code sources still fully parse;
-- canonical token upserts are deterministic by semantic key; Claude has source-timed native-request precedence, while a general adapter-specific conflict model remains pending;
-- diagnostics exist for parser warnings, missing canonical session identity, and some source-level suppressions such as duplicate or stale snapshots, but the full rejected/conflicting/suppressed diagnostic taxonomy is still future work;
-- the viewer is aligned to token aggregation tabs; future metric domains should stay hidden until durable canonical facts exist;
-- realtime and checkpoint plugin parity remains future-compatible only.
+Limits remain explicit: single configured owner, one destination selected per
+invocation, no automatic retry, no retractions or legacy import, no remote
+provisioning/TLS/account administration, and no active timing-only tabs.
+Missing native identity or unsupported competing normalized facts are withheld
+with local publication diagnostics. Verified byte cursors cover eligible Pi
+files; changed OpenCode/Codex/Claude sources still full-parse where required.
+General harness revision ordering is not guessed from arrival time.
 
 ## Persistent service ownership
 
-`internal/service` composes `internal/app`, public HTTP handlers, and private HTTP-over-Unix control. App owns refresh scheduling and typed action data; pipeline owns actual source capture and SQLite writes. The service is a detached re-execution of the Go binary with configuration/readiness passed through inherited descriptors. Foreground run uses the same ownership/runtime. Only missing storage is initialized at startup; existing compatibility checks are read-only until a requested action performs recovery.
+`internal/service` composes the shared ingestion core, canonical queries, public
+HTTP, and private lifecycle control. The detached local server re-executes the
+Go binary with configuration/readiness inherited through descriptors. Foreground
+`service run` / `server run` reuse ownership and server runtime. Server startup
+has no captured harness roots or source refresh queue.
 
-Canonical DB paths share SHA-256 identity across symlink aliases; existing hard-linked DB aliases are rejected. Persistent `<db>.service.op.lock` serializes lifecycle/admission and holds standalone mutations through completion; `<db>.service.lock` establishes daemon lifetime ownership; `<db>.lock` protects actual writes. Never unlink these lock inodes. Status opens existing ownership/control records only. Held but unreachable ownership blocks mutation. Busy ports fail without `lsof` or process takeover.
+Canonical database paths share SHA-256 lifecycle identity across symlink aliases;
+existing hard-linked server aliases are rejected. Persistent operation/lifetime
+lock inodes serialize lifecycle and ownership; collector writes use their own
+database writer lock. Never unlink live lock inodes. Held but unreachable server
+ownership blocks takeover. Busy ports fail without killing unrelated processes.
 
-Saved configuration is private versioned JSON under `$XDG_CONFIG_HOME/tokeninsights/services/<key>.json` (default `~/.config`). Logs live under `$XDG_STATE_HOME/tokeninsights` (default `~/.local/state`), bounded to 4 MiB plus three backups. Private discovery/socket files live under `$XDG_RUNTIME_DIR/tokeninsights`, or private state/runtime when unavailable. A second discovery record in state/runtime lets SSH/local clients find a daemon with a different runtime environment. Socket paths must fit the Unix limit. Runtime instance IDs and data epochs are random; stable DB keys are separate. Configuration stores bind settings and captured source roots, never transcripts or the entire environment. Omitted bind flags reuse saved values; restart can explicitly reload source environment.
+Saved configuration is private versioned JSON under
+`$XDG_CONFIG_HOME/tokeninsights/services/`. Logs live under
+`$XDG_STATE_HOME/tokeninsights`, bounded to 4 MiB plus three backups. Discovery and
+Unix sockets use `$XDG_RUNTIME_DIR/tokeninsights` or private state/runtime, with
+a fallback discovery record for SSH/local clients. Config stores bind/database
+settings, never source roots or the full environment. Runtime instance identity
+is transient; the server database ID persists across restarts and binds delivery.
 
-Startup creates private service directories with mode `0700` and tightens existing directories owned by the current user, including legacy state directories created with `0755`. Ownership is checked on a directory descriptor opened without following a final symlink before changing its permissions. Symlinks, non-directories, and other-user ownership are rejected. Shared XDG parent directories and existing contents are not chmodded; status remains read-only.
+Startup creates private service directories with mode `0700` and tightens owned
+legacy directories through descriptors without following a final symlink.
+Symlinks, non-directories, and other-user ownership are rejected; shared XDG
+parents remain unchanged and status is read-only. Public data reads expose
+runtime/database identity and canonical revision. Neither public query endpoints
+nor private control can start parsing or normalize server data. No periodic
+collection, watcher, or login/reboot autostart is implemented.
 
-Ordinary refresh uses saved all-harness sources with normalization. Requests before discovery/reset capture join active ordinary work; later demands coalesce into one follow-up. Explicit sync/normalize forward caller source configuration/options or run standalone under admission when stopped. The exclusive queue is bounded to 16 waiting actions, completed results to 128/ten minutes, and refresh aliases to 256/ten minutes. Duplicate live request IDs cannot change action payload. Lost responses can be looked up; unknown/expired destructive actions are never blindly replayed. Pending demand is process-local and lost on crash; durable interrupted pipeline state remains authoritative.
-
-Explicit reset cancels queued ordinary refresh and blocks new refresh until terminal completion. Reset and automatic recovery drain public analytics read permits, change data epoch before destructive writes, and reopen reads only after action bookkeeping. Public usage/facets include their transaction revision plus instance/epoch. The TUI samples identity/readiness around local transactions and rejects stale selections/resets; quitting cancels observation only. One-second active/five-second idle observation never triggers ingest. There is no periodic pipeline work, watcher, authentication, reboot autostart, or harness plugin in this release. Future hooks can request refresh through this boundary.
-
-See [the lifecycle decision](adr/0005-persistent-service-and-explicit-refresh.md).
+The [earlier service decision](adr/0005-persistent-service-and-explicit-refresh.md)
+is historical; its server-owned refresh workflow is superseded by the
+[collector/server architecture](collector-server-architecture.md).
 
 ## Schema Contract
 
-`schema/schema.sql` is the single source of truth for SQLite table and column definitions. The Go CLI embeds a checked copy at `packages/cli/internal/db/schema/schema.sql`.
+`schema/schema.sql` defines collector tables and is embedded at
+`packages/cli/internal/db/schema/schema.sql`; `schema/server.sql` defines server
+tables and is embedded at `packages/cli/internal/serverstore/schema/server.sql`.
+Compatibility validates `PRAGMA application_id` before mutation and
+`PRAGMA user_version` plus role-specific metadata. Collector schema is `15`,
+data generation `6`; server schema is `1`, with identity/semantics version `1`.
+Release versions are not compatibility markers.
 
-Compatibility is gated by `PRAGMA user_version` plus `database_lifecycle.data_generation`. The current schema version is `14` and data generation is `5`. Release version numbers are not compatibility markers. Bump schema version for structural changes and data generation for breaking token semantics or raw/canonical identity changes requiring reingestion.
+Fresh collector/server databases replace the default use of the legacy mixed
+file. Existing legacy files are rejected by role checks rather than silently
+upgraded/imported. Collector compatibility/rebuild machinery stays local; server
+facts and receipts cannot use destructive reset/resync recovery. Unsupported
+server compatibility fails without deleting historical facts. Future preserving
+migrations must be explicit, independently tested changes.
+
+Structural or cross-language contract changes require explicit approval. Update
+source SQL, embedded copies, role/version constants, tests, and affected docs
+in one task; `pnpm run check-schema` checks both contracts.
+
+### Historical collector schema evolution
+
+The following records earlier mixed/local schema decisions. They do not promise
+legacy-file migration into the new collector/server roles.
 
 Schema V4 adds the persisted `claude-code` harness value. Existing V3 databases reject that value physically through SQLite `CHECK` constraints.
 
@@ -142,39 +194,38 @@ Schema V11 adds `source_cursor_state` for verified Pi JSONL byte offsets and sam
 
 Schema V12 adds per-harness `normalization_rule_state`. V11 databases upgrade transactionally without deleting raw or canonical usage; normalization then refreshes identifier rules once. Older incompatible schemas retain reset and resync recovery.
 
-Cross-language/schema validation is handled by:
-
-- `pnpm run check-schema`
-- `tools/build/src/check-schema.ts`
-- `packages/cli/internal/db/schema_test.go`
-
-Any modification to `schema/schema.sql`, table structures, column definitions, or cross-language schema constants requires explicit user approval before implementation.
+V15 adds immutable normalized publication journal/entities, per-destination
+acknowledgements, saved batches/receipts, and an explicit collector application
+role. Data generation 6 includes native OpenCode distinction and Claude
+source-timed native-request identity/revision rules. Server V1 contains only
+canonical sessions/messages/locations/usage, server metadata, producer labels,
+and durable ingestion receipts.
 
 ## Data Model
 
 ### `database_lifecycle`
 
-Singleton Local-only Continuity Metadata, excluded from analytics and future export:
+Singleton Local-only Continuity Metadata, excluded from server ingestion and analytics:
 
 - `id`: constrained to `1`.
-- `data_generation`: current semantic/identity compatibility generation. Generation `1` corrected Codex cumulative/replay accounting; generation `2` makes input/cache and output/reasoning components additive across harnesses, hardens source counters, and aligns OpenCode V1/V2 message identity; generation `3` rebuilds raw and canonical facts with location attribution; generation `4` rebuilds display paths; generation `5` rebuilds repository and directory identities without worktree or branch fields.
+- `data_generation`: current semantic/identity compatibility generation. Generation `1` corrected Codex cumulative/replay accounting; generation `2` makes input/cache and output/reasoning components additive across harnesses, hardens source counters, and aligns OpenCode V1/V2 message identity; generation `3` rebuilds raw and canonical facts with location attribution; generation `4` rebuilds display paths; generation `5` rebuilds repository/directory identities without worktree/branch fields; generation `6` establishes native identity/revision compatibility and normalized publication.
 - `rebuild_pending`: recovery remains incomplete until all configured harnesses sync and normalize successfully.
 - `rebuild_source_key`: hash of the normalized recovery source configuration, NULL when ready and nonempty while pending; stores no source paths.
 - `updated_at_ms`: lifecycle update time.
 
 Fresh databases start at the current generation with no pending rebuild and a NULL source key. Reset commits the current schema/generation, pending state, and source-scope fingerprint atomically. Failed recovery preserves that state and any committed partial imports for a same-scope retry; successful completion clears pending state and the source key together.
 
-Schema V14 adds nullable `ingest_runs.hostname` to record the machine performing source ingestion. V11–V13 upgrade additively without deleting usage or changing data generation. Existing runs keep NULL; hostname is captured on future syncs, including unchanged-source checks. Missing hostname lookup remains NULL.
+Collector `ingest_runs.hostname`, introduced in V14, records the collecting machine on source attempts, including unchanged-source checks; missing lookups remain NULL. Server producer labels are separately recorded from committed normalized delivery metadata.
 
-### Durable sync status (V13)
+### Collector-local sync status (introduced in V13)
 
-`sync_state` is a local singleton with a durable viewer publication revision and the last successful normalized all-harness sync time. It advances in the canonical transaction, including standalone normalization and canonical resets, and when terminal harness/job coverage commits. Existing per-source ingest completion is no longer presented as overall sync success.
+`sync_state` is a local singleton with a durable collector normalization revision and the last successful normalized all-harness sync time. It advances in the canonical transaction, including standalone normalization and canonical resets, and when terminal harness/job coverage commits. Existing per-source ingest completion is no longer presented as overall sync success.
 
-`sync_jobs` records metadata-only scope fingerprints, running/completed/failed/cancelled/interrupted outcome, phase, actual timestamps, normalization policy, and all-harness scope. `sync_harnesses` records discovery, source counts, status, and successful checked time for each job/harness. `sync_sources` records hashed source identities, reading/ingested/ready/unchanged/failed/deferred state, safe error codes, and conservative UTC usage-time bounds. No full paths or transcript content are added. These tables are Local-only Continuity Metadata, excluded from analytics and exports.
+`sync_jobs` records metadata-only scope fingerprints, running/completed/failed/cancelled/interrupted outcome, phase, actual timestamps, normalization policy, and all-harness scope. `sync_harnesses` records discovery, source counts, status, and successful checked time for each job/harness. `sync_sources` records hashed source identities, reading/ingested/ready/unchanged/failed/deferred state, safe error codes, and conservative UTC usage-time bounds. No full paths or transcript content are added. These tables are Local-only Continuity Metadata, excluded from server ingestion and analytics.
 
-V11–V13 upgrade transactionally to V14 without deleting source facts or canonical usage. V13 sync history is preserved. V11/V12 prior successful overall check time is unknown until the first new all-harness sync; source ingest history cannot prove that coverage.
+These local job tables do not imply current producer completeness to the server, and their prior successful checks are not uploaded as server freshness.
 
-One database writer lock owns a job. Status reads observe that lock without creating it; orphaned running jobs read as interrupted and the next owner persists their interrupted outcome. Server POST joins an observed active job; CLI/TUI writers wait with a named waiting phase. Scope-changing contenders remain serialized. Recovery creates its job after transactional reset and retains it on retry; analytics remain unavailable until all normalized recovery work completes.
+One database writer lock owns a job. Status reads observe that lock without creating it; orphaned running jobs read as interrupted and the next owner persists their interrupted outcome. Collector CLI writers wait with a named waiting phase; server queries do not join these jobs. Scope-changing contenders remain serialized. Recovery creates its job after transactional reset and retains it on retry; analytics remain unavailable until all normalized recovery work completes.
 
 ### `ingest_runs`
 
@@ -213,7 +264,7 @@ Important fields:
 
 Raw facts must not store prompt text, assistant text, tool arguments, tool output, request headers, secrets, raw provider payloads, or full source paths.
 
-Raw facts are Syncable Analytics Data, so they must remain metadata-only. Future cloud export should be canonical-first by default rather than exporting raw ingestion facts.
+Raw facts remain metadata-only and collector-local. Server ingestion accepts only the normalized publication allowlist; it never includes raw facts or parser diagnostics.
 
 ### `raw_observations`
 
@@ -223,7 +274,7 @@ Repeated syncs of the same source should not duplicate `raw_token_usage`, but th
 
 ### Source Refresh State
 
-`source_refresh_state` is best-effort Local-only Continuity Metadata. It exists only to reduce repeated local Durable Source parsing and must not be used for viewer analytics or future cloud export.
+`source_refresh_state` is best-effort Local-only Continuity Metadata. It exists only to reduce repeated local Durable Source parsing and must not be sent to server ingestion or used for server analytics.
 
 Current source state properties:
 
@@ -294,16 +345,44 @@ Examples:
 
 Diagnostics must not contain private source content or full paths.
 
+### Collector publication state
+
+`publication_state` stores the delivery stream and supported identity/semantics
+versions. Stream IDs identify delivery histories, not usage facts.
+`publication_journal` stores immutable normalized snapshots ordered by sequence;
+`publication_entities` points to each fact's current snapshot.
+`publication_destinations` binds an endpoint/database identity to its contiguous
+acknowledged sequence. `publication_batches` stores immutable request bytes/hash,
+sequence range, and the exact validated receipt. One pending batch per destination
+survives retries. No-op canonical values create no journal work; changed reference
+occurrence envelopes can require publication without adding a usage contribution.
+
+### Canonical server state
+
+`server_metadata` stores a persistent database ID, fixed owner `default`,
+identity/semantics versions, canonical revision, and last committed ingestion.
+Server canonical sessions/messages/locations/usage share query columns with the
+collector projection but omit raw/run references. Usage has a stable fact key,
+payload hash, and supported source revision evidence. Server session occurrence
+envelopes merge ranges; message occurrence envelopes preserve the earliest source
+time without identifying another contribution.
+
+`ingestion_receipts` persists each stream/batch request hash, sequence range,
+insert/update/no-op counts, commit time, and revision. `ingestion_producers`
+records optional uploaded hostnames; multiple labels display `multiple machines`.
+These labels do not determine fact identity or ownership.
+
 ## Sync Pipeline
 
 `tokeninsights sync`:
 
-1. Selects harnesses through `--harness` or `--all`.
+1. Defaults to all harnesses; `--harness` narrows collection and `--all` makes the default explicit.
 2. Discovers selected harnesses concurrently, before source processing, so source-work totals are known.
 3. Preloads a harness's continuity markers in one query.
 4. Prepares verified reuse decisions, candidate facts, diagnostics, bounds, and markers outside write transactions using bounded workers.
 5. Commits prepared sources in discovery order through one writer: creates `ingest_runs`, deduplicates raw facts, enqueues newly inserted facts, writes observations/diagnostics/markers, and completes source status and counters atomically.
-6. Normalizes and publishes after each harness unless `--no-normalize` or `--dry-run` is set.
+6. Normalizes and journals canonical changes after each harness unless `--no-normalize` or `--dry-run` is set.
+7. The collector sends saved pending batches after local work, including retained batches when collection failed; dry runs skip delivery. It reports local and delivery outcomes separately.
 
 Each changed source ingest is transactional. If raw writes, markers, or completion bookkeeping fail after the run is created, a savepoint rolls back that source's writes and commits its failed audit when possible. If the failure audit cannot commit, the entire transaction rolls back. In-memory dedupe and summary state advance only after commit. An unchanged source still receives a completed lightweight ingest run with zero facts and observations; unchanged completion and reading status are batched at 64 sources or 250ms, flushing before publication and job completion.
 
@@ -325,7 +404,7 @@ Source continuity rules:
 - Prepared JSONL sources and dependencies are checked again for metadata/file replacement before writing. Detected changes defer coverage and clear markers; no marker advances beyond incomplete tails.
 - An incremental run writes observations only for facts actually parsed. Raw dedupe remains the correctness guard when parsing repeats.
 - Normalization processes pending work and refreshes canonical identifiers once per rule signature. Pending-work checks use existence queries.
-- Cursor invalidation remains local operational metadata. CLI flags, schema, parser identities, token semantics, and durable status API remain unchanged.
+- Cursor invalidation remains collector-local operational metadata, independent of published fact identity and destination acknowledgement progress.
 - `sync --full-refresh` ignores continuity markers without requeueing all existing raw facts for canonical rebuild.
 
 `sync --all` attempts all requested harnesses and continues later sources after recoverable read/parse failures. Successful source scopes still normalize when one source or harness fails; the command exits non-zero if any requested scope fails. Database write failures and cancellation stop the job. Per-source transaction rollback cannot leak in-memory dedupe state. Source ingest uses an injected wall clock for actual start/completion times; source observations retain the command observation time.
@@ -336,7 +415,68 @@ With `sync --all --source-dir <root>`, harness discovery is bounded to `<root>/<
 
 Before normal data work, public sync/normalize coordinate compatibility recovery under a database-scoped writer lock. Targeted default-source commands recover all default harnesses first; all-harness `--source-dir` recovery stays within the specified root. Single-harness custom-source recovery defers without changing the database. Recovery always normalizes before satisfying the requested scope, including `--no-normalize`; missing installations remain normal skips. Failed recovery preserves partial imports but keeps analytics unavailable until the all-harness rebuild succeeds.
 
-Pending recovery must resume with the same normalized source configuration. Default-source keys fingerprint the effective OpenCode, Pi, Codex, and Claude Code roots, including environment overrides. Custom all-harness keys fingerprint the normalized canonical absolute root. Only a hash is persisted; full paths cannot be reconstructed from it. Mismatched retries, including dry-run attempts, are rejected before data writes. Repeat the original `--source-dir` and `--db-path`, preserving source environment settings. Default-source `normalize`/TUI/web startup cannot finish a custom-root rebuild.
+Pending recovery must resume with the same normalized source configuration. Default-source keys fingerprint the effective OpenCode, Pi, Codex, and Claude Code roots, including environment overrides. Custom all-harness keys fingerprint the normalized canonical absolute root. Only a hash is persisted; full paths cannot be reconstructed from it. Mismatched retries, including dry-run attempts, are rejected before data writes. Repeat the original `--source-dir` and `--collector-db-path`, preserving source environment settings. Default-source normalization cannot finish a custom-root rebuild; server/TUI/browser startup never performs collector recovery.
+
+## Normalized Publication And Ingestion
+
+Stable IDs are SHA-256 hashes of unambiguously JSON-encoded versioned native
+identity tuples. Session identity uses owner/harness/native session. Message
+identity adds the native message. Fact identity adds native request evidence
+where available and usage kind. Fact identity does not directly use mutable normalized counters/labels,
+installation, local row IDs, batch/stream IDs, capture clock, or destination.
+Codex retains its adapter-derived event witness, including a source snapshot
+fingerprint; arbitrary changes to such snapshots are not a supported revision
+rule. Verified ancestry preserves original fact ownership. Identical counters are not dedupe
+proof. Reprocessing retained bytes in fresh collector storage must reproduce
+published IDs.
+
+Normalization journals supported facts in its canonical transaction. Missing
+source occurrence, missing message/request identity, invalid normalized values,
+or competing unsupported native revisions are withheld with metadata-only
+`publication_*` diagnostics. The server receives no raw facts, source roots,
+parser provenance, diagnostics, cursors, transcript text, or collector-local
+full directory paths. Location references publish stable keys and basename labels.
+
+Delivery negotiates protocol/identity/semantics V1 and the destination database
+ID. Batches are self-contained fact/reference snapshots with contiguous journal
+ranges, at most 256 entries and 1 MiB encoded body. Strings are at most 256 bytes;
+integers and aggregate token columns stay within `0..9007199254740991`.
+Explicit counter presence, integer type, additive totals, and reference identity
+are validated. Unknown/private fields, duplicate JSON keys, incompatible versions,
+invalid references, and excessive bodies fail before success acknowledgement.
+
+Collector saves exact batch bytes before transport. The server transaction
+applies references, inserts/no-ops supported stable facts, records the batch
+receipt and producer label, and advances metadata. `200 OK` means committed and
+queryable. Replaying an identical stream/batch returns its saved receipt; changing
+its request bytes conflicts. A new batch containing identical facts is also a
+successful no-op. Rebuilding the collector creates a new delivery stream while
+stable fact IDs still dedupe history.
+
+Changed payloads require supported source revision evidence. Claude's
+`claude-source-timestamp-v1` uses the native request snapshot timestamp: newer
+replaces, older contributes no update, equal-time differing payloads conflict.
+Other immutable fact payload conflicts reject the entire batch. No arrival-time,
+collector sequence, upload clock, or universal largest-counter precedence exists.
+Session range merging can advance server revision without adding usage.
+
+Admission allows four concurrent ingestions, with SQLite serializing writes and
+`busy` failures remaining retryable. A rejected batch commits neither a visible
+prefix nor success receipt. Earlier acknowledged batches remain committed when a
+later batch fails. Collector acknowledgement checks database/stream/batch/range,
+request hash, counts, and receipt against its saved bytes before atomically saving
+receipt and advancing progress. Unknown network/commit outcomes keep pending work;
+a later manual invocation retries it. There is no asynchronous server processing
+queue or background delivery agent. Pending counts can be unknown before a
+successful destination binding; CLI output distinguishes this from zero.
+
+Local delivery binds endpoint plus persistent database ID; a replacement local
+server starts a new binding and replays retained journal work. An explicit remote
+endpoint stays pinned to its negotiated database identity and refuses silent
+rebinding. No automatic backflow, pruning, retractions, or legacy import is
+implemented. Collector deletion/source disappearance never means server deletion.
+Detailed failure fixtures and executable guarantees live in
+[the failure contract](collector-ingestion-tests.md).
 
 ## Adapter Contract
 
@@ -363,7 +503,7 @@ The per-sync Codex adapter indexes explicit `forked_from_id`, `source.subagent.t
 
 Verified parent-history copies require explicit ancestry plus matching turn, provider/model, and complete last/cumulative token metadata. Replay timestamps may be rewritten and are not match keys; ordinals and `history_mode` do not prove boundaries. Verified copies emit the original source/session/message identity, occurrence time, provider/model, and tokens with current observation/provenance. Raw and canonical dedupe count them once regardless of source order or skipped parent ingestion. Deterministic snapshot fingerprints distinguish different facts sharing a timestamp; line identity is retained when cumulative identity is absent. Pending model/turn backfill preserves snapshot and line information.
 
-Missing/unreadable parents, conflicting ancestry, ambiguous source copies, cycles, or unproven replay retain uncertain child usage with metadata-only diagnostics. Optional parent failures do not discard child usage; normal source failures retain normal failure behavior. Replay resolution precedes local duplicate/stale handling so inherited counters cannot suppress genuine child requests. Unresolved fork history conservatively resets suppression baseline at explicit new turns, with diagnostics for ambiguous boundary snapshots; ordinary-session and same-turn suppression remain. Automatic reconciliation of previously imported ambiguous history after parent availability changes is out of scope; an explicit `reset-all` and sync may be needed. Only retained local sources are reconstructable.
+Missing/unreadable parents, conflicting ancestry, ambiguous source copies, cycles, or unproven replay retain uncertain child usage with metadata-only diagnostics. Optional parent failures do not discard child usage; normal source failures retain normal failure behavior. Replay resolution precedes local duplicate/stale handling so inherited counters cannot suppress genuine child requests. Unresolved fork history conservatively resets suppression baseline at explicit new turns, with diagnostics for ambiguous boundary snapshots; ordinary-session and same-turn suppression remain. Automatic reconciliation of previously imported ambiguous history after parent availability changes is out of scope. Collector reset can reparse retained sources, but does not retract prior server facts; missing ancestry cannot be retroactively repaired on the server without an explicit future reconciliation policy.
 
 Claude Code sync parses retained local JSONL transcript files under `${CLAUDE_CONFIG_DIR:-~/.claude}/projects` regardless of UI/server archive state; cloud-only archived sessions are outside the local durable-source boundary and are not parsed. Single-harness `--source-dir` scans the provided directory directly, and `sync --all --source-dir <root>` scans `<root>/claude-code`. It uses assistant message `usage` metadata as derived message-scoped token facts, with the file stem as the fallback session identity and top-level `sessionId` as the parent session identity when present. This attributes sidechain/subagent usage to the user-visible parent session when Claude Code records that parent. Message identity uses `message.id` when present and falls back to the row `uuid`. Allowlisted `request_id` metadata retains native request identity locally. Streaming assistant rows are scoped by native session/message/request identity using unambiguous tuple encoding. The latest source-timed snapshot replaces the entire earlier snapshot before normalization; independent component maxima are never synthesized. Canonical fact keys exclude mutable occurrence time for stable Claude message/request identity. Older copies cannot overwrite newer canonical snapshots; equal-time conflicting usage aborts source preparation or normalization atomically. Copied transcript facts are suppressed by logical dedupe keys that do not include full source paths. `cache_read_input_tokens` maps to cache read tokens, `cache_creation_input_tokens` maps to cache write tokens, and `output_tokens_details.thinking_tokens` is subtracted from inclusive output into reasoning when valid. A source total is retained only when it equals the normalized component sum. Claude Code explicit provider values are preserved with provider source `explicit`. When Claude Code artifacts omit provider metadata, canonical rows use provider `maybe-anthropic` with provider source `inferred`. Model values come from explicit model fields, and missing models canonicalize to `unknown`. Claude Code reuse verifies full content, current location attribution, metadata-safe source identity, and parser/collector provenance; missing or changed markers fall back to full parsing.
 
@@ -371,9 +511,9 @@ Harness-specific source parsing stays behind the adapter interface and feeds the
 
 Location is optional, fact-level metadata. OpenCode uses session directory and Git project metadata, Pi uses session-header `cwd`, Codex uses turn/session `cwd` plus recorded session Git remote, and Claude Code uses assistant-row `cwd`. A shared resolver examines an available directory at sync time for Git repository details. Remote identity combines clones; if unavailable, repository identity falls back to the Git common directory and then a confirmed OpenCode Git project. Missing or conflicting location fields remain unknown with diagnostics. Codex replay copies preserve the original fact location.
 
-`usage_locations` stores a stable tuple key, nullable directory/repository keys and display names, and repository provenance. Raw and canonical token rows reference the location by nullable `location_id`. Directory labels use `~/` when the current home or a standard home-directory pattern can be identified; otherwise the full directory path is stored and returned by the API. Full remote URLs and source artifact paths stay out of analytics storage. Stable key hashes never appear in display names. When repository identity is unknown and every included fact has the same known directory, the row and facet show `unknown · <directory>`; otherwise they show `unknown`, and Directory grouping exposes known paths separately. One session can contribute facts to multiple locations; row session counts are distinct within each group and may repeat across groups. Unknown values participate in totals.
+`usage_locations` stores a stable tuple key, nullable directory/repository keys and display names, and repository provenance. Raw and canonical token rows reference the location by nullable `location_id`. Collector directory labels use `~/` when the current home or a standard home-directory pattern can be identified; otherwise the full directory path remains local. Publication includes the directory basename and stable keys; server analytics/facets never expose collector-local full directory paths. Full Git remote URLs and source artifact paths stay out of analytics storage. Stable key hashes never appear in display names. When repository identity is unknown and every included fact has the same known directory, the row and facet show `unknown · <directory>`; otherwise they show `unknown`, and Directory grouping exposes known paths separately. One session can contribute facts to multiple locations; row session counts are distinct within each group and may repeat across groups. Unknown values participate in totals.
 
-Parser provenance is part of raw identity. Any parser revision that can change emitted facts, token semantics, or identity must bump `data_generation`; automatic recovery then resets and reingests every harness rather than mixing generations. Parser-only reparsing is reserved for output-compatible changes.
+Parser provenance is part of local raw identity. Changes to emitted facts/token semantics/native identity must update collector compatibility and the publication identity/semantics contract as appropriate. Collector reprocessing cannot silently mix incompatible server interpretations; unsupported published versions are rejected. Output-compatible parser changes may safely reparse without changing published stable IDs.
 
 Uneven metric coverage is valid. An adapter should produce diagnostics for unavailable or rejected data instead of failing unrelated token usage sync.
 
@@ -388,6 +528,7 @@ Uneven metric coverage is valid. An adapter should produce diagnostics for unava
 5. Upserts canonical token usage by semantic key.
 6. Resolves missing provider/model according to canonical provider/model rules.
 7. Marks fallback-like scopes as non-countable to avoid default double counting.
+8. Records supported canonical publication snapshots in the same transaction, with diagnostics for withheld facts.
 
 Normalization must be idempotent: repeated runs should converge on the same canonical identities and must not duplicate canonical facts or diagnostics.
 
@@ -395,27 +536,36 @@ Current normalization is work-queue incremental. It loads pending `token_usage` 
 
 Incremental normalization processes pending raw-fact work. A per-harness signature of current provider/model rules triggers one refresh of existing canonical identifiers when missing or changed; matching signatures with no pending work return before a write transaction. Rule markers commit with normalization, and `reset-canonical` clears them. Explicit rebuild paths mark raw facts dirty and use the same work mechanism. Deterministic updates remain allowed for dirty raw facts.
 
-Explicit conflict precedence between competing raw facts is not implemented yet. Until that model exists, canonical identity is governed by semantic keys and deterministic upsert behavior.
+Claude native session/message/request identity has explicit source-timestamp precedence: the latest entire snapshot replaces older usage; equal-time conflicting snapshots fail. Other competing normalized payloads without an approved source revision are withheld or rejected at publication/ingestion rather than ordered by arrival time.
 
 `normalize --dry-run` computes candidate canonical and diagnostic counts without writing.
 
 ## Viewer
 
-`tokeninsights view` is interactive-only. By default it appears immediately, asynchronously ensures the service and requests an Implicit View Sync with all saved harness roots and normalization. The TUI opens the database read-only and queries committed canonical tables during ordinary sync and after completion.
+`tokeninsights view` is interactive-only and reads the server API. Without an
+explicit server URL it ensures the local query server; `--server-url` bypasses
+local bootstrap/storage. `--no-sync` aliases the read-only default.
+`view --sync` invokes caller-side all-harness collection/publication before
+opening and stops on an unresolved failure. Viewer filters constrain queries,
+never collection scope.
 
-`view --no-sync` skips raw ingest and normalization. It preserves read-only viewer behavior and rejects a missing, incompatible, or rebuild-pending database instead of creating or modifying it.
+Loading, facet search, and Reload are bounded GET requests. Queries use generated
+DTOs and one typed Go client for both deployments. The client loads bounded pages
+from one runtime/database identity and revision, restarting at most three times
+on a changing snapshot. It rejects mixed revisions and caps rows at 100,000;
+200-row pages keep server request work bounded. Selection changes and quitting
+cancel superseded HTTP requests. Failed reads retain saved rows and selected
+filters; `r` retries. The obsolete `u` collection shortcut is inert.
 
-Implicit view sync normalizes pre-existing pending work even when sources are up to date. With no pending work and current rule markers, normalization performs no writes. `view --no-sync` remains read-only and must not process pending work.
+Source coverage and collector job progress are absent from server viewers.
+Missing uploaded usage does not establish empty/checked source days. Status
+observes canonical revision/readiness only, and last ingestion records server
+commit time. The header hostname comes from published producer labels, never
+from the machine running the viewer.
 
-Viewer Dimension Filters remain display constraints. For example, `view --harness pi` refreshes all supported Durable Sources first, then filters the displayed canonical facts to Pi.
+The TUI uses the **Instrument desk** visual system, implemented in `internal/cli/theme.go` and `internal/cli/desk.go` and documented in [`packages/cli/DESIGN.md`](../packages/cli/DESIGN.md). Full-screen terminals (120×35 and larger) get a spaced header, compact seven-view navigation, scope controls, a token readout strip, and a full-width table. The canvas, readouts, and drawers preserve the terminal background; only selection highlights use fills. Foregrounds adapt to light/dark terminals. Terminal fonts remain user-owned. Bracketed active navigation, a row cursor, explicit loading/error status words, and checkbox markers retain meaning without color.
 
-The Implicit View Sync progress state shows all supported harnesses in sequential sync order with high-level statuses: `waiting`, `pending`, `resetting`, `rebuilding`, `discovering`, `syncing`, `skipped`, `synced`, `failed`, `normalizing`, and `loading dashboard`. Resetting/rebuilding are active spinner states explaining compatibility recovery. Explicit sync/normalize print concise recovery notices to stderr. It must not show source paths, source IDs, project names, or file-level details.
-
-Successful Implicit View Sync does not print a sync summary before rendering the dashboard. Ordinary failures retain committed usage and allow `u` to retry sync; quitting reports the unresolved sync error. Shared metadata is polled read-only, including with `--no-sync`, and committed revisions refresh analytics during sync. Daily calendar markers show checked, empty, pending, updating, incomplete, or not checked. Unknown metrics render `—`; confirmed empty days render zero. Markers never contribute to fact-row counts or totals. The header shows days checked and source work percentage after discovery completes. Failed compatibility recovery instead recommends retrying `tokeninsights sync --all` with the original database, source override, and environment settings; pending data cannot be inspected with `--no-sync`.
-
-The TUI uses the **Instrument desk** visual system, implemented in `internal/cli/theme.go` and `internal/cli/desk.go` and documented in [`packages/cli/DESIGN.md`](../packages/cli/DESIGN.md). Full-screen terminals (120×35 and larger) get a spaced header, compact seven-view navigation, scope controls, a token readout strip, and a full-width table. The canvas, readouts, and drawers preserve the terminal background; only selection highlights use fills. Foregrounds adapt to light/dark terminals. Terminal fonts remain user-owned. Bracketed active navigation, a row cursor, explicit sync status words, and checkbox markers retain meaning without color.
-
-The header renders typed statusline state as `TokenInsights · host: <host> · synced: <time>`. Hostname is resolved once and falls back to `unknown`; absent sync history renders as `never`. Hostname shortens before sync time when space is constrained. Date range, bucket, and sort remain typed viewer state but render as keyboard controls above the readouts, alongside a filter action. Active Dimension Filters, including startup session-ID filters, appear immediately below the controls. Presets render as `today`, `yesterday`, `week`, `month`, `year`, or `all time`; custom bounds render as `from..to`, `from..`, or `..to`. Choosing a preset explicitly clears custom bounds, including when choosing the already configured preset.
+The header renders typed statusline state as `TokenInsights · host: <host> · ingested: <time>`. Hostname is server-reported producer metadata and falls back to `unknown`; absent ingestion history renders as `never`. Multiple producer labels render as `multiple machines`. Hostname shortens before ingestion time when space is constrained. Date range, bucket, and sort remain typed viewer state but render as keyboard controls above the readouts, alongside a filter action. Active Dimension Filters, including startup session-ID filters, appear immediately below the controls. Presets render as `today`, `yesterday`, `week`, `month`, `year`, or `all time`; custom bounds render as `from..to`, `from..`, or `..to`. Choosing a preset explicitly clears custom bounds, including when choosing the already configured preset.
 
 The readout strip has one blank row above and below its two content rows, replacing the previous external top spacer without consuming additional table space. It sums the exact integer total, input, output, reasoning, cache read, and cache write fields across all filtered rows. It never parses abbreviated table strings or sums only visible rows. These components come from the same canonical queries as the table, without additional queries or schema changes. Loading and failed reads never display stale readout values. Context replaces the strip with an explanation of Session Peak Context Load, not a sum or an average of grouped averages. Terminals below 72 content columns or 24 rows omit the strip; all table metrics remain reachable through scrolling. Available table height derives from the rendered chrome. Header and footer compact before sacrificing data, and rendered output is bounded to the terminal dimensions.
 
@@ -427,7 +577,7 @@ Session coverage is queried from canonical data on every dashboard reload, indep
 
 The single-row footer owns essential shortcuts, loading state, and scroll position. Detailed keys live in the help drawer. Active filters live above the readouts. Session coverage and row count remain pinned in the table summary; the full-result token total also appears in the readout strip. Last sync time belongs only to the statusline.
 
-The TUI queries canonical usage and operational sync metadata read-only. Every reader uses `db.BeginAnalyticsRead` to validate lifecycle inside its read-only transaction, after the preliminary `db.Open` guard. Dashboard rows, session counts, and last-sync time share one validated snapshot; filters and standalone reads also use guarded snapshots. A concurrent reset cannot expose partial recovery through a validation-to-query race.
+The TUI queries REST usage/facets/status only. The server reads rows, session counts, revision, and last ingestion from a canonical read snapshot. Paginated TUI reads require matching runtime/database identity and revision across every page, so concurrent ingestion/restart cannot combine incompatible results. No viewer fallback opens SQLite or collector operational metadata.
 
 - token totals come from countable `canonical_token_usage` rows;
 - provider/model/harness filters derive from available canonical rows;
@@ -453,57 +603,79 @@ Date Range Filters choose which canonical facts are included. Supported presets 
 
 Dimension Filters choose included provider, model, and harness values. Session filtering may be provided as a startup filter, but interactive session search/filtering is not part of the active viewer surface.
 
-Interactive shortcuts use `d` for Date Range Filter, `g` for Time Bucket or Repo grouping, `s` for sorting, and `p`, `m`, and `h` for provider, model, and harness filters. `f` opens the filter menu and `?` opens the keyboard guide. Tab/Shift-Tab and 1–7 select views; up/down or j/k move rows, PageUp/PageDown move a page, and left/right plus home/end scroll columns. Repo adds repository and directory facets to the filter menu. `h` remains reserved for the harness filter. `r` reloads canonical data without syncing; successful retry clears the failure state. Ctrl+C exits even while a drawer is open. During ordinary refresh, compatible saved data and dashboard controls remain usable. Recovery hides analytics while refresh/retry and quit remain available.
+Interactive shortcuts use `d` for Date Range Filter, `g` for Time Bucket or Repo grouping, `s` for sorting, and `p`, `m`, and `h` for provider, model, and harness filters. `f` opens the filter menu and `?` opens the keyboard guide. Tab/Shift-Tab and 1–7 select views; up/down or j/k move rows, PageUp/PageDown move a page, and left/right plus home/end scroll columns. Repo adds repository and directory facets to the filter menu. `h` remains reserved for the harness filter. `r` reloads committed server data; successful retry clears the failure state. Ctrl+C exits even while a drawer is open. Saved data and dashboard controls remain usable during ordinary ingestion; server storage/query errors offer retry without initiating collector recovery.
 
 The `context` tab sorts by `avg ctx` descending by default and supports sorting by `avg ctx`, `median ctx`, `max ctx`, `sessions`, `harness`, `provider`, and `model`.
 
 Viewer tables are viewport-aware. They use consistent column width rules across Aggregation Tabs, stack multiple model, provider, or harness summary values vertically within a row, truncate long display values, and fall back to horizontal scrolling only when minimum readable widths cannot fit.
 
-TPS, request, and tool domains are future-compatible canonical domains. They should remain absent from the active tab bar until durable canonical facts exist for them.
+TPS, request, and tool domains are future-compatible canonical domains. Preserve `tps avg`, `tps mean`, and `tps median` concepts and future TPS capability, but keep unavailable domains absent from the active tab bar until durable timing facts exist; never manufacture timing from token counts.
 
 Cost tracking is not part of TokenInsights and must not appear in viewer columns, totals, sort options, or docs.
 
 ## Web Viewer
 
-`tokeninsights service start` hosts the embedded React dashboard and versioned API from one native Go binary. Default IPv4 binding is `127.0.0.1:8765`; explicit `--host` affects only web/API, and `--port 0` reports the assigned port. `--open` explicitly launches the local dashboard URL; wildcard binds use loopback for that link and remote clients use the machine's IP/DNS name. The TUI is always local. Browser defaults are month/day; service commands do not accept viewer filters. `serve` is a deprecated alias for foreground `service run`; its old `--no-sync` warns and does nothing.
+`tokeninsights service start` serves the embedded React dashboard, canonical
+queries, and normalized ingestion from one native Go binary. Default binding is
+`127.0.0.1:8765`; `--port 0` reports the assigned port. `--open` launches the local
+URL when possible. `server run` provides the foreground remote composition.
+Non-loopback serving requires an authentication token; clients use bearer auth,
+and browser Basic auth accepts the same token as its password. Remote setup,
+TLS termination/deployment, and accounts remain later scope.
 
-Opening/reconnecting/filtering the web never POSTs refresh. **Sync** requests all-harness normalized work and updates dashboard data as results publish. The server deduplicates requests into active work before source capture and one queued follow-up afterward. The button shows **Sync again** while running and **Sync queued** with further submissions disabled once a follow-up is pending. Reload the page to reread saved data without syncing. First startup serves an empty current DB and explains Sync; it never performs ingest/recovery. Existing recognized older/pending DBs start with analytics unavailable until explicit refresh/recovery. Saved facts remain queryable during ordinary sync. Errors exposed over HTTP omit source paths; details go to private service logs. Shutdown cancels queued/active jobs, drains requests and releases ownership after pipeline bookkeeping; no arbitrary PID kill or forced takeover exists.
+Opening, reconnecting, filtering, status polling, and **Reload** query saved
+canonical data only. Empty state points to `tokeninsights sync` on the producer.
+There is no server-owned refresh queue or POST sync endpoint. Startup never reads
+Durable Sources or runs recovery on producer data. Queries read canonical facts
+and server metadata in one SQLite read snapshot; collector absence or pending
+uploads does not block saved analytics. Exposed HTTP errors use safe fixed messages.
 
-During recovery, progress leaves the global `rebuilding` phase intact until completion, including normalization. Dashboard and filter reads validate lifecycle inside the transaction that reads analytics using `db.BeginAnalyticsRead`, closing the gap between preliminary open validation and the read snapshot. Recovery retry must preserve source configuration; a custom-root pending rebuild must be resumed from the CLI with the original `--source-dir` and `--db-path`.
-
-The web viewer includes all seven active Aggregation Tabs and their TUI metrics/sort concepts. TanStack Router maps them to `/tokens`, `/models`, `/providers`, `/harnesses`, `/sessions`, `/context`, and `/repo`; `/` redirects to `/tokens`, and legacy `/?tab=<view>` URLs redirect to the matching path. Direct loads of those paths serve the embedded React application, while unknown `/api/*` paths remain JSON 404s. Tables support ascending/descending sorting, column visibility, adjustable column widths, and pagination (default 50, maximum 200 rows per API page). Comma-separated harness, provider, and model summaries display one value per line in table rows, matching the TUI; their API values and sort semantics stay unchanged. Column widths are local viewer state; dragging a header edge or using its keyboard separator changes layout without changing query or analytics data. Canonical grouping happens in existing Go/SQLite viewer queries, then the server sorts and slices grouped rows. Each dashboard response reads its rows, chart data, full-result summary, and last completed sync in one read-only database transaction. Summary session counts use the TUI's shared `ViewerSessionCounts` query: API `summary.sessions` is the distinct shown count and `summary.syncedSessions` is the all-dates/all-harnesses count ignoring every viewer filter. Empty canonical sessions and non-countable-only sessions are excluded. The Sessions card labels its filtered count as **Sessions shown** with the synced denominator underneath. Every table summary leads with `Sessions <shown> shown / <synced> synced`, including Context and empty filtered results, followed by row count and applicable token total. Table summaries remain independent of pagination; Context has no additive token-total summary. Loading placeholders omit stale coverage until the new filtered response arrives.
+The web viewer includes all seven active Aggregation Tabs and their TUI metrics/sort concepts. TanStack Router maps them to `/tokens`, `/models`, `/providers`, `/harnesses`, `/sessions`, `/context`, and `/repo`; `/` redirects to `/tokens`, and legacy `/?tab=<view>` URLs redirect to the matching path. Direct loads of those paths serve the embedded React application, while unknown `/api/*` paths remain JSON 404s. Tables support ascending/descending sorting, column visibility, adjustable column widths, and pagination (default 50, maximum 200 rows per API page). Comma-separated harness, provider, and model summaries display one value per line in table rows, matching the TUI; their API values and sort semantics stay unchanged. Column widths are local viewer state; dragging a header edge or using its keyboard separator changes layout without changing query or analytics data. Canonical grouping happens in existing Go/SQLite viewer queries, then the server sorts and slices grouped rows. Each dashboard response reads its rows, chart data, full-result summary, and last committed ingestion in one read-only database transaction. Summary session counts use the TUI's shared `ViewerSessionCounts` query: API `summary.sessions` is the distinct shown count and `summary.syncedSessions` is the all-dates/all-harnesses count ignoring every viewer filter. Empty canonical sessions and non-countable-only sessions are excluded. The Sessions card labels its filtered count as **Sessions shown** with the synced denominator underneath. Every table summary leads with `Sessions <shown> shown / <synced> synced`, including Context and empty filtered results, followed by row count and applicable token total. Table summaries remain independent of pagination; Context has no additive token-total summary. Loading placeholders omit stale results until the new filtered response arrives.
 
 Token/session charts show chronological Time Buckets. Model/provider/harness charts show the top 12 groups by canonical total tokens, with keyboard-accessible labels that apply the corresponding Dimension Filter. Each bar, filter label, and tooltip shows its share of the full filtered canonical token total from the response summary, including groups outside the top 12 and independently of table pagination. Shares use at most one decimal place; nonzero shares below 0.1% render as `<0.1%`, and a zero total yields 0%. Context charts show the top 12 groups by average Session Peak Context Load, including average, median, and maximum. Charts use canonical totals directly; components do not redefine total-token semantics. Date bounds are inclusive local dates, custom bounds replace the preset, and Monday-start weeks use server-local calendar arithmetic even when the browser is in another timezone.
 
 Repo defaults to repository grouping. Users switch between repository and directory grouping. Rows list all distinct providers, harnesses, and models in both the TUI and web table. Its chart ranks the top 12 selected groups. In both groupings, bars and tooltips show shares of the full filtered canonical token total, using the same denominator and formatting as dimension charts. Repository and directory facets accept stable keys and show names or sanitized paths; **unknown** is selectable. In either grouping, an unknown row starts with its directories hidden. When recorded directories contribute, the web table offers **Show directories** and reveals every directory on request, along with any missing-directory note. An unknown directory group has no recorded directory to expand, so it shows **No recorded directory** without a disclosure control. These details describe the facts in that row after filters, without inferring a repository; the TUI unknown-repository label is unchanged. These location filters apply only to Repo, while existing date and usage filters continue to apply there. Repo rows count sessions distinctly within each row, so their session counts are not additive across locations. Other views do not consume location filters.
 
-The V1 REST API consists of exactly these endpoints; unversioned `/api/*` routes are not supported:
+The V1 REST API has these public endpoints; unversioned routes are unsupported:
 
 | Endpoint | Purpose |
-|----------|---------|
-| `GET /api/v1/instance` | API/server versions, saved data hostname, timezone, capabilities, and initial viewer defaults |
-| `GET /api/v1/sync` | Shared sync phase, per-harness progress, error, and completion revision |
-| `POST /api/v1/sync` | Request/join all-harness refresh or queue one follow-up; returns HTTP 202 |
-| `GET /api/v1/usage` | Summary, chronological/ranked chart, sorted/paginated rows, and last sync |
-| `GET /api/v1/usage/facets` | Provider/model/harness facets and bounded session-ID search |
+| --- | --- |
+| `GET /api/v1/instance` | Runtime/database identity, versions, producer labels, reporting timezone, capabilities, defaults |
+| `GET /api/v1/sync` | Compatibility-named read-only server readiness and canonical revision |
+| `GET /api/v1/usage` | Filtered summary, chart, rows, revision, and last committed ingestion |
+| `GET /api/v1/usage/facets` | Filter facets and bounded session-ID search |
+| `GET /api/v1/ingestion/capabilities` | Supported normalized versions/limits and durable database identity |
+| `POST /api/v1/ingestion/batches` | Atomic canonical ingestion; committed receipt on success |
+
+`POST /api/v1/sync` is rejected. Legacy query field names such as `lastSynced` and
+`summary.syncedSessions` remain transport compatibility names; they describe
+server ingestion and saved canonical session counts, not source completeness.
 
 Usage/facet query parameters are `period`, `bucket`, `from`, `to`, repeated `provider`, `model`, `harness`, and `session`, plus `tab`, `sort`, `direction`, `page`, and `pageSize`. Repo adds `locationGroup` and repeated `repository` and `directory` stable-key filters. The latter parameters require `tab=repo`; other views ignore location selections. Repo API rows include sorted distinct `directoryNames` and `hasUnknownDirectory` for their contributing facts; other tabs return an empty list and false. Session lookup adds literal substring `search`, returning at most 100 values. Facet queries apply all other filters while omitting their own Dimension Filter. React retains selected values even when other facets exclude them. API inputs are validated, sort fields allowlisted, database reads have request deadlines, and failures use the standard `{ code, message }` JSON body. Unknown API routes also return JSON errors.
 
 [`docs/openapi.yaml`](openapi.yaml) is the authoritative, repository-only API contract; the server does not expose it at runtime. `pnpm run generate:api` generates committed Go transport models and TypeScript types/Zod schemas. `pnpm run check-api` verifies generated output has not drifted from the contract. Handwritten handlers map canonical query results into generated response models, while browser query hooks validate responses with the generated schemas. Direct Go builds consume committed generated files and do not require Node or code-generation tools.
 
-V1 API routes do not advertise cross-origin browser access or provide CORS preflight handling. Unsafe browser requests use Go CrossOriginProtection; loopback bindings reject non-local Host headers. This supplies no authentication. The embedded dashboard uses relative, same-origin API URLs. The server has no authentication; network bindings remain intended for trusted networks.
+V1 API routes do not advertise cross-origin browser access or provide CORS preflight handling. Unsafe browser query requests use Go CrossOriginProtection; loopback bindings reject non-local Host headers. The embedded dashboard uses relative, same-origin API URLs. Authentication is composed by the runtime before handlers; non-loopback serving requires an explicit token. These origin/Host checks remain separate from authentication.
 
 `packages/web` uses React, strict TypeScript, Vite, Tailwind CSS, local shadcn primitives backed by Radix UI, TanStack Router/Query/Table, and Recharts. Feature components compose through `components/ui`; bespoke CSS is limited to dashboard layout, responsive behavior, and data-visualization geometry. The route path owns the active Aggregation Tab, and validated route search owns dashboard filters, sorting, and pagination. Theme, visible columns, chart metric, and transient popover/search drafts remain local UI state.
 
-The dashboard composes separate header and results components. A route-query provider exposes named navigation actions backed by the pure `reduceQuery` transitions; a separate display-preference provider stays mounted across route and query loading so chart metrics and column visibility survive those transitions. TanStack Query remains the server-data owner. `useDashboardSync` coordinates status polling, explicit sync, revision refresh, and recovery eligibility; it cancels superseded status reads before publication and pauses polling during submission, preventing an older GET from overwriting the POST result. Repeated sync activation is guarded locally; the server retains its shared-job contract. Session search owns its draft, debounce, and query failure/retry within its filter control. Selected filters and drafts survive lookup failures. Stable table cell components preserve Repo directory disclosure and focus through sync updates and sorting.
+The dashboard composes separate header and results components. A route-query provider exposes named navigation actions backed by the pure `reduceQuery` transitions; a separate display-preference provider stays mounted across route and query loading so chart metrics and column visibility survive those transitions. TanStack Query remains the server-data owner. `useDashboardSync` observes server status/revision and invalidates read queries on
+Reload or committed ingestion. It never requests collection; stale/superseded
+status reads are cancelled, and database/runtime identity changes discard old
+query state. Session search owns its draft, debounce, and query failure/retry within its filter control. Selected filters and drafts survive lookup failures. Stable table cell components preserve Repo directory disclosure and focus through ingestion updates and sorting.
 
 The chart has its own error boundary inside the persistent dashboard, preserving controls, summaries, and tables after chart rendering or chunk-loading failure. Its explicit **Reload page** action retries loading in a fresh document, retaining the URL and saved theme; transient display preferences follow normal page-reload behavior. A root route fallback also offers page reload for other render failures. Suspense handles chart loading only; ordinary API failures retain explicit query-owned retry paths.
 
-Every browser request, including **Sync** and session search, targets the server serving the page. Users can open that server directly by IP or DNS name, including with `service start --host 0.0.0.0`. The header displays the saved data hostname as plain text; the footer includes the page origin. `/api/v1/instance.hostname` reads the latest completed ingest run, including unchanged-source checks, and returns `unknown` when no recorded hostname is available. Running or failed runs do not replace that display. It never substitutes the serving machine or browser address for the data hostname. Sync revision changes refresh instance metadata without a page reload. There is no add/remove/select-host UI, configurable browser API destination, or persisted host list. Legacy `tokeninsights.sources.v1` browser storage is ignored. Query keys retain filter scope, random runtime instance/data epoch, and canonical revision; destructive epoch changes cancel/remove stale analytics/facets, and delayed responses cannot populate another epoch. Focus/reconnect refresh service status before analytics; superseded requests are cancelled and route transitions preserve summary/result semantics. Connection failures offer retry.
+Every browser request, including **Reload** and session search, targets the server
+serving the page. The header displays published producer hostname metadata; the
+footer shows the page origin. `/api/v1/instance.hostname` uses server producer
+labels, returning `unknown` without labels and `multiple machines` when labels
+differ. It never substitutes the serving machine or browser address. Committed
+ingestion revision changes refresh instance metadata without page reload. There is no add/remove/select-host UI, configurable browser API destination, or persisted host list. Legacy `tokeninsights.sources.v1` browser storage is ignored. Query keys retain filter scope, random runtime instance/data epoch, and canonical revision; database identity changes cancel/remove stale analytics/facets, and delayed responses cannot populate another epoch. Focus/reconnect refresh service status before analytics; superseded requests are cancelled and route transitions preserve summary/result semantics. Connection failures offer retry.
 
 Development Vite proxies `/api` to the Go server; its browser requests also remain same-origin.
 
-The route path owns the tab. Route search parameters own period, bucket, custom dates, repeated provider/model/harness/session filters, sort, direction, page, and page size, including browser back/forward and explicitly cleared startup filters. Tab navigation preserves filters, resets pagination, and applies the destination tab's valid default sort when needed. The Graphite & Lime dashboard uses a compact hostname/status/action header, route tabs and quick periods on a shared row, always-visible wrapping horizontal filters, static readouts, a 10rem chart, and dense tables. Summary readouts are compact static data displays on every tab; only the chart toolbar selects the chart metric. Route controls, filters, sync/error feedback, and summaries remain mounted across route changes; only the chart/table region loads, and it never displays rows from the previous route. Theme preference persists locally. CSS typography, color, spacing, and radius tokens use browser-scalable rem/em sizing, with responsive layouts, focus styles, accessible controls, and reduced-motion support. The active route uses lime text and an underline with aria-current. Readouts have no click, hover, tooltip, or selection state. Dark mode uses neutral graphite and bright lime; light mode uses pure white (`#ffffff`) for the workspace, header, fields, and overlays, Electric Lime (`#b8f500`) action fills with dark text, pale lime (`#efffcc`) selections, deep lime (`#426300`) selection/focus ink, and `#577b00` chart ink. The secondary chart series uses a neutral sage gray.
+The route path owns the tab. Route search parameters own period, bucket, custom dates, repeated provider/model/harness/session filters, sort, direction, page, and page size, including browser back/forward and explicitly cleared startup filters. Tab navigation preserves filters, resets pagination, and applies the destination tab's valid default sort when needed. The Graphite & Lime dashboard uses a compact hostname/status/action header, route tabs and quick periods on a shared row, always-visible wrapping horizontal filters, static readouts, a 10rem chart, and dense tables. Summary readouts are compact static data displays on every tab; only the chart toolbar selects the chart metric. Route controls, filters, ingestion/query error feedback, and summaries remain mounted across route changes; only the chart/table region loads, and it never displays rows from the previous route. Theme preference persists locally. CSS typography, color, spacing, and radius tokens use browser-scalable rem/em sizing, with responsive layouts, focus styles, accessible controls, and reduced-motion support. The active route uses lime text and an underline with aria-current. Readouts have no click, hover, tooltip, or selection state. Dark mode uses neutral graphite and bright lime; light mode uses pure white (`#ffffff`) for the workspace, header, fields, and overlays, Electric Lime (`#b8f500`) action fills with dark text, pale lime (`#efffcc`) selections, deep lime (`#426300`) selection/focus ink, and `#577b00` chart ink. The secondary chart series uses a neutral sage gray.
 
 The React visual contract is [`DESIGN.md`](../DESIGN.md), implemented by `packages/web/src/tokens.css`, Tailwind theme utilities, local shadcn primitives under `components/ui`, and feature rules in `styles.css`. All Aggregation Tabs share semantic light/dark colors, a 4px-based spacing scale, three radius roles, aligned page/panel insets, and standard/compact controls with larger touch targets. Narrow layouts retain all seven navigation choices in a horizontally scrollable rail and keep accessible names for icon-only actions. Visual changes must follow that contract without changing canonical analytics semantics.
 
@@ -513,48 +685,68 @@ Vite output is checked into `packages/cli/internal/server/static` and embedded u
 
 `mise.toml` pins development tool versions and delegates tasks to root pnpm scripts. Husky registers `pre-push` through dependency installation, clears Git-local environment variables to isolate fixture repositories, and runs `check:push`: format/lint, schema/API contracts, unit/conformance and Go race tests, embedded asset comparison, native build, and browser E2E. GitHub CI/release run `check:ci`: formatting, schema-copy consistency, and a native build, with no test suites or browser/frontend build. Publication/packaging remain workflow-owned. Checks preserve tracked files; generated API/assets must be updated deliberately.
 
-## Source coverage and progress
+## Collector Progress And Server Freshness
 
-Day completion markers are presentation state, not optimistic defaults. Both viewers suppress previous checked/empty markers while a requested check is awaiting a job or its successful day-check timestamp predates that job's start. The TUI uses the request time before durable job metadata arrives, including on retry; the web uses server job timestamps without comparing server and browser clocks. Saved facts and diagnostic coverage remain intact. Read-only `--no-sync` views retain saved markers when no newer check is active.
+Collector `sync_jobs`, `sync_harnesses`, and `sync_sources` retain metadata-only
+source progress, interrupted outcomes, conservative occurrence bounds, and local
+diagnostics. Discovery is indeterminate; checked-source percentages describe
+local work rather than lifetime completeness. Captured JSONL extents and
+incomplete-tail diagnostics preserve later retry. These records do not cross
+publication.
 
-The web derives the same confirmation state for inline markers, daily placeholder cells, and expanded coverage details. Unconfirmed checked/empty details say **Awaiting current check**; empty-day presentation values remain `—` until confirmed. Saved canonical usage totals remain visible. This derivation does not alter API coverage, canonical facts, summary totals, chart activity, or pagination counts.
-
-Coverage diagnostics stay secondary to analytics. The web uses inline, accessible status icons beside daily dates, with full labels/check times in their titles; a collapsed **Source coverage** disclosure below results contains counts and day details. Table headings and cells retain horizontal padding on both outer edges. The TUI appends inline day markers (`✓` checked, `○` empty, `…` pending, `↻` updating, `!` incomplete, `?` unverified), explains them in help, and puts the compact days-checked summary on the source-work line. Status never adds a separate table line.
-
-Both viewers show retained-source freshness separately from token totals. REST `/api/v1/sync` returns optional durable progress (job identity, actual timestamps, source counts, discovery completeness, last successful time); revision changes after canonical publication, not merely after overall job completion. `/api/v1/usage` returns day coverage in the same validated snapshot as its analytics, independent of pagination. Days have unverified/pending/partial/checked/empty status, pending/failed source counts, successful checked time, and a nullable filtered canonical total. Unknown/incomplete days never imply zero. Empty means no matching usage found in checked retained sources, not account-wide absence.
-
-Coverage uses serving-machine calendar dates and date/harness filters. Provider/model/session/location filters affect the displayed canonical day total, but never claim that unchecked sources cannot contain matching usage. A source can span days; UTC occurrence bounds are conservative, and unknown or unfinished source bounds affect every selected day. Pending canonical work prevents a checked-empty claim. Failed/unverified coverage never advances its check time. Bounded coverage includes at most 366 days through today; all-time defaults to the recent seven days, while a complete custom bounded range replaces the preset. Future days are omitted. Operational placeholders belong only to presentation; they do not create facts, change session counts or summaries, or manufacture chart activity.
-
-Progress is indeterminate during discovery. Afterwards source counts/percentages describe work checked and sources ready; failures stay explicit. Normalization is a named phase. A processed-source percentage never means completeness of lifetime usage or time remaining. Compatible committed usage can refresh during ordinary sync; recovery data stays hidden until ready. Orphaned jobs show interrupted with retry rather than remaining running forever.
+Server status exposes readiness, durable database identity, canonical revision,
+and last committed ingestion. Web/TUI display available usage and **Reload**;
+they do not infer checked/empty source days from missing uploads. A receipt proves
+batch commit, not harness coverage. Last ingestion is server commit time, never a
+claim that all producers are current. Reporting calendar filters use the server
+local timezone consistently; occurrence timestamps and stable identity remain
+independent of collection/viewer clocks.
 
 ## DB Lifecycle
 
-- `db.Open` opens existing compatible, fully recovered DBs read-only. `db.BeginAnalyticsRead` revalidates lifecycle inside the returned read-only transaction; analytics use that same snapshot. Incompatible or rebuild-pending data is unavailable to analytics; `db.OpenWritable` permits current pending data for internal recovery normalization.
-- `db.CreateIfMissing` creates missing DBs from the embedded schema with current generation and no pending rebuild. Help/version never access the database.
-- Public sync/normalize and implicit TUI/web sync inspect compatibility, acquire a context-aware database-scoped interprocess writer lock with a named timeout, and recheck under lock. Internal prepared helpers avoid nested lock acquisition. Sync, normalization, and resets share this lock; process exit releases it.
-- Recognized older schema or data generations trigger one transactional reset to current, even across skipped generations. Compatible databases are preserved; unknown, corrupt, or newer schema/generation files are rejected without automatic deletion.
-- Reset recreates application tables inside the existing SQLite file. Connection PRAGMAs run outside the reset transaction; current schema/generation and pending state commit together. A pre-commit crash preserves old data; a post-commit crash leaves durable pending recovery. SQLite transactions preserve consistent readers; live DB/WAL/SHM files are not unlinked.
-- Recovery syncs all configured harnesses and normalizes before clearing pending state and source key only on success. Missing harnesses are normal skips. Failure retains committed partial imports, pending state, and a source-scope hash; same-scope retry resumes using dedupe/refresh without another reset. Mismatched normalized source configurations reject before data writes; source paths are never persisted or automatically reconstructed. Only retained local sources can reconstruct history.
-- Targeted default-source recovery expands to all defaults. All-harness custom roots stay bounded to `<root>/<harness>`. Single-harness custom-source recovery defers without mutation until an eligible command runs.
-- `--dry-run` previews reset/resume without writes or stale refresh-state suppression. `--no-sync` stays read-only and never repairs data.
-- `reset-canonical --confirm` acquires the writer lock and requires compatible, fully recovered data. It deletes canonical token usage, messages, sessions, and normalization diagnostics while keeping raw facts, observations, and source refresh state, then requeues existing raw facts. It cannot repair incompatible raw usage or identity.
-- `reset-all --confirm` owns the writer lock and uses the common transactional reset primitive, leaving a fresh current database. It clears source refresh state and pending normalization work. Explicit reset remains available, including when changed source availability requires rebuilding previously ambiguous Codex history.
+- Collector `db.Open` / `OpenWritable` validate collector role before compatibility
+  or mutation. Collector analytics reads revalidate compatible local state inside
+  a transaction. CLI collect/normalize/reset share a context-aware writer lock.
+- Fresh defaults leave the legacy mixed file untouched. Existing wrong-role,
+  unknown, corrupt, or newer contracts fail explicitly. Legacy role-zero files
+  are not silently migrated into either new role.
+- Collector compatibility/reset machinery applies only to collector storage.
+  Explicit resets recreate application tables transactionally without unlinking
+  DB/WAL/SHM/lock inodes. `reset-canonical` preserves raw facts and publication
+  history while requeuing raw normalization work; `reset-all` clears collector
+  journal/cursors and establishes a fresh delivery stream. Neither retracts
+  committed server usage.
+- Supported local rebuilds retain a pending marker/source-scope fingerprint for
+  retry. Missing harnesses are normal skips; changed scope cannot silently finish
+  a pending rebuild. Only retained sources can reconstruct missing collector raw
+  facts. `--dry-run` performs no data or publication writes.
+- Server `CreateIfMissing` initializes only missing canonical-only storage.
+  `Open` inspects server application role/schema/metadata read-only before writer
+  access. Server storage uses preserving compatibility checks; unavailable
+  producer artifacts are never a reason to reset server history or receipts.
+- Server batches commit normalized facts, references, durable receipt, and
+  metadata together. Collector delivery progress commits only with its validated
+  acknowledgement. Reopen/retry reads persisted request/receipt identities;
+  failed/unknown outcomes do not advance cursors.
+- TUI/browser never open collector SQLite, normalize facts, or repair storage.
+  Explicit remote URLs skip local database/bootstrap. Query failures preserve
+  saved data/filters and offer read retry. Help/version never create databases.
 
 ## Invariants
 
 Must not change silently:
 
 - schema changes require explicit user approval;
-- `schema/schema.sql` remains the table source of truth;
+- collector and server source SQL remain the table sources of truth;
 - canonical token usage must be session-centric;
 - missing model and unavailable provider must render with canonical fallback values, not cause row loss;
 - raw storage must remain metadata-only and avoid private content;
-- Syncable Analytics Data must exclude prompt text, assistant text, tool arguments, tool output, request headers, secrets, raw provider payloads, and full source paths;
-- Local-only Continuity Metadata must never be used for viewer analytics or future cloud export;
+- normalized server publication must exclude raw facts, source diagnostics/continuity, prompt text, assistant text, tool arguments/output, headers, secrets, provider payloads, source paths, and collector-local directory paths;
+- Local-only Continuity Metadata must never be ingested into the server or used for server analytics;
 - default token analytics use only countable canonical token rows;
 - unavailable metric domains must not appear as empty active viewer tabs;
 - cost tracking must stay out of the active product;
-- the TUI queries canonical data read-only during and after optional Implicit View Sync, and `view --no-sync` remains a read-only command path.
+- TUI/browser query committed server data through REST; Reload never collects, and explicit caller-side `view --sync` is the only view-start collection path.
 
 Can evolve with care:
 
@@ -568,8 +760,10 @@ Can evolve with care:
 
 | Path | Role |
 |------|------|
-| `schema/schema.sql` | SQLite schema source of truth |
-| `packages/cli/internal/db/schema/schema.sql` | embedded checked schema copy |
+| `schema/schema.sql` | Collector SQLite schema source |
+| `schema/server.sql` | Canonical-only server SQLite schema source |
+| `packages/cli/internal/db/schema/schema.sql` | embedded collector schema |
+| `packages/cli/internal/serverstore/schema/server.sql` | embedded server schema |
 | `tools/build/src/check-schema.ts` | schema contract validator |
 | `docs/openapi.yaml` | authoritative, repository-only REST API contract |
 | `tools/build/` | private Node 26+ native TypeScript build/test/development tooling package |
@@ -586,7 +780,13 @@ Can evolve with care:
 | `packages/cli/internal/cli/statusline.go` | typed dashboard statusline state and width-aware rendering |
 | `packages/cli/internal/cli/table_summary.go` | pinned table summary state and width-aware rendering |
 | `packages/cli/internal/cli/render.go` | table rendering |
-| `packages/cli/internal/db/open.go` | DB open/create/reset/schema lifecycle |
+| `packages/cli/internal/db/open.go` | Collector DB open/create/reset/schema lifecycle |
+| `packages/cli/internal/collector/` | Host collection and manual durable delivery |
+| `packages/cli/internal/collectorstore/` | Canonical journal, saved batches, destination acknowledgements |
+| `packages/cli/internal/publication/` | Normalized identity, payload, codec, limits, receipts |
+| `packages/cli/internal/ingestion/` | Shared transactional ingestion core and HTTP routes |
+| `packages/cli/internal/serverstore/` | Canonical-only storage role/compatibility |
+| `packages/cli/internal/queryclient/` | Bounded REST queries and consistent pagination |
 | `packages/cli/internal/db/schema.go` | Go schema constants |
 | `packages/cli/internal/db/aggregate.go` | canonical aggregation queries |
 | `packages/cli/internal/db/events.go` | canonical event rows for UI model |
@@ -634,4 +834,17 @@ The `collector-rebuild` fixture exercises real adapters against synthetic harnes
 
 `sync-first-basic/source/` is also the shared development source fixture. It contains compact representative OpenCode, Pi, Codex, and Claude Code data, roughly two sessions and two canonical facts per harness. Source structures reflect durable harness formats, but every retained value is synthetic. Fixtures must exclude conversation content, tool arguments/output, request headers, secrets, real user or repository paths, signatures, and other identifying data. Raw local harness databases and transcripts must never be copied into the repository.
 
-`pnpm run dev:data` builds the Go CLI without rebuilding web assets, recreates the ignored `.tokeninsights-dev/` directory, copies the sanitized JSONL sources, materializes OpenCode SQLite from its reviewable `source.sql`, and syncs all harnesses into `.tokeninsights-dev/tokeninsights.sqlite`. `dev:cli` builds and prepares that data before opening the all-time, no-sync TUI. `dev:server` builds/prepares the same data, then runs a foreground service on loopback with a sanitized fixture source environment. Fixture reset refuses live/unreachable ownership, resets transactionally, and preserves DB/lock inodes. `dev:web` runs Vite directly, binds to all IPv4 interfaces, and proxies `/api` to the Go server at `127.0.0.1:8765`. `dev:web:mock` runs Vite independently with contract-validated Mock Service Worker responses and requires no Go process or local harness data. `dev` runs both real server commands in parallel. `start:web` ensures the managed service with explicit browser opening and uses normal saved local sources. Web browser tests retain their separate generated 80-session synthetic dataset because pagination requires more rows than the compact shared fixture.
+`pnpm run dev:data` builds the Go CLI without rebuilding browser assets, resets
+only the controlled `.tokeninsights-dev/collector.sqlite` and `server.sqlite`
+application tables, recreates synthetic source/home subdirectories, materializes
+OpenCode SQLite from reviewable SQL, and publishes fixtures through production
+collector/HTTP ingestion. It starts a loopback server on a temporary port,
+collects/sends, then stops it. DB/lock inodes, unrelated files, and the legacy
+`tokeninsights.sqlite` remain intact; live/unreachable ownership blocks reset.
+`dev:cli` opens read-only all-time REST usage from the server fixture, while
+`dev:server` serves canonical `server.sqlite` on loopback without source settings.
+Vite `dev:web` proxies `/api` to `127.0.0.1:8765`; `dev:web:mock` uses validated
+synthetic API responses without Go/harness data. `dev` runs server and web in
+parallel. `start:web` ensures the ordinary local server without collection.
+Browser E2E retains its larger synthetic dataset for pagination, populating the
+canonical server rather than pointing viewers at collector storage.

@@ -1,8 +1,8 @@
 # Collector/server execution plan
 
-Status: Planning; storage/publication approval pending. All implementation belongs to [PR #53](https://github.com/flexdinesh/tokeninsights/pull/53).
+Status: Implementing approved fresh-database storage/publication contract. All implementation belongs to [PR #53](https://github.com/flexdinesh/tokeninsights/pull/53).
 
-This plan expands the [PRD](PRD.md) into parallel implementation boundaries. The [architecture proposal](../../docs/collector-server-architecture.md), [failure matrix](../../docs/collector-ingestion-tests.md), and [identity audit](IDENTITY-AUDIT.md) supply stable Gxx, Fxx, and CFIxxx references. Concrete approved storage and wire contracts supersede candidate JSON traces; update the traces explicitly when a decision changes them. No runtime or contract change is authorized by this document alone.
+This plan expands the [PRD](PRD.md) into parallel implementation boundaries. The [architecture proposal](../../docs/collector-server-architecture.md), [failure matrix](../../docs/collector-ingestion-tests.md), and [identity audit](IDENTITY-AUDIT.md) supply stable Gxx, Fxx, and CFIxxx references. Concrete approved storage and wire contracts supersede candidate JSON traces; update the traces explicitly when a decision changes them. User approved fresh collector/server databases; original storage remains untouched.
 
 ## Result and boundaries
 
@@ -29,7 +29,7 @@ Manual `sync` remains primary. Hook adapters use the same collector operation. O
 
 No repository-wide adapter rewrite is required. Keep one Go module and existing canonical query implementations where the approved server projection permits reuse. Separate storage open/migration paths are necessary: server history cannot use producer reset/resync recovery.
 
-## Proposed command and configuration workflow
+## Accepted command and configuration workflow
 
 Use these defaults; routine command details do not require another approval. Storage/publication contract changes still require explicit approval.
 
@@ -37,15 +37,15 @@ Use these defaults; routine command details do not require another approval. Sto
 | --- | --- |
 | `tokeninsights` | Ensure local query/ingestion service; print status/URL. No source collection. |
 | `tokeninsights sync` | Default all harnesses: collect changed sources, normalize, journal changes, prepare/send pending batches, report collection and delivery separately. `--harness` narrows collection. |
-| `tokeninsights sync --publish-only` | Send previously journaled work without source discovery; useful during source loss or delivery repair. Can be omitted if ordinary sync already publishes pending work despite collection failures and that behavior is clear. |
+| `tokeninsights sync --publish-only` | Send previously journaled work without source discovery; useful during source loss or delivery repair. |
 | `tokeninsights normalize` | Normalize retained local raw work and journal canonical changes. Publication occurs on `sync`; no server normalization action. |
 | `tokeninsights view` | Ensure local server, then query API. Read-only default: no startup collection. `r` reloads committed data. Explicit `--sync` performs caller-side sync before opening. |
-| `tokeninsights service start\|stop\|restart\|status\|run` | Manage local server and server database only. Remove `--reload-sources`. |
-| `tokeninsights-server` or `tokeninsights server run` | Foreground composition with canonical ingestion/query core. Bind loopback by default; non-loopback exposure requires explicit authentication configuration. Remote provisioning/TLS deployment remains later work. |
+| `tokeninsights service start\|stop\|restart\|status\|run` | Manage local server and server database only. Remove `--reload-sources`; every non-loopback bind requires `--token` or `TOKENINSIGHTS_SERVER_TOKEN`. |
+| `tokeninsights server run` | Foreground composition with canonical ingestion/query core. Bind loopback by default; every non-loopback exposure requires a token. Remote provisioning/TLS deployment remains later work. |
 | Completion plugin invocation | Run the existing `tokeninsights sync` directly with a bounded host deadline. No separate hook CLI or durable trigger queue. |
 | Collector reset commands | Scope explicitly to collector state. Resetting/deleting collector cannot delete server history. Server destructive reset is not an alias for producer reset. |
 
-Use unambiguous `--collector-db-path` and `--server-db-path` flags rather than one `--db-path` changing ownership by command. Preserve the existing `tokeninsights.sqlite` as collector input unless the approved migration selects another path; use a distinct local server file. Reject aliasing the two files, including canonical symlink aliases and existing hard links. Saved server config contains bind/database/auth settings only; private producer config can contain source roots and selected destination. Never persist the full process environment.
+Use unambiguous `--collector-db-path` and `--server-db-path` flags rather than one `--db-path` changing ownership by command. Use fresh `collector.sqlite` and `server.sqlite` files. Leave original `tokeninsights.sqlite` untouched; legacy import/migration is outside this implementation. Reject aliasing the two files, including canonical symlink aliases and existing hard links. Saved server config contains bind/database/auth settings only; private producer config can contain source roots and selected destination. Never persist the full process environment.
 
 An explicit `--server-url`/destination selects remote transport and skips local discovery/start even when delivery fails. Explicit flags override environment, then saved config, then defaults. Credentials come from caller configuration/environment; exclude them from database journal payloads, logs, printed URLs, and replay identity. Transport configuration is separate from canonical entity identity.
 
@@ -55,7 +55,7 @@ Delivery summaries distinguish discovered/parsed/normalized counts, pending publ
 
 Keep the seven current active token tabs, repo/directory grouping, filters, context aggregates, session counts, sorting, formatting, selection cancellation, and stale-response protection. TPS remains a documented metric capability with `tps avg`, `tps mean`, and `tps median` concepts; do not remove timing render/model concepts because initial durable timing is sparse. Do not invent timing values from token counts. Add timing query/transport fields only when an implemented durable timing domain needs them; unavailable metric tabs stay inactive as today.
 
-Use one Go query client for local and remote responses. Reuse generated response types after approval. The API already carries summary session counts. If TUI preserves loading all rows for local navigation, request bounded pages and require the same server/database identity and revision across pages. Restart a bounded number of times if ingestion changes that snapshot; fail explicitly rather than combine pages from different revisions. Prefer revision-pinned requests if approved instead of unbounded retry. Restore selection only when query/identity still match. Cancel obsolete HTTP requests on filters/tab changes and quitting.
+Use one Go query client for local and remote responses with generated response types. The API already carries summary session counts. The TUI loads bounded pages and requires the same server/database identity and revision across pages plus a final instance check. Retry at most three times if ingestion changes that snapshot; fail explicitly rather than mix revisions. Restore selection only when query/identity still match. Cancel obsolete HTTP requests on filters/tab changes and quitting.
 
 Keep API server timezone as reporting timezone for this release, and display it consistently in TUI/browser. Occurrence times cross ingestion as UTC epoch values; collection host timezone cannot change IDs. Tests use a pinned reporting timezone and date-boundary fixtures. Configurable client-specific timezone is a later extension.
 
@@ -92,17 +92,17 @@ Initial adapters run the collector directly with a 60-second host deadline. Nati
 | T08 API clients/TUI | Go query client, `internal/cli/{command_view,table,sync_coverage,desk}.go` | Approved API/T06; parallel skeleton after T02 | G06/G10; remote read without local DB; all active tabs/facets/sorting parity; pinned multi-page reads; no implicit collection or fallback SQLite reads. |
 | T09 Browser | `packages/web/src/{api,useDashboardSync,contracts}.ts*`, dashboard header/coverage/empty state, mocks/e2e | Approved query/status API; implement parallel with T08 | G06/G10; Reload only GETs; cache observes server revision; no source-completeness claims; served data remains usable collector absent. |
 | T10 Hooks/plugins | `packages/plugin-{codex,claude,pi,opencode}`, marketplace manifests, scripts | T07 stable `sync` entry; package source/adapters can begin after interface freeze | G01/G05/G10/G11; synthetic events/executable paths; no transcript forwarding; direct bounded sync, repeated/concurrent dedupe; lost upload retained; timeout/teardown contains child lifetime; Pi/OpenCode SDK type checks and standalone artifacts; no Node required by Go product. |
-| T11 Compatibility/migration | separate producer/server migrations, legacy bridge, DB-path checks, fixture upgrade tests | T01/T02/T03/T05 | G01/G02/G09/G10; F01/F09/F13. Preserve historical server facts, receipts and values; legacy import maps stable IDs, never copies old keys then duplicates regenerated keys. Unsupported ambiguity fails without deletion. |
+| T11 Compatibility/roles | separate producer/server role checks, DB-path alias checks, incompatible-schema fixtures | T01/T02/T03/T05 | G01/G02/G09/G10; F01/F09/F13. Fresh collector.sqlite/server.sqlite; original tokeninsights.sqlite untouched. Preserve server facts/receipts; wrong role or incompatible schema rejected without deletion. No legacy import. |
 | T12 Full failure integration | production HTTP + SQLite tests, isolated subprocess driver, synthetic golden fixtures | T03–T07/T11; test skeleton/oracles parallel | Every F01–F14 and G01–G11. Real two-DB reconstruction and REST totals; barriers rather than timing sleeps; representative process kills; exact failure correlation. |
 | T13 Documentation/release/tooling | README/design/ADR, PRD/implementation/failure matrix, build/dev fixture tasks | Integrate each task incrementally; final after T08–T12 | Current design matches runtime; no stale server-sync docs; native Go/install checks, API/schema/asset consistency, plugin artifacts reproducible; PR title/body final scope. |
 
 T03 and T05 can run independently after T02 because their stores differ. T08 and T09 can run independently against approved query DTOs. T10 adapters can use a fake executable while T07 is underway. T12 owns integration/fault seams but must coordinate with store owners; tests execute production implementations, not a second simulated ingestion engine. One integration owner changes shared schema/OpenAPI/generated files and runs root formatting; agents do not overwrite each other's files. Shared package interfaces are frozen and communicated before dependent code begins.
 
-## Migration acceptance
+## Compatibility acceptance
 
-Separate migration from collection. Preserve the legacy database or a verified backup; do not launch today's destructive reset/resync against server history. Old app/service instances must release ownership before moving or upgrading storage. New binaries reject accidentally opening a collector DB as server storage and vice versa.
+Create fresh `collector.sqlite` and `server.sqlite` under the selected data directory. Original `tokeninsights.sqlite` remains untouched. No legacy bridge, import, or ambiguous identity migration is required. Do not copy old canonical keys into server rows before publishing reconstructed stable keys: that can double usage.
 
-Copying old canonical semantic keys into server rows before publishing new stable keys can double usage. Derive new IDs from retained native/raw evidence, and make historical import/journal seeding idempotent. If missing request identity or already-collapsed facts prevent a trustworthy mapping, explain the limitation and preserve data for explicit resolution. Do not silently assign legacy and rebuilt records independent countable IDs. Server schema/data migrations preserve facts/receipts; they cannot assume producer artifacts are still available. Rebuilding a collector must replay surviving sources without retracting retained server history.
+Reject opening a collector database as server storage and vice versa; reject identical/symlink/hard-linked database aliases. Server schema/data compatibility checks preserve historical facts and receipts; they cannot assume producer artifacts remain available or use destructive reset/resync recovery. Rebuilding/deleting collector storage replays retained sources without retracting existing server history. Unsupported schema/data generations fail clearly without changing original storage.
 
 ## Real verification gates
 
@@ -117,8 +117,4 @@ Update [VALIDATION.md](VALIDATION.md) with actual commands and outcomes, and the
 
 ## Unresolved questions
 
-- Approve concrete SQLite/wire contract and identity generation?
-- Legacy ambiguous history: migrate provable facts, preserve others, or explicit rebuild?
-- Missing native-ID fallback and changed-value precedence?
-
-Implementation owners can choose routine limits and command details within the approved contract; remote deployment/auth provisioning remains deferred by scope.
+None for current scope. Fresh database roles, publication contract, native identity/revision policies, and CLI defaults are decided. Remote provisioning and any future legacy migration remain later work.

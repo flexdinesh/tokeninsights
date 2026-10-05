@@ -1,6 +1,8 @@
 packages:
   - 'packages/cli'
   - 'packages/web'
+  - 'packages/plugin-pi'
+  - 'packages/plugin-opencode'
   - 'tools/build'
 injectWorkspacePackages: true
 allowBuilds:

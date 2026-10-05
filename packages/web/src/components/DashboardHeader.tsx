@@ -1,23 +1,22 @@
-import { ArrowDownToLine, LoaderCircle, Monitor, Moon, Sun } from 'lucide-react'
+import { RefreshCw, LoaderCircle, Monitor, Moon, Sun } from 'lucide-react'
 import { useDashboardPreferences } from '../state'
+import { formatServerDateTime, serverTimeZoneLabel } from '../format'
 import { Button } from './ui/button'
 
 export function DashboardHeader({
   hostname,
-  running,
-  refreshDisabled,
-  pendingRefresh,
+  timezone,
+  reloading,
   serverUnavailable,
   lastSynced,
-  onSync,
+  onReload,
 }: {
   hostname: string
-  running: boolean
-  refreshDisabled?: boolean
-  pendingRefresh?: boolean
+  timezone: string
+  reloading: boolean
   serverUnavailable: boolean
   lastSynced?: number
-  onSync: () => void
+  onReload: () => void
 }) {
   const { theme, setTheme } = useDashboardPreferences()
   return (
@@ -33,14 +32,17 @@ export function DashboardHeader({
           {hostname}
         </span>
         <span className="header-status" role="status">
-          {serverUnavailable
-            ? 'Unavailable'
-            : running
-              ? 'Syncing…'
-              : lastSynced
-                ? 'Synced'
-                : 'Ready'}
+          {serverUnavailable ? 'Unavailable' : reloading ? 'Loading…' : 'Ready'}
         </span>
+        {lastSynced ? (
+          <time
+            className="header-status"
+            dateTime={new Date(lastSynced).toISOString()}
+            title={serverTimeZoneLabel(timezone)}
+          >
+            Last ingestion {formatServerDateTime(lastSynced, timezone)}
+          </time>
+        ) : null}
         <span className="header-divider" />
         <Button
           variant="ghost"
@@ -60,9 +62,9 @@ export function DashboardHeader({
             <Monitor size="1.1em" />
           )}
         </Button>
-        <Button className="sync-button" size="sm" disabled={refreshDisabled} onClick={onSync}>
-          {running ? <LoaderCircle size="1em" className="spin" /> : <ArrowDownToLine size="1em" />}
-          <span>{pendingRefresh ? 'Sync queued' : running ? 'Sync again' : 'Sync'}</span>
+        <Button className="sync-button" size="sm" disabled={reloading} onClick={onReload}>
+          {reloading ? <LoaderCircle size="1em" className="spin" /> : <RefreshCw size="1em" />}
+          <span>Reload</span>
         </Button>
       </div>
     </header>

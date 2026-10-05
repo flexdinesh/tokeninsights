@@ -858,7 +858,7 @@ func TestNormalizeSkipsCurrentRulesAndRefreshesStaleScope(t *testing.T) {
 	assertSQLCount(t, database, "SELECT COUNT(*) FROM normalization_rule_state WHERE harness = 'pi' AND rule_signature != 'stale'", 1)
 }
 
-func TestSyncUpgradesV11MetadataWithoutReingestingHistory(t *testing.T) {
+func TestSyncRejectsUntaggedLegacyV11WithoutChanges(t *testing.T) {
 	ctx := context.Background()
 	dbPath := filepath.Join(t.TempDir(), "tokeninsights.sqlite")
 	sourceDir := t.TempDir()
@@ -870,23 +870,24 @@ func TestSyncUpgradesV11MetadataWithoutReingestingHistory(t *testing.T) {
 	}
 	database := openTestDB(t, dbPath)
 	defer func() { _ = database.Close() }()
-	if _, err := database.Exec("DROP TABLE normalization_rule_state; PRAGMA user_version = 11"); err != nil {
+	if _, err := database.Exec("DROP TABLE normalization_rule_state; PRAGMA user_version = 11; PRAGMA application_id = 0"); err != nil {
 		t.Fatal(err)
 	}
-	options.Now = now.Add(time.Hour)
-	summary, err := Sync(ctx, options)
-	if err != nil {
-		t.Fatal(err)
+	before := recoverySnapshot(t, dbPath)
+	for _, dryRun := range []bool{false, true} {
+		options.Now = now.Add(time.Hour)
+		options.DryRun = dryRun
+		if _, err := Sync(ctx, options); err == nil || !strings.Contains(err.Error(), "not a collector database") {
+			t.Fatalf("dryRun=%v: got %v, want explicit legacy rejection", dryRun, err)
+		}
+		if after := recoverySnapshot(t, dbPath); !reflect.DeepEqual(before, after) {
+			t.Fatalf("legacy sync mutated storage: before=%v after=%v", before, after)
+		}
 	}
-	if summary.Skipped != 1 || summary.RawFacts != 0 || summary.Observations != 0 {
-		t.Fatalf("V11 upgrade reingested history: %+v", summary)
-	}
-	assertCount(t, database, "raw_token_usage", 1)
-	assertCount(t, database, "canonical_token_usage", 1)
-	assertSQLCount(t, database, "SELECT COUNT(*) FROM normalization_rule_state WHERE harness = 'pi'", 1)
+	assertSQLCount(t, database, "SELECT COUNT(*) FROM sqlite_schema WHERE name = 'normalization_rule_state'", 0)
 }
 
-func TestNormalizeUpgradesV11MetadataWithoutReingestingHistory(t *testing.T) {
+func TestNormalizeRejectsUntaggedLegacyV11WithoutChanges(t *testing.T) {
 	ctx := context.Background()
 	dbPath := filepath.Join(t.TempDir(), "tokeninsights.sqlite")
 	sourceDir := t.TempDir()
@@ -897,15 +898,19 @@ func TestNormalizeUpgradesV11MetadataWithoutReingestingHistory(t *testing.T) {
 	}
 	database := openTestDB(t, dbPath)
 	defer func() { _ = database.Close() }()
-	if _, err := database.Exec("DROP TABLE normalization_rule_state; PRAGMA user_version = 11"); err != nil {
+	if _, err := database.Exec("DROP TABLE normalization_rule_state; PRAGMA user_version = 11; PRAGMA application_id = 0"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := Normalize(ctx, NormalizeOptions{DBPath: dbPath, Harnesses: []Harness{HarnessPi}, Now: now.Add(time.Hour)}); err != nil {
-		t.Fatal(err)
+	before := recoverySnapshot(t, dbPath)
+	for _, dryRun := range []bool{false, true} {
+		if _, err := Normalize(ctx, NormalizeOptions{DBPath: dbPath, Harnesses: []Harness{HarnessPi}, DryRun: dryRun, Now: now.Add(time.Hour)}); err == nil || !strings.Contains(err.Error(), "not a collector database") {
+			t.Fatalf("dryRun=%v: got %v, want explicit legacy rejection", dryRun, err)
+		}
+		if after := recoverySnapshot(t, dbPath); !reflect.DeepEqual(before, after) {
+			t.Fatalf("legacy normalize mutated storage: before=%v after=%v", before, after)
+		}
 	}
-	assertCount(t, database, "raw_token_usage", 1)
-	assertCount(t, database, "canonical_token_usage", 1)
-	assertSQLCount(t, database, "SELECT COUNT(*) FROM normalization_rule_state WHERE harness = 'pi'", 1)
+	assertSQLCount(t, database, "SELECT COUNT(*) FROM sqlite_schema WHERE name = 'normalization_rule_state'", 0)
 }
 
 func TestCodexJSONLSyncsTokenCountUsage(t *testing.T) {
@@ -1162,11 +1167,13 @@ func TestClaudeCodeJSONLSyncsMainSessionTokenUsage(t *testing.T) {
 		RawFacts:           1,
 		Observations:       1,
 		Canonical:          1,
-		Diagnostics:        1,
+		Diagnostics:        2,
 	})
 
 	database := openTestDB(t, dbPath)
 	defer func() { _ = database.Close() }()
+	assertSQLCount(t, database, "SELECT COUNT(*) FROM publication_journal", 0)
+	assertSQLCount(t, database, "SELECT COUNT(*) FROM normalization_diagnostics WHERE code = 'publication_ambiguous_session_identity'", 1)
 	assertEqualJSON(t, queryRawTokenUsage(t, database), []expectedRawTokenUsage{
 		{
 			Harness:          "claude-code",
@@ -1406,11 +1413,13 @@ func TestPiJSONLUsesFilenameSessionFallbackWhenHeaderIsMissing(t *testing.T) {
 		RawFacts:           1,
 		Observations:       1,
 		Canonical:          1,
-		Diagnostics:        1,
+		Diagnostics:        2,
 	})
 
 	database := openTestDB(t, dbPath)
 	defer func() { _ = database.Close() }()
+	assertSQLCount(t, database, "SELECT COUNT(*) FROM publication_journal", 0)
+	assertSQLCount(t, database, "SELECT COUNT(*) FROM normalization_diagnostics WHERE code = 'publication_ambiguous_session_identity'", 1)
 	assertSQLCount(t, database, "SELECT COUNT(*) FROM canonical_sessions WHERE session_id = 'pi_fallback'", 1)
 	assertSQLCount(t, database, "SELECT COUNT(*) FROM canonical_token_usage WHERE provider = 'unknown' AND model = 'unknown'", 1)
 	assertSQLCount(t, database, "SELECT COUNT(*) FROM normalization_diagnostics WHERE code = 'pi_jsonl_missing_session_header'", 1)
@@ -1543,7 +1552,7 @@ func TestPiJSONLEmitsDiagnosticsForInvalidRowsAndIngestsUsableWarnings(t *testin
 		RawFacts:           1,
 		Observations:       1,
 		Canonical:          1,
-		Diagnostics:        6,
+		Diagnostics:        7,
 	})
 
 	database := openTestDB(t, dbPath)
@@ -1555,6 +1564,8 @@ func TestPiJSONLEmitsDiagnosticsForInvalidRowsAndIngestsUsableWarnings(t *testin
 	assertSQLCount(t, database, "SELECT COUNT(*) FROM normalization_diagnostics WHERE code = 'pi_jsonl_inconsistent_total'", 1)
 	assertSQLCount(t, database, "SELECT COUNT(*) FROM normalization_diagnostics WHERE code = 'pi_jsonl_invalid_tokens'", 1)
 	assertSQLCount(t, database, "SELECT COUNT(*) FROM normalization_diagnostics WHERE code = 'pi_jsonl_missing_time'", 1)
+	assertSQLCount(t, database, "SELECT COUNT(*) FROM normalization_diagnostics WHERE code = 'publication_ambiguous_native_identity'", 1)
+	assertSQLCount(t, database, "SELECT COUNT(*) FROM publication_journal", 0)
 }
 
 func TestOpenCodeSQLiteSuppressesDuplicateChannelRows(t *testing.T) {

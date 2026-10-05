@@ -2,6 +2,7 @@ import { spawn } from 'node:child_process'
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
+import { fixtureToken } from './config.ts'
 
 const tempRoot = process.env.TOKENINSIGHTS_TEST_TMP ?? tmpdir()
 const localHome = await mkdtemp(join(tempRoot, 'ti-web-'))
@@ -62,8 +63,10 @@ function startServer(home: string, port: string) {
       '0.0.0.0',
       '--port',
       port,
-      '--db-path',
-      join(home, 'usage.sqlite'),
+      '--token',
+      fixtureToken,
+      '--server-db-path',
+      join(home, 'server.sqlite'),
     ],
     {
       stdio: 'inherit',
@@ -81,30 +84,70 @@ function startServer(home: string, port: string) {
   )
 }
 
-await new Promise<void>((resolveRun, rejectRun) => {
-  const child = spawn(
-    resolve('../cli/bin/tokeninsights'),
-    ['sync', '--all', '--db-path', join(localHome, 'usage.sqlite')],
-    {
-      stdio: 'inherit',
-      env: {
-        ...process.env,
-        HOME: localHome,
-        XDG_DATA_HOME: join(localHome, '.local/share'),
-        CODEX_HOME: join(localHome, '.codex'),
-        CLAUDE_CONFIG_DIR: join(localHome, '.claude'),
-        XDG_CONFIG_HOME: join(localHome, '.config'),
-        XDG_STATE_HOME: join(localHome, '.local/state'),
-        XDG_RUNTIME_DIR: '',
+// Seed through real canonical ingestion before exposing the Playwright endpoint.
+const fixtureServer = startServer(localHome, '18766')
+const fixtureDeadline = Date.now() + 10000
+try {
+  for (;;) {
+    if (fixtureServer.exitCode !== null || fixtureServer.signalCode !== null) {
+      throw new Error('fixture server exited before readiness')
+    }
+    try {
+      const response = await fetch('http://127.0.0.1:18766/api/v1/instance', {
+        headers: { Authorization: `Bearer ${fixtureToken}` },
+      })
+      if (response.ok) break
+    } catch {
+      // Startup is bounded; no host harness files are used.
+    }
+    if (Date.now() >= fixtureDeadline) throw new Error('fixture server readiness timed out')
+    await new Promise<void>((resolveWait) => setTimeout(resolveWait, 50))
+  }
+  await new Promise<void>((resolveRun, rejectRun) => {
+    const child = spawn(
+      resolve('../cli/bin/tokeninsights'),
+      [
+        'sync',
+        '--all',
+        '--collector-db-path',
+        join(localHome, 'collector.sqlite'),
+        '--server-db-path',
+        join(localHome, 'server.sqlite'),
+        '--server-url',
+        'http://127.0.0.1:18766',
+        '--token',
+        fixtureToken,
+      ],
+      {
+        stdio: 'inherit',
+        env: {
+          ...process.env,
+          HOME: localHome,
+          XDG_DATA_HOME: join(localHome, '.local/share'),
+          CODEX_HOME: join(localHome, '.codex'),
+          CLAUDE_CONFIG_DIR: join(localHome, '.claude'),
+          XDG_CONFIG_HOME: join(localHome, '.config'),
+          XDG_STATE_HOME: join(localHome, '.local/state'),
+          XDG_RUNTIME_DIR: '',
+        },
       },
-    },
-  )
-  child.once('error', rejectRun)
-  child.once('exit', (code) => {
-    if (code === 0) resolveRun()
-    else rejectRun(new Error('fixture sync failed'))
+    )
+    child.once('error', rejectRun)
+    child.once('exit', (code) => {
+      if (code === 0) resolveRun()
+      else rejectRun(new Error('fixture sync failed'))
+    })
   })
-})
+} finally {
+  await new Promise<void>((resolveStop) => {
+    if (fixtureServer.exitCode !== null || fixtureServer.signalCode !== null) {
+      resolveStop()
+      return
+    }
+    fixtureServer.once('exit', () => resolveStop())
+    fixtureServer.kill('SIGTERM')
+  })
+}
 const children = [startServer(localHome, '18765')]
 let stopping = false
 

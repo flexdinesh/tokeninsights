@@ -108,12 +108,12 @@ func TestTokenSemanticGenerationRebuildsEveryHarnessWithoutDuplicates(t *testing
 	}
 }
 
-func TestRecoveryLegacySchemaRebuildsWithinAllHarnessOverride(t *testing.T) {
+func TestCollectorGenerationRecoveryUsesAllHarnessOverride(t *testing.T) {
 	root := recoveryDefaultRoots(t)
 	writePiAssistantSession(t, filepath.Join(root, "home", ".pi", "agent", "sessions", "date_excluded.jsonl"), "excluded", "excluded", 999, 0)
 	sourceRoot := t.TempDir()
 	writePiAssistantSession(t, filepath.Join(sourceRoot, "pi", "date_included.jsonl"), "included", "included", 7, 0)
-	path := recoveryOldDatabase(t, true)
+	path := recoveryOldDatabase(t, false)
 	summary, err := Sync(context.Background(), SyncOptions{DBPath: path, Harnesses: SupportedHarnesses, SourceDir: sourceRoot})
 	if err != nil {
 		t.Fatal(err)
@@ -141,10 +141,10 @@ func TestRecoveryCustomSingleHarnessDefersWithoutChanges(t *testing.T) {
 	}
 }
 
-func TestRecoveryDryRunsPreviewWithoutResetting(t *testing.T) {
+func TestCollectorGenerationDryRunsPreviewWithoutResetting(t *testing.T) {
 	root := recoveryDefaultRoots(t)
 	writePiAssistantSession(t, filepath.Join(root, "home", ".pi", "agent", "sessions", "date_pi.jsonl"), "pi", "pi", 5, 0)
-	path := recoveryOldDatabase(t, true)
+	path := recoveryOldDatabase(t, false)
 	before := recoverySnapshot(t, path)
 	summary, err := Sync(context.Background(), SyncOptions{DBPath: path, Harnesses: []Harness{HarnessCodex}, DryRun: true})
 	if err != nil {
@@ -496,6 +496,7 @@ func recoverySnapshot(t *testing.T, path string) recoveryDatabaseSnapshot {
 	var snapshot recoveryDatabaseSnapshot
 	for _, query := range []string{
 		"PRAGMA user_version",
+		"PRAGMA application_id",
 		"SELECT COUNT(*) FROM raw_token_usage",
 		"SELECT COUNT(*) FROM raw_observations",
 		"SELECT COUNT(*) FROM ingest_runs",

@@ -12,16 +12,16 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/db"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/pipeline"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/server"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/serverstore"
 )
 
 type Options struct {
-	DBPath        string
-	Host          *string
-	Port          *int
-	ReloadSources bool
+	DBPath string
+	Host   *string
+	Port   *int
+	Remote bool
+	Token  *string
 }
 
 func configuration(options Options) (Config, error) {
@@ -33,18 +33,16 @@ func configuration(options Options) (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
-	config := Config{Version: 1, DBPath: path, DatabaseKey: key, Host: server.DefaultHost, Port: server.DefaultPort}
+	config := Config{Version: 2, DBPath: path, DatabaseKey: key, Host: server.DefaultHost, Port: server.DefaultPort}
 	if err := readFile(p.config, &config); err != nil && !errors.Is(err, os.ErrNotExist) {
 		return Config{}, err
 	}
 	if config.DBPath != path || config.DatabaseKey != key {
 		return Config{}, fmt.Errorf("saved service database identity mismatch")
 	}
-	if config.Sources == nil || options.ReloadSources {
-		config.Sources, err = pipeline.ResolveSources("")
-		if err != nil {
-			return Config{}, err
-		}
+	config.Remote = options.Remote
+	if options.Token != nil {
+		config.Token = *options.Token
 	}
 	if options.Host != nil {
 		config.Host = *options.Host
@@ -76,7 +74,7 @@ func Ensure(ctx context.Context, options Options) (State, error) {
 		return state, err
 	}
 	if state.Running {
-		if state.Record.ActionVersion != 1 || state.Record.SchemaVersion != db.SupportedSchemaVersion || state.Record.DataGeneration != db.CurrentDataGeneration {
+		if state.Record.SchemaVersion != serverstore.SupportedSchemaVersion {
 			return state, fmt.Errorf("service contract incompatible; use service restart")
 		}
 		if options.Host != nil && normalizedHost(*options.Host) != state.Record.Config.Host || options.Port != nil && *options.Port != state.Record.Config.Port {

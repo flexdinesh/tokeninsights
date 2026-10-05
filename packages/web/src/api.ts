@@ -15,9 +15,8 @@ export async function request<T>(
   path: string,
   schema: z.ZodType<T>,
   signal?: AbortSignal,
-  method = 'GET',
 ): Promise<T> {
-  const response = await fetch(path, { signal, method })
+  const response = await fetch(path, { signal, method: 'GET' })
   let body: unknown
   try {
     body = await response.json()
@@ -49,10 +48,8 @@ export const useSyncStatus = (enabled = true) =>
     queryKey: ['sync'],
     queryFn: ({ signal }) => request('/api/v1/sync', statusSchema, signal),
     enabled,
-    refetchInterval: (query) => (query.state.data?.running ? 1000 : 5000),
+    refetchInterval: 5000,
   })
-
-export const syncNow = () => request('/api/v1/sync', statusSchema, undefined, 'POST')
 
 export function useAnalytics(
   q: QueryState,

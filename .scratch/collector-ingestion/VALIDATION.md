@@ -4,11 +4,11 @@ Date: 5 October 2026. Base: `e5ec2c7`. Branch: `codex/collector-ingestion-contra
 
 Worktree: `/home/dee/workspace/tokeninsights/wt-codex-collector-ingestion-contract`.
 
-Current status: parser regressions fixed; root format/lint/full tests/build pass. Storage/API approval, server ingestion, migration, and viewer wiring remain pending. Query-client evidence is recorded after its completion below. Foundation red results are retained as historical evidence.
+Current status: approved collector/server implementation complete; repository gates pass. Fresh collector/server databases rebuild retained sources; original database remains untouched. Historical foundation and kickoff results below do not constitute current implementation signoff.
 
 ## Scope
 
-The foundation used four independent agents for architecture/PRD, harness fixtures/tests, failure traces, and identity audit. At that stage production Go, SQLite schema, and generated API contracts were unchanged. Subsequent parser/plugin/client implementation is recorded below. Collector/server ingestion remains unimplemented.
+The foundation used four independent agents for architecture/PRD, harness fixtures/tests, failure traces, and identity audit. At that stage production Go, SQLite schema, and generated API contracts were unchanged. Subsequent parser/plugin/client implementation is recorded below. Collector/server ingestion is implemented in the current work; historical results are separated below.
 
 ## Historical foundation evidence
 
@@ -29,7 +29,7 @@ Result: seven pass, two fail; approximately 1.44 seconds. Passing cases verify 1
 
 At foundation publication these tests remained unskipped and red, as permitted by AGENTS.md. Their accounting/identity fixes now pass; expected outputs were not changed to match these defects.
 
-Independent review rejected an initial CFI-009 requirement for two canonical Pi facts without native message IDs. Different counters alone cannot establish independent requests versus revisions. The adversarial source remains; the executable test verifies raw preservation and missing-ID diagnostics. Canonical fallback policy remains unresolved and is not claimed tested.
+Independent review rejected an initial CFI-009 requirement for two canonical Pi facts without native message IDs. Different counters alone cannot establish independent requests versus revisions. The adversarial source remains; the executable test verifies raw preservation and missing-ID diagnostics. Current publication quarantines missing native identity; historical raw retention evidence remains valid.
 
 ## Historical foundation full verification
 
@@ -83,3 +83,31 @@ Execution, storage, failure, and plugin plans now specify ownership/dependencies
 The completed `internal/queryclient` suite exercises the existing real REST handler with 225 synthetic sessions over multiple pages, verifies all token/context components and summary/facets, and tests revision/instance/epoch churn, cancellation, inconsistent pagination, duplicate row identities, unsafe URLs, redirect rejection, and bounded/sanitized responses. It is reusable client code; TUI wiring is still pending.
 
 Final kickoff `mise run check:push` passes: format/lint, unchanged schema/API checks, all unit tests including queryclient, full Go race suite (pipeline 101.9s; no races), embedded asset comparison, native build, and all 19 browser E2E tests (40.5s). Plugin artifacts are now included in root format/lint targets. Direct Go build and `env PATH=/nonexistent ./packages/cli/bin/tokeninsights-native --help` pass after these changes. Schema/constants/generated API/embedded assets remain unchanged. No hook bypass is needed for this green kickoff.
+
+## Completed collector/server implementation
+
+User approved the storage/wire split and selected fresh databases. Collector V15/data generation 6 and canonical-only server V1 use distinct application IDs. Legacy tokeninsights.sqlite is preserved; no legacy import or identity alias migration.
+
+Parallel agents implemented publication, both stores, ingestion, local/remote composition, CLI, REST TUI, browser Reload, plugins, failure tests, and docs. Independent reviews found and fixed local delimiter collisions, filename-derived session publication, initialization crash windows, non-loopback auth bypass, local-view destination binding, stale facets, missing repo facet parameters, historical timezone formatting, optional location NULL semantics, and plugin descendant cleanup. Regressions execute production code.
+
+Root verification:
+- pnpm run format and pnpm run lint pass.
+- pnpm run test passes plugin SDK/artifact checks, build-tools, 31 web unit tests, and every Go package.
+- pnpm run build passes both schema contracts, OpenAPI generation consistency, committed embedded web assets, native Go build, and reproducible plugin artifacts.
+- mise run check:push passes full Go race testing (pipeline 246.2s), schema/API/asset checks, native build, and all 19 browser E2E tests (38.5s).
+- Focused plugin executable tests: 12 pass, including collector descendants surviving SIGTERM.
+- Darwin amd64/arm64 serverstore cross-builds pass. Atomic publication tests preserve existing targets and SIGKILL a post-publication child; the resulting server database has one link and restarts.
+
+Failure evidence: F01–F14 use real SQLite/HTTP and independently authored oracles. The native fixture has exactly 12 facts and token components [800,148,52,96,6], totaling 1,102. It survives 100 forced syncs and collector reconstruction. Twelve capture-to-acknowledgement barriers kill real subprocesses and then reopen/resume both roles. Boundary tests accept 1 MiB/256 entries/256-byte labels and reject +1. Unsafe counters, aggregate overflow, private fields, reference mismatch, duplicate/conflicting batches, independent owners/destinations, lost receipts, source absence, and SQLite busy/failure are explicit tests.
+
+Native runtime verification from packages/cli:
+```sh
+go build -o bin/tokeninsights-native ./cmd/tokeninsights
+```
+The resulting binary runs with PATH=/nonexistent. A short isolated temporary XDG runtime directory avoids the documented Unix socket path limit. A production CLI smoke workflow verifies empty startup; eight fixture facts/896 tokens; collector database deletion and reconstruction with unchanged server totals; server-offline capture; manual retry adding one independently specified 10-token fact; repeated sync preserving nine facts/906 tokens. A legacy sentinel file remains byte-identical and the server contains no raw tables. The fixture service is stopped and temporary storage removed afterward.
+
+Browser inspection used an isolated authenticated fixture and agent-browser. Desktop/mobile Reload controls and server timezone were checked; mobile document width equaled its 390px viewport. Native session labels, repo directory disclosure/focus, query recovery, pagination, filters, themes, and server identity are retained in E2E tests. The temporary browser/service was closed.
+
+Normal pre-push verification stays enabled. Final publication reruns mandatory checks on the committed branch. No tests are skipped or weakened and no hook bypass is used for this implementation.
+
+Remaining scope: remote provisioning/multi-tenancy; real harness installation/trust/event-flush smoke tests; future receipt/journal retention and new adapter revision policies. No physical media corruption or power-loss simulation is claimed. Unnamed system timezone fallback is an explicit fixed offset; historical DST requires an identifiable IANA reporting zone.

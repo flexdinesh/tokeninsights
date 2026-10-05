@@ -1,6 +1,7 @@
 # Approve collector/server storage and canonical publication
 
-Status: needs-info
+Status: ready-for-agent
+Implementation: Approved contract implemented; repository verification passed.
 
 ## Problem
 
@@ -11,16 +12,14 @@ Collector/server separation requires durable canonical publication and replay id
 - Specify local raw/canonical retention, publication journal, immutable batches, and per-destination delivery cursors.
 - Specify stable public entity IDs independently of local row IDs and publisher streams.
 - Specify server canonical records, batch replay identity, references, and compatible/incompatible schema handling.
-- Show transaction boundaries and schema-preserving migration behavior.
+- Show transaction boundaries and fresh role-checked database transition; preserve legacy storage.
 - Explain changes and obtain explicit approval before modifying schema files or structures.
 - A committed ingestion receipt means queryable canonical data.
 
 ## Unresolved questions
 
-- Exact tables/columns and wire fields?
-- Changed-payload conflict response?
-- Schema compatibility and migration scope?
+None blocking. Contract approved; user selected fresh databases and retained-source reconstruction.
 
 ## Comments
 
-No schema or OpenAPI changes are authorized by this issue alone. Candidate protocol traces are design fixtures, not a generated wire contract.
+Explicit user approval resolved the contract gate. Collector journal/batches/cursors, canonical-only server schema, typed publication codec and REST contract are implemented. Candidate protocol traces remain design fixtures; schemas and OpenAPI own the actual contract. Unsupported changed payloads reject atomically; Claude revisions use native source timestamps. Legacy database is untouched, with no import or alias bridge.
