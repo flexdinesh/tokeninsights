@@ -1,28 +1,28 @@
 /* Graphite & Lime: compact browser measurement workspace. */
 :root {
-  --background: #f5f6f1;
-  --foreground: #272d24;
-  --card: #fdfefb;
+  --background: #ffffff;
+  --foreground: #242824;
+  --card: #ffffff;
   --card-foreground: var(--foreground);
-  --popover: #fdfefb;
+  --popover: #ffffff;
   --popover-foreground: var(--foreground);
-  --primary: #c5e85d;
-  --primary-foreground: #25300f;
-  --secondary: #ecefe6;
-  --secondary-foreground: #46513e;
-  --muted: #ecefe6;
-  --muted-foreground: #5d6657;
-  --accent: #e7eecf;
-  --accent-foreground: #507000;
+  --primary: #b8f500;
+  --primary-foreground: #243000;
+  --secondary: #f5f6f4;
+  --secondary-foreground: #626862;
+  --muted: #f5f6f4;
+  --muted-foreground: #626862;
+  --accent: #efffcc;
+  --accent-foreground: #426300;
   --destructive: oklch(0.56 0.22 27);
   --destructive-foreground: oklch(0.985 0 0);
-  --border: #dce1d5;
-  --input: #828f75;
-  --ring: #507000;
+  --border: #e1e4e0;
+  --input: #858c82;
+  --ring: #426300;
   --success: oklch(0.49 0.14 155);
   --warning: oklch(0.55 0.14 75);
   --error-surface: oklch(0.96 0.025 25);
-  --chart-1: #507000;
+  --chart-1: #577b00;
   --chart-2: #748068;
   --chart-3: oklch(0.67 0.16 65);
   --chart-4: oklch(0.58 0.16 165);
@@ -114,7 +114,7 @@
   --color-chart-secondary: var(--chart-2);
   --color-chart-tertiary: var(--chart-3);
   color-scheme: light;
-  --rail-surface: #ecefe6;
+  --rail-surface: #f5f6f4;
 }
 
 :root[data-theme='dark'] {
