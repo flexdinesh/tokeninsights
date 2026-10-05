@@ -1,0 +1,93 @@
+{
+  "case_id": "F09",
+  "status": "planned-production-test",
+  "guarantees": [
+    "G09",
+    "G11"
+  ],
+  "initial_server": {
+    "owner_A": {
+      "sessions": [
+        "session-A"
+      ],
+      "facts": [
+        "fact_A"
+      ],
+      "countable_fact_count": 1,
+      "total_tokens": 100
+    }
+  },
+  "variants": [
+    {
+      "name": "unsupported_protocol",
+      "candidate_version_relation": "incompatible_newer",
+      "batch": {
+        "batch_label": "batch-unsupported",
+        "collector_stream": "stream-A",
+        "journal_sequences": [
+          2
+        ],
+        "include_sessions": [
+          "session_A"
+        ],
+        "include_facts": [
+          "fact_B"
+        ]
+      },
+      "expected": {
+        "outcome": "incompatible_version",
+        "no_receipt": true
+      },
+      "expected_server": {
+        "owner_A": {
+          "sessions": [
+            "session-A"
+          ],
+          "facts": [
+            "fact_A"
+          ],
+          "countable_fact_count": 1,
+          "total_tokens": 100
+        }
+      }
+    },
+    {
+      "name": "compatible_encoding_change",
+      "candidate_version_relation": "supported_compatible",
+      "batch": {
+        "batch_label": "batch-compatible",
+        "collector_stream": "stream-A",
+        "journal_sequences": [
+          1
+        ],
+        "include_sessions": [
+          "session_A"
+        ],
+        "include_facts": [
+          "fact_A"
+        ]
+      },
+      "expected": {
+        "outcome": "accepted",
+        "unchanged": 1
+      },
+      "expected_server": {
+        "owner_A": {
+          "sessions": [
+            "session-A"
+          ],
+          "facts": [
+            "fact_A"
+          ],
+          "countable_fact_count": 1,
+          "total_tokens": 100
+        }
+      }
+    }
+  ],
+  "migration_gate": [
+    "Identity mapping independently specified.",
+    "No duplication or silent clearing of available server facts.",
+    "No partial migration published."
+  ]
+}

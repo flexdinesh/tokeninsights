@@ -1,0 +1,104 @@
+{
+  "case_id": "F01",
+  "status": "planned-production-test",
+  "guarantees": [
+    "G01",
+    "G02",
+    "G05"
+  ],
+  "initial_server": {
+    "owner_A": {
+      "sessions": [],
+      "facts": [],
+      "countable_fact_count": 0,
+      "total_tokens": 0
+    }
+  },
+  "trace": [
+    {
+      "action": "publish",
+      "owner": "owner_A",
+      "batch": {
+        "batch_label": "batch-before-reinstall",
+        "collector_stream": "stream-old",
+        "journal_sequences": [
+          1,
+          2
+        ],
+        "include_sessions": [
+          "session_A"
+        ],
+        "include_facts": [
+          "fact_A",
+          "fact_B"
+        ]
+      },
+      "expected_server": {
+        "owner_A": {
+          "sessions": [
+            "session-A"
+          ],
+          "facts": [
+            "fact_A",
+            "fact_B"
+          ],
+          "countable_fact_count": 2,
+          "total_tokens": 200
+        }
+      }
+    },
+    {
+      "action": "delete_collector_database_and_reparse_same_sources",
+      "expected": {
+        "new_stream": "stream-rebuilt",
+        "same_fact_identity_labels": [
+          "usage-A",
+          "usage-B"
+        ],
+        "same_canonical_payloads": true
+      }
+    },
+    {
+      "action": "publish",
+      "owner": "owner_A",
+      "batch": {
+        "batch_label": "batch-after-reinstall",
+        "collector_stream": "stream-rebuilt",
+        "journal_sequences": [
+          1,
+          2
+        ],
+        "include_sessions": [
+          "session_A"
+        ],
+        "include_facts": [
+          "fact_A",
+          "fact_B"
+        ]
+      },
+      "expected": {
+        "outcome": "accepted",
+        "inserted": 0,
+        "unchanged": 2
+      },
+      "expected_server": {
+        "owner_A": {
+          "sessions": [
+            "session-A"
+          ],
+          "facts": [
+            "fact_A",
+            "fact_B"
+          ],
+          "countable_fact_count": 2,
+          "total_tokens": 200
+        }
+      }
+    }
+  ],
+  "assertions": [
+    "Different requests with equal token counters remain distinct.",
+    "Collector stream and sequence reset cannot alter fact identity.",
+    "Repeat rebuild 100 times at different wall-clock times without changing server facts or totals."
+  ]
+}

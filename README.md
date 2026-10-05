@@ -107,3 +107,5 @@ The web server exposes usage metadata to clients that can reach it. Its default 
 
 - [CLI reference](packages/cli/README.md)
 - [Development guide](docs/development.md)
+- [Collector/server architecture proposal](docs/collector-server-architecture.md) — proposed boundaries; current runtime unchanged.
+- [Collector/ingestion failure tests](docs/collector-ingestion-tests.md) — guarantees, synthetic fixtures, executable coverage, and future acceptance gates.

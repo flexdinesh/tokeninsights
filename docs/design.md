@@ -1,5 +1,7 @@
 # tokeninsights Design
 
+This document describes the current implementation. The [collector/server architecture proposal](collector-server-architecture.md) describes the proposed canonical-only ingestion boundary; its [failure-test matrix](collector-ingestion-tests.md) separates executable collector coverage from planned server acceptance tests. No collector/server schema or runtime migration has been implemented.
+
 ## North Star
 
 Track local token usage across supported coding harnesses over time, without relying on vendor dashboards.
@@ -625,6 +627,8 @@ go test ./...
 
 The shared `sync-first-basic` fixture lives under `packages/cli/testdata/conformance/`; pipeline-only conformance fixtures remain under `packages/cli/internal/pipeline/testdata/conformance/`.
 Fixture sources may include harness-native durable stores, such as synthetic OpenCode SQLite setup SQL, and expected raw, observation, canonical, and diagnostic outputs are JSON so future non-Go writers can reuse the shared contract.
+
+The `collector-rebuild` fixture exercises real adapters against synthetic harness-native sources with explicit expected usage, repeated collection, and reconstruction from fresh databases. `collector-ingestion-protocol` contains candidate canonical publication/failure traces for the proposed server; these traces are acceptance specifications, not proof that server ingestion exists. See the [failure-test matrix](collector-ingestion-tests.md) for coverage and reproduction commands. Expected usage must be derived independently from source semantics, never regenerated from the implementation to make a failing test pass.
 
 `sync-first-basic/source/` is also the shared development source fixture. It contains compact representative OpenCode, Pi, Codex, and Claude Code data, roughly two sessions and two canonical facts per harness. Source structures reflect durable harness formats, but every retained value is synthetic. Fixtures must exclude conversation content, tool arguments/output, request headers, secrets, real user or repository paths, signatures, and other identifying data. Raw local harness databases and transcripts must never be copied into the repository.
 

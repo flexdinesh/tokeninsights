@@ -1,0 +1,3 @@
+{"type":"session","id":"rebuild-pi-weak"}
+{"type":"message","message":{"role":"assistant","timestamp":1767225602000,"usage":{"input":10,"output":2,"totalTokens":12}}}
+{"type":"message","message":{"role":"assistant","timestamp":1767225602000,"usage":{"input":20,"output":3,"totalTokens":23}}}

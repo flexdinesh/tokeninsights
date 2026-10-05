@@ -1,0 +1,181 @@
+{
+  "case_id": "F08",
+  "status": "planned-production-test",
+  "guarantees": [
+    "G06",
+    "G11"
+  ],
+  "initial_server": {
+    "owner_A": {
+      "sessions": [],
+      "facts": [],
+      "countable_fact_count": 0,
+      "total_tokens": 0
+    }
+  },
+  "variants": [
+    {
+      "name": "missing_session",
+      "batch": {
+        "batch_label": "batch-orphan",
+        "collector_stream": "stream-A",
+        "journal_sequences": [
+          1,
+          2
+        ],
+        "include_sessions": [
+          "session_A"
+        ],
+        "include_facts": [
+          "fact_B",
+          "invalid:dangling_session"
+        ]
+      },
+      "expected": {
+        "outcome": "invalid_reference",
+        "no_receipt": true
+      },
+      "expected_server": {
+        "owner_A": {
+          "sessions": [],
+          "facts": [],
+          "countable_fact_count": 0,
+          "total_tokens": 0
+        }
+      }
+    },
+    {
+      "name": "cross_owner_session",
+      "server_before": {
+        "owner_A": {
+          "sessions": [
+            "session-A"
+          ],
+          "facts": [
+            "fact_A"
+          ],
+          "countable_fact_count": 1,
+          "total_tokens": 100
+        },
+        "owner_B": {
+          "sessions": [],
+          "facts": [],
+          "countable_fact_count": 0,
+          "total_tokens": 0
+        }
+      },
+      "trusted_owner": "owner_B",
+      "include_sessions": [],
+      "include_facts": [
+        "fact_B"
+      ],
+      "expected": {
+        "outcome": "invalid_reference"
+      },
+      "expected_server": {
+        "owner_A": {
+          "sessions": [
+            "session-A"
+          ],
+          "facts": [
+            "fact_A"
+          ],
+          "countable_fact_count": 1,
+          "total_tokens": 100
+        },
+        "owner_B": {
+          "sessions": [],
+          "facts": [],
+          "countable_fact_count": 0,
+          "total_tokens": 0
+        }
+      }
+    },
+    {
+      "name": "fact_before_session_in_envelope",
+      "batch": {
+        "batch_label": "batch-order",
+        "collector_stream": "stream-A",
+        "journal_sequences": [
+          1,
+          2
+        ],
+        "include_sessions": [
+          "session_A"
+        ],
+        "include_facts": [
+          "fact_A",
+          "fact_B"
+        ]
+      },
+      "entity_array_order": [
+        "fact_A",
+        "fact_B",
+        "session_A"
+      ],
+      "expected": {
+        "outcome": "accepted"
+      },
+      "expected_server": {
+        "owner_A": {
+          "sessions": [
+            "session-A"
+          ],
+          "facts": [
+            "fact_A",
+            "fact_B"
+          ],
+          "countable_fact_count": 2,
+          "total_tokens": 200
+        }
+      }
+    },
+    {
+      "name": "sql_failure_after_first_insert",
+      "batch": {
+        "batch_label": "batch-rollback",
+        "collector_stream": "stream-A",
+        "journal_sequences": [
+          1,
+          2
+        ],
+        "include_sessions": [
+          "session_A"
+        ],
+        "include_facts": [
+          "fact_A",
+          "fact_B"
+        ]
+      },
+      "fault": "fail_second_entity_write",
+      "expected": {
+        "outcome": "failed",
+        "no_receipt": true
+      },
+      "expected_server": {
+        "owner_A": {
+          "sessions": [],
+          "facts": [],
+          "countable_fact_count": 0,
+          "total_tokens": 0
+        }
+      },
+      "resume": {
+        "action": "replay_same_batch_without_fault",
+        "expected_server": {
+          "owner_A": {
+            "sessions": [
+              "session-A"
+            ],
+            "facts": [
+              "fact_A",
+              "fact_B"
+            ],
+            "countable_fact_count": 2,
+            "total_tokens": 200
+          }
+        }
+      }
+    }
+  ]
+}

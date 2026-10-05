@@ -1,0 +1,46 @@
+{
+  "case_id": "F12",
+  "status": "planned-production-test",
+  "guarantees": [
+    "G08",
+    "G11"
+  ],
+  "initial_server": {
+    "owner_A": {
+      "sessions": [],
+      "facts": [],
+      "countable_fact_count": 0,
+      "total_tokens": 0
+    }
+  },
+  "source_variant": "invalid:private_fields",
+  "trace": [
+    {
+      "action": "build_publication_via_collector",
+      "expected": {
+        "forbidden_fields_absent": true
+      }
+    },
+    {
+      "action": "bypass_collector_send_forbidden_fields",
+      "expected": {
+        "outcome": "forbidden_field",
+        "no_receipt": true,
+        "no_private_value_in_response": true
+      },
+      "expected_server": {
+        "owner_A": {
+          "sessions": [],
+          "facts": [],
+          "countable_fact_count": 0,
+          "total_tokens": 0
+        }
+      }
+    }
+  ],
+  "inspect": [
+    "Collector outbox/batch contains canonical allowlist only.",
+    "Server database, durable receipts, logs, diagnostic errors, and response do not contain SYNTHETIC_PRIVATE_MARKER/SYNTHETIC_PATH_MARKER/SYNTHETIC_SECRET_MARKER.",
+    "No full request body stored or logged."
+  ]
+}

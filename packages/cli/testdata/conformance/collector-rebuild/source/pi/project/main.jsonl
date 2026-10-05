@@ -1,0 +1,4 @@
+{"type":"session","version":1,"id":"rebuild-pi-main"}
+{"type":"message","id":"rebuild-pi-a","message":{"role":"assistant","provider":"fixture-provider","model":"fixture-model","usage":{"input":90,"output":20,"reasoning":5,"cacheRead":10,"cacheWrite":0,"totalTokens":120},"timestamp":1767225602000}}
+{"type":"message","id":"rebuild-pi-b","message":{"role":"assistant","provider":"fixture-provider","model":"fixture-model","usage":{"input":90,"output":20,"reasoning":5,"cacheRead":10,"cacheWrite":0,"totalTokens":120},"timestamp":1767225602000}}
+{"type":"message","id":"rebuild-pi-a","message":{"role":"assistant","provider":"fixture-provider","model":"fixture-model","usage":{"input":90,"output":20,"reasoning":5,"cacheRead":10,"cacheWrite":0,"totalTokens":120},"timestamp":1767225602000}}

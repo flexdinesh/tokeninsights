@@ -1,0 +1,9 @@
+{
+  "facts": 12,
+  "input_tokens": 800,
+  "output_tokens": 148,
+  "reasoning_tokens": 52,
+  "cache_read_tokens": 96,
+  "cache_write_tokens": 6,
+  "total_tokens": 1102
+}
