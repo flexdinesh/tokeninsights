@@ -222,6 +222,26 @@ async function waitForCall(capture: string, minimum = 1): Promise<void> {
   await probe()
 }
 
+async function waitForTermination(pid: number): Promise<void> {
+  const deadline = Date.now() + 3_000
+  const probe = async (): Promise<void> => {
+    try {
+      if (process.platform === 'linux') {
+        // Reparented children may remain as zombies until init reaps them.
+        const status = await readFile(`/proc/${pid}/stat`, 'utf8')
+        if (status.includes(') Z ')) return
+      } else process.kill(pid, 0)
+    } catch (error) {
+      if (record(error) && (error.code === 'ENOENT' || error.code === 'ESRCH')) return
+      throw error
+    }
+    if (Date.now() >= deadline) assert.fail('descendant remains running')
+    await pause(10)
+    await probe()
+  }
+  await probe()
+}
+
 void test('finite runner coalesces completions and forwards only sync with empty stdin', async () => {
   await withCollector('ok', async (capture) => {
     const runner = new CollectorRunner()
@@ -276,11 +296,17 @@ void test(
       assert.equal(actual.length, 2)
       assert.ok(record(actual[1]) && typeof actual[1].descendantPid === 'number')
       const pid = actual[1].descendantPid
-      // Linux can briefly retain a killed, reparented process as a zombie.
-      if (process.platform === 'linux') {
-        const status = await readFile(`/proc/${pid}/stat`, 'utf8').catch(() => '')
-        assert.ok(status === '' || status.includes(') Z '), 'descendant remains running')
-      } else assert.throws(() => process.kill(pid, 0))
+      try {
+        // Signal delivery and the observable process state change asynchronously.
+        await waitForTermination(pid)
+      } catch (error) {
+        try {
+          process.kill(pid, 'SIGKILL')
+        } catch {
+          // Keep the assertion failure if the process exited during cleanup.
+        }
+        throw error
+      }
     })
   },
 )

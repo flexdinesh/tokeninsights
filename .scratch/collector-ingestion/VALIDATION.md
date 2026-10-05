@@ -111,3 +111,5 @@ Browser inspection used an isolated authenticated fixture and agent-browser. Des
 Normal pre-push verification stays enabled. Final publication reruns mandatory checks on the committed branch. No tests are skipped or weakened and no hook bypass is used for this implementation.
 
 Remaining scope: remote provisioning/multi-tenancy; real harness installation/trust/event-flush smoke tests; future receipt/journal retention and new adapter revision policies. No physical media corruption or power-loss simulation is claimed. Unnamed system timezone fallback is an explicit fixed offset; historical DST requires an identifiable IANA reporting zone.
+
+Final pre-push initially caught an asynchronous plugin descendant assertion: the test observed process state immediately after SIGKILL. The assertion now waits at most three seconds for disappearance or a non-running zombie, and cleans up on failure. Removing the production group SIGKILL still makes the test fail. All 27 build-tools tests then passed five consecutive runs with Git-local environment variables cleared; formatting, lint and typecheck pass. The normal push reruns the complete mandatory gate.
