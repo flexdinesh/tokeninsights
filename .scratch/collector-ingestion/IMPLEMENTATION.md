@@ -1,8 +1,20 @@
 # Collector/server implementation gates
 
-Status: Foundation complete; two regression tests red; runtime and schema migration pending.
+Status: Implementation started in PR #53. CFI001–009 and the full pipeline suite pass; storage/ingestion/migration approval pending.
 
 See [PRD](PRD.md), [architecture proposal](../../docs/collector-server-architecture.md), [failure matrix](../../docs/collector-ingestion-tests.md), and [identity audit](IDENTITY-AUDIT.md).
+
+[Execution plan](EXECUTION-PLAN.md) specifies parallel tasks T01–T13 and dependencies. [Storage contract proposal](STORAGE-CONTRACT-PROPOSAL.md) is the approval gate. [Failure-test plan](FAILURE-TEST-PLAN.md) specifies production SQLite/HTTP tests and process-kill seams; [plugin plan](PLUGIN-PLAN.md) tracks thin adapter readiness. Planned tasks are not completed ingestion coverage.
+
+| Work | State |
+| --- | --- |
+| T01 parser regressions | Code and real pipeline tests pass; compatibility migration still required. |
+| T02 storage/wire review | Concrete proposal prepared; explicit approval requested. |
+| T03–T07, T11–T12 stores/ingestion/composition/migration | Pending approved contracts; named test seams and independent oracles specified. |
+| T08 query client | Existing-API client implemented and tested against real SQLite/HTTP pagination; TUI wiring pending. |
+| T09 browser | Transition to query Reload planned; implementation pending. |
+| T10 plugins | Codex/Claude isolated wrappers tested; Pi/OpenCode routing scaffolds tested; runners/packages/host verification pending. |
+| T13 docs/tooling | Plans and coverage updated incrementally; final contract/asset/runtime changes pending. |
 
 ## Gate 1: Prove source identities
 

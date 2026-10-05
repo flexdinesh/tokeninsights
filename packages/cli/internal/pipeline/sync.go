@@ -678,6 +678,10 @@ func rawFactKey(fact RawTokenFact) string {
 		fmt.Sprint(intValueOrZero(fact.TotalTokens)),
 		fact.Parser,
 	}
+	if fact.Harness == HarnessClaudeCode {
+		parts = append(parts, claudeCodeRequestID(fact.MetadataJSON))
+		return nativeTupleHash(parts...)
+	}
 	return stableHash(strings.Join(parts, "|"))
 }
 

@@ -1,6 +1,6 @@
 # Collector ingestion: traceable architecture and tests
 
-Status: Proposed. Test/fixture groundwork only; collector/server runtime and schema changes await contract review and explicit schema approval.
+Status: Implementation started in PR #53. Parser fixes and parallel implementation planning active; storage and cross-language contracts await explicit approval.
 
 ## Problem
 
@@ -10,9 +10,9 @@ Today's local service owns both source processing and queries. A future remote s
 
 The [architecture proposal](../../docs/collector-server-architecture.md) owns guarantees G01–G11. The [failure contract](../../docs/collector-ingestion-tests.md) owns F01–F14 and coverage status. Host SQLite retains metadata-only raw facts, canonical facts, parsing continuity, and a durable canonical change journal. Manual `sync` collects, normalizes, and publishes. Shared local/remote server core accepts canonical entities only; successful transactional ingestion is immediately queryable. Stable source-derived entity identity survives collector database deletion; batch identity survives delivery retries.
 
-Local remains default. Plugins, remote deployment/setup, autonomous retries, retractions, and producer backflow are outside the initial scope. Views show available committed facts without promising complete historical collection.
+Local remains default. This PR now owns the collector/server implementation, both parser fixes, local composition, remote composition boundaries, and thin supported harness adapters. Remote deployment/setup, autonomous retries, retractions, and producer backflow remain later work. Views show available committed facts without promising complete historical collection.
 
-## Deliverables for this groundwork
+## Deliverables
 
 - Proposed responsibility/process changes and explicit persistence boundaries.
 - Independent adapter identity audit against actual source formats and current code.
@@ -21,8 +21,13 @@ Local remains default. Plugins, remote deployment/setup, autonomous retries, ret
 - Canonical publication/failure examples clearly labeled illustrative, not an approved production wire schema.
 - Failure matrix distinguishing runnable current tests, known gaps, and future ingestion tests.
 - Reviewable unresolved contract questions and implementation gates.
+- Separate collector and canonical-only server SQLite stores, approved compatibility/migration contracts, durable publication and receipts.
+- Manual collect/normalize/publish workflow with per-destination retry progress.
+- Shared local/remote ingestion and query core; no server access to Durable Sources.
+- REST-backed viewers, CLI transition, and supported thin hook adapters.
+- Real SQLite/HTTP crash, replay, concurrency, and rebuild tests traced to Gxx/Fxx.
 
-No source transcript copies, real user paths, table changes, generated transport-contract changes, or claims that the proposed endpoint already exists.
+No source transcript copies or real user paths. Table and generated transport-contract changes remain gated by explicit approval. Planned endpoints and tests must stay labeled pending until implemented and verified.
 
 ## Acceptance evidence
 
@@ -46,7 +51,7 @@ Expected outputs are reviewed independently of parser output. Never regenerate e
 3. Implement collector publication storage with atomic normalization/journal writes and crash tests.
 4. Implement server canonical validation/dedupe and atomic receipts with real database integration tests.
 5. Compose local default workflow and API viewers; migrate existing compatible data explicitly.
-6. Add remote foreground composition and, later, thin harness plugins using the same tested path.
+6. Add remote foreground composition boundaries and thin supported harness plugins using the same tested path; defer remote provisioning.
 
 For code changes, run root format and lint, focused tests, full tests, then build. Retain direct Go build/runtime checks when composition or assets change. Record actual commands/results separately from planned coverage.
 

@@ -72,8 +72,8 @@ The new [collector rebuild fixture](../packages/cli/testdata/conformance/collect
 | CFI-004 Retained raw-only rebuild | `TestCollectorRebuildNormalizeRetainedRawWithoutSources` | Pass: normalization succeeds without Durable Sources. |
 | CFI-005 Moved artifacts | `TestCollectorRebuildMovingArtifactsPreservesFacts` | Pass: retained native identities survive relocation. |
 | CFI-006 Copied Pi/Claude artifacts | `TestCollectorRebuildCopiedArtifactsDoNotMultiplyUsage` | Pass: copies do not multiply facts. |
-| CFI-007 OpenCode equal timestamps | `TestCollectorRebuildOpenCodeEqualTimestampDistinctNativeRequests` | **Fail: 2 facts instead of 3.** Distinct native requests are suppressed. |
-| CFI-008 Claude streaming completion across syncs | `TestCollectorRebuildClaudeAppendMatchesFreshFinalParse` | **Fail: 2 facts instead of 1.** Partial and completed usage both contribute. |
+| CFI-007 OpenCode equal timestamps | `TestCollectorRebuildOpenCodeEqualTimestampDistinctNativeRequests` | Pass: 3 facts / 276 tokens. Copy suppression requires matching native session/message identity. |
+| CFI-008 Claude streaming completion across syncs | `TestCollectorRebuildClaudeAppendMatchesFreshFinalParse` | Pass: one completed fact / 120 tokens. Native message/request identity remains stable across source revisions. |
 | CFI-009 Pi missing message IDs | `TestCollectorRebuildPiMissingIDsRetainRawEvidence` | Pass for raw retention and missing-ID diagnostics only. Canonical counting/fallback policy pending. |
 
 CFI-007/008 failures are implementation blockers, not golden-output mistakes. Keep them failing until correct behavior is implemented; do not weaken or skip assertions. CFI-008 concerns changed source content across syncs, not nondeterminism when identical bytes are reparsed into empty databases. Independent review rejected an initial CFI-009 assertion requiring two canonical facts: different counters without native IDs cannot prove independent requests. That fixture remains; canonical ambiguity handling is pending in issue 01. CFI-003 proves the unchanged-source reconstruction case for this dataset, not every possible harness artifact.
@@ -111,6 +111,8 @@ go test ./internal/server -run TestDashboardCanonicalParityAndPagination
 Run root `pnpm run test` and `pnpm run build` after focused checks. Planned ingestion traces currently have no production reproduction command; once implemented, this document must link the exact Go test names and commands, including race and subprocess runs.
 
 ## Implementation gates
+
+Adjacent native-identity tests in `collector_identity_test.go` verify request/session scoping, delimiter-safe keys, whole-snapshot replacement with decreasing components, reversed records, stale copied artifacts, retained-raw replay, and equal-time conflict rollback. These are real collector tests, not server ingestion evidence. Fact equality across partial-to-complete collection does not imply equal session/message occurrence envelopes: those envelopes can retain earlier source history.
 
 1. Finalize reproducible identity rules using harness fixtures. Exclude collection time, local row IDs, transport/installation IDs, source paths, and token values from logical identity. Prove fresh-database reparse equality at different wall-clock times.
 2. Approve schema/protocol changes explicitly. Add real storage and HTTP tests driven by these traces. Preserve current local conformance coverage during extraction into the collector.

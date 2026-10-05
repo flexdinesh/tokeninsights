@@ -1570,9 +1570,11 @@ func TestOpenCodeSQLiteSuppressesDuplicateChannelRows(t *testing.T) {
 		TimeUpdated: 1700000000450,
 		Data:        messageData,
 	})
+	// Native session/message identity proves a channel copy. Matching counters
+	// and timestamps alone cannot establish that two requests are duplicates.
 	createOpenCodeSQLiteMessages(t, filepath.Join(sourceDir, "opencode", "opencode-stable.db"), openCodeSQLiteMessage{
-		ID:          "msg_a_copy",
-		SessionID:   "ses_fork",
+		ID:          "msg_a",
+		SessionID:   "ses_a",
 		TimeCreated: 1700000000000,
 		TimeUpdated: 1700000000450,
 		Data:        messageData,

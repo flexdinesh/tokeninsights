@@ -1,14 +1,16 @@
-# Collector/ingestion foundation validation
+# Collector/ingestion validation
 
 Date: 5 October 2026. Base: `e5ec2c7`. Branch: `codex/collector-ingestion-contract`.
 
 Worktree: `/home/dee/workspace/tokeninsights/wt-codex-collector-ingestion-contract`.
 
+Current status: parser regressions fixed; root format/lint/full tests/build pass. Storage/API approval, server ingestion, migration, and viewer wiring remain pending. Query-client evidence is recorded after its completion below. Foundation red results are retained as historical evidence.
+
 ## Scope
 
-Four independent agents produced architecture/PRD, harness fixtures/tests, failure traces, and identity audit. Root reviewed their evidence and integrated documentation/implementation issues. Production Go, SQLite schema, and generated API contracts remain unchanged. This is a test-driven foundation, not implemented collector/server ingestion.
+The foundation used four independent agents for architecture/PRD, harness fixtures/tests, failure traces, and identity audit. At that stage production Go, SQLite schema, and generated API contracts were unchanged. Subsequent parser/plugin/client implementation is recorded below. Collector/server ingestion remains unimplemented.
 
-## Executable evidence
+## Historical foundation evidence
 
 Root ran `pnpm run format` and `pnpm run lint`: pass.
 
@@ -25,11 +27,11 @@ Result: seven pass, two fail; approximately 1.44 seconds. Passing cases verify 1
 | CFI-007 OpenCode equal-time native requests | 2 canonical facts | 3 canonical facts / 276 tokens | Equal-value copy heuristic suppresses an independent native request |
 | CFI-008 Claude partial then completed sync | 2 canonical facts | 1 completed fact / 120 tokens | Timestamp-dependent canonical key retains both partial and completed contribution |
 
-These tests remain unskipped and red, as permitted by AGENTS.md. Fixing accounting/identity rules is the next implementation issue; expected outputs were not changed to match these defects.
+At foundation publication these tests remained unskipped and red, as permitted by AGENTS.md. Their accounting/identity fixes now pass; expected outputs were not changed to match these defects.
 
 Independent review rejected an initial CFI-009 requirement for two canonical Pi facts without native message IDs. Different counters alone cannot establish independent requests versus revisions. The adversarial source remains; the executable test verifies raw preservation and missing-ID diagnostics. Canonical fallback policy remains unresolved and is not claimed tested.
 
-## Full verification
+## Historical foundation full verification
 
 `pnpm run test`: fails on CFI-007/008 only. Build-tools typecheck and all 12 build-tools tests pass; web typecheck and all 42 browser unit tests pass; all other Go packages pass. The pipeline suite reports exactly the two documented regression failures. This branch is not a green-suite implementation signoff.
 
@@ -69,3 +71,15 @@ Root validated all 17 new JSON files, 14 trace IDs/statuses, 12 golden harness f
 `mise run check:push` passes formatting, lint, schema/API checks, build-tools tests, and web unit tests, then stops on CFI-007/008. Ran the remaining checks separately: `pnpm run check-web`, native CLI build, and all 19 browser E2E tests pass. `pnpm run test:race` reports the same two regression failures; no data races were reported.
 
 Publishing this intentionally red foundation is explicitly requested after the failures were reported. AGENTS.md permits failing tests that expose genuine bugs. The push uses invocation-scoped `HUSKY=0` to bypass the known failing pre-push hook; hooks and tests remain unchanged. No failed assertion is removed or skipped. Trimmed trailing blank lines in candidate trace files before staging; JSON payloads unchanged.
+
+## Implementation kickoff: parser fixes and parallel preparation
+
+CFI001–009 now pass, including CFI007's three OpenCode facts / 276 tokens and CFI008's one completed Claude fact / 120 tokens. The full pipeline suite passes. New adjacent identity tests cover native request/session scoping, delimiter-safe hashing, decreasing snapshot components, reversed records, stale copied artifacts, retained-raw replay, and equal-time conflicts preserving saved facts.
+
+Root `pnpm run format`, `pnpm run lint`, and `pnpm run test` pass after parser/plugin groundwork: 16 build-tool tests, 42 web tests, and all Go packages. This run preceded the new query-client implementation; verify it separately after that agent finishes. Four plugin tests prove isolated shell invocation and event routing; native host installation/teardown/flush remain pending. No schema/constants or generated API changes. No actual server ingestion coverage is claimed.
+
+Execution, storage, failure, and plugin plans now specify ownership/dependencies and real persistence gates. Explicit storage/API approval was requested; migration and runtime contract edits remain pending. Parser fixes must not be released against legacy identities without the approved compatibility path.
+
+The completed `internal/queryclient` suite exercises the existing real REST handler with 225 synthetic sessions over multiple pages, verifies all token/context components and summary/facets, and tests revision/instance/epoch churn, cancellation, inconsistent pagination, duplicate row identities, unsafe URLs, redirect rejection, and bounded/sanitized responses. It is reusable client code; TUI wiring is still pending.
+
+Final kickoff `mise run check:push` passes: format/lint, unchanged schema/API checks, all unit tests including queryclient, full Go race suite (pipeline 101.9s; no races), embedded asset comparison, native build, and all 19 browser E2E tests (40.5s). Plugin artifacts are now included in root format/lint targets. Direct Go build and `env PATH=/nonexistent ./packages/cli/bin/tokeninsights-native --help` pass after these changes. Schema/constants/generated API/embedded assets remain unchanged. No hook bypass is needed for this green kickoff.

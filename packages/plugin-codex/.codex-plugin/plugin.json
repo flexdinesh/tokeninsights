@@ -1,0 +1,6 @@
+{
+  "name": "tokeninsights",
+  "version": "0.0.0",
+  "description": "Collect and sync local token usage after a completed turn.",
+  "hooks": "./hooks/hooks.json"
+}

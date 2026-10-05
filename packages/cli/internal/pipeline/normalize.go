@@ -34,6 +34,7 @@ type rawTokenRow struct {
 	TotalTokens      sql.NullInt64
 	LastRunID        sql.NullInt64
 	LocationID       sql.NullInt64
+	MetadataJSON     sql.NullString
 }
 
 type canonicalTokenValues struct {
@@ -290,7 +291,7 @@ func loadPendingTokenRows(ctx context.Context, database *sql.DB, harnesses []Har
 			r.id, r.raw_fact_key, r.harness, r.source_id, r.observed_at_ms, r.occurred_at_ms,
 			r.session_id, r.message_id, r.provider, r.model, r.usage_scope, r.quality,
 			r.input_tokens, r.output_tokens, r.reasoning_tokens, r.cache_read_tokens, r.cache_write_tokens, r.total_tokens,
-			r.location_id,
+			r.location_id, r.metadata_json,
 			(
 				SELECT ro.ingest_run_id
 				FROM raw_observations ro
@@ -333,6 +334,7 @@ func loadPendingTokenRows(ctx context.Context, database *sql.DB, harnesses []Har
 			&row.CacheWriteTokens,
 			&row.TotalTokens,
 			&row.LocationID,
+			&row.MetadataJSON,
 			&row.LastRunID,
 		); err != nil {
 			return nil, err
@@ -444,6 +446,12 @@ func upsertCanonicalMessage(ctx context.Context, runner sqlRunner, row rawTokenR
 
 func upsertCanonicalTokenUsage(ctx context.Context, runner sqlRunner, row rawTokenRow, sessionDBID int64, messageDBID *int64) (bool, error) {
 	values := canonicalTokenValuesFor(row, sessionDBID, messageDBID)
+	if row.Harness == HarnessClaudeCode && row.MessageID.Valid && row.MessageID.String != "" {
+		apply, err := acceptClaudeCodeCanonicalRevision(ctx, runner, values)
+		if err != nil || !apply {
+			return false, err
+		}
+	}
 	result, err := runner.ExecContext(ctx, `
 		INSERT OR IGNORE INTO canonical_token_usage (
 			semantic_key, recorded_at_ms, harness, session_id, message_id, provider, provider_source, model, usage_scope, quality,
@@ -485,6 +493,37 @@ func upsertCanonicalTokenUsage(ctx context.Context, runner sqlRunner, row rawTok
 		values.ReasoningTokens, values.CacheReadTokens, values.CacheWriteTokens, values.TotalTokens, values.RawFactID, values.IngestRunID,
 		values.LocationID, values.Key)
 	return false, err
+}
+
+// The adapter's occurrence timestamp is source revision evidence for a native
+// Claude request. Local collection order must never replace a newer snapshot.
+func acceptClaudeCodeCanonicalRevision(ctx context.Context, runner sqlRunner, next canonicalTokenValues) (bool, error) {
+	var previous canonicalTokenValues
+	err := runner.QueryRowContext(ctx, `
+		SELECT recorded_at_ms, provider, provider_source, model, quality, is_countable,
+			input_tokens, output_tokens, reasoning_tokens, cache_read_tokens, cache_write_tokens, total_tokens
+		FROM canonical_token_usage WHERE semantic_key = ?
+	`, next.Key).Scan(&previous.RecordedAtMs, &previous.Provider, &previous.ProviderSource, &previous.Model,
+		&previous.Quality, &previous.Countable, &previous.InputTokens, &previous.OutputTokens,
+		&previous.ReasoningTokens, &previous.CacheReadTokens, &previous.CacheWriteTokens, &previous.TotalTokens)
+	if err == sql.ErrNoRows {
+		return true, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	if previous.RecordedAtMs > next.RecordedAtMs {
+		return false, nil
+	}
+	if previous.RecordedAtMs == next.RecordedAtMs &&
+		(previous.Provider != next.Provider || previous.ProviderSource != next.ProviderSource ||
+			previous.Model != next.Model || previous.Quality != next.Quality || previous.Countable != next.Countable ||
+			previous.InputTokens != next.InputTokens || previous.OutputTokens != next.OutputTokens ||
+			previous.ReasoningTokens != next.ReasoningTokens || previous.CacheReadTokens != next.CacheReadTokens ||
+			previous.CacheWriteTokens != next.CacheWriteTokens || previous.TotalTokens != next.TotalTokens) {
+		return false, fmt.Errorf("claude code native request has conflicting usage at the same source timestamp")
+	}
+	return true, nil
 }
 
 func canonicalTokenValuesFor(row rawTokenRow, sessionDBID int64, messageDBID *int64) canonicalTokenValues {
@@ -547,6 +586,9 @@ func incrementIngestRunCounts(ctx context.Context, runner sqlRunner, runID sql.N
 }
 
 func canonicalTokenKey(row rawTokenRow) string {
+	if row.Harness == HarnessClaudeCode && row.MessageID.Valid && row.MessageID.String != "" {
+		return nativeTupleHash("token", string(row.Harness), row.SessionID.String, row.MessageID.String, claudeCodeRequestID(rawMetadataPointer(row)), row.UsageScope)
+	}
 	parts := []string{
 		"token",
 		string(row.Harness),
@@ -556,6 +598,13 @@ func canonicalTokenKey(row rawTokenRow) string {
 		row.UsageScope,
 	}
 	return stableHash(strings.Join(parts, "|"))
+}
+
+func rawMetadataPointer(row rawTokenRow) *string {
+	if !row.MetadataJSON.Valid {
+		return nil
+	}
+	return &row.MetadataJSON.String
 }
 
 func canonicalTime(row rawTokenRow) int64 {

@@ -1,6 +1,6 @@
 # Prove stable harness identities
 
-Status: needs-triage
+Status: ready-for-agent
 
 ## Problem
 
@@ -10,7 +10,7 @@ Canonical publication needs reproducible identities after collector-state deleti
 
 [Identity audit](../IDENTITY-AUDIT.md); executable `collector-rebuild` fixtures; [failure matrix](../../../docs/collector-ingestion-tests.md).
 
-Confirmed red regressions: CFI-007 OpenCode suppresses distinct native requests (2 facts, expected 3); CFI-008 Claude partial/final sync duplicates one request (2 facts, expected 1). CFI-009 retains weak-ID raw evidence and diagnostics only; canonical policy remains pending. See [validation](../VALIDATION.md).
+CFI-007 and CFI-008 were genuine regressions and now pass: OpenCode requires native copy identity; Claude preserves native request identity and updates one source-timed snapshot. Adjacent tests cover reversed/stale revisions and explicit conflicts. CFI-009 retains weak-ID raw evidence and diagnostics only; publication policy and compatibility migration remain pending. See [validation](../VALIDATION.md).
 
 ## Acceptance
 

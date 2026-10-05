@@ -2,8 +2,11 @@ package pipeline
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"sort"
 	"strconv"
 	"strings"
@@ -126,7 +129,6 @@ func (a claudeCodeJSONLAdapter) Parse(ctx context.Context, source Source, option
 
 	sessionID := claudeCodeSessionIDFromFilename(source.Path)
 	var facts []RawTokenFact
-	var requestIDs []*string
 	var diagnostics []Diagnostic
 	mergedFactIndexes := map[string]int{}
 	scanner := newSourceJSONLReader(ctx, file, source, options)
@@ -149,21 +151,23 @@ func (a claudeCodeJSONLAdapter) Parse(ctx context.Context, source Source, option
 		fact, rowDiagnostics, ok := a.factFromRecord(ctx, source, options, sessionID, record)
 		diagnostics = append(diagnostics, rowDiagnostics...)
 		if ok {
-			mergeKey := claudeCodeStreamingMergeKey(record)
+			mergeKey := claudeCodeStreamingMergeKey(fact)
 			if mergeKey == "" {
 				facts = append(facts, fact)
-				requestIDs = append(requestIDs, stringField(record, "requestId", "request_id"))
 				continue
 			}
 			if index, exists := mergedFactIndexes[mergeKey]; exists {
-				if mergeClaudeCodeStreamingFact(&facts[index], fact) {
+				conflict, err := mergeClaudeCodeStreamingFact(&facts[index], fact)
+				if err != nil {
+					return nil, diagnostics, err
+				}
+				if conflict {
 					diagnostics = append(diagnostics, claudeCodeDiagnostic("location_conflict", "conflicting location evidence in Claude Code streaming copies; affected grouping is unknown", "warning"))
 				}
 				continue
 			}
 			mergedFactIndexes[mergeKey] = len(facts)
 			facts = append(facts, fact)
-			requestIDs = append(requestIDs, stringField(record, "requestId", "request_id"))
 		}
 	}
 	if err := scanner.Err(); err != nil {
@@ -174,7 +178,7 @@ func (a claudeCodeJSONLAdapter) Parse(ctx context.Context, source Source, option
 	}
 	finalFacts := make([]RawTokenFact, 0, len(facts))
 	for index := range facts {
-		factDiagnostics, ok := finalizeClaudeCodeFact(&facts[index], requestIDs[index])
+		factDiagnostics, ok := finalizeClaudeCodeFact(&facts[index])
 		diagnostics = append(diagnostics, factDiagnostics...)
 		if ok {
 			finalFacts = append(finalFacts, facts[index])
@@ -242,6 +246,7 @@ func (a claudeCodeJSONLAdapter) factFromRecord(ctx context.Context, source Sourc
 		CacheWriteTokens: tokens.cacheWrite,
 		TotalTokens:      tokens.total,
 		Location:         location,
+		MetadataJSON:     claudeCodeIdentityMetadata(record),
 	}, tokenDiagnostics, true
 }
 
@@ -284,45 +289,64 @@ func claudeCodeTokensFromUsage(usage map[string]interface{}) (claudeCodeTokenCou
 	return counts, nil, true
 }
 
-func claudeCodeStreamingMergeKey(record map[string]interface{}) string {
-	message := nested(record, "message")
-	if message == nil {
-		return ""
-	}
-	messageID := stringField(message, "id")
-	if messageID == nil {
-		return ""
-	}
+type claudeCodeIdentity struct {
+	RequestID *string `json:"request_id,omitempty"`
+}
+
+func claudeCodeIdentityMetadata(record map[string]interface{}) *string {
 	requestID := stringField(record, "requestId", "request_id")
 	if requestID == nil {
-		return *messageID
+		return nil
 	}
-	return *messageID + "|" + *requestID
+	encoded, _ := json.Marshal(claudeCodeIdentity{RequestID: requestID})
+	metadata := string(encoded)
+	return &metadata
 }
 
-func mergeClaudeCodeStreamingFact(existing *RawTokenFact, next RawTokenFact) bool {
-	existing.InputTokens = maxIntPointer(existing.InputTokens, next.InputTokens)
-	existing.OutputTokens = maxIntPointer(existing.OutputTokens, next.OutputTokens)
-	existing.ReasoningTokens = maxIntPointer(existing.ReasoningTokens, next.ReasoningTokens)
-	existing.CacheReadTokens = maxIntPointer(existing.CacheReadTokens, next.CacheReadTokens)
-	existing.CacheWriteTokens = maxIntPointer(existing.CacheWriteTokens, next.CacheWriteTokens)
-	existing.TotalTokens = maxIntPointer(existing.TotalTokens, next.TotalTokens)
-	if next.OccurredAtMs != nil && (existing.OccurredAtMs == nil || *next.OccurredAtMs > *existing.OccurredAtMs) {
-		existing.OccurredAtMs = next.OccurredAtMs
+func claudeCodeRequestID(metadata *string) string {
+	if metadata == nil {
+		return ""
 	}
-	if existing.Provider == nil {
-		existing.Provider = next.Provider
+	var identity claudeCodeIdentity
+	if json.Unmarshal([]byte(*metadata), &identity) != nil {
+		return ""
 	}
-	if existing.Model == nil {
-		existing.Model = next.Model
+	return stringValueOrEmpty(identity.RequestID)
+}
+
+func claudeCodeStreamingMergeKey(fact RawTokenFact) string {
+	if fact.MessageID == nil {
+		return ""
+	}
+	return nativeTupleHash(stringValueOrEmpty(fact.SessionID), *fact.MessageID, claudeCodeRequestID(fact.MetadataJSON))
+}
+
+// Claude records for one native request are snapshots. Source time orders them;
+// merging counters independently could synthesize usage never present in source.
+func mergeClaudeCodeStreamingFact(existing *RawTokenFact, next RawTokenFact) (bool, error) {
+	if *existing.OccurredAtMs == *next.OccurredAtMs && !claudeCodeSameUsage(*existing, next) {
+		return false, fmt.Errorf("claude code native request has conflicting usage at the same source timestamp")
 	}
 	location, conflicts, _, conflict := mergeLocations(existing.Location, next.Location, existing.locationConflicts)
+	if *next.OccurredAtMs > *existing.OccurredAtMs {
+		*existing = next
+	}
 	existing.Location = location
 	existing.locationConflicts = conflicts
-	return conflict
+	return conflict, nil
 }
 
-func finalizeClaudeCodeFact(fact *RawTokenFact, requestID *string) ([]Diagnostic, bool) {
+func claudeCodeSameUsage(left RawTokenFact, right RawTokenFact) bool {
+	return reflect.DeepEqual(left.InputTokens, right.InputTokens) &&
+		reflect.DeepEqual(left.OutputTokens, right.OutputTokens) &&
+		reflect.DeepEqual(left.ReasoningTokens, right.ReasoningTokens) &&
+		reflect.DeepEqual(left.CacheReadTokens, right.CacheReadTokens) &&
+		reflect.DeepEqual(left.CacheWriteTokens, right.CacheWriteTokens) &&
+		reflect.DeepEqual(left.TotalTokens, right.TotalTokens) &&
+		reflect.DeepEqual(left.Provider, right.Provider) && reflect.DeepEqual(left.Model, right.Model)
+}
+
+func finalizeClaudeCodeFact(fact *RawTokenFact) ([]Diagnostic, bool) {
 	var diagnostics []Diagnostic
 	if fact.ReasoningTokens != nil {
 		if fact.OutputTokens == nil || *fact.ReasoningTokens > *fact.OutputTokens {
@@ -341,29 +365,19 @@ func finalizeClaudeCodeFact(fact *RawTokenFact, requestID *string) ([]Diagnostic
 		fact.TotalTokens = nil
 		diagnostics = append(diagnostics, claudeCodeDiagnostic("claude_code_jsonl_inconsistent_total", "ignored Claude Code total_tokens that did not equal the token component sum", "warning"))
 	}
-	fact.DedupeKey = claudeCodeFactDedupeKey(*fact.SessionID, fact.MessageID, requestID, fact.OccurredAtMs, claudeCodeTokenCounts{
+	fact.DedupeKey = claudeCodeFactDedupeKey(*fact.SessionID, fact.MessageID, claudeCodeRequestID(fact.MetadataJSON), fact.OccurredAtMs, claudeCodeTokenCounts{
 		input: fact.InputTokens, output: fact.OutputTokens, reasoning: fact.ReasoningTokens,
 		cacheRead: fact.CacheReadTokens, cacheWrite: fact.CacheWriteTokens, total: fact.TotalTokens,
 	})
 	return diagnostics, true
 }
 
-func maxIntPointer(left *int64, right *int64) *int64 {
-	if left == nil {
-		return right
-	}
-	if right == nil || *left >= *right {
-		return left
-	}
-	return right
-}
-
-func claudeCodeFactDedupeKey(sessionID string, messageID *string, requestID *string, occurredAt *int64, tokens claudeCodeTokenCounts) string {
+func claudeCodeFactDedupeKey(sessionID string, messageID *string, requestID string, occurredAt *int64, tokens claudeCodeTokenCounts) string {
 	parts := []string{
 		"claude-code-token",
 		sessionID,
 		stringValueOrEmpty(messageID),
-		stringValueOrEmpty(requestID),
+		requestID,
 		int64ValueOrZero(occurredAt),
 		int64ValueOrZero(tokens.input),
 		int64ValueOrZero(tokens.output),
@@ -372,7 +386,7 @@ func claudeCodeFactDedupeKey(sessionID string, messageID *string, requestID *str
 		int64ValueOrZero(tokens.cacheWrite),
 		int64ValueOrZero(tokens.total),
 	}
-	return stableHash(strings.Join(parts, "|"))
+	return nativeTupleHash(parts...)
 }
 
 func int64ValueOrZero(value *int64) string {

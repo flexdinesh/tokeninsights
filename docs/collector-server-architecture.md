@@ -1,8 +1,10 @@
 # Collector/server architecture proposal
 
-Status: **PROPOSED; not the implemented architecture.** Reviewed direction: 5 October 2026. This task establishes traceable requirements and synthetic fixtures before runtime or schema implementation.
+Status: **IMPLEMENTATION IN PROGRESS; server boundary not yet implemented.** Reviewed direction: 5 October 2026. PR #53 owns design, fixtures, parser fixes, and the collector/server implementation. Storage and cross-language changes await explicit contract approval.
 
 [design.md](design.md) describes today's product. This proposal does not change its current behavior, SQLite contracts, or REST API. The [PRD](../.scratch/collector-ingestion/PRD.md) records implementation gates; the [failure contract](collector-ingestion-tests.md) owns failure cases and their verification status.
+
+The [storage proposal](../.scratch/collector-ingestion/STORAGE-CONTRACT-PROPOSAL.md) makes table, migration, wire, and conflict choices reviewable. The [executable failure plan](../.scratch/collector-ingestion/FAILURE-TEST-PLAN.md) specifies real SQLite/HTTP assertions and process-crash seams; it is planned coverage until those tests execute against production code.
 
 ## Responsibility change
 

@@ -107,5 +107,8 @@ The web server exposes usage metadata to clients that can reach it. Its default 
 
 - [CLI reference](packages/cli/README.md)
 - [Development guide](docs/development.md)
-- [Collector/server architecture proposal](docs/collector-server-architecture.md) — proposed boundaries; current runtime unchanged.
+- [Collector/server architecture](docs/collector-server-architecture.md) — implementation in PR #53; storage/ingestion migration pending approval.
 - [Collector/ingestion failure tests](docs/collector-ingestion-tests.md) — guarantees, synthetic fixtures, executable coverage, and future acceptance gates.
+- [Completion plugin groundwork](docs/plugins.md) — thin hooks; install/runtime readiness tracked explicitly.
+
+PR #53 fixes two collector regressions: OpenCode requests with equal times/counters remain distinct by native ID; Claude partial/completed records replace one native request snapshot. Equal-time conflicting Claude snapshots fail explicitly. Legacy identity compatibility and migration remain gated before release; the new server ingestion path is not implemented yet.
