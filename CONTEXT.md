@@ -53,7 +53,7 @@ The shared local/remote Go server core that transactionally ingests normalized f
 _Avoid_: Collector service, server-side normalization
 
 **Read-only View**:
-`tokeninsights tui` and the browser read committed server data through the same REST API. Reload requests queries only. Explicit `tui --sync` performs caller-side collection/publication first; viewer filters remain display constraints.
+`tokeninsights tui` runs caller-side collection/publication in a loading screen, then queries committed data through the same REST API as the browser. `tui --sync=false` skips collection. Dashboard Reload requests queries only; viewer filters remain display constraints. Startup failures offer Retry, View saved data, and Quit.
 _Avoid_: Implicit View Sync, dashboard source refresh
 
 **Durable Publication**:

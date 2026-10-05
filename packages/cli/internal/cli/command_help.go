@@ -17,7 +17,7 @@ Bare invocation ensures the background service and prints its URL. No startup sy
 commands:
   service start|stop|restart|status   manage local web/API server
   sync                              collect all harnesses and publish normalized facts
-  tui                               read committed data through the same REST API as Web
+  tui                               sync with progress, then open terminal dashboard
 
 advanced:
   collector normalize|reset-canonical|reset-all
@@ -31,7 +31,7 @@ advanced:
   tokeninsights tui
   tokeninsights sync --publish-only
   tokeninsights sync --server-url https://example.test
-  tokeninsights tui --sync
+  tokeninsights tui --sync=false
   tokeninsights collector --help
 
 Collector: --collector-db-path (collector.sqlite). Server: --server-db-path (server.sqlite).

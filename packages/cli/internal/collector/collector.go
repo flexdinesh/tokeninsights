@@ -26,13 +26,21 @@ import (
 const requestTimeout = 30 * time.Second
 
 type Options struct {
-	CollectorDBPath string
-	ServerDBPath    string
-	ServerURL       string
-	Token           string
-	PublishOnly     bool
-	SyncOptions     pipeline.SyncOptions
-	EnsureLocal     func(context.Context) (string, error)
+	CollectorDBPath  string
+	ServerDBPath     string
+	ServerURL        string
+	Token            string
+	PublishOnly      bool
+	SyncOptions      pipeline.SyncOptions
+	EnsureLocal      func(context.Context) (string, error)
+	DeliveryProgress func(DeliveryProgress)
+}
+
+// DeliveryProgress reports acknowledged work, never estimated upload progress.
+type DeliveryProgress struct {
+	Batches      int64
+	Pending      int64
+	PendingKnown bool
 }
 
 type Result struct {
@@ -127,6 +135,7 @@ func endpoint(value string) (string, error) {
 }
 
 func publish(ctx context.Context, options Options, result *Result) error {
+	reportDeliveryProgress(options, result)
 	target := options.ServerURL
 	local := strings.TrimSpace(target) == ""
 	if local {
@@ -179,6 +188,7 @@ func publish(ctx context.Context, options Options, result *Result) error {
 		return failure("publication", "pending_read", err)
 	}
 	result.PendingKnown = true
+	reportDeliveryProgress(options, result)
 	hostname, _ := os.Hostname()
 	if len(hostname) > publication.MaxStringBytes {
 		hostname = ""
@@ -214,6 +224,13 @@ func publish(ctx context.Context, options Options, result *Result) error {
 		if err != nil {
 			return failure("publication", "pending_read", err)
 		}
+		reportDeliveryProgress(options, result)
+	}
+}
+
+func reportDeliveryProgress(options Options, result *Result) {
+	if options.DeliveryProgress != nil {
+		options.DeliveryProgress(DeliveryProgress{Batches: result.Batches, Pending: result.Pending, PendingKnown: result.PendingKnown})
 	}
 }
 

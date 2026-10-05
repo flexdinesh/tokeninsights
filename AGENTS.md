@@ -2,7 +2,7 @@
 
 Track local token usage for OpenCode, Pi, Codex, and Claude Code.
 
-TokenInsights is a Go CLI with a host collector and canonical-only SQLite server. Bare invocation ensures the local server and prints status; startup never collects. `sync` collects all harnesses by default, normalizes locally, journals changes, and publishes normalized batches. `collector normalize` processes collector raw facts only. `tui` and web Reload query the server over REST; `tui --sync` explicitly collects first. Local and foreground remote compositions share ingestion/query code. Completion plugins invoke the same Go `sync`; manual sync remains primary.
+TokenInsights is a Go CLI with a host collector and canonical-only SQLite server. Bare invocation ensures the local server and prints status; server startup never collects. `sync` collects all harnesses by default, normalizes locally, journals changes, and publishes normalized batches. `collector normalize` processes collector raw facts only. `tui` syncs inside a loading screen before querying REST; `tui --sync=false` skips collection. Dashboard and web Reload query only. Local and foreground remote compositions share ingestion/query code. Completion plugins invoke the same Go `sync`; manual sync remains primary.
 
 Everyday commands are `service`, `sync`, and `tui`. Advanced maintenance uses `collector normalize|reset-canonical|reset-all`. Previous command names, `--db-path`, and `--no-sync` are removed; use role-specific commands and flags.
 

@@ -11,6 +11,8 @@ import (
 	"sort"
 	"strings"
 	"sync"
+
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/publication"
 )
 
 const locationLabelLimit = 48
@@ -390,16 +392,5 @@ func mergeLocations(existing, incoming *Location, priorConflicts string) (*Locat
 }
 
 func repositorySourceRank(source string) int {
-	switch source {
-	case "harness":
-		return 4
-	case "git-remote":
-		return 3
-	case "git-common-dir":
-		return 2
-	case "opencode-project":
-		return 1
-	default:
-		return 0
-	}
+	return publication.RepositorySourceRank(source)
 }

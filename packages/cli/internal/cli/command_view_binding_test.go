@@ -7,10 +7,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/collector"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/pipeline"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/service"
 )
 
-func TestViewExplicitSyncPreservesLocalAndRemoteDestinationBinding(t *testing.T) {
+func TestViewStartupSyncPreservesLocalAndRemoteDestinationBinding(t *testing.T) {
 	for _, remote := range []bool{false, true} {
 		name := "local"
 		if remote {
@@ -33,31 +35,38 @@ func TestViewExplicitSyncPreservesLocalAndRemoteDestinationBinding(t *testing.T)
 				return service.State{Running: true, Record: &service.Record{URL: queryServer.URL}}, nil
 			})
 			synced := false
-			previousSync := runViewSync
-			runViewSync = func(_ commandInvocation, args []string) error {
+			replaceViewCollector(t, func(ctx context.Context, options collector.Options) (collector.Result, error) {
 				synced = true
-				values := map[string]string{}
-				for index := 0; index+1 < len(args); index += 2 {
-					values[args[index]] = args[index+1]
+				if options.CollectorDBPath != collectorPath || options.ServerDBPath != serverPath {
+					t.Fatal("wrong role paths")
 				}
-				if values["--collector-db-path"] != collectorPath || values["--server-db-path"] != serverPath {
-					t.Fatalf("sync role paths=%v", values)
+				if remote && options.ServerURL != queryServer.URL || !remote && options.ServerURL != "" {
+					t.Fatal("destination binding changed")
 				}
-				url, present := values["--server-url"]
-				if present != remote || remote && url != queryServer.URL {
-					t.Fatalf("sync changed destination binding: remote=%v args=%v", remote, values)
+				if !remote {
+					url, err := options.EnsureLocal(ctx)
+					if err != nil || url != queryServer.URL {
+						t.Fatal("local publication endpoint changed")
+					}
 				}
-				return nil
-			}
-			t.Cleanup(func() { runViewSync = previousSync })
+				if len(options.SyncOptions.Harnesses) != len(pipeline.SupportedHarnesses) || !options.SyncOptions.Normalize {
+					t.Fatal("startup did not select all harnesses and normalization")
+				}
+				return collector.Result{}, nil
+			})
 			restore := replaceInteractiveProgramRunnerForTest(t, func(model interactiveModel, _ io.Writer) (interactiveModel, error) {
-				if !synced || model.options.serverURL != queryServer.URL {
-					t.Fatal("viewer started before explicit collection or used wrong query URL")
+				if synced {
+					t.Fatal("sync ran before entering TUI")
 				}
-				return model, nil
+				final := driveStartupForTest(t, newStartupModel(model))
+				dashboard, ok := final.(interactiveModel)
+				if !ok || !synced || dashboard.options.serverURL != queryServer.URL {
+					t.Fatal("startup failed to open intended dashboard")
+				}
+				return dashboard, nil
 			})
 			defer restore()
-			args := []string{"tui", "--sync", "--collector-db-path", collectorPath, "--server-db-path", serverPath}
+			args := []string{"tui", "--collector-db-path", collectorPath, "--server-db-path", serverPath}
 			if remote {
 				args = append(args, "--server-url", queryServer.URL)
 			}

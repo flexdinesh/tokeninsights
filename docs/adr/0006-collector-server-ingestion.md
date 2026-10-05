@@ -130,3 +130,10 @@ inferred from acceptance of this ADR.
 Future work includes retention/compaction, explicit migrations, profile
 namespaces, remote provisioning, richer timing and optional asynchronous hooks.
 No unresolved decisions remain for the accepted implementation scope.
+
+### TUI startup update
+
+`tui` now runs collection and publication in a loading screen before querying
+the dashboard. `tui --sync=false` reads saved data only. Dashboard Reload remains
+GET-only. Startup failures offer Retry, View saved data, and Quit; acknowledged
+work remains durable. See [design](../design.md) for the current command contract.

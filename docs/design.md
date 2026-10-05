@@ -64,9 +64,10 @@ the fresh files. Aliased paths and wrong database roles are rejected.
 - Bare invocation ensures the local canonical server and prints its URL.
   Startup initializes only missing server storage and never collects.
 - `tui` queries saved server data through REST. Without a server URL it ensures
-  the local server; an explicit URL bypasses local storage/discovery.
-  `--sync` explicitly runs caller-side
-  collection/publication before opening. TUI `r` and browser Reload query only.
+  the local server; an explicit URL skips local server bootstrap. Startup runs
+  caller-side all-harness collection/publication inside the terminal loading
+  screen, then loads REST data. `--sync=false` skips collection and opens no
+  collector storage. TUI dashboard `r` and browser Reload query only.
 - `service start|stop|restart|status|run` manages the local server.
   `server run` provides the shared foreground remote composition; non-loopback
   binding requires a token.
@@ -418,7 +419,7 @@ With `sync --all --source-dir <root>`, harness discovery is bounded to `<root>/<
 
 Before normal data work, public sync/collector normalize coordinate compatibility recovery under a database-scoped writer lock. Targeted default-source commands recover all default harnesses first; all-harness `--source-dir` recovery stays within the specified root. Single-harness custom-source recovery defers without changing the database. Recovery always normalizes before satisfying the requested scope, including `--no-normalize`; missing installations remain normal skips. Failed recovery preserves partial imports but keeps analytics unavailable until the all-harness rebuild succeeds.
 
-Pending recovery must resume with the same normalized source configuration. Default-source keys fingerprint the effective OpenCode, Pi, Codex, and Claude Code roots, including environment overrides. Custom all-harness keys fingerprint the normalized canonical absolute root. Only a hash is persisted; full paths cannot be reconstructed from it. Mismatched retries, including dry-run attempts, are rejected before data writes. Repeat the original `--source-dir` and `--collector-db-path`, preserving source environment settings. Default-source normalization cannot finish a custom-root rebuild; server/TUI/browser startup never performs collector recovery.
+Pending recovery must resume with the same normalized source configuration. Default-source keys fingerprint the effective OpenCode, Pi, Codex, and Claude Code roots, including environment overrides. Custom all-harness keys fingerprint the normalized canonical absolute root. Only a hash is persisted; full paths cannot be reconstructed from it. Mismatched retries, including dry-run attempts, are rejected before data writes. Repeat the original `--source-dir` and `--collector-db-path`, preserving source environment settings. Default-source normalization cannot finish a custom-root rebuild; server/browser startup and query-only TUI never perform collector recovery. Default TUI startup follows the same recovery rules as all-harness `sync`.
 
 ## Normalized Publication And Ingestion
 
@@ -477,6 +478,13 @@ replaces, older contributes no update, equal-time differing payloads conflict.
 Other immutable fact payload conflicts reject the entire batch. No arrival-time,
 collector sequence, upload clock, or universal largest-counter precedence exists.
 Session range merging can advance server revision without adding usage.
+Location references with identical directory/repository keys and labels merge
+repository provenance using the collector's evidence priority: `harness`,
+`git-remote`, `git-common-dir`, then `opencode-project`; missing or unrecognized
+sources rank last. Weaker evidence never replaces stronger evidence. Provenance
+promotion can advance server revision without changing token contributions;
+conflicting keys or labels still reject the whole batch. Saved batches remain
+unchanged and retry through normal publication.
 
 Admission allows four concurrent ingestions, with SQLite serializing writes and
 `busy` failures remaining retryable. A rejected batch commits neither a visible
@@ -560,12 +568,25 @@ Claude native session/message/request identity has explicit source-timestamp pre
 
 ## Viewer
 
-`tokeninsights tui` is interactive-only and reads the server API. Without an
-explicit server URL it ensures the local query server; `--server-url` bypasses
-local bootstrap/storage. Viewing is read-only by default.
-`tui --sync` invokes caller-side all-harness collection/publication before
-opening and stops on an unresolved failure. Viewer filters constrain queries,
-never collection scope.
+`tokeninsights tui` is interactive-only. Its startup model ensures the local
+server when needed, runs the same Go collector as `sync`, then loads a complete
+REST snapshot before switching to the dashboard in the same alternate screen.
+An explicit `--server-url` skips local server bootstrap and publishes local
+collection to that destination. `--sync=false` skips collection entirely;
+query-only remote viewing opens neither local database. The existing `--sync`
+flag remains an explicit equivalent of the default. Viewer filters constrain
+queries, never the all-harness collection scope.
+
+The startup screen preserves the terminal's background and theme, shows honest
+per-harness states and committed-batch/pending-entry counts, and never estimates
+a percentage or harness lifetime completeness. Skipped harnesses show
+`No new usage`, covering missing sources and unchanged snapshots. Collection and delivery progress stay caller-local and
+never become server coverage. Errors show credential-safe delivery codes and
+diagnostic guidance in the startup screen with `r Retry`,
+`v View saved` when a query endpoint is available, and `q Quit`/Ctrl+C. View saved
+and retries of failed data reads perform no collection. Full sync retries retain
+durable journal requests and acknowledged progress. Quitting cancels and joins
+the active worker; already committed collector/server work remains durable.
 
 Loading, facet search, and Reload are bounded GET requests. Queries use generated
 DTOs and one typed Go client for both deployments. The client loads bounded pages
@@ -756,9 +777,10 @@ retried.
   metadata together. Collector delivery progress commits only with its validated
   acknowledgement. Reopen/retry reads persisted request/receipt identities;
   failed/unknown outcomes do not advance cursors.
-- TUI/browser never open collector SQLite, normalize facts, or repair storage.
-  Explicit remote URLs skip local database/bootstrap. Query failures preserve
-  saved data/filters and offer read retry. Help/version never create databases.
+- Dashboard queries and browser never open collector SQLite, normalize facts,
+  or repair storage. TUI startup owns collection unless `--sync=false` is set.
+  Explicit remote URLs skip local server database/bootstrap. Query failures
+  preserve saved data/filters and offer read retry. Help/version never create databases.
 
 ## Invariants
 
@@ -774,7 +796,7 @@ Must not change silently:
 - default token analytics use only countable canonical token rows;
 - unavailable metric domains must not appear as empty active viewer tabs;
 - cost tracking must stay out of the active product;
-- TUI/browser query committed server data through REST; Reload never collects, and explicit caller-side `tui --sync` is the only view-start collection path.
+- TUI/browser query committed server data through REST; dashboard Reload never collects. TUI startup performs caller-side sync by default; `--sync=false` skips it.
 
 Can evolve with care:
 

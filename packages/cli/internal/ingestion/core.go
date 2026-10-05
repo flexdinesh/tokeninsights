@@ -275,8 +275,13 @@ func mergeReferences(ctx context.Context, tx *sql.Tx, f publication.Fact) (int64
 			changed = true
 		} else if err != nil {
 			return 0, nil, nil, false, databaseError(err)
-		} else if dk != l.DirectoryKey || dn != l.DirectoryName || rk != l.RepositoryKey || rn != l.RepositoryName || rs != l.RepositorySource {
+		} else if dk != l.DirectoryKey || dn != l.DirectoryName || rk != l.RepositoryKey || rn != l.RepositoryName {
 			return 0, nil, nil, false, failure(http.StatusConflict, "reference_conflict", "references")
+		} else if publication.RepositorySourceRank(l.RepositorySource) > publication.RepositorySourceRank(rs) {
+			if _, e := tx.ExecContext(ctx, `UPDATE usage_locations SET repository_source=? WHERE id=?`, l.RepositorySource, id); e != nil {
+				return 0, nil, nil, false, databaseError(e)
+			}
+			changed = true
 		}
 		locationID = id
 	}
