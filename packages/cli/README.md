@@ -49,7 +49,7 @@ tokeninsights sync --collector-db-path /path/to/collector.sqlite --server-db-pat
 tokeninsights sync --server-url https://example.test
 ```
 
-`--publish-only` retries retained journal work without source discovery. `--no-normalize` captures raw facts without normalizing new work, but can still publish previously journaled work. `--dry-run` does not write or deliver. Without an explicit server URL, delivery ensures the local server after collection; an explicit URL skips local startup even on failure. `--token` / `TOKENINSIGHTS_SERVER_TOKEN` authenticates that client. Later manual sync retries pending delivery; there is no background agent or automatic retry.
+`--publish-only` retries retained journal work without source discovery. `--no-normalize` captures raw facts without normalizing new work, but can still publish previously journaled work. `--dry-run` does not write or deliver. Without an explicit server URL, delivery ensures the local server after collection; an explicit URL skips local startup even on failure. Later manual sync retries pending delivery; there is no background agent or automatic retry.
 
 Publication saves immutable request bytes before transport. Server facts and receipts commit atomically, so acknowledgement means queryable data. Replayed batches return their original receipt; stable source-native fact IDs also dedupe recollection after collector SQLite is deleted. Conflicting immutable payloads fail the whole batch, preserving the pending suffix. Claude's approved source-timestamp revision rule permits newer native-request snapshots and rejects equal-time conflicts. Weak identity is diagnosed and withheld rather than guessed from equal counts. Collector reset/source disappearance never retracts server history.
 
@@ -111,7 +111,7 @@ tokeninsights tui --year --bucket month
 tokeninsights tui --month --provider openai --model gpt-5
 ```
 
-Bare `tokeninsights` ensures the background service and prints its URL. Move root viewer flags to `tokeninsights tui ...`; `--host`/`--port` are service options only.
+Bare `tokeninsights` ensures the local service or prints the configured remote URL. Move root viewer flags to `tokeninsights tui ...`; `--host`/`--port` are service options only.
 
 Every tab's pinned summary shows `sessions <shown> shown / <synced> synced`, followed by the row count and, except in Context, the filtered token total. `shown` counts distinct sessions matching all active filters across the full result, not just the visible scroll viewport. `synced` counts all distinct sessions with countable canonical usage in this database across all dates and harnesses, ignoring viewer filters. Sessions spanning multiple dates or models are counted once; sessions without countable usage are excluded from both counts.
 
@@ -125,22 +125,51 @@ tokeninsights service status --json
 tokeninsights service restart
 tokeninsights service stop
 tokeninsights service run             # foreground; Ctrl+C stops
-tokeninsights                         # also ensure local server and print URL
+tokeninsights                         # ensure local or print configured remote URL
 ```
 
-Use `--server-db-path` after the service action. Start/run/restart accept `--host`, `--port`, and `--token` / `TOKENINSIGHTS_SERVER_TOKEN`; start also accepts `--open`. Default binding is `127.0.0.1:8765`; port zero reports the assigned port. Non-loopback binding requires a token. Omitted bind settings reuse saved configuration, and changing a running bind requires restart. Startup never collects or imports legacy storage; incompatible server files are rejected without deletion. Saved configuration contains server settings, not harness roots. `--reload-sources` and `refresh` are removed.
+Use `--server-db-path` after the service action. Start/run/restart accept `--host`
+and `--port`; start also accepts `--open`. Default binding is `127.0.0.1:8765`;
+port zero reports the assigned port. Local public serving is unauthenticated,
+including `0.0.0.0`. File/environment bind preferences apply on the next start or
+explicit restart; a running service is reused. Startup never collects or imports
+legacy storage; incompatible server files reject without deletion. Legacy saved
+token protection requires explicit restart, preserving history and receipts;
+legacy bind choices import into root config only when unset. `--reload-sources`,
+`refresh`, `--token` and `TOKENINSIGHTS_SERVER_TOKEN` are removed.
 
 Private lifecycle control uses a Unix socket; public REST handles normalized ingestion and queries only. Held/unreachable ownership and busy ports fail without process takeover. Status is read-only; stopped status exits 3, usage exits 2, other failures exit 1.
 
-`server run`
+`tokeninsights-server`
 
 ```sh
-tokeninsights server run --server-db-path /path/to/server.sqlite
-# Set TOKENINSIGHTS_SERVER_TOKEN before exposing a non-loopback server.
-tokeninsights server run --host 0.0.0.0 --port 8765
+tokeninsights-server --listen 0.0.0.0:8765 --server-db-path /path/to/server.sqlite
+tokeninsights config set server-url http://remote-machine:8765
+tokeninsights sync
 ```
 
-Foreground remote composition shares the canonical store, ingestion core, and query handlers. Non-loopback serving requires an explicit token. Use `--token` or `TOKENINSIGHTS_SERVER_TOKEN`; CLI clients send bearer auth, and browser Basic auth uses the token as its password. Remote provisioning, TLS deployment, account administration, and login/reboot autostart remain later work. The configured owner is currently `default`, not a multi-account service.
+The separate foreground remote composition shares canonical ingestion/query code
+and requires an explicit server database path. It creates no local service
+discovery/control state and reads no client config or harness artifacts. Remote v1
+is unauthenticated and pools clients under owner `default`; accounts, auth,
+alternate backends and deployment provisioning remain future work.
+`tokeninsights server run` is removed.
+
+`config set/get/remove`
+
+Preferences default to `${XDG_CONFIG_HOME:-~/.config}/tokeninsights/config.json`.
+Keys are `server-url`, `host`, `port`, `collector-db-path`, `server-db-path`.
+Use `set KEY VALUE`, `get KEY` or `remove KEY`. Reads create no files; writes are
+typed, private, atomic and serialized. Unknown keys/invalid values reject unchanged.
+`get` reads preferences/defaults; runtime precedence is flags > environment >
+file > defaults. Existing `TOKENINSIGHTS_SERVER_URL` and role path variables remain;
+`TOKENINSIGHTS_HOST` and `TOKENINSIGHTS_PORT` override local bind preferences.
+Root `--config-file PATH` or `TOKENINSIGHTS_CONFIG_PATH` selects the file.
+
+Sync and TUI select the same destination; an explicit empty URL restores local.
+Service commands always manage local. Remote delivery never falls back locally.
+A new destination receives retained journal history; existing destinations resume
+their own cursors. See [system design](../../docs/system.md).
 
 The browser provides Tokens, Models, Providers, Harnesses, Sessions, Context, and Repo views, charts, faceted filters, custom dates, session-ID search, sorting, pagination, and themes. Repo groups by repository/directory; location filters apply only there. Unknown groups remain part of totals and can reveal recorded contributing directories. Published directory names are basenames, not collector-local full paths. URL state preserves query scope/navigation. Reporting periods use the server timezone and Monday-start weeks.
 
@@ -188,9 +217,9 @@ Local delivery binds an endpoint plus server database ID, allowing a replacement
 
 Collect and publish all harnesses inside the TUI before showing data. Enabled by default; `--sync=false` only queries saved data. Query filters do not narrow collection.
 
-`--server-url URL`, `--token TOKEN`
+`--server-url URL`
 
-Select an existing server and authentication token. Defaults come from `TOKENINSIGHTS_SERVER_URL` and `TOKENINSIGHTS_SERVER_TOKEN`.
+Select an existing server. Defaults come from client config and `TOKENINSIGHTS_SERVER_URL`; an explicit empty value selects local.
 
 `--server-db-path PATH`, `--collector-db-path PATH`
 

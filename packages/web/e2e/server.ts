@@ -2,7 +2,6 @@ import { spawn } from 'node:child_process'
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
-import { fixtureToken } from './config.ts'
 
 const tempRoot = process.env.TOKENINSIGHTS_TEST_TMP ?? tmpdir()
 const localHome = await mkdtemp(join(tempRoot, 'ti-web-'))
@@ -55,19 +54,8 @@ for (let index = 0; index < 80; index++) {
 
 function startServer(home: string, port: string) {
   return spawn(
-    resolve('../cli/bin/tokeninsights'),
-    [
-      'service',
-      'run',
-      '--host',
-      '0.0.0.0',
-      '--port',
-      port,
-      '--token',
-      fixtureToken,
-      '--server-db-path',
-      join(home, 'server.sqlite'),
-    ],
+    resolve('../cli/bin/tokeninsights-server'),
+    ['--listen', '0.0.0.0:' + port, '--server-db-path', join(home, 'server.sqlite')],
     {
       stdio: 'inherit',
       env: {
@@ -93,9 +81,7 @@ try {
       throw new Error('fixture server exited before readiness')
     }
     try {
-      const response = await fetch('http://127.0.0.1:18766/api/v1/instance', {
-        headers: { Authorization: `Bearer ${fixtureToken}` },
-      })
+      const response = await fetch('http://127.0.0.1:18766/api/v1/instance')
       if (response.ok) break
     } catch {
       // Startup is bounded; no host harness files are used.
@@ -115,8 +101,6 @@ try {
         join(localHome, 'server.sqlite'),
         '--server-url',
         'http://127.0.0.1:18766',
-        '--token',
-        fixtureToken,
       ],
       {
         stdio: 'inherit',

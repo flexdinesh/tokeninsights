@@ -12,7 +12,6 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/collector"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/pipeline"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/service"
 )
 
 type startupPhase string
@@ -89,7 +88,7 @@ func (m startupModel) run(send func(tea.Msg)) {
 	ctx := m.dashboard.ctx
 	options := m.dashboard.options
 	if m.originalURL == "" {
-		state, err := ensureViewServer(ctx, service.Options{DBPath: options.dbPath})
+		state, err := ensureViewConfiguredLocal(ctx, options.dbPath, m.dashboard.localSettings)
 		if err != nil {
 			send(startupFailedMsg{phase: startupServer, err: err})
 			return

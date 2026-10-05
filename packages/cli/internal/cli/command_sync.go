@@ -8,7 +8,6 @@ import (
 
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/collector"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/pipeline"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/service"
 )
 
 var syncCommand = commandSpec{name: "sync", run: runSync}
@@ -25,10 +24,10 @@ func runSync(invocation commandInvocation, args []string) error {
 	var harnesses stringList
 	var serverDBPath, serverURL, token string
 	var publishOnly bool
-	flags.StringVar(&dbPath, "collector-db-path", defaultCollectorDBPath(), "collector SQLite database")
-	flags.StringVar(&serverDBPath, "server-db-path", defaultServerDBPath(), "local server SQLite database")
-	flags.StringVar(&serverURL, "server-url", defaultServerURL(), "explicit ingestion server; skips local startup")
-	flags.StringVar(&token, "token", defaultServerToken(), "server bearer token")
+	settings := invocation.defaults()
+	flags.StringVar(&dbPath, "collector-db-path", settings.CollectorDBPath, "collector SQLite database")
+	flags.StringVar(&serverDBPath, "server-db-path", settings.ServerDBPath, "local server SQLite database")
+	flags.StringVar(&serverURL, "server-url", settings.ServerURL, "ingestion server; empty selects local")
 	flags.BoolVar(&publishOnly, "publish-only", false, "publish retained normalized work without collecting")
 	flags.Var(&harnesses, "harness", "harness to sync: opencode, pi, codex, or claude-code")
 	flags.BoolVar(&all, "all", false, "sync all supported harnesses")
@@ -58,7 +57,7 @@ func runSync(invocation commandInvocation, args []string) error {
 			Progress:    recoveryNotice(invocation.stderr),
 		},
 		EnsureLocal: func(ctx context.Context) (string, error) {
-			state, err := service.Ensure(ctx, service.Options{DBPath: strings.TrimSpace(serverDBPath)})
+			state, err := ensureConfiguredLocal(ctx, strings.TrimSpace(serverDBPath), settings)
 			if err != nil {
 				return "", err
 			}

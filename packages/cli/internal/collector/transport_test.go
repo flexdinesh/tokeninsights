@@ -27,7 +27,7 @@ func TestDatabaseAliasRejectedBeforeCollection(t *testing.T) {
 		if err := link(a, b); err != nil {
 			t.Fatal(err)
 		}
-		_, err := Run(context.Background(), Options{CollectorDBPath: a, ServerDBPath: b, PublishOnly: true, ServerURL: "http://invalid.test"})
+		_, err := Run(context.Background(), Options{CollectorDBPath: a, ServerDBPath: b, PublishOnly: true})
 		if err == nil || !strings.Contains(err.Error(), "database_paths_alias") {
 			t.Fatalf("alias: %v", err)
 		}

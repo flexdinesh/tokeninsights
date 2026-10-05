@@ -116,16 +116,6 @@ func probeOwner(ctx context.Context, path string) (State, error) {
 	return State{Running: true}, fmt.Errorf("service owns database but control socket is unreachable; inspect service logs")
 }
 
-func (c Client) matchesToken(ctx context.Context, token string) (bool, error) {
-	var response struct {
-		Matches bool `json:"matches"`
-	}
-	err := c.call(ctx, http.MethodPost, "/token-match", struct {
-		Token string `json:"token"`
-	}{Token: token}, &response)
-	return response.Matches, err
-}
-
 type Status struct {
 	InstanceID        string `json:"instanceId"`
 	DataEpoch         string `json:"dataEpoch"`

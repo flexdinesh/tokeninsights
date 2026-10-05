@@ -4,10 +4,11 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"os"
+
 	"strings"
 	"time"
 
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/config"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/db"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/pipeline"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/viewer"
@@ -96,6 +97,9 @@ func parseTableOptions(args []string, stderr io.Writer, requirePeriod bool, defa
 }
 
 func parseViewerOptions(args []string, stderr io.Writer, requirePeriod bool, defaultPeriod period, extra func(*flag.FlagSet)) (tableOptions, error) {
+	return parseViewerOptionsWithDefaults(args, stderr, requirePeriod, defaultPeriod, extra, (commandInvocation{}).defaults())
+}
+func parseViewerOptionsWithDefaults(args []string, stderr io.Writer, requirePeriod bool, defaultPeriod period, extra func(*flag.FlagSet), settings config.Settings) (tableOptions, error) {
 	flags := flag.NewFlagSet("tokeninsights tui", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 
@@ -110,10 +114,9 @@ func parseViewerOptions(args []string, stderr io.Writer, requirePeriod bool, def
 	var serverURL, token, collectorDBPath string
 	var bucket string
 	var queryFilters filters
-	flags.StringVar(&dbPath, "server-db-path", defaultServerDBPath(), "local query server database path")
-	flags.StringVar(&collectorDBPath, "collector-db-path", defaultCollectorDBPath(), "collector database used by startup sync")
-	flags.StringVar(&serverURL, "server-url", os.Getenv("TOKENINSIGHTS_SERVER_URL"), "query an existing server; skip local server startup")
-	flags.StringVar(&token, "token", os.Getenv("TOKENINSIGHTS_SERVER_TOKEN"), "server bearer token")
+	flags.StringVar(&dbPath, "server-db-path", settings.ServerDBPath, "local query server database path")
+	flags.StringVar(&collectorDBPath, "collector-db-path", settings.CollectorDBPath, "collector database used by startup sync")
+	flags.StringVar(&serverURL, "server-url", settings.ServerURL, "query server; empty selects local")
 	flags.BoolVar(&syncBeforeView, "sync", true, "collect and publish before viewing; --sync=false reads saved data only")
 	flags.BoolVar(&today, "today", false, "show today")
 	flags.BoolVar(&yesterday, "yesterday", false, "show yesterday")

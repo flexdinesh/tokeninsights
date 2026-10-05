@@ -15,7 +15,7 @@ func runResetCanonical(invocation commandInvocation, args []string) error {
 	flags.SetOutput(invocation.stderr)
 	var dbPath string
 	var confirm bool
-	flags.StringVar(&dbPath, "collector-db-path", defaultCollectorDBPath(), "collector SQLite database")
+	flags.StringVar(&dbPath, "collector-db-path", invocation.defaults().CollectorDBPath, "collector SQLite database")
 	flags.BoolVar(&confirm, "confirm", false, "confirm deletion")
 	if err := flags.Parse(args); err != nil {
 		return fmt.Errorf("%w\n%w", err, ErrUsage)

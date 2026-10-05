@@ -5,6 +5,9 @@ Current collector/server architecture and storage contract. See the
 [failure-test matrix](collector-ingestion-tests.md) for traceable decisions,
 production coverage, and remaining verification gaps.
 
+[System design](system.md) records separate local/remote deployments, client
+configuration and future storage/queue/auth boundaries.
+
 ## North Star
 
 Track local token usage across supported coding harnesses over time, without relying on vendor dashboards.
@@ -47,8 +50,9 @@ Defaults under `${XDG_DATA_HOME:-~/.local/share}/tokeninsights/` are
 `collector.sqlite` and `server.sqlite`. Override them with `--collector-db-path` /
 `TOKENINSIGHTS_COLLECTOR_DB_PATH` and `--server-db-path` /
 `TOKENINSIGHTS_SERVER_DB_PATH`. `TOKENINSIGHTS_SERVER_URL` selects an explicit
-endpoint and `TOKENINSIGHTS_SERVER_TOKEN` supplies its token. Flags override
-environment defaults. Legacy `TOKENINSIGHTS_DB_PATH` does not select either new
+endpoint. Client preferences live in `${XDG_CONFIG_HOME:-~/.config}/tokeninsights/config.json`,
+managed by `config set/get/remove`. Flags override environment, file and defaults;
+explicit empty server URLs select local. Both public deployments are unauthenticated. Legacy `TOKENINSIGHTS_DB_PATH` does not select either new
 role. The old `tokeninsights.sqlite` remains untouched; retained sources rebuild
 the fresh files. Aliased paths and wrong database roles are rejected.
 
@@ -61,7 +65,7 @@ the fresh files. Aliased paths and wrong database roles are rejected.
   Retry is manual; offline publication stays durable until another invocation.
 - `collector normalize` processes retained collector raw facts and journals canonical
   changes. It does not publish; a subsequent sync performs delivery.
-- Bare invocation ensures the local canonical server and prints its URL.
+- Bare invocation ensures the selected local canonical server or prints the configured remote URL without local startup.
   Startup initializes only missing server storage and never collects.
 - `tui` queries saved server data through REST. Without a server URL it ensures
   the local server; an explicit URL skips local server bootstrap. Startup runs
@@ -69,8 +73,9 @@ the fresh files. Aliased paths and wrong database roles are rejected.
   screen, then loads REST data. `--sync=false` skips collection and opens no
   collector storage. TUI dashboard `r` and browser Reload query only.
 - `service start|stop|restart|status|run` manages the local server.
-  `server run` provides the shared foreground remote composition; non-loopback
-  binding requires a token.
+  `tokeninsights-server --listen IPv4:port --server-db-path PATH` provides the
+  separate foreground remote composition. Local and remote public serving have
+  no authentication, including wildcard binds. Accounts/auth are deferred.
 - `collector reset-canonical` and `collector reset-all` affect collector storage only. Rebuilding a
   collector does not remove server facts or publish implicit retractions.
 - Everyday commands are `service`, `sync`, and `tui`. Advanced maintenance uses
@@ -128,7 +133,9 @@ General harness revision ordering is not guessed from arrival time.
 `internal/service` composes the shared ingestion core, canonical queries, public
 HTTP, and private lifecycle control. The detached local server re-executes the
 Go binary with configuration/readiness inherited through descriptors. Foreground
-`service run` / `server run` reuse ownership and server runtime. Server startup
+`service run` reuses local lifecycle. `internal/remoteserver` independently composes
+HTTP/storage for `tokeninsights-server`, without local discovery/control/config.
+Both use `internal/serverownership` to protect the same database lock inodes. Server startup
 has no captured harness roots or source refresh queue.
 
 Canonical database paths share SHA-256 lifecycle identity across symlink aliases;
@@ -137,18 +144,24 @@ lock inodes serialize lifecycle and ownership; collector writes use their own
 database writer lock. Never unlink live lock inodes. Held but unreachable server
 ownership blocks takeover. Busy ports fail without killing unrelated processes.
 
-Saved configuration is private versioned JSON under
-`$XDG_CONFIG_HOME/tokeninsights/services/`. Logs live under
+Client preferences are typed private JSON at
+`$XDG_CONFIG_HOME/tokeninsights/config.json`, with `--config-file` /
+`TOKENINSIGHTS_CONFIG_PATH` overrides. Per-database JSON under `services/`
+records effective runtime configuration for lifecycle and legacy upgrade. Logs live under
 `$XDG_STATE_HOME/tokeninsights`, bounded to 4 MiB plus three backups. Discovery and
 Unix sockets use `$XDG_RUNTIME_DIR/tokeninsights` or private state/runtime, with
 a fallback discovery record for SSH/local clients. Config stores bind/database
 settings, never source roots or the full environment. Runtime instance identity
 is transient; the server database ID persists across restarts and binds delivery.
 
-Starting an existing service reuses its credentials when no token is requested.
-An explicitly different token fails and requires `service restart`; comparison
-uses the verified private control channel and running configuration. Control
-responses never expose tokens or credential hashes. Owner discovery validates
+Starting an existing compatible service reuses it until an explicit restart.
+Legacy configuration version 2 requires restart; saved token protection is never
+silently discarded on automatic startup. Explicit restart preserves server
+identity/receipts, removes public auth and imports legacy host/port preferences
+into client config only where unset. Current runtime configuration is version 3;
+the private lifecycle protocol remains 2 to permit stopping older processes.
+Public tokens/credential comparison are removed; private control stays owner-only.
+Owner discovery validates
 the held lifetime lock and private instance independently of database health, so
 `service stop` remains usable when storage is missing or corrupt. Restart creates
 missing storage but refuses to replace an existing corrupt or incompatible file.
@@ -657,10 +670,10 @@ Cost tracking is not part of TokenInsights and must not appear in viewer columns
 `tokeninsights service start` serves the embedded React dashboard, canonical
 queries, and normalized ingestion from one native Go binary. Default binding is
 `127.0.0.1:8765`; `--port 0` reports the assigned port. `--open` launches the local
-URL when possible. `server run` provides the foreground remote composition.
-Non-loopback serving requires an authentication token; clients use bearer auth,
-and browser Basic auth accepts the same token as its password. Remote setup,
-TLS termination/deployment, and accounts remain later scope.
+URL when possible. `tokeninsights-server` provides the separate foreground
+remote composition; a deployment supplies its listen address and server database.
+Both public compositions are unauthenticated. Remote auth, accounts and deployment
+provisioning remain later scope.
 
 Opening, reconnecting, filtering, status polling, and **Reload** query saved
 canonical data only. Empty state points to `tokeninsights sync` on the producer.
@@ -694,7 +707,7 @@ Usage/facet query parameters are `period`, `bucket`, `from`, `to`, repeated `pro
 
 [`docs/openapi.yaml`](openapi.yaml) is the authoritative, repository-only API contract; the server does not expose it at runtime. `pnpm run generate:api` generates committed Go transport models and TypeScript types/Zod schemas. `pnpm run check-api` verifies generated output has not drifted from the contract. Handwritten handlers map canonical query results into generated response models, while browser query hooks validate responses with the generated schemas. Direct Go builds consume committed generated files and do not require Node or code-generation tools.
 
-V1 API routes do not advertise cross-origin browser access or provide CORS preflight handling. Unsafe browser query requests use Go CrossOriginProtection; loopback bindings reject non-local Host headers. The embedded dashboard uses relative, same-origin API URLs. Authentication is composed by the runtime before handlers; non-loopback serving requires an explicit token. These origin/Host checks remain separate from authentication.
+V1 API routes do not advertise cross-origin browser access or provide CORS preflight handling. Unsafe browser query requests use Go CrossOriginProtection; loopback bindings reject non-local Host headers. The embedded dashboard uses relative, same-origin API URLs. Both public runtimes are unauthenticated, including non-loopback binds. Origin/Host checks remain independent of the private local lifecycle socket.
 
 `packages/web` uses React, strict TypeScript, Vite, Tailwind CSS, local shadcn primitives backed by Radix UI, TanStack Router/Query/Table, and Recharts. Feature components compose through `components/ui`; bespoke CSS is limited to dashboard layout, responsive behavior, and data-visualization geometry. The route path owns the active Aggregation Tab, and validated route search owns dashboard filters, sorting, and pagination. Theme, visible columns, chart metric, and transient popover/search drafts remain local UI state.
 
@@ -720,7 +733,7 @@ The React visual contract is [`DESIGN.md`](../DESIGN.md), implemented by `packag
 
 The pnpm monorepo contains Go production packages and TypeScript development/browser packages. Browser code uses Vite and React. Node scripts use native, erasable TypeScript supported by Node 26+.
 
-Vite output is checked into `packages/cli/internal/server/static` and embedded using `go:embed`, preserving direct Go installs and offline runtime use. The workspace builds React before Go; local pre-push verification rebuilds and checks generated assets for drift. Node, npm, pnpm, `node_modules`, and repository TypeScript tooling are build-, test-, and development-only. Production is one native Go binary: Go serves embedded browser JavaScript as bytes, the browser executes it, and Go runtime code never invokes a host JavaScript runtime. Web analytics use the canonical token and optional location contracts; lifecycle state is local-only and not an analytics dimension.
+Vite output is checked into `packages/cli/internal/server/static` and embedded using `go:embed`, preserving direct Go installs and offline runtime use. The workspace builds React before Go; local pre-push verification rebuilds and checks generated assets for drift. Node, npm, pnpm, `node_modules`, and repository TypeScript tooling are build-, test-, and development-only. Production uses native Go binaries: Go serves embedded browser JavaScript as bytes, the browser executes it, and Go runtime code never invokes a host JavaScript runtime. Web analytics use the canonical token and optional location contracts; lifecycle state is local-only and not an analytics dimension.
 
 `mise.toml` pins development tool versions and delegates tasks to root pnpm scripts. Husky registers `pre-push` through dependency installation, clears Git-local environment variables to isolate fixture repositories, and runs `check:push`: format/lint, schema/API contracts, unit/conformance and Go race tests, embedded asset comparison, native build, and browser E2E. GitHub CI/release run `check:ci`: formatting, schema-copy consistency, and a native build, with no test suites or browser/frontend build. Publication/packaging remain workflow-owned. Checks preserve tracked files; generated API/assets must be updated deliberately.
 
@@ -817,7 +830,11 @@ Can evolve with care:
 | `tools/build/src/check-schema.ts` | schema contract validator |
 | `docs/openapi.yaml` | authoritative, repository-only REST API contract |
 | `tools/build/` | private Node 26+ native TypeScript build/test/development tooling package |
-| `packages/cli/cmd/tokeninsights/main.go` | CLI executable entry point |
+| `packages/cli/cmd/tokeninsights/main.go` | Client CLI and local lifecycle entry point |
+| `packages/cli/cmd/tokeninsights-server/main.go` | Independent foreground remote entry point |
+| `packages/cli/internal/config/` | Typed client preferences and atomic updates |
+| `packages/cli/internal/remoteserver/` | Explicit remote composition |
+| `packages/cli/internal/serverownership/` | Shared canonical DB identity and lifetime lock |
 | `packages/cli/internal/cli/commands.go` | command dispatch and thin orchestration |
 | `packages/cli/internal/cli/flags.go` | TUI flag parsing |
 | `packages/cli/internal/cli/command_service.go` | local server lifecycle commands |

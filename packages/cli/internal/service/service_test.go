@@ -11,6 +11,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"sync"
 	"syscall"
 	"testing"
@@ -462,34 +463,26 @@ func TestForegroundShutdownUsesSameOwnership(t *testing.T) {
 	}
 }
 
-func TestAllCompositionsRequireAuthenticationForExposedBinding(t *testing.T) {
+func TestLocalExposedBindingNeedsNoAuthenticationAndRemoteUsesSeparateRuntime(t *testing.T) {
 	options := environment(t)
 	host := "0.0.0.0"
 	options.Host = &host
-	for _, remote := range []bool{false, true} {
-		options.Remote = remote
-		if _, err := configuration(options); err == nil {
-			t.Fatalf("exposed binding accepted without token: remote=%v", remote)
-		}
-	}
-	if _, err := os.Stat(options.DBPath); !errors.Is(err, os.ErrNotExist) {
-		t.Fatal("validation touched database", err)
-	}
-	token := "synthetic-remote-token"
-	options.Token = &token
 	if _, err := configuration(options); err != nil {
 		t.Fatal(err)
 	}
+	options.Remote = true
+	if _, err := configuration(options); err == nil || !strings.Contains(err.Error(), "tokeninsights-server") {
+		t.Fatal("legacy remote runtime accepted", err)
+	}
 }
 
-func TestSavedExposedConfigurationCannotBypassAuthentication(t *testing.T) {
+func TestSavedExposedConfigurationIsUnauthenticated(t *testing.T) {
 	options := environment(t)
 	config, err := configuration(options)
 	if err != nil {
 		t.Fatal(err)
 	}
 	config.Host = "0.0.0.0"
-	config.Remote = false
 	files, err := servicePaths(config.DatabaseKey, true)
 	if err != nil {
 		t.Fatal(err)
@@ -497,67 +490,22 @@ func TestSavedExposedConfigurationCannotBypassAuthentication(t *testing.T) {
 	if err := atomicFile(files.config, config); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := configuration(options); err == nil {
-		t.Fatal("saved unauthenticated public binding accepted")
-	}
-	if _, err := os.Stat(options.DBPath); !errors.Is(err, os.ErrNotExist) {
-		t.Fatal("validation touched database", err)
+	if _, err := configuration(options); err != nil {
+		t.Fatal(err)
 	}
 }
 
-func TestRemoteAuthenticationAndCredentialPrivacy(t *testing.T) {
+func TestLocalRejectsLegacyAuthenticationAndRemoteOptions(t *testing.T) {
 	options := environment(t)
 	token := "synthetic-private-token"
 	options.Token = &token
+	if _, err := Ensure(t.Context(), options); err == nil || strings.Contains(err.Error(), token) {
+		t.Fatal("legacy token accepted or disclosed", err)
+	}
+	options.Token = nil
 	options.Remote = true
-	state, err := Ensure(t.Context(), options)
-	if err != nil {
-		t.Fatal(err)
-	}
-	payload, err := json.Marshal(state)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if bytes.Contains(payload, []byte(token)) {
-		t.Fatal("discovery/status disclosed token")
-	}
-	for _, mode := range []string{"none", "incorrect", "bearer", "basic"} {
-		request, err := http.NewRequestWithContext(t.Context(), http.MethodGet, state.Record.URL+"/api/v1/instance", nil)
-		if err != nil {
-			t.Fatal(err)
-		}
-		switch mode {
-		case "incorrect":
-			request.Header.Set("Authorization", "Bearer wrong")
-		case "bearer":
-			request.Header.Set("Authorization", "Bearer "+token)
-		case "basic":
-			request.SetBasicAuth("tokeninsights", token)
-		}
-		response, err := http.DefaultClient.Do(request)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if _, err := io.Copy(io.Discard, response.Body); err != nil {
-			t.Fatal(err)
-		}
-		_ = response.Body.Close()
-		want := http.StatusUnauthorized
-		if mode == "bearer" || mode == "basic" {
-			want = http.StatusOK
-		}
-		if response.StatusCode != want {
-			t.Fatalf("%s status%d want%d", mode, response.StatusCode, want)
-		}
-	}
-	client := Client{Record: *state.Record}
-	var rejected struct {
-		Error string `json:"error"`
-	}
-	for _, route := range []string{"/refresh", "/operations"} {
-		if err := client.call(t.Context(), http.MethodPost, route, struct{}{}, &rejected); err == nil {
-			t.Fatalf("server control still accepts %s", route)
-		}
+	if _, err := Ensure(t.Context(), options); err == nil {
+		t.Fatal("remote service accepted")
 	}
 }
 
@@ -581,38 +529,14 @@ func TestHardLinkedServerIdentityRejected(t *testing.T) {
 	}
 }
 
-func TestIngestionUnauthorizedMatchesErrorContract(t *testing.T) {
+func TestLocalIngestionValidationRemainsJSONWithoutAuthentication(t *testing.T) {
 	options := environment(t)
-	token := "synthetic-auth-token"
-	options.Token = &token
-	options.Remote = true
 	state, err := Ensure(t.Context(), options)
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, test := range []struct{ method, path string }{{http.MethodGet, "/api/v1/ingestion/capabilities"}, {http.MethodPost, "/api/v1/ingestion/batches"}} {
-		request, err := http.NewRequestWithContext(t.Context(), test.method, state.Record.URL+test.path, bytes.NewBufferString("synthetic-private-body"))
-		if err != nil {
-			t.Fatal(err)
-		}
-		response, err := http.DefaultClient.Do(request)
-		if err != nil {
-			t.Fatal(err)
-		}
-		body, err := io.ReadAll(response.Body)
-		_ = response.Body.Close()
-		if err != nil {
-			t.Fatal(err)
-		}
-		var failure publication.ErrorResponse
-		if err := json.Unmarshal(body, &failure); err != nil {
-			t.Fatal(err)
-		}
-		if response.StatusCode != http.StatusUnauthorized || response.Header.Get("Content-Type") != "application/json" || failure.Code != "unauthorized" || failure.Stage != "authentication" {
-			t.Fatalf("%s: status%d body%s", test.path, response.StatusCode, body)
-		}
-		if bytes.Contains(body, []byte(token)) || bytes.Contains(body, []byte("synthetic-private-body")) {
-			t.Fatal("authentication response leaked content")
-		}
+	status, body := authenticatedRequest(t, http.MethodPost, state.Record.URL+"/api/v1/ingestion/batches", "", []byte("synthetic-private-body"))
+	if status != http.StatusBadRequest || bytes.Contains(body, []byte("synthetic-private-body")) {
+		t.Fatal(status, string(body))
 	}
 }

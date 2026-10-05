@@ -194,6 +194,50 @@ void test('fixture safety scan rejects representative sensitive data', () => {
   }
 })
 
+void test('deployment tracer fixture contains only synthetic Pi metadata', async () => {
+  const root = workspacePath(
+    'packages',
+    'cli',
+    'testdata',
+    'conformance',
+    'local-remote-deployment',
+    'source',
+  )
+  const files = await listFiles(root)
+  assert.deepEqual(
+    files.map((path) => relative(root, path)),
+    ['pi/session.jsonl'],
+  )
+  const body = await readFile(files[0], 'utf8')
+  assertPublicSafeText(body)
+  const records = body.trim().split('\n').map(parseJSON)
+  assert.equal(records.length, 2)
+  assertShape(records[0], ['type', 'version', 'id', 'timestamp'], [], 'deployment session')
+  assert.equal(records[0].type, 'session')
+  assert.equal(records[0].id, 'deployment-pi-session')
+  assertShape(records[1], ['type', 'id', 'timestamp', 'message'], [], 'deployment message')
+  assert.equal(records[1].type, 'message')
+  assert.equal(records[1].id, 'deployment-message')
+  assertShape(
+    records[1].message,
+    ['role', 'provider', 'model', 'usage'],
+    [],
+    'deployment message metadata',
+  )
+  assert.equal(records[1].message.role, 'assistant')
+  assert.equal(records[1].message.provider, 'openai')
+  assert.equal(records[1].message.model, 'fixture-model')
+  assertShape(
+    records[1].message.usage,
+    ['input', 'output', 'totalTokens'],
+    [],
+    'deployment counters',
+  )
+  for (const value of Object.values(records[1].message.usage)) {
+    assert.ok(typeof value === 'number' && Number.isSafeInteger(value) && value >= 0)
+  }
+})
+
 void test('collector rebuild sources and stages contain only synthetic metadata', async () => {
   const root = workspacePath('packages', 'cli', 'testdata', 'conformance', 'collector-rebuild')
   const paths = (

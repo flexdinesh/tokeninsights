@@ -3,7 +3,6 @@ package service
 
 import (
 	"context"
-	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -15,11 +14,9 @@ import (
 	"time"
 
 	"crypto/rand"
-	"crypto/subtle"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/db"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/dbpath"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/serverownership"
 	"golang.org/x/sys/unix"
-	"net/netip"
 )
 
 const protocolVersion = 2
@@ -53,27 +50,7 @@ type Record struct {
 
 type paths struct{ config, record, socket, log, fallbackRecord string }
 
-func identify(path string) (string, string, error) {
-	if path == "" {
-		return "", "", fmt.Errorf("empty database path")
-	}
-	canonical, err := dbpath.Canonical(path)
-	if err != nil {
-		return "", "", err
-	}
-	if info, err := os.Stat(canonical); err == nil {
-		if !info.Mode().IsRegular() {
-			return "", "", fmt.Errorf("database must be a regular file")
-		}
-		if stat, ok := info.Sys().(*syscall.Stat_t); ok && stat.Nlink > 1 {
-			return "", "", fmt.Errorf("hard-linked databases are unsupported")
-		}
-	} else if !errors.Is(err, os.ErrNotExist) {
-		return "", "", err
-	}
-	sum := sha256.Sum256([]byte(canonical))
-	return canonical, hex.EncodeToString(sum[:]), nil
-}
+func identify(path string) (string, string, error) { return serverownership.Identify(path) }
 
 // ownedDir verifies ownership and secures private application directories.
 func ownedDir(path string, private bool) error {
@@ -209,28 +186,7 @@ func atomicFile(path string, value interface{}) error {
 
 // Lifetime probing is read-only and never removes lock inodes.
 func lifetime(path string, create bool) (*os.File, bool, error) {
-	flags := unix.O_RDONLY | unix.O_NOFOLLOW | unix.O_CLOEXEC
-	if create {
-		flags = unix.O_CREAT | unix.O_RDWR | unix.O_NOFOLLOW | unix.O_CLOEXEC
-	}
-	fd, err := unix.Open(path+".service.lock", flags, 0o600)
-	if errors.Is(err, os.ErrNotExist) && !create {
-		return nil, false, nil
-	}
-	if err != nil {
-		return nil, false, err
-	}
-	f := os.NewFile(uintptr(fd), path+".service.lock")
-	err = unix.Flock(fd, unix.LOCK_EX|unix.LOCK_NB)
-	if errors.Is(err, unix.EWOULDBLOCK) || errors.Is(err, unix.EAGAIN) {
-		_ = f.Close()
-		return nil, true, nil
-	}
-	if err != nil {
-		_ = f.Close()
-		return nil, false, err
-	}
-	return f, false, nil
+	return serverownership.Lifetime(path, create)
 }
 
 func admission(ctx context.Context, path string) (func(), error) {
@@ -242,14 +198,11 @@ func validateConfig(c Config) error {
 	if err != nil {
 		return err
 	}
-	if path != c.DBPath || key != c.DatabaseKey || c.Version != 2 || c.Port < 0 || c.Port > 65535 {
+	if path != c.DBPath || key != c.DatabaseKey || c.Version != 3 || c.Port < 0 || c.Port > 65535 {
 		return fmt.Errorf("invalid service configuration")
 	}
-	if c.Token == "" {
-		ip, err := netip.ParseAddr(c.Host)
-		if err != nil || !ip.IsLoopback() {
-			return fmt.Errorf("non-loopback binding requires --token")
-		}
+	if c.Token != "" || c.Remote {
+		return fmt.Errorf("legacy server authentication/deployment settings require explicit service restart")
 	}
 	return nil
 }
@@ -261,5 +214,3 @@ func instanceID() string {
 	}
 	return hex.EncodeToString(value[:])
 }
-
-func sameToken(a, b string) bool { return subtle.ConstantTimeCompare([]byte(a), []byte(b)) == 1 }

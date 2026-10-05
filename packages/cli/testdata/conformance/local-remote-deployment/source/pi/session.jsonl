@@ -1,0 +1,2 @@
+{"type":"session","version":1,"id":"deployment-pi-session","timestamp":"2026-09-01T00:00:00Z"}
+{"type":"message","id":"deployment-message","timestamp":"2026-09-01T00:00:01Z","message":{"role":"assistant","provider":"openai","model":"fixture-model","usage":{"input":100,"output":20,"totalTokens":120}}}

@@ -17,11 +17,14 @@ import (
 )
 
 type Options struct {
-	DBPath string
-	Host   *string
-	Port   *int
-	Remote bool
-	Token  *string
+	DBPath          string
+	Host            *string
+	Port            *int
+	Remote          bool
+	Token           *string
+	DefaultHost     *string
+	DefaultPort     *int
+	allowLegacyAuth bool
 }
 
 func configuration(options Options) (Config, error) {
@@ -33,16 +36,33 @@ func configuration(options Options) (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
-	config := Config{Version: 2, DBPath: path, DatabaseKey: key, Host: server.DefaultHost, Port: server.DefaultPort}
+	config := Config{Version: 3, DBPath: path, DatabaseKey: key, Host: server.DefaultHost, Port: server.DefaultPort}
 	if err := readFile(p.config, &config); err != nil && !errors.Is(err, os.ErrNotExist) {
 		return Config{}, err
 	}
 	if config.DBPath != path || config.DatabaseKey != key {
 		return Config{}, fmt.Errorf("saved service database identity mismatch")
 	}
-	config.Remote = options.Remote
+	if config.Version != 2 && config.Version != 3 {
+		return Config{}, fmt.Errorf("unsupported saved service configuration")
+	}
+	if config.Token != "" && !options.allowLegacyAuth {
+		return Config{}, fmt.Errorf("saved service authentication removed; use explicit service restart to run unauthenticated")
+	}
+	if options.Remote {
+		return Config{}, fmt.Errorf("use tokeninsights-server for remote deployment")
+	}
 	if options.Token != nil {
-		config.Token = *options.Token
+		return Config{}, fmt.Errorf("--token removed; local server is unauthenticated")
+	}
+	config.Version = 3
+	config.Remote = false
+	config.Token = ""
+	if options.DefaultHost != nil {
+		config.Host = *options.DefaultHost
+	}
+	if options.DefaultPort != nil {
+		config.Port = *options.DefaultPort
 	}
 	if options.Host != nil {
 		config.Host = *options.Host
@@ -60,6 +80,9 @@ func configuration(options Options) (Config, error) {
 }
 
 func Ensure(ctx context.Context, options Options) (State, error) {
+	if options.Token != nil || options.Remote {
+		return State{}, fmt.Errorf("token/remote local service options removed; use tokeninsights-server")
+	}
 	path, _, err := identify(options.DBPath)
 	if err != nil {
 		return State{}, err
@@ -74,20 +97,11 @@ func Ensure(ctx context.Context, options Options) (State, error) {
 		return state, err
 	}
 	if state.Running {
-		if state.Record.SchemaVersion != serverstore.SupportedSchemaVersion {
+		if state.Record.SchemaVersion != serverstore.SupportedSchemaVersion || state.Record.Config.Version != 3 {
 			return state, fmt.Errorf("service contract incompatible; use service restart")
 		}
 		if options.Host != nil && normalizedHost(*options.Host) != state.Record.Config.Host || options.Port != nil && *options.Port != state.Record.Config.Port {
 			return state, fmt.Errorf("service already running at %s; use service restart to change binding", state.Record.URL)
-		}
-		if options.Token != nil {
-			matches, err := (Client{Record: *state.Record}).matchesToken(ctx, *options.Token)
-			if err != nil {
-				return state, err
-			}
-			if !matches {
-				return state, fmt.Errorf("service already running; use service restart to change authentication")
-			}
 		}
 		return state, nil
 	}
@@ -237,6 +251,7 @@ func Stop(ctx context.Context, path string) error {
 }
 
 func Restart(ctx context.Context, options Options) (State, error) {
+	options.allowLegacyAuth = true
 	path, _, err := identify(options.DBPath)
 	if err != nil {
 		return State{}, err

@@ -44,7 +44,7 @@ also show the percentage.
 tokeninsights service start --open
 ```
 
-`service start` starts the local query/ingestion service or prints its URL. `--open` opens the dashboard when possible; SSH/headless sessions skip browser launch. Bare invocation also ensures the local server. Startup creates an empty server database when needed and never collects harness data.
+`service start` starts the local query/ingestion service or prints its URL. `--open` opens the dashboard when possible; SSH/headless sessions skip browser launch. Bare invocation ensures the selected local server or prints the configured remote endpoint without starting local. Startup creates an empty server database when needed and never collects harness data.
 
 Collect and publish, then open the terminal dashboard:
 
@@ -80,9 +80,43 @@ tokeninsights tui --server-url https://example.test
 tokeninsights sync --server-url https://example.test
 ```
 
-An explicit server URL skips local startup. `tokeninsights server run` provides the shared foreground server composition. Non-loopback serving requires a token; CLI clients use `--token` or `TOKENINSIGHTS_SERVER_TOKEN`, and browser authentication uses the same token as its Basic-auth password. Remote provisioning, TLS deployment, account management, and login/reboot autostart remain later work.
+Client preferences live in `${XDG_CONFIG_HOME:-~/.config}/tokeninsights/config.json`.
+Configure a remote destination once; sync, TUI and completion plugins use it:
 
-Service state/discovery directories remain private. Saved configuration contains server settings, not harness roots; `--reload-sources` and the old `refresh` command are removed. Server startup and viewer reconnection never collect; TUI startup runs sync unless `--sync=false` is set.
+```sh
+tokeninsights config set server-url http://remote-machine:8765
+tokeninsights config get server-url
+tokeninsights sync
+tokeninsights tui
+tokeninsights config remove server-url  # return to managed local
+```
+
+On the remote machine, explicitly run the separate server:
+
+```sh
+tokeninsights-server --listen 0.0.0.0:8765 --server-db-path /var/lib/tokeninsights/server.sqlite
+```
+
+Both deployments share ingestion/query code. Remote collects nothing and accepts
+many clients into one shared dataset. Both public servers are unauthenticated;
+auth, accounts, alternate storage/queues and deployment provisioning remain future
+work. `tokeninsights server run`, `--token` and `TOKENINSIGHTS_SERVER_TOKEN` are
+removed. Remote failure retains local publication work without falling back.
+
+```sh
+tokeninsights config set host 0.0.0.0
+tokeninsights config set port 8765
+tokeninsights service restart
+```
+
+Config keys: `server-url`, `host`, `port`, `collector-db-path`, `server-db-path`.
+Precedence: flags > environment > file > defaults. `get` reads stored preferences
+or defaults, not environment overrides. `--config-file PATH` or
+`TOKENINSIGHTS_CONFIG_PATH` selects a file. An explicitly empty `--server-url` /
+`TOKENINSIGHTS_SERVER_URL` selects local. Changing bind settings requires restart.
+See [system design](docs/system.md).
+
+Service state/discovery directories remain private. Client configuration selects routing/storage/bind preferences; private runtime records describe effective local service state, not harness roots; `--reload-sources` and the old `refresh` command are removed. Server startup and viewer reconnection never collect; TUI startup runs sync unless `--sync=false` is set.
 
 Repeated collection verifies persisted continuity and skips unchanged sources. Eligible Pi files parse verified appended records; Codex replay verifies complete ancestry; OpenCode fingerprints parser-relevant SQLite rows. Changed sources fall back to full parsing where needed. Active JSONL files are read to a captured extent, and incomplete trailing records wait for a later sync. Collector progress and source diagnostics remain local; the server displays available usage without claiming that missing uploads prove empty or checked days.
 
@@ -116,7 +150,7 @@ The old `tokeninsights.sqlite` remains untouched. Retained sources rebuild the f
 
 Storage accepts only the current collector schema 16 and server schema 2. Previous schemas are rejected without mutation. Current-schema collector data-generation rebuilds remain local; they cannot delete server history.
 
-Rebuild earlier PR databases from retained sources into fresh files. Normalized source times must be valid Unix milliseconds; invalid observations remain collector-local diagnostics. Filename-derived Pi/Claude sessions remain raw-only until native session evidence exists. Changing a running service token requires `service restart`.
+Rebuild earlier PR databases from retained sources into fresh files. Normalized source times must be valid Unix milliseconds; invalid observations remain collector-local diagnostics. Filename-derived Pi/Claude sessions remain raw-only until native session evidence exists. Existing token-protected services require explicit `service restart` to run without public auth; database identity and receipts survive. Restart imports legacy bind preferences into the client config when unset.
 
 Raw provider and model values retain the harness names. Stored canonical values used by filters and dashboards map Pi `openai-codex` to `openai`, map `fireworks-ai` to `fireworks`, and shorten Fireworks model names by removing `accounts/fireworks/models/`. Normal sync also updates previously stored canonical names.
 
