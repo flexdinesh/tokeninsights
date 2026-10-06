@@ -81,7 +81,7 @@ func TestLegacySavedAuthenticationRequiresExplicitRestartAndPreservesReceipt(t *
 	}
 	cleanupStartedDaemon(t, *state.Record)
 	batch := savedBatch(t, state.Status.DataEpoch)
-	receipt := postBatch(t, state.Record.URL, batch)
+	receipt := postBatch(t, *state.Record, batch)
 	if err := Stop(t.Context(), options.DBPath); err != nil {
 		t.Fatal(err)
 	}
@@ -106,7 +106,7 @@ func TestLegacySavedAuthenticationRequiresExplicitRestartAndPreservesReceipt(t *
 	if restarted.Status.DataEpoch != state.Status.DataEpoch || restarted.Record.Config.Host != "0.0.0.0" || restarted.Record.Config.Token != "" {
 		t.Fatal("legacy upgrade changed history or bind", restarted)
 	}
-	if replay := postBatch(t, restarted.Record.URL, batch); replay != receipt {
+	if replay := postBatch(t, *restarted.Record, batch); replay != receipt {
 		t.Fatal("upgrade changed receipt")
 	}
 	var saved Config

@@ -1,13 +1,19 @@
 # Host collector and normalized server ingestion
 
-Status: **Accepted**. Date: 5 October 2026. Implementation: PR #53.
+Status: **Accepted; partially superseded by ADR 0007**.
+Date: 5 October 2026. Implementation: PR #53.
 Supersedes collection ownership, mixed storage and refresh/viewer boundaries in
 [ADR 0005](0005-persistent-service-and-explicit-refresh.md).
 
 [System design](../system.md) records the subsequent deployment/configuration
 decision, including separate binaries and unauthenticated local public access.
 It supersedes the deployment/auth/CLI portions below; the normalized ingestion
-and durability decisions remain in force.
+and durability decisions describe the currently implemented data contract.
+
+[ADR 0007](0007-raw-ingestion-and-server-processing.md) supersedes the target data
+ownership, storage and acknowledgement semantics with sanitized raw ingestion
+and asynchronous server processing. Implementation pending; this document
+retains the implemented contract.
 
 ## Context
 

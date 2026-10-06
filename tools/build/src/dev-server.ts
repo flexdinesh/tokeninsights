@@ -13,7 +13,7 @@ const child = spawn(
     '--port',
     '8765',
     '--server-db-path',
-    join(root, 'server.sqlite'),
+    join(root, 'server.duckdb'),
   ],
   {
     stdio: 'inherit',

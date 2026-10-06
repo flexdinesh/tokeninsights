@@ -23,8 +23,8 @@ import (
 	"time"
 
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/db"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/evidence"
 	api "github.com/flexdinesh/tokeninsights/packages/cli/internal/server/api"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/serverstore"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/service"
 )
 
@@ -115,7 +115,7 @@ func (c client) sync(t *testing.T) {
 func startRemote(t *testing.T) (string, string) {
 	t.Helper()
 	root := t.TempDir()
-	path := filepath.Join(root, "server.sqlite")
+	path := filepath.Join(root, "server.duckdb")
 	command := exec.Command(serverBinary, "--listen", "0.0.0.0:0", "--server-db-path", path)
 	command.Env = isolatedEnvironment(root)
 	output, err := command.StdoutPipe()
@@ -194,46 +194,36 @@ func assertUsage(t *testing.T, target, path string, facts, total int64) []string
 }
 func assertComponents(t *testing.T, target, path string, want [7]int64) []string {
 	t.Helper()
-	store, err := serverstore.Open(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = store.Close() }()
-	var counts [7]int64
-	if err := store.SQL().QueryRow(`SELECT COUNT(*),COALESCE(SUM(input_tokens),0),COALESCE(SUM(output_tokens),0),COALESCE(SUM(reasoning_tokens),0),COALESCE(SUM(cache_read_tokens),0),COALESCE(SUM(cache_write_tokens),0),COALESCE(SUM(total_tokens),0) FROM canonical_token_usage WHERE is_countable=1`).Scan(&counts[0], &counts[1], &counts[2], &counts[3], &counts[4], &counts[5], &counts[6]); err != nil {
-		t.Fatal(err)
-	}
-	if counts != want {
-		t.Fatal("components", counts)
-	}
-	rows, err := store.SQL().Query("SELECT semantic_key FROM canonical_token_usage ORDER BY semantic_key")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = rows.Close() }()
-	ids := []string{}
-	for rows.Next() {
-		var id string
-		if err := rows.Scan(&id); err != nil {
+
+	_ = path // HTTP owns the live data file; do not open a second DuckDB process.
+	deadline := time.Now().Add(10 * time.Second)
+	var data api.UsageResponse
+	for {
+		response, err := http.Get(target + "/api/v1/usage?period=all&tab=sessions")
+		if err != nil {
 			t.Fatal(err)
 		}
-		ids = append(ids, id)
+		err = json.NewDecoder(response.Body).Decode(&data)
+		_ = response.Body.Close()
+		if err != nil || response.StatusCode != http.StatusOK {
+			t.Fatal(err, response.StatusCode)
+		}
+		if data.Pending != nil && *data.Pending == 0 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("processing did not finish", data)
+		}
+		time.Sleep(20 * time.Millisecond)
 	}
-	if err := rows.Err(); err != nil {
-		t.Fatal(err)
+	if data.FactCount == nil || *data.FactCount != want[0] || data.Summary.Total != want[6] || data.Summary.Input != want[1] || data.Summary.Output != want[2] || data.Summary.Reasoning != want[3] || data.Summary.CacheRead != want[4] || data.Summary.CacheWrite != want[5] {
+		t.Fatal("REST component/count oracle", data)
 	}
-	response, err := http.Get(target + "/api/v1/usage?period=all&tab=tokens")
-	if err != nil {
-		t.Fatal(err)
+	ids := []string{}
+	for _, row := range data.Rows {
+		ids = append(ids, row.Key)
 	}
-	defer func() { _ = response.Body.Close() }()
-	var data api.UsageResponse
-	if err := json.NewDecoder(response.Body).Decode(&data); err != nil {
-		t.Fatal(err)
-	}
-	if response.StatusCode != 200 || data.Summary.Total != want[6] || data.Summary.Input != want[1] || data.Summary.Output != want[2] || data.Summary.Reasoning != want[3] || data.Summary.CacheRead != want[4] || data.Summary.CacheWrite != want[5] {
-		t.Fatal("REST totals", data.Summary, response.StatusCode)
-	}
+
 	return ids
 }
 
@@ -245,19 +235,19 @@ func assertAcknowledged(t *testing.T, c client) {
 	}
 	defer func() { _ = database.Close() }()
 	var journal, cursor, receipts int64
-	if err := database.QueryRow("SELECT COUNT(*) FROM publication_journal").Scan(&journal); err != nil {
+	if err := database.QueryRow("SELECT COUNT(*) FROM evidence_outbox").Scan(&journal); err != nil {
 		t.Fatal(err)
 	}
-	if err := database.QueryRow("SELECT COALESCE(MAX(acknowledged_sequence),0) FROM publication_destinations").Scan(&cursor); err != nil {
+	if err := database.QueryRow("SELECT COALESCE(MAX(acknowledged_sequence),0) FROM evidence_destinations").Scan(&cursor); err != nil {
 		t.Fatal(err)
 	}
-	if err := database.QueryRow("SELECT COUNT(*) FROM publication_batches WHERE receipt_bytes IS NOT NULL").Scan(&receipts); err != nil {
+	if err := database.QueryRow("SELECT COUNT(*) FROM evidence_batches WHERE receipt_bytes IS NOT NULL").Scan(&receipts); err != nil {
 		t.Fatal(err)
 	}
-	if journal != 1 || cursor != 1 || receipts != 1 {
+	if journal != 2 || cursor != 2 || receipts != 1 {
 		t.Fatal("publication", journal, cursor, receipts)
 	}
-	if _, err := os.Stat(filepath.Join(c.root, "data", "tokeninsights", "server.sqlite")); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(c.root, "data", "tokeninsights", "server.duckdb")); !os.IsNotExist(err) {
 		t.Fatal("remote sync created local server", err)
 	}
 	if _, err := os.Stat(filepath.Join(c.root, "state")); !os.IsNotExist(err) {
@@ -302,11 +292,11 @@ func TestRemoteFailureRetainsJournalAndNeverStartsLocal(t *testing.T) {
 		t.Fatal(err)
 	}
 	var journal int
-	if err := database.QueryRow("SELECT COUNT(*) FROM publication_journal").Scan(&journal); err != nil {
+	if err := database.QueryRow("SELECT COUNT(*) FROM evidence_outbox").Scan(&journal); err != nil {
 		t.Fatal(err)
 	}
 	_ = database.Close()
-	if journal != 1 {
+	if journal != 2 {
 		t.Fatal("work lost", journal)
 	}
 	target, path := startRemote(t)
@@ -332,7 +322,7 @@ func TestRemoteCommittedResponseLostReplaysExactRequestAndReceipt(t *testing.T) 
 		if response.Request.Method != http.MethodPost {
 			return nil
 		}
-		if response.StatusCode != http.StatusOK {
+		if response.StatusCode != http.StatusOK && response.StatusCode != http.StatusAccepted {
 			return fmt.Errorf("unexpected ingestion status %d", response.StatusCode)
 		}
 		if loseFirst.Swap(false) {
@@ -381,19 +371,19 @@ func TestRemoteCommittedResponseLostReplaysExactRequestAndReceipt(t *testing.T) 
 	defer func() { _ = database.Close() }()
 	var savedRequest, acknowledgedReceipt []byte
 	var cursor int64
-	if err := database.QueryRow("SELECT request_bytes FROM publication_batches WHERE receipt_bytes IS NULL").Scan(&savedRequest); err != nil {
+	if err := database.QueryRow("SELECT request_bytes FROM evidence_batches WHERE receipt_bytes IS NULL").Scan(&savedRequest); err != nil {
 		t.Fatal("pending request missing", err)
 	}
-	if err := database.QueryRow("SELECT acknowledged_sequence FROM publication_destinations").Scan(&cursor); err != nil || cursor != 0 {
+	if err := database.QueryRow("SELECT acknowledged_sequence FROM evidence_destinations").Scan(&cursor); err != nil || cursor != 0 {
 		t.Fatal("lost response advanced cursor", cursor, err)
 	}
 	c.must(t, "sync", "--publish-only")
-	if err := database.QueryRow("SELECT receipt_bytes FROM publication_batches").Scan(&acknowledgedReceipt); err != nil {
+	if err := database.QueryRow("SELECT receipt_bytes FROM evidence_batches").Scan(&acknowledgedReceipt); err != nil {
 		t.Fatal(err)
 	}
 	requestsMu.Lock()
 	defer requestsMu.Unlock()
-	if len(requests) != 2 || !bytes.Equal(requests[0], savedRequest) || !bytes.Equal(requests[1], savedRequest) || !bytes.Equal(originalReceipt, acknowledgedReceipt) || len(originalReceipt) == 0 {
+	if len(requests) != 2 || !bytes.Equal(requests[0], savedRequest) || !bytes.Equal(requests[1], savedRequest) || !sameRawReceipt(originalReceipt, acknowledgedReceipt) || len(originalReceipt) == 0 {
 		t.Fatal("replay changed immutable request or committed receipt")
 	}
 	after := assertUsage(t, target, path, 1, 120)
@@ -417,7 +407,7 @@ func TestLocalAndRemoteBinariesCannotOwnSameDatabase(t *testing.T) {
 		c.must(t, "config", "set", "port", "0")
 		c.must(t, "service", "start")
 		t.Cleanup(func() { c.must(t, "service", "stop") })
-		path := filepath.Join(c.root, "data", "tokeninsights", "server.sqlite")
+		path := filepath.Join(c.root, "data", "tokeninsights", "server.duckdb")
 		command := exec.CommandContext(t.Context(), serverBinary, "--listen", "127.0.0.1:0", "--server-db-path", path)
 		command.Env = c.env
 		if output, err := command.CombinedOutput(); err == nil || !strings.Contains(string(output), "owns database") {
@@ -443,10 +433,10 @@ func TestConfigDestinationSwitchingPreservesIndependentProgress(t *testing.T) {
 	}
 	defer func() { _ = database.Close() }()
 	var destinations, receipts int
-	if err := database.QueryRow("SELECT COUNT(*) FROM publication_destinations WHERE acknowledged_sequence=1").Scan(&destinations); err != nil {
+	if err := database.QueryRow("SELECT COUNT(*) FROM evidence_destinations WHERE acknowledged_sequence=2").Scan(&destinations); err != nil {
 		t.Fatal(err)
 	}
-	if err := database.QueryRow("SELECT COUNT(*) FROM publication_batches WHERE receipt_bytes IS NOT NULL").Scan(&receipts); err != nil {
+	if err := database.QueryRow("SELECT COUNT(*) FROM evidence_batches WHERE receipt_bytes IS NOT NULL").Scan(&receipts); err != nil {
 		t.Fatal(err)
 	}
 	if destinations != 2 || receipts != 2 {
@@ -512,7 +502,7 @@ func TestConfiguredLocalDefaultAndExplicitEmptyRemoteOverride(t *testing.T) {
 	if !state.Running || state.Record == nil || !strings.HasPrefix(state.Record.Address, "0.0.0.0:") {
 		t.Fatal("configured local bind", state)
 	}
-	assertUsage(t, state.Record.URL, filepath.Join(c.root, "data", "tokeninsights", "server.sqlite"), 1, 120)
+	assertUsage(t, state.Record.URL, filepath.Join(c.root, "data", "tokeninsights", "server.duckdb"), 1, 120)
 	assertUsage(t, remote, path, 0, 0)
 	c.env = append(c.env, "TOKENINSIGHTS_SERVER_URL=")
 	c.sync(t)
@@ -553,4 +543,9 @@ func TestAllHarnessesPublishThroughConfiguredRemoteBinaryAndRebuild(t *testing.T
 	if strings.Join(before, ",") != strings.Join(after, ",") {
 		t.Fatal("all-harness rebuild changed identities")
 	}
+}
+
+func sameRawReceipt(left, right []byte) bool {
+	var original, acknowledged evidence.Response
+	return json.Unmarshal(left, &original) == nil && json.Unmarshal(right, &acknowledged) == nil && original.Receipt == acknowledged.Receipt
 }

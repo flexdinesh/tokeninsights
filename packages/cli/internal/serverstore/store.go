@@ -70,6 +70,19 @@ func Open(path string) (*Store, error) {
 	return &Store{database: database}, nil
 }
 
+// OpenReadOnly is reserved for verified legacy history import.
+func OpenReadOnly(path string) (*Store, error) {
+	database, err := connect(path, "ro")
+	if err != nil {
+		return nil, err
+	}
+	if err := inspect(database); err != nil {
+		_ = database.Close()
+		return nil, err
+	}
+	return &Store{database: database}, nil
+}
+
 func CreateIfMissing(path string) (*Store, error) {
 	abs, err := filepath.Abs(path)
 	if err != nil {

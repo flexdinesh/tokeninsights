@@ -7,15 +7,15 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/datastore"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/db"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/serverstore"
 )
 
 func fixturePaths(t *testing.T) (string, string) {
 	t.Helper()
 	options := environment(t)
 	root := filepath.Join(filepath.Dir(options.DBPath), ".tokeninsights-dev")
-	return filepath.Join(root, "collector.sqlite"), filepath.Join(root, "server.sqlite")
+	return filepath.Join(root, "collector.sqlite"), filepath.Join(root, "server.duckdb")
 }
 
 func TestPrepareFixtureSeparateRolesPreserveInodesAndUnrelatedHistory(t *testing.T) {
@@ -33,7 +33,7 @@ func TestPrepareFixtureSeparateRolesPreserveInodesAndUnrelatedHistory(t *testing
 		t.Fatal(err)
 	}
 	_ = collector.Close()
-	server, err := serverstore.Open(serverPath)
+	server, err := datastore.Open(ctx, serverPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -41,7 +41,7 @@ func TestPrepareFixtureSeparateRolesPreserveInodesAndUnrelatedHistory(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := server.SQL().Exec("INSERT INTO ingestion_producers VALUES('fixture-stream','fixture-machine',1)"); err != nil {
+	if _, err := server.SQL().Exec("INSERT INTO ingestion.legacy_receipts VALUES('fixture-stream','fixture-batch','hash','{}')"); err != nil {
 		t.Fatal(err)
 	}
 	_ = server.Close()
@@ -101,7 +101,7 @@ func TestPrepareFixtureSeparateRolesPreserveInodesAndUnrelatedHistory(t *testing
 	if afterStream == stream {
 		t.Fatal("fixture reset retained old delivery stream")
 	}
-	server, err = serverstore.Open(serverPath)
+	server, err = datastore.Open(ctx, serverPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -114,7 +114,7 @@ func TestPrepareFixtureSeparateRolesPreserveInodesAndUnrelatedHistory(t *testing
 		t.Fatal("fixture server generation not reset", after)
 	}
 	var count int
-	if err := server.SQL().QueryRow("SELECT COUNT(*) FROM ingestion_producers").Scan(&count); err != nil || count != 0 {
+	if err := server.SQL().QueryRow("SELECT COUNT(*) FROM ingestion.legacy_receipts").Scan(&count); err != nil || count != 0 {
 		t.Fatal(count, err)
 	}
 }

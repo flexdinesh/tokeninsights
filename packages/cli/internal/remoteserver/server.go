@@ -12,16 +12,15 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/datastore"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/db"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/ingestion"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/server"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/serverownership"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/serverstore"
 )
 
 const shutdownTimeout = 15 * time.Second
 
-type Settings struct{ Listen, DBPath string }
+type Settings struct{ Listen, DBPath, LegacyDBPath string }
 
 func (settings Settings) Validate() (string, int, error) {
 	host, portString, err := net.SplitHostPort(settings.Listen)
@@ -75,13 +74,20 @@ func Run(ctx context.Context, settings Settings, log io.Writer, ready func(strin
 	if err != nil {
 		return err
 	}
-	store, err := serverstore.CreateIfMissing(path)
+	store, err := datastore.OpenWithLegacy(ctx, path, settings.LegacyDBPath)
 	writer()
 	if err != nil {
 		return err
 	}
 	defer func() { _ = store.Close() }()
-	handler := server.NewHandler(ctx, path, ingestion.NewCore(store), log, host)
+	workerCtx, stopWorker := context.WithCancel(ctx)
+	workerDone := make(chan struct{})
+	go func() {
+		defer close(workerDone)
+		store.Run(workerCtx, func(err error) { _, _ = fmt.Fprintf(log, "processing: %v\n", err) })
+	}()
+	defer func() { stopWorker(); <-workerDone }()
+	handler := server.NewDataHandler(ctx, store, log, host, "", true)
 	httpServer := &http.Server{Handler: handler, BaseContext: func(net.Listener) context.Context { return ctx }, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 35 * time.Second, WriteTimeout: 35 * time.Second, IdleTimeout: 60 * time.Second}
 	defer func() { _ = httpServer.Close() }()
 	done := make(chan error, 1)

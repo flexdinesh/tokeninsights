@@ -51,6 +51,14 @@ export const useSyncStatus = (enabled = true) =>
     refetchInterval: 5000,
   })
 
+export function snapshotIdentity(value: {
+  instanceId: string
+  dataEpoch: string
+  generation?: number
+}): string {
+  return `${value.instanceId}/${value.dataEpoch}${value.generation === undefined ? '' : `/${value.generation}`}`
+}
+
 export function useAnalytics(q: QueryState, revision: number, enabled: boolean, identity: string) {
   const client = useQueryClient()
   const params = apiQueryParams(q)
@@ -62,10 +70,7 @@ export function useAnalytics(q: QueryState, revision: number, enabled: boolean, 
     queryKey: ['usage', summaryScope.toString(), params.toString(), revision, identity],
     queryFn: async ({ signal }) => {
       const dashboard = await request(`/api/v1/usage?${params}`, dashboardSchema, signal)
-      if (
-        `${dashboard.instanceId}/${dashboard.dataEpoch}` !== identity ||
-        dashboard.revision < revision
-      ) {
+      if (snapshotIdentity(dashboard) !== identity || dashboard.revision < revision) {
         void client.invalidateQueries({ queryKey: ['sync'] })
         throw new Error('Data changed. Refreshing service status.')
       }
@@ -104,7 +109,7 @@ export function useFacets(
     queryKey: ['facets', params.toString(), revision, identity],
     queryFn: async ({ signal }) => {
       const facets = await request(`/api/v1/usage/facets?${params}`, facetsSchema, signal)
-      if (`${facets.instanceId}/${facets.dataEpoch}` !== identity || facets.revision < revision) {
+      if (snapshotIdentity(facets) !== identity || facets.revision < revision) {
         void client.invalidateQueries({ queryKey: ['sync'] })
         throw new Error('Data changed. Refreshing service status.')
       }

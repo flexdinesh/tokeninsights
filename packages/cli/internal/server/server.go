@@ -15,6 +15,7 @@ import (
 
 	"crypto/rand"
 	"encoding/hex"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/datastore"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/db"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/ingestion"
 	serverapi "github.com/flexdinesh/tokeninsights/packages/cli/internal/server/api"
@@ -37,6 +38,9 @@ type Options struct {
 }
 
 type syncState struct {
+	Generation    int64
+	InputRevision int64
+	Pending       int64
 	InstanceID    string
 	DataEpoch     string
 	DataReadiness string
@@ -48,10 +52,12 @@ type syncState struct {
 }
 
 type app struct {
-	core    *ingestion.Core
-	options Options
-	ctx     context.Context
-	log     io.Writer
+	data           *datastore.Store
+	allowIngestion bool
+	core           *ingestion.Core
+	options        Options
+	ctx            context.Context
+	log            io.Writer
 }
 
 func newApp(ctx context.Context, options Options, log io.Writer) *app {
@@ -66,6 +72,22 @@ func newApp(ctx context.Context, options Options, log io.Writer) *app {
 }
 func (a *app) status() syncState {
 	state := syncState{InstanceID: a.options.InstanceID, DataReadiness: "unavailable", Phase: "ready", Harnesses: map[string]string{}}
+	if a.data != nil {
+		metadata, err := a.data.Metadata(a.ctx)
+		if err != nil {
+			state.Error = "Server storage unavailable"
+			return state
+		}
+		state.DataReadiness = "ready"
+		state.DataEpoch = metadata.DatabaseID
+		state.Revision = uint64(metadata.Revision)
+		state.Generation = metadata.Generation
+		state.InputRevision = metadata.InputRevision
+		if err := a.data.SQL().QueryRowContext(a.ctx, "SELECT COUNT(*) FROM processing.scopes WHERE processed_revision<>revision OR generation<>?", metadata.TargetGeneration).Scan(&state.Pending); err != nil {
+			state.Error = "Processing status unavailable"
+		}
+		return state
+	}
 	store, err := serverstore.Open(a.options.DBPath)
 	if err != nil {
 		state.Error = "Server storage unavailable"
@@ -114,19 +136,28 @@ func isDashboardRoute(path string) bool {
 
 func (a *app) handler() http.Handler {
 	mux := http.NewServeMux()
+	if a.data != nil && a.allowIngestion {
+		mux.Handle(datastore.IngestionPrefix, a.data.Handler())
+		mux.Handle(datastore.LegacyIngestionPrefix, a.data.Handler())
+		mux.Handle(datastore.ProcessingPrefix, a.data.Handler())
+	}
 	mux.HandleFunc("/api/v1/instance", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			apiMethodNotAllowed(w, http.MethodGet)
 			return
 		}
 		state := a.status()
+		capabilities := []serverapi.Capability{serverapi.Usage, serverapi.Facets}
+		if a.data == nil || a.allowIngestion {
+			capabilities = append(capabilities, serverapi.Capability("ingestion"))
+		}
 		writeJSON(w, http.StatusOK, serverapi.InstanceResponse{
 			InstanceId: state.InstanceID, DataEpoch: state.DataEpoch, DataReadiness: serverapi.InstanceResponseDataReadiness(state.DataReadiness),
 			ApiVersion:    serverapi.V1,
 			ServerVersion: version.Version,
 			Hostname:      a.dataHostname(r.Context()),
 			Timezone:      reportingTimezone(time.Local, time.Now()),
-			Capabilities:  []serverapi.Capability{serverapi.Usage, serverapi.Facets, serverapi.Capability("ingestion")},
+			Capabilities:  capabilities,
 			Defaults:      apiSelection(a.options.Defaults),
 		})
 	})
@@ -157,7 +188,12 @@ func (a *app) handler() http.Handler {
 		}
 		ctx, cancel := context.WithTimeout(r.Context(), queryTimeout)
 		defer cancel()
-		data, err := loadDashboard(ctx, a.options.DBPath, q, time.Now())
+		var data dashboard
+		if a.data != nil {
+			data, err = loadDataDashboard(ctx, a.data, q, time.Now())
+		} else {
+			data, err = loadDashboard(ctx, a.options.DBPath, q, time.Now())
+		}
 		if err != nil {
 			a.queryError(w, err)
 			return
@@ -180,6 +216,16 @@ func (a *app) handler() http.Handler {
 		}
 		ctx, cancel := context.WithTimeout(r.Context(), queryTimeout)
 		defer cancel()
+		if a.data != nil {
+			values, err := loadDataFacets(ctx, a.data, q, r.URL.Query().Get("search"), time.Now())
+			if err != nil {
+				a.queryError(w, err)
+				return
+			}
+			values.InstanceId = a.options.InstanceID
+			writeJSON(w, 200, values)
+			return
+		}
 		database, err := serverstore.Open(a.options.DBPath)
 		if err != nil {
 			a.queryError(w, err)
@@ -268,6 +314,9 @@ func (a *app) handler() http.Handler {
 }
 
 func (a *app) dataHostname(ctx context.Context) string {
+	if a.data != nil {
+		return "unknown"
+	}
 	ctx, cancel := context.WithTimeout(ctx, queryTimeout)
 	defer cancel()
 	store, err := serverstore.Open(a.options.DBPath)
@@ -300,7 +349,18 @@ func NewHandler(ctx context.Context, path string, core *ingestion.Core, log io.W
 func NewHandlerWithInstance(ctx context.Context, path string, core *ingestion.Core, log io.Writer, bindHost, instance string) http.Handler {
 	a := newApp(ctx, Options{DBPath: path, InstanceID: instance, Defaults: viewer.Selection{Period: "month", Bucket: "day"}}, log)
 	a.core = core
-	handler := http.NewCrossOriginProtection().Handler(a.handler())
+	return protectHandler(a.handler(), bindHost)
+}
+
+// Local compositions expose writes only through their private control socket.
+func NewDataHandler(ctx context.Context, store *datastore.Store, log io.Writer, bindHost, instance string, allowIngestion bool) http.Handler {
+	a := newApp(ctx, Options{InstanceID: instance, Defaults: viewer.Selection{Period: "month", Bucket: "day"}}, log)
+	a.data = store
+	a.allowIngestion = allowIngestion
+	return protectHandler(a.handler(), bindHost)
+}
+func protectHandler(handler http.Handler, bindHost string) http.Handler {
+	handler = http.NewCrossOriginProtection().Handler(handler)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ip, err := netip.ParseAddr(bindHost)
 		if bindHost == "" || err == nil && ip.IsLoopback() {

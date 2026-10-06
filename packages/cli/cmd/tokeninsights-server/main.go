@@ -19,7 +19,8 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 	flags.SetOutput(stderr)
 	settings := remoteserver.Settings{}
 	flags.StringVar(&settings.Listen, "listen", "0.0.0.0:8765", "IPv4 listen address")
-	flags.StringVar(&settings.DBPath, "server-db-path", "", "required canonical SQLite database path")
+	flags.StringVar(&settings.DBPath, "server-db-path", "", "required server DuckDB database path")
+	flags.StringVar(&settings.LegacyDBPath, "legacy-server-db-path", "", "read-only SQLite baseline import into a new DuckDB")
 	showVersion := flags.Bool("version", false, "print version")
 	if err := flags.Parse(args); err != nil {
 		return err

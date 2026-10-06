@@ -1,12 +1,14 @@
 package cli
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/config"
 	"io"
+	"time"
 
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/browser"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/server"
@@ -18,6 +20,7 @@ var serviceCommand = commandSpec{name: "service", run: runService}
 type serviceOptions struct {
 	service.Options
 	open, json bool
+	legacyPath string
 }
 
 func parseServiceOptions(action string, args []string, output io.Writer) (serviceOptions, error) {
@@ -28,7 +31,10 @@ func parseServiceOptionsWithDefaults(action string, args []string, output io.Wri
 	options := serviceOptions{Options: localOptions(settings.ServerDBPath, settings)}
 	flags := flag.NewFlagSet("tokeninsights service "+action, flag.ContinueOnError)
 	flags.SetOutput(output)
-	flags.StringVar(&options.DBPath, "server-db-path", settings.ServerDBPath, "path to server sqlite db")
+	flags.StringVar(&options.DBPath, "server-db-path", settings.ServerDBPath, "path to server DuckDB")
+	if action == "import" {
+		flags.StringVar(&options.legacyPath, "legacy-server-db-path", "", "verified SQLite baseline to import read-only into a new DuckDB")
+	}
 	var host string
 	var port int
 	if action == "start" || action == "restart" || action == "run" {
@@ -90,7 +96,7 @@ func runService(invocation commandInvocation, args []string) error {
 		return err
 	}
 	switch action {
-	case "start", "stop", "restart", "status", "run":
+	case "start", "stop", "restart", "status", "run", "reprocess", "wait", "import":
 	default:
 		return fmt.Errorf("unknown service action %q\n%w", action, ErrUsage)
 	}
@@ -131,6 +137,32 @@ func runService(invocation commandInvocation, args []string) error {
 	}
 	var state service.State
 	switch action {
+	case "import":
+		if err := service.ImportLegacy(invocation.context, options.DBPath, options.legacyPath); err != nil {
+			return err
+		}
+		_, err := fmt.Fprintln(invocation.stdout, "Legacy history imported. SQLite source preserved.")
+		return err
+	case "wait", "reprocess":
+		state, err = service.Probe(invocation.context, options.DBPath)
+		if err != nil {
+			return err
+		}
+		if !state.Running || state.Record == nil {
+			return service.ErrStopped
+		}
+		client := service.Client{Record: *state.Record}
+		if action == "reprocess" {
+			generation, err := client.Reprocess(invocation.context)
+			if err != nil {
+				return err
+			}
+			_, err = fmt.Fprintf(invocation.stdout, "Reprocessing queued: generation=%d\n", generation)
+			return err
+		}
+		ctx, cancel := context.WithTimeout(invocation.context, 30*time.Second)
+		defer cancel()
+		return client.WaitProcessing(ctx)
 	case "start":
 		state, err = service.Ensure(invocation.context, options.Options)
 	case "restart":

@@ -1,7 +1,13 @@
 import type { Dashboard } from '../contracts'
 import { exactCount, formatCount } from '../format'
 
-export function SummaryCards({ summary }: { summary: Dashboard['summary'] }) {
+export function SummaryCards({
+  summary,
+  estimated = false,
+}: {
+  summary: Dashboard['summary']
+  estimated?: boolean
+}) {
   const cards: {
     label: string
     value: number
@@ -11,7 +17,7 @@ export function SummaryCards({ summary }: { summary: Dashboard['summary'] }) {
     {
       label: 'Total tokens',
       value: summary.total,
-      detail: 'Canonical, countable usage',
+      detail: estimated ? 'Estimated; excluded from confirmed' : 'Canonical, countable usage',
       className: 'total-card',
     },
     {

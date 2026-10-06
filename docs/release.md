@@ -43,9 +43,9 @@ Required secret:
 
 To begin a new minor or major series, change `.release-version`. For example, changing it to `0.2` makes the next release `packages/cli/v0.2.0`; changing it to `1.0` makes the next release `packages/cli/v1.0.0`. Later releases automatically increment that series' patch number.
 
-React assets are committed under `packages/cli/internal/server/static` and embedded with `go:embed` in every binary, including stable and main Go installs. Local pre-push verification rebuilds the frontend and checks asset drift. CI/release run only `mise run check:ci`: formatting, SQLite contract consistency, and native build. Test suites and browser installation stay local. Frontend changes must include regenerated assets (`pnpm run build:web`). The private `@tokeninsights/build-tools` workspace package under `tools/build` owns generated-asset checks and Homebrew formula generation; it is build/release-time tooling only.
+React assets are committed under `packages/cli/internal/server/static` and embedded with `go:embed` in every binary, including stable and main Go installs. Local pre-push verification rebuilds the frontend and checks asset drift. CI/release preparation run `mise run check:ci`: formatting, SQLite/DuckDB contract consistency, and native build. Additional native jobs build both binaries and test the data stores on each supported architecture. Full tests and browser installation stay local. Frontend changes must include regenerated assets (`pnpm run build:web`). The private `@tokeninsights/build-tools` workspace package under `tools/build` owns generated-asset checks and Homebrew formula generation; it is build/release-time tooling only.
 
-Release artifacts contain only the native Go binary and documentation. Production hosts need no Node.js, npm, pnpm, `node_modules`, repository JavaScript tooling, or separate web files. Go serves the embedded browser JavaScript as bytes; it executes only in the browser, and the Go runtime never invokes a JavaScript runtime.
+Release artifacts contain only the two native Go binaries and documentation. Production hosts need no Node.js, npm, pnpm, `node_modules`, repository JavaScript tooling, or separate web files. Go serves the embedded browser JavaScript as bytes; it executes only in the browser, and the Go runtime never invokes a JavaScript runtime.
 
 The tap branch is deterministic per version, such as `tokeninsights-v0.0.1`, so rerunning the release updates the same tap pull request. If the tap pull request cannot be created or updated, the release workflow fails after publishing the GitHub Release so the Homebrew update can be repaired manually.
 
@@ -55,33 +55,23 @@ The tap repository owns Homebrew-native validation. Its CI should run style, aud
 
 ### Database Compatibility
 
-Collector and server storage have separate SQLite application IDs and schemas.
-Only collector schema 16 and server schema 2 are accepted; older, unknown,
-wrong-role, corrupt, and newer schema contracts fail before mutation. The former
-`tokeninsights.sqlite` stays untouched. Releases do not import legacy history or
-migrate previous schemas. Release version numbers do not drive recovery.
+Collector SQLite schema 17 and server DuckDB schema 1 have distinct roles.
+Verified collector schema 16 upgrades additively, preserving legacy journals and
+saved requests. Unsupported/newer/corrupt contracts reject without mutation.
+Former tokeninsights.sqlite stays untouched. Fresh default server.duckdb imports
+verified sibling server.sqlite schema 2 read-only; custom sources use an explicit
+import into a new target. Original history remains until specific replacement
+coverage is proven.
 
-Within the current collector schema, an older data generation can rebuild from
-retained sources, while a current-generation pending rebuild resumes using its
-saved source-scope fingerprint. Current data generation is 6; newer generations
-are rejected. Failed rebuilds preserve committed collector work and pending
-state. Retry with the original `--collector-db-path`, source directory, and source
-environment settings. Changed scopes are rejected; `--dry-run` never repairs.
-Only retained sources reconstruct collector history. Server storage never uses
-collector recovery, and resets cannot retract committed server facts.
+Sync captures evidence and waits for durable acceptance, then returns while
+processing runs asynchronously. Collector reset does not retract server facts;
+reset-all rejects unacknowledged evidence. Old canonical generation recovery
+applies only to retained legacy collector maintenance, not the new raw capture.
 
-Everyday commands are `service`, `sync`, and `tui`. Advanced operations are
-`collector normalize`, `collector reset-canonical`, and `collector reset-all`.
-The TUI and browser read committed REST data; `tui` syncs within a loading screen
-first, while `--sync=false` skips collection. Previous commands and `--db-path` / `--no-sync` are removed. Explicit
-collector resets require current-role/current-schema storage or a brand-new empty
-file. Role paths default to `collector.sqlite` and `server.sqlite`.
-
-Release verification covers rejection without mutation for previous schemas and
-wrong roles; fresh/current preservation; current-schema rebuild/resume and scope
-rejection; read-only viewer and dry-run behavior; and stable fact/receipt replay
-when collector storage is rebuilt. Keep adapter accounting, ancestry, source
-continuity, and every token component pinned by synthetic fixtures.
+Verification preserves stable native contribution identities, all token
+components, exact receipt replay, source continuity, separate estimates,
+generation cutover and unmatched imported history. Both binaries must work
+without Node/npm/pnpm. See [design](design.md) for the complete contract.
 
 ### Checks
 
@@ -104,3 +94,5 @@ and `tokeninsights-server`. Go users install remote explicitly with
 `go install github.com/flexdinesh/tokeninsights/packages/cli/cmd/tokeninsights-server@latest`.
 Both embed committed assets and run without Node/npm/pnpm. Remote runs only when
 explicitly launched and requires `--server-db-path`; installing it starts nothing.
+
+CGO/C/C++ builds DuckDB. Native CI/release Linux/macOS amd64/arm64 jobs build/test on matching runners. See [design](design.md) for current acceptance/migration.

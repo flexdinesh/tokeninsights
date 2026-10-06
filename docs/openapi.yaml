@@ -116,6 +116,7 @@ paths:
             minimum: 1
             maximum: 200
             default: 50
+        - $ref: '#/components/parameters/QualityFilter'
       responses:
         '200':
           description: Canonical usage result
@@ -166,6 +167,7 @@ paths:
             allOf:
               - $ref: '#/components/schemas/UsageTab'
             default: tokens
+        - $ref: '#/components/parameters/QualityFilter'
       responses:
         '200':
           description: Available dimension values
@@ -209,16 +211,16 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/IngestionError'
+      deprecated: true
   /api/v1/ingestion/batches:
     post:
       operationId: ingestBatch
-      summary: Commit one immutable normalized batch
+      summary: Retain a legacy normalized publication batch
       description:
-        'Synchronous atomic ingestion: 200 means all accepted facts are queryable and the durable
-        receipt exists. Same fact identity and payload is a no-op across streams and collector rebuilds.
-        Conflicting immutable facts or batch bytes reject the entire batch. At most four admitted requests;
-        overload returns 503. Local and initial remote deployments are unauthenticated, including
-        non-loopback binds. Remote application authentication is deferred.'
+        Compatibility delivery for retained protocol-1 journal requests. Facts are stored as
+        legacy baselines with synchronous receipts. New collectors use protocol 2. Local writes use private
+        Unix transport. Matching proven raw contributions replace baselines by identity; unmatched baselines
+        remain queryable.
       tags:
         - Ingestion
       requestBody:
@@ -272,6 +274,158 @@ paths:
                 $ref: '#/components/schemas/IngestionError'
         '422':
           description: Unsupported protocol, identity, or semantics version; no mutation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IngestionError'
+      deprecated: true
+  /api/v2/ingestion/capabilities:
+    get:
+      operationId: getRawIngestionCapabilities
+      summary: Read raw ingestion contract and durable database identity
+      tags:
+        - Ingestion
+      responses:
+        '200':
+          description: Acceptance-only ingestion contract
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RawCapabilities'
+        '503':
+          description: Storage unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IngestionError'
+  /api/v2/ingestion/batches:
+    post:
+      operationId: ingestRawBatch
+      summary: Durably accept immutable sanitized source evidence
+      description:
+        Raw evidence, every submitted item mapping, immutable receipt and pending work commit
+        together. Duplicate evidence succeeds. Processing runs asynchronously. Local ingestion is private
+        Unix transport; public local HTTP exposes queries only. Remote authentication remains a separate
+        deployment concern. Metadata strings are limited to 256 UTF-8 bytes.
+      tags:
+        - Ingestion
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RawBatch'
+      responses:
+        '200':
+          description:
+            Durably accepted; all items terminal for current processing generation and scope
+            revision.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RawAcceptance'
+        '202':
+          description: Durably accepted; processing remains asynchronous.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RawAcceptance'
+        '400':
+          description: Invalid JSON or private/unknown fields; no acceptance.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IngestionError'
+        '409':
+          description: Batch bytes, sequence binding or database identity conflict; no acceptance.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IngestionError'
+        '413':
+          description: Body exceeds 1 MiB; no acceptance.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IngestionError'
+        '422':
+          description: Unsupported contract; no acceptance.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IngestionError'
+        '503':
+          description: Cannot durably accept; retry exact bytes.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IngestionError'
+  /api/v2/ingestion/batches/{stream}/{batch}:
+    get:
+      operationId: getRawBatchStatus
+      summary: Read immutable acceptance and current per-item processing status
+      tags:
+        - Ingestion
+      parameters:
+        - name: stream
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 256
+        - name: batch
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 256
+      responses:
+        '200':
+          description:
+            Durably accepted; all items terminal for current processing generation and scope
+            revision.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RawAcceptance'
+        '202':
+          description: Durably accepted; processing remains asynchronous.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RawAcceptance'
+        '503':
+          description: Cannot durably accept; retry exact bytes.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IngestionError'
+        '404':
+          description: No accepted batch with this identity
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IngestionError'
+  /api/v2/processing/reprocess:
+    post:
+      operationId: reprocessEvidence
+      summary: Stage reprocessing of retained raw evidence
+      description:
+        Builds a new generation asynchronously. Published history stays active until replacement
+        coverage is complete. Available on private local transport and the remote server.
+      tags:
+        - Ingestion
+      responses:
+        '202':
+          description: Durable reprocessing generation requested
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReprocessAcceptance'
+        '503':
+          description: Unable to queue reprocessing
           content:
             application/json:
               schema:
@@ -372,6 +526,13 @@ components:
         type: array
         items:
           type: string
+    QualityFilter:
+      name: quality
+      in: query
+      schema:
+        allOf:
+          - $ref: '#/components/schemas/UsageQuality'
+        default: confirmed
   responses:
     InvalidRequest:
       description: Invalid query parameters
@@ -622,6 +783,12 @@ components:
           type: string
         revision:
           $ref: '#/components/schemas/Count'
+        generation:
+          $ref: '#/components/schemas/Count'
+        inputRevision:
+          $ref: '#/components/schemas/Count'
+        pending:
+          $ref: '#/components/schemas/Count'
     Count:
       type: integer
       format: int64
@@ -632,8 +799,9 @@ components:
       format: int64
       minimum: 0
       maximum: 253402214399999
-      description: Unix milliseconds through 9999-12-30T23:59:59.999Z. One day of headroom preserves
-        calendar query support after timezone conversion. Source units are never guessed or rescaled.
+      description:
+        Unix milliseconds through 9999-12-30T23:59:59.999Z. One day of headroom preserves calendar
+        query support after timezone conversion. Source units are never guessed or rescaled.
     UsageRow:
       type: object
       additionalProperties: false
@@ -760,6 +928,9 @@ components:
         - lastSynced
         - range
       properties:
+        factCount:
+          $ref: '#/components/schemas/Count'
+
         instanceId:
           type: string
           minLength: 1
@@ -793,6 +964,16 @@ components:
             - $ref: '#/components/schemas/Count'
         range:
           type: string
+        generation:
+          $ref: '#/components/schemas/Count'
+        inputRevision:
+          $ref: '#/components/schemas/Count'
+        pending:
+          $ref: '#/components/schemas/Count'
+        unresolved:
+          $ref: '#/components/schemas/Count'
+        quality:
+          $ref: '#/components/schemas/UsageQuality'
     UsageFacetsResponse:
       type: object
       additionalProperties: false
@@ -839,6 +1020,12 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/LocationOption'
+        generation:
+          $ref: '#/components/schemas/Count'
+        inputRevision:
+          $ref: '#/components/schemas/Count'
+        pending:
+          $ref: '#/components/schemas/Count'
     LocationOption:
       type: object
       additionalProperties: false
@@ -1297,3 +1484,545 @@ components:
           description: At most 256 UTF-8 bytes; no control characters.
           minLength: 1
       description: Safe diagnostic codes and correlation IDs; request content is never echoed.
+    UsageQuality:
+      type: string
+      enum:
+        - confirmed
+        - estimated
+      description: Estimated evidence is queried separately and never included in confirmed totals.
+    NativeScalar:
+      anyOf:
+        - type: string
+          nullable: true
+        - type: number
+        - type: boolean
+      description:
+        Original scalar source value, including explicit null. Processing validates integer
+        counters and native timestamps.
+    RawSourceData:
+      type: object
+      additionalProperties: false
+      properties:
+        type:
+          $ref: '#/components/schemas/NativeScalar'
+        id:
+          $ref: '#/components/schemas/NativeScalar'
+        timestamp:
+          $ref: '#/components/schemas/NativeScalar'
+        uuid:
+          $ref: '#/components/schemas/NativeScalar'
+        sessionId:
+          $ref: '#/components/schemas/NativeScalar'
+        session_id:
+          $ref: '#/components/schemas/NativeScalar'
+          x-go-name: SessionIdAlias
+        requestId:
+          $ref: '#/components/schemas/NativeScalar'
+        request_id:
+          $ref: '#/components/schemas/NativeScalar'
+          x-go-name: RequestIdAlias
+        time_created:
+          $ref: '#/components/schemas/NativeScalar'
+          x-go-name: TimeCreatedAlias
+        project_id:
+          $ref: '#/components/schemas/NativeScalar'
+          x-go-name: ProjectIdAlias
+        vcs:
+          $ref: '#/components/schemas/NativeScalar'
+        message:
+          type: object
+          additionalProperties: false
+          properties:
+            role:
+              $ref: '#/components/schemas/NativeScalar'
+            timestamp:
+              $ref: '#/components/schemas/NativeScalar'
+            id:
+              $ref: '#/components/schemas/NativeScalar'
+            provider:
+              $ref: '#/components/schemas/NativeScalar'
+            provider_id:
+              $ref: '#/components/schemas/NativeScalar'
+              x-go-name: ProviderIdAlias
+            providerID:
+              $ref: '#/components/schemas/NativeScalar'
+            model:
+              $ref: '#/components/schemas/NativeScalar'
+            model_id:
+              $ref: '#/components/schemas/NativeScalar'
+              x-go-name: ModelIdAlias
+            modelID:
+              $ref: '#/components/schemas/NativeScalar'
+            usage:
+              type: object
+              additionalProperties: false
+              properties:
+                input:
+                  $ref: '#/components/schemas/NativeScalar'
+                output:
+                  $ref: '#/components/schemas/NativeScalar'
+                reasoning:
+                  $ref: '#/components/schemas/NativeScalar'
+                cacheRead:
+                  $ref: '#/components/schemas/NativeScalar'
+                cacheWrite:
+                  $ref: '#/components/schemas/NativeScalar'
+                totalTokens:
+                  $ref: '#/components/schemas/NativeScalar'
+                input_tokens:
+                  $ref: '#/components/schemas/NativeScalar'
+                  x-go-name: InputTokensAlias
+                output_tokens:
+                  $ref: '#/components/schemas/NativeScalar'
+                  x-go-name: OutputTokensAlias
+                cache_read_input_tokens:
+                  $ref: '#/components/schemas/NativeScalar'
+                  x-go-name: CacheReadInputTokensAlias
+                cache_creation_input_tokens:
+                  $ref: '#/components/schemas/NativeScalar'
+                  x-go-name: CacheCreationInputTokensAlias
+                total_tokens:
+                  $ref: '#/components/schemas/NativeScalar'
+                  x-go-name: TotalTokensAlias
+                output_tokens_details:
+                  type: object
+                  additionalProperties: false
+                  properties:
+                    thinking_tokens:
+                      $ref: '#/components/schemas/NativeScalar'
+                      x-go-name: ThinkingTokensAlias
+                    reasoning_tokens:
+                      $ref: '#/components/schemas/NativeScalar'
+                      x-go-name: ReasoningTokensAlias
+                  x-go-name: OutputTokensDetailsAlias
+        payload:
+          type: object
+          additionalProperties: false
+          properties:
+            type:
+              $ref: '#/components/schemas/NativeScalar'
+            id:
+              $ref: '#/components/schemas/NativeScalar'
+            model_provider:
+              $ref: '#/components/schemas/NativeScalar'
+              x-go-name: ModelProviderAlias
+            forked_from_id:
+              $ref: '#/components/schemas/NativeScalar'
+              x-go-name: ForkedFromIdAlias
+            parent_thread_id:
+              $ref: '#/components/schemas/NativeScalar'
+              x-go-name: ParentThreadIdAlias
+            turn_id:
+              $ref: '#/components/schemas/NativeScalar'
+              x-go-name: TurnIdAlias
+            model:
+              $ref: '#/components/schemas/NativeScalar'
+            source:
+              type: object
+              additionalProperties: false
+              properties:
+                subagent:
+                  type: object
+                  additionalProperties: false
+                  properties:
+                    thread_spawn:
+                      type: object
+                      additionalProperties: false
+                      properties:
+                        parent_thread_id:
+                          $ref: '#/components/schemas/NativeScalar'
+                          x-go-name: ParentThreadIdAlias
+                      x-go-name: ThreadSpawnAlias
+            info:
+              type: object
+              additionalProperties: false
+              properties:
+                last_token_usage:
+                  type: object
+                  additionalProperties: false
+                  properties:
+                    input_tokens:
+                      $ref: '#/components/schemas/NativeScalar'
+                      x-go-name: InputTokensAlias
+                    cached_input_tokens:
+                      $ref: '#/components/schemas/NativeScalar'
+                      x-go-name: CachedInputTokensAlias
+                    cache_read_input_tokens:
+                      $ref: '#/components/schemas/NativeScalar'
+                      x-go-name: CacheReadInputTokensAlias
+                    output_tokens:
+                      $ref: '#/components/schemas/NativeScalar'
+                      x-go-name: OutputTokensAlias
+                    reasoning_output_tokens:
+                      $ref: '#/components/schemas/NativeScalar'
+                      x-go-name: ReasoningOutputTokensAlias
+                    total_tokens:
+                      $ref: '#/components/schemas/NativeScalar'
+                      x-go-name: TotalTokensAlias
+                  x-go-name: LastTokenUsageAlias
+                total_token_usage:
+                  type: object
+                  additionalProperties: false
+                  properties:
+                    input_tokens:
+                      $ref: '#/components/schemas/NativeScalar'
+                      x-go-name: InputTokensAlias
+                    cached_input_tokens:
+                      $ref: '#/components/schemas/NativeScalar'
+                      x-go-name: CachedInputTokensAlias
+                    cache_read_input_tokens:
+                      $ref: '#/components/schemas/NativeScalar'
+                      x-go-name: CacheReadInputTokensAlias
+                    output_tokens:
+                      $ref: '#/components/schemas/NativeScalar'
+                      x-go-name: OutputTokensAlias
+                    reasoning_output_tokens:
+                      $ref: '#/components/schemas/NativeScalar'
+                      x-go-name: ReasoningOutputTokensAlias
+                    total_tokens:
+                      $ref: '#/components/schemas/NativeScalar'
+                      x-go-name: TotalTokensAlias
+                  x-go-name: TotalTokenUsageAlias
+        data:
+          type: object
+          additionalProperties: false
+          properties:
+            role:
+              $ref: '#/components/schemas/NativeScalar'
+            modelID:
+              $ref: '#/components/schemas/NativeScalar'
+            providerID:
+              $ref: '#/components/schemas/NativeScalar'
+            model:
+              type: object
+              additionalProperties: false
+              properties:
+                id:
+                  $ref: '#/components/schemas/NativeScalar'
+                providerID:
+                  $ref: '#/components/schemas/NativeScalar'
+            tokens:
+              type: object
+              additionalProperties: false
+              properties:
+                input:
+                  $ref: '#/components/schemas/NativeScalar'
+                output:
+                  $ref: '#/components/schemas/NativeScalar'
+                reasoning:
+                  $ref: '#/components/schemas/NativeScalar'
+                cache:
+                  type: object
+                  additionalProperties: false
+                  properties:
+                    read:
+                      $ref: '#/components/schemas/NativeScalar'
+                    write:
+                      $ref: '#/components/schemas/NativeScalar'
+            time:
+              type: object
+              additionalProperties: false
+              properties:
+                created:
+                  $ref: '#/components/schemas/NativeScalar'
+                completed:
+                  $ref: '#/components/schemas/NativeScalar'
+      description:
+        Only whitelisted scalar leaves and their containers. Allowed leaves further depend
+        on harness and format; server validates the exact whitelist before storing any bytes.
+    ExtractionDiagnostic:
+      type: string
+      enum:
+        - invalid_field_type
+        - unsafe_metadata
+        - field_limit
+        - native_subagent_present
+    RawContext:
+      type: object
+      additionalProperties: false
+      required:
+        - ordinal
+        - data
+      properties:
+        ordinal:
+          $ref: '#/components/schemas/Count'
+        data:
+          $ref: '#/components/schemas/RawSourceData'
+        diagnostics:
+          type: array
+          maxItems: 8
+          items:
+            $ref: '#/components/schemas/ExtractionDiagnostic'
+    RawLocation:
+      type: object
+      additionalProperties: false
+      properties:
+        directoryKey:
+          type: string
+          maxLength: 256
+        directoryName:
+          type: string
+          maxLength: 256
+        repositoryKey:
+          type: string
+          maxLength: 256
+        repositoryName:
+          type: string
+          maxLength: 256
+        repositorySource:
+          type: string
+          maxLength: 256
+    RawRecord:
+      type: object
+      additionalProperties: false
+      required:
+        - harness
+        - format
+        - sourceId
+        - lineage
+        - ordinal
+        - data
+      properties:
+        harness:
+          $ref: '#/components/schemas/Harness'
+        format:
+          type: string
+          enum:
+            - opencode-v1
+            - opencode-v2
+            - opencode-session
+            - opencode-project
+            - pi-jsonl
+            - claude-code-jsonl
+            - codex-jsonl
+        sourceId:
+          type: string
+          minLength: 1
+          maxLength: 256
+        lineage:
+          type: string
+          minLength: 1
+          maxLength: 256
+        ordinal:
+          $ref: '#/components/schemas/Count'
+        data:
+          $ref: '#/components/schemas/RawSourceData'
+        context:
+          type: array
+          maxItems: 3
+          items:
+            $ref: '#/components/schemas/RawContext'
+        location:
+          $ref: '#/components/schemas/RawLocation'
+        diagnostics:
+          type: array
+          maxItems: 8
+          items:
+            $ref: '#/components/schemas/ExtractionDiagnostic'
+    RawEntry:
+      type: object
+      additionalProperties: false
+      required:
+        - sequence
+        - record
+      properties:
+        sequence:
+          $ref: '#/components/schemas/Count'
+        record:
+          $ref: '#/components/schemas/RawRecord'
+    RawBatch:
+      type: object
+      additionalProperties: false
+      required:
+        - protocolVersion
+        - extractorVersion
+        - databaseId
+        - streamId
+        - batchId
+        - fromSequence
+        - toSequence
+        - entries
+      properties:
+        protocolVersion:
+          type: integer
+          enum:
+            - 2
+        extractorVersion:
+          type: integer
+          enum:
+            - 1
+        databaseId:
+          type: string
+          minLength: 1
+          maxLength: 256
+        streamId:
+          type: string
+          minLength: 1
+          maxLength: 256
+        batchId:
+          type: string
+          minLength: 1
+          maxLength: 256
+        fromSequence:
+          $ref: '#/components/schemas/Count'
+        toSequence:
+          $ref: '#/components/schemas/Count'
+        entries:
+          type: array
+          minItems: 1
+          maxItems: 256
+          items:
+            $ref: '#/components/schemas/RawEntry'
+    RawCapabilities:
+      type: object
+      additionalProperties: false
+      required:
+        - protocolVersion
+        - extractorVersion
+        - databaseId
+        - datasetId
+        - completion
+        - maxBodyBytes
+        - maxEntries
+      properties:
+        protocolVersion:
+          type: integer
+          enum:
+            - 2
+        extractorVersion:
+          type: integer
+          enum:
+            - 1
+        databaseId:
+          type: string
+          minLength: 1
+          maxLength: 256
+        datasetId:
+          type: string
+          enum:
+            - default
+        completion:
+          type: string
+          enum:
+            - acceptance
+        maxBodyBytes:
+          type: integer
+          enum:
+            - 1048576
+        maxEntries:
+          type: integer
+          enum:
+            - 256
+    RawReceipt:
+      type: object
+      additionalProperties: false
+      required:
+        - databaseId
+        - datasetId
+        - streamId
+        - batchId
+        - requestHash
+        - fromSequence
+        - toSequence
+        - accepted
+        - acceptedAtMs
+        - inputRevision
+      properties:
+        databaseId:
+          type: string
+          minLength: 1
+          maxLength: 256
+        datasetId:
+          type: string
+          enum:
+            - default
+        streamId:
+          type: string
+          minLength: 1
+          maxLength: 256
+        batchId:
+          type: string
+          minLength: 1
+          maxLength: 256
+        requestHash:
+          type: string
+          minLength: 1
+          maxLength: 256
+        fromSequence:
+          $ref: '#/components/schemas/Count'
+        toSequence:
+          $ref: '#/components/schemas/Count'
+        accepted:
+          $ref: '#/components/schemas/Count'
+        acceptedAtMs:
+          $ref: '#/components/schemas/TimestampMs'
+        inputRevision:
+          $ref: '#/components/schemas/Count'
+    EvidenceOutcome:
+      type: object
+      additionalProperties: false
+      required:
+        - evidenceId
+        - disposition
+        - generation
+        - inputRevision
+      properties:
+        evidenceId:
+          type: string
+          minLength: 1
+          maxLength: 256
+        disposition:
+          type: string
+          enum:
+            - pending
+            - context
+            - processed
+            - duplicate
+            - superseded
+            - ambiguous
+        code:
+          type: string
+        factId:
+          type: string
+        generation:
+          $ref: '#/components/schemas/Count'
+        inputRevision:
+          $ref: '#/components/schemas/Count'
+    ProcessingStatus:
+      type: object
+      additionalProperties: false
+      required:
+        - generation
+        - inputRevision
+        - pending
+        - items
+      properties:
+        generation:
+          $ref: '#/components/schemas/Count'
+        inputRevision:
+          $ref: '#/components/schemas/Count'
+        pending:
+          $ref: '#/components/schemas/Count'
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/EvidenceOutcome'
+    RawAcceptance:
+      type: object
+      additionalProperties: false
+      required:
+        - receipt
+        - processing
+      properties:
+        receipt:
+          $ref: '#/components/schemas/RawReceipt'
+        processing:
+          $ref: '#/components/schemas/ProcessingStatus'
+    ReprocessAcceptance:
+      type: object
+      additionalProperties: false
+      required:
+        - generation
+      properties:
+        generation:
+          $ref: '#/components/schemas/Count'

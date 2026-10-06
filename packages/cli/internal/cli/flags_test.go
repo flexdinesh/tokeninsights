@@ -222,7 +222,7 @@ func TestParseTableOptionsDefaultDBPathXDGDataHome(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	want := filepath.Join(xdgDataHome, "tokeninsights", "server.sqlite")
+	want := filepath.Join(xdgDataHome, "tokeninsights", "server.duckdb")
 	if opts.dbPath != want {
 		t.Fatalf("got dbPath %q, want %q", opts.dbPath, want)
 	}
@@ -239,7 +239,7 @@ func TestParseTableOptionsDefaultDBPathHome(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	want := filepath.Join(home, ".local", "share", "tokeninsights", "server.sqlite")
+	want := filepath.Join(home, ".local", "share", "tokeninsights", "server.duckdb")
 	if opts.dbPath != want {
 		t.Fatalf("got dbPath %q, want %q", opts.dbPath, want)
 	}

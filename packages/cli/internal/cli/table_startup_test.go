@@ -51,8 +51,8 @@ func driveStartupForTest(t *testing.T, model startupModel) tea.Model {
 	}
 }
 
-func TestTUIDefaultSyncRunsInsideLoadingScreenAndPublishesBeforeData(t *testing.T) {
-	remote, store, requests := newViewQueryServer(t, false)
+func TestTUIDefaultSyncAcceptsInsideLoadingScreenAndReloadQueriesProcessedData(t *testing.T) {
+	remote, store, requests := newRawViewQueryServer(t)
 	root := t.TempDir()
 	isolateViewSources(t, root)
 	piPath := filepath.Join(root, "home", ".pi", "agent", "sessions", "project", "session.jsonl")
@@ -73,10 +73,19 @@ func TestTUIDefaultSyncRunsInsideLoadingScreenAndPublishesBeforeData(t *testing.
 		}
 		final := driveStartupForTest(t, startup)
 		dashboard, ok := final.(interactiveModel)
-		if !ok || dashboard.loading || len(dashboard.rows) != 1 || dashboard.rows[0].totalValue != 100 {
-			t.Fatal("dashboard opened before committed usage loaded")
+		if !ok || dashboard.loading || len(dashboard.rows) != 0 {
+			t.Fatal("startup must finish after acceptance, before asynchronous processing")
 		}
-		assertCLIQueryCount(t, store.SQL(), "SELECT SUM(total_tokens) FROM canonical_token_usage", 100)
+		for {
+			worked, err := store.ProcessNext(t.Context())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !worked {
+				break
+			}
+		}
+		assertCLIQueryCount(t, store.SQL(), "SELECT SUM(total_tokens) FROM analytics.confirmed", 100)
 		before := requests.posts.Load()
 		updated, cmd := dashboard.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'r'}})
 		dashboard = updated.(interactiveModel)
@@ -209,7 +218,7 @@ func TestStartupFitsTerminalAndKeepsRecoveryKeys(t *testing.T) {
 			if !strings.Contains(view, "q Quit") {
 				t.Fatalf("quit missing: %s", view)
 			}
-			if !strings.Contains(view, "33 batches committed") || !strings.Contains(view, "36199 pending") {
+			if !strings.Contains(view, "33 batches accepted") || !strings.Contains(view, "36199 pending") {
 				t.Fatalf("acknowledged progress truncated: %s", view)
 			}
 			if failed && (!strings.Contains(view, "r Retry") || !strings.Contains(view, "v ")) {
@@ -241,7 +250,7 @@ func TestStartupFailureShowsSafeReasonAndDiagnosticsAtCompactSizes(t *testing.T)
 			m.delivery = collector.DeliveryProgress{Batches: 33, Pending: 36199, PendingKnown: true}
 			view := ansi.Strip(m.View())
 			m.dashboard.cancelSync()
-			for _, want := range []string{code, "tokeninsights sync", "33 batches committed", "36199 pending", "r Retry", "v ", "q Quit"} {
+			for _, want := range []string{code, "tokeninsights sync", "33 batches accepted", "36199 pending", "r Retry", "v ", "q Quit"} {
 				if !strings.Contains(view, want) {
 					t.Fatalf("missing %q at %v: %s", want, size, view)
 				}

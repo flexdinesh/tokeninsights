@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"time"
 )
 
 var ErrStopped = errors.New("service stopped")
@@ -19,6 +20,23 @@ type State struct {
 }
 
 type Client struct{ Record Record }
+
+type instanceTransport struct {
+	transport *http.Transport
+	instance  string
+}
+
+func (t instanceTransport) RoundTrip(request *http.Request) (*http.Response, error) {
+	clone := request.Clone(request.Context())
+	clone.Header.Set("X-TokenInsights-Instance", t.instance)
+	return t.transport.RoundTrip(clone)
+}
+func (c Client) IngestionClient() *http.Client {
+	transport := &http.Transport{DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
+		return (&net.Dialer{}).DialContext(ctx, "unix", c.Record.Socket)
+	}, DisableKeepAlives: true}
+	return &http.Client{Transport: instanceTransport{transport: transport, instance: c.Record.InstanceID}, Timeout: callTimeout, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+}
 
 func (c Client) call(ctx context.Context, method, path string, input, output interface{}) error {
 	ctx, cancel := context.WithTimeout(ctx, callTimeout)
@@ -122,10 +140,51 @@ type Status struct {
 	DataReadiness     string `json:"dataReadiness"`
 	Revision          int64  `json:"revision"`
 	LastIngestionAtMS int64  `json:"lastIngestionAtMs"`
+	PendingProcessing int64  `json:"pendingProcessing"`
 }
 
 func (c Client) Status(ctx context.Context) (Status, error) {
 	var s Status
 	err := c.call(ctx, "GET", "/status", nil, &s)
 	return s, err
+}
+
+// WaitProcessing is maintenance-only. Sync never waits for projection completion.
+func (c Client) WaitProcessing(ctx context.Context) error {
+	ticker := time.NewTicker(100 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		status, err := c.Status(ctx)
+		if err != nil {
+			return err
+		}
+		if status.PendingProcessing == 0 {
+			return nil
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-ticker.C:
+		}
+	}
+}
+
+func (c Client) Reprocess(ctx context.Context) (int64, error) {
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost, "http://local/api/v2/processing/reprocess", nil)
+	if err != nil {
+		return 0, err
+	}
+	response, err := c.IngestionClient().Do(request)
+	if err != nil {
+		return 0, err
+	}
+	defer func() { _ = response.Body.Close() }()
+	if response.StatusCode != http.StatusAccepted {
+		return 0, fmt.Errorf("reprocess status %d", response.StatusCode)
+	}
+	var result struct {
+		Generation int64 `json:"generation"`
+	}
+	err = decode(response.Body, &result)
+	return result.Generation, err
 }

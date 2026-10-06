@@ -52,10 +52,28 @@ for (let index = 0; index < 80; index++) {
   await writeSession(localHome, index, 'web-session', model, provider, 4300, 3000, recordedAt, cwd)
 }
 
+// Usable counters with no native message identity remain estimated only.
+await writeFile(
+  join(localHome, '.pi/agent/sessions/estimated.jsonl'),
+  [
+    JSON.stringify({ type: 'session', id: 'estimated-session' }),
+    JSON.stringify({
+      type: 'message',
+      timestamp: now.toISOString(),
+      message: {
+        role: 'assistant',
+        provider: 'openai',
+        model: 'estimated-model',
+        usage: { input: 100, output: 20 },
+      },
+    }),
+  ].join('\n'),
+)
+
 function startServer(home: string, port: string) {
   return spawn(
     resolve('../cli/bin/tokeninsights-server'),
-    ['--listen', '0.0.0.0:' + port, '--server-db-path', join(home, 'server.sqlite')],
+    ['--listen', '0.0.0.0:' + port, '--server-db-path', join(home, 'server.duckdb')],
     {
       stdio: 'inherit',
       env: {
@@ -72,7 +90,7 @@ function startServer(home: string, port: string) {
   )
 }
 
-// Seed through real canonical ingestion before exposing the Playwright endpoint.
+// Seed through acceptance; wait for async projection before exposing tests.
 const fixtureServer = startServer(localHome, '18766')
 const fixtureDeadline = Date.now() + 10000
 try {
@@ -98,7 +116,7 @@ try {
         '--collector-db-path',
         join(localHome, 'collector.sqlite'),
         '--server-db-path',
-        join(localHome, 'server.sqlite'),
+        join(localHome, 'server.duckdb'),
         '--server-url',
         'http://127.0.0.1:18766',
       ],
@@ -122,6 +140,26 @@ try {
       else rejectRun(new Error('fixture sync failed'))
     })
   })
+  const processingDeadline = Date.now() + 30000
+  for (;;) {
+    const response = await fetch('http://127.0.0.1:18766/api/v1/usage?period=all&tab=models')
+    const value: unknown = await response.json()
+    if (
+      response.ok &&
+      typeof value === 'object' &&
+      value !== null &&
+      'pending' in value &&
+      value.pending === 0 &&
+      'summary' in value &&
+      typeof value.summary === 'object' &&
+      value.summary !== null &&
+      'total' in value.summary &&
+      value.summary.total === 344000
+    )
+      break
+    if (Date.now() >= processingDeadline) throw new Error('fixture processing timed out')
+    await new Promise<void>((resolveWait) => setTimeout(resolveWait, 50))
+  }
 } finally {
   await new Promise<void>((resolveStop) => {
     if (fixtureServer.exitCode !== null || fixtureServer.signalCode !== null) {

@@ -11,8 +11,8 @@ import (
 	"os"
 	"time"
 
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/datastore"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/db"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/ingestion"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/server"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/serverstore"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/version"
@@ -109,7 +109,7 @@ func runtime(parent context.Context, config Config, log io.Writer, onReady func(
 	if err != nil {
 		return err
 	}
-	store, err := serverstore.CreateIfMissing(config.DBPath)
+	store, err := datastore.Open(parent, config.DBPath)
 	release()
 	if err != nil {
 		return err
@@ -128,12 +128,17 @@ func runtime(parent context.Context, config Config, log io.Writer, onReady func(
 	if host == "0.0.0.0" || host == "" {
 		host = server.DefaultHost
 	}
-	record := Record{SchemaVersion: serverstore.SupportedSchemaVersion, Config: config, InstanceID: instanceID(), PID: os.Getpid(), Protocol: protocolVersion, Version: version.Version, URL: "http://" + net.JoinHostPort(host, port), Address: public.Addr().String(), Socket: p.socket, StartedAt: time.Now()}
+	record := Record{SchemaVersion: datastore.SchemaVersion, Config: config, InstanceID: instanceID(), PID: os.Getpid(), Protocol: protocolVersion, Version: version.Version, URL: "http://" + net.JoinHostPort(host, port), Address: public.Addr().String(), Socket: p.socket, StartedAt: time.Now()}
 	record.Config.Token = ""
-	core := ingestion.NewCore(store)
-	publicHandler := server.NewHandlerWithInstance(ctx, config.DBPath, core, log, config.Host, record.InstanceID)
+	workerDone := make(chan struct{})
+	go func() {
+		defer close(workerDone)
+		store.Run(ctx, func(err error) { _, _ = fmt.Fprintf(log, "processing: %v\n", err) })
+	}()
+	defer func() { cancel(); <-workerDone }()
+	publicHandler := server.NewDataHandler(ctx, store, log, config.Host, record.InstanceID, false)
 	publicHTTP := &http.Server{Handler: publicHandler, BaseContext: func(net.Listener) context.Context { return ctx }, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 35 * time.Second, WriteTimeout: 35 * time.Second, IdleTimeout: 60 * time.Second}
-	privateHTTP := &http.Server{Handler: controlHandler(record, cancel), ReadHeaderTimeout: 5 * time.Second, IdleTimeout: 30 * time.Second}
+	privateHTTP := &http.Server{Handler: controlHandler(record, cancel, store), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 35 * time.Second, WriteTimeout: 35 * time.Second, IdleTimeout: 30 * time.Second}
 	failures := make(chan error, 2)
 	go func() { failures <- publicHTTP.Serve(public) }()
 	go func() { failures <- privateHTTP.Serve(private) }()
@@ -178,8 +183,13 @@ func runtime(parent context.Context, config Config, log io.Writer, onReady func(
 	return errors.Join(err, publicErr, privateErr)
 }
 
-func controlHandler(record Record, shutdown context.CancelFunc) http.Handler {
+func controlHandler(record Record, shutdown context.CancelFunc, data ...*datastore.Store) http.Handler {
 	mux := http.NewServeMux()
+	if len(data) > 0 {
+		mux.Handle(datastore.IngestionPrefix, data[0].Handler())
+		mux.Handle(datastore.LegacyIngestionPrefix, data[0].Handler())
+		mux.Handle(datastore.ProcessingPrefix, data[0].Handler())
+	}
 	write := func(w http.ResponseWriter, status int, value interface{}) {
 		w.Header().Set("Content-Type", "application/json")
 		w.Header().Set("Cache-Control", "no-store")
@@ -188,6 +198,22 @@ func controlHandler(record Record, shutdown context.CancelFunc) http.Handler {
 	}
 	mux.HandleFunc("GET /control/v1/instance", func(w http.ResponseWriter, r *http.Request) { write(w, 200, record) })
 	mux.HandleFunc("GET /control/v1/status", func(w http.ResponseWriter, r *http.Request) {
+		if len(data) > 0 {
+			metadata, err := data[0].Metadata(r.Context())
+			if err != nil {
+				write(w, 503, struct {
+					Error string `json:"error"`
+				}{"server storage unavailable"})
+				return
+			}
+			var pending int64
+			if err := data[0].SQL().QueryRowContext(r.Context(), "SELECT COUNT(*) FROM processing.scopes WHERE processed_revision<>revision OR generation<>?", metadata.TargetGeneration).Scan(&pending); err != nil {
+				write(w, 503, map[string]string{"error": "data_unavailable"})
+				return
+			}
+			write(w, 200, Status{InstanceID: record.InstanceID, DataEpoch: metadata.DatabaseID, DataReadiness: "ready", Revision: metadata.Revision, LastIngestionAtMS: metadata.LastIngestionAtMs, PendingProcessing: pending})
+			return
+		}
 		statusStore, err := serverstore.Open(record.Config.DBPath)
 		if err != nil {
 			write(w, 503, struct {

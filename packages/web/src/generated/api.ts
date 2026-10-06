@@ -166,6 +166,9 @@ export const SyncResponse = zod.strictObject({
   harnesses: zod.record(zod.string(), HarnessSyncStatus),
   error: zod.string(),
   revision: Count,
+  generation: Count.optional(),
+  inputRevision: Count.optional(),
+  pending: Count.optional(),
 })
 
 export type SyncResponse = zod.input<typeof SyncResponse>
@@ -236,9 +239,17 @@ export const UsageSummary = zod.strictObject({
 export type UsageSummary = zod.input<typeof UsageSummary>
 export type UsageSummaryOutput = zod.output<typeof UsageSummary>
 
+export const UsageQuality = zod
+  .enum(['confirmed', 'estimated'])
+  .describe('Estimated evidence is queried separately and never included in confirmed totals.')
+
+export type UsageQuality = zod.input<typeof UsageQuality>
+export type UsageQualityOutput = zod.output<typeof UsageQuality>
+
 export const usageResponsePageSizeMax = 200
 
 export const UsageResponse = zod.strictObject({
+  factCount: Count.optional(),
   instanceId: zod.string().min(1),
   dataEpoch: zod.string().min(1),
   revision: Count,
@@ -252,6 +263,11 @@ export const UsageResponse = zod.strictObject({
     'Time of the last committed ingestion, in Unix milliseconds; zero for an empty server.',
   ),
   range: zod.string(),
+  generation: Count.optional(),
+  inputRevision: Count.optional(),
+  pending: Count.optional(),
+  unresolved: Count.optional(),
+  quality: UsageQuality.optional(),
 })
 
 export type UsageResponse = zod.input<typeof UsageResponse>
@@ -275,6 +291,9 @@ export const UsageFacetsResponse = zod.strictObject({
   sessions: zod.array(zod.string()),
   repositories: zod.array(LocationOption),
   directories: zod.array(LocationOption),
+  generation: Count.optional(),
+  inputRevision: Count.optional(),
+  pending: Count.optional(),
 })
 
 export type UsageFacetsResponse = zod.input<typeof UsageFacetsResponse>
@@ -668,6 +687,488 @@ export const IngestionError = zod
 
 export type IngestionError = zod.input<typeof IngestionError>
 export type IngestionErrorOutput = zod.output<typeof IngestionError>
+
+export const NativeScalar = zod
+  .union([zod.string().nullable(), zod.number(), zod.boolean()])
+  .describe(
+    'Original scalar source value, including explicit null. Processing validates integer counters and native timestamps.',
+  )
+
+export type NativeScalar = zod.input<typeof NativeScalar>
+export type NativeScalarOutput = zod.output<typeof NativeScalar>
+
+export const RawSourceData = zod
+  .strictObject({
+    type: NativeScalar.optional(),
+    id: NativeScalar.optional(),
+    timestamp: NativeScalar.optional(),
+    uuid: NativeScalar.optional(),
+    sessionId: NativeScalar.optional(),
+    session_id: zod
+      .union([zod.string().nullable(), zod.number(), zod.boolean()])
+      .optional()
+      .describe(
+        'Original scalar source value, including explicit null. Processing validates integer counters and native timestamps.',
+      ),
+    requestId: NativeScalar.optional(),
+    request_id: zod
+      .union([zod.string().nullable(), zod.number(), zod.boolean()])
+      .optional()
+      .describe(
+        'Original scalar source value, including explicit null. Processing validates integer counters and native timestamps.',
+      ),
+    time_created: zod
+      .union([zod.string().nullable(), zod.number(), zod.boolean()])
+      .optional()
+      .describe(
+        'Original scalar source value, including explicit null. Processing validates integer counters and native timestamps.',
+      ),
+    project_id: zod
+      .union([zod.string().nullable(), zod.number(), zod.boolean()])
+      .optional()
+      .describe(
+        'Original scalar source value, including explicit null. Processing validates integer counters and native timestamps.',
+      ),
+    vcs: NativeScalar.optional(),
+    message: zod
+      .strictObject({
+        role: NativeScalar.optional(),
+        timestamp: NativeScalar.optional(),
+        id: NativeScalar.optional(),
+        provider: NativeScalar.optional(),
+        provider_id: zod
+          .union([zod.string().nullable(), zod.number(), zod.boolean()])
+          .optional()
+          .describe(
+            'Original scalar source value, including explicit null. Processing validates integer counters and native timestamps.',
+          ),
+        providerID: NativeScalar.optional(),
+        model: NativeScalar.optional(),
+        model_id: zod
+          .union([zod.string().nullable(), zod.number(), zod.boolean()])
+          .optional()
+          .describe(
+            'Original scalar source value, including explicit null. Processing validates integer counters and native timestamps.',
+          ),
+        modelID: NativeScalar.optional(),
+        usage: zod
+          .strictObject({
+            input: NativeScalar.optional(),
+            output: NativeScalar.optional(),
+            reasoning: NativeScalar.optional(),
+            cacheRead: NativeScalar.optional(),
+            cacheWrite: NativeScalar.optional(),
+            totalTokens: NativeScalar.optional(),
+            input_tokens: zod
+              .union([zod.string().nullable(), zod.number(), zod.boolean()])
+              .optional()
+              .describe(
+                'Original scalar source value, including explicit null. Processing validates integer counters and native timestamps.',
+              ),
+            output_tokens: zod
+              .union([zod.string().nullable(), zod.number(), zod.boolean()])
+              .optional()
+              .describe(
+                'Original scalar source value, including explicit null. Processing validates integer counters and native timestamps.',
+              ),
+            cache_read_input_tokens: zod
+              .union([zod.string().nullable(), zod.number(), zod.boolean()])
+              .optional()
+              .describe(
+                'Original scalar source value, including explicit null. Processing validates integer counters and native timestamps.',
+              ),
+            cache_creation_input_tokens: zod
+              .union([zod.string().nullable(), zod.number(), zod.boolean()])
+              .optional()
+              .describe(
+                'Original scalar source value, including explicit null. Processing validates integer counters and native timestamps.',
+              ),
+            total_tokens: zod
+              .union([zod.string().nullable(), zod.number(), zod.boolean()])
+              .optional()
+              .describe(
+                'Original scalar source value, including explicit null. Processing validates integer counters and native timestamps.',
+              ),
+            output_tokens_details: zod
+              .strictObject({
+                thinking_tokens: zod
+                  .union([zod.string().nullable(), zod.number(), zod.boolean()])
+                  .optional()
+                  .describe(
+                    'Original scalar source value, including explicit null. Processing validates integer counters and native timestamps.',
+                  ),
+                reasoning_tokens: zod
+                  .union([zod.string().nullable(), zod.number(), zod.boolean()])
+                  .optional()
+                  .describe(
+                    'Original scalar source value, including explicit null. Processing validates integer counters and native timestamps.',
+                  ),
+              })
+              .optional(),
+          })
+          .optional(),
+      })
+      .optional(),
+    payload: zod
+      .strictObject({
+        type: NativeScalar.optional(),
+        id: NativeScalar.optional(),
+        model_provider: zod
+          .union([zod.string().nullable(), zod.number(), zod.boolean()])
+          .optional()
+          .describe(
+            'Original scalar source value, including explicit null. Processing validates integer counters and native timestamps.',
+          ),
+        forked_from_id: zod
+          .union([zod.string().nullable(), zod.number(), zod.boolean()])
+          .optional()
+          .describe(
+            'Original scalar source value, including explicit null. Processing validates integer counters and native timestamps.',
+          ),
+        parent_thread_id: zod
+          .union([zod.string().nullable(), zod.number(), zod.boolean()])
+          .optional()
+          .describe(
+            'Original scalar source value, including explicit null. Processing validates integer counters and native timestamps.',
+          ),
+        turn_id: zod
+          .union([zod.string().nullable(), zod.number(), zod.boolean()])
+          .optional()
+          .describe(
+            'Original scalar source value, including explicit null. Processing validates integer counters and native timestamps.',
+          ),
+        model: NativeScalar.optional(),
+        source: zod
+          .strictObject({
+            subagent: zod
+              .strictObject({
+                thread_spawn: zod
+                  .strictObject({
+                    parent_thread_id: zod
+                      .union([zod.string().nullable(), zod.number(), zod.boolean()])
+                      .optional()
+                      .describe(
+                        'Original scalar source value, including explicit null. Processing validates integer counters and native timestamps.',
+                      ),
+                  })
+                  .optional(),
+              })
+              .optional(),
+          })
+          .optional(),
+        info: zod
+          .strictObject({
+            last_token_usage: zod
+              .strictObject({
+                input_tokens: zod
+                  .union([zod.string().nullable(), zod.number(), zod.boolean()])
+                  .optional()
+                  .describe(
+                    'Original scalar source value, including explicit null. Processing validates integer counters and native timestamps.',
+                  ),
+                cached_input_tokens: zod
+                  .union([zod.string().nullable(), zod.number(), zod.boolean()])
+                  .optional()
+                  .describe(
+                    'Original scalar source value, including explicit null. Processing validates integer counters and native timestamps.',
+                  ),
+                cache_read_input_tokens: zod
+                  .union([zod.string().nullable(), zod.number(), zod.boolean()])
+                  .optional()
+                  .describe(
+                    'Original scalar source value, including explicit null. Processing validates integer counters and native timestamps.',
+                  ),
+                output_tokens: zod
+                  .union([zod.string().nullable(), zod.number(), zod.boolean()])
+                  .optional()
+                  .describe(
+                    'Original scalar source value, including explicit null. Processing validates integer counters and native timestamps.',
+                  ),
+                reasoning_output_tokens: zod
+                  .union([zod.string().nullable(), zod.number(), zod.boolean()])
+                  .optional()
+                  .describe(
+                    'Original scalar source value, including explicit null. Processing validates integer counters and native timestamps.',
+                  ),
+                total_tokens: zod
+                  .union([zod.string().nullable(), zod.number(), zod.boolean()])
+                  .optional()
+                  .describe(
+                    'Original scalar source value, including explicit null. Processing validates integer counters and native timestamps.',
+                  ),
+              })
+              .optional(),
+            total_token_usage: zod
+              .strictObject({
+                input_tokens: zod
+                  .union([zod.string().nullable(), zod.number(), zod.boolean()])
+                  .optional()
+                  .describe(
+                    'Original scalar source value, including explicit null. Processing validates integer counters and native timestamps.',
+                  ),
+                cached_input_tokens: zod
+                  .union([zod.string().nullable(), zod.number(), zod.boolean()])
+                  .optional()
+                  .describe(
+                    'Original scalar source value, including explicit null. Processing validates integer counters and native timestamps.',
+                  ),
+                cache_read_input_tokens: zod
+                  .union([zod.string().nullable(), zod.number(), zod.boolean()])
+                  .optional()
+                  .describe(
+                    'Original scalar source value, including explicit null. Processing validates integer counters and native timestamps.',
+                  ),
+                output_tokens: zod
+                  .union([zod.string().nullable(), zod.number(), zod.boolean()])
+                  .optional()
+                  .describe(
+                    'Original scalar source value, including explicit null. Processing validates integer counters and native timestamps.',
+                  ),
+                reasoning_output_tokens: zod
+                  .union([zod.string().nullable(), zod.number(), zod.boolean()])
+                  .optional()
+                  .describe(
+                    'Original scalar source value, including explicit null. Processing validates integer counters and native timestamps.',
+                  ),
+                total_tokens: zod
+                  .union([zod.string().nullable(), zod.number(), zod.boolean()])
+                  .optional()
+                  .describe(
+                    'Original scalar source value, including explicit null. Processing validates integer counters and native timestamps.',
+                  ),
+              })
+              .optional(),
+          })
+          .optional(),
+      })
+      .optional(),
+    data: zod
+      .strictObject({
+        role: NativeScalar.optional(),
+        modelID: NativeScalar.optional(),
+        providerID: NativeScalar.optional(),
+        model: zod
+          .strictObject({
+            id: NativeScalar.optional(),
+            providerID: NativeScalar.optional(),
+          })
+          .optional(),
+        tokens: zod
+          .strictObject({
+            input: NativeScalar.optional(),
+            output: NativeScalar.optional(),
+            reasoning: NativeScalar.optional(),
+            cache: zod
+              .strictObject({
+                read: NativeScalar.optional(),
+                write: NativeScalar.optional(),
+              })
+              .optional(),
+          })
+          .optional(),
+        time: zod
+          .strictObject({
+            created: NativeScalar.optional(),
+            completed: NativeScalar.optional(),
+          })
+          .optional(),
+      })
+      .optional(),
+  })
+  .describe(
+    'Only whitelisted scalar leaves and their containers. Allowed leaves further depend on harness and format; server validates the exact whitelist before storing any bytes.',
+  )
+
+export type RawSourceData = zod.input<typeof RawSourceData>
+export type RawSourceDataOutput = zod.output<typeof RawSourceData>
+
+export const ExtractionDiagnostic = zod.enum([
+  'invalid_field_type',
+  'unsafe_metadata',
+  'field_limit',
+  'native_subagent_present',
+])
+
+export type ExtractionDiagnostic = zod.input<typeof ExtractionDiagnostic>
+export type ExtractionDiagnosticOutput = zod.output<typeof ExtractionDiagnostic>
+
+export const rawContextDiagnosticsMax = 8
+
+export const RawContext = zod.strictObject({
+  ordinal: Count,
+  data: RawSourceData,
+  diagnostics: zod.array(ExtractionDiagnostic).max(rawContextDiagnosticsMax).optional(),
+})
+
+export type RawContext = zod.input<typeof RawContext>
+export type RawContextOutput = zod.output<typeof RawContext>
+
+export const rawLocationDirectoryKeyMax = 256
+
+export const rawLocationDirectoryNameMax = 256
+
+export const rawLocationRepositoryKeyMax = 256
+
+export const rawLocationRepositoryNameMax = 256
+
+export const rawLocationRepositorySourceMax = 256
+
+export const RawLocation = zod.strictObject({
+  directoryKey: zod.string().max(rawLocationDirectoryKeyMax).optional(),
+  directoryName: zod.string().max(rawLocationDirectoryNameMax).optional(),
+  repositoryKey: zod.string().max(rawLocationRepositoryKeyMax).optional(),
+  repositoryName: zod.string().max(rawLocationRepositoryNameMax).optional(),
+  repositorySource: zod.string().max(rawLocationRepositorySourceMax).optional(),
+})
+
+export type RawLocation = zod.input<typeof RawLocation>
+export type RawLocationOutput = zod.output<typeof RawLocation>
+
+export const rawRecordSourceIdMax = 256
+
+export const rawRecordLineageMax = 256
+
+export const rawRecordContextMax = 3
+
+export const rawRecordDiagnosticsMax = 8
+
+export const RawRecord = zod.strictObject({
+  harness: Harness,
+  format: zod.enum([
+    'opencode-v1',
+    'opencode-v2',
+    'opencode-session',
+    'opencode-project',
+    'pi-jsonl',
+    'claude-code-jsonl',
+    'codex-jsonl',
+  ]),
+  sourceId: zod.string().min(1).max(rawRecordSourceIdMax),
+  lineage: zod.string().min(1).max(rawRecordLineageMax),
+  ordinal: Count,
+  data: RawSourceData,
+  context: zod.array(RawContext).max(rawRecordContextMax).optional(),
+  location: RawLocation.optional(),
+  diagnostics: zod.array(ExtractionDiagnostic).max(rawRecordDiagnosticsMax).optional(),
+})
+
+export type RawRecord = zod.input<typeof RawRecord>
+export type RawRecordOutput = zod.output<typeof RawRecord>
+
+export const RawEntry = zod.strictObject({
+  sequence: Count,
+  record: RawRecord,
+})
+
+export type RawEntry = zod.input<typeof RawEntry>
+export type RawEntryOutput = zod.output<typeof RawEntry>
+
+export const rawBatchDatabaseIdMax = 256
+
+export const rawBatchStreamIdMax = 256
+
+export const rawBatchBatchIdMax = 256
+
+export const rawBatchEntriesMax = 256
+
+export const RawBatch = zod.strictObject({
+  protocolVersion: zod.literal(2),
+  extractorVersion: zod.literal(1),
+  databaseId: zod.string().min(1).max(rawBatchDatabaseIdMax),
+  streamId: zod.string().min(1).max(rawBatchStreamIdMax),
+  batchId: zod.string().min(1).max(rawBatchBatchIdMax),
+  fromSequence: Count,
+  toSequence: Count,
+  entries: zod.array(RawEntry).min(1).max(rawBatchEntriesMax),
+})
+
+export type RawBatch = zod.input<typeof RawBatch>
+export type RawBatchOutput = zod.output<typeof RawBatch>
+
+export const rawCapabilitiesDatabaseIdMax = 256
+
+export const RawCapabilities = zod.strictObject({
+  protocolVersion: zod.literal(2),
+  extractorVersion: zod.literal(1),
+  databaseId: zod.string().min(1).max(rawCapabilitiesDatabaseIdMax),
+  datasetId: zod.enum(['default']),
+  completion: zod.enum(['acceptance']),
+  maxBodyBytes: zod.literal(1048576),
+  maxEntries: zod.literal(256),
+})
+
+export type RawCapabilities = zod.input<typeof RawCapabilities>
+export type RawCapabilitiesOutput = zod.output<typeof RawCapabilities>
+
+export const rawReceiptDatabaseIdMax = 256
+
+export const rawReceiptStreamIdMax = 256
+
+export const rawReceiptBatchIdMax = 256
+
+export const rawReceiptRequestHashMax = 256
+
+export const RawReceipt = zod.strictObject({
+  databaseId: zod.string().min(1).max(rawReceiptDatabaseIdMax),
+  datasetId: zod.enum(['default']),
+  streamId: zod.string().min(1).max(rawReceiptStreamIdMax),
+  batchId: zod.string().min(1).max(rawReceiptBatchIdMax),
+  requestHash: zod.string().min(1).max(rawReceiptRequestHashMax),
+  fromSequence: Count,
+  toSequence: Count,
+  accepted: Count,
+  acceptedAtMs: TimestampMs,
+  inputRevision: Count,
+})
+
+export type RawReceipt = zod.input<typeof RawReceipt>
+export type RawReceiptOutput = zod.output<typeof RawReceipt>
+
+export const evidenceOutcomeEvidenceIdMax = 256
+
+export const EvidenceOutcome = zod.strictObject({
+  evidenceId: zod.string().min(1).max(evidenceOutcomeEvidenceIdMax),
+  disposition: zod.enum([
+    'pending',
+    'context',
+    'processed',
+    'duplicate',
+    'superseded',
+    'ambiguous',
+  ]),
+  code: zod.string().optional(),
+  factId: zod.string().optional(),
+  generation: Count,
+  inputRevision: Count,
+})
+
+export type EvidenceOutcome = zod.input<typeof EvidenceOutcome>
+export type EvidenceOutcomeOutput = zod.output<typeof EvidenceOutcome>
+
+export const ProcessingStatus = zod.strictObject({
+  generation: Count,
+  inputRevision: Count,
+  pending: Count,
+  items: zod.array(EvidenceOutcome),
+})
+
+export type ProcessingStatus = zod.input<typeof ProcessingStatus>
+export type ProcessingStatusOutput = zod.output<typeof ProcessingStatus>
+
+export const RawAcceptance = zod.strictObject({
+  receipt: RawReceipt,
+  processing: ProcessingStatus,
+})
+
+export type RawAcceptance = zod.input<typeof RawAcceptance>
+export type RawAcceptanceOutput = zod.output<typeof RawAcceptance>
+
+export const ReprocessAcceptance = zod.strictObject({
+  generation: Count,
+})
+
+export type ReprocessAcceptance = zod.input<typeof ReprocessAcceptance>
+export type ReprocessAcceptanceOutput = zod.output<typeof ReprocessAcceptance>
 /**
  * @summary Describe this TokenInsights server
  */
@@ -697,6 +1198,8 @@ export const getUsageQueryPageDefault = 1
 
 export const getUsageQueryPageSizeDefault = 50
 export const getUsageQueryPageSizeMax = 200
+
+export const getUsageQueryQualityDefault = `confirmed`
 
 export const GetUsageQueryParams = zod.strictObject({
   period: Period.default(getUsageQueryPeriodDefault),
@@ -768,6 +1271,7 @@ export const GetUsageQueryParams = zod.strictObject({
   direction: zod.enum(['asc', 'desc']).optional(),
   page: zod.int().min(1).default(getUsageQueryPageDefault),
   pageSize: zod.int().min(1).max(getUsageQueryPageSizeMax).default(getUsageQueryPageSizeDefault),
+  quality: UsageQuality.default(getUsageQueryQualityDefault),
 })
 
 export type GetUsageQueryParams = zod.input<typeof GetUsageQueryParams>
@@ -788,6 +1292,7 @@ export const getUsageFacetsQueryPeriodDefault = `month`
 export const getUsageFacetsQueryBucketDefault = `day`
 export const getUsageFacetsQuerySearchDefault = ``
 export const getUsageFacetsQueryTabDefault = `tokens`
+export const getUsageFacetsQueryQualityDefault = `confirmed`
 
 export const GetUsageFacetsQueryParams = zod.strictObject({
   period: Period.default(getUsageFacetsQueryPeriodDefault),
@@ -835,6 +1340,7 @@ export const GetUsageFacetsQueryParams = zod.strictObject({
   tab: UsageTab.default(getUsageFacetsQueryTabDefault).describe(
     'Active aggregation. Repository/directory filters require the repo tab.',
   ),
+  quality: UsageQuality.default(getUsageFacetsQueryQualityDefault),
 })
 
 export type GetUsageFacetsQueryParams = zod.input<typeof GetUsageFacetsQueryParams>
@@ -846,6 +1352,7 @@ export type GetUsageFacetsResponse = zod.input<typeof GetUsageFacetsResponse>
 export type GetUsageFacetsResponseOutput = zod.output<typeof GetUsageFacetsResponse>
 
 /**
+ * @deprecated
  * @summary Read normalized ingestion compatibility and database identity
  */
 export const GetIngestionCapabilitiesResponse = IngestionCapabilities
@@ -856,8 +1363,9 @@ export type GetIngestionCapabilitiesResponseOutput = zod.output<
 >
 
 /**
- * Synchronous atomic ingestion: 200 means all accepted facts are queryable and the durable receipt exists. Same fact identity and payload is a no-op across streams and collector rebuilds. Conflicting immutable facts or batch bytes reject the entire batch. At most four admitted requests; overload returns 503. Local and initial remote deployments are unauthenticated, including non-loopback binds. Remote application authentication is deferred.
- * @summary Commit one immutable normalized batch
+ * Compatibility delivery for retained protocol-1 journal requests. Facts are stored as legacy baselines with synchronous receipts. New collectors use protocol 2. Local writes use private Unix transport. Matching proven raw contributions replace baselines by identity; unmatched baselines remain queryable.
+ * @deprecated
+ * @summary Retain a legacy normalized publication batch
  */
 export const IngestBatchBody = PublicationBatch
 
@@ -868,3 +1376,58 @@ export const IngestBatchResponse = IngestionReceipt
 
 export type IngestBatchResponse = zod.input<typeof IngestBatchResponse>
 export type IngestBatchResponseOutput = zod.output<typeof IngestBatchResponse>
+
+/**
+ * @summary Read raw ingestion contract and durable database identity
+ */
+export const GetRawIngestionCapabilitiesResponse = RawCapabilities
+
+export type GetRawIngestionCapabilitiesResponse = zod.input<
+  typeof GetRawIngestionCapabilitiesResponse
+>
+export type GetRawIngestionCapabilitiesResponseOutput = zod.output<
+  typeof GetRawIngestionCapabilitiesResponse
+>
+
+/**
+ * Raw evidence, every submitted item mapping, immutable receipt and pending work commit together. Duplicate evidence succeeds. Processing runs asynchronously. Local ingestion is private Unix transport; public local HTTP exposes queries only. Remote authentication remains a separate deployment concern. Metadata strings are limited to 256 UTF-8 bytes.
+ * @summary Durably accept immutable sanitized source evidence
+ */
+export const IngestRawBatchBody = RawBatch
+
+export type IngestRawBatchBody = zod.input<typeof IngestRawBatchBody>
+export type IngestRawBatchBodyOutput = zod.output<typeof IngestRawBatchBody>
+
+export const IngestRawBatchResponse = RawAcceptance
+
+export type IngestRawBatchResponse = zod.input<typeof IngestRawBatchResponse>
+export type IngestRawBatchResponseOutput = zod.output<typeof IngestRawBatchResponse>
+
+/**
+ * @summary Read immutable acceptance and current per-item processing status
+ */
+export const getRawBatchStatusPathStreamMax = 256
+
+export const getRawBatchStatusPathBatchMax = 256
+
+export const GetRawBatchStatusParams = zod.strictObject({
+  stream: zod.string().min(1).max(getRawBatchStatusPathStreamMax),
+  batch: zod.string().min(1).max(getRawBatchStatusPathBatchMax),
+})
+
+export type GetRawBatchStatusParams = zod.input<typeof GetRawBatchStatusParams>
+export type GetRawBatchStatusParamsOutput = zod.output<typeof GetRawBatchStatusParams>
+
+export const GetRawBatchStatusResponse = RawAcceptance
+
+export type GetRawBatchStatusResponse = zod.input<typeof GetRawBatchStatusResponse>
+export type GetRawBatchStatusResponseOutput = zod.output<typeof GetRawBatchStatusResponse>
+
+/**
+ * Builds a new generation asynchronously. Published history stays active until replacement coverage is complete. Available on private local transport and the remote server.
+ * @summary Stage reprocessing of retained raw evidence
+ */
+export const ReprocessEvidenceResponse = ReprocessAcceptance
+
+export type ReprocessEvidenceResponse = zod.input<typeof ReprocessEvidenceResponse>
+export type ReprocessEvidenceResponseOutput = zod.output<typeof ReprocessEvidenceResponse>
