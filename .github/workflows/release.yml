@@ -93,6 +93,8 @@ jobs:
         with:
           ref: ${{ needs.prepare.outputs.commit }}
       - uses: jdx/mise-action@v4
+        with:
+          install_args: go
       - name: Build and smoke test native binaries
         shell: bash
         env:
