@@ -158,7 +158,9 @@ POST /api/v2/processing/reprocess or service reprocess queues new generation.
 Old published data remains queryable; restart resumes. Immutable receipt status
 reflects target/latest scope revision. Activate only after every scope covers
 latest accepted inputs, atomically advancing published generation/revision.
-Raw arriving during build must be covered.
+Raw arriving during build must be covered. On a processor upgrade, an interrupted
+older build is retained and a fresh generation uses the current rules; the old
+published generation stays active until that replacement completes.
 
 Imported baselines persist until matching contribution ID and equal components
 or valid newer native revision prove coverage. Proof binds exact new payload hash,

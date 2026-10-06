@@ -60,3 +60,20 @@ func TestStrictDecodeRejectsDuplicateFieldsAndFutureContext(t *testing.T) {
 		t.Fatal("future context accepted")
 	}
 }
+
+func TestMetadataLimitCountsDecodedUTF8Bytes(t *testing.T) {
+	for _, native := range []string{strings.Repeat("x", MaxStringBytes), strings.Repeat("é", MaxStringBytes/len("é")), strings.Repeat("<", MaxStringBytes)} {
+		body, err := json.Marshal(map[string]interface{}{"type": "session", "id": native})
+		if err != nil {
+			t.Fatal(err)
+		}
+		clean, diagnostics, err := Sanitize("pi", "pi-jsonl", body)
+		if err != nil || len(diagnostics) != 0 || String(clean, "id") != native {
+			t.Fatal("valid native metadata changed", string(clean), diagnostics, err)
+		}
+		record := Record{Harness: "pi", Format: "pi-jsonl", SourceID: "source", Lineage: "lineage", Ordinal: 1, Data: clean}
+		if err := ValidateRecord(record); err != nil {
+			t.Fatal("boundary metadata rejected", err)
+		}
+	}
+}

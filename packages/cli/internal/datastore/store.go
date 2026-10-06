@@ -245,7 +245,18 @@ func (s *Store) Reprocess(ctx context.Context) (int64, error) {
 		return 0, err
 	}
 	if m.TargetGeneration > m.Generation {
-		return m.TargetGeneration, nil
+		var processor int
+		if err := tx.QueryRowContext(ctx, "SELECT processor_version FROM analytics.generations WHERE generation=?", m.TargetGeneration).Scan(&processor); err != nil {
+			return 0, err
+		}
+		if processor == evidence.ProcessorVersion {
+			return m.TargetGeneration, nil
+		}
+		// Never finish an interrupted older generation under newer rules while
+		// retaining its old version label. Keep its evidence/projection for review.
+		if _, err := tx.ExecContext(ctx, "UPDATE analytics.generations SET state='retained' WHERE generation=?", m.TargetGeneration); err != nil {
+			return 0, err
+		}
 	}
 	if m.TargetGeneration >= publication.SafeInteger {
 		return 0, reject("generation_limit")

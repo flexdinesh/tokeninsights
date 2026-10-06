@@ -133,7 +133,9 @@ func Sanitize(harness, format string, body []byte) (json.RawMessage, []string, e
 				continue
 			}
 		}
-		if len(value) > MaxStringBytes {
+		// Metadata bounds apply to decoded UTF-8, already checked above. JSON
+		// quotes/escapes must not shorten the permitted native identifier.
+		if trimmed[0] != '"' && len(value) > MaxStringBytes {
 			diagnosticSet["field_limit"] = true
 			setLeaf(result, parts, json.RawMessage("null"))
 			continue
