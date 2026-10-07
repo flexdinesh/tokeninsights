@@ -88,7 +88,7 @@ func TestVerifiedSchema16UpgradePreservesLegacyState(t *testing.T) {
 	if err := legacy.QueryRow("SELECT stream_id FROM publication_state WHERE id=1").Scan(&stream); err != nil {
 		t.Fatal(err)
 	}
-	for _, table := range []string{"evidence_batches", "evidence_destinations", "evidence_outbox", "evidence_sources", "evidence_state"} {
+	for _, table := range []string{"evidence_quarantine", "evidence_batches", "evidence_destinations", "evidence_outbox", "evidence_sources", "evidence_state"} {
 		if _, err := legacy.Exec("DROP TABLE " + table); err != nil {
 			t.Fatal(err)
 		}
@@ -104,7 +104,7 @@ func TestVerifiedSchema16UpgradePreservesLegacyState(t *testing.T) {
 	defer func() { _ = store.Close() }()
 	var version int
 	var after string
-	if err := store.DB.QueryRow("PRAGMA user_version").Scan(&version); err != nil || version != 18 {
+	if err := store.DB.QueryRow("PRAGMA user_version").Scan(&version); err != nil || version != db.SupportedSchemaVersion {
 		t.Fatal(version, err)
 	}
 	if err := store.DB.QueryRow("SELECT stream_id FROM publication_state WHERE id=1").Scan(&after); err != nil || after != stream {

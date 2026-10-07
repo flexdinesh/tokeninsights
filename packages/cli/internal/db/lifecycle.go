@@ -192,6 +192,9 @@ func recognizeSchema(ctx context.Context, reader Reader, version int) error {
 		required[TableEvidenceDestinations] += " dataset_id"
 		required[TableEvidenceBatches] += " dataset_id protocol_version"
 	}
+	if version >= 19 {
+		required[TableEvidenceQuarantine] = "source_key format signature parser_version code byte_offset recorded_at_ms"
+	}
 	rows, err := reader.QueryContext(ctx, "SELECT type, name FROM sqlite_schema WHERE type IN ('table', 'view', 'trigger') AND name NOT GLOB 'sqlite_*'")
 	if err != nil {
 		return err

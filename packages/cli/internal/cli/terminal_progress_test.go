@@ -46,3 +46,17 @@ func TestTerminalProgressKeepsGlobalWaitAndHarnessStatesDistinct(t *testing.T) {
 		t.Fatal(output.String())
 	}
 }
+
+func TestTerminalProgressReportsQuarantineAsIncomplete(t *testing.T) {
+	var output bytes.Buffer
+	presenter := newTerminalSyncProgress(&output)
+	presenter.Collection(pipeline.SyncProgressEvent{Harness: pipeline.HarnessCodex, Status: pipeline.SyncProgressFailed, Quarantined: 2})
+	if output.String() != "codex: incomplete; 2 files quarantined\n" {
+		t.Fatal(output.String())
+	}
+	output.Reset()
+	printSummary(&output, "sync", pipeline.Summary{Failed: 1, Quarantined: 2}, false)
+	if !strings.Contains(output.String(), "failed=1") || !strings.Contains(output.String(), "quarantined=2") {
+		t.Fatal("quarantined sources reported as complete:", output.String())
+	}
+}

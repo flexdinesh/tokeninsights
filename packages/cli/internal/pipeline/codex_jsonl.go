@@ -140,6 +140,12 @@ func (a *codexJSONLAdapter) Discover(ctx context.Context, options DiscoverOption
 	sort.Slice(sources, func(i int, j int) bool {
 		return sources[i].Path < sources[j].Path
 	})
+	// Raw capture preserves native ancestry as evidence; it does not need the
+	// retained normalization path's header scans or parent-resolution caches.
+	if options.SkipAncestryMetadata {
+		return sources, ctx.Err()
+	}
+
 	a.metadata = make(map[string]codexSourceMetadata)
 	a.sessions = make(map[string][]Source)
 	a.cache = make(map[string]*codexParseCall)

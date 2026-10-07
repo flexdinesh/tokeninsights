@@ -3,12 +3,10 @@ package datastore
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
 
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/evidence"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/publication"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/serverstore"
 )
@@ -141,32 +139,4 @@ func (s *Store) ImportLegacy(ctx context.Context, path string) error {
 		return err
 	}
 	return tx.Commit()
-}
-
-func proveLegacyCoverage(ctx context.Context, tx *sql.Tx, datasetID string, fact publication.Fact, generation int64) error {
-	var body string
-	err := tx.QueryRowContext(ctx, "SELECT payload_json FROM analytics.legacy WHERE dataset_id=? AND fact_id=?", datasetID, fact.ID).Scan(&body)
-	if errors.Is(err, sql.ErrNoRows) {
-		return nil
-	}
-	if err != nil {
-		return err
-	}
-	var legacy publication.Fact
-	if err := json.Unmarshal([]byte(body), &legacy); err != nil {
-		return err
-	}
-	proven := legacyComponentsEqual(legacy, fact)
-	if legacy.Revision != nil && fact.Revision != nil && legacy.Revision.Rule == fact.Revision.Rule && fact.Revision.Value >= legacy.Revision.Value {
-		proven = true
-	}
-	if !proven {
-		return nil
-	}
-	encoded, err := json.Marshal(fact)
-	if err != nil {
-		return err
-	}
-	_, err = tx.ExecContext(ctx, "INSERT INTO analytics.legacy_coverage VALUES(?,?,?,?) ON CONFLICT(dataset_id,generation,fact_id) DO UPDATE SET payload_hash=excluded.payload_hash", datasetID, generation, fact.ID, evidence.Hash(encoded))
-	return err
 }

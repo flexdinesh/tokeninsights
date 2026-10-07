@@ -34,7 +34,7 @@ func runSync(invocation commandInvocation, args []string) error {
 	flags.Var(&harnesses, "harness", "harness to sync: opencode, pi, codex, or claude-code")
 	flags.BoolVar(&all, "all", false, "sync all supported harnesses")
 	flags.BoolVar(&dryRun, "dry-run", false, "discover and parse without writing")
-	flags.BoolVar(&fullRefresh, "full-refresh", false, "ignore source refresh state and parse discovered sources")
+	flags.BoolVar(&fullRefresh, "full-refresh", false, "ignore source refresh state and retry quarantined sources")
 	flags.BoolVar(&noNormalize, "no-normalize", false, "deprecated compatibility option; processing is always on server")
 	flags.StringVar(&sourceDir, "source-dir", "", "override harness source directory")
 	if err := flags.Parse(args); err != nil {

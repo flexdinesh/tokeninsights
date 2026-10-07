@@ -61,6 +61,9 @@ func (p *terminalSyncProgress) Collection(event pipeline.SyncProgressEvent) {
 		label = "no new usage"
 	case pipeline.SyncProgressFailed:
 		label = "collection failed"
+		if event.Quarantined > 0 {
+			label = fmt.Sprintf("incomplete; %d files quarantined", event.Quarantined)
+		}
 	case pipeline.SyncProgressWaiting:
 		label = "waiting for another sync"
 	default:

@@ -46,6 +46,11 @@ func Resolve(ctx context.Context, settings config.Settings, ensure Ensure) (Sess
 			result.Local = &service.Client{Record: *state.Record}
 		}
 	}
+	canonical, err := collector.CanonicalEndpoint(result.URL)
+	if err != nil {
+		return result, err
+	}
+	result.URL = canonical
 	client, err := queryclient.New(result.URL, nil)
 	if err != nil {
 		return result, err
@@ -62,7 +67,6 @@ func Resolve(ctx context.Context, settings config.Settings, ensure Ensure) (Sess
 	result.Destination = &collector.Destination{URL: result.URL, Identity: result.URL, DatabaseID: result.Descriptor.DataEpoch, DatasetID: result.Descriptor.DatasetId, Local: settings.ServerURL == ""}
 	if result.Local != nil {
 		result.Destination.URL = "http://local"
-		result.Destination.Identity = "http://local"
 		result.Destination.Client = result.Local.IngestionClient()
 	}
 	return result, nil

@@ -31,7 +31,7 @@ func printSummary(stdout io.Writer, command string, summary pipeline.Summary, dr
 			_, _ = fmt.Fprintln(stdout, "Recovery preview: would resume rebuilding all configured harnesses.")
 		}
 	}
-	_, _ = fmt.Fprintf(stdout, "%s: requested=%d synced=%d skipped=%d failed=%d raw_facts=%d observations=%d canonical=%d diagnostics=%d\n",
+	_, _ = fmt.Fprintf(stdout, "%s: requested=%d synced=%d skipped=%d failed=%d raw_facts=%d observations=%d canonical=%d diagnostics=%d quarantined=%d\n",
 		prefix,
 		summary.RequestedHarnesses,
 		summary.Synced,
@@ -41,6 +41,7 @@ func printSummary(stdout io.Writer, command string, summary pipeline.Summary, dr
 		summary.Observations,
 		summary.Canonical,
 		summary.Diagnostics,
+		summary.Quarantined,
 	)
 }
 

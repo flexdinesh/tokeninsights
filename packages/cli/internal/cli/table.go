@@ -159,9 +159,10 @@ type interactiveModel struct {
 }
 
 type syncProgressRow struct {
-	harness pipeline.Harness
-	label   string
-	status  pipeline.SyncProgressStatus
+	harness     pipeline.Harness
+	label       string
+	status      pipeline.SyncProgressStatus
+	quarantined int
 }
 
 var aggregationTabs = []tabMode{tabTokens, tabModels, tabProviders, tabHarnesses, tabSessions, tabContext, tabRepo}
@@ -871,6 +872,7 @@ func (m interactiveModel) withSyncProgress(event pipeline.SyncProgressEvent) int
 	for i, row := range m.syncProgressRows {
 		if row.harness == event.Harness {
 			m.syncProgressRows[i].status = event.Status
+			m.syncProgressRows[i].quarantined = event.Quarantined
 			return m
 		}
 	}

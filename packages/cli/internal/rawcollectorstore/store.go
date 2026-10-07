@@ -174,28 +174,8 @@ func (s *Store) Prepare(ctx context.Context, id string) (*SavedBatch, error) {
 		return nil, nil
 	}
 	batch.FromSequence = cursor + 1
-	var body []byte
-	for _, entry := range entries {
-		if entry.Sequence != batch.FromSequence+int64(len(batch.Entries)) {
-			return nil, errors.New("outbox_gap")
-		}
-		batch.Entries = append(batch.Entries, entry)
-		batch.ToSequence = entry.Sequence
-		candidate, err := json.Marshal(batch)
-		if err != nil {
-			return nil, err
-		}
-		if len(candidate) > evidence.MaxBodyBytes {
-			if len(batch.Entries) == 1 {
-				return nil, errors.New("record_exceeds_batch_limit")
-			}
-			batch.Entries = batch.Entries[:len(batch.Entries)-1]
-			batch.ToSequence = batch.Entries[len(batch.Entries)-1].Sequence
-			break
-		}
-		body = candidate
-	}
-	if _, err := evidence.DecodeBatch(body); err != nil {
+	batch, body, err := encodeBatchPrefix(batch, entries)
+	if err != nil {
 		return nil, err
 	}
 	_, err = tx.ExecContext(ctx, "INSERT INTO evidence_batches(batch_id,destination_id,stream_id,database_id,dataset_id,protocol_version,first_sequence,last_sequence,request_hash,request_bytes) VALUES(?,?,?,?,?,?,?,?,?,?)", batch.BatchID, id, batch.StreamID, batch.DatabaseID, batch.DatasetID, batch.ProtocolVersion, batch.FromSequence, batch.ToSequence, evidence.Hash(body), body)

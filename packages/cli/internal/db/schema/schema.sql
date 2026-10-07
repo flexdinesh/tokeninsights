@@ -399,4 +399,14 @@ CREATE TRIGGER IF NOT EXISTS evidence_outbox_immutable_update BEFORE UPDATE ON e
 CREATE TRIGGER IF NOT EXISTS evidence_outbox_immutable_delete BEFORE DELETE ON evidence_outbox BEGIN SELECT RAISE(ABORT, 'evidence is immutable'); END;
 CREATE TRIGGER IF NOT EXISTS evidence_batches_immutable BEFORE UPDATE OF batch_id,destination_id,stream_id,database_id,dataset_id,protocol_version,first_sequence,last_sequence,request_hash,request_bytes ON evidence_batches BEGIN SELECT RAISE(ABORT, 'evidence request is immutable'); END;
 PRAGMA application_id = 1414091587;
-PRAGMA user_version = 18;
+-- Durable capture quarantine. Hashes only; no source paths or native content.
+CREATE TABLE IF NOT EXISTS evidence_quarantine (
+  source_key TEXT PRIMARY KEY CHECK (length(source_key) = 64 AND source_key NOT GLOB '*[^0-9a-f]*'),
+  format TEXT NOT NULL CHECK (format IN ('codex-jsonl', 'pi-jsonl', 'claude-code-jsonl', 'opencode-sqlite')),
+  signature TEXT NOT NULL CHECK (length(signature) = 64 AND signature NOT GLOB '*[^0-9a-f]*'),
+  parser_version INTEGER NOT NULL CHECK (typeof(parser_version) = 'integer' AND parser_version > 0),
+  code TEXT NOT NULL CHECK (code IN ('source_record_limit', 'invalid_source_record')),
+  byte_offset INTEGER NOT NULL CHECK (typeof(byte_offset) = 'integer' AND byte_offset >= 0),
+  recorded_at_ms INTEGER NOT NULL CHECK (typeof(recorded_at_ms) = 'integer' AND recorded_at_ms >= 0)
+);
+PRAGMA user_version = 19;

@@ -88,6 +88,10 @@ _Avoid_: Payload hash as request identity, equal token counts as dedupe evidence
 A best-effort source refresh that reads newly available usage facts from a Durable Source when prior source continuity can be trusted, while preserving a full-refresh fallback when continuity cannot be trusted.
 _Avoid_: Filtered sync, partial view sync, partial normalize
 
+**Durable Quarantine**:
+Local-only metadata remembering a deterministic capture failure for one Durable Source fingerprint and parser policy. Unchanged sources remain incomplete without repeated parsing; source changes, parser changes or explicit full refresh retry capture. Previous evidence and checkpoints stay intact.
+_Avoid_: Successful capture, permanent ignore, deleted usage
+
 **Recent Source Refresh**:
 A best-effort source refresh that skips Durable Sources whose local modification metadata shows they have not changed since a conservative freshness window before the last successful source refresh.
 _Avoid_: Date-filtered sync, event-time sync
