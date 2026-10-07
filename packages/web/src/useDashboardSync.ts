@@ -2,9 +2,9 @@ import { useEffect, useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { snapshotIdentity, useSyncStatus } from './api'
 
-export function useDashboardSync() {
+export function useDashboardSync(datasetId?: string) {
   const client = useQueryClient()
-  const statusQuery = useSyncStatus()
+  const statusQuery = useSyncStatus(true, datasetId)
   const [reloading, setReloading] = useState(false)
   const reloadPending = useRef(false)
   const status = statusQuery.data
@@ -51,6 +51,8 @@ export function useDashboardSync() {
     reloading,
     revision,
     identity,
-    analyticsEnabled: status?.dataReadiness === 'ready',
+    analyticsEnabled:
+      status?.dataReadiness === 'ready' &&
+      (datasetId === undefined || status.datasetId === datasetId),
   }
 }

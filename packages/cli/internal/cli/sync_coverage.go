@@ -39,13 +39,17 @@ func (m interactiveModel) sharedSyncCmd() tea.Cmd {
 			message.err = err
 			return message
 		}
-		message.status = db.SyncStatus{Revision: state.Revision, Phase: string(state.Phase)}
+		message.status = db.SyncStatus{Revision: state.Revision, Phase: string(state.Phase), Running: state.Running}
+		message.pending = state.Running
 		message.instanceID, message.dataEpoch, message.readiness = state.InstanceId, state.DataEpoch, string(state.DataReadiness)
 		return message
 	})
 }
 
 func (m interactiveModel) syncWorkLabel() string {
+	if m.sharedSync.Running {
+		return "Processing accepted usage · r Reload"
+	}
 	return "Saved server data · r Reload"
 }
 

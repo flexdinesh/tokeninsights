@@ -21,7 +21,7 @@ test('Reload cancels an older status read and never submits collection', async (
   let captured = false
   let release: (() => void) | undefined
   const methods: string[] = []
-  await page.route('**/api/v1/sync', async (route) => {
+  await page.route('**/api/v2/status', async (route) => {
     methods.push(route.request().method())
     const upstream = await route.fetch()
     const snapshot = statusSchema.parse(await upstream.json())
@@ -52,7 +52,7 @@ test('session search failure keeps its draft and selection and supports retry', 
   page,
 }) => {
   let failing = true
-  await page.route('**/api/v1/usage/facets?*', (route) => {
+  await page.route('**/api/v2/usage/facets?*', (route) => {
     if (failing && new URL(route.request().url()).searchParams.get('search') === '059')
       return route.fulfill({
         status: 500,
@@ -106,7 +106,7 @@ test('display preferences and filter drafts survive route loading and history', 
   await page.getByRole('textbox', { name: 'Search model' }).fill('model-a')
   await page.keyboard.press('Escape')
   let release: (() => void) | undefined
-  await page.route('**/api/v1/usage?*', async (route) => {
+  await page.route('**/api/v2/usage?*', async (route) => {
     if (new URL(route.request().url()).searchParams.get('tab') === 'models') {
       await new Promise<void>((resolve) => {
         release = resolve

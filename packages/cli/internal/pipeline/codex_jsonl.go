@@ -3,13 +3,11 @@ package pipeline
 import (
 	"context"
 	"encoding/json"
-	"fmt"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/processor"
 	"io"
-	"math"
 	"os"
 	"path/filepath"
 	"sort"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -420,91 +418,8 @@ func (a *codexJSONLAdapter) factFromEvent(ctx context.Context, source Source, op
 }
 
 func codexTokensFromUsage(usage map[string]interface{}) (codexTokenCounts, []Diagnostic, bool) {
-	if hasInvalidCodexToken(usage, "input_tokens", "cached_input_tokens", "cache_read_input_tokens", "output_tokens", "reasoning_output_tokens", "total_tokens") {
-		return codexTokenCounts{}, []Diagnostic{codexDiagnostic("codex_jsonl_invalid_tokens", "skipped Codex token-count row with non-numeric token components")}, false
-	}
-	rawInput := codexIntField(usage, "input_tokens")
-	cacheRead := largerInt(codexIntField(usage, "cached_input_tokens"), codexIntField(usage, "cache_read_input_tokens"))
-	counts := codexTokenCounts{
-		input:     rawInput,
-		output:    codexIntField(usage, "output_tokens"),
-		reasoning: codexIntField(usage, "reasoning_output_tokens"),
-		cacheRead: cacheRead,
-		total:     codexIntField(usage, "total_tokens"),
-	}
-	if counts.input == nil && counts.output == nil && counts.reasoning == nil && counts.cacheRead == nil && counts.total == nil {
-		return codexTokenCounts{}, []Diagnostic{codexDiagnostic("codex_jsonl_missing_tokens", "skipped Codex token-count row with no usable token components")}, false
-	}
-	clamped := false
-	clampToken(counts.input, &clamped)
-	clampToken(counts.output, &clamped)
-	clampToken(counts.reasoning, &clamped)
-	clampToken(counts.cacheRead, &clamped)
-	clampToken(counts.total, &clamped)
-	if counts.reasoning != nil {
-		if counts.output == nil || *counts.reasoning > *counts.output {
-			return codexTokenCounts{}, []Diagnostic{codexDiagnostic("codex_jsonl_invalid_reasoning", "skipped Codex token-count row whose reasoning tokens exceeded inclusive output tokens")}, false
-		}
-		*counts.output -= *counts.reasoning
-	}
-	if counts.input != nil && counts.cacheRead != nil {
-		*counts.input -= *counts.cacheRead
-		clampToken(counts.input, &clamped)
-	}
-	if _, ok := tokenComponentSum(counts.input, counts.output, counts.reasoning, counts.cacheRead); !ok {
-		return codexTokenCounts{}, []Diagnostic{codexDiagnostic("codex_jsonl_invalid_tokens", "skipped Codex token-count row whose token total exceeds the supported range")}, false
-	}
-	if clamped {
-		return counts, []Diagnostic{codexDiagnostic("codex_jsonl_negative_tokens", "clamped negative Codex token components to zero")}, true
-	}
-	return counts, nil, true
-}
-
-func hasInvalidCodexToken(usage map[string]interface{}, names ...string) bool {
-	for _, name := range names {
-		value, ok := usage[name]
-		if !ok {
-			continue
-		}
-		switch typed := value.(type) {
-		case json.Number:
-			if _, err := typed.Int64(); err != nil {
-				return true
-			}
-		case float64:
-			if math.IsNaN(typed) || math.IsInf(typed, 0) || math.Trunc(typed) != typed || typed >= math.MaxInt64 || typed < math.MinInt64 {
-				return true
-			}
-		case string:
-			if codexIntField(usage, name) == nil {
-				return true
-			}
-		default:
-			return true
-		}
-	}
-	return false
-}
-
-func codexIntField(usage map[string]interface{}, name string) *int64 {
-	switch value := usage[name].(type) {
-	case json.Number:
-		parsed, err := value.Int64()
-		if err == nil {
-			return &parsed
-		}
-	case string:
-		parsed, err := strconv.ParseInt(strings.TrimSpace(value), 10, 64)
-		if err == nil {
-			return &parsed
-		}
-	case float64:
-		if math.Trunc(value) == value && value < math.MaxInt64 && value >= math.MinInt64 {
-			parsed := int64(value)
-			return &parsed
-		}
-	}
-	return nil
+	v, d, ok := processor.CodexTokens(usage)
+	return codexTokenCounts{v.Input, v.Output, v.Reasoning, v.CacheRead, v.Total}, processorDiagnostics(d), ok
 }
 
 func (counts codexTokenCounts) equal(other codexTokenCounts) bool {
@@ -540,16 +455,6 @@ func intPointerValue(value *int64) int64 {
 	return *value
 }
 
-func largerInt(left *int64, right *int64) *int64 {
-	if left == nil {
-		return right
-	}
-	if right == nil || *left >= *right {
-		return left
-	}
-	return right
-}
-
 func codexTimestampString(record map[string]interface{}, name string) *int64 {
 	value := stringField(record, name)
 	if value == nil {
@@ -561,13 +466,6 @@ func codexTimestampString(record map[string]interface{}, name string) *int64 {
 	}
 	result := timestamp.UnixMilli()
 	return &result
-}
-
-func codexMessageID(turnID *string, occurredAtMs int64, lineNumber int) string {
-	if turnID != nil {
-		return fmt.Sprintf("%s:%d", *turnID, occurredAtMs)
-	}
-	return fmt.Sprintf("line:%d:%d", lineNumber, occurredAtMs)
 }
 
 func isCodexSessionSource(path string) bool {

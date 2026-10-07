@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { InstanceResponse, UsageResponse } from '../src/generated/api'
+import { InstanceResponseV2, UsageResponseV2 } from '../src/generated/api'
 import { dashboardSchema } from '../src/contracts'
 
 test.describe('server reporting timezone', () => {
@@ -7,12 +7,12 @@ test.describe('server reporting timezone', () => {
 
   test('UTC server dates stay UTC in a non-UTC browser', async ({ page }) => {
     const instant = Date.parse('2026-01-01T00:30:00Z')
-    await page.route('**/api/v1/instance', async (route) => {
+    await page.route('**/api/v2/instance', async (route) => {
       const response = await route.fetch()
-      const instance = InstanceResponse.parse(await response.json())
+      const instance = InstanceResponseV2.parse(await response.json())
       await route.fulfill({ json: { ...instance, timezone: 'UTC' } })
     })
-    await page.route('**/api/v1/usage?*', async (route) => {
+    await page.route('**/api/v2/usage?*', async (route) => {
       const response = await route.fetch()
       const data = dashboardSchema.parse(await response.json())
       const row = data.rows[0]
@@ -43,7 +43,7 @@ test('saved ingestion shows available rows without source completeness markers',
 })
 
 test('empty server explains manual collection without a browser mutation', async ({ page }) => {
-  await page.route('**/api/v1/usage?*', async (route) => {
+  await page.route('**/api/v2/usage?*', async (route) => {
     const response = await route.fetch()
     const data = dashboardSchema.parse(await response.json())
     await route.fulfill({
@@ -105,9 +105,9 @@ test('dimension charts show filtered token shares on bars, labels, and tooltips'
   await expect(chart.locator('.recharts-label-list text')).toBeVisible()
   await expect(chart.getByRole('button', { name: 'model-a 100%', exact: true })).toBeVisible()
 
-  await page.route('**/api/v1/usage?*', async (route) => {
+  await page.route('**/api/v2/usage?*', async (route) => {
     const response = await route.fetch()
-    const data = UsageResponse.parse(await response.json())
+    const data = UsageResponseV2.parse(await response.json())
     const row = data.chart[0]
     if (!row) throw new Error('Expected model chart fixture')
     const displayedGroups = 12
@@ -176,9 +176,9 @@ test('repo charts show full filtered token shares in both location groupings', a
   await page.setViewportSize({ width: 390, height: 844 })
   await page.screenshot({ path: testInfo.outputPath('repo-mobile.png'), fullPage: true })
 
-  await page.route('**/api/v1/usage?*', async (route) => {
+  await page.route('**/api/v2/usage?*', async (route) => {
     const response = await route.fetch()
-    const data = UsageResponse.parse(await response.json())
+    const data = UsageResponseV2.parse(await response.json())
     const row = data.chart[0]
     if (!row) throw new Error('Expected repo chart fixture')
     const displayedGroups = 12
@@ -254,7 +254,7 @@ test('saved usage, seven views, filtering, history, pagination, and read-only Re
   const errors: string[] = []
   let syncRequests = 0
   page.on('request', (request) => {
-    if (new URL(request.url()).pathname === '/api/v1/sync' && request.method() === 'POST')
+    if (new URL(request.url()).pathname === '/api/v2/status' && request.method() === 'POST')
       syncRequests++
   })
   page.on('pageerror', (error) => errors.push(error.message))
@@ -380,7 +380,7 @@ test('path routes keep shared dashboard stable while view data loads', async ({ 
   await page.getByRole('region', { name: 'Filtered usage summary' }).evaluate((element) => {
     element.dataset.mounted = 'summary'
   })
-  await page.route('**/api/v1/usage?*', async (route) => {
+  await page.route('**/api/v2/usage?*', async (route) => {
     if (new URL(route.request().url()).searchParams.get('tab') === 'models') {
       await new Promise((resolve) => setTimeout(resolve, 500))
     }
@@ -465,7 +465,7 @@ test('sorting preserves page scroll position', async ({ page }) => {
   await totalHeader.scrollIntoViewIfNeeded()
   const before = await page.evaluate(() => window.scrollY)
   expect(before).toBeGreaterThan(0)
-  await page.route('**/api/v1/usage?*', async (route) => {
+  await page.route('**/api/v2/usage?*', async (route) => {
     if (new URL(route.request().url()).searchParams.get('sort') === 'total') {
       await new Promise((resolve) => setTimeout(resolve, 500))
     }
@@ -555,8 +555,8 @@ for (const address of ['127.0.0.1', 'localhost']) {
     page,
   }) => {
     const origin = `http://${address}:18765`
-    const instanceResponse = await page.request.get(`${origin}/api/v1/instance`)
-    const instance = InstanceResponse.parse(await instanceResponse.json())
+    const instanceResponse = await page.request.get(`${origin}/api/v2/instance`)
+    const instance = InstanceResponseV2.parse(await instanceResponse.json())
     await page.addInitScript(() => {
       localStorage.setItem(
         'tokeninsights.sources.v1',
@@ -598,7 +598,7 @@ for (const address of ['127.0.0.1', 'localhost']) {
     await expect(page.getByRole('checkbox', { name: 'web-session-059', exact: true })).toBeVisible()
     await page.getByRole('button', { name: 'Done', exact: true }).click()
     const sync = page.waitForRequest(
-      (request) => request.url() === `${origin}/api/v1/sync` && request.method() === 'GET',
+      (request) => request.url() === `${origin}/api/v2/status` && request.method() === 'GET',
     )
     await page.getByRole('button', { name: 'Reload', exact: true }).click()
     await sync
@@ -606,8 +606,8 @@ for (const address of ['127.0.0.1', 'localhost']) {
     await page.reload()
     await expect(page.getByLabel('Total tokens: 258,000', { exact: true })).toBeVisible()
     expect(requests.every((url) => new URL(url).origin === origin)).toBe(true)
-    expect(requests.some((url) => new URL(url).pathname === '/api/v1/usage')).toBe(true)
-    expect(requests.some((url) => new URL(url).pathname === '/api/v1/usage/facets')).toBe(true)
+    expect(requests.some((url) => new URL(url).pathname === '/api/v2/usage')).toBe(true)
+    expect(requests.some((url) => new URL(url).pathname === '/api/v2/usage/facets')).toBe(true)
   })
 }
 
@@ -627,7 +627,7 @@ test('custom dates, session search, and saved usage after status failure', async
   await page.getByRole('button', { name: 'Done', exact: true }).click()
   await expect(page.getByLabel('Total tokens: 4,300', { exact: true })).toBeVisible()
   await expect(page.locator('.session-coverage')).toHaveText('Sessions 1 shown / 80 synced')
-  await page.route('**/api/v1/sync', (route) =>
+  await page.route('**/api/v2/status', (route) =>
     route.fulfill({ status: 503, json: { code: 'unavailable', message: 'Status unavailable' } }),
   )
   await page.getByRole('button', { name: 'Reload', exact: true }).click()

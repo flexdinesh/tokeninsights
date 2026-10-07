@@ -9,6 +9,8 @@ import (
 	"net"
 	"net/http"
 	"time"
+
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/collectorprogress"
 )
 
 var ErrStopped = errors.New("service stopped")
@@ -147,6 +149,15 @@ func (c Client) Status(ctx context.Context) (Status, error) {
 	var s Status
 	err := c.call(ctx, "GET", "/status", nil, &s)
 	return s, err
+}
+
+// PublishCollectorProgress reports ancillary progress to this exact service
+// instance. Callers must keep collection and delivery successful if it fails.
+func (c Client) PublishCollectorProgress(ctx context.Context, message collectorprogress.Message) error {
+	var response struct {
+		Accepted bool `json:"accepted"`
+	}
+	return c.call(ctx, http.MethodPost, "/collector-progress", message, &response)
 }
 
 // WaitProcessing is maintenance-only. Sync never waits for projection completion.

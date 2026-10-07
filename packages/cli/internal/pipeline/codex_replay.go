@@ -3,25 +3,12 @@ package pipeline
 import (
 	"context"
 	"encoding/json"
-	"fmt"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/processor"
 	"os"
 )
 
-// Snapshot fields preserve source presence and both cache aliases. Replay proof
-// must compare the source counters, not normalized/clamped token components.
-type codexUsageSnapshot struct {
-	Input       *int64 `json:"input"`
-	CachedInput *int64 `json:"cachedInput"`
-	CacheRead   *int64 `json:"cacheRead"`
-	Output      *int64 `json:"output"`
-	Reasoning   *int64 `json:"reasoning"`
-	Total       *int64 `json:"total"`
-}
-
-type codexSnapshot struct {
-	Last  *codexUsageSnapshot `json:"last"`
-	Total *codexUsageSnapshot `json:"total"`
-}
+type codexUsageSnapshot = processor.CodexUsageSnapshot
+type codexSnapshot = processor.CodexSnapshot
 
 type codexCandidate struct {
 	fact        RawTokenFact
@@ -64,59 +51,14 @@ func (a *codexJSONLAdapter) sourceMetadata(source Source) (codexSourceMetadata, 
 }
 
 func codexSnapshotFromUsage(usage map[string]interface{}) (*codexUsageSnapshot, bool) {
-	if usage == nil {
-		return nil, false
-	}
-	snapshot := &codexUsageSnapshot{}
-	fields := []struct {
-		name string
-		dest **int64
-	}{
-		{"input_tokens", &snapshot.Input},
-		{"cached_input_tokens", &snapshot.CachedInput},
-		{"cache_read_input_tokens", &snapshot.CacheRead},
-		{"output_tokens", &snapshot.Output},
-		{"reasoning_output_tokens", &snapshot.Reasoning},
-		{"total_tokens", &snapshot.Total},
-	}
-	valid, present := true, false
-	for _, field := range fields {
-		value, exists := usage[field.name]
-		if !exists {
-			continue
-		}
-		present = true
-		*field.dest = codexIntField(usage, field.name)
-		// Strings can be retained by the legacy ingestion path but do not prove
-		// exact source-native integer equality.
-		_, numeric := value.(json.Number)
-		if !numeric || *field.dest == nil || **field.dest < 0 {
-			valid = false
-		}
-	}
-	return snapshot, valid && present
+	return processor.CodexSnapshotFromUsage(usage)
 }
-
 func (candidate *codexCandidate) setMessageID() {
-	encoded, _ := json.Marshal(candidate.snapshot)
-	id := codexMessageID(candidate.turnID, *candidate.fact.OccurredAtMs, candidate.line) + ":" + stableHash(string(encoded))
-	if candidate.turnID != nil && candidate.snapshot.Total == nil {
-		id += fmt.Sprintf(":line:%d", candidate.line)
-	}
+	id := processor.CodexMessageIdentity(candidate.turnID, *candidate.fact.OccurredAtMs, candidate.line, candidate.snapshot)
 	candidate.fact.MessageID = &id
 }
-
 func (candidate codexCandidate) replayFingerprint() string {
-	if !candidate.replayValid || candidate.turnID == nil || candidate.fact.Provider == nil || candidate.fact.Model == nil {
-		return ""
-	}
-	encoded, _ := json.Marshal(struct {
-		Turn     string        `json:"turn"`
-		Provider string        `json:"provider"`
-		Model    string        `json:"model"`
-		Snapshot codexSnapshot `json:"snapshot"`
-	}{*candidate.turnID, *candidate.fact.Provider, *candidate.fact.Model, candidate.snapshot})
-	return stableHash(string(encoded))
+	return processor.CodexReplayFingerprint(candidate.turnID, candidate.fact.Provider, candidate.fact.Model, candidate.snapshot, candidate.replayValid)
 }
 
 func codexMetadataFromPayload(payload map[string]interface{}, fallback string) codexSourceMetadata {

@@ -33,7 +33,7 @@ func batchBody(t *testing.T, store *Store, stream, batch string, records ...evid
 	if err != nil {
 		t.Fatal(err)
 	}
-	value := evidence.Batch{ProtocolVersion: 2, ExtractorVersion: 1, DatabaseID: metadata.DatabaseID, StreamID: stream, BatchID: batch, FromSequence: 1, ToSequence: int64(len(records))}
+	value := evidence.Batch{ProtocolVersion: evidence.ProtocolVersion, ExtractorVersion: 1, DatasetID: metadata.DatasetID, DatabaseID: metadata.DatabaseID, StreamID: stream, BatchID: batch, FromSequence: 1, ToSequence: int64(len(records))}
 	for i, record := range records {
 		value.Entries = append(value.Entries, evidence.Entry{Sequence: int64(i + 1), Record: record})
 	}
@@ -59,7 +59,7 @@ func drain(t *testing.T, store *Store) {
 func total(t *testing.T, store *Store, table string) int64 {
 	t.Helper()
 	var total int64
-	if err := store.SQL().QueryRowContext(t.Context(), "SELECT CAST(COALESCE(SUM(total_tokens),0) AS BIGINT) FROM "+table).Scan(&total); err != nil {
+	if err := store.SQL().QueryRowContext(t.Context(), "SELECT CAST(COALESCE(SUM(total_tokens),0) AS BIGINT) FROM "+table+" WHERE dataset_id=?", store.DatasetID()).Scan(&total); err != nil {
 		t.Fatal(err)
 	}
 	return total

@@ -10,8 +10,11 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/clientworkflow"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/collector"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/pipeline"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/serverfeatures"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/service"
 )
 
 type startupPhase string
@@ -26,7 +29,7 @@ const (
 	startupMessageBuffer              = 32
 )
 
-type startupServerMsg struct{ url string }
+type startupServerMsg struct{ url, datasetID string }
 type startupDeliveryMsg struct{ progress collector.DeliveryProgress }
 type startupLoadMsg struct{}
 type startupTickMsg struct{ attempt uint64 }
@@ -87,28 +90,48 @@ func (m startupModel) startWorker() {
 func (m startupModel) run(send func(tea.Msg)) {
 	ctx := m.dashboard.ctx
 	options := m.dashboard.options
-	if m.originalURL == "" {
-		state, err := ensureViewConfiguredLocal(ctx, options.dbPath, m.dashboard.localSettings)
-		if err != nil {
+	settings := m.dashboard.localSettings
+	if settings.ServerKind == "" {
+		settings.ServerKind = serverfeatures.Personal
+	}
+	settings.ServerURL, settings.ServerToken = m.originalURL, options.token
+	session, err := clientworkflow.Resolve(ctx, settings, func(ctx context.Context) (service.State, error) {
+		return ensureViewConfiguredLocal(ctx, options.dbPath, settings)
+	})
+	if err != nil {
+		send(startupFailedMsg{phase: startupServer, err: err})
+		return
+	}
+	if err := session.Require(serverfeatures.Read, serverfeatures.TerminalDashboard, serverfeatures.Usage, serverfeatures.Facets); err != nil {
+		send(startupFailedMsg{phase: startupServer, err: err})
+		return
+	}
+	if m.collect {
+		if err := session.VerifyIngestion(ctx); err != nil {
 			send(startupFailedMsg{phase: startupServer, err: err})
 			return
 		}
-		if state.Record == nil {
-			send(startupFailedMsg{phase: startupServer, err: errors.New("local query server unavailable")})
-			return
-		}
-		options.serverURL = state.Record.URL
 	}
-	send(startupServerMsg{url: options.serverURL})
+	options.serverURL, options.datasetID = session.URL, session.Descriptor.DatasetId
+	send(startupServerMsg{url: options.serverURL, datasetID: options.datasetID})
 	if m.collect {
+		observer := session.Observe(ctx)
 		result, err := runViewCollector(ctx, collector.Options{
 			CollectorDBPath: options.collectorDBPath, ServerDBPath: options.dbPath,
 			ServerURL: m.originalURL, Token: options.token,
+			Destination: session.Destination,
 			SyncOptions: pipeline.SyncOptions{Harnesses: pipeline.SupportedHarnesses, Normalize: true, Now: m.dashboard.now,
-				Progress: func(event pipeline.SyncProgressEvent) { send(syncProgressMsg{event: event}) }},
-			EnsureLocal:      func(context.Context) (string, error) { return options.serverURL, nil },
-			DeliveryProgress: func(progress collector.DeliveryProgress) { send(startupDeliveryMsg{progress: progress}) },
+				Progress: func(event pipeline.SyncProgressEvent) {
+					observer.Collection(event)
+					send(syncProgressMsg{event: event})
+				}},
+			EnsureLocal: func(context.Context) (string, error) { return options.serverURL, nil },
+			DeliveryProgress: func(progress collector.DeliveryProgress) {
+				observer.Delivery(progress)
+				send(startupDeliveryMsg{progress: progress})
+			},
 		})
+		observer.Finish(result, err)
 		if err != nil {
 			phase := startupCollect
 			if result.DeliveryError != nil {
@@ -145,6 +168,7 @@ func (m startupModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case startupServerMsg:
 		m.dashboard.options.serverURL = msg.url
+		m.dashboard.options.datasetID = msg.datasetID
 		m.phase = startupCollect
 	case syncProgressMsg:
 		m.dashboard = m.dashboard.withSyncProgress(msg.event)

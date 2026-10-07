@@ -2,6 +2,7 @@ package collector
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -11,7 +12,6 @@ import (
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/evidence"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/pipeline"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/rawcollectorstore"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/service"
 )
 
 func captureRaw(ctx context.Context, options Options) (pipeline.Summary, error) {
@@ -37,45 +37,83 @@ func captureRaw(ctx context.Context, options Options) (pipeline.Summary, error) 
 	return pipeline.Extract(ctx, options.SyncOptions, store)
 }
 
+// NegotiateCapabilities validates the raw wire contract before source capture.
+// Client composition also compares its authenticated descriptor binding.
+func NegotiateCapabilities(ctx context.Context, destination *Destination, token string) (evidence.Capabilities, error) {
+	var capabilities evidence.Capabilities
+	if destination == nil {
+		return capabilities, failure("configuration", "invalid_destination", nil)
+	}
+	target, err := endpoint(destination.URL)
+	if err != nil {
+		return capabilities, err
+	}
+	body, err := request(ctx, deliveryClient(destination.Client), target+"/api/v3/ingestion/capabilities", token, nil)
+	if err != nil {
+		return capabilities, err
+	}
+	if evidence.StrictDecode(body, &capabilities) != nil || capabilities.ProtocolVersion != evidence.ProtocolVersion || capabilities.ExtractorVersion != evidence.ExtractorVersion || capabilities.DatabaseID == "" || !evidence.ValidDatasetID(capabilities.DatasetID) || capabilities.Completion != "acceptance" || capabilities.MaxBodyBytes != evidence.MaxBodyBytes || capabilities.MaxEntries != evidence.MaxEntries {
+		return capabilities, failure("capabilities", "incompatible_server", nil)
+	}
+	return capabilities, nil
+}
+
 func publishRaw(ctx context.Context, options Options, result *Result) error {
 	reportDeliveryProgress(options, result)
 	target := options.ServerURL
 	local := strings.TrimSpace(target) == ""
-	client := &http.Client{Timeout: requestTimeout, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
-	if local {
-		if options.EnsureLocal == nil {
-			return failure("delivery", "local_server_unavailable", nil)
+	client := deliveryClient(nil)
+	var identity string
+	var capabilities evidence.Capabilities
+	if options.Destination != nil {
+		d := options.Destination
+		target, local = d.URL, d.Local
+		identity = d.Identity
+		if identity == "" {
+			identity = target
 		}
-		if _, err := options.EnsureLocal(ctx); err != nil {
-			return failure("delivery", "local_server_unavailable", err)
+		if d.Client != nil {
+			client = deliveryClient(d.Client)
 		}
-		if options.LocalClient != nil {
-			client = options.LocalClient
-		} else {
-			state, err := service.Probe(ctx, options.ServerDBPath)
-			if err != nil || state.Record == nil {
+		capabilities = evidence.Capabilities{ProtocolVersion: evidence.ProtocolVersion, ExtractorVersion: evidence.ExtractorVersion, DatabaseID: d.DatabaseID, DatasetID: d.DatasetID, Completion: "acceptance", MaxBodyBytes: evidence.MaxBodyBytes, MaxEntries: evidence.MaxEntries}
+	} else {
+		if local {
+			if options.EnsureLocal == nil {
+				return failure("delivery", "local_server_unavailable", nil)
+			}
+			var err error
+			target, err = options.EnsureLocal(ctx)
+			if err != nil {
 				return failure("delivery", "local_server_unavailable", err)
 			}
-			client = (service.Client{Record: *state.Record}).IngestionClient()
+			target, err = endpoint(target)
+			if err != nil {
+				return err
+			}
+			if options.LocalClient != nil {
+				client = deliveryClient(options.LocalClient)
+				target = "http://local"
+			}
+
+		} else {
+			var err error
+			target, err = endpoint(target)
+			if err != nil {
+				return err
+			}
 		}
-		target = "http://local"
-	} else {
+		identity = target
 		var err error
-		target, err = endpoint(target)
+		capabilities, err = NegotiateCapabilities(ctx, &Destination{URL: target, Client: client}, options.Token)
 		if err != nil {
 			return err
 		}
+
 	}
-	body, err := request(ctx, client, target+"/api/v2/ingestion/capabilities", options.Token, nil)
-	if err != nil {
-		return err
-	}
-	var capabilities evidence.Capabilities
-	if evidence.StrictDecode(body, &capabilities) != nil || capabilities.ProtocolVersion != evidence.ProtocolVersion || capabilities.ExtractorVersion != evidence.ExtractorVersion || capabilities.DatabaseID == "" || capabilities.DatasetID != "default" || capabilities.Completion != "acceptance" || capabilities.MaxBodyBytes != evidence.MaxBodyBytes || capabilities.MaxEntries != evidence.MaxEntries {
-		return failure("capabilities", "incompatible_server", nil)
-	}
-	if err := flushLegacy(ctx, options, result, target, client, local); err != nil {
-		return err
+	if capabilities.DatasetID == "default" {
+		if err := flushLegacy(ctx, options, result, target, client, local); err != nil {
+			return err
+		}
 	}
 	release, err := db.AcquireWriterLock(ctx, options.CollectorDBPath)
 	if err != nil {
@@ -87,12 +125,8 @@ func publishRaw(ctx context.Context, options Options, result *Result) error {
 		return failure("publication", "collector_database", err)
 	}
 	defer func() { _ = store.Close() }()
-	identity := target
-	if local {
-		identity += "\x00" + capabilities.DatabaseID
-	}
-	destination := evidence.Hash([]byte(identity))
-	if err := store.Bind(ctx, destination, target, capabilities.DatabaseID); err != nil {
+	destination, err := store.ResolveDestination(ctx, identity, capabilities.DatabaseID, capabilities.DatasetID, local)
+	if err != nil {
 		return failure("binding", "server_database_changed", err)
 	}
 	result.Pending, err = store.Pending(ctx, destination)
@@ -109,8 +143,17 @@ func publishRaw(ctx context.Context, options Options, result *Result) error {
 		if saved == nil {
 			return nil
 		}
-		response, err := request(ctx, client, target+"/api/v2/ingestion/batches", options.Token, saved.Request)
+		route := "/api/v3/ingestion/batches"
+		if saved.Batch.ProtocolVersion == evidence.LegacyProtocolVersion {
+			route = "/api/v2/ingestion/batches"
+		}
+		response, err := request(ctx, client, target+route, options.Token, saved.Request)
 		if err != nil {
+			var rejected *StageError
+			if errors.As(err, &rejected) {
+				rejected.BatchID = saved.Batch.BatchID
+				return rejected
+			}
 			return &StageError{Stage: "delivery", Code: "acceptance_failed", BatchID: saved.Batch.BatchID, Cause: err}
 		}
 		if err := store.Ack(ctx, destination, response); err != nil {

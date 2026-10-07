@@ -1,0 +1,14 @@
+services:
+  tokeninsights:
+    build:
+      context: ..
+    image: tokeninsights-server:local
+    ports:
+      - '127.0.0.1:8765:8765'
+    volumes:
+      - personal-data:/data
+    stop_grace_period: 30s
+    restart: unless-stopped
+
+volumes:
+  personal-data:

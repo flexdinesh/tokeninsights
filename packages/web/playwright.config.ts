@@ -5,12 +5,14 @@ export default defineConfig({
   use: {
     baseURL: 'http://127.0.0.1:18765',
     viewport: { width: 1440, height: 1100 },
+    ignoreHTTPSErrors: true,
     screenshot: 'only-on-failure',
     trace: 'retain-on-failure',
   },
   webServer: {
     command: 'node e2e/server.ts',
-    url: 'http://127.0.0.1:18765/api/v1/instance',
+    url: 'https://127.0.0.1:18769/readyz',
+    ignoreHTTPSErrors: true,
     reuseExistingServer: false,
   },
 })

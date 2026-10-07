@@ -1,6 +1,6 @@
 # TokenInsights
 
-TokenInsights tracks local token usage across coding harnesses through host collection and normalization, canonical-only ingestion, and server queries over retained history.
+TokenInsights tracks token usage across coding harnesses through host collection, sanitized evidence ingestion, server-owned processing and queries over retained history.
 
 ## Language
 
@@ -33,7 +33,7 @@ A read-only summary of countable canonical token facts for one aggregation tab a
 _Avoid_: Pre-aggregated rollup, metric domain
 
 **Syncable Analytics Data**:
-Normalized usage facts and their stable session/message/location references governed by the publication privacy contract. Raw facts, parsing diagnostics, and continuity metadata remain local to the collector.
+Sanitized native evidence and safe location references governed by the ingestion whitelist. The server interprets it into confirmed facts and separate estimates; source paths, parsing diagnostics and continuity metadata stay local.
 _Avoid_: Local cursor data, source continuity state
 
 **Local-only Continuity Metadata**:
@@ -49,15 +49,35 @@ The host-side Go workflow that discovers Durable Sources, captures metadata-only
 _Avoid_: Client-side counter interpretation, private content ingestion
 
 **Canonical Server**:
-The shared local/remote Go server core that durably accepts evidence, asynchronously processes stable contributions, stores DuckDB status and serves REST analytics plus embedded web assets.
+The shared Go server core that durably accepts immutable evidence/receipts, asynchronously publishes replaceable stable contributions, stores DuckDB status and serves REST analytics plus embedded web assets.
 _Avoid_: Collector service, client-side normalization
 
+**Personal Server**:
+An unauthenticated server serving one dataset. Default kind; managed local or foreground remote. Supports the terminal dashboard. Managed local composition also exposes sanitized collector progress.
+_Avoid_: Simple server, prod server, local-only server
+
+**Hosted Server**:
+An authenticated server serving isolated user datasets in one shared DuckDB database. Runs as one foreground instance; browser dashboard supported, terminal dashboard and browser collector progress unavailable.
+_Avoid_: Prod server, database per tenant, authenticated personal server
+
+**Dataset**:
+The isolation boundary for evidence, deduplication, receipts, ancestry, processing generations and analytics. Personal uses `default`; each hosted user owns one server-assigned dataset, stable across token rotation.
+_Avoid_: Collector installation, token identity, source session
+
+**Capability**:
+A typed, server-owned feature declaration exposed by the instance REST endpoint. Routes, commands and browser UI share its policy. Caller permissions separately authorize supported operations.
+_Avoid_: Client-selected feature, authentication scope
+
+**Collector Progress**:
+Bounded, sanitized capture/submission attempt state published by a managed personal client over the private control socket. The server does not collect. Processing lag is separate and available to authorized viewers of either kind.
+_Avoid_: Server collection, global queue progress, upload completion as query freshness
+
 **Read-only View**:
-`tokeninsights tui` runs caller-side collection/publication in a loading screen, then queries committed data through the same REST API as the browser. `tui --sync=false` skips collection. Dashboard Reload requests queries only; viewer filters remain display constraints. Startup failures offer Retry, View saved data, and Quit.
+`tokeninsights tui` runs caller-side collection/publication in a loading screen, then queries committed personal-server data through the same REST API as the browser. `tokeninsights web` syncs and opens a browser dashboard for either kind. `--sync=false` skips collection. Dashboard Reload requests queries only; viewer filters remain display constraints. TUI startup failures offer Retry, View saved data, and Quit.
 _Avoid_: Implicit View Sync, dashboard source refresh
 
 **Durable Publication**:
-Immutable raw outbox and saved batches, acknowledged per destination after server acceptance. Later manual sync retries pending delivery.
+Immutable raw outbox and saved batches, acknowledged per endpoint/database/dataset binding after server acceptance. Later manual sync retries pending delivery with exact saved bytes.
 _Avoid_: Best-effort upload marker, insert-only export
 
 **Stable Fact Identity**:

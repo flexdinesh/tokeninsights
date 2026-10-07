@@ -18,6 +18,7 @@ commands:
   service start|stop|restart|status   manage local web/API server
   sync                              collect all harnesses and submit sanitized raw evidence
   tui                               sync with progress, then open terminal dashboard
+  web                               sync and open browser dashboard
   config set KEY VALUE|get KEY|remove KEY
                                     manage client preferences
 
@@ -34,6 +35,7 @@ advanced:
   tokeninsights service status --json
   tokeninsights sync
   tokeninsights tui
+  tokeninsights web
   tokeninsights sync --publish-only
   tokeninsights sync --server-url https://example.test
   tokeninsights tui --sync=false
@@ -44,8 +46,10 @@ advanced:
 Collector: --collector-db-path (collector.sqlite). Server: --server-db-path (server.duckdb).
 Existing tokeninsights.sqlite is untouched; retained sources rebuild fresh databases.
 Config: --config-file PATH / TOKENINSIGHTS_CONFIG_PATH (default XDG config.json).
-Keys: server-url, host, port, collector-db-path, server-db-path.
+Keys: server-kind, server-url, server-token, host, port, collector-db-path, server-db-path.
 Runtime precedence: flags > environment > file > defaults; get reads preferences.
 Empty server-url selects local. Remote failures never start local.
-Public servers are unauthenticated, including 0.0.0.0. --token/server run removed.`
+Personal servers are unauthenticated, including 0.0.0.0. Hosted requires URL/token.
+TUI requires personal server. Set server-token without VALUE for secure terminal/stdin entry.
+--token/server run removed.`
 }

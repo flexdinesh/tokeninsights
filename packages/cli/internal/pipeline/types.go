@@ -2,10 +2,11 @@ package pipeline
 
 import (
 	"context"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/processor"
 	"time"
 )
 
-type Harness string
+type Harness = processor.Harness
 
 const (
 	HarnessOpenCode   Harness = "opencode"

@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/config"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/serverfeatures"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/service"
 	"io"
 	"os"
@@ -36,6 +37,7 @@ var commands = []commandSpec{
 	helpCommand,
 	versionCommand,
 	tuiCommand,
+	webCommand,
 	serviceCommand,
 	serverCommand,
 	syncCommand,
@@ -86,6 +88,9 @@ func Run(ctx context.Context, args []string, stdout io.Writer, stderr io.Writer,
 		}
 	}
 	if len(args) == 0 {
+		if err := invocation.defaults().ValidateDestination(); err != nil {
+			return err
+		}
 		if invocation.defaults().ServerURL != "" {
 			_, err := fmt.Fprintln(stdout, "Server: "+invocation.defaults().ServerURL)
 			return err
@@ -120,7 +125,7 @@ func commandByName(name string) (commandSpec, bool) {
 	return commandSpec{}, false
 }
 
-var ErrUsage = errors.New("usage: tokeninsights <service|sync|tui|collector|config> [options]")
+var ErrUsage = errors.New("usage: tokeninsights <service|sync|tui|web|collector|config> [options]")
 
 func configFileArgument(args []string) ([]string, string, error) {
 	result := make([]string, 0, len(args))
@@ -158,7 +163,11 @@ func configFileArgument(args []string) ([]string, string, error) {
 
 func (invocation commandInvocation) defaults() config.Settings {
 	if invocation.settings != nil {
-		return *invocation.settings
+		settings := *invocation.settings
+		if settings.ServerKind == "" {
+			settings.ServerKind = serverfeatures.Personal
+		}
+		return settings
 	}
 	settings := config.Defaults()
 	settings.CollectorDBPath, settings.ServerDBPath, settings.ServerURL = defaultCollectorDBPath(), defaultServerDBPath(), defaultServerURL()

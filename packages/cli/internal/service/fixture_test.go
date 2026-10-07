@@ -1,6 +1,7 @@
 package service
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"os"
@@ -10,6 +11,56 @@ import (
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/datastore"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/db"
 )
+
+func TestPrepareFixtureRejectsHostedBeforeResettingCollector(t *testing.T) {
+	collectorPath, serverPath := fixturePaths(t)
+	ctx := t.Context()
+	if err := PrepareFixture(ctx, collectorPath, serverPath); err != nil {
+		t.Fatal(err)
+	}
+	collector, err := db.OpenWritable(collectorPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var beforeStream string
+	if err := collector.QueryRow("SELECT stream_id FROM publication_state WHERE id=1").Scan(&beforeStream); err != nil {
+		t.Fatal(err)
+	}
+	_ = collector.Close()
+	if err := os.Remove(serverPath); err != nil {
+		t.Fatal(err)
+	}
+	hosted, err := datastore.OpenWithOptions(ctx, serverPath, datastore.Options{Kind: datastore.KindHosted})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := hosted.Close(); err != nil {
+		t.Fatal(err)
+	}
+	beforeServer, err := os.ReadFile(serverPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := PrepareFixture(ctx, collectorPath, serverPath); err == nil {
+		t.Fatal("hosted database reset by personal fixture command")
+	}
+	afterServer, err := os.ReadFile(serverPath)
+	if err != nil || !bytes.Equal(beforeServer, afterServer) {
+		t.Fatal("rejected hosted database mutated", err)
+	}
+	collector, err = db.OpenWritable(collectorPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = collector.Close() }()
+	var afterStream string
+	if err := collector.QueryRow("SELECT stream_id FROM publication_state WHERE id=1").Scan(&afterStream); err != nil {
+		t.Fatal(err)
+	}
+	if beforeStream != afterStream {
+		t.Fatal("collector reset before rejecting hosted storage")
+	}
+}
 
 func fixturePaths(t *testing.T) (string, string) {
 	t.Helper()
@@ -41,7 +92,7 @@ func TestPrepareFixtureSeparateRolesPreserveInodesAndUnrelatedHistory(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := server.SQL().Exec("INSERT INTO ingestion.legacy_receipts VALUES('fixture-stream','fixture-batch','hash','{}')"); err != nil {
+	if _, err := server.SQL().Exec("INSERT INTO ingestion.legacy_receipts(dataset_id,stream_id,batch_id,request_hash,receipt_json) VALUES(?,'fixture-stream','fixture-batch','hash','{}')", datastore.DatasetID); err != nil {
 		t.Fatal(err)
 	}
 	_ = server.Close()

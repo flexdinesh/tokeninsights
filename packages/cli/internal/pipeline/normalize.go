@@ -4,8 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/processor"
 	"slices"
-	"sort"
 	"strings"
 	"time"
 
@@ -61,31 +61,11 @@ type canonicalTokenValues struct {
 	LocationID       interface{}
 }
 
-// Source identifiers stay in raw_token_usage; these rules affect canonical facts only.
-var providerAliases = map[Harness]map[string]string{
-	HarnessOpenCode:   {"fireworks-ai": "fireworks"},
-	HarnessPi:         {"openai-codex": "openai", "fireworks-ai": "fireworks"},
-	HarnessCodex:      {"fireworks-ai": "fireworks"},
-	HarnessClaudeCode: {"fireworks-ai": "fireworks"},
-}
-
-var modelPrefixes = map[string]string{
-	"fireworks": "accounts/fireworks/models/",
-}
-
-// Bump when identifier logic changes outside providerAliases or modelPrefixes.
-const normalizationRuleRevision = "canonical-identifiers-v1"
+var providerAliases = processor.ProviderAliases
+var modelPrefixes = processor.ModelPrefixes
 
 func normalizationRuleSignature(harness Harness) string {
-	parts := []string{normalizationRuleRevision, string(harness)}
-	for source, canonical := range providerAliases[harness] {
-		parts = append(parts, "provider:"+source+"="+canonical)
-	}
-	for provider, prefix := range modelPrefixes {
-		parts = append(parts, "model:"+provider+"="+prefix)
-	}
-	sort.Strings(parts[2:])
-	return stableHash(strings.Join(parts, "\x00"))
+	return processor.NormalizationRuleSignature(string(harness))
 }
 
 func staleNormalizationRules(ctx context.Context, database *sql.DB, harnesses []Harness) ([]Harness, error) {
@@ -116,7 +96,7 @@ func Normalize(ctx context.Context, options NormalizeOptions) (Summary, error) {
 		}
 	}
 	summary := Summary{}
-	compatibility, err := db.InspectCompatibility(ctx, options.DBPath)
+	compatibility, err := db.InspectEvidenceCompatibility(ctx, options.DBPath)
 	if err != nil {
 		return summary, err
 	}
@@ -124,7 +104,7 @@ func Normalize(ctx context.Context, options NormalizeOptions) (Summary, error) {
 		if needsRecovery(compatibility) {
 			return previewSync(ctx, normalizationRecoveryOptions(options), compatibility)
 		}
-		database, err := db.Open(options.DBPath)
+		database, err := db.OpenEvidencePreview(ctx, options.DBPath)
 		if err != nil {
 			return summary, err
 		}
@@ -148,6 +128,9 @@ func Normalize(ctx context.Context, options NormalizeOptions) (Summary, error) {
 		return summary, recoveryFailure(compatibility, err)
 	}
 	defer release()
+	if err := db.UpgradeEvidence(ctx, options.DBPath); err != nil {
+		return summary, err
+	}
 	compatibility, err = db.InspectCompatibility(ctx, options.DBPath)
 	if err != nil {
 		return summary, err
@@ -646,34 +629,19 @@ func countable(row rawTokenRow) int {
 	return 1
 }
 
-func normalizedText(value sql.NullString, fallback string) string {
-	if !value.Valid || strings.TrimSpace(value.String) == "" {
-		return fallback
-	}
-	return strings.TrimSpace(value.String)
-}
-
 func canonicalProvider(row rawTokenRow) (string, string) {
-	if provider := normalizedText(row.Provider, ""); provider != "" {
-		if alias, ok := providerAliases[row.Harness][provider]; ok {
-			provider = alias
-		}
-		return provider, "explicit"
+	var provider *string
+	if row.Provider.Valid {
+		provider = &row.Provider.String
 	}
-	if row.Harness == HarnessClaudeCode {
-		return "maybe-anthropic", "inferred"
-	}
-	return "unknown", "unknown"
+	return processor.CanonicalProvider(string(row.Harness), provider)
 }
-
 func canonicalModel(sourceModel sql.NullString, provider string) string {
-	model := normalizedText(sourceModel, "unknown")
-	if prefix, ok := modelPrefixes[provider]; ok && strings.HasPrefix(model, prefix) {
-		if trimmed := strings.TrimPrefix(model, prefix); trimmed != "" {
-			return trimmed
-		}
+	var model *string
+	if sourceModel.Valid {
+		model = &sourceModel.String
 	}
-	return model
+	return processor.CanonicalModel(model, provider)
 }
 
 func nullStringValue(value sql.NullString) string {

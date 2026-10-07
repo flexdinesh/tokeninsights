@@ -58,7 +58,11 @@ func tableClient(options tableOptions) (*queryclient.Client, error) {
 	if err != nil {
 		return nil, err
 	}
-	return client.WithToken(options.token), nil
+	client = client.WithToken(options.token)
+	if options.datasetID != "" {
+		client = client.WithDataset(options.datasetID)
+	}
+	return client, nil
 }
 
 func apiPointer[T any](value T) *T { return &value }
@@ -147,7 +151,7 @@ func (m interactiveModel) loadServerDashboard() reloadMsg {
 		}
 	}
 	sortRenderRows(rows, m.activeTab, m.options.sort)
-	return reloadMsg{instanceID: result.InstanceId, dataEpoch: result.DataEpoch, selection: m.selectionKey(), rows: rows, revision: result.Revision, lastSyncMs: result.LastSynced, sessionCounts: db.SessionCounts{Shown: result.Summary.Sessions, Synced: result.Summary.SyncedSessions}, hostname: instance.Hostname, timezone: instance.Timezone}
+	return reloadMsg{instanceID: result.InstanceId, dataEpoch: result.DataEpoch, selection: m.selectionKey(), rows: rows, revision: result.Revision, lastSyncMs: result.LastSynced, processingPending: result.Pending, sessionCounts: db.SessionCounts{Shown: result.Summary.Sessions, Synced: result.Summary.SyncedSessions}, hostname: instance.Hostname, timezone: instance.Timezone}
 }
 
 func apiRenderRows(source []api.UsageRow, tab tabMode) []renderRow {

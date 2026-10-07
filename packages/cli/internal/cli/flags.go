@@ -11,6 +11,7 @@ import (
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/config"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/db"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/pipeline"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/serverfeatures"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/viewer"
 )
 
@@ -83,6 +84,8 @@ type tableOptions struct {
 	dbPath          string
 	serverURL       string
 	token           string
+	serverKind      serverfeatures.Kind
+	datasetID       string
 	collectorDBPath string
 	syncBeforeView  bool
 	period          period
@@ -111,7 +114,7 @@ func parseViewerOptionsWithDefaults(args []string, stderr io.Writer, requirePeri
 	var year bool
 	var allTime bool
 	var syncBeforeView bool
-	var serverURL, token, collectorDBPath string
+	var serverURL, collectorDBPath string
 	var bucket string
 	var queryFilters filters
 	flags.StringVar(&dbPath, "server-db-path", settings.ServerDBPath, "local query server database path")
@@ -178,7 +181,7 @@ func parseViewerOptionsWithDefaults(args []string, stderr io.Writer, requirePeri
 		}
 	}
 
-	return tableOptions{dbPath: selectedDBPath, serverURL: strings.TrimSpace(serverURL), token: token, collectorDBPath: collectorDBPath, syncBeforeView: syncBeforeView, period: selected, bucket: selectedBucket, filters: queryFilters}, nil
+	return tableOptions{dbPath: selectedDBPath, serverURL: strings.TrimSpace(serverURL), token: settings.ServerToken, serverKind: settings.ServerKind, collectorDBPath: collectorDBPath, syncBeforeView: syncBeforeView, period: selected, bucket: selectedBucket, filters: queryFilters}, nil
 }
 
 func selectedPeriod(today bool, yesterday bool, week bool, month bool, year bool, allTime bool, required bool, fallback period) (period, error) {

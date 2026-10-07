@@ -1,16 +1,432 @@
 openapi: 3.0.3
 info:
   title: TokenInsights REST API
-  version: 1.0.0
+  version: 2.0.0
   description:
-    Query canonical usage and ingest normalized collector facts. Collectors own source discovery
-    and parsing. The server accepts metadata only and never scans host artifacts.
+    Query dataset-scoped usage and ingest sanitized collector evidence. Personal servers are
+    unauthenticated; hosted servers authenticate bearer tokens or read-only browser sessions.
+    Servers interpret evidence and never scan host artifacts.
 tags:
   - name: Instance
   - name: Sync
   - name: Usage
   - name: Ingestion
 paths:
+  /api/v2/collector-progress:
+    get:
+      security:
+        - bearerAuth: []
+        - browserSession: []
+        - {}
+      operationId: getCollectorProgress
+      summary: Read ephemeral personal collector progress
+      description:
+        Available only when collector-progress capability is advertised. Never starts collection.
+        Hosted servers do not expose this route.
+      tags:
+        - Sync
+      responses:
+        '200':
+          description: Recent local collector attempts, with bounded retention.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CollectorProgressResponse'
+        default:
+          $ref: '#/components/responses/Error'
+  /api/v2/instance:
+    get:
+      security:
+        - bearerAuth: []
+        - browserSession: []
+        - {}
+      operationId: getInstanceV2
+      summary: Describe this TokenInsights server
+      tags:
+        - Instance
+      responses:
+        '200':
+          description: Server versions, saved data hostname, capabilities, and viewer defaults
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InstanceResponseV2'
+        default:
+          $ref: '#/components/responses/Error'
+  /api/v2/status:
+    get:
+      security:
+        - bearerAuth: []
+        - browserSession: []
+        - {}
+      operationId: getStatusV2
+      summary: Read processing readiness and committed revision
+      tags:
+        - Sync
+      responses:
+        '200':
+          description: Saved processing state; never starts collection.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StatusResponseV2'
+        default:
+          $ref: '#/components/responses/Error'
+  /api/v2/usage:
+    get:
+      security:
+        - bearerAuth: []
+        - browserSession: []
+        - {}
+      operationId: getUsageV2
+      summary: Query canonical token usage
+      description: 'Returns a sorted, paginated table, complete filtered summary, and chart
+
+        from one validated read transaction. Date bounds use server-local dates.
+
+        '
+      tags:
+        - Usage
+      parameters:
+        - $ref: '#/components/parameters/PeriodFilter'
+        - $ref: '#/components/parameters/BucketFilter'
+        - $ref: '#/components/parameters/FromFilter'
+        - $ref: '#/components/parameters/ToFilter'
+        - $ref: '#/components/parameters/ProviderFilter'
+        - $ref: '#/components/parameters/ModelFilter'
+        - $ref: '#/components/parameters/HarnessFilter'
+        - $ref: '#/components/parameters/SessionFilter'
+        - $ref: '#/components/parameters/RepositoryFilter'
+        - $ref: '#/components/parameters/DirectoryFilter'
+        - name: tab
+          in: query
+          description: Aggregation shown in table and chart rows.
+          schema:
+            allOf:
+              - $ref: '#/components/schemas/UsageTab'
+            default: tokens
+        - name: locationGroup
+          in: query
+          description: Repo-tab grouping by repository or directory.
+          schema:
+            $ref: '#/components/schemas/LocationGroup'
+        - name: sort
+          in: query
+          description: Sort field. Context-only fields are valid only for the context tab.
+          schema:
+            $ref: '#/components/schemas/SortField'
+        - name: direction
+          in: query
+          schema:
+            $ref: '#/components/schemas/SortDirection'
+        - name: page
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: pageSize
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 50
+        - $ref: '#/components/parameters/QualityFilter'
+      responses:
+        '200':
+          description: Canonical usage result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UsageResponseV2'
+        '400':
+          $ref: '#/components/responses/InvalidRequest'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        default:
+          $ref: '#/components/responses/Error'
+  /api/v2/usage/facets:
+    get:
+      security:
+        - bearerAuth: []
+        - browserSession: []
+        - {}
+      operationId: getUsageFacetsV2
+      summary: Query available usage filters
+      description: 'Each facet applies the other active filters while omitting its own.
+
+        Session search is a case-insensitive literal substring search capped at
+
+        100 results.
+
+        '
+      tags:
+        - Usage
+      parameters:
+        - $ref: '#/components/parameters/PeriodFilter'
+        - $ref: '#/components/parameters/BucketFilter'
+        - $ref: '#/components/parameters/FromFilter'
+        - $ref: '#/components/parameters/ToFilter'
+        - $ref: '#/components/parameters/ProviderFilter'
+        - $ref: '#/components/parameters/ModelFilter'
+        - $ref: '#/components/parameters/HarnessFilter'
+        - $ref: '#/components/parameters/SessionFilter'
+        - $ref: '#/components/parameters/RepositoryFilter'
+        - $ref: '#/components/parameters/DirectoryFilter'
+        - name: search
+          in: query
+          description: Literal substring used to filter session IDs.
+          schema:
+            type: string
+            default: ''
+        - name: tab
+          in: query
+          description: Active aggregation. Repository/directory filters require the repo tab.
+          schema:
+            allOf:
+              - $ref: '#/components/schemas/UsageTab'
+            default: tokens
+        - $ref: '#/components/parameters/QualityFilter'
+      responses:
+        '200':
+          description: Available dimension values
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UsageFacetsResponseV2'
+        '400':
+          $ref: '#/components/responses/InvalidRequest'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        default:
+          $ref: '#/components/responses/Error'
+  /api/v3/ingestion/capabilities:
+    get:
+      security:
+        - bearerAuth: []
+        - {}
+      operationId: getRawIngestionCapabilitiesV3
+      summary: Read raw ingestion contract and durable database identity
+      tags:
+        - Ingestion
+      responses:
+        '200':
+          description: Acceptance-only ingestion contract
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RawCapabilitiesV3'
+        '503':
+          description: Storage unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IngestionError'
+        '401':
+          description: Hosted authentication required; no acceptance.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IngestionError'
+        '403':
+          description: Hosted ingestion permission required; browser sessions are read-only.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IngestionError'
+        '429':
+          description: Admission limit reached; retry exact bytes after backoff.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IngestionError'
+      description:
+        Describes durable acceptance limits and the effective server-owned dataset. Hosted requests
+        require an ingest-scoped bearer token. Personal managed ingestion uses private Unix transport.
+  /api/v3/ingestion/batches:
+    post:
+      security:
+        - bearerAuth: []
+        - {}
+      operationId: ingestRawBatchV3
+      summary: Durably accept immutable sanitized source evidence
+      description:
+        Raw evidence, submitted item mappings, immutable receipt and pending work commit together.
+        Duplicate evidence succeeds without double counting. Processing runs asynchronously. Database and
+        authenticated dataset binding are verified before acceptance. Hosted ingestion requires an ingest-scoped
+        bearer token. Managed personal HTTP is query-only; ingestion uses private Unix transport. Metadata
+        strings are limited to 256 UTF-8 bytes.
+      tags:
+        - Ingestion
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RawBatchV3'
+      responses:
+        '200':
+          description:
+            Durably accepted; all items terminal for current processing generation and scope
+            revision.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RawAcceptanceV3'
+        '202':
+          description: Durably accepted; processing remains asynchronous.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RawAcceptanceV3'
+        '400':
+          description: Invalid JSON or private/unknown fields; no acceptance.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IngestionError'
+        '409':
+          description: Batch bytes, sequence binding or database identity conflict; no acceptance.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IngestionError'
+        '413':
+          description: Body exceeds 1 MiB; no acceptance.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IngestionError'
+        '422':
+          description: Unsupported contract; no acceptance.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IngestionError'
+        '503':
+          description: Cannot durably accept; retry exact bytes.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IngestionError'
+        '401':
+          description: Hosted authentication required; no acceptance.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IngestionError'
+        '403':
+          description: Hosted ingestion permission required; browser sessions are read-only.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IngestionError'
+        '429':
+          description: Admission limit reached; retry exact bytes after backoff.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IngestionError'
+  /api/v3/ingestion/batches/{stream}/{batch}:
+    get:
+      security:
+        - bearerAuth: []
+        - {}
+      operationId: getRawBatchStatusV3
+      summary: Read immutable acceptance and current per-item processing status
+      tags:
+        - Ingestion
+      parameters:
+        - name: stream
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 256
+        - name: batch
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 256
+      responses:
+        '200':
+          description:
+            Durably accepted; all items terminal for current processing generation and scope
+            revision.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RawAcceptanceV3'
+        '202':
+          description: Durably accepted; processing remains asynchronous.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RawAcceptanceV3'
+        '503':
+          description: Cannot durably accept; retry exact bytes.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IngestionError'
+        '404':
+          description: No accepted batch with this identity
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IngestionError'
+        '401':
+          description: Hosted authentication required; no acceptance.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IngestionError'
+        '403':
+          description: Hosted ingestion permission required; browser sessions are read-only.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IngestionError'
+        '429':
+          description: Admission limit reached; retry exact bytes after backoff.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IngestionError'
+  /api/v2/auth/session:
+    post:
+      operationId: createBrowserSession
+      summary: Exchange bearer token for a read-only browser cookie
+      description: Hosted-only, canonical same-origin exchange. Sets a host-only Secure HttpOnly SameSite=Lax cookie for 24 hours. The bearer token is never returned or persisted by the browser.
+      tags:
+        - Instance
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BrowserSessionRequest'
+      responses:
+        '204':
+          description: Authenticated browser session established.
+        '401':
+          $ref: '#/components/responses/Error'
+        default:
+          $ref: '#/components/responses/Error'
+    delete:
+      operationId: deleteBrowserSession
+      summary: End this browser session
+      tags:
+        - Instance
+      responses:
+        '204':
+          description: Browser session cleared.
+        default:
+          $ref: '#/components/responses/Error'
   /api/v1/instance:
     get:
       operationId: getInstance
@@ -431,6 +847,17 @@ paths:
               schema:
                 $ref: '#/components/schemas/IngestionError'
 components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: Hosted token; effective dataset and read/ingest scopes resolved by
+        the server.
+    browserSession:
+      type: apiKey
+      in: cookie
+      name: tokeninsights_session
+      description: Read-only, HttpOnly browser session established by POST /api/v2/auth/session.
   parameters:
     PeriodFilter:
       name: period
@@ -2026,3 +2453,469 @@ components:
       properties:
         generation:
           $ref: '#/components/schemas/Count'
+    InstanceResponseV2:
+      type: object
+      additionalProperties: false
+      required:
+        - instanceId
+        - dataEpoch
+        - dataReadiness
+        - apiVersion
+        - serverVersion
+        - hostname
+        - timezone
+        - capabilities
+        - defaults
+        - datasetId
+        - serverKind
+        - permissions
+      properties:
+        instanceId:
+          type: string
+          minLength: 1
+        dataEpoch:
+          type: string
+          description: Durable database identity; nonempty when dataReadiness is ready.
+        dataReadiness:
+          type: string
+          enum:
+            - ready
+            - metadata
+            - recovery
+            - rebuild
+            - unavailable
+        apiVersion:
+          type: string
+          enum:
+            - v2
+        serverVersion:
+          type: string
+          minLength: 1
+        hostname:
+          description:
+            'Producer hostname: unknown before ingestion; multiple machines when distinct producer
+            labels are present.'
+          type: string
+          minLength: 1
+        timezone:
+          type: string
+          minLength: 1
+          description:
+            Server reporting timezone, preferably an IANA name with historical DST rules. Unnamed
+            system zones use an explicit UTC offset fallback.
+        capabilities:
+          type: array
+          uniqueItems: true
+          items:
+            type: string
+            minLength: 1
+            description:
+              'Unknown capabilities are ignored by clients. Known names: usage, facets, web-dashboard,
+              raw-ingestion, terminal-dashboard, collector-progress, reprocess.'
+        defaults:
+          $ref: '#/components/schemas/Selection'
+        datasetId:
+          type: string
+          minLength: 1
+          maxLength: 256
+        serverKind:
+          type: string
+          enum:
+            - personal
+            - hosted
+        permissions:
+          type: array
+          uniqueItems: true
+          items:
+            type: string
+            enum:
+              - read
+              - ingest
+    StatusResponseV2:
+      type: object
+      additionalProperties: false
+      required:
+        - instanceId
+        - dataEpoch
+        - dataReadiness
+        - revision
+        - datasetId
+        - generation
+        - targetGeneration
+        - inputRevision
+        - pending
+      properties:
+        instanceId:
+          type: string
+          minLength: 1
+        dataEpoch:
+          type: string
+          description: Durable database identity; nonempty when dataReadiness is ready.
+        dataReadiness:
+          type: string
+          enum:
+            - ready
+            - metadata
+            - recovery
+            - rebuild
+            - unavailable
+        revision:
+          $ref: '#/components/schemas/Count'
+        generation:
+          $ref: '#/components/schemas/Count'
+        inputRevision:
+          $ref: '#/components/schemas/Count'
+        pending:
+          $ref: '#/components/schemas/Count'
+        datasetId:
+          type: string
+          minLength: 1
+          maxLength: 256
+        targetGeneration:
+          $ref: '#/components/schemas/Count'
+    UsageResponseV2:
+      type: object
+      additionalProperties: false
+      required:
+        - instanceId
+        - dataEpoch
+        - revision
+        - rows
+        - chart
+        - rowCount
+        - page
+        - pageSize
+        - summary
+        - lastSynced
+        - range
+        - datasetId
+      properties:
+        factCount:
+          $ref: '#/components/schemas/Count'
+        instanceId:
+          type: string
+          minLength: 1
+        dataEpoch:
+          type: string
+          minLength: 1
+        revision:
+          $ref: '#/components/schemas/Count'
+        rows:
+          type: array
+          items:
+            $ref: '#/components/schemas/UsageRow'
+        chart:
+          type: array
+          items:
+            $ref: '#/components/schemas/UsageRow'
+        rowCount:
+          $ref: '#/components/schemas/Count'
+        page:
+          type: integer
+          minimum: 1
+        pageSize:
+          type: integer
+          minimum: 1
+          maximum: 200
+        summary:
+          $ref: '#/components/schemas/UsageSummary'
+        lastSynced:
+          description: Time of the last committed ingestion, in Unix milliseconds; zero for an empty server.
+          allOf:
+            - $ref: '#/components/schemas/Count'
+        range:
+          type: string
+        generation:
+          $ref: '#/components/schemas/Count'
+        inputRevision:
+          $ref: '#/components/schemas/Count'
+        pending:
+          $ref: '#/components/schemas/Count'
+        unresolved:
+          $ref: '#/components/schemas/Count'
+        quality:
+          $ref: '#/components/schemas/UsageQuality'
+        datasetId:
+          type: string
+          minLength: 1
+          maxLength: 256
+    UsageFacetsResponseV2:
+      type: object
+      additionalProperties: false
+      required:
+        - instanceId
+        - dataEpoch
+        - revision
+        - providers
+        - models
+        - harnesses
+        - sessions
+        - repositories
+        - directories
+        - datasetId
+      properties:
+        instanceId:
+          type: string
+          minLength: 1
+        dataEpoch:
+          type: string
+          minLength: 1
+        revision:
+          $ref: '#/components/schemas/Count'
+        providers:
+          type: array
+          items:
+            type: string
+        models:
+          type: array
+          items:
+            type: string
+        harnesses:
+          type: array
+          items:
+            $ref: '#/components/schemas/Harness'
+        sessions:
+          type: array
+          items:
+            type: string
+        repositories:
+          type: array
+          items:
+            $ref: '#/components/schemas/LocationOption'
+        directories:
+          type: array
+          items:
+            $ref: '#/components/schemas/LocationOption'
+        generation:
+          $ref: '#/components/schemas/Count'
+        inputRevision:
+          $ref: '#/components/schemas/Count'
+        pending:
+          $ref: '#/components/schemas/Count'
+        datasetId:
+          type: string
+          minLength: 1
+          maxLength: 256
+    RawBatchV3:
+      type: object
+      additionalProperties: false
+      required:
+        - protocolVersion
+        - extractorVersion
+        - databaseId
+        - streamId
+        - batchId
+        - fromSequence
+        - toSequence
+        - entries
+        - datasetId
+      properties:
+        protocolVersion:
+          type: integer
+          enum:
+            - 3
+        extractorVersion:
+          type: integer
+          enum:
+            - 1
+        databaseId:
+          type: string
+          minLength: 1
+          maxLength: 256
+        streamId:
+          type: string
+          minLength: 1
+          maxLength: 256
+        batchId:
+          type: string
+          minLength: 1
+          maxLength: 256
+        fromSequence:
+          $ref: '#/components/schemas/Count'
+        toSequence:
+          $ref: '#/components/schemas/Count'
+        entries:
+          type: array
+          minItems: 1
+          maxItems: 256
+          items:
+            $ref: '#/components/schemas/RawEntry'
+        datasetId:
+          type: string
+          minLength: 1
+          maxLength: 256
+    RawCapabilitiesV3:
+      type: object
+      additionalProperties: false
+      required:
+        - protocolVersion
+        - extractorVersion
+        - databaseId
+        - datasetId
+        - completion
+        - maxBodyBytes
+        - maxEntries
+      properties:
+        protocolVersion:
+          type: integer
+          enum:
+            - 3
+        extractorVersion:
+          type: integer
+          enum:
+            - 1
+        databaseId:
+          type: string
+          minLength: 1
+          maxLength: 256
+        datasetId:
+          type: string
+          minLength: 1
+          maxLength: 256
+        completion:
+          type: string
+          enum:
+            - acceptance
+        maxBodyBytes:
+          type: integer
+          enum:
+            - 1048576
+        maxEntries:
+          type: integer
+          enum:
+            - 256
+    RawReceiptV3:
+      type: object
+      additionalProperties: false
+      required:
+        - databaseId
+        - datasetId
+        - streamId
+        - batchId
+        - requestHash
+        - fromSequence
+        - toSequence
+        - accepted
+        - acceptedAtMs
+        - inputRevision
+      properties:
+        databaseId:
+          type: string
+          minLength: 1
+          maxLength: 256
+        datasetId:
+          type: string
+          minLength: 1
+          maxLength: 256
+        streamId:
+          type: string
+          minLength: 1
+          maxLength: 256
+        batchId:
+          type: string
+          minLength: 1
+          maxLength: 256
+        requestHash:
+          type: string
+          minLength: 1
+          maxLength: 256
+        fromSequence:
+          $ref: '#/components/schemas/Count'
+        toSequence:
+          $ref: '#/components/schemas/Count'
+        accepted:
+          $ref: '#/components/schemas/Count'
+        acceptedAtMs:
+          $ref: '#/components/schemas/TimestampMs'
+        inputRevision:
+          $ref: '#/components/schemas/Count'
+    RawAcceptanceV3:
+      type: object
+      additionalProperties: false
+      required:
+        - receipt
+        - processing
+      properties:
+        receipt:
+          $ref: '#/components/schemas/RawReceiptV3'
+        processing:
+          $ref: '#/components/schemas/ProcessingStatus'
+    BrowserSessionRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - token
+      properties:
+        token:
+          type: string
+          minLength: 1
+    CollectorAttempt:
+      type: object
+      additionalProperties: false
+      required:
+        - attemptId
+        - stage
+        - harnesses
+        - acknowledgedBatches
+        - acknowledgedEntries
+        - pendingKnown
+        - pending
+        - startedAtMs
+        - updatedAtMs
+        - expiresAtMs
+      properties:
+        attemptId:
+          type: string
+          minLength: 1
+        stage:
+          type: string
+          enum:
+            - waiting
+            - capturing
+            - submitting
+            - accepted
+            - failed
+            - interrupted
+        harnesses:
+          type: object
+          additionalProperties:
+            type: string
+            enum:
+              - waiting
+              - running
+              - complete
+              - failed
+              - skipped
+        acknowledgedBatches: &id001
+          $ref: '#/components/schemas/Count'
+        acknowledgedEntries: *id001
+        pendingKnown:
+          type: boolean
+        pending: *id001
+        errorCode:
+          type: string
+          enum:
+            - collection_failed
+            - submission_failed
+            - cancelled
+            - publisher_lost
+        startedAtMs: &id002
+          $ref: '#/components/schemas/TimestampMs'
+        updatedAtMs: *id002
+        expiresAtMs: *id002
+        finishedAtMs: *id002
+    CollectorProgressResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - instanceId
+        - attempts
+      properties:
+        instanceId:
+          type: string
+          minLength: 1
+        attempts:
+          type: array
+          maxItems: 32
+          items:
+            $ref: '#/components/schemas/CollectorAttempt'

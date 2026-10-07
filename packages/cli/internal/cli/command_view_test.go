@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
@@ -10,11 +11,13 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/datastore"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/evidence"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/ingestion"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/publication"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/server"
@@ -87,13 +90,14 @@ func TestViewRemoteDoesNotOpenInvalidLocalDatabasePath(t *testing.T) {
 }
 
 func TestViewQuitCancelsServerReadsWithoutReportingFailure(t *testing.T) {
+	remote, _, _ := newViewQueryServer(t, false)
 	restore := replaceInteractiveProgramRunnerForTest(t, func(model interactiveModel, _ io.Writer) (interactiveModel, error) {
 		model.cancelSync()
 		model.err = context.Canceled
 		return model, nil
 	})
 	defer restore()
-	if err := Run(context.Background(), []string{"tui", "--sync=false", "--server-url", "http://127.0.0.1:1"}, io.Discard, io.Discard, time.Now()); err != nil {
+	if err := Run(context.Background(), []string{"tui", "--sync=false", "--server-url", remote.URL}, io.Discard, io.Discard, time.Now()); err != nil {
 		t.Fatalf("normal quit reported cancellation: %v", err)
 	}
 }
@@ -101,6 +105,7 @@ func TestViewQuitCancelsServerReadsWithoutReportingFailure(t *testing.T) {
 func TestViewReturnsProgramAndServerErrors(t *testing.T) {
 	for _, programFailure := range []bool{true, false} {
 		t.Run(map[bool]string{true: "program", false: "query"}[programFailure], func(t *testing.T) {
+			remote, _, _ := newViewQueryServer(t, false)
 			expected := errors.New("viewer failed")
 			restore := replaceInteractiveProgramRunnerForTest(t, func(model interactiveModel, _ io.Writer) (interactiveModel, error) {
 				if programFailure {
@@ -110,7 +115,7 @@ func TestViewReturnsProgramAndServerErrors(t *testing.T) {
 				return model, nil
 			})
 			defer restore()
-			if err := Run(context.Background(), []string{"tui", "--sync=false", "--server-url", "http://127.0.0.1:1"}, io.Discard, io.Discard, time.Now()); !errors.Is(err, expected) {
+			if err := Run(context.Background(), []string{"tui", "--sync=false", "--server-url", remote.URL}, io.Discard, io.Discard, time.Now()); !errors.Is(err, expected) {
 				t.Fatalf("viewer error=%v", err)
 			}
 		})
@@ -168,7 +173,7 @@ func newViewQueryServer(t *testing.T, withUsage bool) (*httptest.Server, *server
 			t.Fatal(err)
 		}
 	}
-	handler := server.NewHandler(context.Background(), path, core, io.Discard, "127.0.0.1")
+	handler := legacyViewV2Adapter(server.NewHandler(context.Background(), path, core, io.Discard, "127.0.0.1"))
 	requests := &viewRequestCounts{}
 	remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
@@ -181,6 +186,62 @@ func newViewQueryServer(t *testing.T, withUsage bool) (*httptest.Server, *server
 	}))
 	t.Cleanup(remote.Close)
 	return remote, store, requests
+}
+
+// These tests retain legacy ingestion/component oracles. Only their test read
+// transport is adapted; production clients require the current descriptor.
+func legacyViewV2Adapter(handler http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/v3/ingestion/capabilities" {
+			clone := r.Clone(r.Context())
+			url := *r.URL
+			url.Path = "/api/v1/instance"
+			clone.URL = &url
+			recorder := httptest.NewRecorder()
+			handler.ServeHTTP(recorder, clone)
+			var instance struct {
+				DataEpoch string `json:"dataEpoch"`
+			}
+			if recorder.Code != http.StatusOK || json.Unmarshal(recorder.Body.Bytes(), &instance) != nil {
+				w.WriteHeader(http.StatusInternalServerError)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(evidence.Capabilities{ProtocolVersion: evidence.ProtocolVersion, ExtractorVersion: evidence.ExtractorVersion, DatabaseID: instance.DataEpoch, DatasetID: "default", Completion: "acceptance", MaxBodyBytes: evidence.MaxBodyBytes, MaxEntries: evidence.MaxEntries})
+			return
+		}
+		if !strings.HasPrefix(r.URL.Path, "/api/v2/") {
+			handler.ServeHTTP(w, r)
+			return
+		}
+		clone := r.Clone(r.Context())
+		url := *r.URL
+		url.Path = strings.Replace(url.Path, "/api/v2/", "/api/v1/", 1)
+		if url.Path == "/api/v1/status" {
+			url.Path = "/api/v1/sync"
+		}
+		clone.URL = &url
+		recorder := httptest.NewRecorder()
+		handler.ServeHTTP(recorder, clone)
+		if recorder.Code != http.StatusOK {
+			w.WriteHeader(recorder.Code)
+			_, _ = w.Write(recorder.Body.Bytes())
+			return
+		}
+		var body map[string]any
+		if json.Unmarshal(recorder.Body.Bytes(), &body) != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		body["datasetId"] = "default"
+		if url.Path == "/api/v1/instance" {
+			body["apiVersion"], body["serverKind"] = "v2", "personal"
+			body["capabilities"] = []string{"usage", "facets", "web-dashboard", "raw-ingestion", "terminal-dashboard"}
+			body["permissions"] = []string{"read", "ingest"}
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(body)
+	})
 }
 
 func isolateViewSources(t *testing.T, root string) {

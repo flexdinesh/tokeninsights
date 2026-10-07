@@ -27,6 +27,10 @@ func InspectCompatibility(ctx context.Context, path string) (Compatibility, erro
 }
 
 func inspectPath(ctx context.Context, path string, checkIntegrity bool) (Compatibility, error) {
+	return inspectPathWith(ctx, path, checkIntegrity, inspectCompatibility)
+}
+
+func inspectPathWith(ctx context.Context, path string, checkIntegrity bool, inspect func(context.Context, Reader) (Compatibility, error)) (Compatibility, error) {
 	abs, err := filepath.Abs(path)
 	if err != nil {
 		return Compatibility{}, err
@@ -46,16 +50,20 @@ func inspectPath(ctx context.Context, path string, checkIntegrity bool) (Compati
 		return Compatibility{Exists: true}, err
 	}
 	defer func() { _ = database.Close() }()
-	return inspectDatabase(ctx, database, checkIntegrity)
+	return inspectDatabaseWith(ctx, database, checkIntegrity, inspect)
 }
 
 func inspectDatabase(ctx context.Context, database *sql.DB, checkIntegrity bool) (Compatibility, error) {
+	return inspectDatabaseWith(ctx, database, checkIntegrity, inspectCompatibility)
+}
+
+func inspectDatabaseWith(ctx context.Context, database *sql.DB, checkIntegrity bool, inspect func(context.Context, Reader) (Compatibility, error)) (Compatibility, error) {
 	tx, err := database.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
 	if err != nil {
 		return Compatibility{Exists: true}, err
 	}
 	defer func() { _ = tx.Rollback() }()
-	state, err := inspectCompatibility(ctx, tx)
+	state, err := inspect(ctx, tx)
 	if err != nil || !checkIntegrity || !state.ResetRequired {
 		return state, err
 	}
@@ -173,12 +181,16 @@ func recognizeSchema(ctx context.Context, reader Reader, version int) error {
 		TableDatabaseLifecycle:        "id data_generation rebuild_pending rebuild_source_key updated_at_ms",
 		TableUsageLocations:           "id semantic_key directory_key directory_name repository_key repository_name repository_source",
 	}
-	if version == SupportedSchemaVersion {
+	if version >= 17 {
 		required[TableEvidenceState] = "id stream_id extractor_version created_at_ms"
 		required[TableEvidenceSources] = "source_key source_id lineage format extractor_version byte_offset ordinal prefix_hash context_json updated_at_ms"
 		required[TableEvidenceOutbox] = "sequence observation_key harness record_json created_at_ms"
 		required[TableEvidenceDestinations] = "destination_id endpoint database_id acknowledged_sequence acknowledged_at_ms"
 		required[TableEvidenceBatches] = "batch_id destination_id stream_id database_id first_sequence last_sequence request_hash request_bytes receipt_bytes acknowledged_at_ms"
+	}
+	if version >= 18 {
+		required[TableEvidenceDestinations] += " dataset_id"
+		required[TableEvidenceBatches] += " dataset_id protocol_version"
 	}
 	rows, err := reader.QueryContext(ctx, "SELECT type, name FROM sqlite_schema WHERE type IN ('table', 'view', 'trigger') AND name NOT GLOB 'sqlite_*'")
 	if err != nil {

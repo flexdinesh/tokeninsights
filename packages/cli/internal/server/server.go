@@ -15,16 +15,19 @@ import (
 
 	"crypto/rand"
 	"encoding/hex"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/accounts"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/analytics"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/collectorprogress"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/datastore"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/db"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/ingestion"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/networkprefs"
 	serverapi "github.com/flexdinesh/tokeninsights/packages/cli/internal/server/api"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/serverstore"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/serverfeatures"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/version"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/viewer"
 )
 
-const DefaultPort = 8765
+const DefaultPort = networkprefs.DefaultPort
 const logIndent = "  "
 const queryTimeout = 30 * time.Second
 
@@ -54,6 +57,10 @@ type syncState struct {
 type app struct {
 	data           *datastore.Store
 	allowIngestion bool
+	policy         serverfeatures.Policy
+	accounts       *accounts.Service
+	publicURL      string
+	progress       *collectorprogress.Registry
 	core           *ingestion.Core
 	options        Options
 	ctx            context.Context
@@ -68,37 +75,32 @@ func newApp(ctx context.Context, options Options, log io.Writer) *app {
 		}
 		options.InstanceID = hex.EncodeToString(id[:])
 	}
-	return &app{options: options, ctx: ctx, log: log}
+	policy, _ := serverfeatures.New(serverfeatures.Personal, false)
+	return &app{options: options, ctx: ctx, log: log, policy: policy}
 }
 func (a *app) status() syncState {
 	state := syncState{InstanceID: a.options.InstanceID, DataReadiness: "unavailable", Phase: "ready", Harnesses: map[string]string{}}
 	if a.data != nil {
-		metadata, err := a.data.Metadata(a.ctx)
+		status, err := analytics.Status(a.ctx, a.data)
 		if err != nil {
 			state.Error = "Server storage unavailable"
 			return state
 		}
+		metadata := status.Metadata
 		state.DataReadiness = "ready"
 		state.DataEpoch = metadata.DatabaseID
 		state.Revision = uint64(metadata.Revision)
 		state.Generation = metadata.Generation
 		state.InputRevision = metadata.InputRevision
-		if err := a.data.SQL().QueryRowContext(a.ctx, "SELECT COUNT(*) FROM processing.scopes WHERE processed_revision<>revision OR generation<>?", metadata.TargetGeneration).Scan(&state.Pending); err != nil {
-			state.Error = "Processing status unavailable"
-		}
+		state.Pending = status.Pending
 		return state
 	}
-	store, err := serverstore.Open(a.options.DBPath)
+	status, err := analytics.LegacyStatus(a.ctx, a.options.DBPath)
 	if err != nil {
 		state.Error = "Server storage unavailable"
 		return state
 	}
-	defer func() { _ = store.Close() }()
-	metadata, err := store.Metadata(a.ctx)
-	if err != nil {
-		state.Error = "Server storage unavailable"
-		return state
-	}
+	metadata := status.Metadata
 	state.DataReadiness = "ready"
 	state.DataEpoch = metadata.DatabaseID
 	state.Revision = uint64(metadata.Revision)
@@ -134,7 +136,7 @@ func isDashboardRoute(path string) bool {
 	}
 }
 
-func (a *app) handler() http.Handler {
+func (a *app) legacyHandler() http.Handler {
 	mux := http.NewServeMux()
 	if a.data != nil && a.allowIngestion {
 		mux.Handle(datastore.IngestionPrefix, a.data.Handler())
@@ -226,68 +228,13 @@ func (a *app) handler() http.Handler {
 			writeJSON(w, 200, values)
 			return
 		}
-		database, err := serverstore.Open(a.options.DBPath)
+		facets, err := analytics.LoadLegacyFacets(ctx, a.options.DBPath, q, r.URL.Query().Get("search"), time.Now())
 		if err != nil {
 			a.queryError(w, err)
 			return
 		}
-		defer func() { _ = database.Close() }()
-		tx, err := database.BeginRead(ctx)
-		if err != nil {
-			a.queryError(w, err)
-			return
-		}
-		defer func() { _ = tx.Rollback() }()
-		f := q.Selection.Filter(time.Now())
-		if q.Tab == "repo" {
-			f.RepositoryKeys, f.DirectoryKeys = q.RepositoryKeys, q.DirectoryKeys
-		}
-		values := serverapi.UsageFacetsResponse{Providers: []string{}, Models: []string{}, Harnesses: []serverapi.Harness{}, Sessions: []string{}, Repositories: []serverapi.LocationOption{}, Directories: []serverapi.LocationOption{}}
-		values.Providers, err = db.AvailableProviders(ctx, tx, f)
-		if err != nil {
-			a.queryError(w, err)
-			return
-		}
-		values.Models, err = db.AvailableModels(ctx, tx, f)
-		if err != nil {
-			a.queryError(w, err)
-			return
-		}
-		harnesses, err := db.AvailableHarnesses(ctx, tx, f)
-		if err != nil {
-			a.queryError(w, err)
-			return
-		}
-		values.Harnesses = apiHarnesses(harnesses)
-		values.Sessions, err = db.AvailableSessions(ctx, tx, f, r.URL.Query().Get("search"), sessionOptionLimit)
-		if err != nil {
-			a.queryError(w, err)
-			return
-		}
-		if q.Tab == "repo" {
-			locations, err := db.AvailableLocations(ctx, tx, f)
-			if err != nil {
-				a.queryError(w, err)
-				return
-			}
-			values.Repositories = apiLocationOptions(locations.Repositories)
-			values.Directories = apiLocationOptions(locations.Directories)
-		}
-		snapshotStatus, err := serverstore.ReadMetadata(ctx, tx)
-		if err != nil {
-			a.queryError(w, err)
-			return
-		}
-		values.Revision = snapshotStatus.Revision
+		values := apiFacets(facets)
 		values.InstanceId = a.options.InstanceID
-		values.DataEpoch = snapshotStatus.DatabaseID
-		if err = tx.Commit(); err != nil {
-			a.queryError(w, err)
-			return
-		}
-		values.Providers = nonNilStrings(values.Providers)
-		values.Models = nonNilStrings(values.Models)
-		values.Sessions = nonNilStrings(values.Sessions)
 		writeJSON(w, http.StatusOK, values)
 	})
 	mux.HandleFunc("/api", func(w http.ResponseWriter, r *http.Request) { apiNotFound(w) })
@@ -319,23 +266,11 @@ func (a *app) dataHostname(ctx context.Context) string {
 	}
 	ctx, cancel := context.WithTimeout(ctx, queryTimeout)
 	defer cancel()
-	store, err := serverstore.Open(a.options.DBPath)
+	status, err := analytics.LegacyStatus(ctx, a.options.DBPath)
 	if err != nil {
 		return "unknown"
 	}
-	defer func() { _ = store.Close() }()
-	var count int
-	var hostname string
-	if err := store.SQL().QueryRowContext(ctx, "SELECT COUNT(DISTINCT hostname), COALESCE(MIN(hostname),'') FROM ingestion_producers WHERE hostname <> ''").Scan(&count, &hostname); err != nil {
-		return "unknown"
-	}
-	if count > 1 {
-		return "multiple machines"
-	}
-	if count == 1 {
-		return hostname
-	}
-	return "unknown"
+	return status.Hostname
 }
 
 func (a *app) queryError(w http.ResponseWriter, err error) {
@@ -354,10 +289,8 @@ func NewHandlerWithInstance(ctx context.Context, path string, core *ingestion.Co
 
 // Local compositions expose writes only through their private control socket.
 func NewDataHandler(ctx context.Context, store *datastore.Store, log io.Writer, bindHost, instance string, allowIngestion bool) http.Handler {
-	a := newApp(ctx, Options{InstanceID: instance, Defaults: viewer.Selection{Period: "month", Bucket: "day"}}, log)
-	a.data = store
-	a.allowIngestion = allowIngestion
-	return protectHandler(a.handler(), bindHost)
+	policy, _ := serverfeatures.New(serverfeatures.Personal, false)
+	return NewDataHandlerWithOptions(ctx, store, log, DataHandlerOptions{Host: bindHost, InstanceID: instance, AllowIngestion: allowIngestion, Policy: policy})
 }
 func protectHandler(handler http.Handler, bindHost string) http.Handler {
 	handler = http.NewCrossOriginProtection().Handler(handler)
