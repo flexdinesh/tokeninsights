@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -15,6 +17,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/collector"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/pipeline"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/queryclient"
 )
 
 func replaceViewCollector(t *testing.T, run func(context.Context, collector.Options) (collector.Result, error)) {
@@ -223,7 +226,7 @@ func TestStartupFitsTerminalAndKeepsRecoveryKeys(t *testing.T) {
 			defer m.dashboard.cancelSync()
 			m.dashboard.width, m.dashboard.height = size[0], size[1]
 			m.phase = startupPublish
-			m.delivery = collector.DeliveryProgress{Batches: 33, Pending: 36199, PendingKnown: true}
+			m.delivery = collector.DeliveryProgress{Accepted: 8448, Batches: 33, Pending: 36199, PendingKnown: true}
 			m.dashboard = m.dashboard.withSyncProgress(pipeline.SyncProgressEvent{Harness: pipeline.HarnessCodex, Status: pipeline.SyncProgressSyncing})
 			if failed {
 				m.busy, m.err = false, errors.New("failure")
@@ -241,7 +244,7 @@ func TestStartupFitsTerminalAndKeepsRecoveryKeys(t *testing.T) {
 			if !strings.Contains(view, "q Quit") {
 				t.Fatalf("quit missing: %s", view)
 			}
-			if !strings.Contains(view, "33 batches accepted") || !strings.Contains(view, "36199 pending") {
+			if !strings.Contains(view, "8448 entries accepted") || !strings.Contains(view, "36199 entries pending") {
 				t.Fatalf("acknowledged progress truncated: %s", view)
 			}
 			if failed && (!strings.Contains(view, "r Retry") || !strings.Contains(view, "v ")) {
@@ -270,10 +273,10 @@ func TestStartupFailureShowsSafeReasonAndDiagnosticsAtCompactSizes(t *testing.T)
 			m.dashboard.width, m.dashboard.height = size[0], size[1]
 			m.busy, m.phase = false, startupPublish
 			m.err = &collector.StageError{Stage: "delivery", Code: code, Cause: errors.New("https://private.test?token=secret")}
-			m.delivery = collector.DeliveryProgress{Batches: 33, Pending: 36199, PendingKnown: true}
+			m.delivery = collector.DeliveryProgress{Accepted: 8448, Batches: 33, Pending: 36199, PendingKnown: true}
 			view := ansi.Strip(m.View())
 			m.dashboard.cancelSync()
-			for _, want := range []string{code, "tokeninsights sync", "33 batches accepted", "36199 pending", "r Retry", "v ", "q Quit"} {
+			for _, want := range []string{code, "tokeninsights sync", "8448 entries accepted", "36199 entries pending", "r Retry", "v ", "q Quit"} {
 				if !strings.Contains(view, want) {
 					t.Fatalf("missing %q at %v: %s", want, size, view)
 				}
@@ -282,5 +285,62 @@ func TestStartupFailureShowsSafeReasonAndDiagnosticsAtCompactSizes(t *testing.T)
 				t.Fatal("error cause exposed credentials")
 			}
 		}
+	}
+}
+
+func TestStartupDeliveryShowsComparableEntryCounts(t *testing.T) {
+	m := newStartupModel(newInteractiveModel(t.Context(), tableOptions{}, time.Now(), "unknown"))
+	defer m.dashboard.cancelSync()
+	m.dashboard.width, m.dashboard.height = 120, 35
+	const entries = 513
+	for _, progress := range []collector.DeliveryProgress{
+		{Pending: entries, PendingKnown: true},
+		{Accepted: 256, Batches: 1, Pending: 257, PendingKnown: true},
+		{Accepted: 512, Batches: 2, Pending: 1, PendingKnown: true},
+		{Accepted: entries, Batches: 3, PendingKnown: true},
+	} {
+		updated, _ := m.Update(startupDeliveryMsg{progress: progress})
+		m = updated.(startupModel)
+		view := ansi.Strip(m.View())
+		for _, want := range []string{fmt.Sprintf("%d entries accepted", progress.Accepted), fmt.Sprintf("%d entries pending", progress.Pending)} {
+			if !strings.Contains(view, want) {
+				t.Fatalf("missing comparable progress %q: %s", want, view)
+			}
+		}
+		if strings.Contains(view, "batches accepted") {
+			t.Fatal("batch count presented alongside pending entry count")
+		}
+	}
+}
+
+func TestStartupLoadFailureShowsSafeReasonAndRelevantRecovery(t *testing.T) {
+	for _, test := range []struct {
+		err            error
+		code, guidance string
+	}{
+		{&queryclient.StatusError{StatusCode: http.StatusServiceUnavailable}, "http_503", "Server read failed; check service logs."},
+		{&queryclient.StatusError{StatusCode: http.StatusUnauthorized}, "http_401", "Check server URL and token."},
+		{&queryclient.StatusError{StatusCode: http.StatusForbidden}, "http_403", "Check server URL and token."},
+		{queryclient.ErrSnapshotChanged, "snapshot_changed", "Usage changed during loading; retry."},
+		{queryclient.ErrUnavailable, "analytics_unavailable", "Check server status and retry."},
+		{context.DeadlineExceeded, "query_timeout", "Check server status and retry."},
+		{errors.New("https://private.test?token=secret"), "query_failed", "Check server status and retry."},
+	} {
+		t.Run(test.code, func(t *testing.T) {
+			m := newStartupModel(newInteractiveModel(t.Context(), tableOptions{serverURL: "http://127.0.0.1:1"}, time.Now(), "unknown"))
+			defer m.dashboard.cancelSync()
+			m.dashboard.width, m.dashboard.height = 120, 35
+			updated, _ := m.Update(startupFailedMsg{phase: startupLoad, err: fmt.Errorf("load: %w", test.err)})
+			m = updated.(startupModel)
+			view := ansi.Strip(m.View())
+			for _, want := range []string{test.code, test.guidance, "r Retry", "v View saved", "q Quit"} {
+				if !strings.Contains(view, want) {
+					t.Fatalf("missing %q: %s", want, view)
+				}
+			}
+			if strings.Contains(view, "secret") || strings.Contains(view, "private.test") {
+				t.Fatal("load error exposed credentials")
+			}
+		})
 	}
 }

@@ -54,7 +54,7 @@ tokeninsights tui
 
 `sync` defaults to all four harnesses. Collector SQLite retains whitelisted native evidence, continuity and a durable outbox. Server DuckDB stores accepted evidence and asynchronously processes confirmed facts and separate estimates. Collector never normalizes new usage.
 
-`tui` requires a personal server and collects and publishes all four harnesses inside a loading screen before querying available processed data. It shows per-harness activity and acknowledged upload progress. Failures offer **r Retry**, **v View saved**, and **q Quit**; viewing saved data skips collection. Use `tui --sync=false` for query-only startup. Browser **Reload** and dashboard `r` query saved data; viewer filters never narrow collection.
+`tui` requires a personal server and collects and publishes all four harnesses inside a loading screen before querying available processed data. It shows per-harness activity and accepted/pending evidence entry counts; batches contain up to 256 entries. Server read failures show a fixed reason and recovery guidance. Failures offer **r Retry**, **v View saved**, and **q Quit**; viewing saved data skips collection. Use `tui --sync=false` for query-only startup. Browser **Reload** and dashboard `r` query saved data; viewer filters never narrow collection.
 
 ```sh
 tokeninsights sync --harness codex
@@ -180,6 +180,8 @@ Server exposes processed metadata to reachable dashboard clients. Default localh
 
 
 ## Evidence, processing and upgrades
+
+DuckDB uses a shared 1 GB memory budget for ingestion, processing and analytics.
 
 Sync waits for acceptance. Browser Confirmed / Estimated selects separate data;
 estimates never inflate confirmed totals. Unusable evidence retains diagnostics.

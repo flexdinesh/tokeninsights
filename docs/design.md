@@ -150,7 +150,7 @@ request hash, contiguous range/count, acceptance revision/time.
 Collector validates acceptance independently of mutable processing status.
 
 Sync finishes at acceptance, not query visibility. Personal TUI then reads available confirmed data and refreshes pending processing
-state; Reload queries only. Browser reports lag/separate estimates. No viewer
+state; Reload queries only. TUI submission progress compares acknowledged evidence entries with pending entries, rather than comparing batches with entries. Load failures expose fixed reason codes and distinguish server storage failures from authentication failures. Browser reports lag/separate estimates. No viewer
 waits for global hosted queue emptiness.
 Service wait explicitly waits up to 30 seconds for maintenance/fixtures.
 Deprecated protocol-1 bridge preserves synchronous legacy bytes/receipts.
@@ -160,7 +160,7 @@ canonical tables. Legacy maintenance handles old tables only.
 ## Processing
 
 One server owns file/lifetime lock. Connections share its engine; HTTP never
-reopens paths. Four admission slots, shared short write transactions, two processing workers. One dispatcher owns fair dataset selection and claims whole dataset-qualified components; components connected to an in-flight claim wait. A 32 MiB estimated raw-JSON admission budget bounds concurrent loading; a component over budget runs alone.
+reopens paths. Four admission slots, shared short write transactions, two processing workers. The shared DuckDB engine uses two threads and a 1 GB memory budget for acceptance, processing and analytics. One dispatcher owns fair dataset selection and claims whole dataset-qualified components; components connected to an in-flight claim wait. A 32 MiB estimated raw-JSON admission budget bounds concurrent loading; a component over budget runs alone.
 Scopes are dataset-qualified native sessions or unresolved source lineages; Codex
 ancestry connects dependencies only within that dataset. Pending counts, revision
 fences, generation activation and receipt outcomes are dataset-local. Worker

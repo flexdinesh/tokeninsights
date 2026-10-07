@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"strings"
 	"sync"
 	"time"
@@ -13,6 +14,7 @@ import (
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/clientworkflow"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/collector"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/pipeline"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/queryclient"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/serverfeatures"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/service"
 )
@@ -253,9 +255,8 @@ func (m startupModel) View() string {
 		lines = lines[:2]
 	}
 	if m.err != nil {
-		var stage *collector.StageError
-		if errors.As(m.err, &stage) {
-			reason := syncFailStyle.Render(stage.Code)
+		if code := m.failureCode(); code != "" {
+			reason := syncFailStyle.Render(code)
 			if height < 12 {
 				lines[1] = reason
 			} else {
@@ -270,10 +271,11 @@ func (m startupModel) View() string {
 		lines = append(lines, "")
 	}
 	if m.phase == startupPublish && m.delivery.PendingKnown {
-		if panelWidth < 45 {
-			lines = append(lines, dimensionStyle.Render(fmt.Sprintf("%d batches accepted", m.delivery.Batches)), dimensionStyle.Render(fmt.Sprintf("%d pending", m.delivery.Pending)))
+		progress := fmt.Sprintf("%d entries accepted · %d entries pending", m.delivery.Accepted, m.delivery.Pending)
+		if ansi.StringWidth(progress) > panelWidth {
+			lines = append(lines, dimensionStyle.Render(fmt.Sprintf("%d entries accepted", m.delivery.Accepted)), dimensionStyle.Render(fmt.Sprintf("%d entries pending", m.delivery.Pending)))
 		} else {
-			lines = append(lines, dimensionStyle.Render(fmt.Sprintf("%d batches accepted · %d pending", m.delivery.Batches, m.delivery.Pending)))
+			lines = append(lines, dimensionStyle.Render(progress))
 		}
 	}
 	if count := m.quarantinedFiles(); count > 0 && height >= 12 {
@@ -305,7 +307,7 @@ func (m startupModel) View() string {
 		case startupServer:
 			guidance = "tokeninsights service status"
 		case startupLoad:
-			guidance = "Check server URL and token."
+			guidance = m.loadFailureGuidance()
 		}
 		lines = append(lines, hintStyle.Render(guidance))
 	}
@@ -335,6 +337,46 @@ func (m startupModel) View() string {
 		canvas[height-1] = " " + ansi.Truncate(footer, contentWidth, "…")
 	}
 	return renderOnAppSurface(strings.Join(canvas, "\n"), width, height)
+}
+
+func (m startupModel) failureCode() string {
+	var stage *collector.StageError
+	if errors.As(m.err, &stage) {
+		return stage.Code
+	}
+	if m.phase != startupLoad {
+		return ""
+	}
+	var status *queryclient.StatusError
+	if errors.As(m.err, &status) {
+		return fmt.Sprintf("http_%d", status.StatusCode)
+	}
+	switch {
+	case errors.Is(m.err, queryclient.ErrSnapshotChanged):
+		return "snapshot_changed"
+	case errors.Is(m.err, queryclient.ErrUnavailable):
+		return "analytics_unavailable"
+	case errors.Is(m.err, context.DeadlineExceeded):
+		return "query_timeout"
+	default:
+		return "query_failed"
+	}
+}
+
+func (m startupModel) loadFailureGuidance() string {
+	var status *queryclient.StatusError
+	if errors.As(m.err, &status) {
+		switch status.StatusCode {
+		case http.StatusUnauthorized, http.StatusForbidden:
+			return "Check server URL and token."
+		case http.StatusServiceUnavailable:
+			return "Server read failed; check service logs."
+		}
+	}
+	if errors.Is(m.err, queryclient.ErrSnapshotChanged) {
+		return "Usage changed during loading; retry."
+	}
+	return "Check server status and retry."
 }
 
 func (m startupModel) quarantinedFiles() int {
