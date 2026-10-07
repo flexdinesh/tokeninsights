@@ -166,7 +166,9 @@ func connect(path string, readOnly bool) (*sql.DB, error) {
 	u := url.URL{Path: path}
 	q := url.Values{}
 	q.Set("threads", "2")
-	q.Set("memory_limit", "256MB")
+	// Acceptance, two processors and analytics share this engine budget. A
+	// 256 MB cap exhausted the buffer pool during ordinary history imports.
+	q.Set("memory_limit", "1GB")
 	if readOnly {
 		q.Set("access_mode", "read_only")
 	}
