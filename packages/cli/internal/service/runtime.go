@@ -11,10 +11,10 @@ import (
 	"os"
 	"time"
 
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/collectorprogress"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/datastore"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/db"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/server"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/serverstore"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/serverruntime"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/version"
 )
 
@@ -105,12 +105,7 @@ func runtime(parent context.Context, config Config, log io.Writer, onReady func(
 		return err
 	}
 	defer func() { _ = public.Close() }()
-	release, err := db.AcquireWriterLock(parent, config.DBPath)
-	if err != nil {
-		return err
-	}
-	store, err := datastore.Open(parent, config.DBPath)
-	release()
+	store, err := serverruntime.Open(parent, config.DBPath, datastore.Options{Kind: datastore.KindPersonal})
 	if err != nil {
 		return err
 	}
@@ -130,22 +125,9 @@ func runtime(parent context.Context, config Config, log io.Writer, onReady func(
 	}
 	record := Record{SchemaVersion: datastore.SchemaVersion, Config: config, InstanceID: instanceID(), PID: os.Getpid(), Protocol: protocolVersion, Version: version.Version, URL: "http://" + net.JoinHostPort(host, port), Address: public.Addr().String(), Socket: p.socket, StartedAt: time.Now()}
 	record.Config.Token = ""
-	workerDone := make(chan struct{})
-	go func() {
-		defer close(workerDone)
-		store.Run(ctx, func(err error) { _, _ = fmt.Fprintf(log, "processing: %v\n", err) })
-	}()
-	defer func() { cancel(); <-workerDone }()
-	publicHandler := server.NewDataHandler(ctx, store, log, config.Host, record.InstanceID, false)
-	publicHTTP := &http.Server{Handler: publicHandler, BaseContext: func(net.Listener) context.Context { return ctx }, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 35 * time.Second, WriteTimeout: 35 * time.Second, IdleTimeout: 60 * time.Second}
-	privateHTTP := &http.Server{Handler: controlHandler(record, cancel, store), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 35 * time.Second, WriteTimeout: 35 * time.Second, IdleTimeout: 30 * time.Second}
-	failures := make(chan error, 2)
-	go func() { failures <- publicHTTP.Serve(public) }()
-	go func() { failures <- privateHTTP.Serve(private) }()
-	defer func() { _ = publicHTTP.Close(); _ = privateHTTP.Close() }()
-	if err := atomicFile(p.record, record); err != nil {
-		return err
-	}
+	progress := collectorprogress.New(record.InstanceID)
+	defer progress.InterruptAll()
+	publicHandler := server.NewPersonalDataHandler(ctx, store, log, config.Host, record.InstanceID, progress)
 	defer func() {
 		for _, recordPath := range []string{p.record, p.fallbackRecord} {
 			var current Record
@@ -154,39 +136,39 @@ func runtime(parent context.Context, config Config, log io.Writer, onReady func(
 			}
 		}
 	}()
-	// Stable fallback discovery permits a local SSH/TUI caller whose runtime
-	// environment differs from the daemon's. The socket remains private.
-	if p.fallbackRecord != p.record {
-		if err := atomicFile(p.fallbackRecord, record); err != nil {
+	return serverruntime.Run(ctx, store, log, []serverruntime.Binding{
+		{Listener: public, Handler: publicHandler, Health: true},
+		{Listener: private, Handler: controlHandlerWithProgress(record, cancel, progress, store)},
+	}, func() error {
+		if err := atomicFile(p.record, record); err != nil {
 			return err
 		}
-	}
-	if err := atomicFile(p.config, config); err != nil {
-		return err
-	}
-	// A parent exiting after successful startup must not kill the detached child.
-	if err := onReady(record); err != nil {
-		_, _ = fmt.Fprintf(log, "readiness delivery: %v\n", err)
-	}
-	select {
-	case <-ctx.Done():
-	case err = <-failures:
-		cancel()
-	}
-	shutdownCtx, stop := context.WithTimeout(context.Background(), stopTimeout)
-	defer stop()
-	publicErr := publicHTTP.Shutdown(shutdownCtx)
-	privateErr := privateHTTP.Shutdown(shutdownCtx)
-	if errors.Is(err, http.ErrServerClosed) {
-		err = nil
-	}
-	return errors.Join(err, publicErr, privateErr)
+		// Stable fallback discovery supports callers with a different runtime
+		// environment. All writes remain on the private instance-verified socket.
+		if p.fallbackRecord != p.record {
+			if err := atomicFile(p.fallbackRecord, record); err != nil {
+				return err
+			}
+		}
+		if err := atomicFile(p.config, config); err != nil {
+			return err
+		}
+		// Parent exit after successful startup must not kill the detached child.
+		if err := onReady(record); err != nil {
+			_, _ = fmt.Fprintf(log, "readiness delivery: %v\n", err)
+		}
+		return nil
+	})
 }
 
-func controlHandler(record Record, shutdown context.CancelFunc, data ...*datastore.Store) http.Handler {
+func controlHandlerWithProgress(record Record, shutdown context.CancelFunc, progress *collectorprogress.Registry, data ...*datastore.Store) http.Handler {
 	mux := http.NewServeMux()
+	if progress != nil {
+		mux.Handle("/control/v1/collector-progress", progress.ControlHandler())
+	}
 	if len(data) > 0 {
 		mux.Handle(datastore.IngestionPrefix, data[0].Handler())
+		mux.Handle(datastore.RawV2IngestionPrefix, data[0].Handler())
 		mux.Handle(datastore.LegacyIngestionPrefix, data[0].Handler())
 		mux.Handle(datastore.ProcessingPrefix, data[0].Handler())
 	}
@@ -207,29 +189,14 @@ func controlHandler(record Record, shutdown context.CancelFunc, data ...*datasto
 				return
 			}
 			var pending int64
-			if err := data[0].SQL().QueryRowContext(r.Context(), "SELECT COUNT(*) FROM processing.scopes WHERE processed_revision<>revision OR generation<>?", metadata.TargetGeneration).Scan(&pending); err != nil {
+			if err := data[0].SQL().QueryRowContext(r.Context(), "SELECT COUNT(*) FROM processing.scopes WHERE dataset_id=? AND (processed_revision<>revision OR generation<>?)", metadata.DatasetID, metadata.TargetGeneration).Scan(&pending); err != nil {
 				write(w, 503, map[string]string{"error": "data_unavailable"})
 				return
 			}
 			write(w, 200, Status{InstanceID: record.InstanceID, DataEpoch: metadata.DatabaseID, DataReadiness: "ready", Revision: metadata.Revision, LastIngestionAtMS: metadata.LastIngestionAtMs, PendingProcessing: pending})
 			return
 		}
-		statusStore, err := serverstore.Open(record.Config.DBPath)
-		if err != nil {
-			write(w, 503, struct {
-				Error string `json:"error"`
-			}{"server storage unavailable"})
-			return
-		}
-		defer func() { _ = statusStore.Close() }()
-		metadata, err := statusStore.Metadata(r.Context())
-		if err != nil {
-			write(w, 503, struct {
-				Error string `json:"error"`
-			}{"server storage unavailable"})
-			return
-		}
-		write(w, 200, Status{InstanceID: record.InstanceID, DataEpoch: metadata.DatabaseID, DataReadiness: "ready", Revision: metadata.Revision, LastIngestionAtMS: metadata.LastIngestionAtMs})
+		write(w, http.StatusServiceUnavailable, map[string]string{"error": "server storage unavailable"})
 	})
 	mux.HandleFunc("POST /control/v1/shutdown", func(w http.ResponseWriter, r *http.Request) {
 		if err := decode(r.Body, &struct{}{}); err != nil && err != io.EOF {

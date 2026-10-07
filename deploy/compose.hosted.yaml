@@ -1,0 +1,26 @@
+# A TLS reverse proxy on the host forwards to 127.0.0.1:8765.
+services:
+  tokeninsights:
+    build:
+      context: ..
+    image: tokeninsights-server:local
+    command:
+      - --kind
+      - hosted
+      - --listen
+      - '0.0.0.0:8765'
+      - --server-db-path
+      - /data/server.duckdb
+      - --public-url
+      - '${TOKENINSIGHTS_PUBLIC_URL:?Set the canonical HTTPS dashboard URL}'
+      - --admin-socket
+      - /run/tokeninsights/admin.sock
+    ports:
+      - '127.0.0.1:8765:8765'
+    volumes:
+      - hosted-data:/data
+    stop_grace_period: 30s
+    restart: unless-stopped
+
+volumes:
+  hosted-data:

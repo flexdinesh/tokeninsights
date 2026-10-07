@@ -2,14 +2,11 @@ package pipeline
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/processor"
 	"io"
-	"math"
 	"path/filepath"
-	"strconv"
 	"strings"
 )
 
@@ -47,70 +44,13 @@ func isCandidateSource(path string) bool {
 }
 
 func nested(record map[string]interface{}, key string) map[string]interface{} {
-	value, ok := record[key]
-	if !ok {
-		return nil
-	}
-	nestedValue, ok := value.(map[string]interface{})
-	if !ok {
-		return nil
-	}
-	return nestedValue
+	return processor.Nested(record, key)
 }
-
 func stringField(record map[string]interface{}, names ...string) *string {
-	for _, name := range names {
-		value, ok := record[name]
-		if !ok {
-			continue
-		}
-		text, ok := value.(string)
-		if ok && strings.TrimSpace(text) != "" {
-			trimmed := strings.TrimSpace(text)
-			return &trimmed
-		}
-	}
-	return nil
+	return processor.StringField(record, names...)
 }
-
 func stringValue(record map[string]interface{}, fallback string, names ...string) string {
-	value := stringField(record, names...)
-	if value == nil {
-		return fallback
-	}
-	return *value
-}
-
-func intField(record map[string]interface{}, names ...string) *int64 {
-	for _, name := range names {
-		value, ok := record[name]
-		if !ok {
-			continue
-		}
-		switch typed := value.(type) {
-		case json.Number:
-			result, err := typed.Int64()
-			if err == nil {
-				return &result
-			}
-		case float64:
-			if math.IsNaN(typed) || math.IsInf(typed, 0) || math.Trunc(typed) != typed || typed >= math.MaxInt64 || typed < math.MinInt64 {
-				return nil
-			}
-			result := int64(typed)
-			return &result
-		case int64:
-			result := typed
-			return &result
-		case string:
-			result, err := strconv.ParseInt(strings.TrimSpace(typed), 10, 64)
-			if err == nil {
-				return &result
-			}
-		}
-		return nil
-	}
-	return nil
+	return processor.StringValue(record, fallback, names...)
 }
 
 func decodeJSONRecord(line string, record *map[string]interface{}) error {
@@ -128,34 +68,5 @@ func decodeJSONRecord(line string, record *map[string]interface{}) error {
 	return nil
 }
 
-func tokenComponentSum(values ...*int64) (int64, bool) {
-	var total int64
-	for _, value := range values {
-		if value == nil {
-			continue
-		}
-		if *value < 0 {
-			return 0, false
-		}
-		if *value > math.MaxInt64-total {
-			return 0, false
-		}
-		total += *value
-	}
-	return total, true
-}
-
-func hasInvalidIntegerField(record map[string]interface{}, names ...string) bool {
-	for _, name := range names {
-		value, ok := record[name]
-		if ok && value != nil && intField(record, name) == nil {
-			return true
-		}
-	}
-	return false
-}
-
-func stableHash(value string) string {
-	sum := sha256.Sum256([]byte(value))
-	return hex.EncodeToString(sum[:])
-}
+func tokenComponentSum(values ...*int64) (int64, bool) { return processor.TokenComponentSum(values...) }
+func stableHash(value string) string                   { return processor.StableHash(value) }

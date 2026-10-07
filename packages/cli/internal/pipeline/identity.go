@@ -1,12 +1,11 @@
 package pipeline
 
-import "encoding/json"
+import (
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/processor"
+)
 
 // Native tuples use unambiguous encoding; source IDs may contain separators.
-func nativeTupleHash(parts ...string) string {
-	encoded, _ := json.Marshal(parts)
-	return stableHash(string(encoded))
-}
+func nativeTupleHash(parts ...string) string { return processor.NativeTupleHash(parts...) }
 
 // Source-session provenance is allowlisted host metadata. Filenames remain a
 // useful local fallback, but cannot identify portable published native sessions.
@@ -16,18 +15,6 @@ type sourceIdentityMetadata struct {
 }
 
 func sourceIdentityJSON(sessionSource string, requestID *string) *string {
-	encoded, _ := json.Marshal(sourceIdentityMetadata{SessionSource: sessionSource, RequestID: requestID})
-	metadata := string(encoded)
-	return &metadata
+	return processor.SourceIdentityJSON(sessionSource, requestID)
 }
-
-func sourceSessionIdentity(metadata *string) string {
-	if metadata == nil {
-		return ""
-	}
-	var identity sourceIdentityMetadata
-	if json.Unmarshal([]byte(*metadata), &identity) != nil {
-		return ""
-	}
-	return identity.SessionSource
-}
+func sourceSessionIdentity(metadata *string) string { return processor.SourceSessionIdentity(metadata) }

@@ -8,7 +8,7 @@ describe('analytics response identity', () => {
     { name: 'facets', schema: facetsSchema, response: mockFacets },
   ]) {
     it(`${name} requires nonempty instance/database identity and explicit revision`, () => {
-      for (const key of ['instanceId', 'dataEpoch', 'revision']) {
+      for (const key of ['instanceId', 'dataEpoch', 'datasetId', 'revision']) {
         const absent = Object.fromEntries(
           Object.entries(response).filter(([field]) => field !== key),
         )
@@ -27,7 +27,7 @@ describe('availability response identity', () => {
     { name: 'status', schema: statusSchema, response: mockSyncStatus(0) },
   ]) {
     it(`${name} requires explicit identity/readiness and refuses ready without a database`, () => {
-      for (const key of ['instanceId', 'dataEpoch', 'dataReadiness']) {
+      for (const key of ['instanceId', 'dataEpoch', 'datasetId', 'dataReadiness']) {
         const absent = Object.fromEntries(
           Object.entries(response).filter(([field]) => field !== key),
         )
@@ -43,4 +43,19 @@ describe('availability response identity', () => {
       ).toBe(true)
     })
   }
+})
+
+it('accepts unknown capabilities without enabling known features', async () => {
+  const { hasCapability, showsCollectorProgress } = await import('./capabilities')
+  const server = bootstrapSchema.parse({ ...mockBootstrap, capabilities: ['future-feature'] })
+  expect(hasCapability(server, 'usage')).toBe(false)
+  expect(showsCollectorProgress(server)).toBe(false)
+  expect(
+    showsCollectorProgress({
+      ...server,
+      serverKind: 'hosted',
+      capabilities: ['collector-progress'],
+    }),
+  ).toBe(false)
+  expect(showsCollectorProgress({ ...server, capabilities: ['collector-progress'] })).toBe(true)
 })

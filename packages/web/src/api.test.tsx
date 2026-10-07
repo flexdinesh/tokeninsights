@@ -9,7 +9,11 @@ import { initialQuery } from './state'
 import type { QueryState } from './state'
 import type { Bootstrap, Dashboard, SyncStatus } from './contracts'
 
-const testIdentity = { instanceId: 'test-instance', dataEpoch: 'test-database' }
+const testIdentity = {
+  instanceId: 'test-instance',
+  dataEpoch: 'test-database',
+  datasetId: 'test-dataset',
+}
 
 let testRouter = createAppRouter(createMemoryHistory({ initialEntries: ['/tokens'] }))
 
@@ -29,7 +33,7 @@ function requestURL(input: RequestInfo | URL): string {
 }
 
 function AnalyticsExample({ query }: { query: QueryState }) {
-  const data = useAnalytics(query, 1, true, 'test-instance/test-database')
+  const data = useAnalytics(query, 1, true, 'test-instance/test-database/test-dataset/1')
   return (
     <output data-tab={data.data?.tab} data-placeholder={data.isPlaceholderData}>
       {data.data ? data.data.dashboard.summary.total : 'Loading'}
@@ -40,6 +44,7 @@ function AnalyticsExample({ query }: { query: QueryState }) {
 function dashboard(total: number): Dashboard {
   return {
     ...testIdentity,
+    generation: 1,
     revision: 1,
     rows: [],
     chart: [],
@@ -65,11 +70,13 @@ it('uses server defaults on first load', async () => {
   const bootstrap: Bootstrap = {
     ...testIdentity,
     dataReadiness: 'ready',
-    apiVersion: 'v1',
+    apiVersion: 'v2',
+    serverKind: 'personal',
+    permissions: ['read', 'ingest'],
     serverVersion: 'test',
     hostname: 'first-load',
     timezone: 'UTC',
-    capabilities: ['usage', 'facets', 'ingestion'],
+    capabilities: ['usage', 'facets', 'web-dashboard', 'raw-ingestion'],
     defaults: {
       period: 'week',
       bucket: 'day',
@@ -84,18 +91,18 @@ it('uses server defaults on first load', async () => {
   const status: SyncStatus = {
     ...testIdentity,
     dataReadiness: 'ready',
-    phase: 'ready',
-    running: false,
-    error: '',
+    generation: 1,
+    targetGeneration: 1,
+    inputRevision: 1,
+    pending: 0,
     revision: 1,
-    harnesses: {},
   }
   vi.stubGlobal(
     'fetch',
     vi.fn<(input: RequestInfo | URL) => Promise<Response>>((input) =>
       Promise.resolve(
         new Response(
-          JSON.stringify(requestURL(input).endsWith('/api/v1/instance') ? bootstrap : status),
+          JSON.stringify(requestURL(input).endsWith('/api/v2/instance') ? bootstrap : status),
           { headers: { 'Content-Type': 'application/json' } },
         ),
       ),
@@ -116,11 +123,13 @@ it('shows saved ingested usage without a collector', async () => {
   const bootstrap: Bootstrap = {
     ...testIdentity,
     dataReadiness: 'ready',
-    apiVersion: 'v1',
+    apiVersion: 'v2',
+    serverKind: 'personal',
+    permissions: ['read', 'ingest'],
     serverVersion: 'test',
     hostname: 'local',
     timezone: 'UTC',
-    capabilities: ['usage', 'facets', 'ingestion'],
+    capabilities: ['usage', 'facets', 'web-dashboard', 'raw-ingestion'],
     defaults: {
       period: 'month',
       bucket: 'day',
@@ -135,22 +144,23 @@ it('shows saved ingested usage without a collector', async () => {
   const status: SyncStatus = {
     ...testIdentity,
     dataReadiness: 'ready',
-    phase: 'ready',
-    running: false,
-    error: '',
+    generation: 1,
+    targetGeneration: 1,
+    inputRevision: 1,
+    pending: 0,
     revision: 1,
-    harnesses: {},
   }
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false, staleTime: Infinity } },
   })
   client.setQueryData(['instance'], bootstrap)
-  client.setQueryData(['sync'], status)
+  client.setQueryData(['sync', 'test-dataset'], status)
   const fetcher = vi.fn<(input: RequestInfo | URL) => Promise<Response>>((input) => {
     const path = requestURL(input)
     const body = path.includes('/usage/facets')
       ? {
           ...testIdentity,
+          generation: 1,
           revision: 1,
           providers: [],
           models: [],
@@ -174,7 +184,7 @@ it('shows saved ingested usage without a collector', async () => {
   )
 
   await waitFor(() =>
-    expect(fetcher.mock.calls.some(([input]) => requestURL(input).includes('/api/v1/usage?'))).toBe(
+    expect(fetcher.mock.calls.some(([input]) => requestURL(input).includes('/api/v2/usage?'))).toBe(
       true,
     ),
   )
@@ -186,11 +196,13 @@ it('removes the final route filter after direct load', async () => {
   const bootstrap: Bootstrap = {
     ...testIdentity,
     dataReadiness: 'ready',
-    apiVersion: 'v1',
+    apiVersion: 'v2',
+    serverKind: 'personal',
+    permissions: ['read', 'ingest'],
     serverVersion: 'test',
     hostname: 'direct-load',
     timezone: 'UTC',
-    capabilities: ['usage', 'facets', 'ingestion'],
+    capabilities: ['usage', 'facets', 'web-dashboard', 'raw-ingestion'],
     defaults: {
       period: 'week',
       bucket: 'day',
@@ -205,18 +217,18 @@ it('removes the final route filter after direct load', async () => {
   const status: SyncStatus = {
     ...testIdentity,
     dataReadiness: 'ready',
-    phase: 'ready',
-    running: false,
-    error: '',
+    generation: 1,
+    targetGeneration: 1,
+    inputRevision: 1,
+    pending: 0,
     revision: 1,
-    harnesses: {},
   }
   vi.stubGlobal(
     'fetch',
     vi.fn<(input: RequestInfo | URL) => Promise<Response>>((input) =>
       Promise.resolve(
         new Response(
-          JSON.stringify(requestURL(input).endsWith('/api/v1/instance') ? bootstrap : status),
+          JSON.stringify(requestURL(input).endsWith('/api/v2/instance') ? bootstrap : status),
           { headers: { 'Content-Type': 'application/json' } },
         ),
       ),
@@ -246,11 +258,13 @@ it('refreshes producer labels when ingestion commits a new revision', async () =
   const bootstrap: Bootstrap = {
     ...testIdentity,
     dataReadiness: 'ready',
-    apiVersion: 'v1',
+    apiVersion: 'v2',
+    serverKind: 'personal',
+    permissions: ['read', 'ingest'],
     serverVersion: 'test',
     hostname: 'unknown',
     timezone: 'UTC',
-    capabilities: ['usage', 'facets', 'ingestion'],
+    capabilities: ['usage', 'facets', 'web-dashboard', 'raw-ingestion'],
     defaults: {
       period: 'week',
       bucket: 'day',
@@ -265,17 +279,17 @@ it('refreshes producer labels when ingestion commits a new revision', async () =
   const status: SyncStatus = {
     ...testIdentity,
     dataReadiness: 'ready',
-    phase: 'ready',
-    running: false,
-    error: '',
+    generation: 1,
+    targetGeneration: 1,
+    inputRevision: 1,
+    pending: 0,
     revision: 1,
-    harnesses: {},
   }
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false, staleTime: Infinity } },
   })
   client.setQueryData(['instance'], bootstrap)
-  client.setQueryData(['sync'], status)
+  client.setQueryData(['sync', 'test-dataset'], status)
   vi.stubGlobal(
     'fetch',
     vi.fn<(input: RequestInfo | URL) => Promise<Response>>((input) => {
@@ -307,7 +321,7 @@ it('refreshes producer labels when ingestion commits a new revision', async () =
   const header = await screen.findByRole('banner')
   expect(within(header).getByText('unknown')).toBeVisible()
   await act(async () => {
-    client.setQueryData(['sync'], { ...status, revision: 2 })
+    client.setQueryData(['sync', 'test-dataset'], { ...status, revision: 2 })
   })
   expect(await within(header).findByText('collector-workstation')).toBeVisible()
   client.clear()
@@ -327,7 +341,7 @@ it('offers retry when the page server is unavailable', async () => {
   ).toBeVisible()
   await userEvent.click(screen.getByRole('button', { name: 'Retry Connection' }))
   await waitFor(() => expect(fetcher).toHaveBeenCalledTimes(2))
-  expect(fetcher.mock.calls.every(([input]) => requestURL(input) === '/api/v1/instance')).toBe(true)
+  expect(fetcher.mock.calls.every(([input]) => requestURL(input) === '/api/v2/instance')).toBe(true)
   client.clear()
 })
 
@@ -344,6 +358,7 @@ it('cancels obsolete filter requests and only renders the current result', async
         })
       const data: Dashboard = {
         ...testIdentity,
+        generation: 1,
         revision: 1,
         rows: [],
         chart: [],

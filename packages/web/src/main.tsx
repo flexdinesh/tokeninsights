@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { RouterProvider } from '@tanstack/react-router'
 import { router } from './router'
+import { AuthenticationRequired } from './api'
 import './styles.css'
 
 if (import.meta.env.MODE === 'mock') {
@@ -12,7 +13,12 @@ if (import.meta.env.MODE === 'mock') {
 
 const client = new QueryClient({
   defaultOptions: {
-    queries: { retry: 1, staleTime: 15_000, gcTime: 60_000, refetchOnWindowFocus: true },
+    queries: {
+      retry: (count, error) => !(error instanceof AuthenticationRequired) && count < 1,
+      staleTime: 15_000,
+      gcTime: 60_000,
+      refetchOnWindowFocus: true,
+    },
   },
 })
 const root = document.getElementById('root')

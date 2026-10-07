@@ -6,8 +6,10 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/clientworkflow"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/collector"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/pipeline"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/service"
 )
 
 var syncCommand = commandSpec{name: "sync", run: runSync}
@@ -45,8 +47,32 @@ func runSync(invocation commandInvocation, args []string) error {
 	if err != nil {
 		return err
 	}
+	settings.ServerURL, settings.ServerDBPath, settings.CollectorDBPath = strings.TrimSpace(serverURL), strings.TrimSpace(serverDBPath), strings.TrimSpace(dbPath)
+	token = settings.ServerToken
+	var session clientworkflow.Session
+	observer := &clientworkflow.Observer{}
+	if !dryRun {
+		if settings.ServerURL == "" {
+			if err := collector.ValidatePaths(settings.CollectorDBPath, settings.ServerDBPath); err != nil {
+				return err
+			}
+		}
+		session, err = clientworkflow.Resolve(invocation.context, settings, func(ctx context.Context) (service.State, error) {
+			return ensureConfiguredLocal(ctx, settings.ServerDBPath, settings)
+		})
+		if err != nil {
+			return err
+		}
+		if err := session.VerifyIngestion(invocation.context); err != nil {
+			return err
+		}
+		observer = session.Observe(invocation.context)
+	}
+	terminal := newTerminalSyncProgress(invocation.stderr)
 	result, err := collector.Run(invocation.context, collector.Options{
 		CollectorDBPath: strings.TrimSpace(dbPath), ServerDBPath: strings.TrimSpace(serverDBPath), ServerURL: serverURL, Token: token, PublishOnly: publishOnly,
+		Destination:      session.Destination,
+		DeliveryProgress: func(progress collector.DeliveryProgress) { terminal.Delivery(progress); observer.Delivery(progress) },
 		SyncOptions: pipeline.SyncOptions{
 			Harnesses:   selectedHarnesses,
 			DryRun:      dryRun,
@@ -54,7 +80,7 @@ func runSync(invocation commandInvocation, args []string) error {
 			Normalize:   !noNormalize,
 			SourceDir:   strings.TrimSpace(sourceDir),
 			Now:         invocation.now,
-			Progress:    recoveryNotice(invocation.stderr),
+			Progress:    func(event pipeline.SyncProgressEvent) { terminal.Collection(event); observer.Collection(event) },
 		},
 		EnsureLocal: func(ctx context.Context) (string, error) {
 			state, err := ensureConfiguredLocal(ctx, strings.TrimSpace(serverDBPath), settings)
@@ -64,6 +90,10 @@ func runSync(invocation commandInvocation, args []string) error {
 			return state.Record.URL, nil
 		},
 	})
+	observer.Finish(result, err)
+	if !dryRun {
+		terminal.Finish(result)
+	}
 	printSummary(invocation.stdout, "sync", result.Collection, dryRun)
 	if !dryRun {
 		printDeliverySummary(invocation.stdout, result)

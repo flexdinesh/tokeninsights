@@ -33,6 +33,9 @@ func runResetCanonical(invocation commandInvocation, args []string) error {
 		return err
 	}
 	defer release()
+	if err := db.UpgradeEvidence(invocation.context, path); err != nil {
+		return err
+	}
 	database, err := db.OpenWritable(path)
 	if err != nil {
 		return err

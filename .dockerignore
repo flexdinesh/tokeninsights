@@ -1,0 +1,12 @@
+**
+!packages/
+!packages/cli/
+!packages/cli/**
+packages/cli/bin/
+packages/cli/node_modules/
+packages/cli/.impeccable/
+packages/cli/**/*.sqlite
+packages/cli/**/*.sqlite-*
+packages/cli/**/*.duckdb
+packages/cli/**/*.duckdb.*
+packages/cli/**/*.sock

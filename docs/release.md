@@ -55,9 +55,11 @@ The tap repository owns Homebrew-native validation. Its CI should run style, aud
 
 ### Database Compatibility
 
-Collector SQLite schema 17 and server DuckDB schema 1 have distinct roles.
-Verified collector schema 16 upgrades additively, preserving legacy journals and
-saved requests. Unsupported/newer/corrupt contracts reject without mutation.
+Collector SQLite schema 18 and server DuckDB schema 2 have distinct roles.
+Verified collector schemas 16/17 upgrade additively, preserving legacy journals,
+saved requests and dataset/protocol bindings. Verified DuckDB-1 upgrades stage
+personal schema-2 data with preserved identities/receipts/components and a
+recoverable previous file. Hosted starts fresh; stored kind mismatches reject. Unsupported/newer/corrupt contracts reject without mutation.
 Former tokeninsights.sqlite stays untouched. Fresh default server.duckdb imports
 verified sibling server.sqlite schema 2 read-only; custom sources use an explicit
 import into a new target. Original history remains until specific replacement
@@ -70,7 +72,9 @@ applies only to retained legacy collector maintenance, not the new raw capture.
 
 Verification preserves stable native contribution identities, all token
 components, exact receipt replay, source continuity, separate estimates,
-generation cutover and unmatched imported history. Both binaries must work
+dataset-local generation cutover, colliding multi-user identities and unmatched
+imported history. Verify auth/revocation, capability gates, personal/hosted progress
+and container persistence/shutdown. Both binaries must work
 without Node/npm/pnpm. See [design](design.md) for the complete contract.
 
 ### Checks

@@ -62,14 +62,21 @@ func Record(ctx context.Context, tx *sql.Tx, record evidence.Record, now int64) 
 }
 
 func (s *Store) Bind(ctx context.Context, id, endpoint, databaseID string) error {
+	return s.BindDataset(ctx, id, endpoint, databaseID, "default")
+}
+
+func (s *Store) BindDataset(ctx context.Context, id, endpoint, databaseID, datasetID string) error {
+	if !evidence.ValidDatasetID(datasetID) {
+		return errors.New("invalid_dataset")
+	}
 	u, err := url.Parse(endpoint)
 	if err != nil || u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" || u.Scheme != "http" && u.Scheme != "https" {
 		return errors.New("invalid_destination")
 	}
-	var oldEndpoint, oldID string
-	err = s.DB.QueryRowContext(ctx, "SELECT endpoint,database_id FROM evidence_destinations WHERE destination_id=?", id).Scan(&oldEndpoint, &oldID)
+	var oldEndpoint, oldID, oldDataset string
+	err = s.DB.QueryRowContext(ctx, "SELECT endpoint,database_id,dataset_id FROM evidence_destinations WHERE destination_id=?", id).Scan(&oldEndpoint, &oldID, &oldDataset)
 	if err == nil {
-		if oldEndpoint != endpoint || oldID != databaseID {
+		if oldEndpoint != endpoint || oldID != databaseID || oldDataset != datasetID {
 			return errors.New("server_database_changed")
 		}
 		return nil
@@ -77,8 +84,36 @@ func (s *Store) Bind(ctx context.Context, id, endpoint, databaseID string) error
 	if !errors.Is(err, sql.ErrNoRows) {
 		return err
 	}
-	_, err = s.DB.ExecContext(ctx, "INSERT INTO evidence_destinations(destination_id,endpoint,database_id) VALUES(?,?,?)", id, endpoint, databaseID)
+	_, err = s.DB.ExecContext(ctx, "INSERT INTO evidence_destinations(destination_id,endpoint,database_id,dataset_id) VALUES(?,?,?,?)", id, endpoint, databaseID, datasetID)
 	return err
+}
+
+// ResolveDestination reuses verified old default bindings; tokens never identify cursors.
+// Remote replacement rejects, while local replacement deliberately replays history.
+func (s *Store) ResolveDestination(ctx context.Context, endpoint, databaseID, datasetID string, local bool) (string, error) {
+	query := "SELECT destination_id,database_id FROM evidence_destinations WHERE endpoint=? AND dataset_id=?"
+	args := []interface{}{endpoint, datasetID}
+	if local {
+		query += " AND database_id=?"
+		args = append(args, databaseID)
+	}
+	var id, previous string
+	err := s.DB.QueryRowContext(ctx, query, args...).Scan(&id, &previous)
+	if err == nil {
+		if previous != databaseID {
+			return "", errors.New("server_database_changed")
+		}
+		return id, s.BindDataset(ctx, id, endpoint, databaseID, datasetID)
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		return "", err
+	}
+	identity := []interface{}{endpoint, datasetID}
+	if local {
+		identity = append(identity, databaseID)
+	}
+	id = evidence.Tuple(identity...)
+	return id, s.BindDataset(ctx, id, endpoint, databaseID, datasetID)
 }
 
 func (s *Store) Pending(ctx context.Context, id string) (int64, error) {
@@ -106,7 +141,7 @@ func (s *Store) Prepare(ctx context.Context, id string) (*SavedBatch, error) {
 	}
 	batch := evidence.Batch{ProtocolVersion: evidence.ProtocolVersion, ExtractorVersion: evidence.ExtractorVersion, BatchID: batchID}
 	var cursor int64
-	if err := tx.QueryRowContext(ctx, "SELECT acknowledged_sequence,database_id FROM evidence_destinations WHERE destination_id=?", id).Scan(&cursor, &batch.DatabaseID); err != nil {
+	if err := tx.QueryRowContext(ctx, "SELECT acknowledged_sequence,database_id,dataset_id FROM evidence_destinations WHERE destination_id=?", id).Scan(&cursor, &batch.DatabaseID, &batch.DatasetID); err != nil {
 		return nil, err
 	}
 	if err := tx.QueryRowContext(ctx, "SELECT stream_id FROM evidence_state WHERE id=1").Scan(&batch.StreamID); err != nil {
@@ -163,7 +198,7 @@ func (s *Store) Prepare(ctx context.Context, id string) (*SavedBatch, error) {
 	if _, err := evidence.DecodeBatch(body); err != nil {
 		return nil, err
 	}
-	_, err = tx.ExecContext(ctx, "INSERT INTO evidence_batches(batch_id,destination_id,stream_id,database_id,first_sequence,last_sequence,request_hash,request_bytes) VALUES(?,?,?,?,?,?,?,?)", batch.BatchID, id, batch.StreamID, batch.DatabaseID, batch.FromSequence, batch.ToSequence, evidence.Hash(body), body)
+	_, err = tx.ExecContext(ctx, "INSERT INTO evidence_batches(batch_id,destination_id,stream_id,database_id,dataset_id,protocol_version,first_sequence,last_sequence,request_hash,request_bytes) VALUES(?,?,?,?,?,?,?,?,?,?)", batch.BatchID, id, batch.StreamID, batch.DatabaseID, batch.DatasetID, batch.ProtocolVersion, batch.FromSequence, batch.ToSequence, evidence.Hash(body), body)
 	if err != nil {
 		return nil, err
 	}
@@ -175,8 +210,9 @@ func (s *Store) Prepare(ctx context.Context, id string) (*SavedBatch, error) {
 
 func pending(ctx context.Context, tx *sql.Tx, id string) (*SavedBatch, error) {
 	saved := &SavedBatch{}
-	var hash string
-	err := tx.QueryRowContext(ctx, "SELECT request_bytes,request_hash FROM evidence_batches WHERE destination_id=? AND receipt_bytes IS NULL", id).Scan(&saved.Request, &hash)
+	var hash, datasetID string
+	var protocol int
+	err := tx.QueryRowContext(ctx, "SELECT request_bytes,request_hash,dataset_id,protocol_version FROM evidence_batches WHERE destination_id=? AND receipt_bytes IS NULL", id).Scan(&saved.Request, &hash, &datasetID, &protocol)
 	if err != nil {
 		return nil, err
 	}
@@ -184,6 +220,9 @@ func pending(ctx context.Context, tx *sql.Tx, id string) (*SavedBatch, error) {
 		return nil, errors.New("saved_request_corrupt")
 	}
 	saved.Batch, err = evidence.DecodeBatch(saved.Request)
+	if err == nil && (saved.Batch.ProtocolVersion != protocol || saved.Batch.EffectiveDatasetID() != datasetID) {
+		return nil, errors.New("saved_request_binding_corrupt")
+	}
 	return saved, err
 }
 

@@ -15,6 +15,8 @@ for (const kind of ['usage', 'facets']) {
   for (const scenario of [
     'missing identity',
     'changed database',
+    'changed dataset',
+    'changed generation',
     'stale revision',
     'zero revision',
     'newer revision',
@@ -30,6 +32,8 @@ for (const kind of ['usage', 'facets']) {
           : {
               ...base,
               dataEpoch: scenario === 'changed database' ? 'other-database' : base.dataEpoch,
+              datasetId: scenario === 'changed dataset' ? 'other-user' : base.datasetId,
+              generation: scenario === 'changed generation' ? 2 : base.generation,
               revision:
                 scenario === 'stale revision' ? 0 : scenario === 'newer revision' ? 2 : revision,
             }
@@ -41,7 +45,7 @@ for (const kind of ['usage', 'facets']) {
         return <QueryClientProvider client={client}>{children}</QueryClientProvider>
       }
       const query = initialQuery(mockBootstrap.defaults)
-      const identity = `${mockBootstrap.instanceId}/${mockBootstrap.dataEpoch}`
+      const identity = `${mockBootstrap.instanceId}/${mockBootstrap.dataEpoch}/${mockBootstrap.datasetId}/1`
       function useExample() {
         const analytics = useAnalytics(query, revision, kind === 'usage', identity)
         const facets = useFacets(query, revision, kind === 'facets', identity)
@@ -53,6 +57,8 @@ for (const kind of ['usage', 'facets']) {
       expect(result.current.data === undefined).toBe(!accepted)
       const refreshStatus =
         scenario === 'changed database' ||
+        scenario === 'changed dataset' ||
+        scenario === 'changed generation' ||
         scenario === 'stale revision' ||
         scenario === 'newer revision'
       expect(client.getQueryState(['sync'])?.isInvalidated).toBe(refreshStatus)

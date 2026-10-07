@@ -4,8 +4,40 @@ import (
 	"encoding/json"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/evidence"
 	"path/filepath"
+	"sync"
 	"testing"
 )
+
+func TestMetadataRemainsConsistentDuringGenerationActivation(t *testing.T) {
+	store := testStore(t)
+	const activations = 30
+	var group sync.WaitGroup
+	failures := make(chan error, 1)
+	group.Go(func() {
+		for range activations {
+			if _, err := store.Reprocess(t.Context()); err != nil {
+				failures <- err
+				return
+			}
+		}
+	})
+	defer group.Wait()
+	for range activations {
+		metadata, err := store.Metadata(t.Context())
+		if err != nil {
+			t.Fatal("valid cutover exposed inconsistent metadata", err)
+		}
+		if metadata.Generation != metadata.TargetGeneration {
+			t.Fatal("empty dataset exposed partial cutover", metadata)
+		}
+	}
+	group.Wait()
+	select {
+	case err := <-failures:
+		t.Fatal(err)
+	default:
+	}
+}
 
 func TestReprocessKeepsPublishedGenerationUntilComplete(t *testing.T) {
 	store := testStore(t)

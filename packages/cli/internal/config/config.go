@@ -15,20 +15,25 @@ import (
 	"strings"
 
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/db"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/server"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/networkprefs"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/serverfeatures"
 )
 
 const maxFileBytes = 256 * 1024
 
 type Values struct {
-	ServerURL       *string `json:"server-url,omitempty"`
-	Host            *string `json:"host,omitempty"`
-	Port            *int    `json:"port,omitempty"`
-	CollectorDBPath *string `json:"collector-db-path,omitempty"`
-	ServerDBPath    *string `json:"server-db-path,omitempty"`
+	ServerKind      *serverfeatures.Kind `json:"server-kind,omitempty"`
+	ServerToken     *string              `json:"server-token,omitempty"`
+	ServerURL       *string              `json:"server-url,omitempty"`
+	Host            *string              `json:"host,omitempty"`
+	Port            *int                 `json:"port,omitempty"`
+	CollectorDBPath *string              `json:"collector-db-path,omitempty"`
+	ServerDBPath    *string              `json:"server-db-path,omitempty"`
 }
 
 type Settings struct {
+	ServerKind      serverfeatures.Kind
+	ServerToken     string
 	ServerURL       string
 	Host            string
 	Port            int
@@ -59,7 +64,7 @@ func Defaults() Settings {
 	if base == "" {
 		base = filepath.Join(os.Getenv("HOME"), ".local", "share")
 	}
-	return Settings{Host: server.DefaultHost, Port: server.DefaultPort, CollectorDBPath: filepath.Join(base, "tokeninsights", "collector.sqlite"), ServerDBPath: filepath.Join(base, "tokeninsights", "server.duckdb")}
+	return Settings{ServerKind: serverfeatures.Personal, Host: networkprefs.DefaultHost, Port: networkprefs.DefaultPort, CollectorDBPath: filepath.Join(base, "tokeninsights", "collector.sqlite"), ServerDBPath: filepath.Join(base, "tokeninsights", "server.duckdb")}
 }
 
 func Read(path string) (Values, error) {
@@ -123,6 +128,14 @@ func Read(path string) (Values, error) {
 }
 
 func (v Values) Validate() error {
+	if v.ServerKind != nil {
+		if err := v.ServerKind.Validate(); err != nil {
+			return err
+		}
+	}
+	if v.ServerToken != nil && (*v.ServerToken == "" || strings.TrimSpace(*v.ServerToken) != *v.ServerToken || strings.ContainsAny(*v.ServerToken, "\r\n\x00\t ")) {
+		return fmt.Errorf("invalid server-token")
+	}
 	if v.ServerURL != nil {
 		if err := ValidateURL(*v.ServerURL); err != nil {
 			return err
@@ -132,7 +145,7 @@ func (v Values) Validate() error {
 		if *v.Host == "" {
 			return fmt.Errorf("host must not be empty")
 		}
-		if err := server.ValidateHost(*v.Host); err != nil {
+		if err := networkprefs.ValidateHost(*v.Host); err != nil {
 			return err
 		}
 	}
@@ -178,6 +191,12 @@ func resolveValues(v Values, base string, environment bool, overrides Values) (S
 		return Settings{}, err
 	}
 	s := Defaults()
+	if v.ServerKind != nil {
+		s.ServerKind = *v.ServerKind
+	}
+	if v.ServerToken != nil {
+		s.ServerToken = *v.ServerToken
+	}
 	if v.ServerURL != nil {
 		s.ServerURL = *v.ServerURL
 	}
@@ -200,6 +219,12 @@ func resolveValues(v Values, base string, environment bool, overrides Values) (S
 		s.ServerDBPath = resolvePath(*v.ServerDBPath)
 	}
 	if environment {
+		if value, ok := os.LookupEnv("TOKENINSIGHTS_SERVER_KIND"); ok && overrides.ServerKind == nil {
+			s.ServerKind = serverfeatures.Kind(value)
+		}
+		if value, ok := os.LookupEnv("TOKENINSIGHTS_ACCESS_TOKEN"); ok && overrides.ServerToken == nil {
+			s.ServerToken = value
+		}
 		if value, ok := os.LookupEnv("TOKENINSIGHTS_SERVER_URL"); ok && overrides.ServerURL == nil {
 			s.ServerURL = value
 		}
@@ -226,6 +251,12 @@ func resolveValues(v Values, base string, environment bool, overrides Values) (S
 	if overrides.ServerURL != nil {
 		s.ServerURL = *overrides.ServerURL
 	}
+	if overrides.ServerKind != nil {
+		s.ServerKind = *overrides.ServerKind
+	}
+	if overrides.ServerToken != nil {
+		s.ServerToken = *overrides.ServerToken
+	}
 	if overrides.Host != nil {
 		s.Host = *overrides.Host
 	}
@@ -238,10 +269,29 @@ func resolveValues(v Values, base string, environment bool, overrides Values) (S
 	if overrides.ServerDBPath != nil {
 		s.ServerDBPath = *overrides.ServerDBPath
 	}
-	if err := (Values{ServerURL: &s.ServerURL, Host: &s.Host, Port: &s.Port, CollectorDBPath: &s.CollectorDBPath, ServerDBPath: &s.ServerDBPath}).Validate(); err != nil {
+	if err := (Values{ServerKind: &s.ServerKind, ServerURL: &s.ServerURL, Host: &s.Host, Port: &s.Port, CollectorDBPath: &s.CollectorDBPath, ServerDBPath: &s.ServerDBPath}).Validate(); err != nil {
 		return Settings{}, err
 	}
+	if s.ServerToken != "" {
+		if err := (Values{ServerToken: &s.ServerToken}).Validate(); err != nil {
+			return Settings{}, err
+		}
+	}
 	return s, nil
+}
+
+// ValidateDestination checks complete runtime preferences, allowing incremental config setup.
+func (s Settings) ValidateDestination() error {
+	if err := s.ServerKind.Validate(); err != nil {
+		return err
+	}
+	if s.ServerKind == serverfeatures.Hosted && (s.ServerURL == "" || s.ServerToken == "") {
+		return fmt.Errorf("hosted server requires server-url and server-token")
+	}
+	if s.ServerToken != "" && s.ServerURL == "" {
+		return fmt.Errorf("server-token requires an explicit server-url")
+	}
+	return nil
 }
 
 func (v Values) Get(key string, base string) (string, error) {
@@ -250,6 +300,13 @@ func (v Values) Get(key string, base string) (string, error) {
 		return "", err
 	}
 	switch key {
+	case "server-kind":
+		return string(s.ServerKind), nil
+	case "server-token":
+		if s.ServerToken == "" {
+			return "unset", nil
+		}
+		return "configured", nil
 	case "server-url":
 		return s.ServerURL, nil
 	case "host":
@@ -273,6 +330,14 @@ func (v *Values) Set(key, value string, remove bool) error {
 		return &value
 	}
 	switch key {
+	case "server-kind":
+		v.ServerKind = nil
+		if !remove {
+			kind := serverfeatures.Kind(value)
+			v.ServerKind = &kind
+		}
+	case "server-token":
+		v.ServerToken = stringValue()
 	case "server-url":
 		v.ServerURL = stringValue()
 	case "host":

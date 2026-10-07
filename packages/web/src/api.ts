@@ -3,6 +3,7 @@ import { z } from 'zod'
 import {
   bootstrapSchema,
   dashboardSchema,
+  collectorProgressSchema,
   errorSchema,
   facetsSchema,
   statusSchema,
@@ -16,7 +17,8 @@ export async function request<T>(
   schema: z.ZodType<T>,
   signal?: AbortSignal,
 ): Promise<T> {
-  const response = await fetch(path, { signal, method: 'GET' })
+  const response = await fetch(path, { signal, method: 'GET', credentials: 'same-origin' })
+  if (response.status === 401) throw new AuthenticationRequired()
   let body: unknown
   try {
     body = await response.json()
@@ -31,22 +33,24 @@ export async function request<T>(
 }
 
 export function getInstance(signal?: AbortSignal): Promise<Bootstrap> {
-  return request('/api/v1/instance', bootstrapSchema, signal)
+  return request('/api/v2/instance', bootstrapSchema, signal)
 }
 
-export const useBootstrap = () =>
+export const useBootstrap = (enabled = true) =>
   useQuery({
     queryKey: ['instance'],
+    enabled,
+    retry: false,
     queryFn: ({ signal }) => getInstance(signal),
     staleTime: Infinity,
     refetchOnWindowFocus: false,
     refetchOnReconnect: false,
   })
 
-export const useSyncStatus = (enabled = true) =>
+export const useSyncStatus = (enabled = true, datasetId?: string) =>
   useQuery({
-    queryKey: ['sync'],
-    queryFn: ({ signal }) => request('/api/v1/sync', statusSchema, signal),
+    queryKey: datasetId === undefined ? ['sync'] : ['sync', datasetId],
+    queryFn: ({ signal }) => request('/api/v2/status', statusSchema, signal),
     enabled,
     refetchInterval: 5000,
   })
@@ -55,8 +59,9 @@ export function snapshotIdentity(value: {
   instanceId: string
   dataEpoch: string
   generation?: number
+  datasetId: string
 }): string {
-  return `${value.instanceId}/${value.dataEpoch}${value.generation === undefined ? '' : `/${value.generation}`}`
+  return `${value.instanceId}/${value.dataEpoch}/${value.datasetId}${value.generation === undefined ? '' : `/${value.generation}`}`
 }
 
 export function useAnalytics(q: QueryState, revision: number, enabled: boolean, identity: string) {
@@ -69,7 +74,7 @@ export function useAnalytics(q: QueryState, revision: number, enabled: boolean, 
   return useQuery({
     queryKey: ['usage', summaryScope.toString(), params.toString(), revision, identity],
     queryFn: async ({ signal }) => {
-      const dashboard = await request(`/api/v1/usage?${params}`, dashboardSchema, signal)
+      const dashboard = await request(`/api/v2/usage?${params}`, dashboardSchema, signal)
       if (snapshotIdentity(dashboard) !== identity || dashboard.revision < revision) {
         void client.invalidateQueries({ queryKey: ['sync'] })
         throw new Error('Data changed. Refreshing service status.')
@@ -108,7 +113,7 @@ export function useFacets(
   return useQuery({
     queryKey: ['facets', params.toString(), revision, identity],
     queryFn: async ({ signal }) => {
-      const facets = await request(`/api/v1/usage/facets?${params}`, facetsSchema, signal)
+      const facets = await request(`/api/v2/usage/facets?${params}`, facetsSchema, signal)
       if (snapshotIdentity(facets) !== identity || facets.revision < revision) {
         void client.invalidateQueries({ queryKey: ['sync'] })
         throw new Error('Data changed. Refreshing service status.')
@@ -121,3 +126,35 @@ export function useFacets(
     enabled,
   })
 }
+
+export class AuthenticationRequired extends Error {
+  constructor() {
+    super('Sign in to view your token usage.')
+    this.name = 'AuthenticationRequired'
+  }
+}
+
+export async function changeBrowserSession(token?: string): Promise<void> {
+  const response = await fetch('/api/v2/auth/session', {
+    method: token === undefined ? 'DELETE' : 'POST',
+    credentials: 'same-origin',
+    headers: token === undefined ? undefined : { 'Content-Type': 'application/json' },
+    body: token === undefined ? undefined : JSON.stringify({ token }),
+  })
+  if (response.status === 401) throw new AuthenticationRequired()
+  if (!response.ok) throw new Error(`Sign in failed (${response.status})`)
+}
+
+export const useCollectorProgress = (enabled: boolean, instanceId: string) =>
+  useQuery({
+    queryKey: ['collector-progress', instanceId],
+    queryFn: async ({ signal }) => {
+      const progress = await request('/api/v2/collector-progress', collectorProgressSchema, signal)
+      if (progress.instanceId !== instanceId)
+        throw new Error('Collector progress belongs to another server instance.')
+      return progress
+    },
+    enabled,
+    refetchInterval: 1000,
+    refetchOnWindowFocus: false,
+  })

@@ -93,28 +93,26 @@ type extractionCursor struct {
 	Context                   extractionContext
 }
 
-func cursorFor(ctx context.Context, tx *sql.Tx, source Source, format string) (extractionCursor, error) {
-	var cursor extractionCursor
-	var body string
-	err := tx.QueryRowContext(ctx, "SELECT source_id,lineage,byte_offset,ordinal,prefix_hash,context_json FROM evidence_sources WHERE source_key=? AND format=? AND extractor_version=?", source.ID, format, evidence.ExtractorVersion).Scan(&cursor.SourceID, &cursor.Lineage, &cursor.Offset, &cursor.Ordinal, &cursor.Prefix, &body)
-	if errors.Is(err, sql.ErrNoRows) {
+func cursorFor(ctx context.Context, capture *rawcollectorstore.Capture, source Source, format string) (extractionCursor, error) {
+	state, found, err := capture.Checkpoint(ctx, source.ID, format)
+	cursor := extractionCursor{SourceID: state.SourceID, Lineage: state.Lineage, Prefix: state.Prefix, Offset: state.Offset, Ordinal: state.Ordinal}
+	if err != nil {
+		return cursor, err
+	}
+	if !found {
 		cursor.SourceID = source.ID
 		cursor.Lineage, err = evidence.RandomID()
 		return cursor, err
 	}
-	if err != nil {
-		return cursor, err
-	}
-	err = json.Unmarshal([]byte(body), &cursor.Context)
+	err = json.Unmarshal(state.Context, &cursor.Context)
 	return cursor, err
 }
-func saveCursor(ctx context.Context, tx *sql.Tx, source Source, format string, cursor extractionCursor) error {
+func saveCursor(ctx context.Context, capture *rawcollectorstore.Capture, source Source, format string, cursor extractionCursor) error {
 	body, err := json.Marshal(cursor.Context)
 	if err != nil {
 		return err
 	}
-	_, err = tx.ExecContext(ctx, `INSERT INTO evidence_sources(source_key,source_id,lineage,format,extractor_version,byte_offset,ordinal,prefix_hash,context_json,updated_at_ms) VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(source_key) DO UPDATE SET source_id=excluded.source_id,lineage=excluded.lineage,format=excluded.format,extractor_version=excluded.extractor_version,byte_offset=excluded.byte_offset,ordinal=excluded.ordinal,prefix_hash=excluded.prefix_hash,context_json=excluded.context_json,updated_at_ms=excluded.updated_at_ms`, source.ID, cursor.SourceID, cursor.Lineage, format, evidence.ExtractorVersion, cursor.Offset, cursor.Ordinal, cursor.Prefix, string(body), time.Now().UnixMilli())
-	return err
+	return capture.SaveCheckpoint(ctx, rawcollectorstore.Checkpoint{SourceKey: source.ID, SourceID: cursor.SourceID, Lineage: cursor.Lineage, Format: format, Offset: cursor.Offset, Ordinal: cursor.Ordinal, Prefix: cursor.Prefix, Context: body, UpdatedAtMs: time.Now().UnixMilli()})
 }
 func prefix(file *os.File, n int64) (string, error) {
 	if _, err := file.Seek(0, io.SeekStart); err != nil {
@@ -134,7 +132,7 @@ func extractJSONL(ctx context.Context, source Source, options SyncOptions, store
 	}
 	defer func() { _ = file.Close() }()
 	format := string(source.Harness) + "-jsonl"
-	tx, err := store.DB.BeginTx(ctx, nil)
+	tx, err := store.BeginCapture(ctx)
 	if err != nil {
 		return 0, err
 	}
@@ -238,7 +236,7 @@ func extractJSONL(ctx context.Context, source Source, options SyncOptions, store
 	return count, nil
 }
 
-func extractJSONRecord(ctx context.Context, tx *sql.Tx, source Source, options SyncOptions, format string, cursor *extractionCursor, line []byte) (int, error) {
+func extractJSONRecord(ctx context.Context, tx *rawcollectorstore.Capture, source Source, options SyncOptions, format string, cursor *extractionCursor, line []byte) (int, error) {
 	data, diagnostics, err := evidence.Sanitize(string(source.Harness), format, line)
 	if err != nil {
 		return 0, nil
@@ -275,7 +273,7 @@ func extractJSONRecord(ctx context.Context, tx *sql.Tx, source Source, options S
 			record.Context = append(record.Context, entry)
 		}
 	}
-	added, err := rawcollectorstore.Record(ctx, tx, record, time.Now().UnixMilli())
+	added, err := tx.Record(ctx, record, time.Now().UnixMilli())
 	if err != nil {
 		return 0, err
 	}
@@ -312,7 +310,7 @@ func extractSQLite(ctx context.Context, source Source, options SyncOptions, stor
 		return 0, err
 	}
 	defer func() { _ = snapshot.Rollback() }()
-	tx, err := store.DB.BeginTx(ctx, nil)
+	tx, err := store.BeginCapture(ctx)
 	if err != nil {
 		return 0, err
 	}
@@ -395,7 +393,7 @@ func extractSQLite(ctx context.Context, source Source, options SyncOptions, stor
 			if !evidence.UsageRecord(record.Harness, record.Format, record.Data) {
 				continue
 			}
-			inserted, err := rawcollectorstore.Record(ctx, tx, record, time.Now().UnixMilli())
+			inserted, err := tx.Record(ctx, record, time.Now().UnixMilli())
 			if err != nil {
 				_ = rows.Close()
 				return 0, err
@@ -422,7 +420,7 @@ func extractSQLite(ctx context.Context, source Source, options SyncOptions, stor
 
 // Capture approved native context separately and precompute only session
 // enrichment. Message extraction streams rows without retaining a full transcript.
-func extractOpenCodeContext(ctx context.Context, snapshot, tx *sql.Tx, source Source, options SyncOptions, cursor extractionCursor) (map[string]*evidence.Location, int, error) {
+func extractOpenCodeContext(ctx context.Context, snapshot *sql.Tx, tx *rawcollectorstore.Capture, source Source, options SyncOptions, cursor extractionCursor) (map[string]*evidence.Location, int, error) {
 	locations := map[string]*evidence.Location{}
 	count := 0
 	sessions := []RawTokenFact{}
@@ -462,7 +460,7 @@ func extractOpenCodeContext(ctx context.Context, snapshot, tx *sql.Tx, source So
 				_ = rows.Close()
 				return nil, 0, err
 			}
-			inserted, err := rawcollectorstore.Record(ctx, tx, evidence.Record{Harness: "opencode", Format: kind.format, SourceID: cursor.SourceID, Lineage: cursor.Lineage, Data: data, Diagnostics: diagnostics}, time.Now().UnixMilli())
+			inserted, err := tx.Record(ctx, evidence.Record{Harness: "opencode", Format: kind.format, SourceID: cursor.SourceID, Lineage: cursor.Lineage, Data: data, Diagnostics: diagnostics}, time.Now().UnixMilli())
 			if err != nil {
 				_ = rows.Close()
 				return nil, 0, err

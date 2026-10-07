@@ -1,6 +1,6 @@
 # Collector ingestion failure tests
 
-Historical protocol-1 reference superseded by [design](design.md) and [ADR 0007](adr/0007-raw-ingestion-and-server-processing.md). Legacy tests remain compatibility oracles; raw tests cover new contracts.
+Historical protocol-1 reference superseded by [design](design.md), [ADR 0007](adr/0007-raw-ingestion-and-server-processing.md) and [ADR 0008](adr/0008-personal-hosted-composition-and-capabilities.md). Legacy tests remain compatibility oracles; raw tests cover new contracts.
 
 Status: implemented production SQLite/HTTP tests in PR #53. Full repository validation is recorded in [validation evidence](../.scratch/collector-ingestion/VALIDATION.md). Guarantee IDs refer to [the architecture contract](collector-server-architecture.md); task ownership and dependencies are in the [execution plan](../.scratch/collector-ingestion/EXECUTION-PLAN.md).
 

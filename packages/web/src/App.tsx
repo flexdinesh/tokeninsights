@@ -1,4 +1,6 @@
-import { Link } from '@tanstack/react-router'
+import { useEffect, useState } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
+import { Link, useNavigate } from '@tanstack/react-router'
 import {
   Activity,
   Box,
@@ -9,10 +11,26 @@ import {
   LoaderCircle,
   GitBranch,
 } from 'lucide-react'
-import { useAnalytics, useBootstrap, useFacets } from './api'
+import {
+  AuthenticationRequired,
+  changeBrowserSession,
+  useAnalytics,
+  useBootstrap,
+  useFacets,
+} from './api'
+import { clearAccountQueries } from './session'
+import { hasCapability, showsCollectorProgress } from './capabilities'
+import { TokenLogin } from './components/TokenLogin'
+import { CollectorProgress } from './components/CollectorProgress'
 import type { Bootstrap, Tab } from './contracts'
 import { locationGroupSchema } from './contracts'
-import { DashboardProvider, reduceQuery, searchFromQuery, useDashboardQuery } from './state'
+import {
+  DashboardProvider,
+  parseDashboardSearch,
+  reduceQuery,
+  searchFromQuery,
+  useDashboardQuery,
+} from './state'
 import { useDashboardSync } from './useDashboardSync'
 import { labels, serverTimeZoneLabel } from './format'
 import { FilterToolbar, QuickPeriods } from './components/Filters'
@@ -38,15 +56,78 @@ const tabs: { id: Tab; icon: typeof Activity }[] = [
 ]
 
 export function App() {
-  const bootstrap = useBootstrap()
+  const client = useQueryClient()
+  const navigate = useNavigate({ from: '/$tab' })
+  const [authenticationRequired, setAuthenticationRequired] = useState(false)
+  const [sessionChanging, setSessionChanging] = useState(false)
+  const [sessionError, setSessionError] = useState('')
+  const bootstrap = useBootstrap(!authenticationRequired)
+  useEffect(
+    () =>
+      client.getQueryCache().subscribe((event) => {
+        if (
+          event.type !== 'updated' ||
+          !(event.query.state.error instanceof AuthenticationRequired)
+        )
+          return
+        setAuthenticationRequired(true)
+        void clearAccountQueries(client)
+      }),
+    [client],
+  )
+
+  async function signIn() {
+    await clearAccountQueries(client)
+    await navigate({
+      to: '/$tab',
+      params: { tab: 'tokens' },
+      search: parseDashboardSearch({}),
+      replace: true,
+    })
+    setSessionError('')
+    setAuthenticationRequired(false)
+  }
+
+  async function signOut() {
+    setAuthenticationRequired(true)
+    setSessionChanging(true)
+    setSessionError('')
+    try {
+      await clearAccountQueries(client)
+      await navigate({
+        to: '/$tab',
+        params: { tab: 'tokens' },
+        search: parseDashboardSearch({}),
+        replace: true,
+      })
+      await changeBrowserSession()
+    } catch {
+      setSessionError('Couldn’t end the server session. Sign in again to replace it.')
+    } finally {
+      setSessionChanging(false)
+    }
+  }
+
+  if (authenticationRequired || bootstrap.error instanceof AuthenticationRequired) {
+    return <TokenLogin onSignIn={signIn} disabled={sessionChanging} sessionError={sessionError} />
+  }
   const data = bootstrap.data
   if (!data) return <ConnectionScreen error={bootstrap.error} retry={bootstrap.refetch} />
+  if (!hasCapability(data, 'web-dashboard') || !data.permissions.includes('read')) {
+    return (
+      <ConnectionScreen
+        error={new Error('This server does not support the web dashboard.')}
+        retry={bootstrap.refetch}
+      />
+    )
+  }
   return (
-    <DashboardProvider defaults={data.defaults}>
+    <DashboardProvider key={`${data.instanceId}/${data.datasetId}`} defaults={data.defaults}>
       <DashboardShell
         bootstrap={data}
         connectionError={bootstrap.error}
         retryConnection={bootstrap.refetch}
+        onSignOut={signOut}
       />
     </DashboardProvider>
   )
@@ -92,16 +173,28 @@ function DashboardShell({
   bootstrap,
   connectionError,
   retryConnection,
+  onSignOut,
 }: {
   bootstrap: Bootstrap
   connectionError: Error | null
   retryConnection: () => Promise<unknown>
+  onSignOut: () => Promise<void>
 }) {
   const { query, setLocationGroup } = useDashboardQuery()
-  const controller = useDashboardSync()
+  const controller = useDashboardSync(bootstrap.datasetId)
   const { revision, analyticsEnabled: enabled } = controller
-  const analytics = useAnalytics(query, revision, enabled, controller.identity)
-  const facets = useFacets(query, revision, enabled, controller.identity)
+  const analytics = useAnalytics(
+    query,
+    revision,
+    enabled && hasCapability(bootstrap, 'usage'),
+    controller.identity,
+  )
+  const facets = useFacets(
+    query,
+    revision,
+    enabled && hasCapability(bootstrap, 'facets'),
+    controller.identity,
+  )
   const serverUnavailable = Boolean(
     connectionError || controller.statusQuery.error || analytics.error || facets.error,
   )
@@ -120,6 +213,14 @@ function DashboardShell({
       />
       <main id="dashboard" className="dashboard">
         <h1 className="sr-only">Token usage</h1>
+        {bootstrap.serverKind === 'hosted' && (
+          <Button variant="ghost" onClick={() => void onSignOut()}>
+            Sign out
+          </Button>
+        )}
+        {showsCollectorProgress(bootstrap) && (
+          <CollectorProgress instanceId={bootstrap.instanceId} />
+        )}
         <div className="view-controls">
           <nav className="view-tabs" aria-label="Analytics views">
             {tabs.map(({ id, icon: Icon }) => (
@@ -164,12 +265,14 @@ function DashboardShell({
           </div>
         )}
         <div className="studio-layout">
-          <FilterToolbar
-            facets={facets.data}
-            revision={revision}
-            enabled={enabled}
-            identity={controller.identity}
-          />
+          {hasCapability(bootstrap, 'facets') && (
+            <FilterToolbar
+              facets={facets.data}
+              revision={revision}
+              enabled={enabled}
+              identity={controller.identity}
+            />
+          )}
           <DashboardResults
             analytics={analytics}
             facets={facets}

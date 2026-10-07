@@ -1,6 +1,9 @@
 # Sanitized raw ingestion and server-owned processing
 
 Status: **Accepted; implemented**. Date: 6 October 2026.
+Deployment/authentication and separate application-store choices superseded by
+[ADR 0008](0008-personal-hosted-composition-and-capabilities.md). Versions below
+record this decision's original implementation; [design.md](../design.md) is current.
 Supersedes collector-owned normalization, normalized-only ingestion, server
 SQLite analytics and synchronous publication completion in
 [ADR 0006](0006-collector-server-ingestion.md) and the corresponding parts of

@@ -282,8 +282,49 @@ func TestConfigRemoteSyncTracerAndCopiedClients(t *testing.T) {
 }
 
 func TestRemoteFailureRetainsJournalAndNeverStartsLocal(t *testing.T) {
+	target, path := startRemote(t)
+	upstream, err := url.Parse(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	proxy := httputil.NewSingleHostReverseProxy(upstream)
+	var failFirst atomic.Bool
+	failFirst.Store(true)
+	var mu sync.Mutex
+	var requests [][]byte
+	forwarder := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			body, err := io.ReadAll(r.Body)
+			_ = r.Body.Close()
+			if err != nil {
+				http.Error(w, "request unreadable", 400)
+				return
+			}
+			mu.Lock()
+			requests = append(requests, body)
+			mu.Unlock()
+			r.Body = io.NopCloser(bytes.NewReader(body))
+			if failFirst.Swap(false) {
+				hijacker, ok := w.(http.Hijacker)
+				if !ok {
+					t.Error("missing hijacker")
+					return
+				}
+				connection, _, err := hijacker.Hijack()
+				if err != nil {
+					t.Error(err)
+					return
+				}
+				_ = connection.Close()
+				return
+			}
+		}
+		r.Host = upstream.Host
+		proxy.ServeHTTP(w, r)
+	}))
+	defer forwarder.Close()
 	c := newClient(t)
-	c.must(t, "config", "set", "server-url", "http://127.0.0.1:1")
+	c.must(t, "config", "set", "server-url", forwarder.URL)
 	if output, err := c.run(t, "sync", "--harness", "pi", "--source-dir", c.source); err == nil || !strings.Contains(output, "transport_failed") {
 		t.Fatal(output, err)
 	}
@@ -291,19 +332,46 @@ func TestRemoteFailureRetainsJournalAndNeverStartsLocal(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var journal int
+	var journal, cursor, receipts int
+	var saved []byte
 	if err := database.QueryRow("SELECT COUNT(*) FROM evidence_outbox").Scan(&journal); err != nil {
 		t.Fatal(err)
 	}
-	_ = database.Close()
-	if journal != 2 {
-		t.Fatal("work lost", journal)
+	if err := database.QueryRow("SELECT acknowledged_sequence FROM evidence_destinations").Scan(&cursor); err != nil {
+		t.Fatal(err)
 	}
-	target, path := startRemote(t)
-	c.must(t, "config", "set", "server-url", target)
+	if err := database.QueryRow("SELECT COUNT(*) FROM evidence_batches WHERE receipt_bytes IS NOT NULL").Scan(&receipts); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.QueryRow("SELECT request_bytes FROM evidence_batches WHERE receipt_bytes IS NULL").Scan(&saved); err != nil {
+		t.Fatal(err)
+	}
+	_ = database.Close()
+	if journal != 2 || cursor != 0 || receipts != 0 {
+		t.Fatal("work lost or prematurely acknowledged", journal, cursor, receipts)
+	}
+	assertUsage(t, target, path, 0, 0)
 	c.must(t, "sync", "--publish-only")
 	assertUsage(t, target, path, 1, 120)
 	assertAcknowledged(t, c)
+	mu.Lock()
+	defer mu.Unlock()
+	if len(requests) != 2 || !bytes.Equal(requests[0], saved) || !bytes.Equal(requests[1], saved) {
+		t.Fatal("retry changed immutable request")
+	}
+}
+
+func TestUnreachableRemoteFailsPreflightWithoutCollectionOrLocalServer(t *testing.T) {
+	c := newClient(t)
+	c.must(t, "config", "set", "server-url", "http://127.0.0.1:1")
+	if output, err := c.run(t, "sync", "--harness", "pi", "--source-dir", c.source); err == nil {
+		t.Fatal("unreachable descriptor accepted", output)
+	}
+	for _, path := range []string{c.collector, filepath.Join(c.root, "data", "tokeninsights", "server.duckdb"), filepath.Join(c.root, "state")} {
+		if _, err := os.Stat(path); !os.IsNotExist(err) {
+			t.Fatal("preflight created collector/local state", path, err)
+		}
+	}
 }
 
 func TestRemoteCommittedResponseLostReplaysExactRequestAndReceipt(t *testing.T) {

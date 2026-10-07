@@ -1,6 +1,6 @@
 # Development
 
-TokenInsights is a pnpm monorepo with a Go CLI and a Vite/React browser application. `mise.toml` pins Go, Node, and pnpm for local development and GitHub Actions. Direct Go builds still require only Go 1.26+.
+TokenInsights is a pnpm monorepo with a Go CLI and a Vite/React browser application. `mise.toml` pins Go, Node, and pnpm for local development and GitHub Actions. Direct Go builds require Go 1.26+ and a CGO/C/C++ toolchain for DuckDB, without JavaScript tooling.
 
 ## Development builds
 
@@ -40,7 +40,7 @@ Run commands from the repository root unless noted otherwise.
 | Run Go API with fixture data | `pnpm run dev:server` |
 | Run hot-reloading web app against Go API | `pnpm run dev:web` |
 | Run web app with synthetic API responses | `pnpm run dev:web:mock` |
-| Build frontend into Go and run final setup | `pnpm run start:web` |
+| Build frontend into Go and run web sync/dashboard | `pnpm run start:web` |
 
 ### Verification and generation
 
@@ -88,7 +88,7 @@ Verify the installed CLI and embedded browser application:
 ```sh
 command -v tokeninsights
 tokeninsights --version
-tokeninsights service start --open
+tokeninsights web
 ```
 
 ### Direct Go commands
@@ -156,6 +156,7 @@ git commit -m "docs: update readme [skip ci]"
 ## Reference
 
 - [Design and architecture](design.md)
+- [Docker and hosted deployment](deployment.md)
 - [CLI reference](../packages/cli/README.md)
 - [OpenAPI contract](openapi.yaml)
 - [Release guide](release.md)

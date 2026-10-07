@@ -1,6 +1,7 @@
 package server
 
 import (
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/analytics"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/db"
 	serverapi "github.com/flexdinesh/tokeninsights/packages/cli/internal/server/api"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/viewer"
@@ -126,4 +127,18 @@ func apiLocationOptions(options []db.LocationOption) []serverapi.LocationOption 
 		result = append(result, serverapi.LocationOption{Key: option.Key, Name: db.LocationDisplayName(option)})
 	}
 	return result
+}
+
+func apiFacets(data analytics.Facets) serverapi.UsageFacetsResponse {
+	response := serverapi.UsageFacetsResponse{
+		Providers: nonNilStrings(data.Providers), Models: nonNilStrings(data.Models),
+		Harnesses: apiHarnesses(data.Harnesses), Sessions: nonNilStrings(data.Sessions),
+		Repositories: apiLocationOptions(data.Repositories), Directories: apiLocationOptions(data.Directories),
+		Revision: data.Revision, DataEpoch: data.DatabaseID,
+	}
+	if data.Generation > 0 {
+		response.Generation = &data.Generation
+		response.InputRevision = &data.InputRevision
+	}
+	return response
 }

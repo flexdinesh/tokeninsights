@@ -229,6 +229,9 @@ func (m interactiveModel) renderDesk() string {
 		message, recovery := "No rows match the current scope.", "d Change date range · f Adjust filters"
 		if m.sessionCounts.Synced == 0 {
 			message, recovery = "No ingested usage yet.", "Run tokeninsights sync, then press r to reload."
+			if m.sharedSync.Running {
+				message, recovery = "Accepted usage is processing.", "Dashboard updates as processing finishes."
+			}
 		}
 		table = m.deskMessage(message, "", recovery, visible+1)
 	default:
@@ -286,6 +289,12 @@ func (m interactiveModel) deskFooter() string {
 	}
 	if maxOffset := m.maxHorizontalOffset(m.rows); maxOffset > 0 {
 		position += fmt.Sprintf(" · x %d/%d", m.horizontalOffset+1, maxOffset+1)
+	}
+	if m.sharedSync.Running {
+		if position != "" {
+			position += " · "
+		}
+		position += "processing"
 	}
 	if ansi.StringWidth(keys)+ansi.StringWidth(position)+ansi.StringWidth(tableSummarySeparator) > m.tableViewportWidth() {
 		keys = "f Filters   ? Help   q Quit"

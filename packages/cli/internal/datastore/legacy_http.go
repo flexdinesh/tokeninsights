@@ -51,6 +51,9 @@ func (s *Store) mountLegacy(mux *http.ServeMux) {
 }
 
 func (s *Store) AcceptLegacy(ctx context.Context, body []byte) (publication.Receipt, error) {
+	if s.kind != KindPersonal {
+		return publication.Receipt{}, reject("incompatible")
+	}
 	if err := s.checkFile(); err != nil {
 		return publication.Receipt{}, err
 	}
@@ -65,7 +68,7 @@ func (s *Store) AcceptLegacy(ctx context.Context, body []byte) (publication.Rece
 		return publication.Receipt{}, err
 	}
 	defer func() { _ = tx.Rollback() }()
-	m, err := ReadMetadata(ctx, tx)
+	m, err := ReadMetadataForDataset(ctx, tx, s.datasetID)
 	if err != nil {
 		return publication.Receipt{}, err
 	}
@@ -73,7 +76,7 @@ func (s *Store) AcceptLegacy(ctx context.Context, body []byte) (publication.Rece
 		return publication.Receipt{}, reject("database_mismatch")
 	}
 	var hash, old string
-	err = tx.QueryRowContext(ctx, "SELECT request_hash,receipt_json FROM ingestion.legacy_receipts WHERE stream_id=? AND batch_id=?", batch.StreamID, batch.BatchID).Scan(&hash, &old)
+	err = tx.QueryRowContext(ctx, "SELECT request_hash,receipt_json FROM ingestion.legacy_receipts WHERE dataset_id=? AND stream_id=? AND batch_id=?", s.datasetID, batch.StreamID, batch.BatchID).Scan(&hash, &old)
 	if err == nil {
 		if hash != publication.RequestHash(body) {
 			return publication.Receipt{}, reject("batch_conflict")
@@ -89,7 +92,7 @@ func (s *Store) AcceptLegacy(ctx context.Context, body []byte) (publication.Rece
 	for _, entry := range batch.Entries {
 		fact := entry.Fact
 		var previousJSON string
-		err := tx.QueryRowContext(ctx, "SELECT payload_json FROM analytics.legacy WHERE fact_id=?", fact.ID).Scan(&previousJSON)
+		err := tx.QueryRowContext(ctx, "SELECT payload_json FROM analytics.legacy WHERE dataset_id=? AND fact_id=?", s.datasetID, fact.ID).Scan(&previousJSON)
 		if err == nil {
 			var previous publication.Fact
 			if err := json.Unmarshal([]byte(previousJSON), &previous); err != nil {
@@ -109,7 +112,7 @@ func (s *Store) AcceptLegacy(ctx context.Context, body []byte) (publication.Rece
 			if fact.Revision.Value == previous.Revision.Value {
 				return receipt, reject("revision_conflict")
 			}
-			if _, err := tx.ExecContext(ctx, "DELETE FROM analytics.legacy WHERE fact_id=?", fact.ID); err != nil {
+			if _, err := tx.ExecContext(ctx, "DELETE FROM analytics.legacy WHERE dataset_id=? AND fact_id=?", s.datasetID, fact.ID); err != nil {
 				return receipt, err
 			}
 			receipt.Updated++
@@ -118,7 +121,7 @@ func (s *Store) AcceptLegacy(ctx context.Context, body []byte) (publication.Rece
 		} else {
 			return receipt, err
 		}
-		if err := insertFact(ctx, tx, "analytics.legacy", fact, 0, m.Revision, "", ""); err != nil {
+		if err := insertFact(ctx, tx, s.datasetID, "analytics.legacy", fact, 0, m.Revision, "", ""); err != nil {
 			return receipt, err
 		}
 	}
@@ -129,10 +132,10 @@ func (s *Store) AcceptLegacy(ctx context.Context, body []byte) (publication.Rece
 		receipt.Revision++
 	}
 	encoded, _ := json.Marshal(receipt)
-	if _, err := tx.ExecContext(ctx, "INSERT INTO ingestion.legacy_receipts VALUES(?,?,?,?)", batch.StreamID, batch.BatchID, receipt.RequestHash, string(encoded)); err != nil {
+	if _, err := tx.ExecContext(ctx, "INSERT INTO ingestion.legacy_receipts VALUES(?,?,?,?,?)", s.datasetID, batch.StreamID, batch.BatchID, receipt.RequestHash, string(encoded)); err != nil {
 		return receipt, err
 	}
-	if _, err := tx.ExecContext(ctx, "UPDATE ingestion.metadata SET revision=?,last_ingestion_at_ms=? WHERE id=1", receipt.Revision, receipt.CommittedAtMs); err != nil {
+	if _, err := tx.ExecContext(ctx, "UPDATE ingestion.metadata SET revision=?,last_ingestion_at_ms=? WHERE dataset_id=?", receipt.Revision, receipt.CommittedAtMs, s.datasetID); err != nil {
 		return receipt, err
 	}
 	return receipt, tx.Commit()

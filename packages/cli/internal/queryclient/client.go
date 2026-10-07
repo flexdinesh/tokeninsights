@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/serverfeatures"
 	"io"
 	"mime"
 	"net/http"
@@ -39,9 +40,10 @@ func (e *StatusError) Error() string {
 }
 
 type Client struct {
-	base  url.URL
-	http  http.Client
-	token string
+	base    url.URL
+	http    http.Client
+	token   string
+	dataset string
 }
 
 // WithToken returns a client copy authenticated by a bearer token.
@@ -78,6 +80,13 @@ func New(baseURL string, httpClient *http.Client) (*Client, error) {
 }
 
 func (c *Client) Instance(ctx context.Context) (api.InstanceResponse, error) {
+	if c.dataset != "" {
+		response, err := c.Descriptor(ctx)
+		if err != nil {
+			return api.InstanceResponse{}, err
+		}
+		return api.InstanceResponse{ApiVersion: api.V1, DataEpoch: response.DataEpoch, DataReadiness: api.InstanceResponseDataReadiness(response.DataReadiness), Defaults: response.Defaults, Hostname: response.Hostname, InstanceId: response.InstanceId, ServerVersion: response.ServerVersion, Timezone: response.Timezone}, nil
+	}
 	var response api.InstanceResponse
 	err := c.get(ctx, "/api/v1/instance", nil, &response)
 	if err == nil && response.ApiVersion != api.V1 {
@@ -87,12 +96,26 @@ func (c *Client) Instance(ctx context.Context) (api.InstanceResponse, error) {
 }
 
 func (c *Client) Usage(ctx context.Context, params api.GetUsageParams) (api.UsageResponse, error) {
+	if c.dataset != "" {
+		result, err := c.UsageV2(ctx, params)
+		if err != nil {
+			return api.UsageResponse{}, err
+		}
+		return usageV1(result), nil
+	}
 	var response api.UsageResponse
 	err := c.get(ctx, "/api/v1/usage", usageValues(params), &response)
 	return response, err
 }
 
 func (c *Client) Facets(ctx context.Context, params api.GetUsageFacetsParams) (api.UsageFacetsResponse, error) {
+	if c.dataset != "" {
+		result, err := c.FacetsV2(ctx, params)
+		if err != nil {
+			return api.UsageFacetsResponse{}, err
+		}
+		return api.UsageFacetsResponse{DataEpoch: result.DataEpoch, Directories: result.Directories, Generation: result.Generation, Harnesses: result.Harnesses, InputRevision: result.InputRevision, InstanceId: result.InstanceId, Models: result.Models, Pending: result.Pending, Providers: result.Providers, Repositories: result.Repositories, Revision: result.Revision, Sessions: result.Sessions}, nil
+	}
 	var response api.UsageFacetsResponse
 	values := selectionValues(params.Period, params.Bucket, params.From, params.To, params.Provider, params.Model, params.Harness, params.Session, params.Repository, params.Directory)
 	setValue(values, "tab", params.Tab)
@@ -103,6 +126,10 @@ func (c *Client) Facets(ctx context.Context, params api.GetUsageFacetsParams) (a
 
 // Status observes published data readiness and revision without requesting work.
 func (c *Client) Status(ctx context.Context) (api.SyncResponse, error) {
+	if c.dataset != "" {
+		response, err := c.StatusV2(ctx)
+		return api.SyncResponse{DataEpoch: response.DataEpoch, DataReadiness: api.SyncResponseDataReadiness(response.DataReadiness), InstanceId: response.InstanceId, Revision: response.Revision, Running: response.Pending > 0}, err
+	}
 	var response api.SyncResponse
 	err := c.get(ctx, "/api/v1/sync", nil, &response)
 	return response, err
@@ -154,7 +181,7 @@ func (c *Client) allUsage(ctx context.Context, params api.GetUsageParams) (api.U
 		if err != nil {
 			return api.UsageResponse{}, err
 		}
-		if result.Revision != next.Revision || result.InstanceId != next.InstanceId || result.DataEpoch != next.DataEpoch || next.RowCount != result.RowCount {
+		if result.Revision != next.Revision || result.InstanceId != next.InstanceId || result.DataEpoch != next.DataEpoch || next.RowCount != result.RowCount || !sameGeneration(result.Generation, next.Generation) {
 			return api.UsageResponse{}, ErrSnapshotChanged
 		}
 		if err := validatePage(next, page, size, seen); err != nil {
@@ -170,6 +197,13 @@ func (c *Client) allUsage(ctx context.Context, params api.GetUsageParams) (api.U
 		return api.UsageResponse{}, ErrSnapshotChanged
 	}
 	return result, nil
+}
+
+func sameGeneration(a, b *int64) bool {
+	if a == nil || b == nil {
+		return a == nil && b == nil
+	}
+	return *a == *b
 }
 
 func validatePage(response api.UsageResponse, page, size int, seen map[string]bool) error {
@@ -268,7 +302,93 @@ func (c *Client) get(ctx context.Context, endpoint string, values url.Values, ta
 	if decoder.Decode(&trailing) != io.EOF {
 		return errors.New("server query returned trailing data")
 	}
-	return validateEnvelope(body, endpoint == "/api/v1/instance" || endpoint == "/api/v1/sync", endpoint != "/api/v1/instance")
+	metadata := strings.HasSuffix(endpoint, "/instance") || strings.HasSuffix(endpoint, "/sync") || strings.HasSuffix(endpoint, "/status")
+	if err := validateEnvelope(body, metadata, !strings.HasSuffix(endpoint, "/instance")); err != nil {
+		return err
+	}
+	if strings.HasPrefix(endpoint, "/api/v2/") {
+		var envelope struct {
+			DatasetID *string `json:"datasetId"`
+		}
+		if json.Unmarshal(body, &envelope) != nil || envelope.DatasetID == nil || *envelope.DatasetID == "" {
+			return errors.New("server query dataset envelope is invalid")
+		}
+		if c.dataset != "" && c.dataset != *envelope.DatasetID {
+			return ErrSnapshotChanged
+		}
+	}
+	return nil
+}
+
+// WithDataset pins reads to one authenticated dataset and selects the v2 API.
+func (c *Client) WithDataset(dataset string) *Client {
+	copy := *c
+	copy.dataset = dataset
+	return &copy
+}
+
+func (c *Client) Descriptor(ctx context.Context) (api.InstanceResponseV2, error) {
+	var result api.InstanceResponseV2
+	err := c.get(ctx, "/api/v2/instance", nil, &result)
+	var status *StatusError
+	if errors.As(err, &status) && status.StatusCode == http.StatusNotFound {
+		return result, errors.New("server upgrade required: read API v2 unavailable")
+	}
+	if err != nil {
+		return result, err
+	}
+	if result.ApiVersion != "v2" {
+		return result, errors.New("unsupported server API version")
+	}
+	if err := serverfeatures.Kind(result.ServerKind).Validate(); err != nil {
+		return result, errors.New("unsupported server kind")
+	}
+	if err := (serverfeatures.Policy{Kind: serverfeatures.Kind(result.ServerKind), Capabilities: DescriptorCapabilities(result)}).Validate(); err != nil {
+		return result, errors.New("invalid server capability policy")
+	}
+	return result, nil
+}
+
+func DescriptorCapabilities(descriptor api.InstanceResponseV2) serverfeatures.Capabilities {
+	result := make(serverfeatures.Capabilities, 0, len(descriptor.Capabilities))
+	for _, value := range descriptor.Capabilities {
+		result = append(result, serverfeatures.Capability(value))
+	}
+	return result.Known()
+}
+
+func HasPermission(descriptor api.InstanceResponseV2, permission serverfeatures.Permission) bool {
+	for _, value := range descriptor.Permissions {
+		if string(value) == string(permission) {
+			return true
+		}
+	}
+	return false
+}
+
+func (c *Client) UsageV2(ctx context.Context, params api.GetUsageParams) (api.UsageResponseV2, error) {
+	var result api.UsageResponseV2
+	err := c.get(ctx, "/api/v2/usage", usageValues(params), &result)
+	return result, err
+}
+
+func (c *Client) FacetsV2(ctx context.Context, params api.GetUsageFacetsParams) (api.UsageFacetsResponseV2, error) {
+	var result api.UsageFacetsResponseV2
+	values := selectionValues(params.Period, params.Bucket, params.From, params.To, params.Provider, params.Model, params.Harness, params.Session, params.Repository, params.Directory)
+	setValue(values, "tab", params.Tab)
+	setValue(values, "search", params.Search)
+	err := c.get(ctx, "/api/v2/usage/facets", values, &result)
+	return result, err
+}
+
+func (c *Client) StatusV2(ctx context.Context) (api.StatusResponseV2, error) {
+	var result api.StatusResponseV2
+	err := c.get(ctx, "/api/v2/status", nil, &result)
+	return result, err
+}
+
+func usageV1(r api.UsageResponseV2) api.UsageResponse {
+	return api.UsageResponse{Chart: r.Chart, DataEpoch: r.DataEpoch, FactCount: r.FactCount, Generation: r.Generation, InputRevision: r.InputRevision, InstanceId: r.InstanceId, LastSynced: r.LastSynced, Page: r.Page, PageSize: r.PageSize, Pending: r.Pending, Quality: r.Quality, Range: r.Range, Revision: r.Revision, RowCount: r.RowCount, Rows: r.Rows, Summary: r.Summary, Unresolved: r.Unresolved}
 }
 
 func setValue[T ~string | ~int](values url.Values, key string, value *T) {

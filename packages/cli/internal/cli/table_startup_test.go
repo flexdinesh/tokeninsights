@@ -76,6 +76,9 @@ func TestTUIDefaultSyncAcceptsInsideLoadingScreenAndReloadQueriesProcessedData(t
 		if !ok || dashboard.loading || len(dashboard.rows) != 0 {
 			t.Fatal("startup must finish after acceptance, before asynchronous processing")
 		}
+		if !dashboard.sharedSync.Running || !strings.Contains(ansi.Strip(dashboard.View()), "processing") {
+			t.Fatal("accepted processing not shown")
+		}
 		for {
 			worked, err := store.ProcessNext(t.Context())
 			if err != nil {
@@ -166,6 +169,7 @@ func TestStartupFailureCanRetryOrViewSavedWithoutCollection(t *testing.T) {
 }
 
 func TestStartupQuitCancelsWorkerAndIgnoresOtherKeysWhileBusy(t *testing.T) {
+	remote, _, _ := newViewQueryServer(t, false)
 	started, stopped := make(chan struct{}), make(chan struct{})
 	replaceViewCollector(t, func(ctx context.Context, _ collector.Options) (collector.Result, error) {
 		close(started)
@@ -173,7 +177,7 @@ func TestStartupQuitCancelsWorkerAndIgnoresOtherKeysWhileBusy(t *testing.T) {
 		close(stopped)
 		return collector.Result{}, ctx.Err()
 	})
-	dashboard := newInteractiveModel(t.Context(), tableOptions{serverURL: "http://127.0.0.1:1"}, time.Now(), "unknown")
+	dashboard := newInteractiveModel(t.Context(), tableOptions{serverURL: remote.URL}, time.Now(), "unknown")
 	model := newStartupModel(dashboard)
 	model.Init()
 	defer func() { dashboard.cancelSync(); model.workers.Wait() }()

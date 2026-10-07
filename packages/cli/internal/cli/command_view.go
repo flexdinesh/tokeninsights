@@ -3,11 +3,14 @@ package cli
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/clientworkflow"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/collector"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/serverfeatures"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/service"
 )
 
@@ -21,6 +24,9 @@ func runView(invocation commandInvocation, args []string) error {
 	if err != nil {
 		return err
 	}
+	if options.serverKind == serverfeatures.Hosted {
+		return fmt.Errorf("tui requires a personal server; use tokeninsights web\n%w", ErrUsage)
+	}
 	if options.syncBeforeView {
 		if options.serverURL == "" {
 			if err := collector.ValidatePaths(options.collectorDBPath, options.dbPath); err != nil {
@@ -28,15 +34,19 @@ func runView(invocation commandInvocation, args []string) error {
 			}
 		}
 	}
-	if !options.syncBeforeView && options.serverURL == "" {
-		state, err := ensureViewConfiguredLocal(invocation.context, options.dbPath, invocation.defaults())
+	if !options.syncBeforeView {
+		settings := invocation.defaults()
+		settings.ServerURL = options.serverURL
+		session, err := clientworkflow.Resolve(invocation.context, settings, func(ctx context.Context) (service.State, error) {
+			return ensureViewConfiguredLocal(ctx, options.dbPath, settings)
+		})
 		if err != nil {
 			return err
 		}
-		if state.Record == nil {
-			return errors.New("local query server unavailable")
+		if err := session.Require(serverfeatures.Read, serverfeatures.TerminalDashboard, serverfeatures.Usage, serverfeatures.Facets); err != nil {
+			return err
 		}
-		options.serverURL = state.Record.URL
+		options.serverURL, options.datasetID = session.URL, session.Descriptor.DatasetId
 	}
 	if options.serverURL != "" {
 		if _, err := tableClient(options); err != nil {

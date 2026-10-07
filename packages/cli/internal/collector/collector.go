@@ -13,19 +13,34 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/collectorstore"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/db"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/dbpath"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/evidence"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/pipeline"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/publication"
 )
 
 const requestTimeout = 30 * time.Second
+const maxRetryAfter = 24 * time.Hour
+
+// Destination is resolved by command composition, before any source capture.
+// Identity is the canonical endpoint; URL may address a private local transport.
+type Destination struct {
+	URL        string
+	Identity   string
+	DatabaseID string
+	DatasetID  string
+	Client     *http.Client
+	Local      bool
+}
 
 type Options struct {
+	Destination      *Destination
 	CollectorDBPath  string
 	ServerDBPath     string
 	ServerURL        string
@@ -39,6 +54,7 @@ type Options struct {
 
 // DeliveryProgress reports acknowledged work, never estimated upload progress.
 type DeliveryProgress struct {
+	Accepted     int64
 	Batches      int64
 	Pending      int64
 	PendingKnown bool
@@ -62,12 +78,16 @@ type StageError struct {
 	Stage, Code string
 	BatchID     string
 	Cause       error
+	RetryAfter  time.Duration
 }
 
 func (e *StageError) Error() string {
 	value := e.Stage + ": " + e.Code
 	if e.BatchID != "" {
 		value += " batch=" + e.BatchID
+	}
+	if e.RetryAfter > 0 {
+		value += " retry-after=" + e.RetryAfter.String()
 	}
 	return value
 }
@@ -111,12 +131,19 @@ func Run(ctx context.Context, options Options) (Result, error) {
 	if strings.TrimSpace(options.CollectorDBPath) == "" {
 		return result, failure("configuration", "missing_database_path", nil)
 	}
-	if strings.TrimSpace(options.ServerURL) == "" {
+	if options.Destination != nil && options.Destination.Local || options.Destination == nil && strings.TrimSpace(options.ServerURL) == "" {
 		if err := ValidatePaths(options.CollectorDBPath, options.ServerDBPath); err != nil {
 			return result, err
 		}
 	}
-	if strings.TrimSpace(options.ServerURL) != "" {
+	if options.Destination != nil {
+		if _, err := endpoint(options.Destination.URL); err != nil {
+			return result, err
+		}
+		if options.Destination.DatabaseID == "" || !evidence.ValidDatasetID(options.Destination.DatasetID) {
+			return result, failure("configuration", "invalid_destination", nil)
+		}
+	} else if strings.TrimSpace(options.ServerURL) != "" {
 		if _, err := endpoint(options.ServerURL); err != nil {
 			return result, err
 		}
@@ -159,9 +186,9 @@ func publishLegacy(ctx context.Context, options Options, result *Result) error {
 	if err != nil {
 		return err
 	}
-	client := &http.Client{Timeout: requestTimeout, CheckRedirect: func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }}
+	client := deliveryClient(nil)
 	if options.LocalClient != nil {
-		client = options.LocalClient
+		client = deliveryClient(options.LocalClient)
 	}
 	body, err := request(ctx, client, target+"/api/v1/ingestion/capabilities", options.Token, nil)
 	if err != nil {
@@ -240,8 +267,20 @@ func publishLegacy(ctx context.Context, options Options, result *Result) error {
 
 func reportDeliveryProgress(options Options, result *Result) {
 	if options.DeliveryProgress != nil {
-		options.DeliveryProgress(DeliveryProgress{Batches: result.Batches, Pending: result.Pending, PendingKnown: result.PendingKnown})
+		options.DeliveryProgress(DeliveryProgress{Accepted: result.Accepted, Batches: result.Batches, Pending: result.Pending, PendingKnown: result.PendingKnown})
 	}
+}
+
+func deliveryClient(source *http.Client) *http.Client {
+	client := http.Client{}
+	if source != nil {
+		client = *source
+	}
+	if client.Timeout <= 0 || client.Timeout > requestTimeout {
+		client.Timeout = requestTimeout
+	}
+	client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	return &client
 }
 
 func request(ctx context.Context, client *http.Client, target, token string, body []byte) ([]byte, error) {
@@ -275,16 +314,25 @@ func request(ctx context.Context, client *http.Client, target, token string, bod
 	if response.StatusCode != http.StatusOK && response.StatusCode != http.StatusAccepted {
 		var responseError publication.ErrorResponse
 		if json.Unmarshal(data, &responseError) == nil && safeServerCode(responseError.Code) && safeServerStage(responseError.Stage) {
-			return nil, failure(responseError.Stage, responseError.Code, nil)
+			return nil, &StageError{Stage: responseError.Stage, Code: responseError.Code, RetryAfter: retryDelay(response.Header.Get("Retry-After"))}
 		}
-		return nil, failure("delivery", fmt.Sprintf("http_%d", response.StatusCode), nil)
+		return nil, &StageError{Stage: "delivery", Code: fmt.Sprintf("http_%d", response.StatusCode), RetryAfter: retryDelay(response.Header.Get("Retry-After"))}
 	}
 	return data, nil
 }
 
+// Servers return bounded delta-seconds; malformed or excessive delays are ignored.
+func retryDelay(value string) time.Duration {
+	seconds, err := strconv.ParseInt(value, 10, 64)
+	if err != nil || seconds <= 0 || seconds > int64(maxRetryAfter/time.Second) {
+		return 0
+	}
+	return time.Duration(seconds) * time.Second
+}
+
 func safeServerCode(code string) bool {
 	switch code {
-	case "busy", "body_limit", "body_read_failed", "invalid_request", "invalid_identity", "invalid_tokens", "invalid_revision", "incompatible", "database_mismatch", "batch_conflict", "revision_limit", "transaction_failed", "fact_conflict", "revision_conflict", "reference_conflict", "aggregate_limit":
+	case "busy", "body_limit", "body_read_failed", "invalid_request", "invalid_identity", "invalid_tokens", "invalid_revision", "incompatible", "database_mismatch", "batch_conflict", "revision_limit", "transaction_failed", "fact_conflict", "revision_conflict", "reference_conflict", "aggregate_limit", "dataset_mismatch", "unauthorized", "forbidden", "rate_limited", "user_busy", "unavailable", "not_found":
 		return true
 	}
 	return false

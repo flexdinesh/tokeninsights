@@ -1,4 +1,4 @@
-package server
+package analytics
 
 import (
 	"encoding/json"
@@ -23,7 +23,7 @@ func TestDuckDashboardTabsFiltersPaginationAndSeparateEstimates(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	batch := evidence.Batch{ProtocolVersion: 2, ExtractorVersion: 1, DatabaseID: metadata.DatabaseID, StreamID: "stream", BatchID: "batch", FromSequence: 1, ToSequence: 6}
+	batch := evidence.Batch{ProtocolVersion: evidence.ProtocolVersion, ExtractorVersion: 1, DatabaseID: metadata.DatabaseID, DatasetID: metadata.DatasetID, StreamID: "stream", BatchID: "batch", FromSequence: 1, ToSequence: 6}
 	for i := 0; i < 6; i++ {
 		record := evidence.Record{Harness: "pi", Format: "pi-jsonl", SourceID: "source", Lineage: "lineage", Ordinal: int64(i + 1), Data: json.RawMessage(fmt.Sprintf(`{"type":"message","id":"m-%d","message":{"role":"assistant","timestamp":1700000000000,"provider":"openai","model":"model-%d","usage":{"input":100,"output":20}}}`, i, i)), Context: []evidence.Context{{Ordinal: 0, Data: json.RawMessage(fmt.Sprintf(`{"type":"session","id":"session-%d"}`, i))}}, Location: &evidence.Location{DirectoryKey: "directory", DirectoryName: "project", RepositoryKey: "repository", RepositoryName: "repo", RepositorySource: "harness"}}
 		batch.Entries = append(batch.Entries, evidence.Entry{Sequence: int64(i + 1), Record: record})
@@ -46,11 +46,11 @@ func TestDuckDashboardTabsFiltersPaginationAndSeparateEstimates(t *testing.T) {
 	}
 	for _, tab := range []string{"tokens", "models", "providers", "harnesses", "sessions", "context", "repo"} {
 		t.Run(tab, func(t *testing.T) {
-			q := query{Selection: viewer.Selection{Period: "all", Bucket: "day"}, Tab: tab, Quality: "confirmed", Sort: "total", Direction: "desc", Page: 1, PageSize: 2, LocationGroup: db.RepoGroupRepository}
+			q := Query{Selection: viewer.Selection{Period: "all", Bucket: "day"}, Tab: tab, Quality: "confirmed", Sort: "total", Direction: "desc", Page: 1, PageSize: 2, LocationGroup: db.RepoGroupRepository}
 			if tab == "context" {
 				q.Sort = "averageContext"
 			}
-			data, err := loadDataDashboard(t.Context(), store, q, time.Now())
+			data, err := LoadDashboard(t.Context(), store, q, time.Now())
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -60,7 +60,7 @@ func TestDuckDashboardTabsFiltersPaginationAndSeparateEstimates(t *testing.T) {
 			if len(data.Rows) > 2 {
 				t.Fatal("unbounded page")
 			}
-			facets, err := loadDataFacets(t.Context(), store, q, "", time.Now())
+			facets, err := LoadFacets(t.Context(), store, q, "", time.Now())
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -68,14 +68,14 @@ func TestDuckDashboardTabsFiltersPaginationAndSeparateEstimates(t *testing.T) {
 				t.Fatalf("facets/snapshot %+v", facets)
 			}
 			q.Quality = "estimated"
-			estimated, err := loadDataDashboard(t.Context(), store, q, time.Now())
+			estimated, err := LoadDashboard(t.Context(), store, q, time.Now())
 			if err != nil || estimated.Summary.TotalTokens != 0 || estimated.RowCount != 0 {
 				t.Fatalf("confirmed leaked into estimated: %+v %v", estimated, err)
 			}
 		})
 	}
-	q := query{Selection: viewer.Selection{Period: "all", Bucket: "day", Models: []string{"model-2"}}, Tab: "models", Quality: "confirmed", Sort: "name", Direction: "asc", Page: 999999999, PageSize: 2}
-	data, err := loadDataDashboard(t.Context(), store, q, time.Now())
+	q := Query{Selection: viewer.Selection{Period: "all", Bucket: "day", Models: []string{"model-2"}}, Tab: "models", Quality: "confirmed", Sort: "name", Direction: "asc", Page: 999999999, PageSize: 2}
+	data, err := LoadDashboard(t.Context(), store, q, time.Now())
 	if err != nil || data.Summary.TotalTokens != 120 || data.Page != 1 || data.Rows[0].Name != "model-2" {
 		t.Fatalf("filter/page %+v %v", data, err)
 	}
@@ -110,10 +110,10 @@ func TestDuckCalendarBucketsAndDayFilters(t *testing.T) {
 		if err := store.SQL().QueryRow(statement, parameter, at.UnixMilli()).Scan(&got); err != nil || got != tc.day {
 			t.Fatal(tc, got, err)
 		}
-		where, args := duckWhere(db.Filter{DayFrom: tc.day, DayTo: tc.day}, tc.zone)
+		where, args := duckWhere(db.Filter{DayFrom: tc.day, DayTo: tc.day}, tc.zone, "default")
 		var n int
 		filterArgs := append([]interface{}{at.UnixMilli()}, args...)
-		if err := store.SQL().QueryRow("SELECT COUNT(*) FROM (SELECT CAST(? AS BIGINT) AS occurred_at_ms,TRUE AS countable)"+where, filterArgs...).Scan(&n); err != nil || n != 1 {
+		if err := store.SQL().QueryRow("SELECT COUNT(*) FROM (SELECT CAST(? AS BIGINT) AS occurred_at_ms,TRUE AS countable, 'default' AS dataset_id)"+where, filterArgs...).Scan(&n); err != nil || n != 1 {
 			t.Fatal("inclusive calendar bounds", tc, n, err)
 		}
 	}

@@ -1,7 +1,18 @@
 import { spawn } from 'node:child_process'
+import type { Server } from 'node:http'
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
+import {
+  adminRequest,
+  hostedBackend,
+  hostedFixturePointer,
+  hostedOrigin,
+  seedHostedUser,
+  startHostedProxy,
+  tokenSchema,
+  userSchema,
+} from './hosted-fixture.ts'
 
 const tempRoot = process.env.TOKENINSIGHTS_TEST_TMP ?? tmpdir()
 const localHome = await mkdtemp(join(tempRoot, 'ti-web-'))
@@ -99,7 +110,7 @@ try {
       throw new Error('fixture server exited before readiness')
     }
     try {
-      const response = await fetch('http://127.0.0.1:18766/api/v1/instance')
+      const response = await fetch('http://127.0.0.1:18766/api/v2/instance')
       if (response.ok) break
     } catch {
       // Startup is bounded; no host harness files are used.
@@ -142,7 +153,7 @@ try {
   })
   const processingDeadline = Date.now() + 30000
   for (;;) {
-    const response = await fetch('http://127.0.0.1:18766/api/v1/usage?period=all&tab=models')
+    const response = await fetch('http://127.0.0.1:18766/api/v2/usage?period=all&tab=models')
     const value: unknown = await response.json()
     if (
       response.ok &&
@@ -170,8 +181,37 @@ try {
     fixtureServer.kill('SIGTERM')
   })
 }
-const children = [startServer(localHome, '18765')]
+const hostedHome = join(localHome, 'hosted')
+await mkdir(hostedHome)
+const hostedSocket = join(hostedHome, 'admin.sock')
+const hostedServer = spawn(
+  resolve('../cli/bin/tokeninsights-server'),
+  [
+    '--kind',
+    'hosted',
+    '--listen',
+    '127.0.0.1:18768',
+    '--server-db-path',
+    join(hostedHome, 'server.duckdb'),
+    '--public-url',
+    hostedOrigin,
+    '--admin-socket',
+    hostedSocket,
+  ],
+  {
+    stdio: 'inherit',
+    env: {
+      ...process.env,
+      HOME: hostedHome,
+      XDG_DATA_HOME: join(hostedHome, '.local/share'),
+      XDG_CONFIG_HOME: join(hostedHome, '.config'),
+    },
+  },
+)
+const children = [startServer(localHome, '18765'), hostedServer]
+
 let stopping = false
+let proxy: Server | undefined
 
 async function stop(code: number) {
   if (stopping) return
@@ -189,7 +229,11 @@ async function stop(code: number) {
         }),
     ),
   )
+  const activeProxy = proxy
+  if (activeProxy)
+    await new Promise<void>((resolveClose) => activeProxy.close(() => resolveClose()))
   await rm(localHome, { recursive: true, force: true })
+  await rm(hostedFixturePointer, { force: true })
   process.exitCode = code
 }
 
@@ -203,4 +247,43 @@ for (const child of children) {
     console.error(error)
     void stop(1)
   })
+}
+
+try {
+  const hostedDeadline = Date.now() + 10000
+  for (;;) {
+    if (hostedServer.exitCode !== null || hostedServer.signalCode !== null)
+      throw new Error('Hosted fixture exited before readiness')
+    try {
+      if ((await fetch(hostedBackend + '/readyz')).ok) break
+    } catch {
+      /* Bounded startup. */
+    }
+    if (Date.now() >= hostedDeadline) throw new Error('Hosted fixture readiness timed out')
+    await new Promise<void>((resolveWait) => setTimeout(resolveWait, 50))
+  }
+  for (const { name, input } of [
+    { name: 'alice', input: 100 },
+    { name: 'bob', input: 400 },
+  ]) {
+    const user = await adminRequest(
+      hostedSocket,
+      { operation: 'create-user', displayName: name },
+      userSchema,
+    )
+    const token = await adminRequest(
+      hostedSocket,
+      { operation: 'create-token', userId: user.userId, permissions: ['read', 'ingest'] },
+      tokenSchema,
+    )
+    await seedHostedUser(token.token, input)
+    await writeFile(join(hostedHome, name + '.json'), JSON.stringify({ ...user, ...token }))
+  }
+  await writeFile(join(hostedHome, 'socket.txt'), hostedSocket)
+  // Fixture files are available only to the Node test process through this local pointer.
+  await writeFile(hostedFixturePointer, hostedHome, { mode: 0o600 })
+  proxy = await startHostedProxy()
+} catch (error) {
+  await stop(1)
+  throw error
 }

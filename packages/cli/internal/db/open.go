@@ -82,6 +82,9 @@ func ResetAllContext(ctx context.Context, dbPath string) error {
 
 // ResetAllLocked requires the caller to own the database writer lock.
 func ResetAllLocked(ctx context.Context, dbPath string) error {
+	if err := UpgradeEvidence(ctx, dbPath); err != nil {
+		return err
+	}
 	absPath, err := canonicalDBPath(dbPath)
 	if err != nil {
 		return err

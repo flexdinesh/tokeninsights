@@ -11,11 +11,12 @@ afterEach(() => {
 })
 
 const ready: SyncStatus = {
-  phase: 'ready',
-  running: false,
-  error: '',
+  generation: 1,
+  targetGeneration: 1,
+  inputRevision: 1,
+  pending: 0,
+  datasetId: 'default',
   revision: 7,
-  harnesses: {},
   instanceId: 'instance',
   dataEpoch: 'old',
   dataReadiness: 'ready',
@@ -58,7 +59,7 @@ it('database identity changes remove old analytics and facets', async () => {
   client.setQueryData(['usage', 'old'], { saved: true })
   client.setQueryData(['facets', 'old'], { saved: true })
   await act(() => client.setQueryData(['sync'], { ...ready, dataEpoch: 'new' }))
-  await waitFor(() => expect(result.current.identity).toBe('instance/new'))
+  await waitFor(() => expect(result.current.identity).toBe('instance/new/default/1'))
   expect(client.getQueryData(['usage', 'old'])).toBeUndefined()
   expect(client.getQueryData(['facets', 'old'])).toBeUndefined()
   unmount()
@@ -92,7 +93,7 @@ for (const readiness of ['metadata', 'recovery', 'rebuild', 'unavailable']) {
     client.setQueryData(['facets', 'old'], { saved: true })
     await act(() => result.current.reload())
     await waitFor(() => expect(result.current.analyticsEnabled).toBe(false))
-    expect(result.current.identity).toBe('instance/')
+    expect(result.current.identity).toBe('instance//default/1')
     expect(client.getQueryData(['usage', 'old'])).toBeUndefined()
     expect(client.getQueryData(['facets', 'old'])).toBeUndefined()
     expect(fetcher.mock.calls.every(([, init]) => init?.method === 'GET')).toBe(true)

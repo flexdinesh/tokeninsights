@@ -69,6 +69,87 @@ func (e Capability) Valid() bool {
 	}
 }
 
+// Defines values for CollectorAttemptErrorCode.
+const (
+	Cancelled        CollectorAttemptErrorCode = "cancelled"
+	CollectionFailed CollectorAttemptErrorCode = "collection_failed"
+	PublisherLost    CollectorAttemptErrorCode = "publisher_lost"
+	SubmissionFailed CollectorAttemptErrorCode = "submission_failed"
+)
+
+// Valid indicates whether the value is a known member of the CollectorAttemptErrorCode enum.
+func (e CollectorAttemptErrorCode) Valid() bool {
+	switch e {
+	case Cancelled:
+		return true
+	case CollectionFailed:
+		return true
+	case PublisherLost:
+		return true
+	case SubmissionFailed:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for CollectorAttemptHarnesses.
+const (
+	CollectorAttemptHarnessesComplete CollectorAttemptHarnesses = "complete"
+	CollectorAttemptHarnessesFailed   CollectorAttemptHarnesses = "failed"
+	CollectorAttemptHarnessesRunning  CollectorAttemptHarnesses = "running"
+	CollectorAttemptHarnessesSkipped  CollectorAttemptHarnesses = "skipped"
+	CollectorAttemptHarnessesWaiting  CollectorAttemptHarnesses = "waiting"
+)
+
+// Valid indicates whether the value is a known member of the CollectorAttemptHarnesses enum.
+func (e CollectorAttemptHarnesses) Valid() bool {
+	switch e {
+	case CollectorAttemptHarnessesComplete:
+		return true
+	case CollectorAttemptHarnessesFailed:
+		return true
+	case CollectorAttemptHarnessesRunning:
+		return true
+	case CollectorAttemptHarnessesSkipped:
+		return true
+	case CollectorAttemptHarnessesWaiting:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for CollectorAttemptStage.
+const (
+	CollectorAttemptStageAccepted    CollectorAttemptStage = "accepted"
+	CollectorAttemptStageCapturing   CollectorAttemptStage = "capturing"
+	CollectorAttemptStageFailed      CollectorAttemptStage = "failed"
+	CollectorAttemptStageInterrupted CollectorAttemptStage = "interrupted"
+	CollectorAttemptStageSubmitting  CollectorAttemptStage = "submitting"
+	CollectorAttemptStageWaiting     CollectorAttemptStage = "waiting"
+)
+
+// Valid indicates whether the value is a known member of the CollectorAttemptStage enum.
+func (e CollectorAttemptStage) Valid() bool {
+	switch e {
+	case CollectorAttemptStageAccepted:
+		return true
+	case CollectorAttemptStageCapturing:
+		return true
+	case CollectorAttemptStageFailed:
+		return true
+	case CollectorAttemptStageInterrupted:
+		return true
+	case CollectorAttemptStageSubmitting:
+		return true
+	case CollectorAttemptStageWaiting:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ErrorCode.
 const (
 	ErrorCodeInternalError    ErrorCode = "internal_error"
@@ -339,6 +420,84 @@ func (e InstanceResponseDataReadiness) Valid() bool {
 	}
 }
 
+// Defines values for InstanceResponseV2ApiVersion.
+const (
+	V2 InstanceResponseV2ApiVersion = "v2"
+)
+
+// Valid indicates whether the value is a known member of the InstanceResponseV2ApiVersion enum.
+func (e InstanceResponseV2ApiVersion) Valid() bool {
+	switch e {
+	case V2:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for InstanceResponseV2DataReadiness.
+const (
+	InstanceResponseV2DataReadinessMetadata    InstanceResponseV2DataReadiness = "metadata"
+	InstanceResponseV2DataReadinessReady       InstanceResponseV2DataReadiness = "ready"
+	InstanceResponseV2DataReadinessRebuild     InstanceResponseV2DataReadiness = "rebuild"
+	InstanceResponseV2DataReadinessRecovery    InstanceResponseV2DataReadiness = "recovery"
+	InstanceResponseV2DataReadinessUnavailable InstanceResponseV2DataReadiness = "unavailable"
+)
+
+// Valid indicates whether the value is a known member of the InstanceResponseV2DataReadiness enum.
+func (e InstanceResponseV2DataReadiness) Valid() bool {
+	switch e {
+	case InstanceResponseV2DataReadinessMetadata:
+		return true
+	case InstanceResponseV2DataReadinessReady:
+		return true
+	case InstanceResponseV2DataReadinessRebuild:
+		return true
+	case InstanceResponseV2DataReadinessRecovery:
+		return true
+	case InstanceResponseV2DataReadinessUnavailable:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for InstanceResponseV2Permissions.
+const (
+	Ingest InstanceResponseV2Permissions = "ingest"
+	Read   InstanceResponseV2Permissions = "read"
+)
+
+// Valid indicates whether the value is a known member of the InstanceResponseV2Permissions enum.
+func (e InstanceResponseV2Permissions) Valid() bool {
+	switch e {
+	case Ingest:
+		return true
+	case Read:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for InstanceResponseV2ServerKind.
+const (
+	Hosted   InstanceResponseV2ServerKind = "hosted"
+	Personal InstanceResponseV2ServerKind = "personal"
+)
+
+// Valid indicates whether the value is a known member of the InstanceResponseV2ServerKind enum.
+func (e InstanceResponseV2ServerKind) Valid() bool {
+	switch e {
+	case Hosted:
+		return true
+	case Personal:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for LocationGroup.
 const (
 	Directory  LocationGroup = "directory"
@@ -534,15 +693,45 @@ func (e RawBatchProtocolVersion) Valid() bool {
 	}
 }
 
+// Defines values for RawBatchV3ExtractorVersion.
+const (
+	RawBatchV3ExtractorVersionN1 RawBatchV3ExtractorVersion = 1
+)
+
+// Valid indicates whether the value is a known member of the RawBatchV3ExtractorVersion enum.
+func (e RawBatchV3ExtractorVersion) Valid() bool {
+	switch e {
+	case RawBatchV3ExtractorVersionN1:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for RawBatchV3ProtocolVersion.
+const (
+	RawBatchV3ProtocolVersionN3 RawBatchV3ProtocolVersion = 3
+)
+
+// Valid indicates whether the value is a known member of the RawBatchV3ProtocolVersion enum.
+func (e RawBatchV3ProtocolVersion) Valid() bool {
+	switch e {
+	case RawBatchV3ProtocolVersionN3:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for RawCapabilitiesCompletion.
 const (
-	Acceptance RawCapabilitiesCompletion = "acceptance"
+	RawCapabilitiesCompletionAcceptance RawCapabilitiesCompletion = "acceptance"
 )
 
 // Valid indicates whether the value is a known member of the RawCapabilitiesCompletion enum.
 func (e RawCapabilitiesCompletion) Valid() bool {
 	switch e {
-	case Acceptance:
+	case RawCapabilitiesCompletionAcceptance:
 		return true
 	default:
 		return false
@@ -618,6 +807,81 @@ const (
 func (e RawCapabilitiesProtocolVersion) Valid() bool {
 	switch e {
 	case RawCapabilitiesProtocolVersionN2:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for RawCapabilitiesV3Completion.
+const (
+	RawCapabilitiesV3CompletionAcceptance RawCapabilitiesV3Completion = "acceptance"
+)
+
+// Valid indicates whether the value is a known member of the RawCapabilitiesV3Completion enum.
+func (e RawCapabilitiesV3Completion) Valid() bool {
+	switch e {
+	case RawCapabilitiesV3CompletionAcceptance:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for RawCapabilitiesV3ExtractorVersion.
+const (
+	RawCapabilitiesV3ExtractorVersionN1 RawCapabilitiesV3ExtractorVersion = 1
+)
+
+// Valid indicates whether the value is a known member of the RawCapabilitiesV3ExtractorVersion enum.
+func (e RawCapabilitiesV3ExtractorVersion) Valid() bool {
+	switch e {
+	case RawCapabilitiesV3ExtractorVersionN1:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for RawCapabilitiesV3MaxBodyBytes.
+const (
+	RawCapabilitiesV3MaxBodyBytesN1048576e06 RawCapabilitiesV3MaxBodyBytes = 1.048576e+06
+)
+
+// Valid indicates whether the value is a known member of the RawCapabilitiesV3MaxBodyBytes enum.
+func (e RawCapabilitiesV3MaxBodyBytes) Valid() bool {
+	switch e {
+	case RawCapabilitiesV3MaxBodyBytesN1048576e06:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for RawCapabilitiesV3MaxEntries.
+const (
+	RawCapabilitiesV3MaxEntriesN256 RawCapabilitiesV3MaxEntries = 256
+)
+
+// Valid indicates whether the value is a known member of the RawCapabilitiesV3MaxEntries enum.
+func (e RawCapabilitiesV3MaxEntries) Valid() bool {
+	switch e {
+	case RawCapabilitiesV3MaxEntriesN256:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for RawCapabilitiesV3ProtocolVersion.
+const (
+	RawCapabilitiesV3ProtocolVersionN3 RawCapabilitiesV3ProtocolVersion = 3
+)
+
+// Valid indicates whether the value is a known member of the RawCapabilitiesV3ProtocolVersion enum.
+func (e RawCapabilitiesV3ProtocolVersion) Valid() bool {
+	switch e {
+	case RawCapabilitiesV3ProtocolVersionN3:
 		return true
 	default:
 		return false
@@ -750,6 +1014,33 @@ func (e SortField) Valid() bool {
 	}
 }
 
+// Defines values for StatusResponseV2DataReadiness.
+const (
+	StatusResponseV2DataReadinessMetadata    StatusResponseV2DataReadiness = "metadata"
+	StatusResponseV2DataReadinessReady       StatusResponseV2DataReadiness = "ready"
+	StatusResponseV2DataReadinessRebuild     StatusResponseV2DataReadiness = "rebuild"
+	StatusResponseV2DataReadinessRecovery    StatusResponseV2DataReadiness = "recovery"
+	StatusResponseV2DataReadinessUnavailable StatusResponseV2DataReadiness = "unavailable"
+)
+
+// Valid indicates whether the value is a known member of the StatusResponseV2DataReadiness enum.
+func (e StatusResponseV2DataReadiness) Valid() bool {
+	switch e {
+	case StatusResponseV2DataReadinessMetadata:
+		return true
+	case StatusResponseV2DataReadinessReady:
+		return true
+	case StatusResponseV2DataReadinessRebuild:
+		return true
+	case StatusResponseV2DataReadinessRecovery:
+		return true
+	case StatusResponseV2DataReadinessUnavailable:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for SyncPhase.
 const (
 	SyncPhaseReady SyncPhase = "ready"
@@ -846,11 +1137,55 @@ func (e UsageTab) Valid() bool {
 // ApiVersion defines model for ApiVersion.
 type ApiVersion string
 
+// BrowserSessionRequest defines model for BrowserSessionRequest.
+type BrowserSessionRequest struct {
+	Token string `json:"token"`
+}
+
 // Bucket defines model for Bucket.
 type Bucket string
 
 // Capability defines model for Capability.
 type Capability string
+
+// CollectorAttempt defines model for CollectorAttempt.
+type CollectorAttempt struct {
+	AcknowledgedBatches Count                      `json:"acknowledgedBatches"`
+	AcknowledgedEntries Count                      `json:"acknowledgedEntries"`
+	AttemptId           string                     `json:"attemptId"`
+	ErrorCode           *CollectorAttemptErrorCode `json:"errorCode,omitempty"`
+
+	// ExpiresAtMs Unix milliseconds through 9999-12-30T23:59:59.999Z. One day of headroom preserves calendar query support after timezone conversion. Source units are never guessed or rescaled.
+	ExpiresAtMs TimestampMs `json:"expiresAtMs"`
+
+	// FinishedAtMs Unix milliseconds through 9999-12-30T23:59:59.999Z. One day of headroom preserves calendar query support after timezone conversion. Source units are never guessed or rescaled.
+	FinishedAtMs *TimestampMs                         `json:"finishedAtMs,omitempty"`
+	Harnesses    map[string]CollectorAttemptHarnesses `json:"harnesses"`
+	Pending      Count                                `json:"pending"`
+	PendingKnown bool                                 `json:"pendingKnown"`
+	Stage        CollectorAttemptStage                `json:"stage"`
+
+	// StartedAtMs Unix milliseconds through 9999-12-30T23:59:59.999Z. One day of headroom preserves calendar query support after timezone conversion. Source units are never guessed or rescaled.
+	StartedAtMs TimestampMs `json:"startedAtMs"`
+
+	// UpdatedAtMs Unix milliseconds through 9999-12-30T23:59:59.999Z. One day of headroom preserves calendar query support after timezone conversion. Source units are never guessed or rescaled.
+	UpdatedAtMs TimestampMs `json:"updatedAtMs"`
+}
+
+// CollectorAttemptErrorCode defines model for CollectorAttempt.ErrorCode.
+type CollectorAttemptErrorCode string
+
+// CollectorAttemptHarnesses defines model for CollectorAttempt.Harnesses.
+type CollectorAttemptHarnesses string
+
+// CollectorAttemptStage defines model for CollectorAttempt.Stage.
+type CollectorAttemptStage string
+
+// CollectorProgressResponse defines model for CollectorProgressResponse.
+type CollectorProgressResponse struct {
+	Attempts   []CollectorAttempt `json:"attempts"`
+	InstanceId string             `json:"instanceId"`
+}
 
 // Count defines model for Count.
 type Count = int64
@@ -978,6 +1313,40 @@ type InstanceResponse struct {
 
 // InstanceResponseDataReadiness defines model for InstanceResponse.DataReadiness.
 type InstanceResponseDataReadiness string
+
+// InstanceResponseV2 defines model for InstanceResponseV2.
+type InstanceResponseV2 struct {
+	ApiVersion   InstanceResponseV2ApiVersion `json:"apiVersion"`
+	Capabilities []string                     `json:"capabilities"`
+
+	// DataEpoch Durable database identity; nonempty when dataReadiness is ready.
+	DataEpoch     string                          `json:"dataEpoch"`
+	DataReadiness InstanceResponseV2DataReadiness `json:"dataReadiness"`
+	DatasetId     string                          `json:"datasetId"`
+	Defaults      Selection                       `json:"defaults"`
+
+	// Hostname Producer hostname: unknown before ingestion; multiple machines when distinct producer labels are present.
+	Hostname      string                          `json:"hostname"`
+	InstanceId    string                          `json:"instanceId"`
+	Permissions   []InstanceResponseV2Permissions `json:"permissions"`
+	ServerKind    InstanceResponseV2ServerKind    `json:"serverKind"`
+	ServerVersion string                          `json:"serverVersion"`
+
+	// Timezone Server reporting timezone, preferably an IANA name with historical DST rules. Unnamed system zones use an explicit UTC offset fallback.
+	Timezone string `json:"timezone"`
+}
+
+// InstanceResponseV2ApiVersion defines model for InstanceResponseV2.ApiVersion.
+type InstanceResponseV2ApiVersion string
+
+// InstanceResponseV2DataReadiness defines model for InstanceResponseV2.DataReadiness.
+type InstanceResponseV2DataReadiness string
+
+// InstanceResponseV2Permissions defines model for InstanceResponseV2.Permissions.
+type InstanceResponseV2Permissions string
+
+// InstanceResponseV2ServerKind defines model for InstanceResponseV2.ServerKind.
+type InstanceResponseV2ServerKind string
 
 // LocationGroup defines model for LocationGroup.
 type LocationGroup string
@@ -1163,6 +1532,12 @@ type RawAcceptance struct {
 	Receipt    RawReceipt       `json:"receipt"`
 }
 
+// RawAcceptanceV3 defines model for RawAcceptanceV3.
+type RawAcceptanceV3 struct {
+	Processing ProcessingStatus `json:"processing"`
+	Receipt    RawReceiptV3     `json:"receipt"`
+}
+
 // RawBatch defines model for RawBatch.
 type RawBatch struct {
 	BatchId          string                   `json:"batchId"`
@@ -1180,6 +1555,25 @@ type RawBatchExtractorVersion int
 
 // RawBatchProtocolVersion defines model for RawBatch.ProtocolVersion.
 type RawBatchProtocolVersion int
+
+// RawBatchV3 defines model for RawBatchV3.
+type RawBatchV3 struct {
+	BatchId          string                     `json:"batchId"`
+	DatabaseId       string                     `json:"databaseId"`
+	DatasetId        string                     `json:"datasetId"`
+	Entries          []RawEntry                 `json:"entries"`
+	ExtractorVersion RawBatchV3ExtractorVersion `json:"extractorVersion"`
+	FromSequence     Count                      `json:"fromSequence"`
+	ProtocolVersion  RawBatchV3ProtocolVersion  `json:"protocolVersion"`
+	StreamId         string                     `json:"streamId"`
+	ToSequence       Count                      `json:"toSequence"`
+}
+
+// RawBatchV3ExtractorVersion defines model for RawBatchV3.ExtractorVersion.
+type RawBatchV3ExtractorVersion int
+
+// RawBatchV3ProtocolVersion defines model for RawBatchV3.ProtocolVersion.
+type RawBatchV3ProtocolVersion int
 
 // RawCapabilities defines model for RawCapabilities.
 type RawCapabilities struct {
@@ -1209,6 +1603,32 @@ type RawCapabilitiesMaxEntries int
 
 // RawCapabilitiesProtocolVersion defines model for RawCapabilities.ProtocolVersion.
 type RawCapabilitiesProtocolVersion int
+
+// RawCapabilitiesV3 defines model for RawCapabilitiesV3.
+type RawCapabilitiesV3 struct {
+	Completion       RawCapabilitiesV3Completion       `json:"completion"`
+	DatabaseId       string                            `json:"databaseId"`
+	DatasetId        string                            `json:"datasetId"`
+	ExtractorVersion RawCapabilitiesV3ExtractorVersion `json:"extractorVersion"`
+	MaxBodyBytes     RawCapabilitiesV3MaxBodyBytes     `json:"maxBodyBytes"`
+	MaxEntries       RawCapabilitiesV3MaxEntries       `json:"maxEntries"`
+	ProtocolVersion  RawCapabilitiesV3ProtocolVersion  `json:"protocolVersion"`
+}
+
+// RawCapabilitiesV3Completion defines model for RawCapabilitiesV3.Completion.
+type RawCapabilitiesV3Completion string
+
+// RawCapabilitiesV3ExtractorVersion defines model for RawCapabilitiesV3.ExtractorVersion.
+type RawCapabilitiesV3ExtractorVersion int
+
+// RawCapabilitiesV3MaxBodyBytes defines model for RawCapabilitiesV3.MaxBodyBytes.
+type RawCapabilitiesV3MaxBodyBytes int
+
+// RawCapabilitiesV3MaxEntries defines model for RawCapabilitiesV3.MaxEntries.
+type RawCapabilitiesV3MaxEntries int
+
+// RawCapabilitiesV3ProtocolVersion defines model for RawCapabilitiesV3.ProtocolVersion.
+type RawCapabilitiesV3ProtocolVersion int
 
 // RawContext defines model for RawContext.
 type RawContext struct {
@@ -1251,6 +1671,22 @@ type RawReceipt struct {
 
 // RawReceiptDatasetId defines model for RawReceipt.DatasetId.
 type RawReceiptDatasetId string
+
+// RawReceiptV3 defines model for RawReceiptV3.
+type RawReceiptV3 struct {
+	Accepted Count `json:"accepted"`
+
+	// AcceptedAtMs Unix milliseconds through 9999-12-30T23:59:59.999Z. One day of headroom preserves calendar query support after timezone conversion. Source units are never guessed or rescaled.
+	AcceptedAtMs  TimestampMs `json:"acceptedAtMs"`
+	BatchId       string      `json:"batchId"`
+	DatabaseId    string      `json:"databaseId"`
+	DatasetId     string      `json:"datasetId"`
+	FromSequence  Count       `json:"fromSequence"`
+	InputRevision Count       `json:"inputRevision"`
+	RequestHash   string      `json:"requestHash"`
+	StreamId      string      `json:"streamId"`
+	ToSequence    Count       `json:"toSequence"`
+}
 
 // RawRecord defines model for RawRecord.
 type RawRecord struct {
@@ -1516,6 +1952,23 @@ type SortDirection string
 // SortField defines model for SortField.
 type SortField string
 
+// StatusResponseV2 defines model for StatusResponseV2.
+type StatusResponseV2 struct {
+	// DataEpoch Durable database identity; nonempty when dataReadiness is ready.
+	DataEpoch        string                        `json:"dataEpoch"`
+	DataReadiness    StatusResponseV2DataReadiness `json:"dataReadiness"`
+	DatasetId        string                        `json:"datasetId"`
+	Generation       Count                         `json:"generation"`
+	InputRevision    Count                         `json:"inputRevision"`
+	InstanceId       string                        `json:"instanceId"`
+	Pending          Count                         `json:"pending"`
+	Revision         Count                         `json:"revision"`
+	TargetGeneration Count                         `json:"targetGeneration"`
+}
+
+// StatusResponseV2DataReadiness defines model for StatusResponseV2.DataReadiness.
+type StatusResponseV2DataReadiness string
+
 // SyncPhase defines model for SyncPhase.
 type SyncPhase string
 
@@ -1557,6 +2010,23 @@ type UsageFacetsResponse struct {
 	Sessions      []string         `json:"sessions"`
 }
 
+// UsageFacetsResponseV2 defines model for UsageFacetsResponseV2.
+type UsageFacetsResponseV2 struct {
+	DataEpoch     string           `json:"dataEpoch"`
+	DatasetId     string           `json:"datasetId"`
+	Directories   []LocationOption `json:"directories"`
+	Generation    *Count           `json:"generation,omitempty"`
+	Harnesses     []Harness        `json:"harnesses"`
+	InputRevision *Count           `json:"inputRevision,omitempty"`
+	InstanceId    string           `json:"instanceId"`
+	Models        []string         `json:"models"`
+	Pending       *Count           `json:"pending,omitempty"`
+	Providers     []string         `json:"providers"`
+	Repositories  []LocationOption `json:"repositories"`
+	Revision      Count            `json:"revision"`
+	Sessions      []string         `json:"sessions"`
+}
+
 // UsageQuality Estimated evidence is queried separately and never included in confirmed totals.
 type UsageQuality string
 
@@ -1564,6 +2034,32 @@ type UsageQuality string
 type UsageResponse struct {
 	Chart         []UsageRow `json:"chart"`
 	DataEpoch     string     `json:"dataEpoch"`
+	FactCount     *Count     `json:"factCount,omitempty"`
+	Generation    *Count     `json:"generation,omitempty"`
+	InputRevision *Count     `json:"inputRevision,omitempty"`
+	InstanceId    string     `json:"instanceId"`
+
+	// LastSynced Time of the last committed ingestion, in Unix milliseconds; zero for an empty server.
+	LastSynced Count  `json:"lastSynced"`
+	Page       int    `json:"page"`
+	PageSize   int    `json:"pageSize"`
+	Pending    *Count `json:"pending,omitempty"`
+
+	// Quality Estimated evidence is queried separately and never included in confirmed totals.
+	Quality    *UsageQuality `json:"quality,omitempty"`
+	Range      string        `json:"range"`
+	Revision   Count         `json:"revision"`
+	RowCount   Count         `json:"rowCount"`
+	Rows       []UsageRow    `json:"rows"`
+	Summary    UsageSummary  `json:"summary"`
+	Unresolved *Count        `json:"unresolved,omitempty"`
+}
+
+// UsageResponseV2 defines model for UsageResponseV2.
+type UsageResponseV2 struct {
+	Chart         []UsageRow `json:"chart"`
+	DataEpoch     string     `json:"dataEpoch"`
+	DatasetId     string     `json:"datasetId"`
 	FactCount     *Count     `json:"factCount,omitempty"`
 	Generation    *Count     `json:"generation,omitempty"`
 	InputRevision *Count     `json:"inputRevision,omitempty"`
@@ -1755,13 +2251,99 @@ type GetUsageFacetsParams struct {
 	Quality *QualityFilter `form:"quality,omitempty" json:"quality,omitempty"`
 }
 
+// GetUsageV2Params defines parameters for GetUsageV2.
+type GetUsageV2Params struct {
+	Period *PeriodFilter `form:"period,omitempty" json:"period,omitempty"`
+	Bucket *BucketFilter `form:"bucket,omitempty" json:"bucket,omitempty"`
+
+	// From Inclusive lower local-date bound; replaces period when supplied.
+	From *FromFilter `form:"from,omitempty" json:"from,omitempty"`
+
+	// To Inclusive upper local-date bound; replaces period when supplied.
+	To *ToFilter `form:"to,omitempty" json:"to,omitempty"`
+
+	// Provider Provider filter. Repeat the parameter to select multiple values.
+	Provider *ProviderFilter `form:"provider,omitempty" json:"provider,omitempty"`
+
+	// Model Model filter. Repeat the parameter to select multiple values.
+	Model *ModelFilter `form:"model,omitempty" json:"model,omitempty"`
+
+	// Harness Harness filter. Repeat the parameter to select multiple values.
+	Harness *HarnessFilter `form:"harness,omitempty" json:"harness,omitempty"`
+
+	// Session Session-ID filter. Repeat the parameter to select multiple values.
+	Session *SessionFilter `form:"session,omitempty" json:"session,omitempty"`
+
+	// Repository Repo-tab stable repository key; repeat for multiple values. The key unknown selects missing values.
+	Repository *RepositoryFilter `form:"repository,omitempty" json:"repository,omitempty"`
+
+	// Directory Repo-tab stable directory key; repeat for multiple values. The key unknown selects missing values.
+	Directory *DirectoryFilter `form:"directory,omitempty" json:"directory,omitempty"`
+
+	// Tab Aggregation shown in table and chart rows.
+	Tab *UsageTab `form:"tab,omitempty" json:"tab,omitempty"`
+
+	// LocationGroup Repo-tab grouping by repository or directory.
+	LocationGroup *LocationGroup `form:"locationGroup,omitempty" json:"locationGroup,omitempty"`
+
+	// Sort Sort field. Context-only fields are valid only for the context tab.
+	Sort      *SortField     `form:"sort,omitempty" json:"sort,omitempty"`
+	Direction *SortDirection `form:"direction,omitempty" json:"direction,omitempty"`
+	Page      *int           `form:"page,omitempty" json:"page,omitempty"`
+	PageSize  *int           `form:"pageSize,omitempty" json:"pageSize,omitempty"`
+	Quality   *QualityFilter `form:"quality,omitempty" json:"quality,omitempty"`
+}
+
+// GetUsageFacetsV2Params defines parameters for GetUsageFacetsV2.
+type GetUsageFacetsV2Params struct {
+	Period *PeriodFilter `form:"period,omitempty" json:"period,omitempty"`
+	Bucket *BucketFilter `form:"bucket,omitempty" json:"bucket,omitempty"`
+
+	// From Inclusive lower local-date bound; replaces period when supplied.
+	From *FromFilter `form:"from,omitempty" json:"from,omitempty"`
+
+	// To Inclusive upper local-date bound; replaces period when supplied.
+	To *ToFilter `form:"to,omitempty" json:"to,omitempty"`
+
+	// Provider Provider filter. Repeat the parameter to select multiple values.
+	Provider *ProviderFilter `form:"provider,omitempty" json:"provider,omitempty"`
+
+	// Model Model filter. Repeat the parameter to select multiple values.
+	Model *ModelFilter `form:"model,omitempty" json:"model,omitempty"`
+
+	// Harness Harness filter. Repeat the parameter to select multiple values.
+	Harness *HarnessFilter `form:"harness,omitempty" json:"harness,omitempty"`
+
+	// Session Session-ID filter. Repeat the parameter to select multiple values.
+	Session *SessionFilter `form:"session,omitempty" json:"session,omitempty"`
+
+	// Repository Repo-tab stable repository key; repeat for multiple values. The key unknown selects missing values.
+	Repository *RepositoryFilter `form:"repository,omitempty" json:"repository,omitempty"`
+
+	// Directory Repo-tab stable directory key; repeat for multiple values. The key unknown selects missing values.
+	Directory *DirectoryFilter `form:"directory,omitempty" json:"directory,omitempty"`
+
+	// Search Literal substring used to filter session IDs.
+	Search *string `form:"search,omitempty" json:"search,omitempty"`
+
+	// Tab Active aggregation. Repository/directory filters require the repo tab.
+	Tab     *UsageTab      `form:"tab,omitempty" json:"tab,omitempty"`
+	Quality *QualityFilter `form:"quality,omitempty" json:"quality,omitempty"`
+}
+
 // IngestBatchJSONRequestBody defines body for IngestBatch for application/json ContentType.
 //
 // Deprecated: this type has been marked as deprecated upstream, but no `x-deprecated-reason` was set
 type IngestBatchJSONRequestBody = PublicationBatch
 
+// CreateBrowserSessionJSONRequestBody defines body for CreateBrowserSession for application/json ContentType.
+type CreateBrowserSessionJSONRequestBody = BrowserSessionRequest
+
 // IngestRawBatchJSONRequestBody defines body for IngestRawBatch for application/json ContentType.
 type IngestRawBatchJSONRequestBody = RawBatch
+
+// IngestRawBatchV3JSONRequestBody defines body for IngestRawBatchV3 for application/json ContentType.
+type IngestRawBatchV3JSONRequestBody = RawBatchV3
 
 // AsNativeScalar0 returns the union data inside the NativeScalar as a NativeScalar0
 func (t NativeScalar) AsNativeScalar0() (NativeScalar0, error) {

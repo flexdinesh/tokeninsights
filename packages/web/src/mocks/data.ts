@@ -13,14 +13,17 @@ const dayTwo = Date.UTC(2026, 8, 13, 10)
 const dayThree = Date.UTC(2026, 8, 14, 10)
 
 export const mockBootstrap: Bootstrap = bootstrapSchema.parse({
-  apiVersion: 'v1',
+  apiVersion: 'v2',
+  serverKind: 'personal',
+  permissions: ['read', 'ingest'],
   instanceId: 'mock-instance',
   dataEpoch: 'mock-epoch',
+  datasetId: 'default',
   dataReadiness: 'ready',
   serverVersion: 'dev-mock',
   hostname: 'mock.tokeninsights.local',
   timezone: 'Australia/Sydney',
-  capabilities: ['usage', 'facets', 'ingestion'],
+  capabilities: ['usage', 'facets', 'web-dashboard', 'raw-ingestion', 'terminal-dashboard'],
   defaults: {
     period: 'all',
     bucket: 'day',
@@ -36,6 +39,8 @@ export const mockBootstrap: Bootstrap = bootstrapSchema.parse({
 export const mockFacets: Facets = facetsSchema.parse({
   instanceId: 'mock-instance',
   dataEpoch: 'mock-epoch',
+  datasetId: 'default',
+  generation: 1,
   revision: 1,
   providers: ['anthropic', 'openai'],
   models: ['claude-sonnet-4-5', 'gpt-5', 'gpt-5-mini'],
@@ -295,6 +300,8 @@ export function mockDashboard(
   return dashboardSchema.parse({
     instanceId: 'mock-instance',
     dataEpoch: 'mock-epoch',
+    datasetId: 'default',
+    generation: 1,
     revision: 1,
     rows: allRows.slice(start, start + pageSize),
     chart: allRows,
@@ -320,11 +327,12 @@ export function mockSyncStatus(revision: number): SyncStatus {
   return statusSchema.parse({
     instanceId: 'mock-instance',
     dataEpoch: 'mock-epoch',
+    datasetId: 'default',
+    generation: 1,
     dataReadiness: 'ready',
-    running: false,
-    phase: 'ready',
-    harnesses: {},
-    error: '',
+    targetGeneration: 1,
+    inputRevision: 1,
+    pending: 0,
     revision,
   })
 }

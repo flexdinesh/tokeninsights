@@ -76,10 +76,14 @@ func PrepareFixture(ctx context.Context, collectorPath, serverPath string) error
 		}
 	}
 	now := time.Now().UnixMilli()
-	if _, err := tx.ExecContext(ctx, `UPDATE ingestion.metadata SET database_id=?,generation=1,target_generation=1,input_revision=0,revision=0,last_ingestion_at_ms=0,created_at_ms=? WHERE id=1`, instanceID(), now); err != nil {
+	databaseID := instanceID()
+	if _, err := tx.ExecContext(ctx, `UPDATE ingestion.instance SET database_id=?,created_at_ms=? WHERE id=1`, databaseID, now); err != nil {
 		return err
 	}
-	if _, err := tx.ExecContext(ctx, `INSERT INTO analytics.generations VALUES(1,?,'active',?,?)`, evidence.ProcessorVersion, now, now); err != nil {
+	if _, err := tx.ExecContext(ctx, `UPDATE ingestion.metadata SET database_id=?,generation=1,target_generation=1,input_revision=0,revision=0,last_ingestion_at_ms=0,created_at_ms=? WHERE dataset_id=?`, databaseID, now, datastore.DatasetID); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `INSERT INTO analytics.generations(dataset_id,generation,processor_version,state,created_at_ms,activated_at_ms) VALUES(?,1,?,'active',?,?)`, datastore.DatasetID, evidence.ProcessorVersion, now, now); err != nil {
 		return err
 	}
 	if err := tx.Commit(); err != nil {
@@ -113,7 +117,7 @@ func inspectFixtureRoles(collectorPath, serverPath string) error {
 		return err
 	}
 	if _, err := os.Stat(serverPath); err == nil {
-		if err := datastore.Inspect(context.Background(), serverPath); err != nil {
+		if err := datastore.InspectKind(context.Background(), serverPath, datastore.KindPersonal); err != nil {
 			return err
 		}
 	} else if !errors.Is(err, os.ErrNotExist) {

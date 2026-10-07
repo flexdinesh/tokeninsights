@@ -1,5 +1,9 @@
 # Raw ingestion implementation plan
 
+Historical implementation contract for ADR 0007. Current personal/hosted,
+dataset and version contracts are in [design](design.md) and
+[ADR 0008](adr/0008-personal-hosted-composition-and-capabilities.md).
+
 Status: Approved; implemented. Verification recorded in PR.
 Implements [ADR 0007](adr/0007-raw-ingestion-and-server-processing.md) and its
 [whitelist](raw-ingestion-whitelist.md). Scope: data capture, delivery, durable

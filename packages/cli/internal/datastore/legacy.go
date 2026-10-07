@@ -29,6 +29,9 @@ func (s *Store) importDefaultLegacy(ctx context.Context, target string) error {
 // ImportLegacy reads SQLite without mutation. Import must precede raw ingestion.
 // Baselines stay queryable until an identical contribution ID has proven coverage.
 func (s *Store) ImportLegacy(ctx context.Context, path string) error {
+	if s.kind != KindPersonal {
+		return errors.New("hosted_legacy_import_unsupported")
+	}
 	legacy, err := serverstore.OpenReadOnly(path)
 	if err != nil {
 		return err
@@ -51,7 +54,7 @@ func (s *Store) ImportLegacy(ctx context.Context, path string) error {
 	}
 	defer func() { _ = tx.Rollback() }()
 	var existing int64
-	if err := tx.QueryRowContext(ctx, "SELECT (SELECT COUNT(*) FROM analytics.legacy)+(SELECT COUNT(*) FROM raw.evidence)+(SELECT COUNT(*) FROM ingestion.legacy_receipts)").Scan(&existing); err != nil {
+	if err := tx.QueryRowContext(ctx, "SELECT (SELECT COUNT(*) FROM analytics.legacy WHERE dataset_id=?)+(SELECT COUNT(*) FROM raw.evidence WHERE dataset_id=?)+(SELECT COUNT(*) FROM ingestion.legacy_receipts WHERE dataset_id=?)", s.datasetID, s.datasetID, s.datasetID).Scan(&existing); err != nil {
 		return err
 	}
 	if existing != 0 {
@@ -84,7 +87,7 @@ func (s *Store) ImportLegacy(ctx context.Context, path string) error {
 		if location.ID != "" {
 			fact.Location = &location
 		}
-		if err := insertFact(ctx, tx, "analytics.legacy", fact, 0, metadata.Revision, "", ""); err != nil {
+		if err := insertFact(ctx, tx, s.datasetID, "analytics.legacy", fact, 0, metadata.Revision, "", ""); err != nil {
 			_ = rows.Close()
 			return err
 		}
@@ -105,7 +108,7 @@ func (s *Store) ImportLegacy(ctx context.Context, path string) error {
 	}
 	var copied int64
 	var actual [6]int64
-	if err := tx.QueryRowContext(ctx, "SELECT COUNT(*),CAST(COALESCE(SUM(input_tokens),0) AS BIGINT),CAST(COALESCE(SUM(output_tokens),0) AS BIGINT),CAST(COALESCE(SUM(reasoning_tokens),0) AS BIGINT),CAST(COALESCE(SUM(cache_read_tokens),0) AS BIGINT),CAST(COALESCE(SUM(cache_write_tokens),0) AS BIGINT),CAST(COALESCE(SUM(total_tokens),0) AS BIGINT) FROM analytics.legacy").Scan(&copied, &actual[0], &actual[1], &actual[2], &actual[3], &actual[4], &actual[5]); err != nil {
+	if err := tx.QueryRowContext(ctx, "SELECT COUNT(*),CAST(COALESCE(SUM(input_tokens),0) AS BIGINT),CAST(COALESCE(SUM(output_tokens),0) AS BIGINT),CAST(COALESCE(SUM(reasoning_tokens),0) AS BIGINT),CAST(COALESCE(SUM(cache_read_tokens),0) AS BIGINT),CAST(COALESCE(SUM(cache_write_tokens),0) AS BIGINT),CAST(COALESCE(SUM(total_tokens),0) AS BIGINT) FROM analytics.legacy WHERE dataset_id=?", s.datasetID).Scan(&copied, &actual[0], &actual[1], &actual[2], &actual[3], &actual[4], &actual[5]); err != nil {
 		return err
 	}
 	if copied != count || actual != totals {
@@ -121,7 +124,7 @@ func (s *Store) ImportLegacy(ctx context.Context, path string) error {
 			_ = rows.Close()
 			return err
 		}
-		if _, err := tx.ExecContext(ctx, "INSERT INTO ingestion.legacy_receipts VALUES(?,?,?,?)", stream, batch, hash, body); err != nil {
+		if _, err := tx.ExecContext(ctx, "INSERT INTO ingestion.legacy_receipts VALUES(?,?,?,?,?)", s.datasetID, stream, batch, hash, body); err != nil {
 			_ = rows.Close()
 			return err
 		}
@@ -131,15 +134,18 @@ func (s *Store) ImportLegacy(ctx context.Context, path string) error {
 	if err != nil {
 		return err
 	}
-	if _, err := tx.ExecContext(ctx, "UPDATE ingestion.metadata SET database_id=?,revision=?,last_ingestion_at_ms=?,created_at_ms=? WHERE id=1", metadata.DatabaseID, metadata.Revision, metadata.LastIngestionAtMs, metadata.CreatedAtMs); err != nil {
+	if _, err := tx.ExecContext(ctx, "UPDATE ingestion.metadata SET database_id=?,revision=?,last_ingestion_at_ms=?,created_at_ms=? WHERE dataset_id=?", metadata.DatabaseID, metadata.Revision, metadata.LastIngestionAtMs, metadata.CreatedAtMs, s.datasetID); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, "UPDATE ingestion.instance SET database_id=?,created_at_ms=? WHERE id=1", metadata.DatabaseID, metadata.CreatedAtMs); err != nil {
 		return err
 	}
 	return tx.Commit()
 }
 
-func proveLegacyCoverage(ctx context.Context, tx *sql.Tx, fact publication.Fact, generation int64) error {
+func proveLegacyCoverage(ctx context.Context, tx *sql.Tx, datasetID string, fact publication.Fact, generation int64) error {
 	var body string
-	err := tx.QueryRowContext(ctx, "SELECT payload_json FROM analytics.legacy WHERE fact_id=?", fact.ID).Scan(&body)
+	err := tx.QueryRowContext(ctx, "SELECT payload_json FROM analytics.legacy WHERE dataset_id=? AND fact_id=?", datasetID, fact.ID).Scan(&body)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil
 	}
@@ -161,6 +167,6 @@ func proveLegacyCoverage(ctx context.Context, tx *sql.Tx, fact publication.Fact,
 	if err != nil {
 		return err
 	}
-	_, err = tx.ExecContext(ctx, "INSERT INTO analytics.legacy_coverage VALUES(?,?,?) ON CONFLICT(generation,fact_id) DO UPDATE SET payload_hash=excluded.payload_hash", generation, fact.ID, evidence.Hash(encoded))
+	_, err = tx.ExecContext(ctx, "INSERT INTO analytics.legacy_coverage VALUES(?,?,?,?) ON CONFLICT(dataset_id,generation,fact_id) DO UPDATE SET payload_hash=excluded.payload_hash", datasetID, generation, fact.ID, evidence.Hash(encoded))
 	return err
 }

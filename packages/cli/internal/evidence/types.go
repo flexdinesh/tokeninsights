@@ -11,12 +11,13 @@ import (
 )
 
 const (
-	ProtocolVersion  = 2
-	ExtractorVersion = 1
-	ProcessorVersion = 1
-	MaxBodyBytes     = publication.MaxBodyBytes
-	MaxEntries       = publication.MaxEntries
-	MaxStringBytes   = publication.MaxStringBytes
+	ProtocolVersion       = 3
+	LegacyProtocolVersion = 2
+	ExtractorVersion      = 1
+	ProcessorVersion      = 1
+	MaxBodyBytes          = publication.MaxBodyBytes
+	MaxEntries            = publication.MaxEntries
+	MaxStringBytes        = publication.MaxStringBytes
 )
 
 type Location struct {
@@ -55,6 +56,7 @@ type Batch struct {
 	ProtocolVersion  int     `json:"protocolVersion"`
 	ExtractorVersion int     `json:"extractorVersion"`
 	DatabaseID       string  `json:"databaseId"`
+	DatasetID        string  `json:"datasetId,omitempty"`
 	StreamID         string  `json:"streamId"`
 	BatchID          string  `json:"batchId"`
 	FromSequence     int64   `json:"fromSequence"`
@@ -151,4 +153,12 @@ func RandomID() (string, error) {
 func ObservationKey(record Record) string {
 	body, _ := json.Marshal(record)
 	return Hash(body)
+}
+
+// EffectiveDatasetID preserves the default binding of byte-identical protocol-2 requests.
+func (b Batch) EffectiveDatasetID() string {
+	if b.ProtocolVersion == LegacyProtocolVersion && b.DatasetID == "" {
+		return "default"
+	}
+	return b.DatasetID
 }

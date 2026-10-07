@@ -27,6 +27,7 @@ type reloadMsg struct {
 	revision              int64
 	preservePosition      bool
 	lastSyncMs            int64
+	processingPending     *int64
 	hostname, timezone    string
 	sessionCounts         db.SessionCounts
 	err                   error
@@ -637,6 +638,9 @@ func (m interactiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.coverage = nil
 		m.sessionCounts = msg.sessionCounts
 		m.lastSyncMs = msg.lastSyncMs
+		if msg.processingPending != nil {
+			m.sharedSync.Running = *msg.processingPending > 0
+		}
 		m.timezone = msg.timezone
 		m.statusline = m.statusline.withValue(statuslineHostname, normalizeHostname(msg.hostname, nil))
 		m = m.reconcileStatusline()

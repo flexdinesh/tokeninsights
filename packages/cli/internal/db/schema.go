@@ -45,6 +45,8 @@ const (
 	ColDestinationId          = "destination_id"
 	ColEndpoint               = "endpoint"
 	ColDatabaseId             = "database_id"
+	ColDatasetId              = "dataset_id"
+	ColProtocolVersion        = "protocol_version"
 	ColAcknowledgedSequence   = "acknowledged_sequence"
 	ColLastReceiptJson        = "last_receipt_json"
 	ColAcknowledgedAtMs       = "acknowledged_at_ms"
@@ -148,7 +150,7 @@ const (
 	ColRecordJSON             = "record_json"
 )
 
-const SupportedSchemaVersion = 17
+const SupportedSchemaVersion = 18
 
 // CollectorApplicationID distinguishes host storage from canonical-only server storage.
 const CollectorApplicationID = 1414091587

@@ -5,12 +5,11 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/processor"
 	"os"
 	"path/filepath"
 	"sort"
-	"strconv"
 	"strings"
-	"time"
 
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/publication"
 )
@@ -194,112 +193,12 @@ func (a claudeCodeJSONLAdapter) Parse(ctx context.Context, source Source, option
 }
 
 func (a claudeCodeJSONLAdapter) factFromRecord(ctx context.Context, source Source, options SyncOptions, fallbackSessionID string, record map[string]interface{}) (RawTokenFact, []Diagnostic, bool) {
-	if stringValue(record, "", "type") != "assistant" {
-		return RawTokenFact{}, nil, false
+	native, diagnostics, ok := processor.ClaudeCodeMessage(ctx, nativeSource(source), nativeOptions(options), fallbackSessionID, record)
+	fact := processorFact(native)
+	if ok {
+		fact.Location, _ = resolveFactLocation(ctx, options, stringValue(record, "", "cwd"), "", "")
 	}
-	message := nested(record, "message")
-	if message == nil || stringValue(message, "", "role") != "assistant" {
-		return RawTokenFact{}, nil, false
-	}
-	usage := nested(message, "usage")
-	if usage == nil {
-		return RawTokenFact{}, nil, false
-	}
-	tokens, tokenDiagnostics, ok := claudeCodeTokensFromUsage(usage)
-	if !ok {
-		return RawTokenFact{}, tokenDiagnostics, false
-	}
-	occurredAt := claudeCodeTimestampString(record, "timestamp")
-	if occurredAt == nil {
-		return RawTokenFact{}, []Diagnostic{claudeCodeDiagnostic("claude_code_jsonl_missing_time", "skipped Claude Code assistant token row with no usable timestamp", "warning")}, false
-	}
-	if !publication.ValidTimestampMs(*occurredAt) {
-		tokenDiagnostics = append(tokenDiagnostics, claudeCodeDiagnostic("claude_code_jsonl_invalid_time", "retained raw Claude Code assistant token row with a timestamp outside the supported range", "warning"))
-	}
-	sessionID := fallbackSessionID
-	if sourceSessionID := stringField(record, "sessionId", "session_id"); sourceSessionID != nil {
-		sessionID = *sourceSessionID
-	}
-	if strings.TrimSpace(sessionID) == "" {
-		return RawTokenFact{}, []Diagnostic{claudeCodeDiagnostic("claude_code_jsonl_missing_session", "skipped Claude Code assistant token row with no stable session id", "warning")}, false
-	}
-
-	nowMs := syncNowMs(options.Now)
-	messageID := stringField(message, "id")
-	if messageID == nil {
-		messageID = stringField(record, "uuid")
-	}
-	location, _ := resolveFactLocation(ctx, options, stringValue(record, "", "cwd"), "", "")
-	return RawTokenFact{
-		Harness:          HarnessClaudeCode,
-		SourceID:         stableHash("claude-code-session:" + sessionID),
-		SourceKind:       source.Kind,
-		Collector:        options.Collector,
-		Parser:           options.Parser,
-		ObservedAtMs:     nowMs,
-		OccurredAtMs:     occurredAt,
-		SessionID:        &sessionID,
-		MessageID:        messageID,
-		Provider:         stringField(message, "provider", "provider_id", "providerID"),
-		Model:            stringField(message, "model", "model_id", "modelID"),
-		UsageScope:       "message",
-		Quality:          "derived",
-		InputTokens:      tokens.input,
-		OutputTokens:     tokens.output,
-		ReasoningTokens:  tokens.reasoning,
-		CacheReadTokens:  tokens.cacheRead,
-		CacheWriteTokens: tokens.cacheWrite,
-		TotalTokens:      tokens.total,
-		Location:         location,
-		MetadataJSON:     claudeCodeIdentityMetadata(record),
-	}, tokenDiagnostics, true
-}
-
-type claudeCodeTokenCounts struct {
-	input      *int64
-	output     *int64
-	reasoning  *int64
-	cacheRead  *int64
-	cacheWrite *int64
-	total      *int64
-}
-
-func claudeCodeTokensFromUsage(usage map[string]interface{}) (claudeCodeTokenCounts, []Diagnostic, bool) {
-	outputDetails := nested(usage, "output_tokens_details")
-	if hasInvalidIntegerField(usage, "input_tokens", "output_tokens", "cache_read_input_tokens", "cache_creation_input_tokens", "total_tokens") ||
-		hasInvalidIntegerField(outputDetails, "thinking_tokens", "reasoning_tokens") {
-		return claudeCodeTokenCounts{}, []Diagnostic{claudeCodeDiagnostic("claude_code_jsonl_invalid_tokens", "skipped Claude Code assistant token row with non-integer token components", "warning")}, false
-	}
-	counts := claudeCodeTokenCounts{
-		input:      intField(usage, "input_tokens"),
-		output:     intField(usage, "output_tokens"),
-		reasoning:  intField(outputDetails, "thinking_tokens", "reasoning_tokens"),
-		cacheRead:  intField(usage, "cache_read_input_tokens"),
-		cacheWrite: intField(usage, "cache_creation_input_tokens"),
-		total:      intField(usage, "total_tokens"),
-	}
-	if counts.input == nil && counts.output == nil && counts.reasoning == nil && counts.cacheRead == nil && counts.cacheWrite == nil && counts.total == nil {
-		return claudeCodeTokenCounts{}, []Diagnostic{claudeCodeDiagnostic("claude_code_jsonl_missing_tokens", "skipped Claude Code assistant token row with no usable token components", "warning")}, false
-	}
-	clamped := false
-	clampToken(counts.input, &clamped)
-	clampToken(counts.output, &clamped)
-	clampToken(counts.reasoning, &clamped)
-	clampToken(counts.cacheRead, &clamped)
-	clampToken(counts.cacheWrite, &clamped)
-	clampToken(counts.total, &clamped)
-	if clamped {
-		return counts, []Diagnostic{claudeCodeDiagnostic("claude_code_jsonl_negative_tokens", "clamped negative Claude Code token components to zero", "warning")}, true
-	}
-	return counts, nil, true
-}
-
-func claudeCodeIdentityMetadata(record map[string]interface{}) *string {
-	sessionSource := "filename"
-	if stringField(record, "sessionId", "session_id") != nil {
-		sessionSource = "native"
-	}
-	return sourceIdentityJSON(sessionSource, stringField(record, "requestId", "request_id"))
+	return fact, processorDiagnostics(diagnostics), ok
 }
 
 func claudeCodeRequestID(metadata *string) string {
@@ -369,67 +268,13 @@ func claudeCodeCanonicalUsage(fact RawTokenFact) (canonicalTokenValues, bool) {
 }
 
 func finalizeClaudeCodeFact(fact *RawTokenFact) ([]Diagnostic, bool) {
-	var diagnostics []Diagnostic
-	if fact.ReasoningTokens != nil {
-		if fact.OutputTokens == nil || *fact.ReasoningTokens > *fact.OutputTokens {
-			fact.ReasoningTokens = nil
-			diagnostics = append(diagnostics, claudeCodeDiagnostic("claude_code_jsonl_invalid_reasoning", "ignored Claude Code reasoning tokens that exceeded inclusive output tokens", "warning"))
-		} else {
-			nonReasoningOutput := *fact.OutputTokens - *fact.ReasoningTokens
-			fact.OutputTokens = &nonReasoningOutput
-		}
-	}
-	componentTotal, ok := tokenComponentSum(fact.InputTokens, fact.OutputTokens, fact.ReasoningTokens, fact.CacheReadTokens, fact.CacheWriteTokens)
-	if !ok {
-		return []Diagnostic{claudeCodeDiagnostic("claude_code_jsonl_invalid_tokens", "skipped Claude Code assistant token row whose token total exceeds the supported range", "warning")}, false
-	}
-	if fact.TotalTokens != nil && *fact.TotalTokens != componentTotal {
-		fact.TotalTokens = nil
-		diagnostics = append(diagnostics, claudeCodeDiagnostic("claude_code_jsonl_inconsistent_total", "ignored Claude Code total_tokens that did not equal the token component sum", "warning"))
-	}
-	fact.DedupeKey = claudeCodeFactDedupeKey(*fact.SessionID, fact.MessageID, claudeCodeRequestID(fact.MetadataJSON), fact.OccurredAtMs, claudeCodeTokenCounts{
-		input: fact.InputTokens, output: fact.OutputTokens, reasoning: fact.ReasoningTokens,
-		cacheRead: fact.CacheReadTokens, cacheWrite: fact.CacheWriteTokens, total: fact.TotalTokens,
-	})
-	fact.DedupeKey = nativeTupleHash(fact.DedupeKey, sourceSessionIdentity(fact.MetadataJSON))
-	return diagnostics, true
-}
-
-func claudeCodeFactDedupeKey(sessionID string, messageID *string, requestID string, occurredAt *int64, tokens claudeCodeTokenCounts) string {
-	parts := []string{
-		"claude-code-token",
-		sessionID,
-		stringValueOrEmpty(messageID),
-		requestID,
-		int64ValueOrZero(occurredAt),
-		int64ValueOrZero(tokens.input),
-		int64ValueOrZero(tokens.output),
-		int64ValueOrZero(tokens.reasoning),
-		int64ValueOrZero(tokens.cacheRead),
-		int64ValueOrZero(tokens.cacheWrite),
-		int64ValueOrZero(tokens.total),
-	}
-	return nativeTupleHash(parts...)
-}
-
-func int64ValueOrZero(value *int64) string {
-	if value == nil {
-		return "0"
-	}
-	return strconv.FormatInt(*value, 10)
-}
-
-func claudeCodeTimestampString(record map[string]interface{}, name string) *int64 {
-	value := stringField(record, name)
-	if value == nil {
-		return nil
-	}
-	timestamp, err := time.Parse(time.RFC3339Nano, *value)
-	if err != nil {
-		return nil
-	}
-	result := timestamp.UnixMilli()
-	return &result
+	native := nativeFact(*fact)
+	diagnostics, ok := processor.FinalizeClaudeCodeFact(&native)
+	fact.OutputTokens = native.OutputTokens
+	fact.ReasoningTokens = native.ReasoningTokens
+	fact.TotalTokens = native.TotalTokens
+	fact.DedupeKey = native.DedupeKey
+	return processorDiagnostics(diagnostics), ok
 }
 
 func claudeCodeSessionIDFromFilename(path string) string {
