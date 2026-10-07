@@ -39,6 +39,7 @@ type Store struct {
 	kind        string
 	root        bool
 	nextDataset *string
+	selection   *sync.Mutex
 }
 type Metadata struct {
 	DatabaseID, DatasetID, Kind                                         string
@@ -244,7 +245,7 @@ func OpenWithOptions(ctx context.Context, path string, options Options) (*Store,
 		if err != nil {
 			return nil, err
 		}
-		store := &Store{database: database, writer: &sync.Mutex{}, worker: dataengine.NewWorker(), datasetID: DatasetID, kind: kind, root: true, nextDataset: new(string)}
+		store := &Store{database: database, writer: &sync.Mutex{}, worker: dataengine.NewWorker(), datasetID: DatasetID, kind: kind, root: true, nextDataset: new(string), selection: &sync.Mutex{}}
 		err = store.initialize(ctx)
 		if err == nil {
 			if legacyPath != "" {
@@ -284,7 +285,7 @@ func OpenWithOptions(ctx context.Context, path string, options Options) (*Store,
 	if err != nil {
 		return nil, err
 	}
-	store := &Store{database: database, writer: &sync.Mutex{}, worker: dataengine.NewWorker(), admissions: make(chan struct{}, 4), path: abs, datasetID: DatasetID, kind: kind, root: true, nextDataset: new(string)}
+	store := &Store{database: database, writer: &sync.Mutex{}, worker: dataengine.NewWorker(), admissions: make(chan struct{}, 4), path: abs, datasetID: DatasetID, kind: kind, root: true, nextDataset: new(string), selection: &sync.Mutex{}}
 	store.fileInfo, err = os.Stat(abs)
 	if err != nil {
 		_ = database.Close()
@@ -449,6 +450,11 @@ func (s *Store) Accept(ctx context.Context, body []byte) (evidence.Response, err
 		}
 		return evidence.Response{}, reject("invalid_request")
 	}
+	records, err := prepareAcceptance(batch)
+	if err != nil {
+		return evidence.Response{}, err
+	}
+	requestHash := evidence.Hash(body)
 	if err := s.checkFile(); err != nil {
 		return evidence.Response{}, err
 	}
@@ -475,7 +481,7 @@ func (s *Store) Accept(ctx context.Context, body []byte) (evidence.Response, err
 	var hash, receiptBody string
 	err = tx.QueryRowContext(ctx, "SELECT request_hash,receipt_json FROM ingestion.batches WHERE dataset_id=? AND stream_id=? AND batch_id=?", s.datasetID, batch.StreamID, batch.BatchID).Scan(&hash, &receiptBody)
 	if err == nil {
-		if hash != evidence.Hash(body) {
+		if hash != requestHash {
 			return evidence.Response{}, reject("batch_conflict")
 		}
 		var receipt evidence.Receipt
@@ -492,46 +498,9 @@ func (s *Store) Accept(ctx context.Context, body []byte) (evidence.Response, err
 	}
 	revision := m.InputRevision + 1
 	now := time.Now().UnixMilli()
-	changed := false
-	for _, entry := range batch.Entries {
-		id := evidence.EvidenceID(entry.Record)
-		scope := evidence.Scope(entry.Record)
-		var previous string
-		err := tx.QueryRowContext(ctx, "SELECT evidence_id FROM ingestion.items WHERE dataset_id=? AND stream_id=? AND sequence=?", s.datasetID, batch.StreamID, entry.Sequence).Scan(&previous)
-		if err == nil && previous != id {
-			return evidence.Response{}, reject("sequence_conflict")
-		}
-		if err != nil && !errors.Is(err, sql.ErrNoRows) {
-			return evidence.Response{}, err
-		}
-		var exists bool
-		if err := tx.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM raw.evidence WHERE dataset_id=? AND evidence_id=?)", s.datasetID, id).Scan(&exists); err != nil {
-			return evidence.Response{}, err
-		}
-		if !exists {
-			encoded, err := json.Marshal(entry.Record)
-			if err != nil {
-				return evidence.Response{}, err
-			}
-			if _, err := tx.ExecContext(ctx, "INSERT INTO raw.evidence VALUES(?,?,?,?,?,?)", s.datasetID, id, scope, entry.Record.Harness, string(encoded), now); err != nil {
-				return evidence.Response{}, err
-			}
-			if _, err := tx.ExecContext(ctx, `INSERT INTO processing.scopes(dataset_id,scope,revision) VALUES(?,?,?) ON CONFLICT(dataset_id,scope) DO UPDATE SET revision=excluded.revision,error_code='',attempts=0,retry_at_ms=0`, s.datasetID, scope, revision); err != nil {
-				return evidence.Response{}, err
-			}
-			for _, parent := range parentScopes(entry.Record) {
-				if _, err := tx.ExecContext(ctx, "INSERT INTO processing.dependencies VALUES(?,?,?) ON CONFLICT DO NOTHING", s.datasetID, scope, parent); err != nil {
-					return evidence.Response{}, err
-				}
-			}
-			changed = true
-		}
-		if _, err := tx.ExecContext(ctx, "INSERT INTO ingestion.items VALUES(?,?,?,?) ON CONFLICT DO NOTHING", s.datasetID, batch.StreamID, entry.Sequence, id); err != nil {
-			return evidence.Response{}, err
-		}
-		if _, err := tx.ExecContext(ctx, "INSERT INTO ingestion.batch_items VALUES(?,?,?,?,?)", s.datasetID, batch.StreamID, batch.BatchID, entry.Sequence, id); err != nil {
-			return evidence.Response{}, err
-		}
+	changed, err := acceptRecords(ctx, tx, s.datasetID, batch, records, revision, now)
+	if err != nil {
+		return evidence.Response{}, err
 	}
 	if !changed {
 		revision = m.InputRevision
@@ -543,7 +512,7 @@ func (s *Store) Accept(ctx context.Context, body []byte) (evidence.Response, err
 			return evidence.Response{}, err
 		}
 	}
-	receipt := evidence.Receipt{DatabaseID: m.DatabaseID, DatasetID: m.DatasetID, StreamID: batch.StreamID, BatchID: batch.BatchID, RequestHash: evidence.Hash(body), FromSequence: batch.FromSequence, ToSequence: batch.ToSequence, Accepted: int64(len(batch.Entries)), AcceptedAtMs: now, InputRevision: revision}
+	receipt := evidence.Receipt{DatabaseID: m.DatabaseID, DatasetID: m.DatasetID, StreamID: batch.StreamID, BatchID: batch.BatchID, RequestHash: requestHash, FromSequence: batch.FromSequence, ToSequence: batch.ToSequence, Accepted: int64(len(batch.Entries)), AcceptedAtMs: now, InputRevision: revision}
 	encoded, _ := json.Marshal(receipt)
 	if _, err := tx.ExecContext(ctx, "INSERT INTO ingestion.batches VALUES(?,?,?,?,?,?)", s.datasetID, batch.StreamID, batch.BatchID, receipt.RequestHash, body, string(encoded)); err != nil {
 		return evidence.Response{}, err
@@ -641,29 +610,78 @@ func (s *Store) ProcessNext(ctx context.Context) (bool, error) {
 	return s.worker.ProcessNext(ctx, s)
 }
 
-// LoadWork selects eligible datasets fairly, then reads one consistent connected
-// component. Calls are serialized by the shared dataengine worker.
+// LoadWork retains the serial maintenance contract.
 func (s *Store) LoadWork(ctx context.Context) (dataengine.Work, bool, error) {
+	return s.LoadWorkExcluding(ctx, nil, 0)
+}
+
+// LoadWorkExcluding serializes selection, skips complete claimed components,
+// and rotates fairly across eligible datasets. Evidence remains immutable while
+// interpretation runs; publication still fences current component membership.
+func (s *Store) LoadWorkExcluding(ctx context.Context, claims []dataengine.Work, maxBytes int64) (dataengine.Work, bool, error) {
+	s.selection.Lock()
+	defer s.selection.Unlock()
+	datasets := []string{s.datasetID}
 	if s.root {
-		var datasetID string
-		err := s.database.QueryRowContext(ctx, `SELECT DISTINCT m.dataset_id FROM ingestion.metadata m JOIN processing.scopes p ON p.dataset_id=m.dataset_id WHERE (p.processed_revision<>p.revision OR p.generation<>m.target_generation) AND p.retry_at_ms<=? ORDER BY CASE WHEN m.dataset_id>? THEN 0 ELSE 1 END,m.dataset_id LIMIT 1`, time.Now().UnixMilli(), *s.nextDataset).Scan(&datasetID)
-		if errors.Is(err, sql.ErrNoRows) {
-			return dataengine.Work{}, false, nil
-		}
+		rows, err := s.database.QueryContext(ctx, `SELECT DISTINCT m.dataset_id FROM ingestion.metadata m JOIN processing.scopes p ON p.dataset_id=m.dataset_id WHERE (p.processed_revision<>p.revision OR p.generation<>m.target_generation) AND p.retry_at_ms<=? ORDER BY CASE WHEN m.dataset_id>? THEN 0 ELSE 1 END,m.dataset_id`, time.Now().UnixMilli(), *s.nextDataset)
 		if err != nil {
 			return dataengine.Work{}, false, err
 		}
-		*s.nextDataset = datasetID
-		s = s.ForDataset(datasetID)
+		datasets = nil
+		for rows.Next() {
+			var datasetID string
+			if err := rows.Scan(&datasetID); err != nil {
+				_ = rows.Close()
+				return dataengine.Work{}, false, err
+			}
+			datasets = append(datasets, datasetID)
+		}
+		err = rows.Err()
+		_ = rows.Close()
+		if err != nil {
+			return dataengine.Work{}, false, err
+		}
 	}
-	work, err := s.loadWork(ctx)
-	if errors.Is(err, sql.ErrNoRows) {
-		return work, false, nil
+	for _, datasetID := range datasets {
+		work, err := s.ForDataset(datasetID).loadWork(ctx, claims, maxBytes)
+		if errors.Is(err, sql.ErrNoRows) {
+			continue
+		}
+		if work.Root != "" {
+			*s.nextDataset = datasetID
+		}
+		return work, err == nil, err
 	}
-	return work, err == nil, err
+	return dataengine.Work{}, false, nil
 }
 
-func (s *Store) loadWork(ctx context.Context) (dataengine.Work, error) {
+const connectedScopesSQL = `WITH RECURSIVE connected(scope) AS (SELECT CAST(? AS VARCHAR) UNION SELECT CASE WHEN d.child=c.scope THEN d.parent ELSE d.child END FROM processing.dependencies d JOIN connected c ON d.child=c.scope OR d.parent=c.scope WHERE d.dataset_id=?) `
+
+type scopeCandidate struct {
+	scope    string
+	revision int64
+}
+
+// Keyset pages avoid materializing every pending root for each component, while
+// preserving revision/scope ordering and a consistent eligibility snapshot.
+func candidatePage(ctx context.Context, tx *sql.Tx, datasetID string, generation, now int64, cursor scopeCandidate, limit int) ([]scopeCandidate, error) {
+	rows, err := tx.QueryContext(ctx, "SELECT scope,revision FROM processing.scopes WHERE dataset_id=? AND (processed_revision<>revision OR generation<>?) AND retry_at_ms<=? AND (revision>? OR (revision=? AND scope>?)) ORDER BY revision,scope LIMIT ?", datasetID, generation, now, cursor.revision, cursor.revision, cursor.scope, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	result := make([]scopeCandidate, 0, limit)
+	for rows.Next() {
+		var candidate scopeCandidate
+		if err := rows.Scan(&candidate.scope, &candidate.revision); err != nil {
+			return nil, err
+		}
+		result = append(result, candidate)
+	}
+	return result, rows.Err()
+}
+
+func (s *Store) loadWork(ctx context.Context, claims []dataengine.Work, maxBytes int64) (dataengine.Work, error) {
 	result := dataengine.Work{DatasetID: s.datasetID, Scopes: map[string]int64{}}
 	tx, err := s.BeginRead(ctx)
 	if err != nil {
@@ -676,55 +694,101 @@ func (s *Store) loadWork(ctx context.Context) (dataengine.Work, error) {
 	}
 	result.Revision = m.InputRevision
 	result.Generation = m.TargetGeneration
-	var scope string
-	if err := tx.QueryRowContext(ctx, "SELECT scope FROM processing.scopes WHERE dataset_id=? AND (processed_revision<>revision OR generation<>?) AND retry_at_ms<=? ORDER BY revision,scope LIMIT 1", s.datasetID, m.TargetGeneration, time.Now().UnixMilli()).Scan(&scope); err != nil {
-		return result, err
+	excluded := map[string]bool{}
+	for _, claim := range claims {
+		if claim.DatasetID == s.datasetID {
+			for scope := range claim.Scopes {
+				excluded[scope] = true
+			}
+		}
 	}
-	result.Root = scope
-	rows, err := tx.QueryContext(ctx, `WITH RECURSIVE connected(scope) AS (SELECT CAST(? AS VARCHAR) UNION SELECT CASE WHEN d.child=c.scope THEN d.parent ELSE d.child END FROM processing.dependencies d JOIN connected c ON d.child=c.scope OR d.parent=c.scope WHERE d.dataset_id=?) SELECT s.scope,s.revision FROM processing.scopes s WHERE s.dataset_id=? AND s.scope IN(SELECT scope FROM connected)`, scope, s.datasetID, s.datasetID)
-	if err != nil {
-		return result, err
-	}
-	for rows.Next() {
-		var scope string
-		var revision int64
-		if err := rows.Scan(&scope, &revision); err != nil {
+	const candidatePageSize = 32
+	// Revision -1 sorts before every stored nonnegative scope revision.
+	cursor := scopeCandidate{revision: -1}
+	now := time.Now().UnixMilli()
+	for {
+		candidates, err := candidatePage(ctx, tx, s.datasetID, m.TargetGeneration, now, cursor, candidatePageSize)
+		if err != nil {
+			return result, err
+		}
+		if len(candidates) == 0 {
+			return result, sql.ErrNoRows
+		}
+		for _, candidate := range candidates {
+			cursor = candidate
+			scope := candidate.scope
+			if excluded[scope] {
+				continue
+			}
+			component := map[string]int64{}
+			rows, err := tx.QueryContext(ctx, connectedScopesSQL+"SELECT s.scope,s.revision FROM processing.scopes s WHERE s.dataset_id=? AND s.scope IN(SELECT scope FROM connected)", scope, s.datasetID, s.datasetID)
+			if err != nil {
+				result.Root = scope
+				return result, err
+			}
+			blocked := false
+			for rows.Next() {
+				var member string
+				var revision int64
+				if err := rows.Scan(&member, &revision); err != nil {
+					_ = rows.Close()
+					result.Root = scope
+					return result, err
+				}
+				component[member] = revision
+				if excluded[member] {
+					blocked = true
+				}
+			}
+			err = rows.Err()
+			_ = rows.Close()
+			if err != nil {
+				result.Root = scope
+				return result, err
+			}
+			// Mark the whole skipped component, so candidates sharing a missing
+			// ancestor or late connecting edge are never decoded repeatedly.
+			for member := range component {
+				excluded[member] = true
+			}
+			if blocked {
+				continue
+			}
+			var bytes int64
+			err = tx.QueryRowContext(ctx, connectedScopesSQL+"SELECT COALESCE(SUM(OCTET_LENGTH(encode(record_json))),0) FROM raw.evidence WHERE dataset_id=? AND scope IN(SELECT scope FROM connected)", scope, s.datasetID, s.datasetID).Scan(&bytes)
+			if err != nil {
+				result.Root = scope
+				result.Scopes = component
+				return result, err
+			}
+			if maxBytes > 0 && bytes > maxBytes {
+				continue
+			}
+			result.Root = scope
+			result.Scopes = component
+			result.Bytes = bytes
+			rows, err = tx.QueryContext(ctx, connectedScopesSQL+"SELECT scope,evidence_id,record_json FROM raw.evidence WHERE dataset_id=? AND scope IN(SELECT scope FROM connected) ORDER BY scope,evidence_id", scope, s.datasetID, s.datasetID)
+			if err != nil {
+				return result, err
+			}
+			for rows.Next() {
+				var stored evidence.Stored
+				var body string
+				if err := rows.Scan(&stored.Scope, &stored.ID, &body); err != nil {
+					_ = rows.Close()
+					return result, err
+				}
+				if err := json.Unmarshal([]byte(body), &stored.Record); err != nil {
+					_ = rows.Close()
+					return result, err
+				}
+				result.Records = append(result.Records, stored)
+			}
+			err = rows.Err()
 			_ = rows.Close()
 			return result, err
 		}
-		result.Scopes[scope] = revision
 	}
-	err = rows.Err()
-	_ = rows.Close()
-	if err != nil {
-		return result, err
-	}
-	for scope := range result.Scopes {
-		rows, err := tx.QueryContext(ctx, "SELECT evidence_id,record_json FROM raw.evidence WHERE dataset_id=? AND scope=? ORDER BY evidence_id", s.datasetID, scope)
-		if err != nil {
-			return result, err
-		}
-		for rows.Next() {
-			var stored evidence.Stored
-			var body string
-			stored.Scope = scope
-			if err := rows.Scan(&stored.ID, &body); err != nil {
-				_ = rows.Close()
-				return result, err
-			}
-			if err := json.Unmarshal([]byte(body), &stored.Record); err != nil {
-				_ = rows.Close()
-				return result, err
-			}
-			result.Records = append(result.Records, stored)
-		}
-		err = rows.Err()
-		_ = rows.Close()
-		if err != nil {
-			return result, err
-		}
-	}
-	return result, nil
 }
 
 // PublishProjection preserves the complete component fence and all projection,
@@ -732,6 +796,10 @@ func (s *Store) loadWork(ctx context.Context) (dataengine.Work, error) {
 func (s *Store) PublishProjection(ctx context.Context, work dataengine.Work, projection evidence.Projection) (bool, error) {
 	if !s.root && work.DatasetID != s.datasetID {
 		return false, reject("dataset_mismatch")
+	}
+	prepared, err := prepareProjection(work, projection)
+	if err != nil {
+		return false, err
 	}
 	s = s.ForDataset(work.DatasetID)
 	s.writer.Lock()
@@ -776,43 +844,8 @@ func (s *Store) PublishProjection(ctx context.Context, work dataengine.Work, pro
 	if !matched || count != len(work.Scopes) {
 		return false, nil
 	}
-	for scope := range work.Scopes {
-		if _, err := tx.ExecContext(ctx, "DELETE FROM analytics.provenance WHERE dataset_id=? AND generation=? AND fact_id IN(SELECT fact_id FROM analytics.facts WHERE dataset_id=? AND scope=? AND generation=?)", s.datasetID, work.Generation, s.datasetID, scope, work.Generation); err != nil {
-			return false, err
-		}
-		for _, table := range []string{"analytics.facts", "analytics.estimates"} {
-			if _, err := tx.ExecContext(ctx, "DELETE FROM "+table+" WHERE dataset_id=? AND scope=? AND generation=?", s.datasetID, scope, work.Generation); err != nil {
-				return false, err
-			}
-		}
-	}
-	for _, contribution := range projection.Contributions {
-		if err := insertFact(ctx, tx, s.datasetID, "analytics.facts", contribution.Fact, work.Generation, work.Revision, "", ""); err != nil {
-			return false, err
-		}
-		if err := proveLegacyCoverage(ctx, tx, s.datasetID, contribution.Fact, work.Generation); err != nil {
-			return false, err
-		}
-		for _, id := range contribution.EvidenceIDs {
-			if _, err := tx.ExecContext(ctx, "INSERT INTO analytics.provenance VALUES(?,?,?,?) ON CONFLICT DO NOTHING", s.datasetID, work.Generation, contribution.Fact.ID, id); err != nil {
-				return false, err
-			}
-		}
-	}
-	for _, estimate := range projection.Estimates {
-		if err := insertFact(ctx, tx, s.datasetID, "analytics.estimates", estimate.Fact, work.Generation, work.Revision, estimate.EvidenceID, estimate.Code); err != nil {
-			return false, err
-		}
-	}
-	for _, outcome := range projection.Outcomes {
-		if _, err := tx.ExecContext(ctx, `INSERT INTO processing.outcomes VALUES(?,?,?,?,?,?,?) ON CONFLICT(dataset_id,generation,evidence_id) DO UPDATE SET disposition=excluded.disposition,code=excluded.code,fact_id=excluded.fact_id,input_revision=excluded.input_revision`, s.datasetID, outcome.EvidenceID, outcome.Disposition, outcome.Code, outcome.FactID, work.Generation, work.Revision); err != nil {
-			return false, err
-		}
-	}
-	for scope, revision := range work.Scopes {
-		if _, err := tx.ExecContext(ctx, "UPDATE processing.scopes SET processed_revision=?,generation=?,error_code='',attempts=0,retry_at_ms=0 WHERE dataset_id=? AND scope=?", revision, work.Generation, s.datasetID, scope); err != nil {
-			return false, err
-		}
+	if err := publishRows(ctx, tx, work, projection, prepared); err != nil {
+		return false, err
 	}
 	if m.Revision >= publication.SafeInteger {
 		return false, reject("revision_limit")
@@ -839,57 +872,48 @@ func (s *Store) PublishProjection(ctx context.Context, work dataengine.Work, pro
 }
 
 func insertFact(ctx context.Context, tx *sql.Tx, datasetID, table string, fact publication.Fact, generation, revision int64, evidenceID, reason string) error {
-	if table != "analytics.legacy" {
-		if err := publication.ValidateFact(fact); err != nil {
-			return err
-		}
-	}
-	body, err := json.Marshal(fact)
+	args, _, err := factArguments(datasetID, table, fact, generation, revision, evidenceID, reason)
 	if err != nil {
 		return err
 	}
-	message := ""
-	if fact.Message != nil {
-		message = fact.Message.NativeID
-	}
-	location := publication.Location{}
-	if fact.Location != nil {
-		location = *fact.Location
-	}
-	args := []interface{}{datasetID, fact.ID, evidence.SessionScope(fact.Harness, fact.Session.NativeID), fact.Harness, fact.Session.ID, fact.Session.NativeID, message, fact.NativeRequestID, fact.OccurredAtMs, fact.Provider, fact.ProviderSource, fact.Model, fact.UsageScope, fact.Quality, fact.Countable, fact.InputTokens, fact.OutputTokens, fact.ReasoningTokens, fact.CacheReadTokens, fact.CacheWriteTokens, fact.TotalTokens, location.DirectoryKey, location.DirectoryName, location.RepositoryKey, location.RepositoryName, location.RepositorySource, string(body), generation, revision}
-	if table == "analytics.estimates" {
-		args = append(args, evidenceID, reason)
-	}
-	placeholders := "?"
-	for range args[1:] {
-		placeholders += ",?"
-	}
-	_, err = tx.ExecContext(ctx, "INSERT INTO "+table+" VALUES("+placeholders+")", args...)
-	if err != nil {
+	if err := writeRows(ctx, tx, "INSERT INTO "+table+" VALUES", "", [][]interface{}{args}); err != nil {
 		return fmt.Errorf("insert projected contribution: %w", err)
 	}
 	return nil
 }
 
 // Failures remain pending and retryable. Backoff lets independent scopes progress.
-func (s *Store) recordFailure(ctx context.Context, scope string) {
-	s.writer.Lock()
-	defer s.writer.Unlock()
-	var attempts int64
-	if err := s.database.QueryRowContext(ctx, "SELECT attempts FROM processing.scopes WHERE dataset_id=? AND scope=?", s.datasetID, scope).Scan(&attempts); err != nil {
-		return
-	}
-	const maxBackoffExponent = 6
-	exponent := min(attempts, maxBackoffExponent)
-	delay := time.Second * time.Duration(int64(1)<<exponent)
-	_, _ = s.database.ExecContext(ctx, "UPDATE processing.scopes SET attempts=attempts+1,retry_at_ms=?,error_code='processing_failed' WHERE dataset_id=? AND scope=?", time.Now().Add(delay).UnixMilli(), s.datasetID, scope)
-}
-
 // RecordFailure reuses the work binding; failures in one dataset cannot alter
-// retry status in another. Cancellation is filtered by the engine.
+// retry status in another. Backoff covers the whole component so a different
+// root cannot immediately retry the same failure. Newly revised inputs remain
+// eligible; cancellation is filtered by the engine.
 func (s *Store) RecordFailure(ctx context.Context, work dataengine.Work) {
-	if !s.root && work.DatasetID != s.datasetID {
+	if work.Root == "" || (!s.root && work.DatasetID != s.datasetID) {
 		return
 	}
-	s.ForDataset(work.DatasetID).recordFailure(ctx, work.Root)
+	s = s.ForDataset(work.DatasetID)
+	_ = s.WriteTransaction(ctx, func(tx *sql.Tx) error {
+		var attempts int64
+		if err := tx.QueryRowContext(ctx, "SELECT attempts FROM processing.scopes WHERE dataset_id=? AND scope=?", s.datasetID, work.Root).Scan(&attempts); err != nil {
+			return err
+		}
+		const maxBackoffExponent = 6
+		delay := time.Second * time.Duration(int64(1)<<min(attempts, maxBackoffExponent))
+		retryAt := time.Now().Add(delay).UnixMilli()
+		if len(work.Scopes) == 0 {
+			_, err := tx.ExecContext(ctx, "UPDATE processing.scopes SET attempts=attempts+1,retry_at_ms=?,error_code='processing_failed' WHERE dataset_id=? AND scope=? AND revision<=? AND EXISTS(SELECT 1 FROM ingestion.metadata WHERE dataset_id=? AND target_generation=?)", retryAt, s.datasetID, work.Root, work.Revision, s.datasetID, work.Generation)
+			return err
+		}
+		statement, err := tx.PrepareContext(ctx, "UPDATE processing.scopes SET attempts=attempts+1,retry_at_ms=?,error_code='processing_failed' WHERE dataset_id=? AND scope=? AND revision=? AND EXISTS(SELECT 1 FROM ingestion.metadata WHERE dataset_id=? AND target_generation=?)")
+		if err != nil {
+			return err
+		}
+		defer func() { _ = statement.Close() }()
+		for scope, revision := range work.Scopes {
+			if _, err := statement.ExecContext(ctx, retryAt, s.datasetID, scope, revision, s.datasetID, work.Generation); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
 }

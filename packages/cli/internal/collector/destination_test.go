@@ -59,12 +59,13 @@ func TestInjectedDestinationRetryRotationAndAccountSwitch(t *testing.T) {
 		_ = json.NewEncoder(w).Encode(evidence.Response{Receipt: evidence.Receipt{DatabaseID: batch.DatabaseID, DatasetID: batch.DatasetID, StreamID: batch.StreamID, BatchID: batch.BatchID, RequestHash: evidence.Hash(body), FromSequence: batch.FromSequence, ToSequence: batch.ToSequence, Accepted: int64(len(batch.Entries)), AcceptedAtMs: 1, InputRevision: 1}})
 	}))
 	defer server.Close()
-	destination := Destination{URL: server.URL, DatabaseID: "database", DatasetID: "user-a", Client: server.Client()}
+	destination := Destination{URL: server.URL + "/", Identity: server.URL + "/", DatabaseID: "database", DatasetID: "user-a", Client: server.Client()}
 	options := Options{CollectorDBPath: path, PublishOnly: true, Destination: &destination, Token: "old-token", EnsureLocal: func(context.Context) (string, error) { t.Fatal("destination started service"); return "", nil }}
 	if first, err := Run(t.Context(), options); err == nil || !first.PendingKnown || first.Pending != 1 {
 		t.Fatal(first, err)
 	}
 	options.Token = "rotated-token"
+	destination.URL, destination.Identity = server.URL, server.URL
 	if second, err := Run(t.Context(), options); err != nil || second.Pending != 0 || second.Accepted != 1 {
 		t.Fatal(second, err)
 	}
@@ -144,13 +145,16 @@ func TestRetainedV2BatchPrecedesNewV3WithoutChangingBytes(t *testing.T) {
 		_ = json.NewEncoder(w).Encode(evidence.Response{Receipt: evidence.Receipt{DatabaseID: got.DatabaseID, DatasetID: got.EffectiveDatasetID(), StreamID: got.StreamID, BatchID: got.BatchID, RequestHash: evidence.Hash(body), FromSequence: got.FromSequence, ToSequence: got.ToSequence, Accepted: int64(len(got.Entries)), AcceptedAtMs: 1, InputRevision: 1}})
 	}))
 	defer server.Close()
-	if err := store.Bind(t.Context(), "old-binding", server.URL, "database"); err != nil {
+	if err := store.Bind(t.Context(), "canonical-binding", server.URL, "database"); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Bind(t.Context(), "old-binding", "http://local", "database"); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := store.DB.Exec("INSERT INTO evidence_batches(batch_id,destination_id,stream_id,database_id,dataset_id,protocol_version,first_sequence,last_sequence,request_hash,request_bytes) VALUES(?,?,?,?,?,?,?,?,?,?)", batch.BatchID, "old-binding", stream, "database", "default", 2, 1, 1, evidence.Hash(original), original); err != nil {
 		t.Fatal(err)
 	}
-	options := Options{CollectorDBPath: path, PublishOnly: true, Destination: &Destination{URL: server.URL, DatabaseID: "database", DatasetID: "default", Client: server.Client()}}
+	options := Options{CollectorDBPath: path, ServerDBPath: filepath.Join(t.TempDir(), "server.duckdb"), PublishOnly: true, Destination: &Destination{URL: server.URL, Identity: server.URL, DatabaseID: "database", DatasetID: "default", Client: server.Client(), Local: true}}
 	result, err := Run(t.Context(), options)
 	if err != nil || result.Accepted != 2 || result.Batches != 2 || result.Pending != 0 {
 		t.Fatal(result, err)

@@ -27,9 +27,10 @@ type Source struct {
 }
 
 type DiscoverOptions struct {
-	Sources           *SourceConfig
-	SourceDir         string
-	HarnessSubdirOnly bool
+	Sources              *SourceConfig
+	SourceDir            string
+	HarnessSubdirOnly    bool
+	SkipAncestryMetadata bool
 }
 
 type RawTokenFact struct {
@@ -106,10 +107,11 @@ const (
 )
 
 type SyncProgressEvent struct {
-	JobID     int64
-	Harness   Harness
-	Status    SyncProgressStatus
-	Published bool
+	JobID       int64
+	Harness     Harness
+	Status      SyncProgressStatus
+	Published   bool
+	Quarantined int
 }
 
 type NormalizeOptions struct {
@@ -141,5 +143,6 @@ type Summary struct {
 	Observations       int
 	Canonical          int
 	Diagnostics        int
+	Quarantined        int
 	Errors             []error
 }

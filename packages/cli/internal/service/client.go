@@ -37,7 +37,9 @@ func (c Client) IngestionClient() *http.Client {
 	transport := &http.Transport{DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
 		return (&net.Dialer{}).DialContext(ctx, "unix", c.Record.Socket)
 	}, DisableKeepAlives: true}
-	return &http.Client{Transport: instanceTransport{transport: transport, instance: c.Record.InstanceID}, Timeout: callTimeout, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	// Delivery owns its longer acceptance budget; lifecycle/control calls keep
+	// their short deadline in call. Both transports retain instance fencing.
+	return &http.Client{Transport: instanceTransport{transport: transport, instance: c.Record.InstanceID}, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 }
 
 func (c Client) call(ctx context.Context, method, path string, input, output interface{}) error {
@@ -181,6 +183,8 @@ func (c Client) WaitProcessing(ctx context.Context) error {
 }
 
 func (c Client) Reprocess(ctx context.Context) (int64, error) {
+	ctx, cancel := context.WithTimeout(ctx, callTimeout)
+	defer cancel()
 	request, err := http.NewRequestWithContext(ctx, http.MethodPost, "http://local/api/v2/processing/reprocess", nil)
 	if err != nil {
 		return 0, err

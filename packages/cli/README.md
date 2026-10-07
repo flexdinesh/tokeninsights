@@ -51,6 +51,8 @@ tokeninsights sync --server-url https://example.test
 
 `--publish-only` retries retained raw outbox work without source discovery. `--no-normalize` is a deprecated compatibility flag; processing always happens on server. `--dry-run` does not write or deliver. Without an explicit server URL, the workflow ensures the local personal server; an explicit URL skips local startup even on failure. Negotiation verifies configured kind/capabilities and permissions before capture; dry-run needs no server. Later manual sync retries pending delivery; there is no background agent or automatic retry.
 
+Managed personal control requests retain a three-second timeout; ingestion uses a separate thirty-second timeout. The canonical endpoint identifies delivery, while private socket routing remains a transport detail. Existing verified local alias bindings and pending requests are reused without rewriting saved bytes.
+
 Delivery saves immutable request bytes before transport. Evidence, item mappings,
 receipt and processing work commit atomically. Acceptance does not imply query
 visibility. Exact retries return the original receipt plus current processing
@@ -66,10 +68,12 @@ OpenCode sync reads modern SQLite sources named `opencode.db` or `opencode-<chan
 native context. Rewrites start a new lineage; incomplete tails wait. OpenCode
 scans a consistent SQLite snapshot because older rows can change without a
 trustworthy native cursor. Unchanged sanitized observations are not re-enqueued.
-Full refresh rereads safely; dry-run uses temporary storage without delivery.
+Full refresh rereads safely and retries quarantined sources; dry-run uses temporary storage without delivery.
+
+Oversized JSONL records proven irrelevant are streamed past without storing private contents. Usage or context records that exceed the capture limit quarantine the source locally: previous evidence/checkpoints survive, unchanged files avoid repeated parsing, and sync reports incomplete collection. Quarantine retries after file identity/size/mtime or parser policy changes, or `sync --full-refresh`. Transient I/O errors and cancellation do not quarantine sources.
 
 One collector writer commits each source's evidence and checkpoint together.
-Discovery and capture are sequential initially. Prefix verification reads bytes
+Capture uses up to four source readers, a shared location cache, bounded record buffers and sanitized temporary spools; SQLite writes remain serialized. Prefix verification reads bytes
 without reparsing old records. Server startup performs no source reads.
 
 The server owns token interpretation: input excludes cache read/write, output
@@ -280,8 +284,8 @@ The former `tokeninsights.sqlite` remains untouched. Retained harness artifacts 
 
 Use `--collector-db-path` for collection and maintenance, and `--server-db-path` for server storage. `tui` can select both roles. Previous command names, `--db-path`, and `--no-sync` are rejected. Legacy `TOKENINSIGHTS_DB_PATH` does not select either new default.
 
-Collector schema 18 retains raw outbox/continuity/exact delivery state,
-dataset/protocol bindings and legacy tables. Verified schemas 16/17 upgrade
+Collector schema 19 retains raw outbox/continuity/exact delivery state,
+dataset/protocol bindings, local quarantine and legacy tables. Verified schemas 16/17/18 upgrade
 additively without changing saved request bytes. DuckDB schema 2 stores accounts,
 dataset-scoped raw evidence/receipts/status/typed facts/estimates/retained baselines.
 Verified schema 1 upgrades to personal schema 2 through staged read-only copying,

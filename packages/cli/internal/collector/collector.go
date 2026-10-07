@@ -4,8 +4,6 @@ package collector
 import (
 	"bytes"
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -137,12 +135,23 @@ func Run(ctx context.Context, options Options) (Result, error) {
 		}
 	}
 	if options.Destination != nil {
-		if _, err := endpoint(options.Destination.URL); err != nil {
+		destination := *options.Destination
+		var err error
+		destination.URL, err = endpoint(destination.URL)
+		if err != nil {
 			return result, err
 		}
-		if options.Destination.DatabaseID == "" || !evidence.ValidDatasetID(options.Destination.DatasetID) {
+		if destination.Identity == "" {
+			destination.Identity = destination.URL
+		}
+		destination.Identity, err = endpoint(destination.Identity)
+		if err != nil {
+			return result, err
+		}
+		if destination.DatabaseID == "" || !evidence.ValidDatasetID(destination.DatasetID) {
 			return result, failure("configuration", "invalid_destination", nil)
 		}
+		options.Destination = &destination
 	} else if strings.TrimSpace(options.ServerURL) != "" {
 		if _, err := endpoint(options.ServerURL); err != nil {
 			return result, err
@@ -168,11 +177,18 @@ func endpoint(value string) (string, error) {
 	return parsed.String(), nil
 }
 
+// CanonicalEndpoint gives discovery and publication the same delivery identity.
+func CanonicalEndpoint(value string) (string, error) { return endpoint(value) }
+
 func publishLegacy(ctx context.Context, options Options, result *Result) error {
 	reportDeliveryProgress(options, result)
 	target := options.ServerURL
 	local := strings.TrimSpace(target) == ""
-	if local {
+	identity := ""
+	if options.Destination != nil {
+		target, local = options.Destination.URL, options.Destination.Local
+		identity = options.Destination.Identity
+	} else if local {
 		if options.EnsureLocal == nil {
 			return failure("delivery", "local_server_unavailable", nil)
 		}
@@ -186,8 +202,17 @@ func publishLegacy(ctx context.Context, options Options, result *Result) error {
 	if err != nil {
 		return err
 	}
+	if identity == "" {
+		identity = target
+	}
+	identity, err = endpoint(identity)
+	if err != nil {
+		return err
+	}
 	client := deliveryClient(nil)
-	if options.LocalClient != nil {
+	if options.Destination != nil && options.Destination.Client != nil {
+		client = deliveryClient(options.Destination.Client)
+	} else if options.LocalClient != nil {
 		client = deliveryClient(options.LocalClient)
 	}
 	body, err := request(ctx, client, target+"/api/v1/ingestion/capabilities", options.Token, nil)
@@ -197,6 +222,9 @@ func publishLegacy(ctx context.Context, options Options, result *Result) error {
 	capabilities, err := publication.DecodeCapabilities(body)
 	if err != nil {
 		return failure("capabilities", "incompatible_server", err)
+	}
+	if options.Destination != nil && (options.Destination.DatasetID != "default" || options.Destination.DatabaseID != capabilities.DatabaseID) {
+		return failure("binding", "server_database_changed", nil)
 	}
 	release, err := db.AcquireWriterLock(ctx, options.CollectorDBPath)
 	if err != nil {
@@ -209,15 +237,12 @@ func publishLegacy(ctx context.Context, options Options, result *Result) error {
 	}
 	defer func() { _ = database.Close() }()
 	store := collectorstore.Store{DB: database}
-	// Remote bindings pin one database for an endpoint. A local replacement gets
-	// a new binding and replays retained publication rather than inheriting a cursor.
-	identity := target
-	if local {
-		identity += "\x00" + capabilities.DatabaseID
+	hostname, _ := os.Hostname()
+	if len(hostname) > publication.MaxStringBytes {
+		hostname = ""
 	}
-	sum := sha256.Sum256([]byte(identity))
-	destinationID := hex.EncodeToString(sum[:])
-	if err := store.BindDestination(ctx, destinationID, target, capabilities.DatabaseID); err != nil {
+	destinationID, err := store.ResolveDeliveryDestination(ctx, identity, capabilities.DatabaseID, local)
+	if err != nil {
 		return failure("binding", "server_database_changed", err)
 	}
 	result.Pending, err = store.Pending(ctx, destinationID)
@@ -226,10 +251,6 @@ func publishLegacy(ctx context.Context, options Options, result *Result) error {
 	}
 	result.PendingKnown = true
 	reportDeliveryProgress(options, result)
-	hostname, _ := os.Hostname()
-	if len(hostname) > publication.MaxStringBytes {
-		hostname = ""
-	}
 	for {
 		saved, err := store.PrepareBatch(ctx, destinationID, hostname, time.Now().UnixMilli())
 		if err != nil {
@@ -257,6 +278,10 @@ func publishLegacy(ctx context.Context, options Options, result *Result) error {
 		result.Inserted += receipt.Inserted
 		result.Updated += receipt.Updated
 		result.Noop += receipt.Noop
+		destinationID, err = store.ResolveDeliveryDestination(ctx, identity, capabilities.DatabaseID, local)
+		if err != nil {
+			return failure("binding", "server_database_changed", err)
+		}
 		result.Pending, err = store.Pending(ctx, destinationID)
 		if err != nil {
 			return failure("publication", "pending_read", err)

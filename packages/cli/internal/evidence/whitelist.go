@@ -61,16 +61,49 @@ func decodeObject(body []byte) (map[string]json.RawMessage, error) {
 	return object, nil
 }
 
-func leaf(object map[string]json.RawMessage, parts []string) (json.RawMessage, bool) {
-	value, found := object[parts[0]]
+// sourceObject decodes each selected object at most once. RawMessage keeps
+// native numbers exact and leaves private scalar/object values uninterpreted.
+// A nil cached child remembers an invalid object shape as well.
+type sourceObject struct {
+	fields   map[string]json.RawMessage
+	children map[string]*sourceObject
+}
+
+func parseSourceObject(body []byte) (*sourceObject, error) {
+	fields, err := decodeObject(body)
+	if err != nil {
+		return nil, err
+	}
+	return &sourceObject{fields: fields}, nil
+}
+
+func (object *sourceObject) leaf(parts []string) (json.RawMessage, bool) {
+	if object == nil {
+		return nil, false
+	}
+	value, found := object.fields[parts[0]]
 	if !found || len(parts) == 1 {
 		return value, found
 	}
-	child, err := decodeObject(value)
-	if err != nil {
-		return nil, false
+	child, cached := object.children[parts[0]]
+	if !cached {
+		child, _ = parseSourceObject(value)
+		if object.children == nil {
+			object.children = make(map[string]*sourceObject)
+		}
+		object.children[parts[0]] = child
 	}
-	return leaf(child, parts[1:])
+	return child.leaf(parts[1:])
+}
+
+func (object *sourceObject) string(path string) string {
+	value, ok := object.leaf(strings.Split(path, "."))
+	if !ok {
+		return ""
+	}
+	var text string
+	_ = json.Unmarshal(value, &text)
+	return text
 }
 
 func setLeaf(object map[string]interface{}, parts []string, value json.RawMessage) {
@@ -107,7 +140,7 @@ func Sanitize(harness, format string, body []byte) (json.RawMessage, []string, e
 	if !ok {
 		return nil, nil, errors.New("unsupported_source_format")
 	}
-	object, err := decodeObject(body)
+	object, err := parseSourceObject(body)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -115,7 +148,7 @@ func Sanitize(harness, format string, body []byte) (json.RawMessage, []string, e
 	diagnosticSet := map[string]bool{}
 	for _, path := range allowed {
 		parts := strings.Split(path, ".")
-		value, found := leaf(object, parts)
+		value, found := object.leaf(parts)
 		if !found {
 			continue
 		}
@@ -143,7 +176,7 @@ func Sanitize(harness, format string, body []byte) (json.RawMessage, []string, e
 		setLeaf(result, parts, value)
 	}
 	if harness == "codex" {
-		if value, found := leaf(object, []string{"payload", "source", "subagent"}); found && !bytes.Equal(bytes.TrimSpace(value), []byte("null")) {
+		if value, found := object.leaf([]string{"payload", "source", "subagent"}); found && !bytes.Equal(bytes.TrimSpace(value), []byte("null")) {
 			diagnosticSet["native_subagent_present"] = true
 		}
 	}
@@ -170,63 +203,64 @@ func DecodeData(body []byte) (map[string]interface{}, error) {
 }
 
 func String(body json.RawMessage, path string) string {
-	object, err := decodeObject(body)
-	if err != nil {
-		return ""
-	}
-	value, ok := leaf(object, strings.Split(path, "."))
-	if !ok {
-		return ""
-	}
-	var text string
-	_ = json.Unmarshal(value, &text)
-	return text
+	object, _ := parseSourceObject(body)
+	return object.string(path)
 }
 
 func UsageRecord(harness, format string, data json.RawMessage) bool {
+	object, _ := parseSourceObject(data)
 	switch harness {
 	case "opencode":
-		return format == "opencode-v1" && String(data, "data.role") == "assistant" || format == "opencode-v2" && String(data, "type") == "assistant"
+		return format == "opencode-v1" && object.string("data.role") == "assistant" || format == "opencode-v2" && object.string("type") == "assistant"
 	case "pi":
-		return String(data, "type") == "message" && String(data, "message.role") == "assistant"
+		return object.string("type") == "message" && object.string("message.role") == "assistant"
 	case "claude-code":
-		return String(data, "type") == "assistant" && String(data, "message.role") == "assistant"
+		return object.string("type") == "assistant" && object.string("message.role") == "assistant"
 	case "codex":
-		return String(data, "type") == "event_msg" && String(data, "payload.type") == "token_count"
+		return object.string("type") == "event_msg" && object.string("payload.type") == "token_count"
 	}
 	return false
 }
 
 // Scope uses native context for scheduling only; it is not a contribution ID.
 func Scope(record Record) string {
+	object, _ := parseSourceObject(record.Data)
+	return recordScope(record, object)
+}
+
+func recordScope(record Record, object *sourceObject) string {
 	native := ""
 	switch record.Harness {
 	case "opencode":
-		native = String(record.Data, "session_id")
+		native = object.string("session_id")
 		if record.Format == "opencode-session" {
-			native = String(record.Data, "id")
+			native = object.string("id")
 		}
 	case "claude-code":
-		native = String(record.Data, "sessionId")
+		native = object.string("sessionId")
 		if native == "" {
-			native = String(record.Data, "session_id")
+			native = object.string("session_id")
 		}
 	case "pi":
-		if String(record.Data, "type") == "session" {
-			native = String(record.Data, "id")
+		if object.string("type") == "session" {
+			native = object.string("id")
 		}
 	case "codex":
-		if String(record.Data, "type") == "session_meta" {
-			native = String(record.Data, "payload.id")
+		if object.string("type") == "session_meta" {
+			native = object.string("payload.id")
 		}
 	}
 	if native == "" {
 		for _, context := range record.Context {
-			if record.Harness == "pi" && String(context.Data, "type") == "session" {
-				native = String(context.Data, "id")
+			if record.Harness != "pi" && record.Harness != "codex" {
+				continue
 			}
-			if record.Harness == "codex" && String(context.Data, "type") == "session_meta" {
-				native = String(context.Data, "payload.id")
+			contextObject, _ := parseSourceObject(context.Data)
+			if record.Harness == "pi" && contextObject.string("type") == "session" {
+				native = contextObject.string("id")
+			}
+			if record.Harness == "codex" && contextObject.string("type") == "session_meta" {
+				native = contextObject.string("payload.id")
 			}
 		}
 	}
@@ -239,20 +273,21 @@ func Scope(record Record) string {
 func SessionScope(harness, nativeID string) string { return harness + ":session:" + nativeID }
 
 func NativeRecordKey(record Record) string {
-	scope := Scope(record)
+	object, _ := parseSourceObject(record.Data)
+	scope := recordScope(record, object)
 	if strings.HasPrefix(scope, record.Harness+":source:") {
 		return ""
 	}
 	id := ""
 	switch record.Harness {
 	case "opencode":
-		id = String(record.Data, "id")
+		id = object.string("id")
 	case "pi":
-		id = String(record.Data, "id")
+		id = object.string("id")
 	case "claude-code":
-		id = String(record.Data, "uuid")
+		id = object.string("uuid")
 		if id == "" {
-			id = String(record.Data, "message.id") + ":" + String(record.Data, "requestId") + ":" + String(record.Data, "request_id")
+			id = object.string("message.id") + ":" + object.string("requestId") + ":" + object.string("request_id")
 		}
 	}
 	if id == "" || id == "::" {

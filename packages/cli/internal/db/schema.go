@@ -1,6 +1,7 @@
 package db
 
 const (
+	TableEvidenceQuarantine       = "evidence_quarantine"
 	TableEvidenceState            = "evidence_state"
 	TableEvidenceSources          = "evidence_sources"
 	TableEvidenceOutbox           = "evidence_outbox"
@@ -31,6 +32,8 @@ const (
 )
 
 const (
+	ColSignature              = "signature"
+	ColParserVersion          = "parser_version"
 	ColStreamId               = "stream_id"
 	ColIdentityVersion        = "identity_version"
 	ColSemanticsVersion       = "semantics_version"
@@ -150,7 +153,7 @@ const (
 	ColRecordJSON             = "record_json"
 )
 
-const SupportedSchemaVersion = 18
+const SupportedSchemaVersion = 19
 
 // CollectorApplicationID distinguishes host storage from canonical-only server storage.
 const CollectorApplicationID = 1414091587

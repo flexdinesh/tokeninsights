@@ -265,7 +265,7 @@ func (m startupModel) View() string {
 	}
 	if m.err == nil && height >= 14 {
 		for _, row := range m.dashboard.syncProgressRows {
-			lines = append(lines, fmt.Sprintf("%-12s  %s", row.label, m.harnessStatus(row.status)))
+			lines = append(lines, fmt.Sprintf("%-12s  %s", row.label, m.harnessRowStatus(row)))
 		}
 		lines = append(lines, "")
 	}
@@ -275,6 +275,9 @@ func (m startupModel) View() string {
 		} else {
 			lines = append(lines, dimensionStyle.Render(fmt.Sprintf("%d batches accepted · %d pending", m.delivery.Batches, m.delivery.Pending)))
 		}
+	}
+	if count := m.quarantinedFiles(); count > 0 && height >= 12 {
+		lines = append(lines, syncFailStyle.Render(fmt.Sprintf("%d files quarantined; usage incomplete.", count)))
 	}
 	if m.err != nil && height >= 12 {
 		if m.dashboard.options.serverURL != "" {
@@ -295,6 +298,9 @@ func (m startupModel) View() string {
 	}
 	if m.err != nil {
 		guidance := "Details: tokeninsights sync"
+		if m.quarantinedFiles() > 0 {
+			guidance = "Retry files: tokeninsights sync --full-refresh"
+		}
 		switch m.phase {
 		case startupServer:
 			guidance = "tokeninsights service status"
@@ -329,6 +335,21 @@ func (m startupModel) View() string {
 		canvas[height-1] = " " + ansi.Truncate(footer, contentWidth, "…")
 	}
 	return renderOnAppSurface(strings.Join(canvas, "\n"), width, height)
+}
+
+func (m startupModel) quarantinedFiles() int {
+	count := 0
+	for _, row := range m.dashboard.syncProgressRows {
+		count += row.quarantined
+	}
+	return count
+}
+
+func (m startupModel) harnessRowStatus(row syncProgressRow) string {
+	if row.quarantined > 0 {
+		return syncFailStyle.Render(fmt.Sprintf("%d quarantined", row.quarantined))
+	}
+	return m.harnessStatus(row.status)
 }
 
 func (m startupModel) harnessStatus(status pipeline.SyncProgressStatus) string {

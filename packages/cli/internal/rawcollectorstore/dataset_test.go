@@ -97,7 +97,7 @@ func TestSchema17MigrationPreservesSavedV2RequestAndCursor(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Recreate exactly the old outbox definitions, retaining verified canonical state.
-	for _, table := range []string{"evidence_batches", "evidence_destinations", "evidence_outbox", "evidence_sources", "evidence_state"} {
+	for _, table := range []string{"evidence_quarantine", "evidence_batches", "evidence_destinations", "evidence_outbox", "evidence_sources", "evidence_state"} {
 		if _, err := database.Exec("DROP TABLE " + table); err != nil {
 			t.Fatal(err)
 		}
@@ -110,7 +110,8 @@ func TestSchema17MigrationPreservesSavedV2RequestAndCursor(t *testing.T) {
 	old = strings.ReplaceAll(old, "  dataset_id TEXT NOT NULL DEFAULT 'default' CHECK (length(dataset_id) BETWEEN 1 AND 256),\n", "")
 	old = strings.ReplaceAll(old, "  protocol_version INTEGER NOT NULL DEFAULT 3 CHECK (protocol_version IN (2, 3)),\n", "")
 	old = strings.ReplaceAll(old, "database_id,dataset_id,protocol_version,first_sequence", "database_id,first_sequence")
-	old = strings.ReplaceAll(old, "user_version = 18", "user_version = 17")
+	old, _, _ = strings.Cut(old, "-- Durable capture quarantine.")
+	old += "PRAGMA user_version = 17;"
 	if _, err := database.Exec("-- Sanitized raw outbox." + old); err != nil {
 		t.Fatal(err)
 	}

@@ -197,6 +197,25 @@ func TestStartupQuitCancelsWorkerAndIgnoresOtherKeysWhileBusy(t *testing.T) {
 	}
 }
 
+func TestStartupQuarantineRetainsIncompleteStateAndRetryGuidance(t *testing.T) {
+	m := newStartupModel(newInteractiveModel(t.Context(), tableOptions{serverURL: "http://127.0.0.1:1"}, time.Now(), "unknown"))
+	defer m.dashboard.cancelSync()
+	m.dashboard.width, m.dashboard.height = 120, 35
+	updated, _ := m.Update(syncProgressMsg{event: pipeline.SyncProgressEvent{Harness: pipeline.HarnessCodex, Status: pipeline.SyncProgressFailed, Quarantined: 2}})
+	m = updated.(startupModel)
+	if !strings.Contains(ansi.Strip(m.View()), "2 quarantined") {
+		t.Fatal("quarantine hidden during delivery")
+	}
+	updated, _ = m.Update(startupFailedMsg{phase: startupCollect, err: errors.New("capture_failed")})
+	m = updated.(startupModel)
+	view := ansi.Strip(m.View())
+	for _, text := range []string{"usage incomplete", "sync --full-refresh", "v View saved", "r Retry"} {
+		if !strings.Contains(view, text) {
+			t.Fatalf("missing %q: %s", text, view)
+		}
+	}
+}
+
 func TestStartupFitsTerminalAndKeepsRecoveryKeys(t *testing.T) {
 	for _, size := range [][2]int{{120, 35}, {80, 24}, {40, 14}, {30, 9}} {
 		for _, failed := range []bool{false, true} {

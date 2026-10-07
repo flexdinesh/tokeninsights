@@ -90,6 +90,7 @@ func publishRaw(ctx context.Context, options Options, result *Result) error {
 			if err != nil {
 				return err
 			}
+			identity = target
 			if options.LocalClient != nil {
 				client = deliveryClient(options.LocalClient)
 				target = "http://local"
@@ -102,7 +103,9 @@ func publishRaw(ctx context.Context, options Options, result *Result) error {
 				return err
 			}
 		}
-		identity = target
+		if identity == "" {
+			identity = target
+		}
 		var err error
 		capabilities, err = NegotiateCapabilities(ctx, &Destination{URL: target, Client: client}, options.Token)
 		if err != nil {
@@ -111,7 +114,7 @@ func publishRaw(ctx context.Context, options Options, result *Result) error {
 
 	}
 	if capabilities.DatasetID == "default" {
-		if err := flushLegacy(ctx, options, result, target, client, local); err != nil {
+		if err := flushLegacy(ctx, options, result, target, identity, capabilities.DatabaseID, client, local); err != nil {
 			return err
 		}
 	}
@@ -125,7 +128,7 @@ func publishRaw(ctx context.Context, options Options, result *Result) error {
 		return failure("publication", "collector_database", err)
 	}
 	defer func() { _ = store.Close() }()
-	destination, err := store.ResolveDestination(ctx, identity, capabilities.DatabaseID, capabilities.DatasetID, local)
+	destination, err := store.ResolveDeliveryDestination(ctx, identity, capabilities.DatabaseID, capabilities.DatasetID, local)
 	if err != nil {
 		return failure("binding", "server_database_changed", err)
 	}
@@ -161,6 +164,10 @@ func publishRaw(ctx context.Context, options Options, result *Result) error {
 		}
 		result.Batches++
 		result.Accepted += int64(len(saved.Batch.Entries))
+		destination, err = store.ResolveDeliveryDestination(ctx, identity, capabilities.DatabaseID, capabilities.DatasetID, local)
+		if err != nil {
+			return failure("binding", "server_database_changed", err)
+		}
 		result.Pending, err = store.Pending(ctx, destination)
 		if err != nil {
 			return failure("publication", "pending_read", err)
@@ -171,7 +178,7 @@ func publishRaw(ctx context.Context, options Options, result *Result) error {
 
 // Retained protocol-1 requests keep their original semantics/bytes. They are
 // delivered as legacy baselines before raw evidence can prove replacement.
-func flushLegacy(ctx context.Context, options Options, result *Result, target string, client *http.Client, local bool) error {
+func flushLegacy(ctx context.Context, options Options, result *Result, target, identity, databaseID string, client *http.Client, local bool) error {
 	release, err := db.AcquireWriterLock(ctx, options.CollectorDBPath)
 	if err != nil {
 		return err
@@ -193,6 +200,7 @@ func flushLegacy(ctx context.Context, options Options, result *Result, target st
 	}
 	legacy := options
 	legacy.LocalClient = client
+	legacy.Destination = &Destination{URL: target, Identity: identity, DatabaseID: databaseID, DatasetID: "default", Local: local, Client: client}
 	if local {
 		legacy.ServerURL = ""
 		legacy.EnsureLocal = func(context.Context) (string, error) { return target, nil }

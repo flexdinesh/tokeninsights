@@ -19,68 +19,7 @@ import (
 
 // Extract preserves whitelisted native records. It never normalizes usage.
 func Extract(ctx context.Context, options SyncOptions, store *rawcollectorstore.Store) (Summary, error) {
-	var summary Summary
-	harnesses := options.Harnesses
-	if len(harnesses) == 0 {
-		harnesses = SupportedHarnesses
-	}
-	summary.RequestedHarnesses = len(harnesses)
-	for _, h := range harnesses {
-		if options.Progress != nil {
-			options.Progress(SyncProgressEvent{Harness: h, Status: SyncProgressDiscovering})
-		}
-		adapter, ok := AdapterFor(h)
-		if !ok {
-			return summary, errors.New("unsupported_harness")
-		}
-		sources, err := adapter.Discover(ctx, DiscoverOptions{Sources: options.Sources, SourceDir: options.SourceDir, HarnessSubdirOnly: len(harnesses) > 1})
-		if err != nil {
-			summary.Failed++
-			summary.Errors = append(summary.Errors, err)
-			continue
-		}
-		if len(sources) == 0 {
-			summary.Skipped++
-			if options.Progress != nil {
-				options.Progress(SyncProgressEvent{Harness: h, Status: SyncProgressSkipped})
-			}
-			continue
-		}
-		if options.Progress != nil {
-			options.Progress(SyncProgressEvent{Harness: h, Status: SyncProgressSyncing})
-		}
-		failed := false
-		captured := 0
-		for _, source := range sources {
-			source.ID = evidence.Tuple("source-file", source.Harness, source.ID, source.Path)
-			var count int
-			if source.Harness == HarnessOpenCode {
-				count, err = extractSQLite(ctx, source, options, store)
-			} else {
-				count, err = extractJSONL(ctx, source, options, store)
-			}
-			summary.RawFacts += count
-			captured += count
-			if err != nil {
-				failed = true
-				summary.Errors = append(summary.Errors, err)
-			}
-		}
-		status := SyncProgressSynced
-		if failed {
-			summary.Failed++
-			status = SyncProgressFailed
-		} else if captured == 0 && !options.FullRefresh {
-			summary.Skipped++
-			status = SyncProgressSkipped
-		} else {
-			summary.Synced++
-		}
-		if options.Progress != nil {
-			options.Progress(SyncProgressEvent{Harness: h, Status: status})
-		}
-	}
-	return summary, errors.Join(summary.Errors...)
+	return extractPrepared(ctx, options, store)
 }
 
 type extractionContext struct {
@@ -93,7 +32,7 @@ type extractionCursor struct {
 	Context                   extractionContext
 }
 
-func cursorFor(ctx context.Context, capture *rawcollectorstore.Capture, source Source, format string) (extractionCursor, error) {
+func cursorFor(ctx context.Context, capture captureSink, source Source, format string) (extractionCursor, error) {
 	state, found, err := capture.Checkpoint(ctx, source.ID, format)
 	cursor := extractionCursor{SourceID: state.SourceID, Lineage: state.Lineage, Prefix: state.Prefix, Offset: state.Offset, Ordinal: state.Ordinal}
 	if err != nil {
@@ -107,68 +46,60 @@ func cursorFor(ctx context.Context, capture *rawcollectorstore.Capture, source S
 	err = json.Unmarshal(state.Context, &cursor.Context)
 	return cursor, err
 }
-func saveCursor(ctx context.Context, capture *rawcollectorstore.Capture, source Source, format string, cursor extractionCursor) error {
+func saveCursor(ctx context.Context, capture captureSink, source Source, format string, cursor extractionCursor) error {
 	body, err := json.Marshal(cursor.Context)
 	if err != nil {
 		return err
 	}
 	return capture.SaveCheckpoint(ctx, rawcollectorstore.Checkpoint{SourceKey: source.ID, SourceID: cursor.SourceID, Lineage: cursor.Lineage, Format: format, Offset: cursor.Offset, Ordinal: cursor.Ordinal, Prefix: cursor.Prefix, Context: body, UpdatedAtMs: time.Now().UnixMilli()})
 }
-func prefix(file *os.File, n int64) (string, error) {
-	if _, err := file.Seek(0, io.SeekStart); err != nil {
-		return "", err
-	}
-	hash := sha256.New()
-	if _, err := io.CopyN(hash, file, n); err != nil {
-		return "", err
-	}
-	return hex.EncodeToString(hash.Sum(nil)), nil
-}
 
-func extractJSONL(ctx context.Context, source Source, options SyncOptions, store *rawcollectorstore.Store) (int, error) {
+func parseJSONL(ctx context.Context, source Source, options SyncOptions, capture *preparedCapture) (int, error) {
 	file, err := os.Open(source.Path)
 	if err != nil {
 		return 0, err
 	}
 	defer func() { _ = file.Close() }()
+	opened, err := file.Stat()
+	if err != nil {
+		return 0, err
+	}
 	format := string(source.Harness) + "-jsonl"
-	tx, err := store.BeginCapture(ctx)
+	cursor, err := cursorFor(ctx, capture, source, format)
 	if err != nil {
 		return 0, err
-	}
-	defer func() { _ = tx.Rollback() }()
-	cursor, err := cursorFor(ctx, tx, source, format)
-	if err != nil {
-		return 0, err
-	}
-	if cursor.Offset > 0 {
-		hash, hashErr := prefix(file, cursor.Offset)
-		if hashErr != nil || hash != cursor.Prefix {
-			cursor.Offset = 0
-			cursor.Ordinal = 0
-			cursor.Context = extractionContext{}
-			cursor.Lineage, err = evidence.RandomID()
-			if err != nil {
-				return 0, err
-			}
-		}
-	}
-	if options.FullRefresh {
-		cursor.Offset = 0
-		cursor.Ordinal = 0
-		cursor.Context = extractionContext{}
 	}
 	if _, err := file.Seek(0, io.SeekStart); err != nil {
 		return 0, err
 	}
 	capturedHash := sha256.New()
-	if _, err := io.CopyN(capturedHash, file, cursor.Offset); err != nil {
-		return 0, err
+	_, hashErr := copyPrefix(ctx, capturedHash, file, cursor.Offset)
+	if ctx.Err() != nil {
+		return 0, ctx.Err()
 	}
-	if cursor.Offset > 0 && hex.EncodeToString(capturedHash.Sum(nil)) != cursor.Prefix {
-		return 0, errors.New("source_changed_during_capture")
+	if cursor.Offset > 0 && (hashErr != nil || hex.EncodeToString(capturedHash.Sum(nil)) != cursor.Prefix) {
+		cursor.Offset, cursor.Ordinal = 0, 0
+		cursor.Context = extractionContext{}
+		cursor.Lineage, err = evidence.RandomID()
+		if err != nil {
+			return 0, err
+		}
+		if _, err := file.Seek(0, io.SeekStart); err != nil {
+			return 0, err
+		}
+		capturedHash.Reset()
+	} else if hashErr != nil {
+		return 0, hashErr
 	}
-	reader := bufio.NewReader(file)
+	if options.FullRefresh {
+		cursor.Offset, cursor.Ordinal = 0, 0
+		cursor.Context = extractionContext{}
+		if _, err := file.Seek(0, io.SeekStart); err != nil {
+			return 0, err
+		}
+		capturedHash.Reset()
+	}
+	reader := bufio.NewReader(contextReader{ctx: ctx, reader: file})
 	count := 0
 	verifiedLength := cursor.Offset
 	if cursor.Offset == 0 {
@@ -180,24 +111,30 @@ func extractJSONL(ctx context.Context, source Source, options SyncOptions, store
 		}
 		// Private source bytes may exceed the wire limit. Bound memory without
 		// advancing past an unprocessed record or retaining a partial tail.
-		line, readErr := readEvidenceLine(reader)
+		read, readErr := readCaptureLine(ctx, reader, source.Harness, capturedHash)
+		line := read.line
 		tail := errors.Is(readErr, io.EOF)
-		if tail && (len(line) == 0 || !json.Valid(line)) {
+		if read.partial || tail && !read.skipped && (len(line) == 0 || !json.Valid(line)) {
 			break
 		}
 		if readErr != nil && !tail {
+			if errors.Is(readErr, errSourceRecordLimit) {
+				return 0, &recordLimitError{Offset: cursor.Offset}
+			}
 			return 0, readErr
 		}
 		next := cursor
 		next.Context.Records = append([]evidence.Context(nil), cursor.Context.Records...)
-		next.Offset += int64(len(line))
+		next.Offset += read.length
 		next.Ordinal++
-		_, _ = capturedHash.Write(line)
-		added, err := extractJSONRecord(ctx, tx, source, options, format, &next, line)
-		if err != nil {
-			return 0, err
+		if !read.skipped {
+			_, _ = capturedHash.Write(line)
+			added, err := extractJSONRecord(ctx, capture, source, options, format, &next, line)
+			if err != nil {
+				return 0, err
+			}
+			count += added
 		}
-		count += added
 		verifiedLength = next.Offset
 		// A complete final JSON value is evidence, but its cursor stays before
 		// the unterminated line. Append/retry rereads only that last record.
@@ -207,36 +144,18 @@ func extractJSONL(ctx context.Context, source Source, options SyncOptions, store
 		cursor = next
 		cursor.Prefix = hex.EncodeToString(capturedHash.Sum(nil))
 	}
-	// Re-read only bytes, not records: append-only continuity is checked before
-	// committing the raw records and their checkpoint in one SQLite transaction.
-	hash, err := prefix(file, verifiedLength)
-	if err != nil {
-		return 0, err
+	// Preparation holds no collector write transaction. Recheck the captured
+	// bytes and inode inside the single writer before publishing its checkpoint.
+	capture.verify = func(ctx context.Context) error {
+		return verifyPreparedJSONL(ctx, source.Path, opened, verifiedLength, hex.EncodeToString(capturedHash.Sum(nil)))
 	}
-	if hash != hex.EncodeToString(capturedHash.Sum(nil)) {
-		return 0, errors.New("source_changed_during_capture")
-	}
-	opened, err := file.Stat()
-	if err != nil {
-		return 0, err
-	}
-	current, err := os.Stat(source.Path)
-	if err != nil {
-		return 0, err
-	}
-	if !os.SameFile(opened, current) {
-		return 0, errors.New("source_replaced_during_capture")
-	}
-	if err := saveCursor(ctx, tx, source, format, cursor); err != nil {
-		return 0, err
-	}
-	if err := tx.Commit(); err != nil {
+	if err := saveCursor(ctx, capture, source, format, cursor); err != nil {
 		return 0, err
 	}
 	return count, nil
 }
 
-func extractJSONRecord(ctx context.Context, tx *rawcollectorstore.Capture, source Source, options SyncOptions, format string, cursor *extractionCursor, line []byte) (int, error) {
+func extractJSONRecord(ctx context.Context, capture captureSink, source Source, options SyncOptions, format string, cursor *extractionCursor, line []byte) (int, error) {
 	data, diagnostics, err := evidence.Sanitize(string(source.Harness), format, line)
 	if err != nil {
 		return 0, nil
@@ -273,7 +192,7 @@ func extractJSONRecord(ctx context.Context, tx *rawcollectorstore.Capture, sourc
 			record.Context = append(record.Context, entry)
 		}
 	}
-	added, err := tx.Record(ctx, record, time.Now().UnixMilli())
+	added, err := capture.Record(ctx, record, time.Now().UnixMilli())
 	if err != nil {
 		return 0, err
 	}
@@ -285,21 +204,7 @@ func extractJSONRecord(ctx context.Context, tx *rawcollectorstore.Capture, sourc
 
 const maxEvidenceLineBytes = 16 << 20
 
-func readEvidenceLine(reader *bufio.Reader) ([]byte, error) {
-	var line []byte
-	for {
-		fragment, err := reader.ReadSlice('\n')
-		if len(line)+len(fragment) > maxEvidenceLineBytes {
-			return nil, errors.New("source_record_limit")
-		}
-		line = append(line, fragment...)
-		if !errors.Is(err, bufio.ErrBufferFull) {
-			return line, err
-		}
-	}
-}
-
-func extractSQLite(ctx context.Context, source Source, options SyncOptions, store *rawcollectorstore.Store) (int, error) {
+func parseSQLite(ctx context.Context, source Source, options SyncOptions, capture *preparedCapture) (int, error) {
 	database, err := openReadOnlySQLite(source.Path)
 	if err != nil {
 		return 0, err
@@ -310,18 +215,13 @@ func extractSQLite(ctx context.Context, source Source, options SyncOptions, stor
 		return 0, err
 	}
 	defer func() { _ = snapshot.Rollback() }()
-	tx, err := store.BeginCapture(ctx)
-	if err != nil {
-		return 0, err
-	}
-	defer func() { _ = tx.Rollback() }()
-	cursor, err := cursorFor(ctx, tx, source, "opencode-sqlite")
+	cursor, err := cursorFor(ctx, capture, source, "opencode-sqlite")
 	if err != nil {
 		return 0, err
 	}
 	// Existing messages can be revised without an update cursor. Snapshot scans
 	// are required; immutable observation keys avoid re-enqueueing unchanged rows.
-	locations, count, err := extractOpenCodeContext(ctx, snapshot, tx, source, options, cursor)
+	locations, count, err := extractOpenCodeContext(ctx, snapshot, capture, source, options, cursor)
 	if err != nil {
 		return 0, err
 	}
@@ -393,7 +293,7 @@ func extractSQLite(ctx context.Context, source Source, options SyncOptions, stor
 			if !evidence.UsageRecord(record.Harness, record.Format, record.Data) {
 				continue
 			}
-			inserted, err := tx.Record(ctx, record, time.Now().UnixMilli())
+			inserted, err := capture.Record(ctx, record, time.Now().UnixMilli())
 			if err != nil {
 				_ = rows.Close()
 				return 0, err
@@ -409,10 +309,7 @@ func extractSQLite(ctx context.Context, source Source, options SyncOptions, stor
 		}
 
 	}
-	if err := saveCursor(ctx, tx, source, "opencode-sqlite", cursor); err != nil {
-		return 0, err
-	}
-	if err := tx.Commit(); err != nil {
+	if err := saveCursor(ctx, capture, source, "opencode-sqlite", cursor); err != nil {
 		return 0, err
 	}
 	return count, nil
@@ -420,7 +317,7 @@ func extractSQLite(ctx context.Context, source Source, options SyncOptions, stor
 
 // Capture approved native context separately and precompute only session
 // enrichment. Message extraction streams rows without retaining a full transcript.
-func extractOpenCodeContext(ctx context.Context, snapshot *sql.Tx, tx *rawcollectorstore.Capture, source Source, options SyncOptions, cursor extractionCursor) (map[string]*evidence.Location, int, error) {
+func extractOpenCodeContext(ctx context.Context, snapshot *sql.Tx, capture captureSink, source Source, options SyncOptions, cursor extractionCursor) (map[string]*evidence.Location, int, error) {
 	locations := map[string]*evidence.Location{}
 	count := 0
 	sessions := []RawTokenFact{}
@@ -460,7 +357,7 @@ func extractOpenCodeContext(ctx context.Context, snapshot *sql.Tx, tx *rawcollec
 				_ = rows.Close()
 				return nil, 0, err
 			}
-			inserted, err := tx.Record(ctx, evidence.Record{Harness: "opencode", Format: kind.format, SourceID: cursor.SourceID, Lineage: cursor.Lineage, Data: data, Diagnostics: diagnostics}, time.Now().UnixMilli())
+			inserted, err := capture.Record(ctx, evidence.Record{Harness: "opencode", Format: kind.format, SourceID: cursor.SourceID, Lineage: cursor.Lineage, Data: data, Diagnostics: diagnostics}, time.Now().UnixMilli())
 			if err != nil {
 				_ = rows.Close()
 				return nil, 0, err

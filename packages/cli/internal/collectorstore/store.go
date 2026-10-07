@@ -9,7 +9,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"net/url"
 
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/publication"
@@ -171,25 +170,8 @@ func (s Store) PrepareBatch(ctx context.Context, destinationID, hostname string,
 		return nil, errors.New("publication journal gap")
 	}
 	batch.FromSequence = entries[0].Sequence
-	var body []byte
-	for _, entry := range entries {
-		if entry.Sequence != batch.FromSequence+int64(len(batch.Entries)) {
-			return nil, errors.New("publication journal gap")
-		}
-		batch.Entries = append(batch.Entries, entry)
-		batch.ToSequence = entry.Sequence
-		candidate, err := publication.EncodeBatch(batch)
-		if err != nil {
-			if len(batch.Entries) == 1 {
-				return nil, fmt.Errorf("publication entry cannot fit batch: %w", err)
-			}
-			batch.Entries = batch.Entries[:len(batch.Entries)-1]
-			batch.ToSequence = batch.Entries[len(batch.Entries)-1].Sequence
-			break
-		}
-		body = candidate
-	}
-	if err := publication.ValidateBatch(batch); err != nil {
+	batch, body, err := encodeBatchPrefix(batch, entries)
+	if err != nil {
 		return nil, err
 	}
 	hash := publication.RequestHash(body)

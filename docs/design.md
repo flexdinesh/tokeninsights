@@ -32,7 +32,7 @@ processing, generations, receipts and analytics.
 
 | Role | Default | Schema | Version |
 | --- | --- | --- | --- |
-| Collector | collector.sqlite | schema/schema.sql | 18 |
+| Collector | collector.sqlite | schema/schema.sql | 19 |
 | Server | server.duckdb | schema/data.sql | 2 |
 | Legacy import | server.sqlite | schema/server.sql | 2 |
 
@@ -43,10 +43,10 @@ Hosted users, token digests and browser session digests live in the `accounts`
 logical schema of the same DuckDB file. One shared write coordinator owns all
 writes; no application/per-user database or cross-file commit.
 
-Verified collector schemas 16/17 upgrade additively to 18, retaining legacy facts,
+Verified collector schemas 16/17/18 upgrade additively to 19, retaining legacy facts,
 journals, bindings, exact protocol-1/2 requests, hashes, receipts and cursors.
 Schema 18 adds dataset/protocol bindings to delivery state; existing saved requests
-retain `default` and their original protocol without byte rewriting. Raw extraction has its own
+retain `default` and their original protocol without byte rewriting. Schema 19 adds local-only durable capture quarantine without rewriting saved requests. Raw extraction has its own
 version/stream; older canonical generations need no rebuild for capture, newer
 generations reject. Maintenance cannot delete unaccepted raw outbox.
 
@@ -93,11 +93,19 @@ SQLite evidence_state/sources/outbox/destinations/batches retain lineage/context
 immutable observations, monotonic sequences, bindings, exact saved requests and
 acceptance receipts. Capture/checkpoint commit together.
 
+Schema-19 evidence_quarantine retains only source key/format, an opaque fingerprint of local device/inode/size/mtime, parser policy version, fixed error code, byte offset and capture time. It stores no source path or record contents. Deterministic record-limit failures preserve the previous evidence/checkpoint and remain incomplete on later syncs while their fingerprint/policy matches. File changes, parser policy changes and `sync --full-refresh` retry capture; successful capture clears quarantine. Cancellation, transient I/O failures and source changes during capture remain retryable without quarantine.
+
 JSONL validates saved byte prefix, parses appended records, then verifies captured
 bytes and inode before commit. Rewrite/truncation rotates lineage without deleting
 evidence. Partial JSON tail waits; complete JSON without newline is captured but
 keeps checkpoint before the last line. Full refresh preserves verified lineage
-and deduplicates observations. Prefix verification reads old bytes for continuity.
+and deduplicates observations. Prefix verification reads old bytes for continuity and reuses that pass for the captured-prefix hash, retaining final byte/inode verification.
+
+Raw Codex discovery lists files without the legacy ancestry-header scan; ancestry remains sanitized evidence interpreted by the server.
+
+At most four readers prepare sources concurrently with one SQLite writer. JSONL records retain at most 16 MiB per reader; native decoding overhead varies with record shape, so worker admission is a nominal allowance rather than a hard heap cap. SQLite scans retain their existing snapshot/row behavior; sanitized metadata-only temporary spools keep prepared results off the heap. Spools use private permissions and are removed on completion/failure/cancellation. Disk use follows active source sizes; no total disk cap is claimed. Sources commit atomically after continuity verification; one source failure does not discard another source. Location resolution caches are shared and concurrency-safe.
+
+Records exceeding the 16 MiB JSONL bound are skipped only when a streaming JSON discriminator proves they are irrelevant. Oversized usage/context or unknown records fail the source rather than silently lose counters or continuity. Partial trailing records wait. Source extraction and skipped-record hashing preserve byte offsets and ordinals. Whitelist extraction caches decoded nested objects per record while preserving numeric precision, null/absence and source duplicate-key semantics.
 
 OpenCode reads consistent SQLite snapshots. Existing rows can revise without
 native update cursor, so snapshot scans compare sanitized observations; unchanged
@@ -116,7 +124,8 @@ can repair only captured fields; whitelist changes may require source rereads.
 Canonical endpoint plus server-authenticated dataset binds delivery progress.
 Token rotation retains the binding; switching users creates independent progress.
 Remote URL pins database identity; replacement rejects existing binding.
-Local identity includes database ID for deliberate retained-history replay.
+Local identity includes database ID for deliberate retained-history replay. Private owner-socket routing never replaces the canonical endpoint identity. Verified existing local aliases for the same database/dataset reuse pending requests first, then acknowledged progress; remote bindings remain strict. Control requests use three seconds; ingestion uses thirty seconds and caller cancellation.
+Batch construction encodes each entry once, accounts for the exact envelope/byte limit, then validates and persists one final request. Retried bytes remain immutable.
 One destination per invocation; no relay/fan-out.
 
 ## Acceptance protocol 3
@@ -151,7 +160,7 @@ canonical tables. Legacy maintenance handles old tables only.
 ## Processing
 
 One server owns file/lifetime lock. Connections share its engine; HTTP never
-reopens paths. Four admission slots, shared short write transactions, one worker.
+reopens paths. Four admission slots, shared short write transactions, two processing workers. One dispatcher owns fair dataset selection and claims whole dataset-qualified components; components connected to an in-flight claim wait. A 32 MiB estimated raw-JSON admission budget bounds concurrent loading; a component over budget runs alone.
 Scopes are dataset-qualified native sessions or unresolved source lineages; Codex
 ancestry connects dependencies only within that dataset. Pending counts, revision
 fences, generation activation and receipt outcomes are dataset-local. Worker
@@ -163,7 +172,7 @@ complete component membership and each scope revision before publishing.
 Stale work retries; unrelated ingestion cannot starve processing.
 Facts/estimates/provenance/outcomes/completed revisions commit atomically.
 Failures stay pending with fixed error/attempts/exponential retry capped 64 seconds;
-independent scopes proceed. Join worker before closing storage.
+independent scopes proceed. Backoff applies to every unchanged scope in a failed component; revised input remains eligible. Join dispatcher and workers before closing storage. Acceptance/projection inserts use bounded bulk statements under the shared writer, preserving conflict checks, receipt bytes, provenance and transaction fences.
 
 Pure processor preserves five token components and their sum. Require usable
 native session/time and nonnegative bounded counters. Missing provider/model
@@ -304,7 +313,7 @@ normalization/import/wire adapters are explicit compatibility paths; they are no
 relocated solely for directory symmetry. Small consumer interfaces describe atomic
 operations rather than generic backend CRUD.
 
-One process owns the shared database; one compute worker initially. Docker packages
+One process owns the shared database; two bounded compute workers. Docker packages
 the foreground executable with committed assets, non-root glibc runtime, CA/timezone
 native dependencies, persistent `/data` and private `/run/tokeninsights` admin
 socket. `/healthz` is liveness; `/readyz` checks initialized storage/auth/routes,

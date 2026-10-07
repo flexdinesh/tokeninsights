@@ -17,7 +17,7 @@ func maintenanceSchema17(t *testing.T) (string, *sql.DB) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, table := range []string{TableEvidenceBatches, TableEvidenceDestinations, TableEvidenceOutbox, TableEvidenceSources, TableEvidenceState} {
+	for _, table := range []string{TableEvidenceQuarantine, TableEvidenceBatches, TableEvidenceDestinations, TableEvidenceOutbox, TableEvidenceSources, TableEvidenceState} {
 		if _, err := database.Exec("DROP TABLE " + table); err != nil {
 			t.Fatal(err)
 		}
@@ -30,7 +30,8 @@ func maintenanceSchema17(t *testing.T) (string, *sql.DB) {
 	old = strings.ReplaceAll(old, "  dataset_id TEXT NOT NULL DEFAULT 'default' CHECK (length(dataset_id) BETWEEN 1 AND 256),\n", "")
 	old = strings.ReplaceAll(old, "  protocol_version INTEGER NOT NULL DEFAULT 3 CHECK (protocol_version IN (2, 3)),\n", "")
 	old = strings.ReplaceAll(old, "database_id,dataset_id,protocol_version,first_sequence", "database_id,first_sequence")
-	old = strings.ReplaceAll(old, "user_version = 18", "user_version = 17")
+	old, _, _ = strings.Cut(old, "-- Durable capture quarantine.")
+	old += "PRAGMA user_version = 17;"
 	if _, err := database.Exec("-- Sanitized raw outbox." + old); err != nil {
 		t.Fatal(err)
 	}
@@ -58,7 +59,7 @@ func TestResetAllSchema17UpgradeRespectsWriterLock(t *testing.T) {
 	if err := ResetAllContext(t.Context(), path); err != nil {
 		t.Fatal(err)
 	}
-	if err := database.QueryRow("PRAGMA user_version").Scan(&version); err != nil || version != 18 {
+	if err := database.QueryRow("PRAGMA user_version").Scan(&version); err != nil || version != SupportedSchemaVersion {
 		t.Fatal(version, err)
 	}
 }
@@ -76,7 +77,7 @@ func TestResetAllSchema17UpgradeProtectsPendingOutbox(t *testing.T) {
 	if err := database.QueryRow("SELECT COUNT(*) FROM evidence_outbox").Scan(&count); err != nil || count != 1 {
 		t.Fatal(count, err)
 	}
-	if err := database.QueryRow("PRAGMA user_version").Scan(&version); err != nil || version != 18 {
+	if err := database.QueryRow("PRAGMA user_version").Scan(&version); err != nil || version != SupportedSchemaVersion {
 		t.Fatal(version, err)
 	}
 }

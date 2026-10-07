@@ -9,7 +9,7 @@ import (
 	"strings"
 )
 
-// UpgradeEvidence additively upgrades verified schemas 16/17 to schema 18.
+// UpgradeEvidence additively upgrades verified schemas 16/17/18 to schema 19.
 // The caller must hold the Collector writer lock. No reset/recovery is performed.
 func UpgradeEvidence(ctx context.Context, path string) error {
 	abs, err := filepath.Abs(path)
@@ -27,14 +27,14 @@ func UpgradeEvidence(ctx context.Context, path string) error {
 	}
 	var version int
 	err = inspection.QueryRowContext(ctx, "PRAGMA user_version").Scan(&version)
-	if err == nil && (version == 16 || version == 17) {
-		_, err = inspectCompatibilityVersion(ctx, inspection, version)
+	if err == nil && (version == 16 || version == 17 || version == 18 || version > SupportedSchemaVersion) {
+		_, err = inspectEvidenceCompatibility(ctx, inspection)
 	}
 	_ = inspection.Close()
 	if err != nil {
 		return err
 	}
-	if version != 16 && version != 17 {
+	if version != 16 && version != 17 && version != 18 {
 		return nil
 	}
 	previous := version
@@ -57,7 +57,8 @@ func UpgradeEvidence(ctx context.Context, path string) error {
 	if _, err := inspectCompatibilityVersion(ctx, tx, previous); err != nil {
 		return err
 	}
-	if previous == 16 {
+	switch previous {
+	case 16:
 		_, body, err := schemaParts()
 		if err != nil {
 			return err
@@ -69,7 +70,7 @@ func UpgradeEvidence(ctx context.Context, path string) error {
 		if _, err := tx.ExecContext(ctx, "-- Sanitized raw outbox."+additions); err != nil {
 			return err
 		}
-	} else {
+	case 17:
 		// SQLite supplies defaults for old rows without rewriting immutable request bytes.
 		for _, statement := range []string{
 			"ALTER TABLE evidence_destinations ADD COLUMN dataset_id TEXT NOT NULL DEFAULT 'default' CHECK (length(dataset_id) BETWEEN 1 AND 256)",
@@ -77,12 +78,27 @@ func UpgradeEvidence(ctx context.Context, path string) error {
 			"ALTER TABLE evidence_batches ADD COLUMN protocol_version INTEGER NOT NULL DEFAULT 2 CHECK (protocol_version IN (2, 3))",
 			"DROP TRIGGER evidence_batches_immutable",
 			"CREATE TRIGGER evidence_batches_immutable BEFORE UPDATE OF batch_id,destination_id,stream_id,database_id,dataset_id,protocol_version,first_sequence,last_sequence,request_hash,request_bytes ON evidence_batches BEGIN SELECT RAISE(ABORT, 'evidence request is immutable'); END",
-			"PRAGMA user_version = 18",
 		} {
 			if _, err := tx.ExecContext(ctx, statement); err != nil {
 				return err
 			}
 		}
+	}
+	if previous >= 17 {
+		_, body, err := schemaParts()
+		if err != nil {
+			return err
+		}
+		_, additions, ok := strings.Cut(body, "-- Durable capture quarantine.")
+		if !ok {
+			return errors.New("missing_quarantine_schema")
+		}
+		if _, err := tx.ExecContext(ctx, "-- Durable capture quarantine."+additions); err != nil {
+			return err
+		}
+	}
+	if _, err := inspectCompatibility(ctx, tx); err != nil {
+		return err
 	}
 	return tx.Commit()
 }
@@ -126,7 +142,7 @@ func inspectEvidenceCompatibility(ctx context.Context, reader Reader) (Compatibi
 	if err := reader.QueryRowContext(ctx, "PRAGMA user_version").Scan(&version); err != nil {
 		return Compatibility{Exists: true}, err
 	}
-	if version == 16 || version == 17 {
+	if version == 16 || version == 17 || version == 18 {
 		return inspectCompatibilityVersion(ctx, reader, version)
 	}
 	return inspectCompatibility(ctx, reader)
