@@ -24,15 +24,39 @@ export function DashboardResults({
   connectionError: Error | null
   retryConnection: () => Promise<unknown>
 }) {
-  const { query } = useDashboardQuery()
+  const { query, setQuality } = useDashboardQuery()
   const { statusQuery, reload, analyticsEnabled: enabled } = controller
-  const data = analytics.data?.dashboard
+  const received = analytics.data?.dashboard
+  const data = (received?.quality ?? 'confirmed') === query.quality ? received : undefined
   const hasData = Boolean(data)
   const resultsMatchView =
     analytics.data?.tab === query.tab &&
     (query.tab !== 'repo' || analytics.data?.locationGroup === query.locationGroup)
   return (
     <div className="studio-results">
+      <div role="group" aria-label="Usage evidence">
+        <Button
+          variant={query.quality === 'confirmed' ? 'default' : 'outline'}
+          aria-pressed={query.quality === 'confirmed'}
+          onClick={() => setQuality('confirmed')}
+        >
+          Confirmed
+        </Button>
+        <Button
+          variant={query.quality === 'estimated' ? 'default' : 'outline'}
+          aria-pressed={query.quality === 'estimated'}
+          onClick={() => setQuality('estimated')}
+        >
+          Estimated
+        </Button>
+      </div>
+      {query.quality === 'estimated' && (
+        <p>Ambiguous evidence with usable counters. Excluded from confirmed totals.</p>
+      )}
+      {(controller.statusQuery.data?.pending ?? 0) > 0 && (
+        <p role="status">{controller.statusQuery.data?.pending} sessions awaiting processing.</p>
+      )}
+      {(data?.unresolved ?? 0) > 0 && <p>{data?.unresolved} observations need more evidence.</p>}
       {(connectionError || statusQuery.error) && (
         <ErrorBanner
           message={connectionError?.message ?? statusQuery.error?.message ?? 'Request failed'}
@@ -50,12 +74,16 @@ export function DashboardResults({
       )}
       {enabled && !hasData && !analytics.error && <DashboardSkeleton />}
       {enabled && data && data.summary.syncedSessions === 0 && !analytics.error && (
-        <p role="status">No usage saved yet. Run tokeninsights sync.</p>
+        <p role="status">
+          {query.quality === 'estimated'
+            ? 'No estimated usage.'
+            : 'No usage saved yet. Run tokeninsights sync.'}
+        </p>
       )}
       {enabled && data && hasData && (
         <div className="analytics" aria-busy={analytics.isFetching}>
           <div className="usage-workbench">
-            <SummaryCards summary={data.summary} />
+            <SummaryCards summary={data.summary} estimated={query.quality === 'estimated'} />
             {analytics.isPlaceholderData && !resultsMatchView ? (
               <RouteResultsSkeleton />
             ) : (

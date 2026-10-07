@@ -26,14 +26,14 @@ func runSync(invocation commandInvocation, args []string) error {
 	var publishOnly bool
 	settings := invocation.defaults()
 	flags.StringVar(&dbPath, "collector-db-path", settings.CollectorDBPath, "collector SQLite database")
-	flags.StringVar(&serverDBPath, "server-db-path", settings.ServerDBPath, "local server SQLite database")
+	flags.StringVar(&serverDBPath, "server-db-path", settings.ServerDBPath, "local server DuckDB database")
 	flags.StringVar(&serverURL, "server-url", settings.ServerURL, "ingestion server; empty selects local")
-	flags.BoolVar(&publishOnly, "publish-only", false, "publish retained normalized work without collecting")
+	flags.BoolVar(&publishOnly, "publish-only", false, "submit retained raw evidence without collecting")
 	flags.Var(&harnesses, "harness", "harness to sync: opencode, pi, codex, or claude-code")
 	flags.BoolVar(&all, "all", false, "sync all supported harnesses")
 	flags.BoolVar(&dryRun, "dry-run", false, "discover and parse without writing")
 	flags.BoolVar(&fullRefresh, "full-refresh", false, "ignore source refresh state and parse discovered sources")
-	flags.BoolVar(&noNormalize, "no-normalize", false, "skip canonical normalization after raw ingest")
+	flags.BoolVar(&noNormalize, "no-normalize", false, "deprecated compatibility option; processing is always on server")
 	flags.StringVar(&sourceDir, "source-dir", "", "override harness source directory")
 	if err := flags.Parse(args); err != nil {
 		return fmt.Errorf("%w\n%w", err, ErrUsage)

@@ -12,8 +12,8 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/datastore"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/server"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/serverstore"
 )
 
 type Options struct {
@@ -97,7 +97,7 @@ func Ensure(ctx context.Context, options Options) (State, error) {
 		return state, err
 	}
 	if state.Running {
-		if state.Record.SchemaVersion != serverstore.SupportedSchemaVersion || state.Record.Config.Version != 3 {
+		if state.Record.SchemaVersion != datastore.SchemaVersion || state.Record.Config.Version != 3 {
 			return state, fmt.Errorf("service contract incompatible; use service restart")
 		}
 		if options.Host != nil && normalizedHost(*options.Host) != state.Record.Config.Host || options.Port != nil && *options.Port != state.Record.Config.Port {

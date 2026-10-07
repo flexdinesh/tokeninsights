@@ -19,7 +19,7 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-const protocolVersion = 2
+const protocolVersion = 3
 const bodyLimit = 256 * 1024
 const callTimeout = 3 * time.Second
 const startupTimeout = 45 * time.Second

@@ -9,7 +9,7 @@ import (
 )
 
 func printDeliverySummary(stdout io.Writer, result collector.Result) {
-	state := "committed"
+	state := "accepted"
 	if result.DeliveryError != nil {
 		state = "failed"
 	}
@@ -17,7 +17,7 @@ func printDeliverySummary(stdout io.Writer, result collector.Result) {
 	if result.PendingKnown {
 		pending = fmt.Sprint(result.Pending)
 	}
-	_, _ = fmt.Fprintf(stdout, "delivery: status=%s batches=%d inserted=%d updated=%d noop=%d pending=%s\n", state, result.Batches, result.Inserted, result.Updated, result.Noop, pending)
+	_, _ = fmt.Fprintf(stdout, "delivery: status=%s batches=%d accepted=%d pending=%s processing=async\n", state, result.Batches, result.Accepted, pending)
 }
 
 func printSummary(stdout io.Writer, command string, summary pipeline.Summary, dryRun bool) {

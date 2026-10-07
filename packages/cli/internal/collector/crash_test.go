@@ -336,7 +336,7 @@ func TestCollectorCrashHelper(t *testing.T) {
 		barrier()
 		return
 	}
-	if _, err := collector.Run(context.Background(), options); err != nil {
+	if _, err := collector.RunLegacyForTest(context.Background(), options); err != nil {
 		t.Fatal(err)
 	}
 	if config.Seam == "after_collector_ack_commit" {

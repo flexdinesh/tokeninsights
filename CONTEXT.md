@@ -45,19 +45,19 @@ The largest prompt-side context load observed within a session, counted as input
 _Avoid_: Context used when it could mean total tokens, output tokens, or context window size
 
 **Collector**:
-The host-side Go workflow that discovers Durable Sources, captures metadata-only raw facts, normalizes usage in collector SQLite, and publishes its durable canonical journal.
-_Avoid_: Server-side source parsing, raw ingestion into server
+The host-side Go workflow that discovers Durable Sources, captures metadata-only raw facts, preserves evidence in SQLite outbox and submits saved raw batches for acceptance.
+_Avoid_: Client-side counter interpretation, private content ingestion
 
 **Canonical Server**:
-The shared local/remote Go server core that transactionally ingests normalized facts, dedupes stable IDs, persists receipts, and serves REST analytics plus embedded web assets.
-_Avoid_: Collector service, server-side normalization
+The shared local/remote Go server core that durably accepts evidence, asynchronously processes stable contributions, stores DuckDB status and serves REST analytics plus embedded web assets.
+_Avoid_: Collector service, client-side normalization
 
 **Read-only View**:
 `tokeninsights tui` runs caller-side collection/publication in a loading screen, then queries committed data through the same REST API as the browser. `tui --sync=false` skips collection. Dashboard Reload requests queries only; viewer filters remain display constraints. Startup failures offer Retry, View saved data, and Quit.
 _Avoid_: Implicit View Sync, dashboard source refresh
 
 **Durable Publication**:
-Immutable normalized journal entries and saved upload batches in collector SQLite, acknowledged per destination only after server commit. Later manual sync retries pending delivery.
+Immutable raw outbox and saved batches, acknowledged per destination after server acceptance. Later manual sync retries pending delivery.
 _Avoid_: Best-effort upload marker, insert-only export
 
 **Stable Fact Identity**:
@@ -87,3 +87,7 @@ _Avoid_: Treating inferred provider values as source-provided facts
 **Claude Code Inferred Provider**:
 The rule that Claude Code artifact-derived token facts without explicit provider metadata canonicalize to provider `maybe-anthropic` with provider source `inferred`, because the artifact source is Claude Code but the provider was not explicitly present.
 _Avoid_: Canonicalizing these rows as actual `anthropic` provider facts
+
+**Estimated Usage**: Usable ambiguous evidence queried separately from confirmed totals.
+
+**Processing Generation**: Versioned projection activated after complete scope revision coverage; published history stays while building.

@@ -162,6 +162,11 @@ func replaceSchema(ctx context.Context, database *sql.DB, sourceKey string) erro
 // Kept separate so rollback tests can interrupt after the actual DDL/state
 // replacement and before commit, without production fault-injection hooks.
 func replaceSchemaTx(ctx context.Context, tx *sql.Tx, body string, sourceKey string) error {
+	if pending, err := EvidencePending(ctx, tx); err != nil {
+		return err
+	} else if pending {
+		return errors.New("unacknowledged evidence; publish before resetting Collector storage")
+	}
 	rows, err := tx.QueryContext(ctx, "SELECT type, name FROM sqlite_schema WHERE type IN ('view', 'trigger', 'table') AND name NOT GLOB 'sqlite_*' ORDER BY CASE type WHEN 'view' THEN 0 WHEN 'trigger' THEN 1 ELSE 2 END")
 	if err != nil {
 		return err

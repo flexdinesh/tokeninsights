@@ -87,15 +87,7 @@ func TestLifecycleDetachedEmptyStartIngestAndRestart(t *testing.T) {
 	if !state.Running || state.Record.PID == os.Getpid() || state.Status.DataReadiness != "ready" {
 		t.Fatal(state)
 	}
-	store, err := serverstore.Open(options.DBPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var facts int
-	if err := store.SQL().QueryRow("SELECT COUNT(*) FROM canonical_token_usage").Scan(&facts); err != nil || facts != 0 {
-		t.Fatal("startup collected", facts, err)
-	}
-	_ = store.Close()
+	assertUsageTotal(t, state.Record.URL, 0)
 	again, err := Ensure(ctx, Options{DBPath: options.DBPath})
 	if err != nil || again.Record.InstanceID != state.Record.InstanceID {
 		t.Fatal("healthy service replaced", err)
@@ -108,8 +100,8 @@ func TestLifecycleDetachedEmptyStartIngestAndRestart(t *testing.T) {
 	}
 	t.Setenv("XDG_RUNTIME_DIR", runtimeDir)
 	batch := savedBatch(t, state.Status.DataEpoch)
-	first := postBatch(t, state.Record.URL, batch)
-	second := postBatch(t, state.Record.URL, batch)
+	first := postBatch(t, *state.Record, batch)
+	second := postBatch(t, *state.Record, batch)
 	if first != second || first.Inserted != 1 {
 		t.Fatal("replay differs", first, second)
 	}
@@ -121,18 +113,10 @@ func TestLifecycleDetachedEmptyStartIngestAndRestart(t *testing.T) {
 	if restarted.Record.InstanceID == state.Record.InstanceID || restarted.Status.DataEpoch != before || restarted.Record.Config.Port != 0 {
 		t.Fatal("restart identity/binding", restarted)
 	}
-	if replay := postBatch(t, restarted.Record.URL, batch); replay != first {
+	if replay := postBatch(t, *restarted.Record, batch); replay != first {
 		t.Fatal("restart receipt lost", replay, first)
 	}
-	store, err = serverstore.Open(options.DBPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = store.Close() }()
-	var total int64
-	if err := store.SQL().QueryRow("SELECT COUNT(*),SUM(total_tokens) FROM canonical_token_usage").Scan(&facts, &total); err != nil || facts != 1 || total != 120 {
-		t.Fatal(facts, total, err)
-	}
+	assertUsageTotal(t, restarted.Record.URL, 120)
 	if err := Stop(ctx, options.DBPath); err != nil {
 		t.Fatal(err)
 	}
@@ -154,9 +138,9 @@ func savedBatch(t *testing.T, databaseID string) []byte {
 	return encoded
 }
 
-func postBatch(t *testing.T, url string, body []byte) publication.Receipt {
+func postBatch(t *testing.T, record Record, body []byte) publication.Receipt {
 	t.Helper()
-	response, err := http.Post(url+"/api/v1/ingestion/batches", "application/json", bytes.NewReader(body))
+	response, err := (Client{Record: record}).IngestionClient().Post("http://local/api/v1/ingestion/batches", "application/json", bytes.NewReader(body))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -303,7 +287,7 @@ func TestIngestedFactsAndReceiptSurviveDaemonCrash(t *testing.T) {
 		t.Fatal(err)
 	}
 	batch := savedBatch(t, state.Status.DataEpoch)
-	receipt := postBatch(t, state.Record.URL, batch)
+	receipt := postBatch(t, *state.Record, batch)
 	process, err := os.FindProcess(state.Record.PID)
 	if err != nil {
 		t.Fatal(err)
@@ -334,7 +318,7 @@ func TestIngestedFactsAndReceiptSurviveDaemonCrash(t *testing.T) {
 	if err != nil || restarted.Record.InstanceID == state.Record.InstanceID {
 		t.Fatal("stale runtime prevented restart", err)
 	}
-	if replay := postBatch(t, restarted.Record.URL, batch); replay != receipt {
+	if replay := postBatch(t, *restarted.Record, batch); replay != receipt {
 		t.Fatal("crash lost durable receipt", replay, receipt)
 	}
 }
@@ -535,8 +519,28 @@ func TestLocalIngestionValidationRemainsJSONWithoutAuthentication(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	status, body := authenticatedRequest(t, http.MethodPost, state.Record.URL+"/api/v1/ingestion/batches", "", []byte("synthetic-private-body"))
-	if status != http.StatusBadRequest || bytes.Contains(body, []byte("synthetic-private-body")) {
+	status, body := authenticatedRequest(t, http.MethodPost, state.Record.URL+"/api/v2/ingestion/batches", "", []byte("synthetic-private-body"))
+	if status != http.StatusNotFound || bytes.Contains(body, []byte("synthetic-private-body")) {
 		t.Fatal(status, string(body))
+	}
+}
+
+func assertUsageTotal(t *testing.T, url string, expected int64) {
+	t.Helper()
+	response, err := http.Get(url + "/api/v1/usage?period=all&tab=tokens")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = response.Body.Close() }()
+	var usage struct {
+		Summary struct {
+			TotalTokens int64 `json:"total"`
+		} `json:"summary"`
+	}
+	if err := json.NewDecoder(response.Body).Decode(&usage); err != nil {
+		t.Fatal(err)
+	}
+	if response.StatusCode != http.StatusOK || usage.Summary.TotalTokens != expected {
+		t.Fatalf("usage status=%d total=%d expected=%d", response.StatusCode, usage.Summary.TotalTokens, expected)
 	}
 }

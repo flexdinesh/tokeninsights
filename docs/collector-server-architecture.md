@@ -1,5 +1,7 @@
 # Collector/server architecture
 
+Historical protocol-1 reference superseded by [design](design.md) and [ADR 0007](adr/0007-raw-ingestion-and-server-processing.md). Legacy tests remain compatibility oracles; raw tests cover new contracts.
+
 Status: **Accepted; implemented in PR #53.** Decision: 5 October 2026.
 The approved split creates fresh `collector.sqlite` and `server.sqlite` files.
 The old `tokeninsights.sqlite` file stays untouched; this change does not import

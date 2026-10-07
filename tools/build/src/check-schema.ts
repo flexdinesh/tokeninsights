@@ -213,7 +213,21 @@ async function main() {
       SERVER_SCHEMA_GO_PATH,
     ].map(readText),
   )
+  const [dataSQL, embeddedDataSQL, dataGo] = await Promise.all([
+    readText(new URL('../../../schema/data.sql', import.meta.url).pathname),
+    readText(
+      new URL('../../../packages/cli/internal/datastore/schema/data.sql', import.meta.url).pathname,
+    ),
+    readText(
+      new URL('../../../packages/cli/internal/datastore/store.go', import.meta.url).pathname,
+    ),
+  ])
   const mismatches = [
+    ...(dataSQL === embeddedDataSQL ? [] : ['data: embedded DuckDB schema differs']),
+    ...(extractGoConsts(dataGo).ints.get('SchemaVersion') ===
+    Number(dataSQL.match(/version (\d+)/)?.[1])
+      ? []
+      : ['data: SchemaVersion mismatch']),
     ...schemaContractMismatches(sql, embeddedSQL, go, 'CollectorApplicationID').map(
       (message) => `collector: ${message}`,
     ),

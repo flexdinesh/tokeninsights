@@ -16,7 +16,7 @@ Bare invocation ensures local or prints configured remote URL. No startup sync.
 
 commands:
   service start|stop|restart|status   manage local web/API server
-  sync                              collect all harnesses and publish normalized facts
+  sync                              collect all harnesses and submit sanitized raw evidence
   tui                               sync with progress, then open terminal dashboard
   config set KEY VALUE|get KEY|remove KEY
                                     manage client preferences
@@ -25,6 +25,9 @@ advanced:
   collector normalize|reset-canonical|reset-all
                                     manage host collector data
   service run                       run local server in foreground
+  service reprocess|wait             rebuild evidence projection; wait for processing
+  service import --legacy-server-db-path PATH
+                                    import verified SQLite history into a new DuckDB
   tokeninsights-server              separate foreground remote executable
 
   tokeninsights service start --port 8765
@@ -38,7 +41,7 @@ advanced:
   tokeninsights config set server-url http://remote-machine:8765
   tokeninsights config set host 0.0.0.0
 
-Collector: --collector-db-path (collector.sqlite). Server: --server-db-path (server.sqlite).
+Collector: --collector-db-path (collector.sqlite). Server: --server-db-path (server.duckdb).
 Existing tokeninsights.sqlite is untouched; retained sources rebuild fresh databases.
 Config: --config-file PATH / TOKENINSIGHTS_CONFIG_PATH (default XDG config.json).
 Keys: server-url, host, port, collector-db-path, server-db-path.

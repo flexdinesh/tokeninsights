@@ -90,6 +90,9 @@ func BeginAnalyticsRead(ctx context.Context, database *sql.DB) (*sql.Tx, error) 
 }
 
 func inspectCompatibility(ctx context.Context, reader Reader) (Compatibility, error) {
+	return inspectCompatibilityVersion(ctx, reader, SupportedSchemaVersion)
+}
+func inspectCompatibilityVersion(ctx context.Context, reader Reader, expected int) (Compatibility, error) {
 	result := Compatibility{Exists: true}
 	if err := requireCollectorRole(ctx, reader); err != nil {
 		return result, err
@@ -101,7 +104,7 @@ func inspectCompatibility(ctx context.Context, reader Reader) (Compatibility, er
 	if version > SupportedSchemaVersion {
 		return result, fmt.Errorf("database schema %d is newer than supported schema %d; upgrade TokenInsights", version, SupportedSchemaVersion)
 	}
-	if version != SupportedSchemaVersion {
+	if version != expected {
 		return result, unrecognizedDatabase(version)
 	}
 	if err := recognizeSchema(ctx, reader, version); err != nil {
@@ -169,6 +172,13 @@ func recognizeSchema(ctx context.Context, reader Reader, version int) error {
 		TableSyncSources:              "job_id harness source_id source_kind status error_code min_occurred_at_ms max_occurred_at_ms updated_at_ms",
 		TableDatabaseLifecycle:        "id data_generation rebuild_pending rebuild_source_key updated_at_ms",
 		TableUsageLocations:           "id semantic_key directory_key directory_name repository_key repository_name repository_source",
+	}
+	if version == SupportedSchemaVersion {
+		required[TableEvidenceState] = "id stream_id extractor_version created_at_ms"
+		required[TableEvidenceSources] = "source_key source_id lineage format extractor_version byte_offset ordinal prefix_hash context_json updated_at_ms"
+		required[TableEvidenceOutbox] = "sequence observation_key harness record_json created_at_ms"
+		required[TableEvidenceDestinations] = "destination_id endpoint database_id acknowledged_sequence acknowledged_at_ms"
+		required[TableEvidenceBatches] = "batch_id destination_id stream_id database_id first_sequence last_sequence request_hash request_bytes receipt_bytes acknowledged_at_ms"
 	}
 	rows, err := reader.QueryContext(ctx, "SELECT type, name FROM sqlite_schema WHERE type IN ('table', 'view', 'trigger') AND name NOT GLOB 'sqlite_*'")
 	if err != nil {

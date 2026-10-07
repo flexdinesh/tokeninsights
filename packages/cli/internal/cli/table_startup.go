@@ -20,7 +20,7 @@ const (
 	startupServer        startupPhase = "Starting local server"
 	startupCollect       startupPhase = "Checking local sessions"
 	startupWaiting       startupPhase = "Waiting for another sync"
-	startupPublish       startupPhase = "Publishing usage"
+	startupPublish       startupPhase = "Submitting usage"
 	startupLoad          startupPhase = "Loading saved usage"
 	startupPanelWidth                 = 58
 	startupMessageBuffer              = 32
@@ -247,9 +247,9 @@ func (m startupModel) View() string {
 	}
 	if m.phase == startupPublish && m.delivery.PendingKnown {
 		if panelWidth < 45 {
-			lines = append(lines, dimensionStyle.Render(fmt.Sprintf("%d batches committed", m.delivery.Batches)), dimensionStyle.Render(fmt.Sprintf("%d pending", m.delivery.Pending)))
+			lines = append(lines, dimensionStyle.Render(fmt.Sprintf("%d batches accepted", m.delivery.Batches)), dimensionStyle.Render(fmt.Sprintf("%d pending", m.delivery.Pending)))
 		} else {
-			lines = append(lines, dimensionStyle.Render(fmt.Sprintf("%d batches committed · %d pending", m.delivery.Batches, m.delivery.Pending)))
+			lines = append(lines, dimensionStyle.Render(fmt.Sprintf("%d batches accepted · %d pending", m.delivery.Batches, m.delivery.Pending)))
 		}
 	}
 	if m.err != nil && height >= 12 {

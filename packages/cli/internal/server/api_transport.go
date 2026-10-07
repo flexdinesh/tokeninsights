@@ -39,7 +39,7 @@ func apiSyncState(state syncState) serverapi.SyncResponse {
 	for harness, status := range state.Harnesses {
 		harnesses[harness] = serverapi.HarnessSyncStatus(status)
 	}
-	return serverapi.SyncResponse{
+	response := serverapi.SyncResponse{
 		InstanceId: state.InstanceID, DataEpoch: state.DataEpoch, DataReadiness: serverapi.SyncResponseDataReadiness(state.DataReadiness),
 		Running:   state.Running,
 		Phase:     serverapi.SyncPhase(state.Phase),
@@ -47,10 +47,16 @@ func apiSyncState(state syncState) serverapi.SyncResponse {
 		Error:     state.Error,
 		Revision:  int64(state.Revision),
 	}
+	if state.Generation > 0 {
+		response.Generation = &state.Generation
+		response.InputRevision = &state.InputRevision
+		response.Pending = &state.Pending
+	}
+	return response
 }
 
 func apiDashboard(data dashboard) serverapi.UsageResponse {
-	return serverapi.UsageResponse{
+	response := serverapi.UsageResponse{
 		Revision:   data.Revision,
 		Rows:       apiUsageRows(data.Rows),
 		Chart:      apiUsageRows(data.Chart),
@@ -70,6 +76,16 @@ func apiDashboard(data dashboard) serverapi.UsageResponse {
 			SyncedSessions: data.Summary.SyncedSessions,
 		},
 	}
+	if data.Generation > 0 {
+		response.FactCount = &data.FactCount
+		response.Generation = &data.Generation
+		response.InputRevision = &data.InputRevision
+		response.Pending = &data.Pending
+		response.Unresolved = &data.Unresolved
+		quality := serverapi.UsageQuality(data.Quality)
+		response.Quality = &quality
+	}
+	return response
 }
 
 func apiUsageRows(rows []Row) []serverapi.UsageRow {

@@ -20,6 +20,7 @@ const chartLimit = 12
 const sessionOptionLimit = 100
 
 type query struct {
+	Quality        string
 	Selection      viewer.Selection
 	Tab            string
 	LocationGroup  db.RepoGroup
@@ -33,6 +34,13 @@ type query struct {
 
 func parseQuery(values url.Values) (query, error) {
 	q := query{Selection: viewer.Selection{Period: "month", Bucket: "day"}, Tab: "tokens", Page: 1, PageSize: defaultPageSize}
+	q.Quality = values.Get("quality")
+	if q.Quality == "" {
+		q.Quality = "confirmed"
+	}
+	if q.Quality != "confirmed" && q.Quality != "estimated" {
+		return q, fmt.Errorf("invalid quality")
+	}
 	if values.Has("period") {
 		q.Selection.Period = values.Get("period")
 	}
@@ -146,16 +154,22 @@ type Row struct {
 }
 
 type dashboard struct {
-	Revision   int64
-	DatabaseID string
-	Rows       []Row
-	Chart      []Row
-	RowCount   int
-	Page       int
-	PageSize   int
-	Summary    db.ViewerSummaryRow
-	LastSynced int64
-	Range      string
+	FactCount     int64
+	Generation    int64
+	InputRevision int64
+	Pending       int64
+	Unresolved    int64
+	Quality       string
+	Revision      int64
+	DatabaseID    string
+	Rows          []Row
+	Chart         []Row
+	RowCount      int
+	Page          int
+	PageSize      int
+	Summary       db.ViewerSummaryRow
+	LastSynced    int64
+	Range         string
 }
 
 func loadRows(ctx context.Context, reader db.Reader, f db.Filter, q query) ([]Row, error) {

@@ -84,7 +84,7 @@ func acceptanceRun(t *testing.T, o collector.Options) collector.Result {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
-	r, err := collector.Run(ctx, o)
+	r, err := collector.RunLegacyForTest(ctx, o)
 	if err != nil {
 		t.Fatalf("real collector sync: %+v %v", r, err)
 	}
@@ -284,7 +284,7 @@ func TestCollectorContractLostAcknowledgementResumesSavedBatch(t *testing.T) {
 	o.ServerURL = server.URL
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
-	result, err := collector.Run(ctx, o)
+	result, err := collector.RunLegacyForTest(ctx, o)
 	if err == nil || result.CollectionError != nil || result.DeliveryError == nil || result.Pending != 12 {
 		t.Fatalf("lost response result=%+v err=%v", result, err)
 	}

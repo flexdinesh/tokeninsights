@@ -6,6 +6,7 @@ import { bucketSchema, locationGroupSchema, periodSchema, sortSchema, tabSchema 
 import type { LocationGroup, Selection, Sort, Tab } from './contracts'
 
 export interface QueryState extends Selection {
+  quality: 'confirmed' | 'estimated'
   tab: Tab
   locationGroup: LocationGroup
   repositories: string[]
@@ -17,6 +18,7 @@ export interface QueryState extends Selection {
 }
 
 export interface DashboardSearch {
+  quality?: 'confirmed' | 'estimated'
   v?: 1
   period?: Selection['period']
   bucket?: Selection['bucket']
@@ -39,6 +41,7 @@ export interface DashboardSearch {
 const themeSchema = z.enum(['system', 'light', 'dark'])
 export type Theme = z.infer<typeof themeSchema>
 export type QueryAction =
+  | { type: 'quality'; value: 'confirmed' | 'estimated' }
   | { type: 'selection'; value: Partial<Selection> }
   | { type: 'reset'; value: Selection }
   | { type: 'clearFilters' }
@@ -63,6 +66,7 @@ export function defaultSort(tab: Tab): Sort {
 export function initialQuery(defaults: Selection, tab: Tab = 'tokens'): QueryState {
   return {
     ...defaults,
+    quality: 'confirmed',
     tab,
     locationGroup: 'repository',
     repositories: [],
@@ -76,6 +80,8 @@ export function initialQuery(defaults: Selection, tab: Tab = 'tokens'): QuerySta
 
 export function reduceQuery(query: QueryState, action: QueryAction): QueryState {
   switch (action.type) {
+    case 'quality':
+      return { ...query, quality: action.value, page: 1 }
     case 'selection':
       return { ...query, ...action.value, page: 1 }
     case 'reset':
@@ -159,6 +165,7 @@ export function parseDashboardSearch(input: Record<string, unknown>): DashboardS
   const locationGroup = locationGroupSchema.safeParse(input.locationGroup)
   const harnesses = strings(input.harnesses ?? input.harness)
   return {
+    quality: input.quality === 'estimated' ? 'estimated' : undefined,
     v: input.v === 1 || input.v === '1' ? 1 : undefined,
     period: period.success ? period.data : undefined,
     bucket: bucket.success ? bucket.data : undefined,
@@ -185,6 +192,7 @@ export function parseDashboardSearch(input: Record<string, unknown>): DashboardS
 export function parseDashboardSearchParams(value: string): DashboardSearch {
   const params = new URLSearchParams(value.startsWith('?') ? value.slice(1) : value)
   return parseDashboardSearch({
+    quality: params.get('quality'),
     v: params.get('v'),
     period: params.get('period'),
     bucket: params.get('bucket'),
@@ -213,6 +221,7 @@ export function stringifyDashboardSearch(
     if (typeof value === 'string' || typeof value === 'number') params.set(key, String(value))
   }
   scalar('v', search.v)
+  scalar('quality', search.quality)
   scalar('period', search.period)
   scalar('bucket', search.bucket)
   scalar('from', search.from)
@@ -240,6 +249,7 @@ export function stringifyDashboardSearch(
 
 export function searchFromQuery(query: QueryState): DashboardSearch {
   return {
+    quality: query.quality === 'estimated' ? 'estimated' : undefined,
     v: 1,
     period: query.period,
     bucket: query.bucket,
@@ -261,6 +271,7 @@ export function searchFromQuery(query: QueryState): DashboardSearch {
 
 function configured(search: DashboardSearch): boolean {
   return Boolean(
+    search.quality ||
     search.v ||
     search.period ||
     search.bucket ||
@@ -305,6 +316,7 @@ export function queryFromSearch(
   }
   return {
     period: search.period ?? defaults.period,
+    quality: search.quality ?? 'confirmed',
     bucket: search.bucket ?? defaults.bucket,
     from: search.from ?? '',
     to: search.to ?? '',
@@ -333,6 +345,7 @@ export function apiQueryParams(query: QueryState): URLSearchParams {
     page: String(query.page),
     pageSize: String(query.pageSize),
   })
+  if (query.quality === 'estimated') params.set('quality', 'estimated')
   if (query.from) params.set('from', query.from)
   if (query.to) params.set('to', query.to)
   for (const value of query.providers) params.append('provider', value)
@@ -349,6 +362,7 @@ export function apiQueryParams(query: QueryState): URLSearchParams {
 
 const QueryContext = createContext<{
   query: QueryState
+  setQuality: (value: QueryState['quality']) => void
   defaults: Selection
   updateSelection: (value: Partial<Selection>) => void
   resetSelection: () => void
@@ -428,6 +442,7 @@ function DashboardQueryProvider({
   const contextValue = useMemo(
     () => ({
       query,
+      setQuality: (value: QueryState['quality']) => navigateQuery({ type: 'quality', value }),
       defaults,
       updateSelection: (value: Partial<Selection>) => navigateQuery({ type: 'selection', value }),
       resetSelection: () => navigateQuery({ type: 'reset', value: defaults }),

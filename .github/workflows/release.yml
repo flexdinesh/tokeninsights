@@ -14,16 +14,24 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  release:
-    name: Release
+  prepare:
+    name: Prepare release
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.tag.outputs.tag }}
+      version: ${{ steps.tag.outputs.version }}
+      create: ${{ steps.tag.outputs.create }}
+      commit: ${{ steps.source.outputs.commit }}
     steps:
       - name: Checkout main
         uses: actions/checkout@v4
         with:
           ref: main
           fetch-depth: 0
+      - name: Pin source
+        id: source
+        run: echo "commit=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
       - name: Set up project tools
         uses: jdx/mise-action@v4
@@ -60,51 +68,86 @@ jobs:
           echo "version=${version}" >> "$GITHUB_OUTPUT"
           echo "create=${create}" >> "$GITHUB_OUTPUT"
 
-      - name: Build release archives
+  native:
+    name: Native ${{ matrix.os }}/${{ matrix.arch }}
+    needs: prepare
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            os: linux
+            arch: amd64
+          - runner: ubuntu-24.04-arm
+            os: linux
+            arch: arm64
+          - runner: macos-15-intel
+            os: darwin
+            arch: amd64
+          - runner: macos-15
+            os: darwin
+            arch: arm64
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.commit }}
+      - uses: jdx/mise-action@v4
+        with:
+          install_args: go
+      - name: Build and smoke test native binaries
         shell: bash
+        env:
+          CGO_ENABLED: '1'
         run: |
           set -euo pipefail
-
-          version="${{ steps.tag.outputs.version }}"
+          version="${{ needs.prepare.outputs.version }}"
           commit="$(git rev-parse --short HEAD)"
           date="$(git show -s --format=%cI HEAD)"
           module="github.com/flexdinesh/tokeninsights/packages/cli/internal/version"
-
-          rm -rf dist
-          mkdir -p dist
-
-          for target in darwin/amd64 darwin/arm64 linux/amd64 linux/arm64; do
-            goos="${target%/*}"
-            goarch="${target#*/}"
-            archive_dir="tokeninsights_${version}_${goos}_${goarch}"
-            mkdir -p "dist/${archive_dir}"
-
-            (
-              cd packages/cli
-              for binary in tokeninsights tokeninsights-server; do
-                CGO_ENABLED=0 GOOS="${goos}" GOARCH="${goarch}" go build \
-                -trimpath \
-                -ldflags="-s -w -X ${module}.Version=${version} -X ${module}.Commit=${commit} -X ${module}.Date=${date}" \
-                -o "../../dist/${archive_dir}/${binary}" \
-                ./cmd/${binary}
-              done
-            )
-
-            cp README.md LICENSE "dist/${archive_dir}/"
-            tar -C dist -czf "dist/${archive_dir}.tar.gz" "${archive_dir}"
-            rm -rf "dist/${archive_dir}"
-          done
-
+          archive_dir="tokeninsights_${version}_${{ matrix.os }}_${{ matrix.arch }}"
+          mkdir -p "dist/${archive_dir}"
           (
-            cd dist
-            shasum -a 256 *.tar.gz > checksums.txt
+            cd packages/cli
+            for binary in tokeninsights tokeninsights-server; do
+              go build -trimpath \
+                -ldflags="-s -w -X ${module}.Version=${version} -X ${module}.Commit=${commit} -X ${module}.Date=${date}" \
+                -o "../../dist/${archive_dir}/${binary}" "./cmd/${binary}"
+            done
+            go test ./internal/datastore ./internal/rawcollectorstore
           )
+          PATH=/usr/bin:/bin "dist/${archive_dir}/tokeninsights" version
+          PATH=/usr/bin:/bin "dist/${archive_dir}/tokeninsights-server" --version
+          cp README.md LICENSE "dist/${archive_dir}/"
+          tar -C dist -czf "dist/${archive_dir}.tar.gz" "${archive_dir}"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: native-${{ matrix.os }}-${{ matrix.arch }}
+          path: dist/*.tar.gz
 
+  release:
+    name: Publish release
+    needs: [prepare, native]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.commit }}
+          fetch-depth: 0
+      - uses: jdx/mise-action@v4
+      - run: mise run setup
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: native-*
+          path: dist
+          merge-multiple: true
+      - name: Checksums
+        run: cd dist && shasum -a 256 *.tar.gz > checksums.txt
       - name: Create release tag
-        if: steps.tag.outputs.create == 'true'
+        if: needs.prepare.outputs.create == 'true'
         run: |
-          git tag "${{ steps.tag.outputs.tag }}"
-          git push origin "${{ steps.tag.outputs.tag }}"
+          git tag "${{ needs.prepare.outputs.tag }}"
+          git push origin "${{ needs.prepare.outputs.tag }}"
 
       - name: Publish GitHub release
         env:
@@ -113,8 +156,8 @@ jobs:
         run: |
           set -euo pipefail
 
-          tag="${{ steps.tag.outputs.tag }}"
-          version="${{ steps.tag.outputs.version }}"
+          tag="${{ needs.prepare.outputs.tag }}"
+          version="${{ needs.prepare.outputs.version }}"
 
           if gh release view "${tag}" >/dev/null 2>&1; then
             gh release upload "${tag}" dist/*.tar.gz dist/checksums.txt --clobber
@@ -140,8 +183,8 @@ jobs:
       - name: Generate Homebrew formula
         run: |
           pnpm run generate:homebrew -- \
-            --version "${{ steps.tag.outputs.version }}" \
-            --tag "${{ steps.tag.outputs.tag }}" \
+            --version "${{ needs.prepare.outputs.version }}" \
+            --tag "${{ needs.prepare.outputs.tag }}" \
             --checksums "${{ github.workspace }}/dist/checksums.txt" \
             --output "${{ github.workspace }}/homebrew-tap/Formula/tokeninsights.rb"
 
@@ -155,8 +198,8 @@ jobs:
         run: |
           set -euo pipefail
 
-          version="${{ steps.tag.outputs.version }}"
-          tag="${{ steps.tag.outputs.tag }}"
+          version="${{ needs.prepare.outputs.version }}"
+          tag="${{ needs.prepare.outputs.tag }}"
           encoded_tag="${tag//\//%2F}"
           branch="tokeninsights-v${version}"
           tap_repo="flexdinesh/homebrew-tap"

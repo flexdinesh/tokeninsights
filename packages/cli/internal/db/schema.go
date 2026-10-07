@@ -1,6 +1,11 @@
 package db
 
 const (
+	TableEvidenceState            = "evidence_state"
+	TableEvidenceSources          = "evidence_sources"
+	TableEvidenceOutbox           = "evidence_outbox"
+	TableEvidenceDestinations     = "evidence_destinations"
+	TableEvidenceBatches          = "evidence_batches"
 	TablePublicationState         = "publication_state"
 	TablePublicationEntities      = "publication_entities"
 	TablePublicationJournal       = "publication_journal"
@@ -134,9 +139,16 @@ const (
 	ColRepositoryKey          = "repository_key"
 	ColRepositoryName         = "repository_name"
 	ColRepositorySource       = "repository_source"
+	ColExtractorVersion       = "extractor_version"
+	ColSourceKey              = "source_key"
+	ColLineage                = "lineage"
+	ColFormat                 = "format"
+	ColOrdinal                = "ordinal"
+	ColContextJSON            = "context_json"
+	ColRecordJSON             = "record_json"
 )
 
-const SupportedSchemaVersion = 16
+const SupportedSchemaVersion = 17
 
 // CollectorApplicationID distinguishes host storage from canonical-only server storage.
 const CollectorApplicationID = 1414091587

@@ -21,7 +21,7 @@ func collectorUsageText() string {
 	return `usage: tokeninsights collector <command> [options]
 
 Advanced host collector operations:
-  normalize         normalize retained local raw facts; publish on the next sync
+  normalize         normalize legacy local facts; publish on the next sync
   reset-canonical   reset rebuildable collector canonical facts
   reset-all         reset collector storage and delivery state
 
@@ -29,5 +29,5 @@ Advanced host collector operations:
   tokeninsights collector reset-canonical --confirm
   tokeninsights collector reset-all --confirm
 
-All operations affect collector storage. Server history remains available.`
+New evidence is processed on server; use service reprocess.\nAll operations affect collector storage. Server history remains available.`
 }

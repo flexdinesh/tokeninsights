@@ -27,7 +27,7 @@ func TestDatabaseAliasRejectedBeforeCollection(t *testing.T) {
 		if err := link(a, b); err != nil {
 			t.Fatal(err)
 		}
-		_, err := Run(context.Background(), Options{CollectorDBPath: a, ServerDBPath: b, PublishOnly: true})
+		_, err := RunLegacyForTest(context.Background(), Options{CollectorDBPath: a, ServerDBPath: b, PublishOnly: true})
 		if err == nil || !strings.Contains(err.Error(), "database_paths_alias") {
 			t.Fatalf("alias: %v", err)
 		}
@@ -54,11 +54,11 @@ func TestRemoteBindingPinsDatabaseAndNeverStartsLocal(t *testing.T) {
 	defer server.Close()
 	root := t.TempDir()
 	options := Options{CollectorDBPath: filepath.Join(root, "collector.sqlite"), ServerDBPath: filepath.Join(root, "server.sqlite"), ServerURL: server.URL, PublishOnly: true, EnsureLocal: func(context.Context) (string, error) { t.Fatal("remote started local service"); return "", nil }}
-	if _, err := Run(context.Background(), options); err != nil {
+	if _, err := RunLegacyForTest(context.Background(), options); err != nil {
 		t.Fatal(err)
 	}
 	databaseID = "server-replacement"
-	if _, err := Run(context.Background(), options); err == nil || !strings.Contains(err.Error(), "server_database_changed") {
+	if _, err := RunLegacyForTest(context.Background(), options); err == nil || !strings.Contains(err.Error(), "server_database_changed") {
 		t.Fatalf("replacement: %v", err)
 	}
 	if _, err := os.Stat(options.ServerDBPath); !os.IsNotExist(err) {
@@ -116,7 +116,7 @@ func TestReceiptMismatchKeepsExactBatchForNextManualSync(t *testing.T) {
 	options := Options{CollectorDBPath: collectorPath, ServerDBPath: filepath.Join(root, "server.sqlite"), ServerURL: server.URL, PublishOnly: true}
 	var progress []DeliveryProgress
 	options.DeliveryProgress = func(value DeliveryProgress) { progress = append(progress, value) }
-	first, err := Run(context.Background(), options)
+	first, err := RunLegacyForTest(context.Background(), options)
 	if err == nil || first.Pending != 1 || first.Batches != 0 {
 		t.Fatalf("invalid receipt advanced progress: %+v %v", first, err)
 	}
@@ -124,12 +124,12 @@ func TestReceiptMismatchKeepsExactBatchForNextManualSync(t *testing.T) {
 		t.Fatalf("unacknowledged receipt changed visible progress: %+v", progress)
 	}
 	incompatible = true
-	if _, err := Run(context.Background(), options); err == nil || len(requests) != 1 {
+	if _, err := RunLegacyForTest(context.Background(), options); err == nil || len(requests) != 1 {
 		t.Fatalf("incompatible capabilities submitted pending batch: %v", err)
 	}
 	incompatible = false
 	progress = nil
-	second, err := Run(context.Background(), options)
+	second, err := RunLegacyForTest(context.Background(), options)
 	if err != nil || second.Pending != 0 || second.Batches != 1 {
 		t.Fatalf("resume: %+v %v", second, err)
 	}
@@ -143,7 +143,7 @@ func TestReceiptMismatchKeepsExactBatchForNextManualSync(t *testing.T) {
 
 func TestTransportErrorsNeverEchoCredentials(t *testing.T) {
 	options := Options{CollectorDBPath: filepath.Join(t.TempDir(), "collector.sqlite"), ServerDBPath: filepath.Join(t.TempDir(), "server.sqlite"), ServerURL: "http://secret:password@example.test", PublishOnly: true}
-	_, err := Run(context.Background(), options)
+	_, err := RunLegacyForTest(context.Background(), options)
 	if err == nil || strings.Contains(err.Error(), "secret") || strings.Contains(err.Error(), "password") {
 		t.Fatalf("unsafe error: %v", err)
 	}

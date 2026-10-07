@@ -51,7 +51,7 @@ Run commands from the repository root unless noted otherwise.
 | Lint Go and TypeScript | `pnpm run lint` |
 | Run all tests | `pnpm run test` |
 | Run Go race-detector suite | `pnpm run test:race` |
-| Validate SQLite schema copies | `pnpm run check-schema` |
+| Validate SQLite/DuckDB schema copies | `pnpm run check-schema` |
 | Validate generated API files | `pnpm run check-api` |
 | Regenerate API files | `pnpm run generate:api` |
 | Build and sync embedded web assets | `pnpm run build:web` |
@@ -59,9 +59,9 @@ Run commands from the repository root unless noted otherwise.
 | Run browser end-to-end tests | `pnpm run test:web-e2e` |
 | Build production binary and validate contracts | `pnpm run build` |
 
-The pre-push hook clears Git-local environment variables before running `mise run check:push`, so fixture Git commands operate on their own repositories rather than the repository being pushed. Verification covers formatting, lint, SQLite/API contracts, unit/conformance tests, all Go race tests, a frontend rebuild with committed-asset comparison, native build, and browser E2E. Checks fail fast and never repair tracked files. Regenerate stale API/assets explicitly before committing and pushing. There is no pre-commit test suite.
+The pre-push hook clears Git-local environment variables before running `mise run check:push`, so fixture Git commands operate on their own repositories rather than the repository being pushed. Verification covers formatting, lint, SQLite/DuckDB/API contracts, unit/conformance tests, all Go race tests, a frontend rebuild with committed-asset comparison, native build, and browser E2E. Checks fail fast and never repair tracked files. Regenerate stale API/assets explicitly before committing and pushing. There is no pre-commit test suite.
 
-CI and the manual release workflow run `mise run check:ci`: formatting, SQLite schema-copy consistency, and a native Go build against committed browser assets. CI installs no browser and runs no lint/test suites, API generation, or frontend rebuild. Release additionally builds and publishes native archives. CI only verifies; development installs resolve `main` directly without publication or waiting for CI. Both workflows disable hook installation with `HUSKY=0`. Hooks run locally after dependency setup; GUI clients must have mise on PATH. Root pnpm scripts own commands; mise tasks delegate to those same scripts.
+CI and release preparation run `mise run check:ci`: formatting, SQLite/DuckDB schema-copy consistency, and a native Go build against committed browser assets. CI installs no browser and runs no full lint/test suites, API generation, or frontend rebuild. Release additionally builds and publishes native archives. Native CI/release jobs also build both binaries and test the data stores on matching Linux/macOS amd64/arm64 runners. CI only verifies; development installs resolve `main` directly without publication or waiting for CI. Both workflows disable hook installation with `HUSKY=0`. Hooks run locally after dependency setup; GUI clients must have mise on PATH. Root pnpm scripts own commands; mise tasks delegate to those same scripts.
 
 Install Chromium once before browser tests when using pnpm directly:
 
@@ -109,18 +109,18 @@ Direct Go commands use the currently committed embedded web assets. Use `pnpm ru
 The shared fixture is under `packages/cli/testdata/conformance/sync-first-basic/source/`. It contains compact, synthetic source data for all supported harnesses and excludes conversations, tool payloads, credentials, request data, user paths, and identifying values. Never commit raw local harness databases or transcripts.
 
 `dev:data` resets only the controlled `.tokeninsights-dev/collector.sqlite` and
-`server.sqlite` application tables, then recreates synthetic source/home
+`server.duckdb` data tables, then recreates synthetic source/home
 subdirectories. Stop the fixture service first; live or unreachable ownership
-prevents recreation. DB/WAL/SHM/lock inodes, unrelated files, and the old
+prevents recreation. Existing DB and lock inodes, unrelated files, and the old
 `tokeninsights.sqlite` are preserved. Wrong-role databases are rejected before
 either role is reset.
 
 Fixture preparation starts the production local server on a temporary loopback
 port, runs collector sync against sanitized sources, publishes through the real
-HTTP ingestion endpoint, and stops that temporary server. No direct server raw
+private Unix ingestion transport, waits for asynchronous processing, and stops that temporary server. No direct server raw
 writes or producer recovery stand in for ingestion. `dev:cli` invokes
-`tokeninsights tui --all-time --server-db-path .tokeninsights-dev/server.sqlite`
-to read saved REST usage; `dev:server` runs the canonical-only foreground
+`tokeninsights tui --all-time --server-db-path .tokeninsights-dev/server.duckdb`
+to read saved REST usage; `dev:server` runs the shared data-core foreground
 server on `127.0.0.1:8765` without harness source environment settings. `dev` runs
 that server and Vite together. Browser Reload never collects sources. Vite proxies
 `/api` to the Go server; `dev:web:mock` runs without Go or local harness data.
@@ -143,7 +143,7 @@ Go uses `gofmt` and the repository-pinned `golangci-lint`. TypeScript, JavaScrip
 
 React source lives in `packages/web`. Vite stages output in ignored `packages/web/dist`; the build tooling copies it to committed `packages/cli/internal/server/static` assets for `go:embed`.
 
-Go tests cover aggregation, API behavior, normalized ingestion/replay, collector journal/acknowledgements, assets, listener lifecycle, and date boundaries. React tests cover URL state, filtering, and cancelled requests. Browser tests launch the built binary with isolated synthetic data and verify the full dashboard.
+Go tests cover SQL aggregation, API behavior, raw ingestion/replay, processing generations, history import and collector outbox/acknowledgements, assets, listener lifecycle, and date boundaries. React tests cover URL state, filtering, and cancelled requests. Browser tests launch the built binary with isolated synthetic data and verify the full dashboard.
 
 ## Skipping CI
 
@@ -159,3 +159,5 @@ git commit -m "docs: update readme [skip ci]"
 - [CLI reference](../packages/cli/README.md)
 - [OpenAPI contract](openapi.yaml)
 - [Release guide](release.md)
+
+CGO/C/C++ builds DuckDB. Native CI/release Linux/macOS amd64/arm64 jobs build/test on matching runners. See [design](design.md) for current acceptance/migration.

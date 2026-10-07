@@ -30,3 +30,23 @@ jobs:
 
       - name: Minimal checks
         run: mise run check:ci
+
+  native:
+    name: Native ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-24.04, ubuntu-24.04-arm, macos-15-intel, macos-15]
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: jdx/mise-action@v4
+        with:
+          install_args: go
+      - name: Build and verify storage
+        working-directory: packages/cli
+        env:
+          CGO_ENABLED: '1'
+        run: |
+          go build ./cmd/tokeninsights ./cmd/tokeninsights-server
+          go test ./internal/datastore ./internal/rawcollectorstore

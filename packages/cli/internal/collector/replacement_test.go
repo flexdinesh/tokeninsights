@@ -55,7 +55,7 @@ func TestLocalReplacementReplaysJournalWithIndependentBinding(t *testing.T) {
 	options := Options{CollectorDBPath: path, ServerDBPath: filepath.Join(root, "local-server.sqlite"), PublishOnly: true, EnsureLocal: func(context.Context) (string, error) { return server.URL, nil }}
 	for _, store := range []*serverstore.Store{first, second} {
 		current.Store(handlerHolder{ingestion.NewHandler(ingestion.NewCore(store))})
-		result, err := Run(ctx, options)
+		result, err := RunLegacyForTest(ctx, options)
 		if err != nil || result.Inserted != 1 || result.Pending != 0 {
 			t.Fatalf("replacement publish %+v %v", result, err)
 		}
@@ -68,7 +68,7 @@ func TestLocalReplacementReplaysJournalWithIndependentBinding(t *testing.T) {
 	if err := database.QueryRow("SELECT COUNT(*) FROM publication_destinations WHERE acknowledged_sequence=1").Scan(&bindings); err != nil || bindings != 2 {
 		t.Fatalf("reused old cursor bindings=%d error=%v", bindings, err)
 	}
-	result, err := Run(ctx, options)
+	result, err := RunLegacyForTest(ctx, options)
 	if err != nil || result.Batches != 0 {
 		t.Fatalf("unchanged replacement republished %+v %v", result, err)
 	}

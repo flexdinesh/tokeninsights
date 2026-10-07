@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/datastore"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/ingestion"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/publication"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/server"
@@ -264,4 +265,25 @@ func replaceViewEnsure(t *testing.T, ensure func(context.Context, service.Option
 	previous := ensureViewServer
 	ensureViewServer = ensure
 	t.Cleanup(func() { ensureViewServer = previous })
+}
+
+func newRawViewQueryServer(t *testing.T) (*httptest.Server, *datastore.Store, *viewRequestCounts) {
+	t.Helper()
+	store, err := datastore.Open(t.Context(), filepath.Join(t.TempDir(), "server.duckdb"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	handler := server.NewDataHandler(t.Context(), store, io.Discard, "127.0.0.1", "", true)
+	counts := &viewRequestCounts{}
+	remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			counts.posts.Add(1)
+		} else {
+			counts.gets.Add(1)
+		}
+		handler.ServeHTTP(w, r)
+	}))
+	t.Cleanup(remote.Close)
+	return remote, store, counts
 }

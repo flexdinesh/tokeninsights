@@ -34,6 +34,7 @@ type Options struct {
 	SyncOptions      pipeline.SyncOptions
 	EnsureLocal      func(context.Context) (string, error)
 	DeliveryProgress func(DeliveryProgress)
+	LocalClient      *http.Client
 }
 
 // DeliveryProgress reports acknowledged work, never estimated upload progress.
@@ -44,6 +45,7 @@ type DeliveryProgress struct {
 }
 
 type Result struct {
+	Accepted        int64
 	Collection      pipeline.Summary
 	Batches         int64
 	Inserted        int64
@@ -121,12 +123,12 @@ func Run(ctx context.Context, options Options) (Result, error) {
 	}
 	options.SyncOptions.DBPath = options.CollectorDBPath
 	if !options.PublishOnly {
-		result.Collection, result.CollectionError = pipeline.Sync(ctx, options.SyncOptions)
+		result.Collection, result.CollectionError = captureRaw(ctx, options)
 	}
 	if options.SyncOptions.DryRun {
 		return result, result.CollectionError
 	}
-	result.DeliveryError = publish(ctx, options, &result)
+	result.DeliveryError = publishRaw(ctx, options, &result)
 	return result, errors.Join(result.CollectionError, result.DeliveryError)
 }
 
@@ -139,7 +141,7 @@ func endpoint(value string) (string, error) {
 	return parsed.String(), nil
 }
 
-func publish(ctx context.Context, options Options, result *Result) error {
+func publishLegacy(ctx context.Context, options Options, result *Result) error {
 	reportDeliveryProgress(options, result)
 	target := options.ServerURL
 	local := strings.TrimSpace(target) == ""
@@ -158,6 +160,9 @@ func publish(ctx context.Context, options Options, result *Result) error {
 		return err
 	}
 	client := &http.Client{Timeout: requestTimeout, CheckRedirect: func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }}
+	if options.LocalClient != nil {
+		client = options.LocalClient
+	}
 	body, err := request(ctx, client, target+"/api/v1/ingestion/capabilities", options.Token, nil)
 	if err != nil {
 		return err
@@ -267,7 +272,7 @@ func request(ctx context.Context, client *http.Client, target, token string, bod
 	if len(data) > publication.MaxBodyBytes {
 		return nil, failure("delivery", "response_too_large", nil)
 	}
-	if response.StatusCode != http.StatusOK {
+	if response.StatusCode != http.StatusOK && response.StatusCode != http.StatusAccepted {
 		var responseError publication.ErrorResponse
 		if json.Unmarshal(data, &responseError) == nil && safeServerCode(responseError.Code) && safeServerStage(responseError.Stage) {
 			return nil, failure(responseError.Stage, responseError.Code, nil)

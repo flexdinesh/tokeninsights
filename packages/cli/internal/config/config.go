@@ -59,7 +59,7 @@ func Defaults() Settings {
 	if base == "" {
 		base = filepath.Join(os.Getenv("HOME"), ".local", "share")
 	}
-	return Settings{Host: server.DefaultHost, Port: server.DefaultPort, CollectorDBPath: filepath.Join(base, "tokeninsights", "collector.sqlite"), ServerDBPath: filepath.Join(base, "tokeninsights", "server.sqlite")}
+	return Settings{Host: server.DefaultHost, Port: server.DefaultPort, CollectorDBPath: filepath.Join(base, "tokeninsights", "collector.sqlite"), ServerDBPath: filepath.Join(base, "tokeninsights", "server.duckdb")}
 }
 
 func Read(path string) (Values, error) {

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
-import { useSyncStatus } from './api'
+import { snapshotIdentity, useSyncStatus } from './api'
 
 export function useDashboardSync() {
   const client = useQueryClient()
@@ -9,7 +9,7 @@ export function useDashboardSync() {
   const reloadPending = useRef(false)
   const status = statusQuery.data
   const revision = status?.revision ?? 0
-  const identity = status ? `${status.instanceId}/${status.dataEpoch}` : ''
+  const identity = status ? snapshotIdentity(status) : ''
   const previousIdentity = useRef(identity)
   const previousRevision = useRef(revision)
   useEffect(() => {
