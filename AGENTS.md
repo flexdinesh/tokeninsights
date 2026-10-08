@@ -75,7 +75,7 @@ pnpm run build
 
 ### Issue tracker
 
-Issues and PRDs are tracked as local markdown files under `.scratch/`. See `docs/agents/issue-tracker.md`.
+Issues and PRDs live only in local, ignored `.scratch/` files. Never stage or commit scratch files, even with `git add --force`. Keep durable documentation in `docs/`. See `docs/agents/issue-tracker.md`.
 
 ### Triage labels
 

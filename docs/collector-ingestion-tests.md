@@ -2,7 +2,7 @@
 
 Historical protocol-1 reference superseded by [design](design.md), [ADR 0007](adr/0007-raw-ingestion-and-server-processing.md) and [ADR 0008](adr/0008-personal-hosted-composition-and-capabilities.md). Legacy tests remain compatibility oracles; raw tests cover new contracts.
 
-Status: implemented production SQLite/HTTP tests in PR #53. Full repository validation is recorded in [validation evidence](../.scratch/collector-ingestion/VALIDATION.md). Guarantee IDs refer to [the architecture contract](collector-server-architecture.md); task ownership and dependencies are in the [execution plan](../.scratch/collector-ingestion/EXECUTION-PLAN.md).
+Status: implemented production SQLite/HTTP tests in PR #53. Guarantee IDs refer to [the architecture contract](collector-server-architecture.md). The matrices below identify executable coverage; the [development guide](development.md) defines repository verification.
 
 ## Independent evidence
 
@@ -79,8 +79,8 @@ Codex keeps its deterministic immutable event witness, including typed token-fie
 ## Review hardening regressions
 
 R01–R08 supplement F01–F14; schema 16/2 and stricter response fields were
-explicitly approved. The [review issue](../.scratch/collector-ingestion/issues/04-review-hardening.md)
-records parallel ownership. Expected values remain independent of parser output.
+explicitly approved. The matrix below records executable review regressions.
+Expected values remain independent of parser output.
 
 | Review | Production tests | Required outcome |
 | --- | --- | --- |

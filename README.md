@@ -134,7 +134,7 @@ Server exposes processed metadata to reachable dashboard clients. Default localh
 
 ## Documentation
 
-The [runtime composition plan](.scratch/runtime-compositions/PRD.md) records the approved redesign and validation gates.
+[ADR 0009](docs/adr/0009-single-process-and-distributed-compositions.md) records the approved runtime composition; the [development guide](docs/development.md) defines verification gates.
 
 - [CLI reference](packages/cli/README.md)
 - [Development guide](docs/development.md)

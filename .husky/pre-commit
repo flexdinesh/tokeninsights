@@ -1,0 +1,1 @@
+exec mise exec -- node tools/build/src/check-scratch.ts </dev/null

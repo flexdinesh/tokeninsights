@@ -21,7 +21,7 @@ mise run setup
 mise run setup:browser
 ```
 
-Install [mise](https://mise.jdx.dev/getting-started.html) first. `setup` installs frozen workspace dependencies and registers the [Husky](https://typicode.github.io/husky/get-started.html) pre-push hook through pnpm's `prepare` script. `setup:browser` installs Chromium once; Linux hosts missing browser libraries can use `mise exec -- pnpm --filter @tokeninsights/web exec playwright install --with-deps chromium`.
+Install [mise](https://mise.jdx.dev/getting-started.html) first. `setup` installs frozen workspace dependencies and registers the [Husky](https://typicode.github.io/husky/get-started.html) pre-commit and pre-push hooks through pnpm's `prepare` script. `setup:browser` installs Chromium once; Linux hosts missing browser libraries can use `mise exec -- pnpm --filter @tokeninsights/web exec playwright install --with-deps chromium`.
 
 ## Commands
 
@@ -48,6 +48,7 @@ Run commands from the repository root unless noted otherwise.
 | --- | --- |
 | Format files | `pnpm run format` |
 | Check formatting | `pnpm run format:check` |
+| Reject tracked scratch files | `pnpm run check:scratch` |
 | Lint Go and TypeScript | `pnpm run lint` |
 | Run all tests | `pnpm run test` |
 | Run Go race-detector suite | `pnpm run test:race` |
@@ -59,9 +60,9 @@ Run commands from the repository root unless noted otherwise.
 | Run browser end-to-end tests | `pnpm run test:web-e2e` |
 | Build production binary and validate contracts | `pnpm run build` |
 
-The pre-push hook clears Git-local environment variables before running `mise run check:push`, so fixture Git commands operate on their own repositories rather than the repository being pushed. Verification covers formatting, lint, SQLite/DuckDB/API contracts, unit/conformance tests, all Go race tests, a frontend rebuild with committed-asset comparison, native build, and browser E2E. Checks fail fast and never repair tracked files. Regenerate stale API/assets explicitly before committing and pushing. There is no pre-commit test suite.
+The pre-push hook clears Git-local environment variables before running `mise run check:push`, so fixture Git commands operate on their own repositories rather than the repository being pushed. Verification covers formatting, lint, SQLite/DuckDB/API contracts, unit/conformance tests, all Go race tests, a frontend rebuild with committed-asset comparison, native build, and browser E2E. Checks fail fast and never repair tracked files. Regenerate stale API/assets explicitly before committing and pushing. The pre-commit hook only rejects tracked scratch paths, including force-added files; it does not run the test suite.
 
-CI and release preparation run `mise run check:ci`: formatting, SQLite/DuckDB schema-copy consistency, and a native Go build against committed browser assets. CI installs no browser and runs no full lint/test suites, API generation, or frontend rebuild. Release additionally builds and publishes native archives. Native CI/release jobs also build both binaries and test the data stores on matching Linux/macOS amd64/arm64 runners. CI only verifies; development installs resolve `main` directly without publication or waiting for CI. Both workflows disable hook installation with `HUSKY=0`. Hooks run locally after dependency setup; GUI clients must have mise on PATH. Root pnpm scripts own commands; mise tasks delegate to those same scripts.
+CI and release preparation run `mise run check:ci`: tracked-scratch rejection, formatting, SQLite/DuckDB schema-copy consistency, and a native Go build against committed browser assets. CI installs no browser and runs no full lint/test suites, API generation, or frontend rebuild. Release additionally builds and publishes native archives. Native CI/release jobs also build both binaries and test the data stores on matching Linux/macOS amd64/arm64 runners. CI only verifies; development installs resolve `main` directly without publication or waiting for CI. Both workflows disable hook installation with `HUSKY=0`. Hooks run locally after dependency setup; GUI clients must have mise on PATH. Root pnpm scripts own commands; mise tasks delegate to those same scripts.
 
 Install Chromium once before browser tests when using pnpm directly:
 
@@ -103,6 +104,15 @@ go install ./cmd/tokeninsights
 ```
 
 Direct Go commands use the currently committed embedded web assets. Use `pnpm run install:cli` when frontend changes must be included.
+
+## Local scratch files
+
+Keep plans, issues, research, and temporary verification scripts in ignored `.scratch/`
+directories. Design-tool `.impeccable/` state and `packages/web/previews/` are also
+local-only. Never force-add scratch files. Preserve durable contracts in `docs/`,
+with links only to tracked documentation. `pnpm run check:scratch` checks the Git
+index, so ignored local files are allowed and staged scratch deletions pass.
+Git hooks can be bypassed; CI runs the same check on committed files.
 
 ## Fixture Data
 
