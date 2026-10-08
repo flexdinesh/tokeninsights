@@ -5,6 +5,7 @@ package localruntime
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -25,6 +26,9 @@ import (
 )
 
 var ErrOwned = errors.New("database already owned; close the viewer or stop the legacy service")
+
+var ErrProcessingFailed = errors.New("processing_failed: saved usage needs attention; retry or run tokeninsights data reprocess")
+var ErrProcessingTimeout = fmt.Errorf("processing_timeout: usage is still processing; retry or view saved data: %w", context.DeadlineExceeded)
 
 const visibilityPoll = 25 * time.Millisecond
 
@@ -140,7 +144,8 @@ func OpenWithApp(ctx context.Context, collectorPath, dataPath, appPath string) (
 	r := &Runtime{Jobs: jobs, jobsDone: make(chan struct{}), Store: store, App: app, owner: owner, cancel: cancel, done: make(chan struct{}), queries: analytics.DuckDB{Store: store}}
 	r.Query = queryclient.NewDirect(server.NewDirectQuery(workerCtx, r.queries, ""))
 	r.Destination = &collector.Destination{URL: "http://local", Identity: "http://local", DatabaseID: metadata.DatabaseID, DatasetID: metadata.DatasetID, Local: true, Transport: collector.DirectDelivery{Receiver: store}}
-	go func() { defer close(r.done); store.Run(workerCtx, func(error) {}) }()
+	// WaitVisible reads durable failure state, including failures from a prior owner.
+	go func() { defer close(r.done); store.Run(workerCtx, nil) }()
 	go r.runJobs(workerCtx, path, appPath)
 	return r, nil
 }
@@ -153,17 +158,33 @@ func (r *Runtime) WaitVisible(ctx context.Context) error {
 	for {
 		status, err := r.queries.Status(ctx)
 		if err != nil {
-			return err
+			return visibilityError(ctx, err)
 		}
 		if status.Pending == 0 && status.Metadata.Generation == status.Metadata.TargetGeneration {
 			return nil
 		}
+		// Let due retries run before reporting an old failure. Otherwise finite
+		// commands cancel their worker before it can recover a transient error.
+		if status.Failed > 0 && status.FailedRetryAtMs > time.Now().UnixMilli() {
+			return ErrProcessingFailed
+		}
 		select {
 		case <-ctx.Done():
-			return ctx.Err()
+			return visibilityError(ctx, ctx.Err())
 		case <-ticker.C:
 		}
 	}
+}
+
+func visibilityError(ctx context.Context, err error) error {
+	// Native DuckDB queries may report Interrupted instead of wrapping ctx.Err().
+	if ctx.Err() != nil {
+		err = ctx.Err()
+	}
+	if errors.Is(err, context.DeadlineExceeded) {
+		return ErrProcessingTimeout
+	}
+	return err
 }
 
 func (r *Runtime) Close() error {

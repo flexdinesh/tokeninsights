@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"io"
@@ -16,6 +17,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/collector"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/localruntime"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/pipeline"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/queryclient"
 )
@@ -155,6 +157,60 @@ func TestStartupFailureCanRetryOrViewSavedWithoutCollection(t *testing.T) {
 				}
 			}
 			t.Fatal("recovery failed")
+		})
+	}
+}
+
+func TestStartupProcessingFailureRetryWaitsAndSavedBypasses(t *testing.T) {
+	for _, key := range []rune{'r', 'v'} {
+		t.Run(string(key), func(t *testing.T) {
+			options := localViewOptions(t, true)
+			// Keep a failed pending revision while retaining published usage.
+			if err := options.local.Store.WriteTransaction(t.Context(), func(tx *sql.Tx) error {
+				if _, err := tx.Exec("UPDATE ingestion.metadata SET input_revision=input_revision+1"); err != nil {
+					return err
+				}
+				_, err := tx.Exec("UPDATE processing.scopes SET revision=revision+1,error_code='processing_failed',attempts=1,retry_at_ms=?", time.Now().Add(time.Hour).UnixMilli())
+				return err
+			}); err != nil {
+				t.Fatal(err)
+			}
+			replaceViewCollector(t, func(context.Context, collector.Options) (collector.Result, error) {
+				t.Error("processing recovery collected again")
+				return collector.Result{}, nil
+			})
+			startup := newStartupModel(newInteractiveModel(t.Context(), options, time.Now(), "unknown"))
+			startup.collect = false
+			failed := driveStartupForTest(t, startup).(startupModel)
+			if failed.failureCode() != "processing_failed" || !strings.Contains(failed.View(), "Couldn't finish processing usage.") {
+				t.Fatal("processing failure rendered as query failure", failed.View())
+			}
+			updated, _ := failed.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{key}})
+			retry := updated.(startupModel)
+			defer func() { retry.dashboard.cancelSync(); retry.workers.Wait() }()
+			deadline := time.NewTimer(time.Second)
+			defer deadline.Stop()
+			for {
+				select {
+				case msg := <-retry.messages:
+					updated, _ = retry.Update(msg)
+					if dashboard, ok := updated.(interactiveModel); ok {
+						if key != 'v' || len(dashboard.rows) != 1 || dashboard.rows[0].totalValue != 100 {
+							t.Fatal("retry bypassed processing or saved usage lost")
+						}
+						return
+					}
+					retry = updated.(startupModel)
+					if retry.err != nil {
+						if key != 'r' || retry.failureCode() != "processing_failed" {
+							t.Fatal("saved viewing waited or retry lost failure", retry.err)
+						}
+						return
+					}
+				case <-deadline.C:
+					t.Fatal("processing recovery did not finish")
+				}
+			}
 		})
 	}
 }
@@ -306,6 +362,8 @@ func TestStartupLoadFailureShowsSafeReasonAndRelevantRecovery(t *testing.T) {
 		err            error
 		code, guidance string
 	}{
+		{localruntime.ErrProcessingFailed, "processing_failed", "Retry or run tokeninsights data reprocess."},
+		{localruntime.ErrProcessingTimeout, "processing_timeout", "Still processing; retry or view saved usage."},
 		{&queryclient.StatusError{StatusCode: http.StatusServiceUnavailable}, "http_503", "Server read failed; check service logs."},
 		{&queryclient.StatusError{StatusCode: http.StatusUnauthorized}, "http_401", "Check server URL and token."},
 		{&queryclient.StatusError{StatusCode: http.StatusForbidden}, "http_403", "Check server URL and token."},

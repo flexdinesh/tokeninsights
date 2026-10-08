@@ -49,6 +49,10 @@ never use HTTP. Browser Reload and TUI `r` only query saved data.
 The TUI loading screen shows collection and acceptance progress, then waits for
 processing. Failures retain **Retry**, **View saved**, and **Quit**. Local startup
 recovers pending processing and unfinished generations before claiming fresh data.
+`processing_failed` reports a durable processing failure; `processing_timeout`
+means accepted usage is still processing. `query_timeout` refers to reading usage.
+For processing errors, Retry waits again without collecting; **View saved** queries the
+published generation immediately. Reprocessing is explicit, never automatic.
 
 For distributed mode, run one authenticated [server container](docs/deployment.md)
 and configure the collector:
@@ -161,6 +165,10 @@ history. Custom paths, after stopping local service:
 
 Source stays intact. Reprocessing keeps the published generation until complete.
 Local data maintenance has a 30-second visibility wait. TUI queries confirmed usage.
+If reprocessing exceeds that wait, `data wait` resumes the saved generation without
+starting another rebuild. Persistent `processing_failed` errors can be recovered
+with `data reprocess`; keep a stopped backup of the paired databases and application
+guard before maintenance. Raw evidence and the old published generation remain intact.
 CGO/C/C++ toolchain builds embedded DuckDB. Production native archives need no JS.
 
 Application pairing also persists `<canonical-token-path>.application.json`, containing
