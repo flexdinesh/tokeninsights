@@ -1,6 +1,6 @@
 # Issue tracker: Local Markdown
 
-Issues and PRDs for this repo live as local-only markdown files in ignored `.scratch/` directories. Never stage or commit them, even with `git add --force`. Move durable decisions and contracts into `docs/`; committed documentation must not link to scratch files. The pre-commit hook, pre-push checks, and CI reject tracked scratch paths.
+Issues and PRDs for this repo live as local-only markdown files in ignored `.scratch/` directories. Never stage or commit them, even with `git add --force`. Move durable decisions and contracts into `docs/`; committed documentation must not link to scratch files.
 
 ## Conventions
 

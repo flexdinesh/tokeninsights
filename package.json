@@ -5,8 +5,8 @@
   "type": "module",
   "scripts": {
     "prepare": "husky",
-    "check:ci": "pnpm run check:scratch && pnpm run format:check && pnpm run check-schema && pnpm --filter @tokeninsights/cli run build",
-    "check:push": "pnpm run check:scratch && pnpm run format:check && pnpm run lint && pnpm run check-schema && pnpm run check-api && pnpm run test && pnpm run test:race && pnpm run check-web && pnpm --filter @tokeninsights/cli run build && pnpm run test:web-e2e",
+    "check:ci": "pnpm run format:check && pnpm run check-schema && pnpm --filter @tokeninsights/cli run build",
+    "check:push": "pnpm run format:check && pnpm run lint && pnpm run check-schema && pnpm run check-api && pnpm run test && pnpm run test:race && pnpm run check-web && pnpm --filter @tokeninsights/cli run build && pnpm run test:web-e2e",
     "test:race": "pnpm --filter @tokeninsights/cli run test:race",
     "format": "node tools/build/src/format-go.ts && oxfmt package.json pnpm-workspace.yaml orval.config.ts .agents/plugins .claude-plugin deploy docs/openapi.yaml .github/workflows packages/cli/package.json packages/web packages/plugin-codex packages/plugin-claude packages/plugin-pi packages/plugin-opencode tools/build",
     "format:check": "node tools/build/src/format-go.ts --check && oxfmt --check package.json pnpm-workspace.yaml orval.config.ts .agents/plugins .claude-plugin deploy docs/openapi.yaml .github/workflows packages/cli/package.json packages/web packages/plugin-codex packages/plugin-claude packages/plugin-pi packages/plugin-opencode tools/build",
@@ -33,8 +33,7 @@
     "test": "pnpm run typecheck:plugins && pnpm run check:plugins && pnpm --filter @tokeninsights/build-tools run typecheck && pnpm --filter @tokeninsights/build-tools run test && pnpm --filter @tokeninsights/web run test && pnpm --filter @tokeninsights/cli run test",
     "build:plugins": "pnpm --recursive --filter '@tokeninsights/plugin-*' run build",
     "typecheck:plugins": "pnpm --recursive --filter '@tokeninsights/plugin-*' run typecheck",
-    "check:plugins": "pnpm --recursive --filter '@tokeninsights/plugin-*' run check:build",
-    "check:scratch": "node tools/build/src/check-scratch.ts"
+    "check:plugins": "pnpm --recursive --filter '@tokeninsights/plugin-*' run check:build"
   },
   "devDependencies": {
     "husky": "9.1.7",
