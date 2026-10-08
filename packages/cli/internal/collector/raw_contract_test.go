@@ -32,39 +32,56 @@ func rawDrain(t *testing.T, store *datastore.Store) {
 }
 
 func TestAllHarnessLegacyImportCoveragePreservesNativeIDs(t *testing.T) {
-	options, legacy, path := acceptanceSetup(t)
-	oldServer := httptest.NewServer(ingestion.NewHandler(ingestion.NewCore(legacy)))
-	options.ServerURL = oldServer.URL
-	acceptanceRun(t, options)
-	before := acceptanceAssert(t, legacy)
-	sort.Strings(before)
-	oldServer.Close()
-	if err := legacy.Close(); err != nil {
-		t.Fatal(err)
-	}
-	store, err := datastore.Open(t.Context(), filepath.Join(filepath.Dir(path), "server.duckdb"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = store.Close() }()
-	if !reflect.DeepEqual(before, rawGolden(t, store)) {
-		t.Fatal("import changed native identity")
-	}
-	server := httptest.NewServer(store.Handler())
-	defer server.Close()
-	options.ServerURL = server.URL
-	if _, err := collector.Run(t.Context(), options); err != nil {
-		t.Fatal(err)
-	}
-	rawDrain(t, store)
-	if !reflect.DeepEqual(before, rawGolden(t, store)) {
-		t.Fatal("coverage changed native identity")
-	}
-	var covered int
-	if err := store.SQL().QueryRow("SELECT COUNT(*) FROM analytics.legacy_coverage").Scan(&covered); err != nil || covered != 12 {
-		t.Fatal("native coverage incomplete", covered, err)
+	for _, direct := range []bool{false, true} {
+		name := "http"
+		if direct {
+			name = "direct"
+		}
+		t.Run(name, func(t *testing.T) {
+			options, legacy, path := acceptanceSetup(t)
+			oldServer := httptest.NewServer(ingestion.NewHandler(ingestion.NewCore(legacy)))
+			options.ServerURL = oldServer.URL
+			acceptanceRun(t, options)
+			before := acceptanceAssert(t, legacy)
+			sort.Strings(before)
+			oldServer.Close()
+			if err := legacy.Close(); err != nil {
+				t.Fatal(err)
+			}
+			store, err := datastore.Open(t.Context(), filepath.Join(filepath.Dir(path), "server.duckdb"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer func() { _ = store.Close() }()
+			if !reflect.DeepEqual(before, rawGolden(t, store)) {
+				t.Fatal("import changed native identity")
+			}
+			server := httptest.NewServer(store.Handler())
+			defer server.Close()
+			options.ServerURL = server.URL
+			if direct {
+				caps, err := store.RawCapabilities(t.Context())
+				if err != nil {
+					t.Fatal(err)
+				}
+				options.ServerDBPath = filepath.Join(filepath.Dir(path), "server.duckdb")
+				options.Destination = &collector.Destination{URL: "http://local", DatabaseID: caps.DatabaseID, DatasetID: caps.DatasetID, Local: true, Transport: collector.DirectDelivery{Receiver: store}}
+			}
+			if _, err := collector.Run(t.Context(), options); err != nil {
+				t.Fatal(err)
+			}
+			rawDrain(t, store)
+			if !reflect.DeepEqual(before, rawGolden(t, store)) {
+				t.Fatal("coverage changed native identity")
+			}
+			var covered int
+			if err := store.SQL().QueryRow("SELECT COUNT(*) FROM analytics.legacy_coverage").Scan(&covered); err != nil || covered != 12 {
+				t.Fatal("native coverage incomplete", covered, err)
+			}
+		})
 	}
 }
+
 func rawGolden(t *testing.T, store *datastore.Store) []string {
 	t.Helper()
 	var components [7]int64

@@ -54,6 +54,9 @@ func (m interactiveModel) queryContext(requests *tableRequests) (context.Context
 }
 
 func tableClient(options tableOptions) (*queryclient.Client, error) {
+	if options.local != nil {
+		return options.local.Query, nil
+	}
 	client, err := queryclient.New(options.serverURL, nil)
 	if err != nil {
 		return nil, err

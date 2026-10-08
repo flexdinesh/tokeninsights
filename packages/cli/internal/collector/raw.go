@@ -44,15 +44,12 @@ func NegotiateCapabilities(ctx context.Context, destination *Destination, token 
 	if destination == nil {
 		return capabilities, failure("configuration", "invalid_destination", nil)
 	}
-	target, err := endpoint(destination.URL)
+	var err error
+	capabilities, err = destinationDelivery(destination, token).Capabilities(ctx)
 	if err != nil {
 		return capabilities, err
 	}
-	body, err := request(ctx, deliveryClient(destination.Client), target+"/api/v3/ingestion/capabilities", token, nil)
-	if err != nil {
-		return capabilities, err
-	}
-	if evidence.StrictDecode(body, &capabilities) != nil || capabilities.ProtocolVersion != evidence.ProtocolVersion || capabilities.ExtractorVersion != evidence.ExtractorVersion || capabilities.DatabaseID == "" || !evidence.ValidDatasetID(capabilities.DatasetID) || capabilities.Completion != "acceptance" || capabilities.MaxBodyBytes != evidence.MaxBodyBytes || capabilities.MaxEntries != evidence.MaxEntries {
+	if capabilities.ProtocolVersion != evidence.ProtocolVersion || capabilities.ExtractorVersion != evidence.ExtractorVersion || capabilities.DatabaseID == "" || !evidence.ValidDatasetID(capabilities.DatasetID) || capabilities.Completion != "acceptance" || capabilities.MaxBodyBytes != evidence.MaxBodyBytes || capabilities.MaxEntries != evidence.MaxEntries {
 		return capabilities, failure("capabilities", "incompatible_server", nil)
 	}
 	return capabilities, nil
@@ -146,11 +143,11 @@ func publishRaw(ctx context.Context, options Options, result *Result) error {
 		if saved == nil {
 			return nil
 		}
-		route := "/api/v3/ingestion/batches"
-		if saved.Batch.ProtocolVersion == evidence.LegacyProtocolVersion {
-			route = "/api/v2/ingestion/batches"
+		transport := Delivery(HTTPDelivery{URL: target, Token: options.Token, Client: client})
+		if options.Destination != nil {
+			transport = destinationDelivery(options.Destination, options.Token)
 		}
-		response, err := request(ctx, client, target+route, options.Token, saved.Request)
+		response, err := transport.Submit(ctx, saved.Batch.ProtocolVersion, saved.Request)
 		if err != nil {
 			var rejected *StageError
 			if errors.As(err, &rejected) {
@@ -161,6 +158,15 @@ func publishRaw(ctx context.Context, options Options, result *Result) error {
 		}
 		if err := store.Ack(ctx, destination, response); err != nil {
 			return &StageError{Stage: "receipt", Code: "acknowledgement_rejected", BatchID: saved.Batch.BatchID, Cause: err}
+		}
+		if options.AcceptedReceipt != nil {
+			var accepted evidence.Response
+			if err := evidence.StrictDecode(response, &accepted); err != nil {
+				return failure("receipt", "invalid_receipt", err)
+			}
+			if err := options.AcceptedReceipt(accepted.Receipt); err != nil {
+				return failure("receipt", "receipt_observer_failed", err)
+			}
 		}
 		result.Batches++
 		result.Accepted += int64(len(saved.Batch.Entries))
@@ -201,6 +207,9 @@ func flushLegacy(ctx context.Context, options Options, result *Result, target, i
 	legacy := options
 	legacy.LocalClient = client
 	legacy.Destination = &Destination{URL: target, Identity: identity, DatabaseID: databaseID, DatasetID: "default", Local: local, Client: client}
+	if options.Destination != nil {
+		legacy.Destination.Transport = options.Destination.Transport
+	}
 	if local {
 		legacy.ServerURL = ""
 		legacy.EnsureLocal = func(context.Context) (string, error) { return target, nil }

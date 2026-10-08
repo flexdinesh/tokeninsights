@@ -18,6 +18,8 @@ import (
 	"time"
 
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/accounts"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/appstore"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/collector"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/datastore"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/db"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/server"
@@ -26,7 +28,7 @@ import (
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/serverruntime"
 )
 
-type Settings struct{ Listen, DBPath, LegacyDBPath, Kind, PublicURL, AdminSocket string }
+type Settings struct{ Listen, DBPath, AppDBPath, LegacyDBPath, Kind, PublicURL, AdminSocket string }
 
 func canonicalPublicURL(raw string) (string, error) {
 	u, err := url.Parse(raw)
@@ -90,6 +92,15 @@ func Run(ctx context.Context, settings Settings, log io.Writer, ready func(strin
 	if err != nil {
 		return err
 	}
+	if settings.AppDBPath == "" {
+		settings.AppDBPath = filepath.Join(filepath.Dir(path), "app.sqlite")
+	}
+	if err := collector.ValidatePaths(settings.AppDBPath, path+".application.json"); err != nil {
+		return err
+	}
+	if err := collector.ValidatePaths(settings.AppDBPath, path); err != nil {
+		return err
+	}
 	release, err := db.AcquireWriterLock(ctx, path+".service.op")
 	if err != nil {
 		return err
@@ -121,6 +132,27 @@ func Run(ctx context.Context, settings Settings, log io.Writer, ready func(strin
 		return err
 	}
 	defer func() { _ = store.Close() }()
+	identity, err := store.DatabaseIdentity(ctx)
+	if err != nil {
+		return err
+	}
+	app, err := appstore.OpenPaired(ctx, settings.AppDBPath, path, identity, string(kind))
+	if err != nil {
+		return err
+	}
+	defer func() { _ = app.Close() }()
+	repository := accounts.NewSQLite(app, store)
+	if err := repository.ImportLegacy(ctx, store.SQL()); err != nil {
+		return err
+	}
+	if err := repository.Resume(ctx); err != nil {
+		return err
+	}
+	if kind == serverfeatures.Personal {
+		if err := repository.EnsureDefault(ctx); err != nil {
+			return err
+		}
+	}
 	options := server.DataHandlerOptions{Host: host, AllowIngestion: true, Policy: policy}
 	if log == nil {
 		log = io.Discard
@@ -132,7 +164,7 @@ func Run(ctx context.Context, settings Settings, log io.Writer, ready func(strin
 		if err != nil {
 			return err
 		}
-		options.Accounts = accounts.New(store)
+		options.Accounts = accounts.New(repository)
 		cleanupDone := make(chan struct{})
 		go func() {
 			defer close(cleanupDone)

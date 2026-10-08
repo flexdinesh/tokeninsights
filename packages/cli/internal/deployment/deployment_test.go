@@ -22,13 +22,14 @@ import (
 	"testing"
 	"time"
 
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/accounts"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/db"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/evidence"
 	api "github.com/flexdinesh/tokeninsights/packages/cli/internal/server/api"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/service"
 )
 
 var clientBinary, serverBinary string
+var remoteTokens sync.Map
 
 func TestMain(m *testing.M) {
 	dir, err := os.MkdirTemp("", "ti-deployment-build-")
@@ -94,6 +95,9 @@ func (c client) run(t *testing.T, args ...string) (string, error) {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
+	if len(args) > 0 && args[0] == "sync" {
+		args = append([]string{"sync", "--wait"}, args[1:]...)
+	}
 	command := exec.CommandContext(ctx, clientBinary, append([]string{"--config-file", c.config}, args...)...)
 	command.Env = c.env
 	body, err := command.CombinedOutput()
@@ -104,6 +108,16 @@ func (c client) must(t *testing.T, args ...string) string {
 	body, err := c.run(t, args...)
 	if err != nil {
 		t.Fatalf("%v: %s %v", args, body, err)
+	}
+	if len(args) == 4 && args[0] == "config" && args[1] == "set" && args[2] == "server-url" {
+		if token, ok := remoteTokens.Load(args[3]); ok {
+			command := exec.Command(clientBinary, "--config-file", c.config, "config", "set", "server-token")
+			command.Env = c.env
+			command.Stdin = strings.NewReader(token.(string) + "\n")
+			if output, err := command.CombinedOutput(); err != nil {
+				t.Fatal(string(output), err)
+			}
+		}
 	}
 	return body
 }
@@ -116,7 +130,7 @@ func startRemote(t *testing.T) (string, string) {
 	t.Helper()
 	root := t.TempDir()
 	path := filepath.Join(root, "server.duckdb")
-	command := exec.Command(serverBinary, "--listen", "0.0.0.0:0", "--server-db-path", path)
+	command := exec.Command(serverBinary, "--public-url", "https://usage.example", "--listen", "0.0.0.0:0", "--server-db-path", path)
 	command.Env = isolatedEnvironment(root)
 	output, err := command.StdoutPipe()
 	if err != nil {
@@ -169,6 +183,23 @@ func startRemote(t *testing.T) (string, string) {
 	if _, err := os.Stat(filepath.Join(root, "state")); !os.IsNotExist(err) {
 		t.Fatal("remote created local service state", err)
 	}
+	var outputUser, outputToken bytes.Buffer
+	if err := accounts.AdminCall(t.Context(), path+".admin.sock", accounts.AdminRequest{Operation: "create-user", DisplayName: "fixture"}, &outputUser); err != nil {
+		t.Fatal(err)
+	}
+	var user accounts.User
+	if err := json.Unmarshal(outputUser.Bytes(), &user); err != nil {
+		t.Fatal(err)
+	}
+	if err := accounts.AdminCall(t.Context(), path+".admin.sock", accounts.AdminRequest{Operation: "create-token", UserID: user.UserID, Permissions: []string{accounts.Read, accounts.Ingest}}, &outputToken); err != nil {
+		t.Fatal(err)
+	}
+	var token accounts.Token
+	if err := json.Unmarshal(outputToken.Bytes(), &token); err != nil {
+		t.Fatal(err)
+	}
+	remoteTokens.Store(target, token.Secret)
+	t.Cleanup(func() { remoteTokens.Delete(target) })
 	return target, path
 }
 
@@ -199,7 +230,14 @@ func assertComponents(t *testing.T, target, path string, want [7]int64) []string
 	deadline := time.Now().Add(10 * time.Second)
 	var data api.UsageResponse
 	for {
-		response, err := http.Get(target + "/api/v1/usage?period=all&tab=sessions")
+		request, err := http.NewRequestWithContext(t.Context(), http.MethodGet, target+"/api/v2/usage?period=all&tab=sessions", nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if token, ok := remoteTokens.Load(target); ok {
+			request.Header.Set("Authorization", "Bearer "+token.(string))
+		}
+		response, err := http.DefaultClient.Do(request)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -270,7 +308,7 @@ func TestConfigRemoteSyncTracerAndCopiedClients(t *testing.T) {
 	if strings.Join(before, ",") != strings.Join(after, ",") {
 		t.Fatal("repeat changed stable identities")
 	}
-	if output := a.must(t); !strings.Contains(output, target) {
+	if output := a.must(t); !strings.Contains(output, "usage: tokeninsights") {
 		t.Fatal("bare invocation", output)
 	}
 	a.must(t, "collector", "reset-all", "--confirm")
@@ -304,7 +342,7 @@ func TestRemoteFailureRetainsJournalAndNeverStartsLocal(t *testing.T) {
 			requests = append(requests, body)
 			mu.Unlock()
 			r.Body = io.NopCloser(bytes.NewReader(body))
-			if failFirst.Swap(false) {
+			if failFirst.Load() {
 				hijacker, ok := w.(http.Hijacker)
 				if !ok {
 					t.Error("missing hijacker")
@@ -323,6 +361,9 @@ func TestRemoteFailureRetainsJournalAndNeverStartsLocal(t *testing.T) {
 		proxy.ServeHTTP(w, r)
 	}))
 	defer forwarder.Close()
+	secret, _ := remoteTokens.Load(target)
+	remoteTokens.Store(forwarder.URL, secret)
+	defer remoteTokens.Delete(forwarder.URL)
 	c := newClient(t)
 	c.must(t, "config", "set", "server-url", forwarder.URL)
 	if output, err := c.run(t, "sync", "--harness", "pi", "--source-dir", c.source); err == nil || !strings.Contains(output, "transport_failed") {
@@ -351,19 +392,26 @@ func TestRemoteFailureRetainsJournalAndNeverStartsLocal(t *testing.T) {
 		t.Fatal("work lost or prematurely acknowledged", journal, cursor, receipts)
 	}
 	assertUsage(t, target, path, 0, 0)
+	failFirst.Store(false)
 	c.must(t, "sync", "--publish-only")
 	assertUsage(t, target, path, 1, 120)
 	assertAcknowledged(t, c)
 	mu.Lock()
 	defer mu.Unlock()
-	if len(requests) != 2 || !bytes.Equal(requests[0], saved) || !bytes.Equal(requests[1], saved) {
-		t.Fatal("retry changed immutable request")
+	if len(requests) != 4 {
+		t.Fatal("retry count", len(requests))
+	}
+	for _, request := range requests {
+		if !bytes.Equal(request, saved) {
+			t.Fatal("retry changed immutable request")
+		}
 	}
 }
 
 func TestUnreachableRemoteFailsPreflightWithoutCollectionOrLocalServer(t *testing.T) {
 	c := newClient(t)
 	c.must(t, "config", "set", "server-url", "http://127.0.0.1:1")
+	c.env = append(c.env, "TOKENINSIGHTS_ACCESS_TOKEN=fixture-token")
 	if output, err := c.run(t, "sync", "--harness", "pi", "--source-dir", c.source); err == nil {
 		t.Fatal("unreachable descriptor accepted", output)
 	}
@@ -393,14 +441,16 @@ func TestRemoteCommittedResponseLostReplaysExactRequestAndReceipt(t *testing.T) 
 		if response.StatusCode != http.StatusOK && response.StatusCode != http.StatusAccepted {
 			return fmt.Errorf("unexpected ingestion status %d", response.StatusCode)
 		}
-		if loseFirst.Swap(false) {
+		if loseFirst.Load() {
 			body, err := io.ReadAll(response.Body)
 			_ = response.Body.Close()
 			if err != nil {
 				return err
 			}
 			requestsMu.Lock()
-			originalReceipt = body
+			if len(originalReceipt) == 0 {
+				originalReceipt = body
+			}
 			requestsMu.Unlock()
 			return io.ErrUnexpectedEOF // Real upstream commit; suppress only its response.
 		}
@@ -426,6 +476,9 @@ func TestRemoteCommittedResponseLostReplaysExactRequestAndReceipt(t *testing.T) 
 		proxy.ServeHTTP(out, request)
 	}))
 	defer forwarder.Close()
+	secret, _ := remoteTokens.Load(target)
+	remoteTokens.Store(forwarder.URL, secret)
+	defer remoteTokens.Delete(forwarder.URL)
 	c := newClient(t)
 	c.must(t, "config", "set", "server-url", forwarder.URL)
 	if output, err := c.run(t, "sync", "--harness", "pi", "--source-dir", c.source); err == nil {
@@ -445,14 +498,20 @@ func TestRemoteCommittedResponseLostReplaysExactRequestAndReceipt(t *testing.T) 
 	if err := database.QueryRow("SELECT acknowledged_sequence FROM evidence_destinations").Scan(&cursor); err != nil || cursor != 0 {
 		t.Fatal("lost response advanced cursor", cursor, err)
 	}
+	loseFirst.Store(false)
 	c.must(t, "sync", "--publish-only")
 	if err := database.QueryRow("SELECT receipt_bytes FROM evidence_batches").Scan(&acknowledgedReceipt); err != nil {
 		t.Fatal(err)
 	}
 	requestsMu.Lock()
 	defer requestsMu.Unlock()
-	if len(requests) != 2 || !bytes.Equal(requests[0], savedRequest) || !bytes.Equal(requests[1], savedRequest) || !sameRawReceipt(originalReceipt, acknowledgedReceipt) || len(originalReceipt) == 0 {
+	if len(requests) != 4 || !bytes.Equal(requests[0], savedRequest) || !bytes.Equal(requests[1], savedRequest) || !sameRawReceipt(originalReceipt, acknowledgedReceipt) || len(originalReceipt) == 0 {
 		t.Fatal("replay changed immutable request or committed receipt")
+	}
+	for _, request := range requests {
+		if !bytes.Equal(request, savedRequest) {
+			t.Fatal("retry changed request bytes")
+		}
 	}
 	after := assertUsage(t, target, path, 1, 120)
 	if strings.Join(before, ",") != strings.Join(after, ",") {
@@ -465,7 +524,7 @@ func TestLocalAndRemoteBinariesCannotOwnSameDatabase(t *testing.T) {
 	t.Run("remote_then_local", func(t *testing.T) {
 		target, path := startRemote(t)
 		c := newClient(t)
-		if output, err := c.run(t, "service", "start", "--server-db-path", path, "--port", "0"); err == nil {
+		if output, err := c.run(t, "web", "--sync=false", "--open=false", "--server-db-path", path, "--port", "0"); err == nil {
 			t.Fatal("local replaced remote owner", output)
 		}
 		assertUsage(t, target, path, 0, 0)
@@ -473,15 +532,14 @@ func TestLocalAndRemoteBinariesCannotOwnSameDatabase(t *testing.T) {
 	t.Run("local_then_remote", func(t *testing.T) {
 		c := newClient(t)
 		c.must(t, "config", "set", "port", "0")
-		c.must(t, "service", "start")
-		t.Cleanup(func() { c.must(t, "service", "stop") })
+		localURL := startLocal(t, c)
 		path := filepath.Join(c.root, "data", "tokeninsights", "server.duckdb")
-		command := exec.CommandContext(t.Context(), serverBinary, "--listen", "127.0.0.1:0", "--server-db-path", path)
+		command := exec.CommandContext(t.Context(), serverBinary, "--public-url", "https://usage.example", "--listen", "127.0.0.1:0", "--server-db-path", path)
 		command.Env = c.env
 		if output, err := command.CombinedOutput(); err == nil || !strings.Contains(string(output), "owns database") {
 			t.Fatal("remote replaced local owner", string(output), err)
 		}
-		c.must(t, "service", "status")
+		assertUsage(t, localURL, path, 0, 0)
 	})
 }
 
@@ -553,28 +611,61 @@ func TestConcurrentCopiedAndDistinctClients(t *testing.T) {
 func TestConfiguredLocalDefaultAndExplicitEmptyRemoteOverride(t *testing.T) {
 	remote, path := startRemote(t)
 	c := newClient(t)
-	t.Cleanup(func() {
-		output, err := c.run(t, "service", "stop")
-		if err != nil {
-			t.Error(output, err)
-		}
-	})
 	c.must(t, "config", "set", "port", "0")
 	c.must(t, "config", "set", "host", "0.0.0.0")
 	c.must(t, "config", "set", "server-url", remote)
+	c.env = append(c.env, "TOKENINSIGHTS_ACCESS_TOKEN=")
 	c.must(t, "sync", "--harness", "pi", "--source-dir", c.source, "--server-url=")
-	var state service.State
-	if err := json.Unmarshal([]byte(c.must(t, "service", "status", "--json")), &state); err != nil {
-		t.Fatal(err)
-	}
-	if !state.Running || state.Record == nil || !strings.HasPrefix(state.Record.Address, "0.0.0.0:") {
-		t.Fatal("configured local bind", state)
-	}
-	assertUsage(t, state.Record.URL, filepath.Join(c.root, "data", "tokeninsights", "server.duckdb"), 1, 120)
+	localURL := startLocal(t, c)
+	assertUsage(t, localURL, "", 1, 120)
 	assertUsage(t, remote, path, 0, 0)
 	c.env = append(c.env, "TOKENINSIGHTS_SERVER_URL=")
-	c.sync(t)
+	c.sync(t) // Active web owner consumes this request directly.
+	assertUsage(t, localURL, "", 1, 120)
 	assertUsage(t, remote, path, 0, 0)
+}
+
+func startLocal(t *testing.T, c client) string {
+	t.Helper()
+	command := exec.Command(clientBinary, "--config-file", c.config, "web", "--sync=false", "--open=false", "--port", "0", "--server-url=")
+	command.Env = c.env
+	output, err := command.StdoutPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	command.Stderr = os.Stderr
+	if err := command.Start(); err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan error, 1)
+	go func() { done <- command.Wait() }()
+	t.Cleanup(func() {
+		_ = command.Process.Signal(syscall.SIGTERM)
+		select {
+		case err := <-done:
+			if err != nil {
+				t.Error(err)
+			}
+		case <-time.After(10 * time.Second):
+			_ = command.Process.Kill()
+			<-done
+			t.Error("local shutdown timeout")
+		}
+	})
+	ready := make(chan string, 1)
+	go func() {
+		scanner := bufio.NewScanner(output)
+		if scanner.Scan() {
+			ready <- strings.TrimPrefix(scanner.Text(), "Dashboard: ")
+		}
+	}()
+	select {
+	case target := <-ready:
+		return target
+	case <-time.After(10 * time.Second):
+		t.Fatal("local readiness timeout")
+	}
+	return ""
 }
 
 func TestAllHarnessesPublishThroughConfiguredRemoteBinaryAndRebuild(t *testing.T) {

@@ -6,17 +6,27 @@ const root = join(workspaceRoot, '.tokeninsights-dev')
 const child = spawn(
   join(workspaceRoot, 'packages/cli/bin/tokeninsights'),
   [
-    'service',
-    'run',
+    'web',
+    '--mode',
+    'single-process',
+    '--sync=false',
+    '--open=false',
     '--host',
     '127.0.0.1',
     '--port',
     '8765',
+    '--collector-db-path',
+    join(root, 'collector.sqlite'),
     '--server-db-path',
     join(root, 'server.duckdb'),
+    '--app-db-path',
+    join(root, 'app.sqlite'),
+    '--server-url',
+    '',
   ],
   {
     stdio: 'inherit',
+    env: { ...process.env, TOKENINSIGHTS_ACCESS_TOKEN: '' },
   },
 )
 for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, () => child.kill('SIGTERM'))

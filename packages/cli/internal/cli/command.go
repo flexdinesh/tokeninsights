@@ -8,6 +8,7 @@ import (
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/config"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/serverfeatures"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/service"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/syncjob"
 	"io"
 	"os"
 	"strconv"
@@ -42,6 +43,7 @@ var commands = []commandSpec{
 	serverCommand,
 	syncCommand,
 	collectorCommand,
+	dataCommand,
 	configCommand,
 }
 
@@ -53,6 +55,9 @@ func Run(ctx context.Context, args []string, stdout io.Writer, stderr io.Writer,
 	if len(args) > 0 && args[0] == "__service-run" {
 		return service.Child(ctx)
 	}
+	if len(args) == 1 && args[0] == "__sync-run" {
+		return syncjob.Child(ctx)
+	}
 	var selectedPath string
 	var err error
 	args, selectedPath, err = configFileArgument(args)
@@ -63,7 +68,7 @@ func Run(ctx context.Context, args []string, stdout io.Writer, stderr io.Writer,
 	if err != nil {
 		return err
 	}
-	help := len(args) > 0 && (args[0] == "help" || args[0] == "version")
+	help := len(args) == 0 || (len(args) > 0 && (args[0] == "help" || args[0] == "version"))
 	for _, arg := range args {
 		if arg == "--" {
 			break
@@ -84,18 +89,11 @@ func Run(ctx context.Context, args []string, stdout io.Writer, stderr io.Writer,
 		invocation.settings = &settings
 		lifecycleRecovery := len(args) > 1 && args[0] == "service" && (args[1] == "stop" || args[1] == "status")
 		if os.Getenv("TOKENINSIGHTS_SERVER_TOKEN") != "" && !lifecycleRecovery {
-			return fmt.Errorf("TOKENINSIGHTS_SERVER_TOKEN removed; servers are unauthenticated; unset it\n%w", ErrUsage)
+			return fmt.Errorf("TOKENINSIGHTS_SERVER_TOKEN removed; use TOKENINSIGHTS_ACCESS_TOKEN or config set server-token\n%w", ErrUsage)
 		}
 	}
 	if len(args) == 0 {
-		if err := invocation.defaults().ValidateDestination(); err != nil {
-			return err
-		}
-		if invocation.defaults().ServerURL != "" {
-			_, err := fmt.Fprintln(stdout, "Server: "+invocation.defaults().ServerURL)
-			return err
-		}
-		return runService(invocation, []string{"start"})
+		return runHelp(invocation, nil)
 	}
 
 	if command, ok := commandByName(args[0]); ok {
@@ -106,7 +104,7 @@ func Run(ctx context.Context, args []string, stdout io.Writer, stderr io.Writer,
 		return err
 	}
 	if strings.HasPrefix(args[0], "-") {
-		return runService(invocation, append([]string{"start"}, args...))
+		return fmt.Errorf("choose tokeninsights tui or tokeninsights web\n%w", ErrUsage)
 	}
 	return fmt.Errorf("unknown command %q\n%w", args[0], ErrUsage)
 }
@@ -125,7 +123,7 @@ func commandByName(name string) (commandSpec, bool) {
 	return commandSpec{}, false
 }
 
-var ErrUsage = errors.New("usage: tokeninsights <service|sync|tui|web|collector|config> [options]")
+var ErrUsage = errors.New("usage: tokeninsights <sync|tui|web|data|collector|config> [options]")
 
 func configFileArgument(args []string) ([]string, string, error) {
 	result := make([]string, 0, len(args))
@@ -182,7 +180,7 @@ func configurationOverrides(args []string) (config.Values, error) {
 		}
 		key, value, equals := strings.Cut(args[i], "=")
 		switch key {
-		case "--server-url", "--host", "--port", "--collector-db-path", "--server-db-path":
+		case "--mode", "--app-db-path", "--server-url", "--host", "--port", "--collector-db-path", "--server-db-path":
 			if !equals {
 				i++
 				if i >= len(args) {
@@ -191,6 +189,10 @@ func configurationOverrides(args []string) (config.Values, error) {
 				value = args[i]
 			}
 			switch key {
+			case "--mode":
+				values.Mode = &value
+			case "--app-db-path":
+				values.AppDBPath = &value
 			case "--server-url":
 				values.ServerURL = &value
 			case "--host":

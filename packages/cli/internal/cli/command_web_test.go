@@ -17,6 +17,7 @@ import (
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/collector"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/config"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/evidence"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/localruntime"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/pipeline"
 	api "github.com/flexdinesh/tokeninsights/packages/cli/internal/server/api"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/serverfeatures"
@@ -43,7 +44,7 @@ func descriptorServer(t *testing.T, kind serverfeatures.Kind, capabilities []str
 }
 
 func TestWebCompositionOrderingAndQueryOnly(t *testing.T) {
-	for _, kind := range []serverfeatures.Kind{serverfeatures.Personal, serverfeatures.Hosted} {
+	for _, kind := range []serverfeatures.Kind{serverfeatures.Hosted} {
 		for _, queryOnly := range []bool{false, true} {
 			t.Run(string(kind)+map[bool]string{true: "/query", false: "/sync"}[queryOnly], func(t *testing.T) {
 				remote := descriptorServer(t, kind, []string{"usage", "facets", "web-dashboard", "raw-ingestion"})
@@ -126,7 +127,7 @@ func TestViewerCapabilitiesRejectBeforeCollection(t *testing.T) {
 	}
 	remote := descriptorServer(t, serverfeatures.Personal, []string{"usage", "facets"})
 	settings.ServerKind, settings.ServerURL = serverfeatures.Personal, remote.URL
-	if err := runView(commandInvocation{context: t.Context(), stdout: io.Discard, stderr: io.Discard, settings: &settings}, []string{"--sync=false"}); err == nil || !strings.Contains(err.Error(), "terminal-dashboard") {
+	if err := runView(commandInvocation{context: t.Context(), stdout: io.Discard, stderr: io.Discard, settings: &settings}, []string{"--sync=false"}); err == nil || !strings.Contains(err.Error(), "single-process") {
 		t.Fatal("disabled terminal enabled", err)
 	}
 	if err := runWeb(commandInvocation{context: t.Context(), stdout: io.Discard, stderr: io.Discard, settings: &settings}, []string{"--host", "0.0.0.0"}); !errors.Is(err, ErrUsage) {
@@ -183,4 +184,61 @@ func TestHostedWebShowsCaptureAndAcceptanceBeforeOpening(t *testing.T) {
 	if !opened || strings.Contains(stdout.String()+stderr.String(), "fixture-token") || strings.Contains(stderr.String(), "%") {
 		t.Fatal("invalid hosted progress", stderr.String())
 	}
+}
+
+func TestLocalWebOwnsListenerUntilCancellationAndNeverAcceptsHTTPIngestion(t *testing.T) {
+	settings := config.Defaults()
+	root := t.TempDir()
+	settings.ServerDBPath, settings.CollectorDBPath = filepath.Join(root, "server.duckdb"), filepath.Join(root, "collector.sqlite")
+	settings.Host, settings.Port = "0.0.0.0", 0
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	previousOpen, previousCollector := openDashboard, runWebCollector
+	t.Cleanup(func() { openDashboard, runWebCollector = previousOpen, previousCollector })
+	collected := false
+	runWebCollector = func(_ context.Context, options collector.Options) (collector.Result, error) {
+		if options.Destination == nil || options.Destination.Transport == nil || !options.Destination.Local {
+			t.Fatal("web used HTTP ingestion")
+		}
+		collected = true
+		return collector.Result{}, nil
+	}
+	var address string
+	openDashboard = func(url string) error {
+		if !collected || !strings.HasPrefix(url, "http://127.0.0.1:") {
+			t.Fatal("wrong browser address/order", url)
+		}
+		address = url
+		response, err := http.Get(url + "/api/v2/instance")
+		if err != nil {
+			t.Fatal(err)
+		}
+		_ = response.Body.Close()
+		if response.StatusCode != http.StatusOK {
+			t.Fatal(response.Status)
+		}
+		response, err = http.Post(url+"/api/v3/ingestion/batches", "application/json", strings.NewReader("{}"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		_ = response.Body.Close()
+		if response.StatusCode < 400 {
+			t.Fatal("public ingestion enabled")
+		}
+		cancel()
+		return nil
+	}
+	if err := runWeb(commandInvocation{context: ctx, stdout: io.Discard, stderr: io.Discard, settings: &settings}, nil); err != nil {
+		t.Fatal(err)
+	}
+	client := &http.Client{Timeout: time.Second}
+	if response, err := client.Get(address + "/api/v2/instance"); err == nil {
+		_ = response.Body.Close()
+		t.Fatal("listener survived command")
+	}
+	runtime, err := localruntime.Open(t.Context(), settings.CollectorDBPath, settings.ServerDBPath)
+	if err != nil {
+		t.Fatal("command retained database ownership", err)
+	}
+	_ = runtime.Close()
 }

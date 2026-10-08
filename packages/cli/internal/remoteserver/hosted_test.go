@@ -245,7 +245,7 @@ func TestPersonalForegroundOperatorReprocess(t *testing.T) {
 	if code, _ := hostedRequest(t, target+"/api/v2/processing/reprocess", "", "POST", []byte("{}")); code != http.StatusNotFound {
 		t.Fatal("public operator route", code)
 	}
-	settings := Settings{Listen: "127.0.0.1:0", DBPath: filepath.Join(root, "competing.duckdb"), AdminSocket: socket}
+	settings := Settings{Listen: "127.0.0.1:0", DBPath: filepath.Join(root, "competing.duckdb"), AppDBPath: filepath.Join(root, "competing-app.sqlite"), AdminSocket: socket}
 	if err := Run(t.Context(), settings, io.Discard, nil); err == nil || !strings.Contains(err.Error(), "socket already owned") {
 		t.Fatal("competing admin socket accepted", err)
 	}

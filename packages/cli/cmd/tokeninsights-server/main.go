@@ -25,10 +25,11 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 	flags.SetOutput(stderr)
 	settings := remoteserver.Settings{}
 	flags.StringVar(&settings.Listen, "listen", "0.0.0.0:8765", "IPv4 listen address")
+	flags.StringVar(&settings.AppDBPath, "app-db-path", "", "application SQLite (default: beside token database)")
 	flags.StringVar(&settings.DBPath, "server-db-path", "", "required server DuckDB database path")
 	flags.StringVar(&settings.LegacyDBPath, "legacy-server-db-path", "", "read-only SQLite baseline import into a new DuckDB")
-	flags.StringVar(&settings.Kind, "kind", "personal", "server kind: personal or hosted")
-	flags.StringVar(&settings.PublicURL, "public-url", "", "hosted canonical HTTPS public origin")
+	flags.StringVar(&settings.Kind, "kind", "hosted", "distributed server kind (hosted)")
+	flags.StringVar(&settings.PublicURL, "public-url", os.Getenv("TOKENINSIGHTS_PUBLIC_URL"), "hosted canonical HTTPS public origin")
 	flags.StringVar(&settings.AdminSocket, "admin-socket", "", "private operator socket (default: database path + .admin.sock)")
 	showVersion := flags.Bool("version", false, "print version")
 	if err := flags.Parse(args); err != nil {
@@ -43,6 +44,9 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 	}
 	if os.Getenv("TOKENINSIGHTS_SERVER_TOKEN") != "" {
 		return fmt.Errorf("TOKENINSIGHTS_SERVER_TOKEN removed; use hosted user tokens; unset it")
+	}
+	if settings.Kind != "hosted" {
+		return fmt.Errorf("remote servers require hosted authentication; use tokeninsights web for local usage")
 	}
 	return remoteserver.Run(ctx, settings, stderr, func(url string) error { _, err := fmt.Fprintln(stdout, url); return err })
 }

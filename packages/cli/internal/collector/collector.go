@@ -29,6 +29,7 @@ const maxRetryAfter = 24 * time.Hour
 // Destination is resolved by command composition, before any source capture.
 // Identity is the canonical endpoint; URL may address a private local transport.
 type Destination struct {
+	Transport  Delivery
 	URL        string
 	Identity   string
 	DatabaseID string
@@ -38,6 +39,7 @@ type Destination struct {
 }
 
 type Options struct {
+	AcceptedReceipt  func(evidence.Receipt) error
 	Destination      *Destination
 	CollectorDBPath  string
 	ServerDBPath     string
@@ -215,13 +217,13 @@ func publishLegacy(ctx context.Context, options Options, result *Result) error {
 	} else if options.LocalClient != nil {
 		client = deliveryClient(options.LocalClient)
 	}
-	body, err := request(ctx, client, target+"/api/v1/ingestion/capabilities", options.Token, nil)
+	transport := Delivery(HTTPDelivery{URL: target, Token: options.Token, Client: client})
+	if options.Destination != nil {
+		transport = destinationDelivery(options.Destination, options.Token)
+	}
+	capabilities, err := transport.LegacyCapabilities(ctx)
 	if err != nil {
 		return err
-	}
-	capabilities, err := publication.DecodeCapabilities(body)
-	if err != nil {
-		return failure("capabilities", "incompatible_server", err)
 	}
 	if options.Destination != nil && (options.Destination.DatasetID != "default" || options.Destination.DatabaseID != capabilities.DatabaseID) {
 		return failure("binding", "server_database_changed", nil)
@@ -259,7 +261,7 @@ func publishLegacy(ctx context.Context, options Options, result *Result) error {
 		if saved == nil {
 			return nil
 		}
-		receiptBytes, err := request(ctx, client, target+"/api/v1/ingestion/batches", options.Token, saved.Request)
+		receiptBytes, err := transport.Submit(ctx, 1, saved.Request)
 		if err != nil {
 			var stage *StageError
 			if errors.As(err, &stage) {

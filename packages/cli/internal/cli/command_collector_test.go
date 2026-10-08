@@ -70,7 +70,7 @@ func TestGroupedResetCommandsOperateOnCollector(t *testing.T) {
 
 func TestPrimaryHelpNamesEverydayCLIAndAdvancedNamespace(t *testing.T) {
 	help := usageText()
-	for _, name := range []string{"service start|stop|restart|status", "sync", "tui", "collector normalize|reset-canonical|reset-all"} {
+	for _, name := range []string{"service stop|status", "sync --debug", "sync --print", "data reprocess|wait", "sync", "tui", "collector normalize|reset-canonical|reset-all"} {
 		if !strings.Contains(help, name) {
 			t.Fatalf("primary help missing %q", name)
 		}

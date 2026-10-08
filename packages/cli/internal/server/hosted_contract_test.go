@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/accounts"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/appstore"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/datastore"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/evidence"
 	serverapi "github.com/flexdinesh/tokeninsights/packages/cli/internal/server/api"
@@ -35,7 +36,7 @@ func newHostedContractFixture(t *testing.T) hostedContractFixture {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = store.Close() })
-	service := accounts.New(store)
+	service := newHostedAccounts(t, store)
 	alice, err := service.CreateUser(t.Context(), "Alice")
 	if err != nil {
 		t.Fatal(err)
@@ -309,7 +310,7 @@ func TestDisabledHTTPCapabilitiesFailClosed(t *testing.T) {
 			var service *accounts.Service
 			token := ""
 			if kind == serverfeatures.Hosted {
-				service = accounts.New(store)
+				service = newHostedAccounts(t, store)
 				user, err := service.CreateUser(t.Context(), "User")
 				if err != nil {
 					t.Fatal(err)
@@ -331,4 +332,22 @@ func TestDisabledHTTPCapabilitiesFailClosed(t *testing.T) {
 			}
 		})
 	}
+}
+
+func newHostedAccounts(t *testing.T, store *datastore.Store) *accounts.Service {
+	t.Helper()
+	identity, err := store.DatabaseIdentity(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	app, err := appstore.Open(t.Context(), filepath.Join(t.TempDir(), "app.sqlite"), identity, "hosted")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = app.Close() })
+	repository := accounts.NewSQLite(app, store)
+	if err := repository.ImportLegacy(t.Context(), store.SQL()); err != nil {
+		t.Fatal(err)
+	}
+	return accounts.New(repository)
 }

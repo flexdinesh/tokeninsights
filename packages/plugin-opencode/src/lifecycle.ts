@@ -7,7 +7,7 @@ type CompletionContext = {
 
 export function setupCompletion(context: CompletionContext): () => Promise<void> {
   const controller = new AbortController()
-  const runner = new CollectorRunner()
+  const runner = new CollectorRunner({ harness: 'opencode' })
   let reported: Promise<void> | undefined
   const report = (): void => {
     // OpenCode owns plugin console logs. Do not log events or subprocess output.

@@ -1,7 +1,7 @@
 # TokenInsights design
 
 Implements [ADR 0007](adr/0007-raw-ingestion-and-server-processing.md) and
-[ADR 0008](adr/0008-personal-hosted-composition-and-capabilities.md).
+[ADR 0009](adr/0009-single-process-and-distributed-compositions.md).
 See the [original raw-ingestion plan](raw-ingestion-plan.md), [whitelist](raw-ingestion-whitelist.md)
 and [OpenAPI](openapi.yaml). Supersedes collector-owned normalization,
 normalized-only ingestion, SQLite analytics and synchronous completion.
@@ -13,7 +13,8 @@ metadata in a SQLite outbox, and submits raw batches. It owns continuity and
 local location enrichment; never normalizes new counters or resolves ancestry.
 Server durably accepts evidence, asynchronously processes typed confirmed facts/
 separate estimates, then serves SQL analytics and embedded browser assets.
-Startup resumes processing; never discovers client source files or collects.
+The remote server resumes processing without reading host sources. Local commands
+compose capture, acceptance, processing and queries within their own process.
 
     Sources -> whitelist extraction -> Collector SQLite -> acceptance
       -> DuckDB raw/receipts/scopes -> async processor -> facts/estimates -> views
@@ -33,15 +34,24 @@ processing, generations, receipts and analytics.
 | Role | Default | Schema | Version |
 | --- | --- | --- | --- |
 | Collector | collector.sqlite | schema/schema.sql | 19 |
-| Server | server.duckdb | schema/data.sql | 2 |
+| Token data | server.duckdb | schema/data.sql | 2 |
+| Application | app.sqlite | schema/app.sql | 1 |
+| Sync jobs | collector.sqlite.jobs.sqlite | schema/jobs.sql | 1 |
 | Legacy import | server.sqlite | schema/server.sql | 2 |
 
 Defaults use XDG_DATA_HOME or ~/.local/share/tokeninsights. Role-specific flags/
 environment/config override them. Reject aliased paths, wrong roles, incompatible
 versions and corrupt contracts. Former tokeninsights.sqlite stays untouched.
-Hosted users, token digests and browser session digests live in the `accounts`
-logical schema of the same DuckDB file. One shared write coordinator owns all
-writes; no application/per-user database or cross-file commit.
+Application SQLite holds users, token/session digests and provisioning state. It is
+paired to the token database identity and kind. Local setup creates one default user.
+A one-time transaction copies legacy DuckDB accounts after validating dataset links;
+the completed marker prevents stale source credentials overwriting later revocations.
+DuckDB account tables remain read-only migration sources. App initialization publishes
+a fully initialized file atomically; wrong roles/pairs reject before app mutation.
+
+Provisioning persists an inactive user and fixed dataset ID, idempotently creates the
+dataset through a contract, then activates the user. Restart resumes pending users;
+disabled ready users stay disabled. There is no cross-engine atomic transaction.
 
 Verified collector schemas 16/17/18 upgrade additively to 19, retaining legacy facts,
 journals, bindings, exact protocol-1/2 requests, hashes, receipts and cursors.
@@ -53,7 +63,7 @@ generations reject. Maintenance cannot delete unaccepted raw outbox.
 Fresh default server.duckdb imports verified sibling server.sqlite read-only.
 Stage initialization/import/checkpoint before atomic publication. Preserve database
 identity, components/revisions/history/receipt bytes; verify copied counts/totals.
-Custom import uses service import --server-db-path NEW --legacy-server-db-path OLD,
+Custom import uses data import --server-db-path NEW --legacy-server-db-path OLD,
 or remote startup with the same flag. Explicit import requires new target and
 stopped local service. Source never overwritten. Newer processors reject; older
 ones schedule a replacement generation.
@@ -70,8 +80,7 @@ DuckDB schemas:
 - ingestion.instance: global role/version/database/kind identity.
 - ingestion.metadata: dataset identity, active/target generations,
   acceptance/published revisions and times.
-- accounts.users/tokens/sessions: user/dataset ownership, enabled status, token
-  permissions/digests and session expiry/revocation.
+- accounts.users/tokens/sessions: retained read-only legacy account migration source.
 - ingestion.batches/items/batch_items: exact request/receipt bytes, immutable
   stream/sequence bindings, every submitted mapping including duplicates.
 - processing.scopes/dependencies/outcomes: durable queue/revisions/generation,
@@ -83,9 +92,8 @@ DuckDB schemas:
 
 All raw, receipt, scope, dependency, generation, fact, estimate, provenance and
 legacy keys include dataset. Active views join generation by dataset; analytics
-still explicitly filters the authorized dataset. One file gives each
-acceptance/projection and account/dataset creation a transaction boundary. No broker,
-cross-file commit or generic backend framework.
+still explicitly filters the authorized dataset. DuckDB gives acceptance and projection their own atomic transaction boundaries.
+Application transactions remain in SQLite; no broker or cross-file commit is assumed.
 
 ## Capture and reliable submission
 
@@ -117,7 +125,8 @@ Unknown/private fields never cross ingestion. Source paths/cursors/Git URLs stay
 local; enrichment contains stable hashes, basenames, repository names/provenance.
 Collector writer lock serializes capture/delivery state. Persist request before
 sending; matching acceptance advances destination cursor transactionally.
-Manual sync/publish-only retries; no autonomous collector retry process.
+Finite background sync retries submission at most three times within ten minutes,
+respecting Retry-After. Manual sync/publish-only also replays retained work.
 
 Raw/outbox/old generations retain indefinitely initially; no compaction. Replay
 can repair only captured fields; whitelist changes may require source rereads.
@@ -229,12 +238,16 @@ claims in this change.
 
 ## Composition, capabilities and access
 
-Managed personal public dashboard/query: 127.0.0.1:8765 or optional 0.0.0.0.
-Writes/reprocess/lifecycle/progress publication use a private mode-0600 Unix socket
-plus instance verification; public write routes return 404. Foreground personal
-requires server-db-path and exposes unauthenticated HTTP ingestion/query. Hosted
-requires its kind, shared data path and canonical HTTPS public URL; users share
-storage with isolated datasets. Startup never collects in any composition.
+Single-process `tui` owns collector, direct ingestion, processing and direct query
+adapters. `web` adds a foreground read-only HTTP listener, bound to 127.0.0.1:8765
+by default or the requested IPv4 host/port. Reserve the listener before capture;
+open the browser after ingestion becomes visible. Cancellation joins workers and
+closes storage/listeners. A database lifetime lock excludes a second viewer.
+
+Distributed collectors submit to an authenticated remote hosted server in one
+container. Bearer auth selects the dataset; the server starts no collector. A
+canonical HTTPS public origin governs browser login/session security. The existing
+DuckDB processing queue remains behind dataengine's backend contract.
 
 `serverfeatures` owns typed kind/capabilities and validates dependent features.
 `GET /api/v2/instance` returns serverKind, datasetId, bounded capabilities and caller
@@ -250,28 +263,38 @@ bind dataset snapshot identity. `/api/v2/status` contains processing readiness a
 user-scoped revisions/pending work, without collector status. Hosted exposes no
 v1 read fallback. Feature support never substitutes for read/ingest permission.
 
-CLI configuration: `server-kind` personal by default, `server-url`, `server-token`,
-local `host`/`port` and role paths. Flags > environment > file > defaults. Kind and
-token use file or `TOKENINSIGHTS_SERVER_KIND`/`TOKENINSIGHTS_ACCESS_TOKEN`; no token
-flag. Hosted needs URL/token. Token without an explicit remote destination rejects.
-`config set server-token` reads secure prompt/stdin and rejects a command-line
-value; get masks it. The private config file remains atomic/mode-0600. Clients
-compare configured/advertised kind before collecting or opening viewers; remote
-failure never falls back to local.
+CLI configuration uses `mode=single-process|distributed`, URL/token, bind preferences
+and three database paths. Defaults are single-process; legacy hosted configuration
+maps to distributed. Flags > environment > file > defaults. The config file is
+private/atomic; token entry uses prompt/stdin. Distributed requires bearer token and
+URL. Remote failures never select local fallback. Bare invocation prints help.
 
-`tui` composes personal startup/sync/query and rejects hosted even query-only.
-`web` syncs by default with `--sync=false` for saved data. Managed personal opens
-its dashboard before sync to show bounded sanitized progress; hosted syncs in the
-terminal and opens browser login without collector progress. `web --host` binds
-managed local only; mismatching an already running bind needs explicit restart.
-Plugins/manual sync share the same capture/delivery behavior. Reload remains query-only.
+Local TUI startup captures, directly accepts, then waits for pending work to drain
+and active/target generations to agree in a consistent status snapshot. Retry/View
+saved/Quit remain available. Saved-data viewing skips capture and visibility waiting.
+Reload is query-only. Remote TUI is unavailable; remote web syncs before browser login.
 
-Managed personal clients publish leased attempts through
-`/control/v1/collector-progress`; public GET `/api/v2/collector-progress` exposes
-bounded fixed-stage/status/counters only. No paths, native payloads, secrets or
-arbitrary error text. Registry is in memory and checks owner instance; leases expire
-on missed heartbeats/cancellation. Concurrent attempts remain separate. Progress
-reporting failures cannot invalidate durable delivery. Hosted mounts neither route.
+`sync` defaults to a finite detached worker in distributed mode. Parent commits a
+job to separate operational SQLite, passes credentials through inherited private
+pipes, and waits only for startup ACK. `--print` also submits and reserves stdout for
+the canonical URL. `--wait` waits for acceptance. `--debug` requires read+ingest and
+observes each accepted receipt, never the unrelated global queue; non-TTY output is
+plain progress. Requests/receipts and fixed errors survive in jobs; tokens do not.
+An OS lock serializes workers without holding a jobs transaction during networking.
+Later workers drain earlier queued requests with the same endpoint/credential.
+Abandoned running claims become interrupted; pending evidence stays in the outbox.
+
+Local sync runs directly when unowned; otherwise it queues a local request. The
+foreground owner's job loop captures/accepts it in-process. Enqueue does not need the
+collector writer lock. Each completion during another scan remains a follow-up job.
+If the viewer exits during handoff, the waiting sync may acquire ownership and finish
+it. Pending requests survive shutdown and are consumed by the next local owner.
+Plugin subprocesses use `--wait --harness`; TypeScript adapters coalesce overlaps
+while retaining a follow-up pass, and do not forward event payloads.
+
+Legacy `service stop/status` only migrate old owners; new lifecycle startup is retired.
+Finite `data import/reprocess/wait` replaces local service maintenance. Public local
+web has no ingestion/admin/progress-write routes; remote admin remains private.
 
 Hosted administrator creates/disables users and creates/revokes scoped tokens
 through the private owner socket. Random tokens have 256-bit entropy; store digests.
@@ -291,22 +314,30 @@ returns 503. Saved requests remain unacknowledged for manual retry.
 
 ## Package and deployment boundaries
 
+The [approved implementation plan](../.scratch/runtime-compositions/PRD.md) preserves
+processing semantics while changing composition. `collector.Delivery` has direct and
+HTTP adapters; `analytics.Repository` shares direct/HTTP query semantics. `accounts.Repository`
+and its SQLite adapter isolate application persistence. Dataengine owns processing
+contracts; DuckDB is an adapter, not a required future backend.
+
 | Package | Behavior boundary |
 | --- | --- |
 | `evidence`, `publication` | Sanitized wire records and stable contribution contracts |
 | `pipeline` | Capture/native readers, continuity and safe enrichment; retained legacy normalization |
 | `rawcollectorstore` | Collector capture/checkpoint/outbox transactions and immutable dataset-bound requests |
 | `collector` | Delivery orchestration with injected destination transport; no local-service discovery |
-| `clientworkflow` | CLI endpoint/service resolution, descriptor preflight and progress fan-out |
+| `clientworkflow` | Remote endpoint resolution and authenticated descriptor preflight |
 | `processor` | Pure evidence interpretation; no host reads, SQL, network or wall clock |
 | `dataengine` | Transport-independent work/processing orchestration and retry scheduling |
 | `datastore` | DuckDB adapter, upgrades/import and dataset-scoped atomic persistence operations |
 | `analytics` | Typed query contracts/results and dataset-scoped SQL |
 | `server`, `ingestionhttp` | Authorized REST/asset and ingestion adapters |
 | `serverfeatures` | Typed kind/capability policy |
-| `accounts`, `collectorprogress` | Hosted principals/sessions/admission; managed personal progress registry |
+| `accounts`, `appstore` | Credential contract/SQLite adapter, provisioning and application pairing |
+| `syncjob` | Durable finite jobs, native detachment and delivery retries |
+| `localruntime` | Command ownership, direct ingestion/query and local request consumption |
 | `serverruntime` | Shared storage/worker/listener lifecycle |
-| `service`, `remoteserver` | Managed personal and foreground personal/hosted composition |
+| `service`, `remoteserver` | Legacy migration/fixture support and authenticated remote composition |
 
 Retain package names where they already express the boundary. Retained
 normalization/import/wire adapters are explicit compatibility paths; they are not
@@ -327,3 +358,8 @@ Go embeds committed web assets. CGO/C/C++ needed to build DuckDB; native CI/rele
 Linux/macOS amd64/arm64 runners. Production needs no JavaScript runtime.
 Verification: format/lint/schema/API, native semantic fixtures, full/race tests,
 native build/JS-absent smoke and browser E2E.
+
+Application pairing also persists `<canonical-token-path>.application.json`, containing
+only the application instance ID. Keep this guard with both databases in stopped
+backups. A missing/replaced app database fails closed instead of re-importing stale
+legacy credentials. Restore the matched set; do not delete the guard to bypass recovery.

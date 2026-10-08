@@ -39,7 +39,19 @@ func (e *StatusError) Error() string {
 	return fmt.Sprintf("server query returned HTTP %d", e.StatusCode)
 }
 
+// Reader is the query contract shared by network and in-process compositions.
+// Each response describes a consistent publication snapshot.
+type Reader interface {
+	Instance(context.Context) (api.InstanceResponse, error)
+	Usage(context.Context, api.GetUsageParams) (api.UsageResponse, error)
+	Facets(context.Context, api.GetUsageFacetsParams) (api.UsageFacetsResponse, error)
+	Status(context.Context) (api.SyncResponse, error)
+}
+
+func NewDirect(reader Reader) *Client { return &Client{direct: reader} }
+
 type Client struct {
+	direct  Reader
 	base    url.URL
 	http    http.Client
 	token   string
@@ -80,6 +92,9 @@ func New(baseURL string, httpClient *http.Client) (*Client, error) {
 }
 
 func (c *Client) Instance(ctx context.Context) (api.InstanceResponse, error) {
+	if c.direct != nil {
+		return c.direct.Instance(ctx)
+	}
 	if c.dataset != "" {
 		response, err := c.Descriptor(ctx)
 		if err != nil {
@@ -96,6 +111,9 @@ func (c *Client) Instance(ctx context.Context) (api.InstanceResponse, error) {
 }
 
 func (c *Client) Usage(ctx context.Context, params api.GetUsageParams) (api.UsageResponse, error) {
+	if c.direct != nil {
+		return c.direct.Usage(ctx, params)
+	}
 	if c.dataset != "" {
 		result, err := c.UsageV2(ctx, params)
 		if err != nil {
@@ -104,11 +122,14 @@ func (c *Client) Usage(ctx context.Context, params api.GetUsageParams) (api.Usag
 		return usageV1(result), nil
 	}
 	var response api.UsageResponse
-	err := c.get(ctx, "/api/v1/usage", usageValues(params), &response)
+	err := c.get(ctx, "/api/v1/usage", api.UsageValues(params), &response)
 	return response, err
 }
 
 func (c *Client) Facets(ctx context.Context, params api.GetUsageFacetsParams) (api.UsageFacetsResponse, error) {
+	if c.direct != nil {
+		return c.direct.Facets(ctx, params)
+	}
 	if c.dataset != "" {
 		result, err := c.FacetsV2(ctx, params)
 		if err != nil {
@@ -117,15 +138,16 @@ func (c *Client) Facets(ctx context.Context, params api.GetUsageFacetsParams) (a
 		return api.UsageFacetsResponse{DataEpoch: result.DataEpoch, Directories: result.Directories, Generation: result.Generation, Harnesses: result.Harnesses, InputRevision: result.InputRevision, InstanceId: result.InstanceId, Models: result.Models, Pending: result.Pending, Providers: result.Providers, Repositories: result.Repositories, Revision: result.Revision, Sessions: result.Sessions}, nil
 	}
 	var response api.UsageFacetsResponse
-	values := selectionValues(params.Period, params.Bucket, params.From, params.To, params.Provider, params.Model, params.Harness, params.Session, params.Repository, params.Directory)
-	setValue(values, "tab", params.Tab)
-	setValue(values, "search", params.Search)
+	values := api.FacetValues(params)
 	err := c.get(ctx, "/api/v1/usage/facets", values, &response)
 	return response, err
 }
 
 // Status observes published data readiness and revision without requesting work.
 func (c *Client) Status(ctx context.Context) (api.SyncResponse, error) {
+	if c.direct != nil {
+		return c.direct.Status(ctx)
+	}
 	if c.dataset != "" {
 		response, err := c.StatusV2(ctx)
 		return api.SyncResponse{DataEpoch: response.DataEpoch, DataReadiness: api.SyncResponseDataReadiness(response.DataReadiness), InstanceId: response.InstanceId, Revision: response.Revision, Running: response.Pending > 0}, err
@@ -368,15 +390,13 @@ func HasPermission(descriptor api.InstanceResponseV2, permission serverfeatures.
 
 func (c *Client) UsageV2(ctx context.Context, params api.GetUsageParams) (api.UsageResponseV2, error) {
 	var result api.UsageResponseV2
-	err := c.get(ctx, "/api/v2/usage", usageValues(params), &result)
+	err := c.get(ctx, "/api/v2/usage", api.UsageValues(params), &result)
 	return result, err
 }
 
 func (c *Client) FacetsV2(ctx context.Context, params api.GetUsageFacetsParams) (api.UsageFacetsResponseV2, error) {
 	var result api.UsageFacetsResponseV2
-	values := selectionValues(params.Period, params.Bucket, params.From, params.To, params.Provider, params.Model, params.Harness, params.Session, params.Repository, params.Directory)
-	setValue(values, "tab", params.Tab)
-	setValue(values, "search", params.Search)
+	values := api.FacetValues(params)
 	err := c.get(ctx, "/api/v2/usage/facets", values, &result)
 	return result, err
 }
@@ -389,44 +409,4 @@ func (c *Client) StatusV2(ctx context.Context) (api.StatusResponseV2, error) {
 
 func usageV1(r api.UsageResponseV2) api.UsageResponse {
 	return api.UsageResponse{Chart: r.Chart, DataEpoch: r.DataEpoch, FactCount: r.FactCount, Generation: r.Generation, InputRevision: r.InputRevision, InstanceId: r.InstanceId, LastSynced: r.LastSynced, Page: r.Page, PageSize: r.PageSize, Pending: r.Pending, Quality: r.Quality, Range: r.Range, Revision: r.Revision, RowCount: r.RowCount, Rows: r.Rows, Summary: r.Summary, Unresolved: r.Unresolved}
-}
-
-func setValue[T ~string | ~int](values url.Values, key string, value *T) {
-	if value != nil {
-		values.Set(key, fmt.Sprint(*value))
-	}
-}
-
-func setValues[T ~string](values url.Values, key string, list *[]T) {
-	if list != nil {
-		for _, value := range *list {
-			values.Add(key, string(value))
-		}
-	}
-}
-
-func selectionValues(period *api.PeriodFilter, bucket *api.BucketFilter, from, to *string, providers, models *[]string, harnesses *[]api.Harness, sessions, repositories, directories *[]string) url.Values {
-	values := url.Values{}
-	setValue(values, "period", period)
-	setValue(values, "bucket", bucket)
-	setValue(values, "from", from)
-	setValue(values, "to", to)
-	setValues(values, "provider", providers)
-	setValues(values, "model", models)
-	setValues(values, "harness", harnesses)
-	setValues(values, "session", sessions)
-	setValues(values, "repository", repositories)
-	setValues(values, "directory", directories)
-	return values
-}
-
-func usageValues(params api.GetUsageParams) url.Values {
-	values := selectionValues(params.Period, params.Bucket, params.From, params.To, params.Provider, params.Model, params.Harness, params.Session, params.Repository, params.Directory)
-	setValue(values, "tab", params.Tab)
-	setValue(values, "locationGroup", params.LocationGroup)
-	setValue(values, "sort", params.Sort)
-	setValue(values, "direction", params.Direction)
-	setValue(values, "page", params.Page)
-	setValue(values, "pageSize", params.PageSize)
-	return values
 }

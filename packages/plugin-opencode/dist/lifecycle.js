@@ -3,7 +3,7 @@ import { isCompletion } from './completion.js'
 
 export function setupCompletion(context) {
   const controller = new AbortController()
-  const runner = new CollectorRunner()
+  const runner = new CollectorRunner({ harness: 'opencode' })
   let reported
   const report = () => {
     // OpenCode owns plugin console logs. Do not log events or subprocess output.

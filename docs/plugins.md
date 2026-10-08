@@ -1,6 +1,6 @@
 # Completion plugins
 
-Completion adapters invoke the same finite `tokeninsights sync` command as manual collection. The Go collector discovers retained artifacts, normalizes locally and publishes canonical facts. Plugins contain no parser, database writer or HTTP client. Hook session fields never become fact identity or source-selection arguments.
+Completion adapters invoke the finite `tokeninsights sync --wait --harness HARNESS` command. The Go collector discovers retained artifacts and submits sanitized evidence for shared processing, directly inside a local owner or over authenticated remote HTTP. Plugins contain no parser, database writer or HTTP client. Hook session fields never become fact identity or source-selection arguments.
 
 Native manifests and packaged Pi/OpenCode entry points are included. Install manually using the native host mechanism; this repository never edits user harness registrations automatically. Real-host installation/trust, event delivery and durable-write timing remain deferred verification. Package/type/fake-executable checks do not establish those host behaviors.
 
@@ -17,7 +17,7 @@ Codex uses [bundled command hooks](https://developers.openai.com/codex/hooks); C
 
 Codex/Claude command hooks wait synchronously, declare a 60-second host deadline, discard stdin and collector stdout/stderr, and return empty decision JSON. Failure prints a fixed hook-log marker and never asks the agent to continue. Actual host cancellation semantics remain a smoke-test item.
 
-Pi/OpenCode runners spawn an argument array with `shell: false`, wait for the finite child, bound its lifetime to 60 seconds and coalesce overlapping callbacks. Cleanup terminates active work; Unix process groups receive termination followed by bounded kill escalation. The plugins do not start a detached retry worker or persist another trigger queue. Missing executables, nonzero exit and timeout expose only a generic host diagnostic, never event or collector output.
+Pi/OpenCode runners spawn an argument array with `shell: false`, wait for the finite child, bound its lifetime to 60 seconds and coalesce overlapping callbacks with a follow-up pass for completions during a scan. Pi returns control to the harness while the finite subprocess runs. Cleanup terminates active work; Unix process groups receive termination followed by bounded kill escalation. The plugins do not start a detached retry worker or persist another trigger queue. Missing executables, nonzero exit and timeout expose only a generic host diagnostic, never event or collector output.
 
 Set `TOKENINSIGHTS_BINARY` to the executable path when the harness PATH lacks `tokeninsights`. Literal spaces/metacharacters stay in one executable argument. Collector configuration selects its fresh database files, source roots and destination; completion payloads do not override them. Committed standalone JavaScript artifacts use the harness runtime; the Go product still requires no host JavaScript runtime.
 

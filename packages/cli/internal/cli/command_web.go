@@ -4,7 +4,13 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/config"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/localruntime"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/server"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/serverruntime"
+	"net"
 	"strings"
+	"time"
 
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/browser"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/clientworkflow"
@@ -12,19 +18,22 @@ import (
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/networkprefs"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/pipeline"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/serverfeatures"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/service"
 )
+
+const localVisibilityTimeout = 30 * time.Second
 
 var webCommand = commandSpec{name: "web", run: runWeb}
 var openDashboard = browser.Open
 var runWebCollector = collector.Run
-var ensureWebServer = service.Ensure
 
 func runWeb(invocation commandInvocation, args []string) error {
 	settings := invocation.defaults()
 	flags := flag.NewFlagSet("tokeninsights web", flag.ContinueOnError)
 	flags.SetOutput(invocation.stderr)
 	var syncBefore bool
+	openBrowser := flags.Bool("open", true, "open browser automatically")
+	flags.StringVar(&settings.Mode, "mode", settings.Mode, "single-process or distributed")
+	flags.StringVar(&settings.AppDBPath, "app-db-path", settings.AppDBPath, "application SQLite database")
 	flags.StringVar(&settings.ServerURL, "server-url", settings.ServerURL, "dashboard server; empty selects local")
 	flags.StringVar(&settings.ServerDBPath, "server-db-path", settings.ServerDBPath, "local server database")
 	flags.StringVar(&settings.CollectorDBPath, "collector-db-path", settings.CollectorDBPath, "collector database")
@@ -38,20 +47,17 @@ func runWeb(invocation commandInvocation, args []string) error {
 		return fmt.Errorf("unexpected argument\n%w", ErrUsage)
 	}
 	settings.ServerURL = strings.TrimSpace(settings.ServerURL)
-	options := localOptions(settings.ServerDBPath, settings)
 	bindRequested := false
 	flags.Visit(func(f *flag.Flag) {
 		switch f.Name {
 		case "host":
-			options.Host = &settings.Host
 			bindRequested = true
 		case "port":
-			options.Port = &settings.Port
 			bindRequested = true
 		}
 	})
 	if bindRequested && settings.ServerURL != "" {
-		return fmt.Errorf("--host/--port require a managed local server\n%w", ErrUsage)
+		return fmt.Errorf("--host/--port require single-process mode\n%w", ErrUsage)
 	}
 	if err := networkprefs.ValidateHost(settings.Host); err != nil {
 		return err
@@ -64,7 +70,13 @@ func runWeb(invocation commandInvocation, args []string) error {
 			return err
 		}
 	}
-	session, err := clientworkflow.Resolve(invocation.context, settings, func(ctx context.Context) (service.State, error) { return ensureWebServer(ctx, options) })
+	if err := settings.ValidateDestination(); err != nil {
+		return err
+	}
+	if settings.EffectiveMode() == config.SingleProcess {
+		return runLocalWeb(invocation, settings, syncBefore, *openBrowser)
+	}
+	session, err := clientworkflow.Resolve(invocation.context, settings, nil)
 	if err != nil {
 		return err
 	}
@@ -73,7 +85,7 @@ func runWeb(invocation commandInvocation, args []string) error {
 	}
 	open := func() {
 		_, _ = fmt.Fprintln(invocation.stdout, "Dashboard: "+session.URL)
-		if openDashboard(session.URL) != nil {
+		if *openBrowser && openDashboard(session.URL) != nil {
 			_, _ = fmt.Fprintln(invocation.stderr, "Could not open browser; open dashboard URL above.")
 		}
 	}
@@ -85,9 +97,6 @@ func runWeb(invocation commandInvocation, args []string) error {
 		return err
 	}
 	observer := session.Observe(invocation.context)
-	if settings.ServerKind == serverfeatures.Personal {
-		open()
-	}
 	_, _ = fmt.Fprintln(invocation.stderr, "Syncing usage...")
 	terminal := newTerminalSyncProgress(invocation.stderr)
 	result, syncErr := runWebCollector(invocation.context, collector.Options{
@@ -100,8 +109,54 @@ func runWeb(invocation commandInvocation, args []string) error {
 	terminal.Finish(result)
 	printSummary(invocation.stdout, "sync", result.Collection, false)
 	printDeliverySummary(invocation.stdout, result)
-	if settings.ServerKind == serverfeatures.Hosted {
-		open()
-	}
+	open()
 	return syncErr
+}
+
+func runLocalWeb(invocation commandInvocation, settings config.Settings, syncBefore, openBrowser bool) error {
+	listener, err := net.Listen("tcp4", net.JoinHostPort(settings.Host, fmt.Sprint(settings.Port)))
+	if err != nil {
+		return err
+	}
+	defer func() { _ = listener.Close() }()
+	runtime, err := localruntime.OpenWithApp(invocation.context, settings.CollectorDBPath, settings.ServerDBPath, settings.ApplicationPath())
+	if err != nil {
+		return err
+	}
+	defer func() { _ = runtime.Close() }()
+	if syncBefore {
+		terminal := newTerminalSyncProgress(invocation.stderr)
+		result, err := runWebCollector(invocation.context, collector.Options{
+			CollectorDBPath: settings.CollectorDBPath, ServerDBPath: settings.ServerDBPath,
+			Destination:      runtime.Destination,
+			SyncOptions:      pipeline.SyncOptions{Harnesses: pipeline.SupportedHarnesses, Normalize: true, Now: invocation.now, Progress: terminal.Collection},
+			DeliveryProgress: terminal.Delivery,
+		})
+		terminal.Finish(result)
+		if err != nil {
+			return err
+		}
+		visible, cancel := context.WithTimeout(invocation.context, localVisibilityTimeout)
+		err = runtime.WaitVisible(visible)
+		cancel()
+		if err != nil {
+			return err
+		}
+	}
+	host, port, err := net.SplitHostPort(listener.Addr().String())
+	if err != nil {
+		return err
+	}
+	if host == "0.0.0.0" {
+		host = "127.0.0.1"
+	}
+	url := "http://" + net.JoinHostPort(host, port)
+	handler := server.NewDataHandler(invocation.context, runtime.Store, invocation.stderr, settings.Host, "", false)
+	return serverruntime.Serve(invocation.context, runtime.Store, []serverruntime.Binding{{Listener: listener, Handler: handler}}, func() error {
+		_, _ = fmt.Fprintln(invocation.stdout, "Dashboard: "+url)
+		if openBrowser && openDashboard(url) != nil {
+			_, _ = fmt.Fprintln(invocation.stderr, "Could not open browser; open dashboard URL above.")
+		}
+		return nil
+	})
 }

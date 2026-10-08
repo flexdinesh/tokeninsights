@@ -222,7 +222,41 @@ async function main() {
       new URL('../../../packages/cli/internal/datastore/store.go', import.meta.url).pathname,
     ),
   ])
+  const [appSQL, embeddedAppSQL, appGo] = await Promise.all([
+    readText(new URL('../../../schema/app.sql', import.meta.url).pathname),
+    readText(
+      new URL('../../../packages/cli/internal/appstore/schema/app.sql', import.meta.url).pathname,
+    ),
+    readText(new URL('../../../packages/cli/internal/appstore/store.go', import.meta.url).pathname),
+  ])
+  const [jobsSQL, embeddedJobsSQL, jobsGo] = await Promise.all([
+    readText(new URL('../../../schema/jobs.sql', import.meta.url).pathname),
+    readText(
+      new URL('../../../packages/cli/internal/syncjob/schema/jobs.sql', import.meta.url).pathname,
+    ),
+    readText(new URL('../../../packages/cli/internal/syncjob/store.go', import.meta.url).pathname),
+  ])
   const mismatches = [
+    ...(jobsSQL === embeddedJobsSQL ? [] : ['jobs: embedded schema differs']),
+    ...(extractGoConsts(jobsGo).ints.get('SchemaVersion') ===
+    extractSchemaSqlIdentifiers(jobsSQL).version
+      ? []
+      : ['jobs: SchemaVersion mismatch']),
+    ...(extractGoConsts(jobsGo).ints.get('ApplicationID') ===
+    extractSchemaSqlIdentifiers(jobsSQL).applicationID
+      ? []
+      : ['jobs: ApplicationID mismatch']),
+
+    ...(appSQL === embeddedAppSQL ? [] : ['application: embedded schema differs']),
+    ...(extractGoConsts(appGo).ints.get('SchemaVersion') ===
+    extractSchemaSqlIdentifiers(appSQL).version
+      ? []
+      : ['application: SchemaVersion mismatch']),
+    ...(extractGoConsts(appGo).ints.get('ApplicationID') ===
+    extractSchemaSqlIdentifiers(appSQL).applicationID
+      ? []
+      : ['application: ApplicationID mismatch']),
+
     ...(dataSQL === embeddedDataSQL ? [] : ['data: embedded DuckDB schema differs']),
     ...(extractGoConsts(dataGo).ints.get('SchemaVersion') ===
     Number(dataSQL.match(/version (\d+)/)?.[1])

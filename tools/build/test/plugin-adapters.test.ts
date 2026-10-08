@@ -83,11 +83,17 @@ process.exit(Number(process.env.HOOK_EXIT || 0));
       const result = await invoke(command, env)
       assert.deepEqual(result, { stdout: '{}\n', stderr: '' })
       const actual: unknown = JSON.parse(await readFile(capture, 'utf8'))
-      assert.deepEqual(actual, { args: ['sync'], input: '' })
+      assert.deepEqual(actual, {
+        args: ['sync', '--wait', '--harness', harness === 'claude' ? 'claude-code' : 'codex'],
+        input: '',
+      })
       const overridden = await invoke(command, { ...env, TOKENINSIGHTS_BINARY: binary })
       assert.deepEqual(overridden, { stdout: '{}\n', stderr: '' })
       const overrideCapture: unknown = JSON.parse(await readFile(capture, 'utf8'))
-      assert.deepEqual(overrideCapture, { args: ['sync'], input: '' })
+      assert.deepEqual(overrideCapture, {
+        args: ['sync', '--wait', '--harness', harness === 'claude' ? 'claude-code' : 'codex'],
+        input: '',
+      })
       const failed = await invoke(command, {
         ...env,
         TOKENINSIGHTS_BINARY: binary,
@@ -244,22 +250,24 @@ async function waitForTermination(pid: number): Promise<void> {
 
 void test('finite runner coalesces completions and forwards only sync with empty stdin', async () => {
   await withCollector('ok', async (capture) => {
-    const runner = new CollectorRunner()
+    const runner = new CollectorRunner({ harness: 'pi' })
     const first = runner.run()
     assert.equal(runner.run(), first)
     await first
     const actual = await calls(capture)
-    assert.equal(actual.length, 1)
+    assert.equal(actual.length, 2)
     assert.ok(record(actual[0]))
-    assert.deepEqual(actual[0].args, ['sync'])
+    assert.deepEqual(actual[0].args, ['sync', '--wait', '--harness', 'pi'])
     assert.equal(actual[0].input, '')
+    assert.ok(record(actual[1]))
+    assert.deepEqual(actual[1].args, ['sync', '--wait', '--harness', 'pi'])
     await runner.close()
   })
 })
 
 void test('runner deadline escalates termination and leaves no collector child', async () => {
   await withCollector('block', async (capture) => {
-    const runner = new CollectorRunner({ deadlineMs: 750, killGraceMs: 50 })
+    const runner = new CollectorRunner({ harness: 'pi', deadlineMs: 750, killGraceMs: 50 })
     await assert.rejects(runner.run(), new RegExp(syncFailure.replaceAll('.', '\\.')))
     const [actual] = await calls(capture)
     assert.ok(record(actual) && typeof actual.pid === 'number')
@@ -272,7 +280,7 @@ void test('runner deadline escalates termination and leaves no collector child',
 void test('missing collector produces only a bounded generic failure', async () => {
   await withCollector('ok', async (capture) => {
     process.env.TOKENINSIGHTS_BINARY = `${capture}-missing-binary`
-    const runner = new CollectorRunner()
+    const runner = new CollectorRunner({ harness: 'pi' })
     await assert.rejects(runner.run(), { message: syncFailure })
     await runner.close()
     await assert.rejects(readFile(capture))
@@ -284,7 +292,7 @@ void test(
   { skip: process.platform === 'win32' },
   async () => {
     await withCollector('fork', async (capture) => {
-      const runner = new CollectorRunner()
+      const runner = new CollectorRunner({ harness: 'pi' })
       const pending = runner.run().catch(() => {})
       try {
         await waitForCall(capture, 2)
@@ -371,11 +379,20 @@ void test('Pi native registration stays inert until settled and isolates generic
       },
     }
     await settled({ assistant: 'synthetic-private-marker' }, context)
+    await waitForCall(capture)
+    const deadline = Date.now() + 5000
+    const waitForFailure = async (): Promise<void> => {
+      if (errors.length > 0) return
+      if (Date.now() >= deadline) assert.fail('sync failure not reported')
+      await pause(10)
+      await waitForFailure()
+    }
+    await waitForFailure()
     assert.deepEqual(errors, [syncFailure])
     const actual = await calls(capture)
     assert.equal(actual.length, 1)
     assert.ok(record(actual[0]))
-    assert.deepEqual(actual[0].args, ['sync'])
+    assert.deepEqual(actual[0].args, ['sync', '--wait', '--harness', 'pi'])
     assert.equal(actual[0].input, '')
     await shutdown({}, context)
   })
@@ -417,7 +434,7 @@ void test('OpenCode native lifecycle coalesces idle triggers and kills active wo
     const actual = await calls(capture)
     assert.equal(actual.length, 1)
     assert.ok(record(actual[0]) && typeof actual[0].pid === 'number')
-    assert.deepEqual(actual[0].args, ['sync'])
+    assert.deepEqual(actual[0].args, ['sync', '--wait', '--harness', 'opencode'])
     assert.equal(actual[0].input, '')
     const pid = actual[0].pid
     assert.throws(() => process.kill(pid, 0))

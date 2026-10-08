@@ -53,6 +53,7 @@ func NewDataHandlerWithOptions(ctx context.Context, store *datastore.Store, log 
 	}
 	a := newApp(ctx, Options{InstanceID: options.InstanceID, Defaults: viewer.Selection{Period: "month", Bucket: "day"}}, log)
 	a.data = store
+	a.queries = analytics.DuckDB{Store: store}
 	a.allowIngestion = options.AllowIngestion && options.Policy.Capabilities.Has(serverfeatures.RawIngestion)
 	a.policy, a.accounts, a.publicURL, a.progress = options.Policy, options.Accounts, options.PublicURL, options.Progress
 	handler := a.handler()
@@ -78,6 +79,7 @@ func (a *app) scoped(r *http.Request) (*app, accounts.Principal, error) {
 	}
 	copy := *a
 	copy.data = a.data.ForDataset(p.DatasetID)
+	copy.queries = analytics.DuckDB{Store: copy.data}
 	copy.ctx = r.Context()
 	return &copy, p, nil
 }
@@ -215,7 +217,7 @@ func (a *app) handler() http.Handler {
 }
 
 func (a *app) instanceV2(w http.ResponseWriter, r *http.Request, p accounts.Principal) {
-	status, err := analytics.Status(r.Context(), a.data)
+	status, err := a.queries.Status(r.Context())
 	if err != nil {
 		a.queryError(w, err)
 		return
@@ -232,7 +234,7 @@ func (a *app) instanceV2(w http.ResponseWriter, r *http.Request, p accounts.Prin
 }
 
 func (a *app) statusV2(w http.ResponseWriter, r *http.Request) {
-	status, err := analytics.Status(r.Context(), a.data)
+	status, err := a.queries.Status(r.Context())
 	if err != nil {
 		a.queryError(w, err)
 		return
@@ -249,7 +251,7 @@ func (a *app) usageV2(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), queryTimeout)
 	defer cancel()
-	data, err := analytics.LoadDashboard(ctx, a.data, q, time.Now())
+	data, err := a.queries.Dashboard(ctx, q, time.Now())
 	if err != nil {
 		a.queryError(w, err)
 		return
@@ -266,7 +268,7 @@ func (a *app) facetsV2(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), queryTimeout)
 	defer cancel()
-	data, err := analytics.LoadFacets(ctx, a.data, q, r.URL.Query().Get("search"), time.Now())
+	data, err := a.queries.Facets(ctx, q, r.URL.Query().Get("search"), time.Now())
 	if err != nil {
 		a.queryError(w, err)
 		return

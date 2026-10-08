@@ -17,7 +17,7 @@ import (
 )
 
 func TestIngestionPreflightRejectsBeforeCapture(t *testing.T) {
-	for _, command := range []string{"sync", "web", "tui"} {
+	for _, command := range []string{"sync", "web"} {
 		for _, incompatible := range []string{"protocol", "extractor", "database", "dataset", "completion", "body-limit", "entry-limit"} {
 			t.Run(command+"/"+incompatible, func(t *testing.T) {
 				kind := serverfeatures.Hosted
@@ -81,7 +81,11 @@ func TestIngestionPreflightRejectsBeforeCapture(t *testing.T) {
 				if !ok {
 					t.Fatal("missing command")
 				}
-				if err := spec.run(invocation, nil); err == nil || strings.Contains(err.Error(), "fixture-token") {
+				args := []string{}
+				if command == "sync" {
+					args = append(args, "--wait")
+				}
+				if err := spec.run(invocation, args); err == nil || strings.Contains(err.Error(), "fixture-token") {
 					t.Fatal("incompatible raw contract accepted", err)
 				}
 				if requests.Load() != 2 {

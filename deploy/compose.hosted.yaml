@@ -11,6 +11,8 @@ services:
       - '0.0.0.0:8765'
       - --server-db-path
       - /data/server.duckdb
+      - --app-db-path
+      - /data/app.sqlite
       - --public-url
       - '${TOKENINSIGHTS_PUBLIC_URL:?Set the canonical HTTPS dashboard URL}'
       - --admin-socket

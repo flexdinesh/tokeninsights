@@ -53,11 +53,11 @@ The shared Go server core that durably accepts immutable evidence/receipts, asyn
 _Avoid_: Collector service, client-side normalization
 
 **Personal Server**:
-An unauthenticated server serving one dataset. Default kind; managed local or foreground remote. Supports the terminal dashboard. Managed local composition also exposes sanitized collector progress.
+The wire/storage kind used by single-process local commands. One default dataset/user; direct ingestion and TUI queries. Web adds a foreground read-only HTTP listener. No daemon or personal remote deployment.
 _Avoid_: Simple server, prod server, local-only server
 
 **Hosted Server**:
-An authenticated server serving isolated user datasets in one shared DuckDB database. Runs as one foreground instance; browser dashboard supported, terminal dashboard and browser collector progress unavailable.
+The distributed server kind: authenticated datasets share one DuckDB in one container, while SQLite holds accounts/system state. Browser dashboard supported; analytics TUI unavailable. Collector sync uses finite jobs.
 _Avoid_: Prod server, database per tenant, authenticated personal server
 
 **Dataset**:

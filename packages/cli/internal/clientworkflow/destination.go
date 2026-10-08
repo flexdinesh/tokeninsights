@@ -60,7 +60,7 @@ func Resolve(ctx context.Context, settings config.Settings, ensure Ensure) (Sess
 	if err != nil {
 		return result, err
 	}
-	if serverfeatures.Kind(result.Descriptor.ServerKind) != settings.ServerKind {
+	if serverfeatures.Kind(result.Descriptor.ServerKind) != settings.ExpectedKind() {
 		return result, fmt.Errorf("server kind mismatch; update server-kind or server-url")
 	}
 	result.Query = client.WithDataset(result.Descriptor.DatasetId)

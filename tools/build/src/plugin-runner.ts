@@ -3,7 +3,11 @@ import { spawn } from 'node:child_process'
 export const syncFailure = 'TokenInsights sync failed; run tokeninsights sync for details.'
 export const syncDeadlineMs = 60_000
 
-export type RunnerOptions = { deadlineMs?: number; killGraceMs?: number }
+export type RunnerOptions = {
+  harness: 'pi' | 'opencode'
+  deadlineMs?: number
+  killGraceMs?: number
+}
 
 // Plugins only trigger the finite Go collector. Event payloads never become
 // process arguments, stdin, output, or diagnostics. Overlapping calls coalesce.
@@ -11,16 +15,20 @@ export class CollectorRunner {
   private active: Promise<void> | undefined
   private terminate: (() => void) | undefined
   private closed = false
+  private followup = false
   private options: RunnerOptions
 
-  constructor(options: RunnerOptions = {}) {
+  constructor(options: RunnerOptions) {
     this.options = options
   }
 
   run(): Promise<void> {
     if (this.closed) return Promise.reject(new Error(syncFailure))
-    if (this.active !== undefined) return this.active
-    const active = this.launch().finally(() => {
+    if (this.active !== undefined) {
+      this.followup = true
+      return this.active
+    }
+    const active = this.drain().finally(() => {
       this.active = undefined
       this.terminate = undefined
     })
@@ -34,15 +42,25 @@ export class CollectorRunner {
     await this.active?.catch(() => {})
   }
 
+  private async drain(): Promise<void> {
+    this.followup = false
+    await this.launch()
+    if (this.followup && !this.closed) await this.drain()
+  }
+
   private launch(): Promise<void> {
     return new Promise((resolve, reject) => {
       let stopped = false
       let escalation: ReturnType<typeof setTimeout> | undefined
-      const child = spawn(process.env.TOKENINSIGHTS_BINARY ?? 'tokeninsights', ['sync'], {
-        detached: process.platform !== 'win32',
-        stdio: 'ignore',
-        shell: false,
-      })
+      const child = spawn(
+        process.env.TOKENINSIGHTS_BINARY ?? 'tokeninsights',
+        ['sync', '--wait', '--harness', this.options.harness],
+        {
+          detached: process.platform !== 'win32',
+          stdio: 'ignore',
+          shell: false,
+        },
+      )
       const kill = (signal: NodeJS.Signals): void => {
         if (child.pid === undefined) return
         try {
