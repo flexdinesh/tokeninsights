@@ -35,8 +35,8 @@ distributed delivery normally finishes at acceptance.
 
 ## Rollout
 
-The [implementation plan](../../.scratch/runtime-compositions/PRD.md) and six
-dependency-ordered issues specify lifecycle, command, migration and test gates.
+The [design contract](../design.md) specifies runtime boundaries; the
+[development guide](../development.md) defines verification gates.
 All command compositions now use the shared adapters. Application SQLite and finite
 sync jobs have separate role schemas; DuckDB remains version 2 with read-only legacy
 account tables. ADR 0008's daemon composition and shared account-storage decisions

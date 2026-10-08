@@ -14,10 +14,10 @@ rebuilds resume with the same scope, and newer generations reject. Server
 history never participates in collector recovery.
 
 [design.md](design.md) describes the product; [ADR 0006](adr/0006-collector-server-ingestion.md)
-records this decision. The [storage contract](../.scratch/collector-ingestion/STORAGE-CONTRACT-PROPOSAL.md)
-defines persistence and wire details. The [failure contract](collector-ingestion-tests.md)
-and [validation record](../.scratch/collector-ingestion/VALIDATION.md) distinguish
-implemented assertions from remaining coverage. A guarantee alone does not prove
+records this decision. The [collector schema](../schema/schema.sql),
+[legacy server schema](../schema/server.sql), and [OpenAPI](openapi.yaml)
+define retained persistence and wire details. The [failure contract](collector-ingestion-tests.md)
+distinguishes implemented assertions from remaining coverage. A guarantee alone does not prove
 every related failure has been tested.
 
 ## Ownership and compositions

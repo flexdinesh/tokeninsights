@@ -23,4 +23,4 @@ Set `TOKENINSIGHTS_BINARY` to the executable path when the harness PATH lacks `t
 
 A completion event is a collection opportunity, not proof that every harness write is flushed. Interrupted/truncated or delayed records remain collectible by later sync. Hooks may time out before all collection finishes; already committed collector journal and server receipts survive, and manual sync resumes delivery. Manual sync remains the primary workflow and troubleshooting command.
 
-See the [plugin implementation plan](../.scratch/collector-ingestion/PLUGIN-PLAN.md) for test IDs and deferred real-host verification. Full build/test outcomes are recorded separately in [validation](../.scratch/collector-ingestion/VALIDATION.md).
+Executable adapter and packaging checks live in `tools/build/test/plugin-adapters.test.ts` and `tools/build/test/plugin-build.test.ts`. The [development guide](development.md) defines full verification; real-host installation and event delivery remain deferred as described above.

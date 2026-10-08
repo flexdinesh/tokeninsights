@@ -104,6 +104,12 @@ go install ./cmd/tokeninsights
 
 Direct Go commands use the currently committed embedded web assets. Use `pnpm run install:cli` when frontend changes must be included.
 
+## Local scratch files
+
+Keep plans, issues, research, and temporary verification scripts in ignored `.scratch/`
+directories. Never force-add scratch files. Preserve durable contracts in `docs/`,
+with links only to tracked documentation. Disposable `packages/web/previews/` are also ignored.
+
 ## Fixture Data
 
 The shared fixture is under `packages/cli/testdata/conformance/sync-first-basic/source/`. It contains compact, synthetic source data for all supported harnesses and excludes conversations, tool payloads, credentials, request data, user paths, and identifying values. Never commit raw local harness databases or transcripts.

@@ -135,7 +135,7 @@ Tests must verify identities, each component/total, references, durable receipts
 cursor/revision and REST results with real SQLite/HTTP. Named crash boundaries
 cover capture, canonical/journal commit, batch preparation, server commit and
 collector acknowledgement. Actual coverage and unresolved failures are recorded
-in [VALIDATION](../../.scratch/collector-ingestion/VALIDATION.md), rather than
+in the [failure contract](../collector-ingestion-tests.md), rather than
 inferred from acceptance of this ADR.
 
 Future work includes retention/compaction, explicit migrations, profile

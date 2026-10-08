@@ -314,7 +314,7 @@ returns 503. Saved requests remain unacknowledged for manual retry.
 
 ## Package and deployment boundaries
 
-The [approved implementation plan](../.scratch/runtime-compositions/PRD.md) preserves
+[ADR 0009](adr/0009-single-process-and-distributed-compositions.md) preserves
 processing semantics while changing composition. `collector.Delivery` has direct and
 HTTP adapters; `analytics.Repository` shares direct/HTTP query semantics. `accounts.Repository`
 and its SQLite adapter isolate application persistence. Dataengine owns processing

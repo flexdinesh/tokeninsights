@@ -11,3 +11,7 @@ packages/web/dist/
 packages/cli/.impeccable/review/
 .impeccable/review/
 .playwright-mcp/
+
+# Local plans and disposable previews.
+.scratch/
+packages/web/previews/
