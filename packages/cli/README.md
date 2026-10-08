@@ -1,6 +1,6 @@
 # tokeninsights
 
-Collect sanitized evidence in SQLite, submit it to a DuckDB server for asynchronous processing, and query terminal/browser dashboards. Run `tokeninsights tui` for a personal terminal dashboard or `tokeninsights web` for a personal/hosted browser dashboard. Both sync by default; `--sync=false` views saved data only.
+Single-process and distributed token analytics. Shared Go ingestion/processing uses DuckDB for token history and SQLite for accounts/system state. Local TUI and web commands collect before viewing; remote collectors submit over authenticated HTTP.
 
 ## Install
 
@@ -31,245 +31,80 @@ claude-code
 
 ## Commands
 
-Everyday commands are `tui`, `web`, `sync`, `service`, and `config`. Advanced host maintenance uses `collector normalize|reset-canonical|reset-all`; `tokeninsights collector --help` lists that namespace. Previous command names and flags are removed. Use `tui`, the `collector` namespace, and role-specific database flags.
+```sh
+tokeninsights tui                       # local collect, ingest, process, direct query
+tokeninsights web                       # local collect then foreground web server
+tokeninsights web --host 0.0.0.0         # read-only dashboard on all IPv4 interfaces
+tokeninsights web --port 0 --open=false  # select available port; print URL
+tokeninsights tui --sync=false          # saved usage only
+tokeninsights web --sync=false
+```
 
-`sync`
-
-Capture whitelisted native evidence in collector SQLite and submit raw batches for acceptance. All supported harnesses are selected by default; `--all` is an explicit equivalent. Server retains evidence and asynchronously computes facts. Collection and delivery produce separate summaries, and failures return a nonzero exit status without deleting committed local work or earlier accepted batches.
+Local commands own storage and processing until exit. No daemon or ingestion HTTP.
+One viewer owns the token database; concurrent sync/plugin requests are persisted
+and executed inside that viewer. If the owner exits, a waiting sync can take over.
+Browser Reload/TUI `r` only query. TUI capture failures offer Retry/View saved/Quit.
 
 ```sh
-tokeninsights sync
-tokeninsights sync --harness opencode
+tokeninsights config set mode distributed
+tokeninsights config set server-url https://usage.example.com
+tokeninsights config set server-token   # secure prompt/stdin, never an argument
+tokeninsights sync                      # durable job + finite detached worker
+tokeninsights sync --print              # also submit; stdout is URL only
+tokeninsights sync --wait               # foreground acceptance
+tokeninsights sync --debug              # foreground collection and receipt progress
+tokeninsights sync status --json
+tokeninsights web                       # sync then remote browser login
+```
+
+Remote sync requires bearer authentication; no analytics TUI. Debug needs both read
+and ingest, waits on accepted receipts, and falls back to plain progress without a
+TTY. Default background completion means worker startup, not server acceptance.
+Workers stop within ten minutes and retry transient delivery at most three times,
+respecting Retry-After. Durable requests survive; another explicit sync can replay
+pending uploads and earlier queued requests for the same endpoint/credential.
+
+Both modes default to all harnesses (`opencode`, `pi`, `codex`, `claude-code`).
+
+```sh
 tokeninsights sync --harness pi --source-dir /path/to/source-root
-tokeninsights sync --dry-run
-tokeninsights sync --full-refresh
-tokeninsights sync --no-normalize
+tokeninsights sync --all --source-dir /path/to/all-harnesses
 tokeninsights sync --publish-only
-tokeninsights sync --collector-db-path /path/to/collector.sqlite --server-db-path /path/to/server.duckdb
-tokeninsights sync --server-url https://example.test
+tokeninsights sync --full-refresh
+tokeninsights sync --dry-run
 ```
 
-`--publish-only` retries retained raw outbox work without source discovery. `--no-normalize` is a deprecated compatibility flag; processing always happens on server. `--dry-run` does not write or deliver. Without an explicit server URL, the workflow ensures the local personal server; an explicit URL skips local startup even on failure. Negotiation verifies configured kind/capabilities and permissions before capture; dry-run needs no server. Later manual sync retries pending delivery; there is no background agent or automatic retry.
+`--all --source-dir` uses each harness's subdirectory. Single-harness collection uses
+a matching subdirectory when present, otherwise the given directory. Capture commits
+sanitized evidence/checkpoints together; source paths and private content never upload.
+Unchanged sources skip; full refresh retries quarantine. Publish-only never reads
+sources. Dry-run uses temporary storage and never submits. `--no-normalize` remains
+a deprecated flag; shared processing always interprets evidence.
 
-Managed personal control requests retain a three-second timeout; ingestion uses a separate thirty-second timeout. The canonical endpoint identifies delivery, while private socket routing remains a transport detail. Existing verified local alias bindings and pending requests are reused without rewriting saved bytes.
+Configuration: `mode`, `server-url`, `server-token`, `host`, `port`, `collector-db-path`,
+`server-db-path`, `app-db-path`; legacy `server-kind` remains a migration alias.
+Flags > environment > private atomic config > defaults. Use `TOKENINSIGHTS_MODE`,
+`TOKENINSIGHTS_ACCESS_TOKEN`, `TOKENINSIGHTS_SERVER_URL` and role-path variables.
+`config get` reads preferences and masks tokens. `--config-file` or
+`TOKENINSIGHTS_CONFIG_PATH` selects a config file. Remote settings never fall back local.
 
-Delivery saves immutable request bytes before transport. Evidence, item mappings,
-receipt and processing work commit atomically. Acceptance does not imply query
-visibility. Exact retries return the original receipt plus current processing
-status; native contribution IDs prevent recollection from inflating confirmed
-usage. Changed bytes under an existing delivery identity conflict atomically.
-Safe semantic conflicts become durable ambiguity, with usable counters shown
-separately as estimated. Collector reset/source disappearance never retracts history.
-
-
-With `sync --all --source-dir`, each harness is read only from its own subdirectory, such as `/path/to/source-root/opencode`; missing subdirectories are skipped. Single-harness sync first looks for a matching harness subdirectory, then falls back to scanning the provided directory directly.
-
-OpenCode sync reads modern SQLite sources named `opencode.db` or `opencode-<channel>.db`, including sessions marked archived in those databases. V1 `message` and V2 `session_message` layouts share the SQLite row ID as message identity; usable V2 data replaces matching V1 data. Pi sync reads JSONL session files from `~/.pi/agent/sessions`, or from a provided Pi source directory; Pi has no harness archive and OS trash is excluded. Codex sync reads rollout JSONL session files from `${CODEX_HOME:-~/.codex}/sessions` and `${CODEX_HOME:-~/.codex}/archived_sessions`, parsing structured `event_msg` token-count records. Claude Code sync reads retained local JSONL transcript files from `${CLAUDE_CONFIG_DIR:-~/.claude}/projects` regardless of UI/server archive state; cloud-only archives are excluded. JSONL capture verifies the saved byte prefix, parses appended records and retains
-native context. Rewrites start a new lineage; incomplete tails wait. OpenCode
-scans a consistent SQLite snapshot because older rows can change without a
-trustworthy native cursor. Unchanged sanitized observations are not re-enqueued.
-Full refresh rereads safely and retries quarantined sources; dry-run uses temporary storage without delivery.
-
-Oversized JSONL records proven irrelevant are streamed past without storing private contents. Usage or context records that exceed the capture limit quarantine the source locally: previous evidence/checkpoints survive, unchanged files avoid repeated parsing, and sync reports incomplete collection. Quarantine retries after file identity/size/mtime or parser policy changes, or `sync --full-refresh`. Transient I/O errors and cancellation do not quarantine sources.
-
-One collector writer commits each source's evidence and checkpoint together.
-Capture uses up to four source readers, a shared location cache, bounded record buffers and sanitized temporary spools; SQLite writes remain serialized. Prefix verification reads bytes
-without reparsing old records. Server startup performs no source reads.
-
-The server owns token interpretation: input excludes cache read/write, output
-excludes separately reported reasoning, and Pi inclusive-input corrections require
-source proof. All five components and their sum remain one atomic contribution.
-Invalid counters cannot create confirmed usage. Codex ancestry/copy proofs use
-native session/turn/provider/model plus complete last/cumulative metadata; equal
-counts or rewritten timestamps alone do not prove duplication. Missing/conflicting
-ancestry is retained as ambiguity outside confirmed totals.
-
-
-`collector normalize`
-
-Legacy-only maintenance: process retained pre-upgrade raw facts and journal their normalized changes. Later sync delivers legacy requests with their original protocol-1 semantics. New evidence is processed only by the server; use `service reprocess` to rebuild its projection.
-
-Raw provider and model names remain unchanged. Canonical rows used by queries map Pi `openai-codex` to `openai`, map `fireworks-ai` to `fireworks`, and strip `accounts/fireworks/models/` from Fireworks model names. Server processing applies these aliases to each projection; legacy maintenance applies them only to retained collector canonical rows.
+Bare invocation shows help. Old daemon owners must be explicitly stopped with
+`service stop`; `service status` remains for migration. Start/restart/run are retired.
+Finite local maintenance:
 
 ```sh
+tokeninsights data import --legacy-server-db-path OLD.sqlite --server-db-path NEW.duckdb
+tokeninsights data reprocess
+tokeninsights data wait
 tokeninsights collector normalize
-tokeninsights collector normalize --harness codex
-tokeninsights collector normalize --dry-run
-```
-
-`collector reset-canonical`
-
-Delete collector canonical sessions/messages/usage and normalization diagnostics while retaining raw facts, observations, source continuity, and publication history. Raw facts are requeued for normalization. This does not delete server facts or receipts.
-
-Requires compatible data with no unfinished recovery. It cannot repair incompatible raw token semantics or identities.
-
-```sh
-tokeninsights collector reset-canonical
 tokeninsights collector reset-canonical --confirm
-```
-
-`collector reset-all`
-
-Reject reset while raw evidence remains unacknowledged. Otherwise transactionally recreate collector application tables inside its SQLite file. This clears raw/canonical facts, pending normalization, continuity, journal, and delivery markers. A later sync reparses retained sources under a new stream and server stable IDs dedupe identical facts. Server history and receipts remain untouched. Reset is not an implicit server retraction or reconciliation policy.
-
-```sh
-tokeninsights collector reset-all
 tokeninsights collector reset-all --confirm
 ```
 
-`tui`
-
-Open the personal-server interactive terminal UI. Hosted destinations reject before collection, including `--sync=false`. Its loading screen runs all-harness collection/publication, then reads the same REST analytics API as the browser. Without a server URL it ensures the local server; an explicit URL publishes local collection to that server without starting a local server. `--sync=false` skips collection; query-only remote viewing opens neither local database. Dashboard Reload and filters only query saved data.
-
-Startup shows per-harness activity, accepted upload batches, and pending entries. Failure offers `r Retry`, `v View saved` when a server endpoint is available, and `q Quit`/Ctrl+C. Viewing saved data skips collection. Quitting cancels active work and preserves committed collector/server data; later sync resumes pending delivery. Retrying a data-read failure only retries the query.
-
-```sh
-tokeninsights tui
-tokeninsights tui --sync=false           # query saved usage without collecting
-tokeninsights tui --server-url https://example.test
-tokeninsights tui --today
-tokeninsights tui --yesterday
-tokeninsights tui --year --bucket month
-tokeninsights tui --month --provider openai --model gpt-5
-```
-
-Bare `tokeninsights` ensures the local service or prints the configured remote URL. Move root viewer flags to `tokeninsights tui ...`; `--host`/`--port` are local service and `web` bind options.
-
-Every tab's pinned summary shows `sessions <shown> shown / <synced> synced`, followed by the row count and, except in Context, the filtered token total. `shown` counts distinct sessions matching all active filters across the full result, not just the visible scroll viewport. `synced` counts all distinct sessions with countable canonical usage in this database across all dates and harnesses, ignoring viewer filters. Sessions spanning multiple dates or models are counted once; sessions without countable usage are excluded from both counts.
-
-The default current-month filter can show a small subset of synced sessions. Compare `tui --month` with `tui --all-time` using the same `--server-db-path` to inspect date filtering without changing the database. All time removes the preset date restriction but keeps dimension filters and any explicit custom date bounds.
-
-`web`
-
-Ensure/negotiate the destination, sync by default and open its browser dashboard.
-Managed personal opens early so the browser can show sanitized capture/submission
-progress. Foreground personal shows terminal progress. Hosted syncs in the terminal
-before opening browser token login; its browser has no collector progress.
-Browser launch failure prints the URL. Reload remains query-only.
-
-```sh
-tokeninsights web
-tokeninsights web --sync=false
-tokeninsights web --host 0.0.0.0
-tokeninsights web --server-url https://usage.example.com
-```
-
-`--host`/`--port` bind managed local composition only; they reject with an explicit
-remote destination. A running service with different requested binding needs
-`service restart`; web never silently restarts it. `--sync=false` still validates
-kind/capabilities and read permission. Hosted CLI token is never placed in the
-browser URL; browser login separately uses a read token.
-
-`service start|stop|restart|status|run|reprocess|wait|import`
-
-```sh
-tokeninsights service start --open
-tokeninsights service status --json
-tokeninsights service restart
-tokeninsights service stop
-tokeninsights service run             # foreground; Ctrl+C stops
-tokeninsights                         # ensure local or print configured remote URL
-```
-
-Use `--server-db-path` after the service action. Start/run/restart accept `--host`
-and `--port`; start also accepts `--open`. Default binding is `127.0.0.1:8765`;
-port zero reports the assigned port. Local public serving is unauthenticated,
-including `0.0.0.0`. File/environment bind preferences apply on the next start or
-explicit restart; a running service is reused. Startup never collects; fresh default DuckDB imports verified sibling server.sqlite read-only; incompatible server files reject without deletion. Legacy saved
-token protection requires explicit restart, preserving history and receipts;
-legacy bind choices import into root config only when unset. `--reload-sources`,
-`refresh`, `--token` and `TOKENINSIGHTS_SERVER_TOKEN` are removed.
-
-Private lifecycle control uses a Unix socket; public REST handles queries/dashboard; private socket handles ingestion/reprocessing. Held/unreachable ownership and busy ports fail without process takeover. Status is read-only; stopped status exits 3, usage exits 2, other failures exit 1.
-
-`tokeninsights-server`
-
-```sh
-tokeninsights-server --listen 0.0.0.0:8765 --server-db-path /path/to/server.duckdb
-tokeninsights config set server-url http://remote-machine:8765
-tokeninsights sync
-```
-
-The foreground executable shares acceptance, processing, queries and embedded
-assets with the local service. It requires an explicit database path and reads no
-client config or source artifacts. Default `--kind personal` is unauthenticated
-and shares dataset `default`. Hosted uses one shared DuckDB database and isolated
-user datasets:
-
-```sh
-tokeninsights-server --kind hosted --listen 0.0.0.0:8765 \
-  --server-db-path /path/to/server.duckdb \
-  --public-url https://usage.example.com \
-  --admin-socket /run/tokeninsights/admin.sock
-tokeninsights-server admin --admin-socket /run/tokeninsights/admin.sock user create Alice
-tokeninsights-server admin --admin-socket /run/tokeninsights/admin.sock token create USER_ID --scopes read,ingest
-```
-
-Administrator commands contact the running owner's mode-0600 socket; they never
-open a second writable database. Both kinds accept `--admin-socket`, defaulting to
-`DB_PATH.admin.sock`. Personal `admin ... reprocess` rebuilds dataset `default`;
-hosted `admin ... user reprocess USER_ID` resolves its dataset server-side. Token creation prints its secret once; `user
-disable USER_ID` and `token revoke TOKEN_ID` block access through the same admin
-command. Hosted requires canonical HTTPS public URL, normally behind a TLS proxy.
-No TUI or collector-progress endpoint is mounted. See [deployment](../../docs/deployment.md)
-for Docker, provisioning and persistence. `tokeninsights server run` remains removed.
-
-`config set/get/remove`
-
-Preferences default to `${XDG_CONFIG_HOME:-~/.config}/tokeninsights/config.json`.
-Keys are `server-kind`, `server-url`, `server-token`, `host`, `port`, `collector-db-path`, `server-db-path`. Kind defaults to `personal`. Hosted requires URL and token at runtime.
-Use `set KEY VALUE`, `get KEY` or `remove KEY`. Token is the exception: `config set server-token` prompts securely or reads stdin; passing its value as an argument rejects. `config get server-token` reports configured/unset without the secret. Reads create no files; writes are
-typed, private, atomic and serialized. Unknown keys/invalid values reject unchanged.
-`get` reads preferences/defaults; runtime precedence is flags > environment >
-file > defaults. Existing `TOKENINSIGHTS_SERVER_URL` and role path variables remain;
-`TOKENINSIGHTS_HOST` and `TOKENINSIGHTS_PORT` override local bind preferences.
-`TOKENINSIGHTS_SERVER_KIND` and `TOKENINSIGHTS_ACCESS_TOKEN` override kind/token.
-There are no server-kind/token command-line flags. Token without explicit remote
-destination rejects; a local daemon always remains personal.
-Root `--config-file PATH` or `TOKENINSIGHTS_CONFIG_PATH` selects the file.
-
-Sync, TUI, web and plugins select the same destination; an explicit empty URL restores local.
-Service commands always manage local. Remote delivery never falls back locally.
-A new destination receives retained evidence; existing destinations resume
-their own cursors. Binding includes endpoint/database/dataset: token rotation
-resumes while switching users creates independent progress. Clients reject kind
-mismatch before source capture. See [system design](../../docs/system.md).
-
-The browser provides Tokens, Models, Providers, Harnesses, Sessions, Context, and Repo views, charts, faceted filters, custom dates, session-ID search, sorting, pagination, and themes. Repo groups by repository/directory; location filters apply only there. Unknown groups remain part of totals and can reveal recorded contributing directories. Published directory names are basenames, not collector-local full paths. URL state preserves query scope/navigation. Reporting periods use the server timezone and Monday-start weeks.
-
-Browser **Reload** and TUI `r` query committed data. Empty state points to `tokeninsights sync`; no server endpoint starts a collector. Source-day coverage is absent because unavailable uploads cannot establish checked/empty days. Failed reads preserve filters and available saved results. TUI quits cancel reads, not already committed collection/ingestion transactions.
-
-New raw ingestion does not upload a producer hostname. The query label is `unknown`; source identity never comes from a machine label. Browser requests remain same-origin, without a destination selector or advertised CORS access. Explicit CLI `--server-url` / `TOKENINSIGHTS_SERVER_URL` selects another server and bypasses local bootstrap.
-
-| Endpoint | Purpose |
-| --- | --- |
-| `GET /api/v2/instance` | Kind, capabilities, caller permissions, dataset/runtime/database identity, defaults |
-| `GET /api/v2/status` | Readiness and dataset-scoped generation/revisions/pending processing |
-| `GET /api/v2/usage` | Filtered summary, chart, rows and dataset snapshot identity |
-| `GET /api/v2/usage/facets` | Dataset-scoped filter facets/session search |
-| `GET /api/v2/collector-progress` | Managed personal sanitized capture/submission attempts only |
-| `POST /api/v2/auth/session` | Hosted browser token login, opaque read-only cookie |
-| `DELETE /api/v2/auth/session` | Hosted logout/session revocation |
-| `GET /api/v3/ingestion/capabilities` | Raw protocol/limits and database/dataset binding |
-| `POST /api/v3/ingestion/batches` | Durable raw acceptance; 202 pending / 200 terminal |
-| `GET /api/v3/ingestion/batches/{stream}/{batch}` | Dataset-scoped immutable receipt plus current outcomes |
-| `GET /healthz`, `GET /readyz` | Public liveness/initialized readiness, without user metadata |
-
-Capabilities determine feature availability; read/ingest permissions separately
-authorize supported operations. Hosted exposes authenticated v2 reads and protocol
-3 only. Personal preserves v1 reads and protocol-1/2 saved-request adapters. Local
-public routes expose no ingestion protocol; private socket does. `POST /api/v1/sync`
-remains rejected. Query parameters never select another user's dataset.
-
-Raw batches allow at most 256 entries and 1 MiB, 256-byte metadata strings and
-nonnegative integers/aggregate counters within `9007199254740991`. Unsupported
-versions, private/unknown fields, duplicate keys, invalid identities/totals and
-changed saved payloads reject explicitly. Protocol 3 binds database/dataset to the
-request and authenticated principal. Four global admission slots bound acceptance;
-hosted also limits each user's active/rate admission. Busy/rate-limited responses
-leave saved requests retryable. Processing is asynchronous and dataset-local.
-
-[`docs/openapi.yaml`](../../docs/openapi.yaml) is the repository-only REST contract; it is not served at runtime. `pnpm run generate:api` creates committed Go/TypeScript query models and schemas; `pnpm run check-api` checks drift. Native Go builds consume committed output and embedded assets, without Node.
+Remote admin uses the running container's private socket; see [deployment](../../docs/deployment.md).
+Collector reset never removes token history, and pending raw evidence prevents reset.
+Native contribution identity, all token components, estimates, receipts and processing
+generations follow [the shared contract](../../docs/design.md).
 
 ## Database
 
@@ -278,7 +113,9 @@ Default role paths:
 | Role | Default file | Override |
 | --- | --- | --- |
 | Collector | `${XDG_DATA_HOME:-~/.local/share}/tokeninsights/collector.sqlite` | `--collector-db-path`, `TOKENINSIGHTS_COLLECTOR_DB_PATH` |
-| Server | `${XDG_DATA_HOME:-~/.local/share}/tokeninsights/server.duckdb` | `--server-db-path`, `TOKENINSIGHTS_SERVER_DB_PATH` |
+| Token data | `${XDG_DATA_HOME:-~/.local/share}/tokeninsights/server.duckdb` | `--server-db-path`, `TOKENINSIGHTS_SERVER_DB_PATH` |
+
+Application SQLite defaults to `app.sqlite` beside the selected token database; override with `--app-db-path` or `TOKENINSIGHTS_APP_DB_PATH`. Finite jobs use `<canonical-collector-path>.jobs.sqlite`.
 
 The former `tokeninsights.sqlite` remains untouched. Retained harness artifacts populate fresh collector/server storage through normal collection and ingestion; verified history import preserves baseline facts and receipts. Role checks precede mutation; a collector file cannot serve queries and a server file cannot enter producer recovery/reset. Identical, symlink-equivalent, and existing hard-linked collector/server paths are rejected.
 
@@ -286,8 +123,9 @@ Use `--collector-db-path` for collection and maintenance, and `--server-db-path`
 
 Collector schema 19 retains raw outbox/continuity/exact delivery state,
 dataset/protocol bindings, local quarantine and legacy tables. Verified schemas 16/17/18 upgrade
-additively without changing saved request bytes. DuckDB schema 2 stores accounts,
-dataset-scoped raw evidence/receipts/status/typed facts/estimates/retained baselines.
+additively without changing saved request bytes. Application schema 1 stores accounts and provisioning; jobs schema 1 stores finite
+invocations/status without tokens. DuckDB schema 2 retains legacy accounts for one-time
+migration and stores dataset-scoped raw evidence/receipts/status/typed facts/estimates/retained baselines.
 Verified schema 1 upgrades to personal schema 2 through staged read-only copying,
 validation and atomic publication with a recoverable previous file. Hosted starts
 fresh; stored server-kind mismatch rejects without assigning existing history.
@@ -302,13 +140,9 @@ Remote database identity stays pinned; deliberate local replacement permits repl
 
 Collect and publish all harnesses inside the TUI before showing data. Enabled by default; `--sync=false` only queries saved data. Query filters do not narrow collection.
 
-`--server-url URL`
+`--server-db-path PATH`, `--collector-db-path PATH`, `--app-db-path PATH`
 
-Select an existing server. Defaults come from client config and `TOKENINSIGHTS_SERVER_URL`; an explicit empty value selects local.
-
-`--server-db-path PATH`, `--collector-db-path PATH`
-
-Select local server storage and the collector used by startup sync. Remote TUI with `--sync=false` opens neither file.
+Select local role files. TUI always runs in single-process mode; remote URLs reject.
 
 `--today`
 
@@ -402,12 +236,17 @@ Fresh default server.duckdb imports verified sibling server.sqlite read-only,
 preserving history, identity and receipts. Partial rebuilds preserve unmatched
 history. Custom paths, after stopping local service:
 
-    tokeninsights service import --server-db-path NEW.duckdb --legacy-server-db-path OLD.sqlite
-    tokeninsights service start
-    tokeninsights service reprocess
-    tokeninsights service wait
+    tokeninsights data import --server-db-path NEW.duckdb --legacy-server-db-path OLD.sqlite
+    tokeninsights web
+    tokeninsights data reprocess
+    tokeninsights data wait
 
 Foreground personal accepts legacy-server-db-path for a new target. Source stays intact.
 Reprocessing keeps published generation until complete. Service wait is explicit
 30-second maintenance wait; sync does not wait. TUI queries confirmed usage.
 CGO/C/C++ toolchain builds embedded DuckDB. Production native archives need no JS.
+
+Application pairing also persists `<canonical-token-path>.application.json`, containing
+only the application instance ID. Keep this guard with both databases in stopped
+backups. A missing/replaced app database fails closed instead of re-importing stale
+legacy credentials. Restore the matched set; do not delete the guard to bypass recovery.

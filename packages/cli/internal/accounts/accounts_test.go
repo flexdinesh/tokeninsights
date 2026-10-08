@@ -8,17 +8,31 @@ import (
 	"testing"
 	"time"
 
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/appstore"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/datastore"
 )
 
-func testAccounts(t *testing.T) (*Service, *datastore.Store) {
+func testAccounts(t *testing.T) (*Service, *accountTestStore) {
 	t.Helper()
 	store, err := datastore.OpenKind(t.Context(), filepath.Join(t.TempDir(), "hosted.duckdb"), "hosted")
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = store.Close() })
-	return New(store), store
+	identity, err := store.DatabaseIdentity(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	app, err := appstore.Open(t.Context(), filepath.Join(t.TempDir(), "app.sqlite"), identity, "hosted")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = app.Close() })
+	repository := NewSQLite(app, store)
+	if err := repository.ImportLegacy(t.Context(), store.SQL()); err != nil {
+		t.Fatal(err)
+	}
+	return New(repository), &accountTestStore{Store: app, data: store}
 }
 
 func TestUsersCredentialsAndSessionRevocation(t *testing.T) {
@@ -57,7 +71,7 @@ func TestUsersCredentialsAndSessionRevocation(t *testing.T) {
 			t.Fatal(p, err)
 		}
 		var persisted string
-		if err := store.SQL().QueryRowContext(t.Context(), "SELECT digest FROM accounts.tokens WHERE token_id=?", item.token.TokenID).Scan(&persisted); err != nil {
+		if err := store.SQL().QueryRowContext(t.Context(), "SELECT digest FROM tokens WHERE token_id=?", item.token.TokenID).Scan(&persisted); err != nil {
 			t.Fatal(err)
 		}
 		if persisted == item.token.Secret || strings.Contains(persisted, item.token.Secret) {
@@ -172,7 +186,7 @@ func TestExpiredCredentialsFailClosed(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.SQL().ExecContext(t.Context(), "UPDATE accounts.tokens SET expires_at=? WHERE token_id=?", expires.UTC().Format(time.RFC3339Nano), token.TokenID); err != nil {
+	if _, err := store.SQL().ExecContext(t.Context(), "UPDATE tokens SET expires_at=? WHERE token_id=?", expires.UTC().Format(time.RFC3339Nano), token.TokenID); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := s.AuthenticateBearer(t.Context(), token.Secret); !errors.Is(err, ErrUnauthenticated) {
@@ -260,7 +274,7 @@ func TestCleanupRemovesExpiredCredentialsWithoutRemovingDatasets(t *testing.T) {
 	if err := s.RevokeToken(t.Context(), revoked.TokenID); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.SQL().ExecContext(t.Context(), "UPDATE accounts.tokens SET expires_at=? WHERE token_id=?", time.Now().Add(-time.Minute).UTC().Format(time.RFC3339Nano), expired.TokenID); err != nil {
+	if _, err := store.SQL().ExecContext(t.Context(), "UPDATE tokens SET expires_at=? WHERE token_id=?", time.Now().Add(-time.Minute).UTC().Format(time.RFC3339Nano), expired.TokenID); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.Cleanup(t.Context()); err != nil {
@@ -274,15 +288,22 @@ func TestCleanupRemovesExpiredCredentialsWithoutRemovingDatasets(t *testing.T) {
 			t.Fatal("invalidated session", err)
 		}
 		var count int
-		if err := store.SQL().QueryRowContext(t.Context(), "SELECT COUNT(*) FROM accounts.sessions WHERE digest=?", digest(secret)).Scan(&count); err != nil || count != 0 {
+		if err := store.SQL().QueryRowContext(t.Context(), "SELECT COUNT(*) FROM sessions WHERE digest=?", digest(secret)).Scan(&count); err != nil || count != 0 {
 			t.Fatal("invalidated session retained", count, err)
 		}
 	}
 	var count int
-	if err := store.SQL().QueryRowContext(t.Context(), "SELECT COUNT(*) FROM accounts.tokens WHERE token_id=?", expired.TokenID).Scan(&count); err != nil || count != 0 {
+	if err := store.SQL().QueryRowContext(t.Context(), "SELECT COUNT(*) FROM tokens WHERE token_id=?", expired.TokenID).Scan(&count); err != nil || count != 0 {
 		t.Fatal("expired token retained", count, err)
 	}
 	if _, err := store.ForDataset(u.DatasetID).Metadata(t.Context()); err != nil {
 		t.Fatal("cleanup removed dataset", err)
 	}
 }
+
+type accountTestStore struct {
+	*appstore.Store
+	data *datastore.Store
+}
+
+func (s *accountTestStore) ForDataset(id string) *datastore.Store { return s.data.ForDataset(id) }

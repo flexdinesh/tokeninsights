@@ -55,7 +55,6 @@ func driveStartupForTest(t *testing.T, model startupModel) tea.Model {
 }
 
 func TestTUIDefaultSyncAcceptsInsideLoadingScreenAndReloadQueriesProcessedData(t *testing.T) {
-	remote, store, requests := newRawViewQueryServer(t)
 	root := t.TempDir()
 	isolateViewSources(t, root)
 	piPath := filepath.Join(root, "home", ".pi", "agent", "sessions", "project", "session.jsonl")
@@ -66,7 +65,7 @@ func TestTUIDefaultSyncAcceptsInsideLoadingScreenAndReloadQueriesProcessedData(t
 	if err := os.WriteFile(piPath, []byte(source), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	collectorPath, serverPath := filepath.Join(root, "collector.sqlite"), filepath.Join(root, "unused-server.sqlite")
+	collectorPath, serverPath := filepath.Join(root, "collector.sqlite"), filepath.Join(root, "server.duckdb")
 	restore := replaceInteractiveProgramRunnerForTest(t, func(model interactiveModel, _ io.Writer) (interactiveModel, error) {
 		assertViewMissingPath(t, collectorPath)
 		startup := newStartupModel(model)
@@ -76,29 +75,19 @@ func TestTUIDefaultSyncAcceptsInsideLoadingScreenAndReloadQueriesProcessedData(t
 		}
 		final := driveStartupForTest(t, startup)
 		dashboard, ok := final.(interactiveModel)
-		if !ok || dashboard.loading || len(dashboard.rows) != 0 {
-			t.Fatal("startup must finish after acceptance, before asynchronous processing")
+		if !ok || dashboard.loading || len(dashboard.rows) != 1 || dashboard.rows[0].totalValue != 100 {
+			t.Fatal("startup did not wait for visible usage")
 		}
-		if !dashboard.sharedSync.Running || !strings.Contains(ansi.Strip(dashboard.View()), "processing") {
-			t.Fatal("accepted processing not shown")
-		}
-		for {
-			worked, err := store.ProcessNext(t.Context())
-			if err != nil {
-				t.Fatal(err)
-			}
-			if !worked {
-				break
-			}
-		}
+		store := model.options.local.Store
 		assertCLIQueryCount(t, store.SQL(), "SELECT SUM(total_tokens) FROM analytics.confirmed", 100)
-		before := requests.posts.Load()
+		var before int
+		if err := store.SQL().QueryRowContext(t.Context(), "SELECT COUNT(*) FROM ingestion.batches").Scan(&before); err != nil {
+			t.Fatal(err)
+		}
 		updated, cmd := dashboard.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'r'}})
 		dashboard = updated.(interactiveModel)
 		dashboard.Update(cmd())
-		if requests.posts.Load() != before {
-			t.Fatal("dashboard reload collected/published")
-		}
+		assertCLIQueryCount(t, store.SQL(), "SELECT COUNT(*) FROM ingestion.batches", before)
 		repeated := driveStartupForTest(t, newStartupModel(model)).(interactiveModel)
 		if len(repeated.rows) != 1 || repeated.rows[0].totalValue != 100 {
 			t.Fatal("repeat sync changed saved usage")
@@ -115,19 +104,18 @@ func TestTUIDefaultSyncAcceptsInsideLoadingScreenAndReloadQueriesProcessedData(t
 	})
 	defer restore()
 	var stdout bytes.Buffer
-	if err := Run(t.Context(), []string{"tui", "--server-url", remote.URL, "--collector-db-path", collectorPath, "--server-db-path", serverPath, "--all-time"}, &stdout, io.Discard, time.Now()); err != nil {
+	if err := Run(t.Context(), []string{"tui", "--collector-db-path", collectorPath, "--server-db-path", serverPath, "--all-time"}, &stdout, io.Discard, time.Now()); err != nil {
 		t.Fatal(err)
 	}
-	if stdout.Len() != 0 || requests.posts.Load() == 0 {
+	if stdout.Len() != 0 {
 		t.Fatal("startup printed CLI summaries or did not publish")
 	}
-	assertViewMissingPath(t, serverPath)
 }
 
 func TestStartupFailureCanRetryOrViewSavedWithoutCollection(t *testing.T) {
 	for _, key := range []rune{'r', 'v'} {
 		t.Run(string(key), func(t *testing.T) {
-			remote, _, _ := newViewQueryServer(t, true)
+			options := localViewOptions(t, true)
 			calls := 0
 			replaceViewCollector(t, func(context.Context, collector.Options) (collector.Result, error) {
 				calls++
@@ -136,7 +124,7 @@ func TestStartupFailureCanRetryOrViewSavedWithoutCollection(t *testing.T) {
 				}
 				return collector.Result{}, nil
 			})
-			dashboard := newInteractiveModel(t.Context(), tableOptions{serverURL: remote.URL, period: periodAllTime, bucket: bucketDay}, time.Now(), "unknown")
+			dashboard := newInteractiveModel(t.Context(), options, time.Now(), "unknown")
 			failed := driveStartupForTest(t, newStartupModel(dashboard)).(startupModel)
 			if failed.busy || !strings.Contains(failed.View(), "Couldn't publish usage") || !strings.Contains(failed.View(), "View saved") {
 				t.Fatal("failure lost recovery actions")
@@ -172,7 +160,7 @@ func TestStartupFailureCanRetryOrViewSavedWithoutCollection(t *testing.T) {
 }
 
 func TestStartupQuitCancelsWorkerAndIgnoresOtherKeysWhileBusy(t *testing.T) {
-	remote, _, _ := newViewQueryServer(t, false)
+	options := localViewOptions(t, false)
 	started, stopped := make(chan struct{}), make(chan struct{})
 	replaceViewCollector(t, func(ctx context.Context, _ collector.Options) (collector.Result, error) {
 		close(started)
@@ -180,7 +168,7 @@ func TestStartupQuitCancelsWorkerAndIgnoresOtherKeysWhileBusy(t *testing.T) {
 		close(stopped)
 		return collector.Result{}, ctx.Err()
 	})
-	dashboard := newInteractiveModel(t.Context(), tableOptions{serverURL: remote.URL}, time.Now(), "unknown")
+	dashboard := newInteractiveModel(t.Context(), options, time.Now(), "unknown")
 	model := newStartupModel(dashboard)
 	model.Init()
 	defer func() { dashboard.cancelSync(); model.workers.Wait() }()

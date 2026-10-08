@@ -1,32 +1,21 @@
 # Docker and hosted deployment
 
 `tokeninsights-server` runs the foreground server without collecting harness data.
-It serves the committed embedded dashboard and REST API. Use one process per
-writable database. The two server kinds share interpretation and analytics:
-`personal` is unauthenticated; `hosted` isolates authenticated user datasets in
-one shared DuckDB file.
+It serves the committed embedded dashboard and authenticated REST API. One container
+owns writable DuckDB token data and paired SQLite application state. Collectors run
+on client machines; the server has no harness mounts, collector daemon or analytics TUI.
 
-## Build and personal server
-
-From the repository root:
+## Build
 
 ```sh
 docker build -t tokeninsights-server:local .
-docker compose -f deploy/compose.personal.yaml up -d --build
+export TOKENINSIGHTS_PUBLIC_URL=https://usage.example.com
+docker compose -f deploy/compose.hosted.yaml up -d --build
 ```
 
-The personal example publishes only `127.0.0.1:8765`, stores data in a named volume
-and restarts under Docker supervision. Point a collector at it with
-`tokeninsights config set server-url http://127.0.0.1:8765`. The personal server
-supports TUI/web. Reprocess its default dataset through the private owner socket:
-
-```sh
-docker compose -f deploy/compose.personal.yaml exec tokeninsights \
-  tokeninsights-server admin --admin-socket /run/tokeninsights/admin.sock reprocess
-```
-
-Foreground composition displays collector progress in the
-client terminal; browser collector progress requires the managed local service.
+Remote startup defaults to hosted authentication. The unauthenticated personal
+container composition is retired; use `tokeninsights web` for local foreground usage.
+`TOKENINSIGHTS_PUBLIC_URL` or `--public-url` supplies the canonical HTTPS browser origin.
 
 The Dockerfile pins multi-platform manifest digests for Go 1.26.8/trixie and
 Debian trixie-20261005-slim, verified from the registry. Official build recipes
@@ -58,13 +47,14 @@ docker compose -f deploy/compose.hosted.yaml up -d --build
 The URL configures expected browser origin and secure session behavior, not the
 internal bind address. The hosted database starts fresh. Do not reuse a personal
 volume: stored server-kind mismatch rejects rather than assigning personal history
-to an account. Every hosted user has one dataset; all users share `/data/server.duckdb`.
+to an account. Every hosted user has one dataset; all users share `/data/server.duckdb`; accounts/credentials live in `/data/app.sqlite`.
 
 The equivalent native process is:
 
 ```sh
 tokeninsights-server --kind hosted --listen 0.0.0.0:8765 \
   --server-db-path /var/lib/tokeninsights/server.duckdb \
+  --app-db-path /var/lib/tokeninsights/app.sqlite \
   --public-url https://usage.example.com \
   --admin-socket /run/tokeninsights/admin.sock
 ```
@@ -94,7 +84,7 @@ can rotate without resetting dataset history or collector delivery progress.
 On each collector machine:
 
 ```sh
-tokeninsights config set server-kind hosted
+tokeninsights config set mode distributed
 tokeninsights config set server-url https://usage.example.com
 tokeninsights config set server-token
 tokeninsights sync
@@ -121,7 +111,7 @@ upgrade recovery files. Docker named volumes inherit the image's directory
 ownership; an existing bind mount must be writable by that UID. The private
 socket lives in `/run/tokeninsights`, which is recreated on container replacement.
 Native foreground servers default to `DB_PATH.admin.sock`; `--admin-socket` overrides
-it for either kind.
+it.
 No host socket mount is needed when administering with `docker compose exec`.
 
 `GET /healthz` reports process liveness. `GET /readyz` reports initialized server
@@ -135,8 +125,9 @@ owner; multiple replicas must not open the same writable DuckDB file. This
 embedded ownership constraint follows [DuckDB concurrency](https://duckdb.org/docs/current/connect/concurrency).
 
 Stop the container before file-level backups/upgrades. Preserve the complete data
-directory, including retained upgrade source/recovery files; do not copy only a
-live `.duckdb` while its WAL may hold committed state. Keep separate personal and
+directory, including `app.sqlite`, `server.duckdb`, WALs and retained upgrade
+source/recovery files. App/token files are paired by database identity; restore them
+together. Never copy only a live database while its WAL holds committed state. Keep separate personal and
 hosted volumes. Verify backups by reopening a copy with the matching binary/kind.
 A schema downgrade rejects; rollback uses the retained verified older file and
 matching binary, not an older binary pointed at newly upgraded data.
@@ -145,3 +136,15 @@ Compose `down` retains named volumes. `down --volumes` deletes persistent histor
 accounts and receipts; use it only when intentionally discarding that deployment.
 There is no published image, automatic deployment, external queue or horizontal
 scaling configuration in these examples.
+
+
+Existing hosted DuckDB accounts migrate once into paired SQLite, preserving IDs,
+credential digests, expiration and revocation. A completed migration marker prevents
+stale DuckDB records restoring revoked credentials. Original account tables remain
+read-only recovery sources. Stop before backup or binary rollback; keep a matched
+pre-upgrade copy. Local user setup creates one default account automatically.
+
+Application pairing also persists `<canonical-token-path>.application.json`, containing
+only the application instance ID. Keep this guard with both databases in stopped
+backups. A missing/replaced app database fails closed instead of re-importing stale
+legacy credentials. Restore the matched set; do not delete the guard to bypass recovery.

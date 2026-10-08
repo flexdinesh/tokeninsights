@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -97,7 +98,7 @@ func TestPositionalHelpDoesNotBypassConfigValidation(t *testing.T) {
 	}
 }
 
-func TestConfiguredRemoteQueryOnlyTUIUsesSameDestination(t *testing.T) {
+func TestConfiguredRemoteTUIRejectedWithoutRequests(t *testing.T) {
 	remote, store, counts := newViewQueryServer(t, true)
 	defer remote.Close()
 	defer func() { _ = store.Close() }()
@@ -113,22 +114,11 @@ func TestConfiguredRemoteQueryOnlyTUIUsesSameDestination(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("TOKENINSIGHTS_SERVER_TOKEN", "")
-	restore := replaceInteractiveProgramRunnerForTest(t, func(model interactiveModel, _ io.Writer) (interactiveModel, error) {
-		if model.options.serverURL != remote.URL || model.options.syncBeforeView {
-			t.Fatal("wrong viewer routing", model.options)
-		}
-		data := model.loadServerDashboard()
-		if data.err != nil {
-			t.Fatal(data.err)
-		}
-		return model, nil
-	})
-	defer restore()
-	if err := Run(t.Context(), []string{"--config-file", path, "tui", "--sync=false"}, io.Discard, io.Discard, time.Now()); err != nil {
+	if err := Run(t.Context(), []string{"--config-file", path, "tui", "--sync=false"}, io.Discard, io.Discard, time.Now()); !errors.Is(err, ErrUsage) {
 		t.Fatal(err)
 	}
-	if counts.posts.Load() != 0 || counts.gets.Load() == 0 {
-		t.Fatal("query-only viewer wrote", counts)
+	if counts.posts.Load() != 0 || counts.gets.Load() != 0 {
+		t.Fatal("remote tui made requests")
 	}
 	if _, err := os.Stat(collectorPath); !os.IsNotExist(err) {
 		t.Fatal("query-only viewer opened collector", err)

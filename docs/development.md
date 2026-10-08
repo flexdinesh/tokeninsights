@@ -110,18 +110,16 @@ The shared fixture is under `packages/cli/testdata/conformance/sync-first-basic/
 
 `dev:data` resets only the controlled `.tokeninsights-dev/collector.sqlite` and
 `server.duckdb` data tables, then recreates synthetic source/home
-subdirectories. Stop the fixture service first; live or unreachable ownership
+subdirectories. Stop the fixture viewer first; live or unreachable ownership
 prevents recreation. Existing DB and lock inodes, unrelated files, and the old
 `tokeninsights.sqlite` are preserved. Wrong-role databases are rejected before
 either role is reset.
 
-Fixture preparation starts the production local server on a temporary loopback
-port, runs collector sync against sanitized sources, publishes through the real
-private Unix ingestion transport, waits for asynchronous processing, and stops that temporary server. No direct server raw
-writes or producer recovery stand in for ingestion. `dev:cli` invokes
-`tokeninsights tui --all-time --server-db-path .tokeninsights-dev/server.duckdb`
-to read saved REST usage; `dev:server` runs the shared data-core foreground
-server on `127.0.0.1:8765` without harness source environment settings. `dev` runs
+Fixture preparation runs production single-process sync against sanitized sources.
+Direct delivery uses the same acceptance contract as authenticated HTTP, then waits
+for processing and releases ownership. The fixture application's database pairing
+follows its controlled reset. `dev:cli` queries the saved fixture directly;
+`dev:server` runs `web --sync=false --open=false` on 127.0.0.1:8765. `dev` runs
 that server and Vite together. Browser Reload never collects sources. Vite proxies
 `/api` to the Go server; `dev:web:mock` runs without Go or local harness data.
 

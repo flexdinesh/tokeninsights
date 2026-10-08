@@ -9,16 +9,20 @@ export class CollectorRunner {
   active
   terminate
   closed = false
+  followup = false
   options
 
-  constructor(options = {}) {
+  constructor(options) {
     this.options = options
   }
 
   run() {
     if (this.closed) return Promise.reject(new Error(syncFailure))
-    if (this.active !== undefined) return this.active
-    const active = this.launch().finally(() => {
+    if (this.active !== undefined) {
+      this.followup = true
+      return this.active
+    }
+    const active = this.drain().finally(() => {
       this.active = undefined
       this.terminate = undefined
     })
@@ -32,15 +36,25 @@ export class CollectorRunner {
     await this.active?.catch(() => {})
   }
 
+  async drain() {
+    this.followup = false
+    await this.launch()
+    if (this.followup && !this.closed) await this.drain()
+  }
+
   launch() {
     return new Promise((resolve, reject) => {
       let stopped = false
       let escalation
-      const child = spawn(process.env.TOKENINSIGHTS_BINARY ?? 'tokeninsights', ['sync'], {
-        detached: process.platform !== 'win32',
-        stdio: 'ignore',
-        shell: false,
-      })
+      const child = spawn(
+        process.env.TOKENINSIGHTS_BINARY ?? 'tokeninsights',
+        ['sync', '--wait', '--harness', this.options.harness],
+        {
+          detached: process.platform !== 'win32',
+          stdio: 'ignore',
+          shell: false,
+        },
+      )
       const kill = (signal) => {
         if (child.pid === undefined) return
         try {

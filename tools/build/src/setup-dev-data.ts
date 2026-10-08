@@ -125,39 +125,30 @@ async function runSync({
   serverDBPath,
   sourceDir,
 }: SyncPaths): Promise<void> {
-  // Port zero isolates fixture publication from a user's normal local service.
   await runCommand(binaryPath, [
-    'service',
-    'start',
+    'sync',
+    '--mode',
+    'single-process',
+    '--all',
+    '--source-dir',
+    sourceDir,
+    '--collector-db-path',
+    collectorDBPath,
     '--server-db-path',
     serverDBPath,
-    '--host',
-    '127.0.0.1',
-    '--port',
-    '0',
+    '--app-db-path',
+    join(dirname(serverDBPath), 'app.sqlite'),
+    '--server-url',
+    '',
   ])
-  try {
-    await runCommand(binaryPath, [
-      'sync',
-      '--all',
-      '--source-dir',
-      sourceDir,
-      '--collector-db-path',
-      collectorDBPath,
-      '--server-db-path',
-      serverDBPath,
-      '--server-url',
-      '',
-    ])
-    await runCommand(binaryPath, ['service', 'wait', '--server-db-path', serverDBPath])
-  } finally {
-    await runCommand(binaryPath, ['service', 'stop', '--server-db-path', serverDBPath])
-  }
 }
 
 async function runCommand(binaryPath: string, args: string[]): Promise<void> {
   await new Promise<void>((resolveRun, rejectRun) => {
-    const child = spawn(binaryPath, args, { stdio: 'inherit' })
+    const child = spawn(binaryPath, args, {
+      stdio: 'inherit',
+      env: { ...process.env, TOKENINSIGHTS_ACCESS_TOKEN: '' },
+    })
     child.once('error', rejectRun)
     child.once('exit', (code, signal) => {
       if (code === 0) {
@@ -202,7 +193,7 @@ async function prepareFixture(
     child.once('error', rejectRun)
     child.once('exit', (code) => {
       if (code === 0) resolveRun()
-      else rejectRun(new Error('fixture preparation failed; stop development service first'))
+      else rejectRun(new Error('fixture preparation failed; stop development viewer first'))
     })
   })
 }

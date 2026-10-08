@@ -11,18 +11,15 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/ansi"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/clientworkflow"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/collector"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/pipeline"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/queryclient"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/serverfeatures"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/service"
 )
 
 type startupPhase string
 
 const (
-	startupServer        startupPhase = "Starting local server"
+	startupServer        startupPhase = "Opening saved usage"
 	startupCollect       startupPhase = "Checking local sessions"
 	startupWaiting       startupPhase = "Waiting for another sync"
 	startupPublish       startupPhase = "Submitting usage"
@@ -41,27 +38,26 @@ type startupFailedMsg struct {
 	err   error
 }
 
-// Startup owns collection. The dashboard continues to own only REST queries.
+// Startup owns collection. The dashboard only queries saved usage.
 type startupModel struct {
-	dashboard   interactiveModel
-	originalURL string
-	phase       startupPhase
-	busy        bool
-	frame       int
-	err         error
-	delivery    collector.DeliveryProgress
-	messages    chan tea.Msg
-	workers     *sync.WaitGroup
-	collect     bool
-	attempt     uint64
+	dashboard interactiveModel
+	phase     startupPhase
+	busy      bool
+	frame     int
+	err       error
+	delivery  collector.DeliveryProgress
+	messages  chan tea.Msg
+	workers   *sync.WaitGroup
+	collect   bool
+	attempt   uint64
 }
 
 func newStartupModel(dashboard interactiveModel) startupModel {
 	phase := startupServer
-	if dashboard.options.serverURL != "" {
+	if dashboard.options.serverURL != "" || dashboard.options.local != nil {
 		phase = startupCollect
 	}
-	return startupModel{dashboard: dashboard, originalURL: dashboard.options.serverURL,
+	return startupModel{dashboard: dashboard,
 		phase: phase, busy: true, collect: true, attempt: 1, messages: make(chan tea.Msg, startupMessageBuffer), workers: &sync.WaitGroup{}}
 }
 
@@ -87,71 +83,6 @@ func (m startupModel) startWorker() {
 		}
 		m.run(send)
 	}()
-}
-
-func (m startupModel) run(send func(tea.Msg)) {
-	ctx := m.dashboard.ctx
-	options := m.dashboard.options
-	settings := m.dashboard.localSettings
-	if settings.ServerKind == "" {
-		settings.ServerKind = serverfeatures.Personal
-	}
-	settings.ServerURL, settings.ServerToken = m.originalURL, options.token
-	session, err := clientworkflow.Resolve(ctx, settings, func(ctx context.Context) (service.State, error) {
-		return ensureViewConfiguredLocal(ctx, options.dbPath, settings)
-	})
-	if err != nil {
-		send(startupFailedMsg{phase: startupServer, err: err})
-		return
-	}
-	if err := session.Require(serverfeatures.Read, serverfeatures.TerminalDashboard, serverfeatures.Usage, serverfeatures.Facets); err != nil {
-		send(startupFailedMsg{phase: startupServer, err: err})
-		return
-	}
-	if m.collect {
-		if err := session.VerifyIngestion(ctx); err != nil {
-			send(startupFailedMsg{phase: startupServer, err: err})
-			return
-		}
-	}
-	options.serverURL, options.datasetID = session.URL, session.Descriptor.DatasetId
-	send(startupServerMsg{url: options.serverURL, datasetID: options.datasetID})
-	if m.collect {
-		observer := session.Observe(ctx)
-		result, err := runViewCollector(ctx, collector.Options{
-			CollectorDBPath: options.collectorDBPath, ServerDBPath: options.dbPath,
-			ServerURL: m.originalURL, Token: options.token,
-			Destination: session.Destination,
-			SyncOptions: pipeline.SyncOptions{Harnesses: pipeline.SupportedHarnesses, Normalize: true, Now: m.dashboard.now,
-				Progress: func(event pipeline.SyncProgressEvent) {
-					observer.Collection(event)
-					send(syncProgressMsg{event: event})
-				}},
-			EnsureLocal: func(context.Context) (string, error) { return options.serverURL, nil },
-			DeliveryProgress: func(progress collector.DeliveryProgress) {
-				observer.Delivery(progress)
-				send(startupDeliveryMsg{progress: progress})
-			},
-		})
-		observer.Finish(result, err)
-		if err != nil {
-			phase := startupCollect
-			if result.DeliveryError != nil {
-				phase = startupPublish
-			}
-			send(startupFailedMsg{phase: phase, err: err})
-			return
-		}
-	}
-	send(startupLoadMsg{})
-	dashboard := m.dashboard
-	dashboard.options = options
-	data := dashboard.loadDashboard()
-	if data.err != nil {
-		send(startupFailedMsg{phase: startupLoad, err: data.err})
-		return
-	}
-	send(startupReadyMsg{data: data})
 }
 
 func (m startupModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -206,7 +137,7 @@ func (m startupModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "r":
 			return m.retry(m.phase != startupLoad)
 		case "v":
-			if m.dashboard.options.serverURL != "" {
+			if m.dashboard.options.serverURL != "" || m.dashboard.options.local != nil {
 				return m.retry(false)
 			}
 		}
@@ -282,7 +213,7 @@ func (m startupModel) View() string {
 		lines = append(lines, syncFailStyle.Render(fmt.Sprintf("%d files quarantined; usage incomplete.", count)))
 	}
 	if m.err != nil && height >= 12 {
-		if m.dashboard.options.serverURL != "" {
+		if m.dashboard.options.serverURL != "" || m.dashboard.options.local != nil {
 			caption := "Committed usage is safe. Retry or view saved data."
 			if panelWidth < 50 {
 				caption = "Committed usage is safe."
@@ -314,7 +245,7 @@ func (m startupModel) View() string {
 	footer := deskControl("q", "Quit", "")
 	if m.err != nil {
 		footer = deskControl("r", "Retry", "") + "   " + footer
-		if m.dashboard.options.serverURL != "" {
+		if m.dashboard.options.serverURL != "" || m.dashboard.options.local != nil {
 			label := "View saved"
 			if contentWidth < 40 {
 				label = "Saved"
@@ -424,4 +355,42 @@ func (m startupModel) failureLabel() string {
 	default:
 		return "Couldn't collect all local usage."
 	}
+}
+
+func (m startupModel) run(send func(tea.Msg)) {
+	options := m.dashboard.options
+	ctx := m.dashboard.ctx
+	if m.collect {
+		result, err := runViewCollector(ctx, collector.Options{
+			CollectorDBPath: options.collectorDBPath, ServerDBPath: options.dbPath,
+			Destination: options.local.Destination,
+			SyncOptions: pipeline.SyncOptions{Harnesses: pipeline.SupportedHarnesses, Normalize: true, Now: m.dashboard.now,
+				Progress: func(event pipeline.SyncProgressEvent) { send(syncProgressMsg{event: event}) }},
+			DeliveryProgress: func(progress collector.DeliveryProgress) { send(startupDeliveryMsg{progress: progress}) },
+		})
+		if err != nil {
+			phase := startupCollect
+			if result.DeliveryError != nil {
+				phase = startupPublish
+			}
+			send(startupFailedMsg{phase: phase, err: err})
+			return
+		}
+	}
+	send(startupLoadMsg{})
+	if m.collect {
+		visible, cancel := context.WithTimeout(ctx, localVisibilityTimeout)
+		err := options.local.WaitVisible(visible)
+		cancel()
+		if err != nil {
+			send(startupFailedMsg{phase: startupLoad, err: err})
+			return
+		}
+	}
+	data := m.dashboard.loadDashboard()
+	if data.err != nil {
+		send(startupFailedMsg{phase: startupLoad, err: data.err})
+		return
+	}
+	send(startupReadyMsg{data: data})
 }

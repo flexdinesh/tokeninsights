@@ -3,31 +3,56 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { expect, test } from '@playwright/test'
-import { CollectorProgressResponse, InstanceResponseV2 } from '../src/generated/api'
+import { InstanceResponseV2 } from '../src/generated/api'
 
-function runCLI(args: string[], env: NodeJS.ProcessEnv): Promise<string> {
+function startCLI(
+  args: string[],
+  env: NodeJS.ProcessEnv,
+): Promise<{ origin: string; stop: () => Promise<void> }> {
   return new Promise((resolveRun, reject) => {
     const child = spawn(resolve('../cli/bin/tokeninsights'), args, {
       env,
       stdio: ['ignore', 'pipe', 'pipe'],
     })
     let output = ''
-    let diagnostics = ''
+    let ready = false
+    const deadline = setTimeout(() => {
+      child.kill('SIGTERM')
+      reject(new Error('local web startup timed out'))
+    }, 10000)
     child.stdout.on('data', (chunk: Buffer) => {
       output += chunk.toString()
+      const origin = /Dashboard: (http:\/\/[^\s]+)/u.exec(output)?.[1]
+      if (origin && !ready) {
+        ready = true
+        clearTimeout(deadline)
+        resolveRun({
+          origin,
+          stop: () =>
+            new Promise<void>((resolveStop) => {
+              if (child.exitCode !== null || child.signalCode !== null) {
+                resolveStop()
+                return
+              }
+              child.once('exit', () => resolveStop())
+              child.kill('SIGTERM')
+            }),
+        })
+      }
     })
-    child.stderr.on('data', (chunk: Buffer) => {
-      diagnostics += chunk.toString()
+    child.stderr.resume()
+    child.once('error', (error) => {
+      clearTimeout(deadline)
+      reject(error)
     })
-    child.once('error', reject)
     child.once('exit', (code) => {
-      if (code === 0) resolveRun(output)
-      else reject(new Error(`Managed CLI fixture failed (${code}): ${diagnostics}`))
+      clearTimeout(deadline)
+      if (!ready) reject(new Error(`Local web exited before readiness (${code})`))
     })
   })
 }
 
-test('one web command creates personal server, syncs, and exposes local progress while Reload stays read-only', async ({
+test('foreground web collects directly, keeps Reload read-only and stops with its command', async ({
   page,
 }) => {
   const home = await mkdtemp(join(tmpdir(), 'ti-managed-web-'))
@@ -36,6 +61,9 @@ test('one web command creates personal server, syncs, and exposes local progress
   const env = {
     ...process.env,
     HOME: home,
+    TOKENINSIGHTS_MODE: 'single-process',
+    TOKENINSIGHTS_SERVER_URL: '',
+    TOKENINSIGHTS_ACCESS_TOKEN: '',
     XDG_RUNTIME_DIR: runtime,
     XDG_CONFIG_HOME: join(home, 'config'),
     XDG_DATA_HOME: join(home, 'data'),
@@ -66,37 +94,40 @@ test('one web command creates personal server, syncs, and exposes local progress
       .map((record) => JSON.stringify(record))
       .join('\n'),
   )
+  const running = await startCLI(['web', '--open=false', '--host', '127.0.0.1', '--port', '0'], env)
+  const origin = running.origin
   try {
-    const output = await runCLI(['web', '--host', '127.0.0.1', '--port', '0'], env)
-    const origin = /Dashboard: (http:\/\/[^\s]+)/u.exec(output)?.[1]
-    if (!origin) throw new Error('Managed web command omitted dashboard URL')
     const descriptor = InstanceResponseV2.parse(
       await (await page.request.get(origin + '/api/v2/instance')).json(),
     )
     expect(descriptor.serverKind).toBe('personal')
-    expect(descriptor.capabilities).toContain('collector-progress')
-    const progress = CollectorProgressResponse.parse(
-      await (await page.request.get(origin + '/api/v2/collector-progress')).json(),
-    )
-    expect(progress.attempts.some((attempt) => attempt.stage === 'accepted')).toBe(true)
+    expect(descriptor.capabilities).not.toContain('collector-progress')
+    expect(
+      (await page.request.post(origin + '/api/v3/ingestion/batches', { data: {} })).status(),
+    ).toBe(404)
     const methods: string[] = []
     page.on('request', (request) => {
       if (new URL(request.url()).pathname.startsWith('/api/')) methods.push(request.method())
     })
     await page.goto(origin + '/tokens')
     await expect(page.getByLabel('Total tokens: 120', { exact: true })).toBeVisible()
-    await expect(page.getByRole('region', { name: 'Collector progress' })).toContainText(
-      'Usage accepted',
-    )
+    await expect(page.getByRole('region', { name: 'Collector progress' })).toHaveCount(0)
     await page.getByRole('button', { name: 'Reload', exact: true }).click()
     await expect(page.getByRole('button', { name: 'Reload', exact: true })).toBeEnabled()
     await expect(page.getByLabel('Total tokens: 120', { exact: true })).toBeVisible()
     expect(methods.every((method) => method === 'GET')).toBe(true)
   } finally {
-    try {
-      await runCLI(['service', 'stop'], env)
-    } finally {
-      await rm(home, { recursive: true, force: true })
-    }
+    await running.stop()
+    await rm(home, { recursive: true, force: true })
   }
+  await expect
+    .poll(async () => {
+      try {
+        await page.request.get(origin + '/api/v2/instance')
+        return false
+      } catch {
+        return true
+      }
+    })
+    .toBe(true)
 })

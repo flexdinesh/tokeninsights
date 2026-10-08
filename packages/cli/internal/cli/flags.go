@@ -10,8 +10,8 @@ import (
 
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/config"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/db"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/localruntime"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/pipeline"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/serverfeatures"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/viewer"
 )
 
@@ -81,10 +81,12 @@ type filters struct {
 }
 
 type tableOptions struct {
+	local           *localruntime.Runtime
+	mode            string
+	appDBPath       string
 	dbPath          string
 	serverURL       string
 	token           string
-	serverKind      serverfeatures.Kind
 	datasetID       string
 	collectorDBPath string
 	syncBeforeView  bool
@@ -117,6 +119,8 @@ func parseViewerOptionsWithDefaults(args []string, stderr io.Writer, requirePeri
 	var serverURL, collectorDBPath string
 	var bucket string
 	var queryFilters filters
+	flags.StringVar(&settings.Mode, "mode", settings.Mode, "single-process or distributed")
+	flags.StringVar(&settings.AppDBPath, "app-db-path", settings.AppDBPath, "application SQLite database")
 	flags.StringVar(&dbPath, "server-db-path", settings.ServerDBPath, "local query server database path")
 	flags.StringVar(&collectorDBPath, "collector-db-path", settings.CollectorDBPath, "collector database used by startup sync")
 	flags.StringVar(&serverURL, "server-url", settings.ServerURL, "query server; empty selects local")
@@ -181,7 +185,7 @@ func parseViewerOptionsWithDefaults(args []string, stderr io.Writer, requirePeri
 		}
 	}
 
-	return tableOptions{dbPath: selectedDBPath, serverURL: strings.TrimSpace(serverURL), token: settings.ServerToken, serverKind: settings.ServerKind, collectorDBPath: collectorDBPath, syncBeforeView: syncBeforeView, period: selected, bucket: selectedBucket, filters: queryFilters}, nil
+	return tableOptions{mode: settings.EffectiveMode(), appDBPath: settings.AppDBPath, dbPath: selectedDBPath, serverURL: strings.TrimSpace(serverURL), token: settings.ServerToken, collectorDBPath: collectorDBPath, syncBeforeView: syncBeforeView, period: selected, bucket: selectedBucket, filters: queryFilters}, nil
 }
 
 func selectedPeriod(today bool, yesterday bool, week bool, month bool, year bool, allTime bool, required bool, fallback period) (period, error) {

@@ -1,16 +1,13 @@
 package cli
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/config"
 	"io"
-	"time"
 
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/browser"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/server"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/service"
 )
@@ -86,114 +83,39 @@ func printServiceStatus(out io.Writer, state service.State, jsonOutput bool) err
 	return err
 }
 
+// service remains only to stop/probe owners created by older releases.
 func runService(invocation commandInvocation, args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("service requires start, stop, restart, status, or run\n%w", ErrUsage)
+		return fmt.Errorf("use service stop|status for migration; web/tui own their runtime\n%w", ErrUsage)
 	}
 	action := args[0]
 	if action == "--help" || action == "-h" {
-		_, err := fmt.Fprintln(invocation.stdout, "usage: tokeninsights service <start|stop|restart|status|run> [options]")
+		_, err := fmt.Fprintln(invocation.stdout, "usage: tokeninsights service <stop|status> [--server-db-path PATH] (legacy migration)")
 		return err
 	}
-	switch action {
-	case "start", "stop", "restart", "status", "run", "reprocess", "wait", "import":
-	default:
-		return fmt.Errorf("unknown service action %q\n%w", action, ErrUsage)
+	if action != "stop" && action != "status" {
+		return fmt.Errorf("managed services retired; use web, tui, or data maintenance\n%w", ErrUsage)
 	}
 	options, err := parseServiceOptionsWithDefaults(action, args[1:], invocation.stderr, invocation.defaults())
-	if errors.Is(err, flag.ErrHelp) {
-		return nil
-	}
 	if err != nil {
 		return err
 	}
-	if action == "restart" && invocation.configPath != "" {
-		host, port, legacy, err := service.LegacyBind(options.DBPath)
-		if err != nil {
-			return err
-		}
-		if legacy {
-			if err := config.Update(invocation.context, invocation.configPath, func(values *config.Values) error {
-				if values.Host == nil {
-					values.Host = &host
-				}
-				if values.Port == nil {
-					values.Port = &port
-				}
-				return values.Validate()
-			}); err != nil {
-				return err
-			}
-			overrides, err := configurationOverrides(args[1:])
-			if err != nil {
-				return err
-			}
-			settings, err := config.ResolveWithOverrides(invocation.configPath, true, overrides)
-			if err != nil {
-				return err
-			}
-			options.DefaultHost, options.DefaultPort = &settings.Host, &settings.Port
-		}
-	}
-	var state service.State
-	switch action {
-	case "import":
-		if err := service.ImportLegacy(invocation.context, options.DBPath, options.legacyPath); err != nil {
-			return err
-		}
-		_, err := fmt.Fprintln(invocation.stdout, "Legacy history imported. SQLite source preserved.")
-		return err
-	case "wait", "reprocess":
-		state, err = service.Probe(invocation.context, options.DBPath)
-		if err != nil {
-			return err
-		}
-		if !state.Running || state.Record == nil {
-			return service.ErrStopped
-		}
-		client := service.Client{Record: *state.Record}
-		if action == "reprocess" {
-			generation, err := client.Reprocess(invocation.context)
-			if err != nil {
-				return err
-			}
-			_, err = fmt.Fprintf(invocation.stdout, "Reprocessing queued: generation=%d\n", generation)
-			return err
-		}
-		ctx, cancel := context.WithTimeout(invocation.context, 30*time.Second)
-		defer cancel()
-		return client.WaitProcessing(ctx)
-	case "start":
-		state, err = service.Ensure(invocation.context, options.Options)
-	case "restart":
-		state, err = service.Restart(invocation.context, options.Options)
-	case "stop":
+	if action == "stop" {
 		if err := service.Stop(invocation.context, options.DBPath); err != nil {
 			return err
 		}
-		_, err := fmt.Fprintln(invocation.stdout, "Service stopped.")
+		_, err := fmt.Fprintln(invocation.stdout, "Legacy service stopped.")
 		return err
-	case "status":
-		state, err = service.Probe(invocation.context, options.DBPath)
-	case "run":
-		return service.Run(invocation.context, options.Options, invocation.stdout, invocation.stderr)
 	}
+	state, err := service.Probe(invocation.context, options.DBPath)
 	if err != nil {
 		return err
-	}
-	if action == "restart" {
-		_, _ = fmt.Fprintln(invocation.stderr, "Local public API is unauthenticated after restart.")
 	}
 	if err := printServiceStatus(invocation.stdout, state, options.json); err != nil {
 		return err
 	}
-	if action == "status" && !state.Running {
+	if !state.Running {
 		return service.ErrStopped
-	}
-	if options.open && state.Record != nil {
-		if err := browser.Open(state.Record.URL); err != nil {
-			_, _ = fmt.Fprintf(invocation.stderr, "Could not open browser: %v; open %s\n", err, state.Record.URL)
-		}
 	}
 	return nil
 }

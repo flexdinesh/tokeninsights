@@ -8,15 +8,13 @@ import (
 	"os"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/clientworkflow"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/collector"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/serverfeatures"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/service"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/config"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/localruntime"
 )
 
 var tuiCommand = commandSpec{name: "tui", run: runView}
 
-var ensureViewServer = service.Ensure
 var runViewCollector = collector.Run
 
 func runView(invocation commandInvocation, args []string) error {
@@ -24,37 +22,22 @@ func runView(invocation commandInvocation, args []string) error {
 	if err != nil {
 		return err
 	}
-	if options.serverKind == serverfeatures.Hosted {
-		return fmt.Errorf("tui requires a personal server; use tokeninsights web\n%w", ErrUsage)
+	if options.mode == config.Distributed || options.serverURL != "" {
+		return fmt.Errorf("tui requires single-process mode; use tokeninsights web\n%w", ErrUsage)
 	}
-	if options.syncBeforeView {
-		if options.serverURL == "" {
-			if err := collector.ValidatePaths(options.collectorDBPath, options.dbPath); err != nil {
-				return err
-			}
-		}
+	settings := invocation.defaults()
+	settings.ServerDBPath, settings.AppDBPath = options.dbPath, options.appDBPath
+	settings.Mode, settings.ServerURL = options.mode, options.serverURL
+	if err := settings.ValidateDestination(); err != nil {
+		return err
 	}
-	if !options.syncBeforeView {
-		settings := invocation.defaults()
-		settings.ServerURL = options.serverURL
-		session, err := clientworkflow.Resolve(invocation.context, settings, func(ctx context.Context) (service.State, error) {
-			return ensureViewConfiguredLocal(ctx, options.dbPath, settings)
-		})
-		if err != nil {
-			return err
-		}
-		if err := session.Require(serverfeatures.Read, serverfeatures.TerminalDashboard, serverfeatures.Usage, serverfeatures.Facets); err != nil {
-			return err
-		}
-		options.serverURL, options.datasetID = session.URL, session.Descriptor.DatasetId
+	runtime, err := localruntime.OpenWithApp(invocation.context, options.collectorDBPath, options.dbPath, settings.ApplicationPath())
+	if err != nil {
+		return err
 	}
-	if options.serverURL != "" {
-		if _, err := tableClient(options); err != nil {
-			return err
-		}
-	}
+	defer func() { _ = runtime.Close() }()
+	options.local = runtime
 	model := newInteractiveModel(invocation.context, options, invocation.now, "unknown")
-	model.localSettings = invocation.defaults()
 	defer model.cancelSync()
 	finalModel, err := runInteractiveProgram(model, invocation.stdout)
 	if err != nil {

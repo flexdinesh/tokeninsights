@@ -12,14 +12,12 @@ export type PiLifecycleHost = {
 
 export function registerNativeCompletion(
   pi: PiLifecycleHost,
-  runner = new CollectorRunner(),
+  runner = new CollectorRunner({ harness: 'pi' }),
 ): void {
   pi.on('agent_settled', async (_event, context) => {
-    try {
-      await runner.run()
-    } catch {
+    void runner.run().catch(() => {
       if (context.hasUI) context.ui.notify(syncFailure, 'error')
-    }
+    })
   })
   pi.on('session_shutdown', async () => {
     await runner.close()

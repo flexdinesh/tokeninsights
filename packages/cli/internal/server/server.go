@@ -56,6 +56,7 @@ type syncState struct {
 
 type app struct {
 	data           *datastore.Store
+	queries        analytics.Repository
 	allowIngestion bool
 	policy         serverfeatures.Policy
 	accounts       *accounts.Service
@@ -81,7 +82,7 @@ func newApp(ctx context.Context, options Options, log io.Writer) *app {
 func (a *app) status() syncState {
 	state := syncState{InstanceID: a.options.InstanceID, DataReadiness: "unavailable", Phase: "ready", Harnesses: map[string]string{}}
 	if a.data != nil {
-		status, err := analytics.Status(a.ctx, a.data)
+		status, err := a.queries.Status(a.ctx)
 		if err != nil {
 			state.Error = "Server storage unavailable"
 			return state
@@ -192,7 +193,7 @@ func (a *app) legacyHandler() http.Handler {
 		defer cancel()
 		var data dashboard
 		if a.data != nil {
-			data, err = loadDataDashboard(ctx, a.data, q, time.Now())
+			data, err = a.queries.Dashboard(ctx, q, time.Now())
 		} else {
 			data, err = loadDashboard(ctx, a.options.DBPath, q, time.Now())
 		}
@@ -219,11 +220,12 @@ func (a *app) legacyHandler() http.Handler {
 		ctx, cancel := context.WithTimeout(r.Context(), queryTimeout)
 		defer cancel()
 		if a.data != nil {
-			values, err := loadDataFacets(ctx, a.data, q, r.URL.Query().Get("search"), time.Now())
+			facets, err := a.queries.Facets(ctx, q, r.URL.Query().Get("search"), time.Now())
 			if err != nil {
 				a.queryError(w, err)
 				return
 			}
+			values := apiFacets(facets)
 			values.InstanceId = a.options.InstanceID
 			writeJSON(w, 200, values)
 			return

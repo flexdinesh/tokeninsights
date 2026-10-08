@@ -82,6 +82,21 @@ func Run(parent context.Context, store *datastore.Store, log io.Writer, bindings
 		store.Run(ctx, func(err error) { _, _ = fmt.Fprintf(log, "processing: %v\n", err) })
 	}()
 	defer func() { cancel(); <-workerDone }()
+	return Serve(ctx, store, bindings, ready)
+}
+
+// Serve owns HTTP listeners only; processing is owned by the composition.
+func Serve(parent context.Context, store *datastore.Store, bindings []Binding, ready func() error) error {
+	if len(bindings) == 0 || store == nil {
+		return errors.New("server requires listener")
+	}
+	for _, binding := range bindings {
+		if binding.Listener == nil || binding.Handler == nil {
+			return errors.New("invalid server listener")
+		}
+	}
+	ctx, cancel := context.WithCancel(parent)
+	defer cancel()
 	servers := make([]*http.Server, 0, len(bindings))
 	failures := make(chan error, len(bindings))
 	for _, binding := range bindings {

@@ -2,7 +2,6 @@ package accounts
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -74,19 +73,6 @@ func (s *Service) AdminHandler() http.Handler {
 		_ = json.NewEncoder(w).Encode(result)
 	})
 	return mux
-}
-
-// ReprocessUser resolves the operator's user ID to its server-owned dataset.
-func (s *Service) ReprocessUser(ctx context.Context, userID string) (int64, error) {
-	var dataset string
-	err := s.store.SQL().QueryRowContext(ctx, "SELECT dataset_id FROM accounts.users WHERE user_id=?", userID).Scan(&dataset)
-	if errors.Is(err, sql.ErrNoRows) {
-		return 0, ErrNotFound
-	}
-	if err != nil {
-		return 0, err
-	}
-	return s.store.ForDataset(dataset).Reprocess(ctx)
 }
 
 // AdminCall talks to the owner process; provisioning never reopens its DB.

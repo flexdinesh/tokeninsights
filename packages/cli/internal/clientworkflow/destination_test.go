@@ -40,11 +40,11 @@ func TestRemoteDestinationCanonicalizesTrailingSlash(t *testing.T) {
 		if r.URL.Path != "/api/v2/instance" {
 			t.Error(r.URL.Path)
 		}
-		_ = json.NewEncoder(w).Encode(api.InstanceResponseV2{ApiVersion: "v2", InstanceId: "instance", DataEpoch: "database", DataReadiness: "ready", DatasetId: "default", ServerKind: "personal", Capabilities: []string{"raw-ingestion"}, Permissions: []api.InstanceResponseV2Permissions{"ingest"}})
+		_ = json.NewEncoder(w).Encode(api.InstanceResponseV2{ApiVersion: "v2", InstanceId: "instance", DataEpoch: "database", DataReadiness: "ready", DatasetId: "default", ServerKind: "hosted", Capabilities: []string{"raw-ingestion"}, Permissions: []api.InstanceResponseV2Permissions{"ingest"}})
 	}))
 	defer server.Close()
 	for _, suffix := range []string{"/", ""} {
-		session, err := Resolve(t.Context(), config.Settings{ServerKind: serverfeatures.Personal, ServerURL: server.URL + suffix}, nil)
+		session, err := Resolve(t.Context(), config.Settings{ServerKind: serverfeatures.Hosted, ServerToken: "fixture", ServerURL: server.URL + suffix}, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
