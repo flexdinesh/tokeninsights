@@ -12,6 +12,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/collector"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/localruntime"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/pipeline"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/queryclient"
 )
@@ -40,16 +41,17 @@ type startupFailedMsg struct {
 
 // Startup owns collection. The dashboard only queries saved usage.
 type startupModel struct {
-	dashboard interactiveModel
-	phase     startupPhase
-	busy      bool
-	frame     int
-	err       error
-	delivery  collector.DeliveryProgress
-	messages  chan tea.Msg
-	workers   *sync.WaitGroup
-	collect   bool
-	attempt   uint64
+	dashboard   interactiveModel
+	phase       startupPhase
+	busy        bool
+	frame       int
+	err         error
+	delivery    collector.DeliveryProgress
+	messages    chan tea.Msg
+	workers     *sync.WaitGroup
+	collect     bool
+	waitVisible bool
+	attempt     uint64
 }
 
 func newStartupModel(dashboard interactiveModel) startupModel {
@@ -58,7 +60,7 @@ func newStartupModel(dashboard interactiveModel) startupModel {
 		phase = startupCollect
 	}
 	return startupModel{dashboard: dashboard,
-		phase: phase, busy: true, collect: true, attempt: 1, messages: make(chan tea.Msg, startupMessageBuffer), workers: &sync.WaitGroup{}}
+		phase: phase, busy: true, collect: true, waitVisible: true, attempt: 1, messages: make(chan tea.Msg, startupMessageBuffer), workers: &sync.WaitGroup{}}
 }
 
 func (m startupModel) Init() tea.Cmd {
@@ -135,10 +137,12 @@ func (m startupModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		switch msg.String() {
 		case "r":
-			return m.retry(m.phase != startupLoad)
+			collect := m.phase != startupLoad
+			wait := errors.Is(m.err, localruntime.ErrProcessingFailed) || errors.Is(m.err, localruntime.ErrProcessingTimeout)
+			return m.retry(collect, collect || wait)
 		case "v":
 			if m.dashboard.options.serverURL != "" || m.dashboard.options.local != nil {
-				return m.retry(false)
+				return m.retry(false, false)
 			}
 		}
 		return m, nil
@@ -148,8 +152,9 @@ func (m startupModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, readSyncProgressCmd(m.messages)
 }
 
-func (m startupModel) retry(collect bool) (tea.Model, tea.Cmd) {
+func (m startupModel) retry(collect, waitVisible bool) (tea.Model, tea.Cmd) {
 	m.busy, m.err, m.collect = true, nil, collect
+	m.waitVisible = waitVisible
 	m.attempt++
 	m.messages = make(chan tea.Msg, startupMessageBuffer)
 	if collect {
@@ -283,6 +288,10 @@ func (m startupModel) failureCode() string {
 		return fmt.Sprintf("http_%d", status.StatusCode)
 	}
 	switch {
+	case errors.Is(m.err, localruntime.ErrProcessingFailed):
+		return "processing_failed"
+	case errors.Is(m.err, localruntime.ErrProcessingTimeout):
+		return "processing_timeout"
 	case errors.Is(m.err, queryclient.ErrSnapshotChanged):
 		return "snapshot_changed"
 	case errors.Is(m.err, queryclient.ErrUnavailable):
@@ -295,6 +304,12 @@ func (m startupModel) failureCode() string {
 }
 
 func (m startupModel) loadFailureGuidance() string {
+	if errors.Is(m.err, localruntime.ErrProcessingFailed) {
+		return "Retry or run tokeninsights data reprocess."
+	}
+	if errors.Is(m.err, localruntime.ErrProcessingTimeout) {
+		return "Still processing; retry or view saved usage."
+	}
 	var status *queryclient.StatusError
 	if errors.As(m.err, &status) {
 		switch status.StatusCode {
@@ -351,6 +366,12 @@ func (m startupModel) failureLabel() string {
 	case startupPublish:
 		return "Couldn't publish usage."
 	case startupLoad:
+		if errors.Is(m.err, localruntime.ErrProcessingFailed) {
+			return "Couldn't finish processing usage."
+		}
+		if errors.Is(m.err, localruntime.ErrProcessingTimeout) {
+			return "Usage is still processing."
+		}
 		return "Couldn't load saved usage."
 	default:
 		return "Couldn't collect all local usage."
@@ -378,7 +399,7 @@ func (m startupModel) run(send func(tea.Msg)) {
 		}
 	}
 	send(startupLoadMsg{})
-	if m.collect {
+	if m.waitVisible {
 		visible, cancel := context.WithTimeout(ctx, localVisibilityTimeout)
 		err := options.local.WaitVisible(visible)
 		cancel()

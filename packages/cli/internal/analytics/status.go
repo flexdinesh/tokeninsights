@@ -17,9 +17,11 @@ type Facets struct {
 
 // ProcessingStatus describes one dataset without exposing storage to HTTP adapters.
 type ProcessingStatus struct {
-	Metadata datastore.Metadata
-	Pending  int64
-	Hostname string
+	Metadata        datastore.Metadata
+	Pending         int64
+	Failed          int64 // Pending scopes with a durable error; completed scopes are excluded.
+	FailedRetryAtMs int64 // Earliest retry time among failed pending scopes.
+	Hostname        string
 }
 
 func Status(ctx context.Context, store *datastore.Store) (ProcessingStatus, error) {
@@ -33,7 +35,7 @@ func Status(ctx context.Context, store *datastore.Store) (ProcessingStatus, erro
 	if err != nil {
 		return result, err
 	}
-	err = tx.QueryRowContext(ctx, "SELECT COUNT(*) FROM processing.scopes WHERE dataset_id=? AND (processed_revision<>revision OR generation<>?)", store.DatasetID(), result.Metadata.TargetGeneration).Scan(&result.Pending)
+	err = tx.QueryRowContext(ctx, "SELECT COUNT(*), COUNT(*) FILTER (WHERE error_code<>''), COALESCE(MIN(retry_at_ms) FILTER (WHERE error_code<>''),0) FROM processing.scopes WHERE dataset_id=? AND (processed_revision<>revision OR generation<>?)", store.DatasetID(), result.Metadata.TargetGeneration).Scan(&result.Pending, &result.Failed, &result.FailedRetryAtMs)
 	if err != nil {
 		return result, err
 	}

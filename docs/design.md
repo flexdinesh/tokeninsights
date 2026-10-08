@@ -274,6 +274,25 @@ and active/target generations to agree in a consistent status snapshot. Retry/Vi
 saved/Quit remain available. Saved-data viewing skips capture and visibility waiting.
 Reload is query-only. Remote TUI is unavailable; remote web syncs before browser login.
 
+Local visibility reads count pending scopes and failed pending scopes in the same
+dataset/generation snapshot, using existing durable scope error codes. A recorded
+failure in retry backoff returns `processing_failed` promptly, including after
+owner restart. Due retries get a chance to finish before reporting an old failure,
+so finite commands can recover transient errors without rebuilding a generation.
+The bounded visibility deadline returns `processing_timeout`; caller cancellation
+and storage query errors retain their own classification. Native query interruption
+uses the caller's cancellation/deadline when present. Neither failure exposes
+raw database errors or source metadata in the TUI. Retry repeats visibility waiting
+without capture; View saved bypasses the wait and queries published history.
+Reprocessing remains explicit and keeps the old generation until replacement is
+complete. `data wait` resumes an interrupted rebuild without creating a new one.
+No automatic reset, index repair, or generation rebuild follows a processing error.
+
+Native publication verification covers bulk insert constraint failures and
+cancellation after projection writes, rollback, owner reopen and retry. Failed
+transactions must preserve all fact IDs/components, provenance, outcomes, scope
+progress, metadata and immutable receipts; retry/replay must publish exactly once.
+
 `sync` defaults to a finite detached worker in distributed mode. Parent commits a
 job to separate operational SQLite, passes credentials through inherited private
 pipes, and waits only for startup ACK. `--print` also submits and reserves stdout for
