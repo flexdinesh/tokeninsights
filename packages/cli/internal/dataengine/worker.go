@@ -29,13 +29,15 @@ type Backend interface {
 	// failure it preserves dataset/root identity when already known for retry.
 	LoadWork(context.Context) (Work, bool, error)
 	// PublishProjection atomically fences and publishes. Stale work returns
-	// false without mutation so a fresh component can be loaded immediately.
+	// false without mutation; the engine decides when to retry fresh work.
 	PublishProjection(context.Context, Work, evidence.Projection) (bool, error)
 	// RecordFailure keeps the component pending with durable bounded backoff.
 	RecordFailure(context.Context, Work)
 }
 
-// ConcurrentBackend selects a complete component disjoint from all claims.
+// ConcurrentBackend selects a complete component disjoint from all exclusions.
+// Exclusions include active claims and briefly delayed stale components; only
+// their dataset and scope membership are needed, not records or byte estimates.
 // A positive byte limit excludes components larger than the remaining budget;
 // zero allows a large component to run alone rather than starve indefinitely.
 type ConcurrentBackend interface {
@@ -126,19 +128,25 @@ func (w *Worker) runConcurrent(ctx context.Context, backend ConcurrentBackend, r
 	ticker := time.NewTicker(retryPollInterval)
 	defer ticker.Stop()
 	type completion struct {
-		work Work
-		err  error
+		work      Work
+		err       error
+		published bool
 	}
 	completed := make(chan completion, workerCount)
 	var workers sync.WaitGroup
 	defer workers.Wait()
 	claims := make([]Work, 0, workerCount)
+	var delayed staleComponents
+	timer := time.NewTimer(staleRetryDelay)
+	timer.Stop()
+	defer timer.Stop()
 	reportError := func(err error) {
 		if err != nil && ctx.Err() == nil && report != nil {
 			report(err)
 		}
 	}
 	for ctx.Err() == nil {
+		delayed.prune(time.Now())
 		for len(claims) < workerCount && ctx.Err() == nil {
 			var used int64
 			for _, claim := range claims {
@@ -151,7 +159,7 @@ func (w *Worker) runConcurrent(ctx context.Context, backend ConcurrentBackend, r
 					break
 				}
 			}
-			work, found, err := backend.LoadWorkExcluding(ctx, claims, limit)
+			work, found, err := backend.LoadWorkExcluding(ctx, delayed.excluding(claims), limit)
 			if err != nil {
 				if ctx.Err() == nil && work.Root != "" {
 					backend.RecordFailure(ctx, work)
@@ -167,14 +175,20 @@ func (w *Worker) runConcurrent(ctx context.Context, backend ConcurrentBackend, r
 			claims = append(claims, work)
 			workers.Go(func() {
 				projection, err := processor.Process(ctx, work.Records)
+				published := false
 				if err == nil {
-					_, err = backend.PublishProjection(ctx, work, projection)
+					published, err = backend.PublishProjection(ctx, work, projection)
 				}
 				if err != nil && ctx.Err() == nil {
 					backend.RecordFailure(ctx, work)
 				}
-				completed <- completion{work: work, err: err}
+				completed <- completion{work: work, err: err, published: published}
 			})
+		}
+		var eligible <-chan time.Time
+		if deadline, ok := delayed.next(); ok {
+			timer.Reset(time.Until(deadline))
+			eligible = timer.C
 		}
 		select {
 		case <-ctx.Done():
@@ -189,9 +203,13 @@ func (w *Worker) runConcurrent(ctx context.Context, backend ConcurrentBackend, r
 					break
 				}
 			}
+			if result.err == nil && !result.published {
+				delayed.add(result.work, time.Now())
+			}
 			reportError(result.err)
 		case <-w.wake:
 		case <-ticker.C:
+		case <-eligible:
 		}
 	}
 }
