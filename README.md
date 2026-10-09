@@ -188,3 +188,21 @@ CGO/C/C++ toolchain builds embedded DuckDB. Production native archives need no J
 Application pairing also persists `<canonical-token-path>.application.json`, containing
 only the application instance ID. Keep this guard with both databases in stopped
 backups. A missing/replaced app database fails closed to preserve credential revocations. Restore the matched set; do not delete the guard to bypass recovery.
+
+## Recovering from legacy storage mismatches
+
+An upgrade may report `incompatible_server_data` when local databases use a legacy
+schema. Only current schemas are supported; there are no migrations. If you do not
+need to preserve saved local data, stop TokenInsights viewers and sync processes,
+delete the data directory, then reinstall from `main`:
+
+```sh
+rm -rf ~/.local/share/tokeninsights
+go install github.com/flexdinesh/tokeninsights/packages/cli/cmd/tokeninsights@main
+tokeninsights tui --month
+```
+
+This deletes local databases and any backups in that directory. The TUI creates
+current schemas and recollects available source logs; history whose sources are
+gone cannot be recovered. If you use `XDG_DATA_HOME` or custom database paths,
+adjust the deletion path to match your local storage.
