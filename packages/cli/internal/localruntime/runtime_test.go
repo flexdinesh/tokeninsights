@@ -168,3 +168,29 @@ func TestDerivedRoleAliasesRejectBeforeCreatingStorage(t *testing.T) {
 		t.Fatal("alias rejection mutated storage", entries, err)
 	}
 }
+
+func TestStartupFailureReleasesDatabaseOwnership(t *testing.T) {
+	root := t.TempDir()
+	collectorPath, dataPath, appPath := filepath.Join(root, "collector.sqlite"), filepath.Join(root, "data.duckdb"), filepath.Join(root, "app.sqlite")
+	occupied := []byte("unrelated file")
+	if err := os.WriteFile(appPath, occupied, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if runtime, err := localruntime.OpenWithApp(t.Context(), collectorPath, dataPath, appPath); err == nil {
+		_ = runtime.Close()
+		t.Fatal("opened invalid application database")
+	}
+	if contents, err := os.ReadFile(appPath); err != nil || string(contents) != string(occupied) {
+		t.Fatal("startup mutated unrelated file", err)
+	}
+	if err := os.Remove(appPath); err != nil {
+		t.Fatal(err)
+	}
+	runtime, err := localruntime.OpenWithApp(t.Context(), collectorPath, dataPath, appPath)
+	if err != nil {
+		t.Fatal("failed startup leaked storage or ownership", err)
+	}
+	if err := runtime.Close(); err != nil {
+		t.Fatal(err)
+	}
+}

@@ -55,6 +55,7 @@ Types establish shape; tests establish semantics.
 | Projection → storage | Real transaction rollback, restart, revision/generation fences and atomic publication |
 | Storage → queries | Dataset isolation, consistent snapshot, pagination and filter semantics |
 | Composition → capabilities | Local read-only routes, authenticated remote routes, no remote capture, ownership and shutdown |
+| Composition → resource lifetime | Startup cleanup, cancellation and worker joins, concurrent listener draining with a shared deadline, ownership held through storage close, accepted work resumed after reopen |
 | Package dependencies | Pure processing; capture does not interpret usage; storage does not mount HTTP |
 
 Keep focused pure tests for arithmetic, native formats, identity, time boundaries,

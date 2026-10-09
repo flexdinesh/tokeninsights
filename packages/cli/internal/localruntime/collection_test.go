@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/collector"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/evidence"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/localruntime"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/pipeline"
 	api "github.com/flexdinesh/tokeninsights/packages/cli/internal/server/api"
@@ -96,11 +97,17 @@ func TestCloseCancelsAndJoinsStartupCollectionBeforeClosingStorage(t *testing.T)
 	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 	defer cancel()
 	storageAvailable := make(chan error, 1)
+	accepted := make(chan struct{})
+	var receipt evidence.Receipt
 	release := make(chan struct{})
 	done := runtime.StartCollection(ctx, pipeline.SyncOptions{}, func(ctx context.Context, _ collector.Options) (collector.Result, error) {
 		<-ctx.Done()
 		_, err := runtime.Store.Metadata(context.Background())
 		storageAvailable <- err
+		// Acceptance may commit as cancellation reaches the owner. Processing
+		// has been cancelled; this evidence must remain pending for the next owner.
+		receipt = pendingBatch(t, runtime.Store)
+		close(accepted)
 		<-release
 		return collector.Result{}, ctx.Err()
 	})
@@ -122,6 +129,24 @@ func TestCloseCancelsAndJoinsStartupCollectionBeforeClosingStorage(t *testing.T)
 		t.Fatalf("Close returned before collection joined: %v", err)
 	default:
 	}
+	if second, err := localruntime.Open(ctx, filepath.Join(root, "collector.sqlite"), filepath.Join(root, "data.duckdb")); !errors.Is(err, localruntime.ErrOwned) {
+		if second != nil {
+			_ = second.Close()
+		}
+		close(release)
+		t.Fatalf("ownership released before collection joined: %v", err)
+	}
+	select {
+	case <-accepted:
+	case <-ctx.Done():
+		close(release)
+		t.Fatal(ctx.Err())
+	}
+	pending, err := runtime.Store.Receipt(ctx, "stream", "batch")
+	if err != nil || pending.Receipt != receipt || pending.Processing.Pending != 1 {
+		close(release)
+		t.Fatalf("cancelled owner did not retain pending acceptance: %+v %v", pending, err)
+	}
 	close(release)
 	select {
 	case err := <-closed:
@@ -140,6 +165,23 @@ func TestCloseCancelsAndJoinsStartupCollectionBeforeClosingStorage(t *testing.T)
 	})
 	if !errors.Is(result.Err, context.Canceled) {
 		t.Fatalf("closed runtime accepted collection: %+v", result)
+	}
+	reopened, err := localruntime.Open(ctx, filepath.Join(root, "collector.sqlite"), filepath.Join(root, "data.duckdb"))
+	if err != nil {
+		t.Fatal("ownership leaked after shutdown", err)
+	}
+	defer func() { _ = reopened.Close() }()
+	if err := reopened.WaitVisible(ctx); err != nil {
+		t.Fatal(err)
+	}
+	after, err := reopened.Store.Receipt(ctx, "stream", "batch")
+	if err != nil || after.Receipt != receipt || after.Processing.Pending != 0 {
+		t.Fatalf("shutdown lost accepted evidence: %+v %v", after, err)
+	}
+	period := api.PeriodFilter("all")
+	usage, err := reopened.Query.AllUsage(ctx, api.GetUsageParams{Period: &period})
+	if err != nil || usage.Summary.Total != 120 || usage.FactCount == nil || *usage.FactCount != 1 {
+		t.Fatalf("restart did not publish accepted evidence exactly once: %+v %v", usage, err)
 	}
 }
 

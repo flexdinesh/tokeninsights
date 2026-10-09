@@ -9,6 +9,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/datastore"
@@ -60,9 +61,7 @@ func health(store *datastore.Store, next http.Handler) http.Handler {
 	})
 }
 
-// Run joins all workers/listeners before returning. Its caller owns store and
-// listener resources, including cleanup if startup or the ready callback fails.
-func Run(parent context.Context, store *datastore.Store, log io.Writer, bindings []Binding, ready func() error) error {
+func validate(store *datastore.Store, bindings []Binding) error {
 	if len(bindings) == 0 || store == nil {
 		return errors.New("server requires listener")
 	}
@@ -70,6 +69,16 @@ func Run(parent context.Context, store *datastore.Store, log io.Writer, bindings
 		if binding.Listener == nil || binding.Handler == nil {
 			return errors.New("invalid server listener")
 		}
+	}
+	return nil
+}
+
+// Run joins processing and listener loops before returning, without closing the
+// caller's store. HTTP requests drain within ShutdownTimeout; on expiry their
+// connections close. Handlers must honor request cancellation.
+func Run(parent context.Context, store *datastore.Store, log io.Writer, bindings []Binding, ready func() error) error {
+	if err := validate(store, bindings); err != nil {
+		return err
 	}
 	if log == nil {
 		log = io.Discard
@@ -82,23 +91,25 @@ func Run(parent context.Context, store *datastore.Store, log io.Writer, bindings
 		store.Run(ctx, func(err error) { _, _ = fmt.Fprintf(log, "processing: %v\n", err) })
 	}()
 	defer func() { cancel(); <-workerDone }()
-	return Serve(ctx, store, bindings, ready)
+	return serve(ctx, store, bindings, ready, ShutdownTimeout)
 }
 
-// Serve owns HTTP listeners only; processing is owned by the composition.
+// Serve has Run's HTTP shutdown contract but starts no processing. Validation
+// leaves resources untouched; once serving starts, all listeners close on exit.
+// The composition owns storage, processing and cleanup on validation failure.
 func Serve(parent context.Context, store *datastore.Store, bindings []Binding, ready func() error) error {
-	if len(bindings) == 0 || store == nil {
-		return errors.New("server requires listener")
+	if err := validate(store, bindings); err != nil {
+		return err
 	}
-	for _, binding := range bindings {
-		if binding.Listener == nil || binding.Handler == nil {
-			return errors.New("invalid server listener")
-		}
-	}
+	return serve(parent, store, bindings, ready, ShutdownTimeout)
+}
+
+func serve(parent context.Context, store *datastore.Store, bindings []Binding, ready func() error, shutdownTimeout time.Duration) error {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
 	servers := make([]*http.Server, 0, len(bindings))
 	failures := make(chan error, len(bindings))
+	var listeners sync.WaitGroup
 	for _, binding := range bindings {
 		handler := binding.Handler
 		if binding.Health {
@@ -106,12 +117,13 @@ func Serve(parent context.Context, store *datastore.Store, bindings []Binding, r
 		}
 		httpServer := &http.Server{Handler: handler, BaseContext: func(net.Listener) context.Context { return ctx }, ReadHeaderTimeout: readHeaderTimeout, ReadTimeout: requestTimeout, WriteTimeout: requestTimeout, IdleTimeout: idleTimeout}
 		servers = append(servers, httpServer)
-		go func() { failures <- httpServer.Serve(binding.Listener) }()
+		listeners.Go(func() { failures <- httpServer.Serve(binding.Listener) })
 	}
 	defer func() {
 		for _, s := range servers {
 			_ = s.Close()
 		}
+		listeners.Wait()
 	}()
 	var runErr error
 	if ready != nil {
@@ -127,10 +139,15 @@ func Serve(parent context.Context, store *datastore.Store, bindings []Binding, r
 		}
 	}
 	cancel()
-	shutdown, cancelShutdown := context.WithTimeout(context.Background(), ShutdownTimeout)
+	shutdown, cancelShutdown := context.WithTimeout(context.Background(), shutdownTimeout)
 	defer cancelShutdown()
-	for _, s := range servers {
-		runErr = errors.Join(runErr, s.Shutdown(shutdown))
+	// Each Shutdown closes its listener before draining. Start them together so
+	// a slow request on one listener cannot leave another accepting new work.
+	var draining sync.WaitGroup
+	shutdownErrors := make([]error, len(servers))
+	for index, s := range servers {
+		draining.Go(func() { shutdownErrors[index] = s.Shutdown(shutdown) })
 	}
-	return runErr
+	draining.Wait()
+	return errors.Join(runErr, errors.Join(shutdownErrors...))
 }

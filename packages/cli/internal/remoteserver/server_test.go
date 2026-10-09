@@ -2,6 +2,7 @@ package remoteserver
 
 import (
 	"context"
+	"errors"
 	"io"
 	"net/http"
 	"os"
@@ -100,5 +101,49 @@ func TestRemoteDatabaseHasSingleOwnerWithoutLocalControl(t *testing.T) {
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("shutdown timeout")
+	}
+}
+
+func TestStartupFailureReleasesHostedResources(t *testing.T) {
+	for _, failure := range []string{"admin socket", "ready callback"} {
+		t.Run(failure, func(t *testing.T) {
+			root := t.TempDir()
+			settings := Settings{PublicURL: "https://usage.example", Listen: "127.0.0.1:0", DBPath: filepath.Join(root, "data.duckdb"), AdminSocket: filepath.Join(root, "admin.sock")}
+			startupErr := errors.New("ready failed")
+			if failure == "admin socket" {
+				if err := os.WriteFile(settings.AdminSocket, []byte("occupied"), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			err := Run(t.Context(), settings, nil, func(url string) error {
+				settings.Listen = strings.TrimPrefix(url, "http://")
+				return startupErr
+			})
+			if err == nil {
+				t.Fatal("startup failure ignored")
+			}
+			if failure == "ready callback" && !errors.Is(err, startupErr) {
+				t.Fatal("startup error lost", err)
+			}
+			if failure == "admin socket" {
+				if contents, err := os.ReadFile(settings.AdminSocket); err != nil || string(contents) != "occupied" {
+					t.Fatal("occupied socket path mutated", err)
+				}
+				if err := os.Remove(settings.AdminSocket); err != nil {
+					t.Fatal(err)
+				}
+			} else if _, err := os.Stat(settings.AdminSocket); !os.IsNotExist(err) {
+				t.Fatal("private socket leaked", err)
+			}
+			ctx, cancel := context.WithCancel(t.Context())
+			defer cancel()
+			ready := false
+			if err := Run(ctx, settings, nil, func(string) error { ready = true; cancel(); return nil }); err != nil {
+				t.Fatal("startup failure leaked database, listener or socket ownership", err)
+			}
+			if !ready {
+				t.Fatal("restart did not become ready")
+			}
+		})
 	}
 }
