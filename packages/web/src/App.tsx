@@ -193,6 +193,21 @@ function DashboardShell({
     enabled && hasCapability(bootstrap, 'usage'),
     controller.identity,
   )
+  const excludedUsage = useAnalytics(
+    {
+      ...query,
+      quality: 'estimated',
+      tab: query.tab === 'repo' ? 'repo' : 'tokens',
+      bucket: 'day',
+      sort: query.tab === 'repo' ? 'total' : 'date',
+      direction: 'desc',
+      page: 1,
+      pageSize: 1,
+    },
+    revision,
+    enabled && analytics.isSuccess && query.quality === 'confirmed',
+    controller.identity,
+  )
   const facets = useFacets(
     query,
     revision,
@@ -283,6 +298,7 @@ function DashboardShell({
           )}
           <DashboardResults
             analytics={analytics}
+            excludedUsage={excludedUsage}
             facets={facets}
             controller={controller}
             timezone={bootstrap.timezone}

@@ -617,7 +617,7 @@ test('custom dates, session search, and saved usage after status failure', async
   await page.getByRole('button', { name: 'This month', exact: true }).click()
   await page.getByLabel('From date', { exact: true }).fill('2099-01-01')
   await page.getByRole('button', { name: 'Apply range' }).click()
-  await expect(page.getByRole('heading', { name: 'No matching usage' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'No usage matches these filters' })).toBeVisible()
   await expect(page.getByLabel('Total tokens: 0', { exact: true })).toBeVisible()
   await expect(page.locator('.session-coverage')).toHaveText('Sessions 0 shown / 80 synced')
   await page.getByRole('button', { name: 'Clear All', exact: true }).click()

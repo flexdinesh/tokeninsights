@@ -126,7 +126,7 @@ export function UsageChart({
   const { chartMetric: metric, setChartMetric } = useDashboardPreferences()
   const timeline = query.tab === 'tokens' || query.tab === 'sessions'
   const context = query.tab === 'context'
-  const title = timeline
+  const baseTitle = timeline
     ? 'Usage over time'
     : context
       ? 'Session peak context'
@@ -135,6 +135,12 @@ export function UsageChart({
         : query.tab === 'harnesses'
           ? 'Usage by harness'
           : `Usage by ${query.tab.slice(0, -1)}`
+  const reviewingExcluded = query.quality === 'estimated'
+  const title = reviewingExcluded
+    ? context
+      ? 'Excluded session peak context'
+      : baseTitle.replace('Usage', 'Excluded usage')
+    : baseTitle
   const filterDimension =
     query.tab === 'models'
       ? 'models'
@@ -183,11 +189,19 @@ export function UsageChart({
             <BucketControl />
           </div>
         ) : (
-          <span className="chart-unit">{context ? 'Prompt-side tokens' : 'Countable tokens'}</span>
+          <span className="chart-unit">
+            {context
+              ? 'Prompt-side tokens'
+              : reviewingExcluded
+                ? 'Excluded tokens'
+                : 'Countable tokens'}
+          </span>
         )}
       </div>
       {rows.length === 0 ? (
-        <div className="chart-empty">No usage in this range</div>
+        <div className="chart-empty">
+          {reviewingExcluded ? 'No excluded usage in this range' : 'No usage in this range'}
+        </div>
       ) : (
         <div className={`chart-canvas${showTokenShares ? ' chart-canvas-shares' : ''}`}>
           <ResponsiveContainer

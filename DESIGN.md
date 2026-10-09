@@ -328,8 +328,17 @@ truncate within the chip while retaining their accessible name.
 ### Readouts and charts
 
 Five static text groups share the same informational treatment. All values use
-the readout role; captions and details use label type. Total detail is hidden on
-narrow layouts while its accessible quantity remains.
+the readout role; captions and details use label type. Optional total detail is hidden
+on narrow layouts while its accessible quantity remains. The exclusion qualification
+stays visible in the excluded-usage review.
+
+Ordinary usage is the primary analytical surface. Matching excluded usage gets a
+muted, wrapping disclosure below the readouts with a **Review excluded usage** action.
+The separate review begins with its heading, a plain explanation and **Back to usage**;
+its total, chart, table and session coverage retain explicit exclusion labels. Both
+views preserve filters, URL state and browser history. Empty results explain their
+scope and offer filter recovery. Review transitions announce the scope and move
+keyboard focus to the result region without scrolling.
 The timeline uses a fine lime line and tinted area. Category charts share their
 colors with labeled drill-down actions; context comparisons include an HTML legend.
 Model/provider/harness/repo shares appear above bars and in tooltips; dimension
