@@ -16,7 +16,7 @@ import (
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/ingestionhttp"
 )
 
-func testStore(t *testing.T) *Store {
+func testStore(t testing.TB) *Store {
 	t.Helper()
 	store, err := Open(t.Context(), filepath.Join(t.TempDir(), "server.duckdb"))
 	if err != nil {
@@ -28,7 +28,7 @@ func testStore(t *testing.T) *Store {
 func piRecord(id string, input int64) evidence.Record {
 	return evidence.Record{Harness: "pi", Format: "pi-jsonl", SourceID: "source", Lineage: "lineage", Ordinal: 2, Data: json.RawMessage(fmt.Sprintf(`{"type":"message","id":%q,"message":{"role":"assistant","timestamp":1700000000000,"provider":"openai","model":"gpt-5","usage":{"input":%d,"output":20}}}`, id, input)), Context: []evidence.Context{{Ordinal: 1, Data: json.RawMessage(`{"type":"session","id":"session"}`)}}}
 }
-func batchBody(t *testing.T, store *Store, stream, batch string, records ...evidence.Record) []byte {
+func batchBody(t testing.TB, store *Store, stream, batch string, records ...evidence.Record) []byte {
 	t.Helper()
 	metadata, err := store.Metadata(t.Context())
 	if err != nil {

@@ -175,6 +175,10 @@ Stale work retries; unrelated ingestion cannot starve processing.
 Facts/estimates/provenance/outcomes/completed revisions commit atomically.
 Failures stay pending with fixed error/attempts/exponential retry capped 64 seconds;
 independent scopes proceed. Backoff applies to every unchanged scope in a failed component; revised input remains eligible. Join dispatcher and workers before closing storage. Acceptance/projection inserts use bounded bulk statements under the shared writer, preserving conflict checks, receipt bytes, provenance and transaction fences.
+Projection preparation deduplicates evidence edges per fact before acquiring the
+writer. Publication deletes the component's previous provenance before inserting
+the prepared edges, so these inserts need no conflict-ignore clause. Provenance
+remains a set; facts, edges and completed revisions still commit or roll back together.
 
 Pure processor preserves five token components and their sum. Require usable
 native session/time and nonnegative bounded counters. Missing provider/model
