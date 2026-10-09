@@ -44,7 +44,7 @@ func TestReprocessKeepsPublishedGenerationUntilComplete(t *testing.T) {
 	first := piRecord("one", 100)
 	second := piRecord("two", 200)
 	second.Context[0].Data = json.RawMessage(`{"type":"session","id":"other"}`)
-	if _, err := store.Accept(t.Context(), batchBody(t, store, "stream", "batch", first, second)); err != nil {
+	if _, err := store.Accept(t.Context(), evidence.ProtocolVersion, batchBody(t, store, "stream", "batch", first, second)); err != nil {
 		t.Fatal(err)
 	}
 	drain(t, store)
@@ -94,7 +94,7 @@ func TestReprocessRestartIncludesEvidenceAcceptedDuringBuild(t *testing.T) {
 	first := piRecord("one", 100)
 	second := piRecord("two", 200)
 	second.Context[0].Data = json.RawMessage(`{"type":"session","id":"other"}`)
-	if _, err := store.Accept(t.Context(), batchBody(t, store, "first", "batch", first, second)); err != nil {
+	if _, err := store.Accept(t.Context(), evidence.ProtocolVersion, batchBody(t, store, "first", "batch", first, second)); err != nil {
 		t.Fatal(err)
 	}
 	drain(t, store)
@@ -105,7 +105,7 @@ func TestReprocessRestartIncludesEvidenceAcceptedDuringBuild(t *testing.T) {
 		t.Fatal(err)
 	}
 	third := piRecord("three", 300)
-	if _, err := store.Accept(t.Context(), batchBody(t, store, "late", "batch", third)); err != nil {
+	if _, err := store.Accept(t.Context(), evidence.ProtocolVersion, batchBody(t, store, "late", "batch", third)); err != nil {
 		t.Fatal(err)
 	}
 	if total(t, store, "analytics.confirmed") != 340 {
@@ -128,7 +128,7 @@ func TestReprocessRestartIncludesEvidenceAcceptedDuringBuild(t *testing.T) {
 
 func TestProcessorUpgradeReplacesInterruptedOlderGeneration(t *testing.T) {
 	store := testStore(t)
-	if _, err := store.Accept(t.Context(), batchBody(t, store, "stream", "batch", piRecord("message", 100))); err != nil {
+	if _, err := store.Accept(t.Context(), evidence.ProtocolVersion, batchBody(t, store, "stream", "batch", piRecord("message", 100))); err != nil {
 		t.Fatal(err)
 	}
 	drain(t, store)

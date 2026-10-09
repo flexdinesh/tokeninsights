@@ -139,6 +139,12 @@ principal must match before mutation. Receipts and lookups are dataset-scoped.
 Both modes accept only protocol 3. Limits: 1 MiB, 256 entries, 256 UTF-8 bytes per metadata string.
 Strict decoding rejects unknown/private fields, duplicate keys, invalid UTF-8,
 trailing values and invalid envelopes.
+The authorized receiver owns strict decoding once per submission and validates
+the requested protocol before mutation. Direct/HTTP adapters pass exact bytes,
+bound admission and body size, and map typed validation failures to the same
+public stage/code (HTTP 400 or 422). HTTP also owns content-type and body-read
+handling. Collector request preparation validates its independent boundary;
+it never supplies an unchecked decoded batch to the receiver.
 
 Transaction commits exact request/hash, every mapping, deduplicated evidence,
 receipt and scopes. Concurrent/overlapping/intrabatch duplicates succeed.

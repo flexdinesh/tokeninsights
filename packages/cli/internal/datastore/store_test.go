@@ -70,7 +70,7 @@ func TestAcceptanceReplayAndConcurrentDuplicates(t *testing.T) {
 	store := testStore(t)
 	record := piRecord("message", 100)
 	body := batchBody(t, store, "stream", "batch", record, record)
-	response, err := store.Accept(t.Context(), body)
+	response, err := store.Accept(t.Context(), evidence.ProtocolVersion, body)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -85,7 +85,7 @@ func TestAcceptanceReplayAndConcurrentDuplicates(t *testing.T) {
 	for i := 0; i < 8; i++ {
 		duplicate := batchBody(t, store, fmt.Sprintf("copy-%d", i), "batch", record)
 		group.Go(func() {
-			_, err := store.Accept(context.Background(), duplicate)
+			_, err := store.Accept(context.Background(), evidence.ProtocolVersion, duplicate)
 			if err != nil {
 				failures <- err
 			}
@@ -100,7 +100,7 @@ func TestAcceptanceReplayAndConcurrentDuplicates(t *testing.T) {
 	if got := total(t, store, "analytics.confirmed"); got != 120 {
 		t.Fatalf("duplicates polluted totals: %d", got)
 	}
-	replay, err := store.Accept(t.Context(), body)
+	replay, err := store.Accept(t.Context(), evidence.ProtocolVersion, body)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -125,7 +125,7 @@ func TestAcceptanceReplayAndConcurrentDuplicates(t *testing.T) {
 		t.Fatalf("already processed evidence lost status/mappings: %d %s", lateWriter.Code, lateWriter.Body.String())
 	}
 	changed := batchBody(t, store, "stream", "batch", piRecord("message", 200), record)
-	_, err = store.Accept(t.Context(), changed)
+	_, err = store.Accept(t.Context(), evidence.ProtocolVersion, changed)
 	var admission *AdmissionError
 	if !errors.As(err, &admission) || admission.Code != "batch_conflict" {
 		t.Fatalf("changed retry accepted: %v", err)
@@ -142,7 +142,7 @@ func TestPendingAcceptanceSurvivesRestart(t *testing.T) {
 		t.Fatal(err)
 	}
 	body := batchBody(t, store, "stream", "batch", piRecord("message", 100))
-	before, err := store.Accept(t.Context(), body)
+	before, err := store.Accept(t.Context(), evidence.ProtocolVersion, body)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -166,11 +166,11 @@ func TestPendingAcceptanceSurvivesRestart(t *testing.T) {
 
 func TestNativeConflictWithdrawsConfirmedAndDeduplicatesEstimate(t *testing.T) {
 	store := testStore(t)
-	if _, err := store.Accept(t.Context(), batchBody(t, store, "first", "batch", piRecord("message", 100))); err != nil {
+	if _, err := store.Accept(t.Context(), evidence.ProtocolVersion, batchBody(t, store, "first", "batch", piRecord("message", 100))); err != nil {
 		t.Fatal(err)
 	}
 	drain(t, store)
-	if _, err := store.Accept(t.Context(), batchBody(t, store, "second", "batch", piRecord("message", 200))); err != nil {
+	if _, err := store.Accept(t.Context(), evidence.ProtocolVersion, batchBody(t, store, "second", "batch", piRecord("message", 200))); err != nil {
 		t.Fatal(err)
 	}
 	drain(t, store)
@@ -190,7 +190,7 @@ func TestNativeConflictWithdrawsConfirmedAndDeduplicatesEstimate(t *testing.T) {
 func TestOverlappingBatchesBindSequenceAndKeepEveryMembership(t *testing.T) {
 	store := testStore(t)
 	first := piRecord("one", 100)
-	if _, err := store.Accept(t.Context(), batchBody(t, store, "stream", "first", first, first)); err != nil {
+	if _, err := store.Accept(t.Context(), evidence.ProtocolVersion, batchBody(t, store, "stream", "first", first, first)); err != nil {
 		t.Fatal(err)
 	}
 	drain(t, store)
@@ -204,7 +204,7 @@ func TestOverlappingBatchesBindSequenceAndKeepEveryMembership(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	response, err := store.Accept(t.Context(), body)
+	response, err := store.Accept(t.Context(), evidence.ProtocolVersion, body)
 	if err != nil || response.Receipt.Accepted != 2 || response.Processing.Pending != 2 {
 		t.Fatal(response, err)
 	}
@@ -222,7 +222,7 @@ func TestOverlappingBatchesBindSequenceAndKeepEveryMembership(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = store.Accept(t.Context(), changed)
+	_, err = store.Accept(t.Context(), evidence.ProtocolVersion, changed)
 	var failure *AdmissionError
 	if !errors.As(err, &failure) || failure.Code != "sequence_conflict" {
 		t.Fatal("sequence rebound", err)

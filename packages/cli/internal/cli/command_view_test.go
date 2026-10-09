@@ -45,7 +45,7 @@ func localViewOptions(t *testing.T, withUsage bool) tableOptions {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if _, err := runtime.Store.Accept(t.Context(), body); err != nil {
+		if _, err := runtime.Store.Accept(t.Context(), evidence.ProtocolVersion, body); err != nil {
 			t.Fatal(err)
 		}
 		ctx, cancel := context.WithTimeout(t.Context(), time.Second*10)

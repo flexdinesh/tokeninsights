@@ -28,7 +28,7 @@ func publicationSnapshot(t *testing.T, store *Store) map[string]string {
 
 func TestPublicationTreatsProvenanceAsASet(t *testing.T) {
 	store := testStore(t)
-	if _, err := store.Accept(t.Context(), batchBody(t, store, "stream", "batch", piRecord("message", 100))); err != nil {
+	if _, err := store.Accept(t.Context(), evidence.ProtocolVersion, batchBody(t, store, "stream", "batch", piRecord("message", 100))); err != nil {
 		t.Fatal(err)
 	}
 	work, found, err := store.LoadWork(t.Context())
@@ -69,7 +69,7 @@ func TestPublicationRollbackReopenAndRetryPreservesUsage(t *testing.T) {
 				value.Data = json.RawMessage(fmt.Sprintf(`{"type":"message","id":%q,"message":{"role":"assistant","timestamp":1700000000000,"provider":"openai","model":"gpt-5","usage":{"input":10,"output":7,"reasoning":2,"cacheRead":3,"cacheWrite":4,"totalTokens":24}}}`, id))
 				return value
 			}
-			if _, err := store.Accept(t.Context(), batchBody(t, store, "initial", "initial", record("saved"))); err != nil {
+			if _, err := store.Accept(t.Context(), evidence.ProtocolVersion, batchBody(t, store, "initial", "initial", record("saved"))); err != nil {
 				t.Fatal(err)
 			}
 			drain(t, store)
@@ -80,7 +80,7 @@ func TestPublicationRollbackReopenAndRetryPreservesUsage(t *testing.T) {
 				records[i] = record(fmt.Sprintf("new-%d", i))
 			}
 			body := batchBody(t, store, "later", "later", records...)
-			accepted, err := store.Accept(t.Context(), body)
+			accepted, err := store.Accept(t.Context(), evidence.ProtocolVersion, body)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -157,7 +157,7 @@ func TestPublicationRollbackReopenAndRetryPreservesUsage(t *testing.T) {
 			if err != nil || response.Receipt != accepted.Receipt || response.Processing.Pending != 0 || len(response.Processing.Items) != newRecords {
 				t.Fatal("retry lost receipt or outcomes", response, err)
 			}
-			replay, err := reopened.Accept(t.Context(), body)
+			replay, err := reopened.Accept(t.Context(), evidence.ProtocolVersion, body)
 			if err != nil || replay.Receipt != accepted.Receipt || replay.Processing.Pending != 0 {
 				t.Fatal("replay changed accepted delivery", replay, err)
 			}

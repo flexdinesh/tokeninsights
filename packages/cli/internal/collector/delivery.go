@@ -61,9 +61,10 @@ func (d HTTPDelivery) Receipt(ctx context.Context, stream, batch string) (eviden
 
 // Receiver is an already authorized dataset. Its atomic operations are shared
 // by the direct and HTTP adapters; no listener or synthetic HTTP request is used.
+// Accept validates exact request bytes and their requested protocol before mutation.
 type Receiver interface {
 	RawCapabilities(context.Context) (evidence.Capabilities, error)
-	Accept(context.Context, []byte) (evidence.Response, error)
+	Accept(context.Context, int, []byte) (evidence.Response, error)
 	Receipt(context.Context, string, string) (evidence.Response, error)
 	AcquireAdmission() (func(), bool)
 }
@@ -83,17 +84,7 @@ func (d DirectDelivery) Submit(ctx context.Context, protocol int, body []byte) (
 	if len(body) > evidence.MaxBodyBytes {
 		return nil, failure("validation", "body_limit", nil)
 	}
-	batch, err := evidence.DecodeBatch(body)
-	if err != nil {
-		if err.Error() == "incompatible" {
-			return nil, failure("validation", "incompatible", err)
-		}
-		return nil, failure("validation", "invalid_request", err)
-	}
-	if batch.ProtocolVersion != protocol {
-		return nil, failure("validation", "incompatible", nil)
-	}
-	result, err := d.Receiver.Accept(ctx, body)
+	result, err := d.Receiver.Accept(ctx, protocol, body)
 	if err != nil {
 		return nil, directFailure(err)
 	}
@@ -105,6 +96,10 @@ func (d DirectDelivery) Receipt(ctx context.Context, stream, batch string) (evid
 }
 
 func directFailure(err error) error {
+	var invalid *evidence.ValidationError
+	if errors.As(err, &invalid) {
+		return failure("validation", invalid.Code, err)
+	}
 	var rejected interface{ IngestionCode() string }
 	if errors.As(err, &rejected) {
 		return failure("admission", rejected.IngestionCode(), err)

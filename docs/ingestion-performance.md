@@ -288,6 +288,91 @@ Retain the change for the reproducible publication and many-component ingestion
 gains. Acceptance validation remains the next focused optimization; scheduling
 still needs a separate design backed by measurements.
 
+## Third optimization: one receiver validation owner
+
+Starting from `f6c6b15` (PR #73), `datastore.Store.Accept` now strictly decodes the
+request once and checks the requested protocol before preparing or writing data.
+The direct and HTTP adapters pass exact bytes and map typed validation errors;
+they retain admission/body bounds, and HTTP retains content-type/body-read checks.
+Collector preparation still validates its independent trust boundary. Neither
+adapter can pass a decoded batch that bypasses receiver validation.
+
+The Go receiver contract now takes the requested protocol explicitly. This keeps
+malformed-body versus requested-version rejection ordering intact without decoding
+twice. Direct/HTTP rejection contracts check stage/code/status, duplicate keys,
+private fields, invalid UTF-8, invalid envelope numbers, versions, body limits,
+admission-before-decoding and rejection without mutation. Exact retry bytes,
+receipt hashes and native integer precision above 2^53 are preserved. The same
+new external-boundary tests pass against the original implementation.
+
+`BenchmarkReceiverAcceptance` isolates a 256-entry batch through the direct
+adapter or real loopback HTTP handler, with workers inactive. New acceptance and
+exact replay are separate cases; opening, fixture construction and replay warm-up
+are untimed. Each result verifies accepted/pending counts, the exact request hash,
+stable replay receipt and durable evidence/batch counts. HTTP authentication and
+hosted admission remain covered by the full ingestion matrix, not this isolated
+handler benchmark.
+
+Same machine and Go 1.26.8, three alternating fresh-process samples per version,
+ten iterations per isolated sample. Median (range):
+
+| Adapter | Operation | Before | After | Go allocation volume per operation |
+| --- | --- | --- | --- | --- |
+| Direct | New | 65.91 ms (64.95–66.89) | 52.71 ms (50.77–53.63) | 18.94 → 11.52 MB |
+| Direct | Replay | 34.81 ms (34.20–34.89) | 23.11 ms (22.78–23.93) | 17.54 → 10.11 MB |
+| HTTP | New | 66.06 ms (65.77–66.71) | 52.74 ms (52.53–52.92) | 19.32 → 11.91 MB |
+| HTTP | Replay | 37.23 ms (37.00–37.76) | 24.34 ms (23.70–24.68) | 17.90 → 10.48 MB |
+
+New acceptance improves about 20%; replay improves 33–35%. Go allocation volume
+(decimal MB) falls 38–42%. Whole-process RSS, which includes opening and warm-up,
+does not show a consistent reduction; smaller allocation volume is not a native
+memory-capacity claim. No storage schema or wire contract changes.
+
+The full ingestion matrix uses three alternating fresh-process samples per version,
+one iteration each, retaining exact token-component totals, session counts and
+processing completion checks. No competing verification was detected in these samples.
+Elapsed medians (ranges), including capture, delivery, visibility and first query:
+
+| Shape | Adapter | Before | After |
+| --- | --- | --- | --- |
+| 50 sessions | Direct | 7.35 s (7.35–7.44) | 7.29 s (7.18–7.33) |
+| 50 sessions | Hosted HTTP | 7.57 s (7.43–7.57) | 7.23 s (7.21–7.27) |
+| 1 session | Direct | 9.14 s (8.48–9.31) | 8.16 s (8.09–8.20) |
+| 1 session | Hosted HTTP | 9.21 s (9.20–9.48) | 8.17 s (8.14–8.87) |
+| 500 sessions | Direct | 11.46 s (11.35–11.47) | 11.33 s (11.28–11.34) |
+| 500 sessions | Hosted HTTP | 11.83 s (11.78–11.91) | 11.66 s (11.57–11.83) |
+
+The 50/500-session cases allocate about 11% fewer Go bytes overall. Their elapsed
+gains are much smaller than isolated acceptance: publication still dominates.
+The single-session result also reflects changed scheduling: the candidate still
+loads 90,897–99,089 records for 10,001 accepted entries, with 18–19 stale projections.
+This change does not solve repeated processing of actively arriving components.
+
+Native-fixture elapsed medians are 163 → 138 ms direct and 143 → 162 ms HTTP;
+HTTP ranges overlap (139–144 versus 139–165 ms). The small fixture is sensitive to
+the benchmark's 25 ms visibility polling; no uniform end-to-end speedup is claimed.
+Both versions retain the independent native token oracle and seven publications.
+
+Three additional paired samples cover unchanged sync and appending one message
+to the warmed 50-session history. Unchanged sync submits/processes nothing;
+append accepts one entry and publishes its 202-record component once in both
+versions. Unchanged medians are 66 → 70 ms direct and 70 → 51 ms HTTP. Append
+medians rise from 148 → 181 ms direct (ranges 143–173 versus 151–182 ms) and
+150 → 183 ms HTTP (146–254 versus 147–203 ms). These overlapping, polling-sensitive
+samples establish correct incremental behavior, not an incremental latency gain.
+
+Saved-query runs preserve all sessions, nondecreasing totals and the exact final
+total while ingesting. Per-run mean query times are 32–35 ms before and 30–36 ms
+after; the slowest query is 50 versus 53 ms. Candidate runs perform 37–42 reads.
+Their peak RSS median rises from 444 to 469 MiB despite lower Go allocation volume;
+the matrix supports no general peak-memory reduction claim.
+
+A separate scoped 50-session/direct CPU profile attributes 2.36 CPU-seconds
+(16.48% cumulatively) to `DecodeBatch` before and 1.79 (12.85%) after, including
+the independent collector boundary. Total sampled CPU is 14.32 versus 13.93 seconds.
+These are one diagnostic run per version, separate from latency samples;
+cumulative percentages overlap and do not establish a total-CPU speedup budget.
+
 ## Reproduction
 
 From the repository root, install the pinned development dependencies first.
@@ -300,6 +385,8 @@ env GOTOOLCHAIN=go1.26.8 go test ./internal/collector -run '^$' \
   -bench '^BenchmarkIngestion$' -benchtime=1x -count=3
 env GOTOOLCHAIN=go1.26.8 go test ./internal/collector -run '^$' \
   -bench '^BenchmarkIngestionSavedQueries$' -benchtime=1x -count=3
+env GOTOOLCHAIN=go1.26.8 go test ./internal/collector -run '^$' \
+  -bench '^BenchmarkReceiverAcceptance$' -benchtime=10x -count=3
 env GOTOOLCHAIN=go1.26.8 go test ./internal/collector -run '^$' \
   -bench '^BenchmarkLocal(Startup|SavedQueries)$' -benchtime=3x -count=3
 env GOTOOLCHAIN=go1.26.8 go test ./internal/datastore -run '^$' \

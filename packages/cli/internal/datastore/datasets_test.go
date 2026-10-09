@@ -12,7 +12,7 @@ import (
 func TestStoredReceiptCannotRedirectScopedProcessingRead(t *testing.T) {
 	root, alice, bob := hostedStores(t)
 	for _, store := range []*Store{alice, bob} {
-		if _, err := store.Accept(t.Context(), batchBody(t, store, "stream", "batch", piRecord("message", 100))); err != nil {
+		if _, err := store.Accept(t.Context(), evidence.ProtocolVersion, batchBody(t, store, "stream", "batch", piRecord("message", 100))); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -58,17 +58,17 @@ func TestDatasetsIsolateIdenticalNativeAndDeliveryIdentities(t *testing.T) {
 	record := piRecord("message", 100)
 	for _, store := range []*Store{alice, bob} {
 		body := batchBody(t, store, "same-stream", "same-batch", record, record)
-		before, err := store.Accept(t.Context(), body)
+		before, err := store.Accept(t.Context(), evidence.ProtocolVersion, body)
 		if err != nil {
 			t.Fatal(err)
 		}
-		replay, err := store.Accept(t.Context(), body)
+		replay, err := store.Accept(t.Context(), evidence.ProtocolVersion, body)
 		if err != nil || replay.Receipt != before.Receipt {
 			t.Fatal(replay, err)
 		}
 	}
 	// A separate collector within Alice's dataset must still deduplicate.
-	if _, err := alice.Accept(t.Context(), batchBody(t, alice, "other-stream", "batch", record)); err != nil {
+	if _, err := alice.Accept(t.Context(), evidence.ProtocolVersion, batchBody(t, alice, "other-stream", "batch", record)); err != nil {
 		t.Fatal(err)
 	}
 	drain(t, root)
@@ -89,7 +89,7 @@ func TestDatasetsIsolateIdenticalNativeAndDeliveryIdentities(t *testing.T) {
 		t.Fatal("foreign receipt exposed", err)
 	}
 	// A scoped handle rejects a different dataset binding before mutation.
-	if _, err := bob.Accept(t.Context(), batchBody(t, alice, "foreign", "batch", piRecord("other", 200))); err == nil {
+	if _, err := bob.Accept(t.Context(), evidence.ProtocolVersion, batchBody(t, alice, "foreign", "batch", piRecord("other", 200))); err == nil {
 		t.Fatal("foreign batch accepted")
 	}
 	var count int
@@ -101,7 +101,7 @@ func TestDatasetsIsolateIdenticalNativeAndDeliveryIdentities(t *testing.T) {
 func TestGenerationAndProjectionReplacementAreDatasetLocal(t *testing.T) {
 	root, alice, bob := hostedStores(t)
 	for _, store := range []*Store{alice, bob} {
-		if _, err := store.Accept(t.Context(), batchBody(t, store, "stream", "batch", piRecord("message", 100))); err != nil {
+		if _, err := store.Accept(t.Context(), evidence.ProtocolVersion, batchBody(t, store, "stream", "batch", piRecord("message", 100))); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -123,7 +123,7 @@ func TestGenerationAndProjectionReplacementAreDatasetLocal(t *testing.T) {
 		t.Fatal(aliceAfter, err)
 	}
 	// Conflicting evidence withdraws only Alice's countable projection.
-	if _, err := alice.Accept(t.Context(), batchBody(t, alice, "conflict", "batch", piRecord("message", 200))); err != nil {
+	if _, err := alice.Accept(t.Context(), evidence.ProtocolVersion, batchBody(t, alice, "conflict", "batch", piRecord("message", 200))); err != nil {
 		t.Fatal(err)
 	}
 	drain(t, root)
@@ -137,7 +137,7 @@ func TestGenerationAndProjectionReplacementAreDatasetLocal(t *testing.T) {
 
 func TestAncestorEvidenceNeverCrossesDatasets(t *testing.T) {
 	root, alice, bob := hostedStores(t)
-	if _, err := bob.Accept(t.Context(), batchBody(t, bob, "child", "batch", codexRecord("child", "parent"))); err != nil {
+	if _, err := bob.Accept(t.Context(), evidence.ProtocolVersion, batchBody(t, bob, "child", "batch", codexRecord("child", "parent"))); err != nil {
 		t.Fatal(err)
 	}
 	drain(t, root)
@@ -145,7 +145,7 @@ func TestAncestorEvidenceNeverCrossesDatasets(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := alice.Accept(t.Context(), batchBody(t, alice, "parent", "batch", codexRecord("parent", ""))); err != nil {
+	if _, err := alice.Accept(t.Context(), evidence.ProtocolVersion, batchBody(t, alice, "parent", "batch", codexRecord("parent", ""))); err != nil {
 		t.Fatal(err)
 	}
 	drain(t, root)
@@ -156,7 +156,7 @@ func TestAncestorEvidenceNeverCrossesDatasets(t *testing.T) {
 	if total(t, bob, "analytics.confirmed") != 0 || total(t, bob, "analytics.estimated") != 120 {
 		t.Fatal("foreign parent attributed copied evidence")
 	}
-	if _, err := bob.Accept(t.Context(), batchBody(t, bob, "parent", "batch", codexRecord("parent", ""))); err != nil {
+	if _, err := bob.Accept(t.Context(), evidence.ProtocolVersion, batchBody(t, bob, "parent", "batch", codexRecord("parent", ""))); err != nil {
 		t.Fatal(err)
 	}
 	drain(t, root)
@@ -168,7 +168,7 @@ func TestAncestorEvidenceNeverCrossesDatasets(t *testing.T) {
 func TestWorkerRotatesDatasetsAndSkipsFailedScopes(t *testing.T) {
 	root, alice, bob := hostedStores(t)
 	for _, store := range []*Store{alice, bob} {
-		if _, err := store.Accept(t.Context(), batchBody(t, store, "stream", "batch", piRecord("message", 100))); err != nil {
+		if _, err := store.Accept(t.Context(), evidence.ProtocolVersion, batchBody(t, store, "stream", "batch", piRecord("message", 100))); err != nil {
 			t.Fatal(err)
 		}
 	}

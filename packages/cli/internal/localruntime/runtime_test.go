@@ -34,7 +34,7 @@ func pendingBatch(t *testing.T, store *datastore.Store) evidence.Receipt {
 	if err != nil {
 		t.Fatal(err)
 	}
-	response, err := store.Accept(t.Context(), body)
+	response, err := store.Accept(t.Context(), evidence.ProtocolVersion, body)
 	if err != nil {
 		t.Fatal(err)
 	}

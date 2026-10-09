@@ -423,13 +423,16 @@ type AdmissionError struct{ Code string }
 func (e *AdmissionError) Error() string { return e.Code }
 func reject(code string) error          { return &AdmissionError{Code: code} }
 
-func (s *Store) Accept(ctx context.Context, body []byte) (evidence.Response, error) {
+func (s *Store) Accept(ctx context.Context, protocol int, body []byte) (evidence.Response, error) {
 	batch, err := evidence.DecodeBatch(body)
 	if err != nil {
 		if err.Error() == "incompatible" {
-			return evidence.Response{}, reject("incompatible")
+			return evidence.Response{}, &evidence.ValidationError{Code: "incompatible"}
 		}
-		return evidence.Response{}, reject("invalid_request")
+		return evidence.Response{}, &evidence.ValidationError{Code: "invalid_request"}
+	}
+	if batch.ProtocolVersion != protocol {
+		return evidence.Response{}, &evidence.ValidationError{Code: "incompatible"}
 	}
 	records, err := prepareAcceptance(batch)
 	if err != nil {
@@ -452,9 +455,6 @@ func (s *Store) Accept(ctx context.Context, body []byte) (evidence.Response, err
 	}
 	if batch.DatasetID != m.DatasetID {
 		return evidence.Response{}, reject("dataset_mismatch")
-	}
-	if s.kind == KindHosted && batch.ProtocolVersion != evidence.ProtocolVersion {
-		return evidence.Response{}, reject("incompatible")
 	}
 	if batch.DatabaseID != m.DatabaseID {
 		return evidence.Response{}, reject("database_mismatch")
