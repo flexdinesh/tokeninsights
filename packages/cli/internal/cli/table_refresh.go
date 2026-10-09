@@ -19,6 +19,7 @@ type tuiRefresh struct {
 	result                       *localruntime.CollectionResult
 	startupAttemptID             string
 	attempt                      *collectorprogress.Attempt
+	capture                      map[string]collectorprogress.Capture
 	statusKnown                  bool
 	statusErr                    error
 	status                       analytics.ProcessingStatus
@@ -86,6 +87,7 @@ func (m interactiveModel) observeRefresh(msg sharedSyncMsg) interactiveModel {
 	if msg.collection != nil {
 		if attempt := currentCollection(*msg.collection); attempt != nil {
 			m.refresh.attempt = attempt
+			m.refresh.capture = msg.capture[attempt.AttemptID]
 		}
 		if attempt := m.refresh.attempt; attempt != nil && attempt.Stage == "accepted" {
 			m.refresh.token = fmt.Sprintf("%s/%d", attempt.AttemptID, attempt.FinishedAtMS)
@@ -148,6 +150,9 @@ func (m interactiveModel) refreshLine() string {
 		text, compact, failed = "Processing needs attention · showing saved usage · r Reload", "Processing needs attention", true
 	case m.collectionActive():
 		stage := "checking local sessions"
+		if m.options.local != nil {
+			stage = m.captureActivity()
+		}
 		if attempt := m.refresh.attempt; attempt != nil {
 			switch attempt.Stage {
 			case "waiting":
@@ -157,6 +162,13 @@ func (m interactiveModel) refreshLine() string {
 			}
 		}
 		text, compact, busy = "Refreshing usage · "+stage+" · updates automatically", "Refreshing · auto-updating", true
+		if m.options.local != nil {
+			compact = "Refreshing sources · auto-updating"
+		}
+		if attempt := m.refresh.attempt; m.options.local != nil && attempt != nil && attempt.Stage == "submitting" && attempt.PendingKnown {
+			text = fmt.Sprintf("Submitting · %d entries accepted · %d pending", attempt.AcknowledgedEntries, attempt.Pending)
+			compact = fmt.Sprintf("Submitting · %d accepted · %d pending", attempt.AcknowledgedEntries, attempt.Pending)
+		}
 	case m.collectionFailed():
 		text, compact, failed = "Refresh incomplete · showing saved usage · run tokeninsights sync", "Refresh incomplete · saved usage", true
 		if m.refresh.result != nil && m.refresh.result.Result.Collection.Quarantined > 0 {
@@ -164,6 +176,10 @@ func (m interactiveModel) refreshLine() string {
 		}
 	case m.pendingRefresh || m.sharedSync.Running:
 		text, compact, busy = "Refreshing usage · processing collected data · updates automatically", "Processing · auto-updating", true
+		if m.options.local != nil && m.refresh.statusKnown {
+			text = fmt.Sprintf("Refreshing usage · processing · %d groups pending", m.refresh.status.Pending)
+			compact = fmt.Sprintf("Processing · %d groups pending", m.refresh.status.Pending)
+		}
 	case m.refreshNeedsRead() || (m.refresh.requested && m.refresh.result != nil && !m.refresh.statusKnown) || (m.reloadInFlight && m.refresh.loaded):
 		text, compact, busy = "Updating displayed usage…", "Updating usage…", true
 	case m.refresh.statusKnown && m.refresh.loaded && m.refresh.token != "":

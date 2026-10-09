@@ -32,7 +32,7 @@ func runView(invocation commandInvocation, args []string) error {
 	if err := settings.ValidateDestination(); err != nil {
 		return err
 	}
-	runtime, err := localruntime.OpenWithApp(invocation.context, options.collectorDBPath, options.dbPath, settings.ApplicationPath())
+	runtime, err := localruntime.OpenWithAppOptions(invocation.context, options.collectorDBPath, options.dbPath, settings.ApplicationPath(), localruntime.Options{CaptureDetails: true})
 	if err != nil {
 		return err
 	}

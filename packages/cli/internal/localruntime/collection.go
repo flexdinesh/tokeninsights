@@ -31,6 +31,7 @@ func (r *Runtime) StartCollection(ctx context.Context, options pipeline.SyncOpti
 	attempt, cancel := context.WithCancel(ctx)
 	stop := context.AfterFunc(r.ctx, cancel)
 	observer := r.Observe(attempt)
+	options.CaptureProgress = observer.captureProgress()
 	progress := options.Progress
 	options.DBPath = r.collectorPath
 	options.Progress = func(event pipeline.SyncProgressEvent) {

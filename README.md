@@ -56,7 +56,15 @@ The local hostname identifies the machine running the viewer, not the producer o
 every historical fact. Imported history may include other machines.
 
 The TUI keeps a visible refresh strip above navigation: saved usage remains usable
-during collection, submission, and processing. Completion appears only after
+during collection, submission, and processing. Four persistent harness rows show
+discovery, reading, saving and finalized source counts with remaining work;
+unknown discovery totals stay unknown. Counts measure source files/databases,
+not sessions or tokens. Failed and quarantined sources remain explicit.
+Submission shows acknowledged entries and pending entries; processing shows the
+current local dataset backlog, which may include earlier work. No overall
+percentage or ETA is estimated. This detail is single-process TUI only;
+browser and distributed collector/server progress contracts are unchanged.
+Completion appears only after
 processing is query-visible and a successful dashboard read displays that revision;
 acceptance alone is not completion. Failures and quarantined sources show an
 incomplete refresh without discarding saved usage. `--sync=false` skips startup

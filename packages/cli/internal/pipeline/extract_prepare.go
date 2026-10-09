@@ -215,6 +215,7 @@ func extractPrepared(ctx context.Context, options SyncOptions, store *rawcollect
 		harnesses = SupportedHarnesses
 	}
 	summary.RequestedHarnesses = len(harnesses)
+	progress := newCaptureReporter(options.CaptureProgress, harnesses)
 	if options.locationResolver == nil {
 		options.locationResolver = &locationResolver{}
 	}
@@ -222,15 +223,19 @@ func extractPrepared(ctx context.Context, options SyncOptions, store *rawcollect
 	states := make([]rawHarnessState, len(harnesses))
 	for i, h := range harnesses {
 		states[i].harness = h
+		progress.discovering(i)
 		if options.Progress != nil {
 			options.Progress(SyncProgressEvent{Harness: h, Status: SyncProgressDiscovering})
 		}
 		adapter, ok := AdapterFor(h)
 		if !ok {
+			progress.stopped(i, false)
+			progress.stoppedUnfinished(false)
 			return summary, errors.New("unsupported_harness")
 		}
 		sources, err := adapter.Discover(ctx, DiscoverOptions{Sources: options.Sources, SourceDir: options.SourceDir, HarnessSubdirOnly: len(harnesses) > 1})
 		if err != nil {
+			progress.stopped(i, ctx.Err() != nil)
 			summary.Failed++
 			summary.Errors = append(summary.Errors, err)
 			if options.Progress != nil {
@@ -238,6 +243,7 @@ func extractPrepared(ctx context.Context, options SyncOptions, store *rawcollect
 			}
 			continue
 		}
+		progress.discovered(i, len(sources))
 		if len(sources) == 0 {
 			summary.Skipped++
 			if options.Progress != nil {
@@ -259,6 +265,7 @@ func extractPrepared(ctx context.Context, options SyncOptions, store *rawcollect
 	}
 	directory, err := os.MkdirTemp("", "tokeninsights-capture-*")
 	if err != nil {
+		progress.stoppedUnfinished(ctx.Err() != nil)
 		return summary, err
 	}
 	defer func() { _ = os.RemoveAll(directory) }()
@@ -272,7 +279,9 @@ func extractPrepared(ctx context.Context, options SyncOptions, store *rawcollect
 	for range workers {
 		wg.Go(func() {
 			for index := range queue {
+				progress.reading(jobs[index].harnessIndex, true)
 				p, err := prepareRawSource(ctx, jobs[index].source, options, store, directory)
+				progress.reading(jobs[index].harnessIndex, false)
 				results[index] <- rawSourceResult{prepared: p, err: err}
 			}
 		})
@@ -289,9 +298,11 @@ func extractPrepared(ctx context.Context, options SyncOptions, store *rawcollect
 		state := &states[job.harnessIndex]
 		count := 0
 		if result.err == nil {
+			progress.saving(job.harnessIndex)
 			count, result.err = commitPreparedRaw(ctx, job.source, result.prepared, store)
 		}
 		if result.prepared.quarantine != nil {
+			progress.saving(job.harnessIndex)
 			if saveErr := store.SaveQuarantine(ctx, *result.prepared.quarantine); saveErr != nil {
 				result.err = errors.Join(result.err, saveErr)
 			} else {
@@ -299,6 +310,7 @@ func extractPrepared(ctx context.Context, options SyncOptions, store *rawcollect
 			}
 		}
 		result.prepared.close()
+		progress.finalized(job.harnessIndex, count, result.err, result.prepared.quarantined)
 		if result.prepared.quarantined {
 			state.quarantined++
 			summary.Quarantined++
@@ -332,6 +344,9 @@ func extractPrepared(ctx context.Context, options SyncOptions, store *rawcollect
 	}
 	close(queue)
 	wg.Wait()
+	if ctx.Err() != nil {
+		progress.stoppedUnfinished(true)
+	}
 	if issued < len(jobs) {
 		for _, state := range states {
 			if state.remaining > 0 {

@@ -111,3 +111,26 @@ that usage appears automatically; definitive empty-state guidance follows comple
 `r` remains query-only. `--sync=false` skips startup collection, while durable
 processing resumes. Quit cancels and joins background tasks before storage closes.
 No schema, accounting, capture-priority or hosted capability changes.
+
+## Detailed local progress refinement — 2026-10-10
+
+User approved always-visible harness measurements for single-process TUI only.
+Extend the existing refresh strip with four rows, paired on compact-height
+terminals when width permits. Use existing sky busy text, pink completion,
+warning-red failures, aligned numbers, transparent canvas and ASCII activity.
+Height stays stable through completion/failure; drawers begin below the complete
+progress block. Preserve saved usage, navigation, coverage and keyboard access.
+
+Display actual discovery, waiting, reading and saving phases. Source totals are
+unknown until discovery completes. Checked counts finalized source outcomes;
+failed and quarantined outcomes remain explicit, and remaining sources include
+unissued work after cancellation. Source counts are not session/token counts.
+The summary shows acknowledged submission entries or current dataset processing
+backlog. Completion retains the processing/display revision fences above.
+No overall percentage or ETA. Startup collection off shows disabled harnesses;
+queued local jobs use the same capture measurement contract.
+
+Pipeline measurements are opt-in, localruntime translates them, and the existing
+registry owns bounded attempt state and immutable Go-only snapshots. Only TUI
+composition enables detail; browser, distributed behavior, HTTP contracts,
+schemas and accounting remain unchanged.

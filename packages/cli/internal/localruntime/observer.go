@@ -16,12 +16,30 @@ import (
 // Observer fans progress into an optional publisher. Failures cannot
 // invalidate capture or delivery. Counts describe acknowledged work only.
 type Observer struct {
-	mu      sync.Mutex
-	state   collectorprogress.Message
-	ctx     context.Context
-	cancel  context.CancelFunc
-	done    chan struct{}
-	publish func(context.Context, collectorprogress.Message) error
+	mu             sync.Mutex
+	state          collectorprogress.Message
+	ctx            context.Context
+	cancel         context.CancelFunc
+	done           chan struct{}
+	publish        func(context.Context, collectorprogress.Message) error
+	publishCapture func(string, string, collectorprogress.Capture) error
+}
+
+// captureProgress keeps mode policy and registry types outside the capture module.
+// A nil callback disables detail measurement entirely in other compositions.
+func (o *Observer) captureProgress() func(pipeline.CaptureProgressEvent) {
+	if o.publishCapture == nil {
+		return nil
+	}
+	return func(event pipeline.CaptureProgressEvent) {
+		o.mu.Lock()
+		defer o.mu.Unlock()
+		_ = o.publishCapture(o.state.AttemptID, string(event.Harness), collectorprogress.Capture{
+			Phase: collectorprogress.CapturePhase(event.Phase), TotalKnown: event.TotalKnown,
+			Total: int64(event.Total), Checked: int64(event.Checked), Captured: int64(event.Captured), Unchanged: int64(event.Unchanged),
+			Failed: int64(event.Failed), Quarantined: int64(event.Quarantined), Active: int64(event.Active),
+		})
+	}
 }
 
 // newObserver publishes through the command-owned progress registry.

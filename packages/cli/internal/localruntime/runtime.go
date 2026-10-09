@@ -38,27 +38,34 @@ var ErrProcessingTimeout = fmt.Errorf("processing_timeout: usage is still proces
 const visibilityPoll = 25 * time.Millisecond
 
 type Runtime struct {
-	InstanceID    string
-	Hostname      string
-	Policy        serverfeatures.Policy
-	Progress      *collectorprogress.Registry
-	Jobs          *syncjob.Store
-	jobsDone      chan struct{}
-	Store         *datastore.Store
-	App           *appstore.Store
-	Query         *queryclient.Client
-	Destination   *collector.Destination
-	queries       analytics.Repository
-	owner         *os.File
-	cancel        context.CancelFunc
-	ctx           context.Context
-	collectorPath string
-	dataPath      string
-	lifecycleMu   sync.Mutex
-	closing       bool
-	collections   sync.WaitGroup
-	done          chan struct{}
-	once          sync.Once
+	InstanceID     string
+	Hostname       string
+	Policy         serverfeatures.Policy
+	Progress       *collectorprogress.Registry
+	Jobs           *syncjob.Store
+	jobsDone       chan struct{}
+	Store          *datastore.Store
+	App            *appstore.Store
+	Query          *queryclient.Client
+	Destination    *collector.Destination
+	queries        analytics.Repository
+	owner          *os.File
+	cancel         context.CancelFunc
+	ctx            context.Context
+	collectorPath  string
+	dataPath       string
+	lifecycleMu    sync.Mutex
+	closing        bool
+	collections    sync.WaitGroup
+	captureDetails bool
+	done           chan struct{}
+	once           sync.Once
+}
+
+// Options selects command-owned local behavior at composition time.
+// Only the TUI enables capture details; public progress retains its wire shape.
+type Options struct {
+	CaptureDetails bool
 }
 
 func Open(ctx context.Context, collectorPath, dataPath string) (*Runtime, error) {
@@ -69,6 +76,10 @@ func Open(ctx context.Context, collectorPath, dataPath string) (*Runtime, error)
 	return OpenWithApp(ctx, collectorPath, path, filepath.Join(filepath.Dir(path), "app.sqlite"))
 }
 func OpenWithApp(ctx context.Context, collectorPath, dataPath, appPath string) (*Runtime, error) {
+	return OpenWithAppOptions(ctx, collectorPath, dataPath, appPath, Options{})
+}
+
+func OpenWithAppOptions(ctx context.Context, collectorPath, dataPath, appPath string, options Options) (*Runtime, error) {
 	canonicalCollector, _, err := serverownership.Identify(collectorPath)
 	if err != nil {
 		return nil, err
@@ -170,7 +181,7 @@ func OpenWithApp(ctx context.Context, collectorPath, dataPath, appPath string) (
 	}
 	hostname := resolveHostname(os.Hostname)
 	id := hex.EncodeToString(instance[:])
-	r := &Runtime{InstanceID: id, Hostname: hostname, Policy: policy, Progress: collectorprogress.New(id), Jobs: jobs, jobsDone: make(chan struct{}), Store: store, App: app, owner: owner, cancel: cancel, ctx: workerCtx, collectorPath: canonicalCollector, dataPath: path, done: make(chan struct{}), queries: analytics.DuckDB{Store: store}}
+	r := &Runtime{InstanceID: id, Hostname: hostname, Policy: policy, Progress: collectorprogress.New(id), Jobs: jobs, jobsDone: make(chan struct{}), Store: store, App: app, owner: owner, cancel: cancel, ctx: workerCtx, collectorPath: canonicalCollector, dataPath: path, done: make(chan struct{}), queries: analytics.DuckDB{Store: store}, captureDetails: options.CaptureDetails}
 	r.Query = queryclient.NewDirect(server.NewDirectQuery(r.queries, id, hostname))
 	r.Destination = &collector.Destination{Identity: "http://local", DatabaseID: metadata.DatabaseID, DatasetID: metadata.DatasetID, Local: true, Transport: collector.DirectDelivery{Receiver: store}}
 	// WaitVisible reads durable failure state, including failures from a prior owner.
@@ -183,9 +194,13 @@ func (r *Runtime) Observe(ctx context.Context) *Observer {
 	if !r.Policy.Capabilities.Has(serverfeatures.CollectorProgress) {
 		return newObserver(ctx, nil)
 	}
-	return newObserver(ctx, func(_ context.Context, message collectorprogress.Message) error {
+	observer := newObserver(ctx, func(_ context.Context, message collectorprogress.Message) error {
 		return r.Progress.Apply(message)
 	})
+	if r.captureDetails && observer.publish != nil {
+		observer.publishCapture = r.Progress.UpdateCapture
+	}
+	return observer
 }
 
 func resolveHostname(lookup func() (string, error)) string {

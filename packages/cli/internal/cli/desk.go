@@ -17,7 +17,6 @@ const (
 	deskCompactReadoutWidth = 96
 	deskFooterRows          = 4 // Spacer, coverage, divider, shortcuts.
 	deskDrawerWidth         = 44
-	deskDrawerTop           = 2
 	deskDrawerChrome        = 10 // Title, description, spacing, position, and actions.
 )
 
@@ -110,7 +109,7 @@ func tokenReadouts(rows []renderRow) []deskMetric {
 
 func (m interactiveModel) deskHeader() []string {
 	width := m.tableViewportWidth()
-	lines := []string{m.renderStatusline(), m.refreshLine()}
+	lines := m.deskProgressHeader()
 	if m.timezone != "" && m.height >= deskRoomyHeight {
 		lines = append(lines, hintStyle.Render(truncateCell("Server time: "+m.timezone+" · r Reload saved usage", width)))
 	}
@@ -147,6 +146,14 @@ func (m interactiveModel) deskHeader() []string {
 	}
 	lines = append(lines, "")
 	return lines
+}
+
+func (m interactiveModel) deskProgressHeader() []string {
+	return append([]string{m.renderStatusline(), m.refreshLine()}, m.captureRows()...)
+}
+
+func (m interactiveModel) drawerTop() int {
+	return len(m.deskProgressHeader())
 }
 
 func deskControl(key, label, value string) string {
@@ -230,7 +237,7 @@ func (m interactiveModel) renderDesk() string {
 		if m.sessionCounts.Synced == 0 {
 			message, recovery = "No ingested usage yet.", "Run tokeninsights sync, then press r to reload."
 			if m.refreshBusy() {
-				message, recovery = "Checking local sessions…", "Usage appears automatically as refresh completes."
+				message, recovery = "Refreshing local usage…", "Usage appears automatically as refresh completes."
 			} else if m.collectionFailed() {
 				message, recovery = "Refresh incomplete.", "Run tokeninsights sync to retry; saved usage remains available."
 			}
@@ -305,7 +312,7 @@ func (m interactiveModel) deskFooter() string {
 }
 
 func (m interactiveModel) drawerSize() (int, int) {
-	return min(deskDrawerWidth, m.width), max(1, m.height-deskDrawerTop)
+	return min(deskDrawerWidth, m.width), max(1, m.height-m.drawerTop())
 }
 
 func (m interactiveModel) renderDeskDrawer(background string) string {
@@ -313,7 +320,7 @@ func (m interactiveModel) renderDeskDrawer(background string) string {
 	panel := m.renderDrawerContent(width, height)
 	base := strings.Split(background, "\n")
 	for i, line := range strings.Split(panel, "\n") {
-		y := i + deskDrawerTop
+		y := i + m.drawerTop()
 		if y >= len(base) {
 			break
 		}

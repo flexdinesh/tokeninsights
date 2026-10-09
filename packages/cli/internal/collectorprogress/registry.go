@@ -66,10 +66,20 @@ type Registry struct {
 	instanceID string
 	now        func() time.Time
 	attempts   map[string]Attempt
+	captures   map[string]map[string]Capture
 }
 
 func New(instanceID string) *Registry {
-	return &Registry{instanceID: instanceID, now: time.Now, attempts: make(map[string]Attempt)}
+	return &Registry{instanceID: instanceID, now: time.Now, attempts: make(map[string]Attempt), captures: make(map[string]map[string]Capture)}
+}
+
+func validHarness(harness string) bool {
+	switch harness {
+	case "codex", "opencode", "claude-code", "pi":
+		return true
+	default:
+		return false
+	}
 }
 
 func terminal(stage string) bool {
@@ -81,9 +91,7 @@ func validMessage(m Message) bool {
 		return false
 	}
 	for harness, state := range m.Harnesses {
-		switch harness {
-		case "codex", "opencode", "claude-code", "pi":
-		default:
+		if !validHarness(harness) {
 			return false
 		}
 		switch state {
@@ -127,9 +135,11 @@ func (r *Registry) expire(now time.Time) {
 			attempt.FinishedAtMS = attempt.ExpiresAtMS
 			attempt.UpdatedAtMS = attempt.ExpiresAtMS
 			r.attempts[id] = attempt
+			r.finishCapture(id, attempt.Stage)
 		}
 		if terminal(attempt.Stage) && now.UnixMilli()-attempt.FinishedAtMS >= TerminalRetention.Milliseconds() {
 			delete(r.attempts, id)
+			delete(r.captures, id)
 		}
 	}
 }
@@ -158,6 +168,7 @@ func (r *Registry) Apply(m Message) error {
 				return ErrBusy
 			}
 			delete(r.attempts, oldest)
+			delete(r.captures, oldest)
 		}
 		attempt = Attempt{AttemptID: m.AttemptID, Stage: "waiting", StartedAtMS: now.UnixMilli()}
 	} else {
@@ -183,6 +194,7 @@ func (r *Registry) Apply(m Message) error {
 	attempt.ExpiresAtMS = now.Add(LeaseDuration).UnixMilli()
 	if m.Operation == "finish" {
 		attempt.FinishedAtMS = now.UnixMilli()
+		r.finishCapture(m.AttemptID, attempt.Stage)
 	}
 	r.attempts[m.AttemptID] = attempt
 	return nil
@@ -192,6 +204,10 @@ func (r *Registry) Snapshot() Snapshot {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.expire(r.now())
+	return r.snapshotLocked()
+}
+
+func (r *Registry) snapshotLocked() Snapshot {
 	snapshot := Snapshot{InstanceID: r.instanceID, Attempts: make([]Attempt, 0, len(r.attempts))}
 	for _, attempt := range r.attempts {
 		attempt.Harnesses = cloneHarnesses(attempt.Harnesses)
@@ -219,5 +235,6 @@ func (r *Registry) InterruptAll() {
 		attempt.Stage, attempt.ErrorCode = "interrupted", "publisher_lost"
 		attempt.UpdatedAtMS, attempt.FinishedAtMS = now, now
 		r.attempts[id] = attempt
+		r.finishCapture(id, attempt.Stage)
 	}
 }

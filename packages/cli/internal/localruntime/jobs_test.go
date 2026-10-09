@@ -2,6 +2,7 @@ package localruntime_test
 
 import (
 	"context"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/collectorprogress"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/config"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/localruntime"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/pipeline"
@@ -17,7 +18,7 @@ func TestViewerConsumesQueuedRequestsInProcessAndReplaysWithoutInflation(t *test
 	settings := config.Defaults()
 	settings.CollectorDBPath = filepath.Join(root, "collector.sqlite")
 	settings.ServerDBPath = filepath.Join(root, "server.duckdb")
-	runtime, err := localruntime.Open(t.Context(), settings.CollectorDBPath, settings.ServerDBPath)
+	runtime, err := localruntime.OpenWithAppOptions(t.Context(), settings.CollectorDBPath, settings.ServerDBPath, filepath.Join(root, "app.sqlite"), localruntime.Options{CaptureDetails: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -60,12 +61,17 @@ func TestViewerConsumesQueuedRequestsInProcessAndReplaysWithoutInflation(t *test
 		t.Fatal("queued progress missing", progress)
 	}
 	var accepted int64
+	details := runtime.Progress.Details()
 	for _, attempt := range progress.Attempts {
 		// Unchanged sources may skip capture on the replay job.
 		if attempt.Stage != "accepted" || attempt.Harnesses["pi"] != "complete" && attempt.Harnesses["pi"] != "skipped" {
 			t.Fatal("queued capture not finished", attempt)
 		}
 		accepted += attempt.AcknowledgedEntries
+		capture := details.Captures[attempt.AttemptID]["pi"]
+		if capture.Phase != collectorprogress.CaptureComplete || capture.Total != 1 || capture.Checked != 1 || capture.Captured+capture.Unchanged != 1 {
+			t.Fatal("queued source measurements missing or mixed", attempt, capture)
+		}
 	}
 	if accepted == 0 {
 		t.Fatal("queued acceptance not reported", progress)
