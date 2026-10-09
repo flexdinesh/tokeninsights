@@ -137,6 +137,23 @@ recovery. See [the failure contract](collector-ingestion-tests.md) for executabl
 coverage and remaining failure-test gaps. Fixtures must remain synthetic and
 semantic expected results must never be weakened to match duplication or loss.
 
+Current raw-path startup and source-writer benchmarks use temporary synthetic
+fixtures; they never open a user's collector or token database:
+
+```sh
+cd packages/cli
+go test ./internal/collector -run '^$' -bench '^BenchmarkLocalStartup$' -benchtime=3x -count=3
+go test ./internal/rawcollectorstore -run '^$' -bench '^BenchmarkCaptureRecords$' -benchtime=5x -count=5
+```
+
+Startup measures owner opening, capture/direct acceptance, processing visibility
+and first query for first ingest, unchanged restart and append. It excludes fixture
+setup, warm-up and owner shutdown. The small Pi fixture is not a mixed-harness or
+large-history latency claim. Writer benchmarks separate new observations from
+replay. Compare repeated samples on one machine/toolchain; optimize measured
+stages while preserving independent semantic fixtures. Retained `BenchmarkSync`
+exercises the compatibility pipeline rather than current raw startup.
+
 ## Build Tooling
 
 The private `@tokeninsights/build-tools` workspace under `tools/build` owns schema validation, fixture preparation and safety checks, embedded-web checks, and Homebrew formula generation. Root pnpm scripts are the stable entry points.

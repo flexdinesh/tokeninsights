@@ -111,12 +111,19 @@ func TestDirectQueriesMatchHTTPWithoutNetworkDependency(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	remote := httptest.NewServer(server.NewDataHandler(ctx, runtime.Store, io.Discard, "127.0.0.1", instance.InstanceId, false))
+	if hostname, err := os.Hostname(); err != nil || instance.Hostname != hostname || instance.InstanceId != runtime.InstanceID {
+		t.Fatal("direct local identity unavailable", instance, err)
+	}
+	remote := httptest.NewServer(server.NewDataHandlerWithOptions(ctx, runtime.Store, io.Discard, server.DataHandlerOptions{Host: "127.0.0.1", InstanceID: runtime.InstanceID, Hostname: runtime.Hostname, Policy: runtime.Policy, Progress: runtime.Progress}))
 	network, err := queryclient.New(remote.URL, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer remote.Close()
+	remoteInstance, err := network.Instance(ctx)
+	if err != nil || remoteInstance.Hostname != instance.Hostname || remoteInstance.InstanceId != instance.InstanceId {
+		t.Fatal("direct and HTTP identity differ", instance, remoteInstance, err)
+	}
 	period := api.PeriodFilter("all")
 	params := api.GetUsageParams{Period: &period}
 	for _, tab := range []api.UsageTab{"tokens", "models", "providers", "harnesses", "sessions", "context", "repo"} {

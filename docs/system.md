@@ -27,9 +27,14 @@ flowchart LR
 ```
 
 Local commands own one token database and join workers on exit. TUI never needs a
-listener. Web reserves its requested listener before collecting and remains foreground.
+listener. Web reserves its requested listener and initializes storage, then opens
+before collecting. Its capability-gated progress endpoint shows command-owned
+startup and queued sync attempts; saved usage stays readable during processing.
+Web remains foreground and joins capture/processing workers before storage closes.
 One viewer at a time; concurrent sync requests enter a separate durable queue, then
-the owner collects/ingests them directly. Reload only queries saved usage.
+the owner collects/ingests them directly. Reload only queries saved usage; the
+browser toolbar control is local-only. Local machine identity is shared by direct
+and HTTP descriptors; it does not attribute imported history to this machine.
 
 Distributed sync saves a job, starts a finite worker through private config/readiness
 pipes and returns after startup ACK. `--print` also submits. `--wait` ends at acceptance;

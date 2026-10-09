@@ -309,8 +309,13 @@ Keep visible labels, field edges, native dates, and associated validation.
 Date ranges wrap to preserve their full label. Search wrappers own their focus
 outline; multiselect rows retain checkbox labels and search.
 Popovers target 22rem width, scroll within available height, and use 8px anchor
-offset with 16px collision clearance. The header shows the data hostname as plain text, with the page origin available
-in its title and footer. Connection failures retain retry controls.
+offset with 16px collision clearance. The header shows the local machine hostname
+in single-process mode; its accessible label distinguishes viewer identity from
+historical producers. The page origin remains available in the footer. Local-only
+Reload refreshes reads; hosted retains automatic refresh and request retry.
+Collection/submission and processing progress use compact status text beside saved
+data. Connection failures retain retry controls; usage/filter errors identify the
+failed request without marking the entire server unavailable.
 
 ### Navigation and chips
 

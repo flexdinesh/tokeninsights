@@ -72,9 +72,16 @@ func TestTUIReadsSavedUsageDirectlyWithoutCollection(t *testing.T) {
 		if model.options.local == nil || model.options.serverURL != "" {
 			t.Fatal("not direct query")
 		}
+		hostname, err := os.Hostname()
+		if err != nil || !strings.Contains(model.statusline.View(1000), "hostname: "+hostname) {
+			t.Fatal("TUI initial hostname unavailable", err)
+		}
 		loaded := model.loadDashboard()
 		if loaded.err != nil {
 			t.Fatal(loaded.err)
+		}
+		if loaded.hostname != hostname {
+			t.Fatal("TUI query hostname changed", loaded.hostname)
 		}
 		if len(loaded.coverage) != 0 {
 			t.Fatal("invented coverage")

@@ -16,7 +16,11 @@ import (
 type DirectQuery struct{ app *app }
 
 func NewDirectQuery(ctx context.Context, source analytics.Repository, instance string) *DirectQuery {
-	a := newApp(ctx, Options{InstanceID: instance, Defaults: viewer.Selection{Period: "month", Bucket: "day"}}, io.Discard)
+	return NewDirectQueryWithIdentity(ctx, source, instance, "")
+}
+
+func NewDirectQueryWithIdentity(ctx context.Context, source analytics.Repository, instance, hostname string) *DirectQuery {
+	a := newApp(ctx, Options{InstanceID: instance, Hostname: hostname, Defaults: viewer.Selection{Period: "month", Bucket: "day"}}, io.Discard)
 	a.queries = source
 	return &DirectQuery{app: a}
 }
@@ -26,7 +30,7 @@ func (d *DirectQuery) Instance(ctx context.Context) (api.InstanceResponse, error
 	if err != nil {
 		return api.InstanceResponse{}, err
 	}
-	return api.InstanceResponse{ApiVersion: api.V1, DataEpoch: status.Metadata.DatabaseID, DataReadiness: api.InstanceResponseDataReadinessReady, InstanceId: d.app.options.InstanceID, ServerVersion: version.Version, Hostname: "unknown", Timezone: reportingTimezone(time.Local, time.Now()), Defaults: apiSelection(d.app.options.Defaults)}, nil
+	return api.InstanceResponse{ApiVersion: api.V1, DataEpoch: status.Metadata.DatabaseID, DataReadiness: api.InstanceResponseDataReadinessReady, InstanceId: d.app.options.InstanceID, ServerVersion: version.Version, Hostname: d.app.instanceHostname(status.Hostname), Timezone: reportingTimezone(time.Local, time.Now()), Defaults: apiSelection(d.app.options.Defaults)}, nil
 }
 
 func (d *DirectQuery) Usage(ctx context.Context, params api.GetUsageParams) (api.UsageResponse, error) {

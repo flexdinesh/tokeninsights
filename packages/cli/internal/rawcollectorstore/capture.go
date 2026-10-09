@@ -11,7 +11,10 @@ import (
 
 // Capture commits sanitized observations and source continuity together. The
 // transaction never escapes into source parsing or native snapshot readers.
-type Capture struct{ tx *sql.Tx }
+type Capture struct {
+	tx      *sql.Tx
+	records *recordStatements
+}
 
 type Checkpoint struct {
 	SourceKey   string
@@ -56,7 +59,20 @@ func (c *Capture) SaveCheckpoint(ctx context.Context, state Checkpoint) error {
 }
 
 func (c *Capture) Record(ctx context.Context, record evidence.Record, now int64) (bool, error) {
-	return Record(ctx, c.tx, record, now)
+	if c.records == nil {
+		exists, err := c.tx.PrepareContext(ctx, observationExistsSQL)
+		if err != nil {
+			return false, err
+		}
+		insert, err := c.tx.PrepareContext(ctx, insertObservationSQL)
+		if err != nil {
+			_ = exists.Close()
+			return false, err
+		}
+		// database/sql closes transaction statements on commit or rollback.
+		c.records = &recordStatements{exists: exists, insert: insert}
+	}
+	return recordObservation(ctx, c.tx, c.records, record, now)
 }
 func (c *Capture) Commit() error   { return c.tx.Commit() }
 func (c *Capture) Rollback() error { return c.tx.Rollback() }

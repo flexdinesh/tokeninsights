@@ -113,6 +113,12 @@ Raw Codex discovery lists files without the legacy ancestry-header scan; ancestr
 
 At most four readers prepare sources concurrently with one SQLite writer. JSONL records retain at most 16 MiB per reader; native decoding overhead varies with record shape, so worker admission is a nominal allowance rather than a hard heap cap. SQLite scans retain their existing snapshot/row behavior; sanitized metadata-only temporary spools keep prepared results off the heap. Spools use private permissions and are removed on completion/failure/cancellation. Disk use follows active source sizes; no total disk cap is claimed. Sources commit atomically after continuity verification; one source failure does not discard another source. Location resolution caches are shared and concurrency-safe.
 
+The source-atomic writer encodes each sanitized observation once for its stable
+hash and stored bytes, reusing transaction-local lookup/insert statements. It
+checks duplicates before insertion so replay does not consume AUTOINCREMENT
+sequences or leave delivery gaps. Preparation order, reader/processor limits,
+prefix verification and OpenCode snapshot revision checks remain unchanged.
+
 Records exceeding the 16 MiB JSONL bound are skipped only when a streaming JSON discriminator proves they are irrelevant. Oversized usage/context or unknown records fail the source rather than silently lose counters or continuity. Partial trailing records wait. Source extraction and skipped-record hashing preserve byte offsets and ordinals. Whitelist extraction caches decoded nested objects per record while preserving numeric precision, null/absence and source duplicate-key semantics.
 
 OpenCode reads consistent SQLite snapshots. Existing rows can revise without
@@ -158,8 +164,9 @@ reject atomically. Safe semantic problems are accepted for async diagnosis.
 request hash, contiguous range/count, acceptance revision/time.
 Collector validates acceptance independently of mutable processing status.
 
-Sync finishes at acceptance, not query visibility. Personal TUI then reads available confirmed data and refreshes pending processing
-state; Reload queries only. TUI submission progress compares acknowledged evidence entries with pending entries, rather than comparing batches with entries. Load failures expose fixed reason codes and distinguish server storage failures from authentication failures. Browser reports lag/separate estimates. No viewer
+Sync finishes at acceptance, not query visibility. Local TUI startup additionally
+waits for query visibility; local Web reads published history while processing
+continues. Reload queries only. TUI submission progress compares acknowledged evidence entries with pending entries, rather than comparing batches with entries. Load failures expose fixed reason codes and distinguish server storage failures from authentication failures. Browser reports lag/separate estimates. No viewer
 waits for global hosted queue emptiness.
 Service wait explicitly waits up to 30 seconds for maintenance/fixtures.
 Deprecated protocol-1 bridge preserves synchronous legacy bytes/receipts.
@@ -241,8 +248,12 @@ claims in this change.
 Single-process `tui` owns collector, direct ingestion, processing and direct query
 adapters. `web` adds a foreground read-only HTTP listener, bound to 127.0.0.1:8765
 by default or the requested IPv4 host/port. Reserve the listener before capture;
-open the browser after ingestion becomes visible. Cancellation joins workers and
-closes storage/listeners. A database lifetime lock excludes a second viewer.
+initialize owned storage, register startup progress, then serve/open the browser
+before asynchronous capture. Saved published history remains readable during
+capture and processing; published revisions refresh the dashboard. Capture failure
+does not close Web. Command cancellation or HTTP failure cancels and joins capture
+and progress observers before closing storage/listeners. A database lifetime lock
+excludes a second viewer. TUI retains its fresh-data startup visibility wait.
 
 Distributed collectors submit to an authenticated remote hosted server in one
 container. Bearer auth selects the dataset; the server starts no collector. A
@@ -252,16 +263,32 @@ DuckDB processing queue remains behind dataengine's backend contract.
 `serverfeatures` owns typed kind/capabilities and validates dependent features.
 `GET /api/v2/instance` returns serverKind, datasetId, bounded capabilities and caller
 permissions separately. `usage`, `facets`, `web-dashboard`, `raw-ingestion`,
-`terminal-dashboard`, `collector-progress`, `reprocess` determine mounted routes
+`terminal-dashboard`, `collector-progress`, `dashboard-reload`, `reprocess` determine mounted routes
 and command/browser preflight. Unknown feature names are ignored; absent required
-features/unknown kinds reject. Hosted cannot enable terminal-dashboard or
-collector-progress. Managed personal advertises progress only with its read/write
-components. Server config may disable features but cannot disable hosted isolation.
+features/unknown kinds reject. Hosted cannot enable terminal-dashboard,
+collector-progress or dashboard-reload. Local composition explicitly grants Reload,
+including saved-only viewers; it is independent of collection progress. Progress
+requires an installed command-owned registry. The shared observer publishes directly
+to that registry for startup and queued sync jobs, retaining bounded leases and
+heartbeats. Internal raw-ingestion support does not mount public HTTP ingestion:
+the local Web listener remains read-only. Server config may disable features but
+cannot disable hosted isolation. Modules consume resolved policy and injected
+dependencies; mode selection stays at composition boundaries.
 
 Read API v2 shares analytics with personal v1 adapters. Instance/status/usage/facets
 bind dataset snapshot identity. `/api/v2/status` contains processing readiness and
-user-scoped revisions/pending work, without collector status. Hosted exposes no
+user-scoped revisions/pending work, without collector status. Optional failed scope
+counts and earliest failure retry time distinguish retry backoff from ordinary
+processing; they come from the same dataset/generation snapshot. Accepted collector
+evidence is not yet query-ready: pending work or differing active/target generations
+still means processing. Hosted exposes no
 v1 read fallback. Feature support never substitutes for read/ingest permission.
+
+Local direct/HTTP instance descriptors share runtime identity and the machine
+hostname resolved at ownership initialization. The hostname labels the local
+viewer machine, not historical producer attribution; imported history can span
+machines. Hosted never substitutes its operating-system hostname for producer
+metadata. Connection/storage, usage and facet errors remain distinct in Web.
 
 CLI configuration uses `mode=single-process|distributed`, URL/token, bind preferences
 and three database paths. Defaults are single-process; legacy hosted configuration

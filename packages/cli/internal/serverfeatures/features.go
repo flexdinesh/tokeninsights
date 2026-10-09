@@ -23,6 +23,7 @@ const (
 	Usage             Capability = "usage"
 	Facets            Capability = "facets"
 	WebDashboard      Capability = "web-dashboard"
+	DashboardReload   Capability = "dashboard-reload"
 	RawIngestion      Capability = "raw-ingestion"
 	TerminalDashboard Capability = "terminal-dashboard"
 	CollectorProgress Capability = "collector-progress"
@@ -31,7 +32,7 @@ const (
 
 func (c Capability) Known() bool {
 	switch c {
-	case Usage, Facets, WebDashboard, RawIngestion, TerminalDashboard, CollectorProgress, Reprocess:
+	case Usage, Facets, WebDashboard, DashboardReload, RawIngestion, TerminalDashboard, CollectorProgress, Reprocess:
 		return true
 	}
 	return false
@@ -65,7 +66,20 @@ type Policy struct {
 }
 
 func New(kind Kind, collectorProgress bool, disabled ...Capability) (Policy, error) {
+	return newPolicy(kind, collectorProgress, false, disabled...)
+}
+
+// NewLocalViewer enables query-only Reload for a command-owned local viewer.
+// Saved-data viewers retain Reload even when they skip initial collection.
+func NewLocalViewer(collectorProgress bool, disabled ...Capability) (Policy, error) {
+	return newPolicy(Personal, collectorProgress, true, disabled...)
+}
+
+func newPolicy(kind Kind, collectorProgress, dashboardReload bool, disabled ...Capability) (Policy, error) {
 	p := Policy{Kind: kind, Capabilities: Capabilities{Usage, Facets, WebDashboard, RawIngestion, Reprocess}}
+	if dashboardReload {
+		p.Capabilities = append(p.Capabilities, DashboardReload)
+	}
 	if kind == Personal {
 		p.Capabilities = append(p.Capabilities, TerminalDashboard)
 		if collectorProgress {
@@ -91,8 +105,8 @@ func (p Policy) Validate() error {
 	if err := p.Kind.Validate(); err != nil {
 		return err
 	}
-	if p.Kind == Hosted && (p.Capabilities.Has(TerminalDashboard) || p.Capabilities.Has(CollectorProgress)) {
-		return fmt.Errorf("hosted server cannot support terminal-dashboard or collector-progress")
+	if p.Kind == Hosted && (p.Capabilities.Has(TerminalDashboard) || p.Capabilities.Has(CollectorProgress) || p.Capabilities.Has(DashboardReload)) {
+		return fmt.Errorf("hosted server cannot support terminal-dashboard, collector-progress or dashboard-reload")
 	}
 	for _, c := range p.Capabilities {
 		if !c.Known() {
@@ -104,6 +118,9 @@ func (p Policy) Validate() error {
 	}
 	if p.Capabilities.Has(CollectorProgress) && !p.Capabilities.Has(RawIngestion) {
 		return fmt.Errorf("collector-progress requires raw-ingestion")
+	}
+	if p.Capabilities.Has(DashboardReload) && (!p.Capabilities.Has(WebDashboard) || !p.Capabilities.Has(Usage)) {
+		return fmt.Errorf("dashboard-reload requires web-dashboard and usage")
 	}
 	return nil
 }

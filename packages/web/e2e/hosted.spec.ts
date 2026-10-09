@@ -36,6 +36,7 @@ test('real hosted sessions isolate users sharing one database and never poll col
   await page.getByLabel('Access token', { exact: true }).fill(alice.token)
   await page.getByRole('button', { name: 'Sign in', exact: true }).click()
   await expect(page.getByLabel('Total tokens: 120', { exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Reload', exact: true })).toHaveCount(0)
   expect(page.url()).not.toContain('old-account-session')
   const cookies = await context.cookies(hostedOrigin)
   const session = cookies.find((cookie) => cookie.name === 'tokeninsights_session')
@@ -75,7 +76,7 @@ test('real token revocation invalidates browser sessions and removes visible cac
   await page.getByRole('button', { name: 'Sign in', exact: true }).click()
   await expect(page.getByLabel('Total tokens: 120', { exact: true })).toBeVisible()
   await adminRequest(socket, { operation: 'revoke-token', tokenId: token.tokenId }, z.object({}))
-  await page.getByRole('button', { name: 'Reload', exact: true }).click()
+  // Revocation is observed through the same status polling used without Reload.
   await expect(page.getByRole('heading', { name: 'Sign in to TokenInsights' })).toBeVisible()
   await expect(page.getByLabel('Total tokens: 120', { exact: true })).toHaveCount(0)
 })

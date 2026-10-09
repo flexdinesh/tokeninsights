@@ -1154,8 +1154,9 @@ components:
           minLength: 1
         hostname:
           description:
-            'Producer hostname: unknown before ingestion; multiple machines when distinct producer
-            labels are present.'
+            'Local viewers report their runtime hostname without requiring ingestion. Hosted servers
+            reserve this field for dataset producer labels and return unknown when unavailable.
+            Hosted server runtime hostnames never replace producer labels.'
           type: string
           minLength: 1
         timezone:
@@ -2493,8 +2494,9 @@ components:
           minLength: 1
         hostname:
           description:
-            'Producer hostname: unknown before ingestion; multiple machines when distinct producer
-            labels are present.'
+            'Local viewers report their runtime hostname without requiring ingestion. Hosted servers
+            reserve this field for dataset producer labels and return unknown when unavailable.
+            Hosted server runtime hostnames never replace producer labels.'
           type: string
           minLength: 1
         timezone:
@@ -2511,7 +2513,8 @@ components:
             minLength: 1
             description:
               'Unknown capabilities are ignored by clients. Known names: usage, facets, web-dashboard,
-              raw-ingestion, terminal-dashboard, collector-progress, reprocess.'
+              dashboard-reload, raw-ingestion, terminal-dashboard, collector-progress, reprocess.
+              dashboard-reload is query-only and available only to local viewers.'
         defaults:
           $ref: '#/components/schemas/Selection'
         datasetId:
@@ -2573,6 +2576,18 @@ components:
           maxLength: 256
         targetGeneration:
           $ref: '#/components/schemas/Count'
+        failed:
+          type: integer
+          format: int64
+          minimum: 0
+          maximum: 9007199254740991
+          description: Pending scopes with a durable processing error in this dataset and target generation.
+        failedRetryAtMs:
+          type: integer
+          format: int64
+          minimum: 0
+          maximum: 253402214399999
+          description: Earliest retry time for failed pending scopes, as Unix milliseconds; zero when none exist.
     UsageResponseV2:
       type: object
       additionalProperties: false

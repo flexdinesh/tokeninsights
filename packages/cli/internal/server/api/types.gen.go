@@ -1302,7 +1302,7 @@ type InstanceResponse struct {
 	DataReadiness InstanceResponseDataReadiness `json:"dataReadiness"`
 	Defaults      Selection                     `json:"defaults"`
 
-	// Hostname Producer hostname: unknown before ingestion; multiple machines when distinct producer labels are present.
+	// Hostname Local viewers report their runtime hostname without requiring ingestion. Hosted servers reserve this field for dataset producer labels and return unknown when unavailable. Hosted server runtime hostnames never replace producer labels.
 	Hostname      string `json:"hostname"`
 	InstanceId    string `json:"instanceId"`
 	ServerVersion string `json:"serverVersion"`
@@ -1325,7 +1325,7 @@ type InstanceResponseV2 struct {
 	DatasetId     string                          `json:"datasetId"`
 	Defaults      Selection                       `json:"defaults"`
 
-	// Hostname Producer hostname: unknown before ingestion; multiple machines when distinct producer labels are present.
+	// Hostname Local viewers report their runtime hostname without requiring ingestion. Hosted servers reserve this field for dataset producer labels and return unknown when unavailable. Hosted server runtime hostnames never replace producer labels.
 	Hostname      string                          `json:"hostname"`
 	InstanceId    string                          `json:"instanceId"`
 	Permissions   []InstanceResponseV2Permissions `json:"permissions"`
@@ -1955,15 +1955,21 @@ type SortField string
 // StatusResponseV2 defines model for StatusResponseV2.
 type StatusResponseV2 struct {
 	// DataEpoch Durable database identity; nonempty when dataReadiness is ready.
-	DataEpoch        string                        `json:"dataEpoch"`
-	DataReadiness    StatusResponseV2DataReadiness `json:"dataReadiness"`
-	DatasetId        string                        `json:"datasetId"`
-	Generation       Count                         `json:"generation"`
-	InputRevision    Count                         `json:"inputRevision"`
-	InstanceId       string                        `json:"instanceId"`
-	Pending          Count                         `json:"pending"`
-	Revision         Count                         `json:"revision"`
-	TargetGeneration Count                         `json:"targetGeneration"`
+	DataEpoch     string                        `json:"dataEpoch"`
+	DataReadiness StatusResponseV2DataReadiness `json:"dataReadiness"`
+	DatasetId     string                        `json:"datasetId"`
+
+	// Failed Pending scopes with a durable processing error in this dataset and target generation.
+	Failed *int64 `json:"failed,omitempty"`
+
+	// FailedRetryAtMs Earliest retry time for failed pending scopes, as Unix milliseconds; zero when none exist.
+	FailedRetryAtMs  *int64 `json:"failedRetryAtMs,omitempty"`
+	Generation       Count  `json:"generation"`
+	InputRevision    Count  `json:"inputRevision"`
+	InstanceId       string `json:"instanceId"`
+	Pending          Count  `json:"pending"`
+	Revision         Count  `json:"revision"`
+	TargetGeneration Count  `json:"targetGeneration"`
 }
 
 // StatusResponseV2DataReadiness defines model for StatusResponseV2.DataReadiness.

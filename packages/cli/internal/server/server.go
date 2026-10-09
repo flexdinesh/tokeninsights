@@ -38,6 +38,7 @@ type Options struct {
 	DBPath     string
 	Defaults   viewer.Selection
 	InstanceID string
+	Hostname   string
 }
 
 type syncState struct {
@@ -262,7 +263,17 @@ func (a *app) legacyHandler() http.Handler {
 	return mux
 }
 
+func (a *app) instanceHostname(source string) string {
+	if a.options.Hostname != "" {
+		return a.options.Hostname
+	}
+	return source
+}
+
 func (a *app) dataHostname(ctx context.Context) string {
+	if a.options.Hostname != "" {
+		return a.instanceHostname("")
+	}
 	if a.data != nil {
 		return "unknown"
 	}

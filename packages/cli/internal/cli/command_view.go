@@ -11,6 +11,7 @@ import (
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/collector"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/config"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/localruntime"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/serverfeatures"
 )
 
 var tuiCommand = commandSpec{name: "tui", run: runView}
@@ -36,8 +37,13 @@ func runView(invocation commandInvocation, args []string) error {
 		return err
 	}
 	defer func() { _ = runtime.Close() }()
+	for _, capability := range []serverfeatures.Capability{serverfeatures.TerminalDashboard, serverfeatures.Usage, serverfeatures.Facets} {
+		if !runtime.Policy.Capabilities.Has(capability) {
+			return fmt.Errorf("tui requires %s capability", capability)
+		}
+	}
 	options.local = runtime
-	model := newInteractiveModel(invocation.context, options, invocation.now, "unknown")
+	model := newInteractiveModel(invocation.context, options, invocation.now, runtime.Hostname)
 	defer model.cancelSync()
 	finalModel, err := runInteractiveProgram(model, invocation.stdout)
 	if err != nil {
