@@ -14,8 +14,10 @@ func TestDirectObserverTracksAcceptanceAndSanitizesFailures(t *testing.T) {
 		name               string
 		err, errorDelivery error
 		stage, code        string
+		quarantined        int
 	}{
 		{name: "accepted", stage: "accepted"},
+		{name: "quarantined", quarantined: 2, stage: "failed", code: "collection_failed"},
 		{name: "capture", err: errors.New("private source path"), stage: "failed", code: "collection_failed"},
 		{name: "submission", err: errors.New("private destination"), errorDelivery: errors.New("private credential"), stage: "failed", code: "submission_failed"},
 		{name: "cancelled", err: context.Canceled, stage: "interrupted", code: "cancelled"},
@@ -29,7 +31,7 @@ func TestDirectObserverTracksAcceptanceAndSanitizesFailures(t *testing.T) {
 			if len(progress.Attempts) != 1 || progress.Attempts[0].Stage != "submitting" || progress.Attempts[0].Harnesses["pi"] != "running" || progress.Attempts[0].AcknowledgedEntries != 7 || progress.Attempts[0].Pending != 3 {
 				t.Fatal("capture/acceptance progress lost", progress)
 			}
-			observer.Finish(collector.Result{Accepted: 7, Batches: 2, PendingKnown: true, DeliveryError: test.errorDelivery}, test.err)
+			observer.Finish(collector.Result{Collection: pipeline.Summary{Quarantined: test.quarantined}, Accepted: 7, Batches: 2, PendingKnown: true, DeliveryError: test.errorDelivery}, test.err)
 			progress = registry.Snapshot()
 			attempt := progress.Attempts[0]
 			if attempt.Stage != test.stage || attempt.ErrorCode != test.code || attempt.AcknowledgedEntries != 7 || attempt.Pending != 0 {

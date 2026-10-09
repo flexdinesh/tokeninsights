@@ -124,6 +124,7 @@ func TestViewerQueryFailureRetainsSavedRowsAndFilters(t *testing.T) {
 	}
 	updated, _ := model.Update(loaded)
 	model = updated.(interactiveModel)
+	model.width, model.height = 120, 35
 	fail.Store(true)
 	updated, cmd := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'r'}})
 	model = updated.(interactiveModel)
@@ -132,8 +133,12 @@ func TestViewerQueryFailureRetainsSavedRowsAndFilters(t *testing.T) {
 	}
 	updated, _ = model.Update(cmd())
 	model = updated.(interactiveModel)
-	if model.err == nil || len(model.rows) != 1 || model.rows[0].totalValue != 100 || !reflect.DeepEqual(model.options.filters, selected) {
+	if model.refresh.queryErr == nil || model.err != nil || len(model.rows) != 1 || model.rows[0].totalValue != 100 || !reflect.DeepEqual(model.options.filters, selected) {
 		t.Fatalf("query error discarded filters/data: err=%v filters=%+v rows=%+v", model.err, model.options.filters, model.rows)
+	}
+	view := ansi.Strip(model.View())
+	if !strings.Contains(view, "Display update failed") || !strings.Contains(view, "100") {
+		t.Fatal("query failure hid saved usage or recovery", view)
 	}
 	fail.Store(false)
 	updated, cmd = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'r'}})

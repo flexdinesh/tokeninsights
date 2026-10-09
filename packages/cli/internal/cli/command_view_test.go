@@ -155,7 +155,7 @@ func TestViewParsesIndependentServerCollectorAndFilterOptions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if options.serverURL != "https://example.test" || options.dbPath != "server.sqlite" || options.collectorDBPath != "collector.sqlite" || !options.syncBeforeView {
+	if options.serverURL != "https://example.test" || options.dbPath != "server.sqlite" || options.collectorDBPath != "collector.sqlite" || !options.syncOnStart {
 		t.Fatalf("wrong remote options: %+v", options)
 	}
 	expected := filters{providers: stringList{"fixture-provider"}, models: stringList{"fixture-model"}, harnesses: stringList{"pi"}, sessionIDs: stringList{"fixture-session"}}

@@ -38,21 +38,27 @@ var ErrProcessingTimeout = fmt.Errorf("processing_timeout: usage is still proces
 const visibilityPoll = 25 * time.Millisecond
 
 type Runtime struct {
-	InstanceID  string
-	Hostname    string
-	Policy      serverfeatures.Policy
-	Progress    *collectorprogress.Registry
-	Jobs        *syncjob.Store
-	jobsDone    chan struct{}
-	Store       *datastore.Store
-	App         *appstore.Store
-	Query       *queryclient.Client
-	Destination *collector.Destination
-	queries     analytics.Repository
-	owner       *os.File
-	cancel      context.CancelFunc
-	done        chan struct{}
-	once        sync.Once
+	InstanceID    string
+	Hostname      string
+	Policy        serverfeatures.Policy
+	Progress      *collectorprogress.Registry
+	Jobs          *syncjob.Store
+	jobsDone      chan struct{}
+	Store         *datastore.Store
+	App           *appstore.Store
+	Query         *queryclient.Client
+	Destination   *collector.Destination
+	queries       analytics.Repository
+	owner         *os.File
+	cancel        context.CancelFunc
+	ctx           context.Context
+	collectorPath string
+	dataPath      string
+	lifecycleMu   sync.Mutex
+	closing       bool
+	collections   sync.WaitGroup
+	done          chan struct{}
+	once          sync.Once
 }
 
 func Open(ctx context.Context, collectorPath, dataPath string) (*Runtime, error) {
@@ -170,7 +176,7 @@ func OpenWithApp(ctx context.Context, collectorPath, dataPath, appPath string) (
 	}
 	hostname := resolveHostname(os.Hostname)
 	id := hex.EncodeToString(instance[:])
-	r := &Runtime{InstanceID: id, Hostname: hostname, Policy: policy, Progress: collectorprogress.New(id), Jobs: jobs, jobsDone: make(chan struct{}), Store: store, App: app, owner: owner, cancel: cancel, done: make(chan struct{}), queries: analytics.DuckDB{Store: store}}
+	r := &Runtime{InstanceID: id, Hostname: hostname, Policy: policy, Progress: collectorprogress.New(id), Jobs: jobs, jobsDone: make(chan struct{}), Store: store, App: app, owner: owner, cancel: cancel, ctx: workerCtx, collectorPath: canonicalCollector, dataPath: path, done: make(chan struct{}), queries: analytics.DuckDB{Store: store}}
 	r.Query = queryclient.NewDirect(server.NewDirectQueryWithIdentity(workerCtx, r.queries, id, hostname))
 	r.Destination = &collector.Destination{URL: "http://local", Identity: "http://local", DatabaseID: metadata.DatabaseID, DatasetID: metadata.DatasetID, Local: true, Transport: collector.DirectDelivery{Receiver: store}}
 	// WaitVisible reads durable failure state, including failures from a prior owner.
@@ -233,10 +239,19 @@ func visibilityError(ctx context.Context, err error) error {
 	return err
 }
 
+// ProcessingStatus describes durable readiness without waiting for publication.
+func (r *Runtime) ProcessingStatus(ctx context.Context) (analytics.ProcessingStatus, error) {
+	return r.queries.Status(ctx)
+}
+
 func (r *Runtime) Close() error {
 	var err error
 	r.once.Do(func() {
+		r.lifecycleMu.Lock()
+		r.closing = true
 		r.cancel()
+		r.lifecycleMu.Unlock()
+		r.collections.Wait()
 		<-r.done
 		<-r.jobsDone
 		r.Progress.InterruptAll()

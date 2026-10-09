@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -11,7 +12,10 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/analytics"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/collectorprogress"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/db"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/localruntime"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/pipeline"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/queryclient"
 )
@@ -25,6 +29,9 @@ type reloadMsg struct {
 	coverage              []db.DayCoverage
 	revision              int64
 	preservePosition      bool
+	refreshToken          string
+	serverGeneration      int64
+	inputRevision         int64
 	lastSyncMs            int64
 	processingPending     *int64
 	hostname, timezone    string
@@ -56,6 +63,8 @@ type syncDoneMsg struct {
 type snapshotMsg struct{ reloadMsg }
 
 type sharedSyncMsg struct {
+	refreshStatus         *analytics.ProcessingStatus
+	collection            *collectorprogress.Snapshot
 	requestID             uint64
 	generation            uint64
 	instanceID, dataEpoch string
@@ -101,6 +110,9 @@ const (
 )
 
 type interactiveModel struct {
+	refresh               tuiRefresh
+	refreshAnimating      bool
+	collectionDone        <-chan localruntime.CollectionResult
 	instanceID, dataEpoch string
 	publicationGeneration uint64
 	observedRevision      int64
@@ -203,7 +215,10 @@ func syncHarnessDisplayName(harness pipeline.Harness) string {
 }
 
 func (m interactiveModel) Init() tea.Cmd {
-	return nil
+	if m.collectionDone == nil {
+		return nil
+	}
+	return tea.Batch(func() tea.Msg { return collectionFinishedMsg{result: <-m.collectionDone} }, refreshAnimationCmd())
 }
 
 func newInteractiveModel(ctx context.Context, options tableOptions, now time.Time, hostname string) interactiveModel {
@@ -303,6 +318,7 @@ func (m interactiveModel) loadDashboard() reloadMsg {
 	result := m.loadServerDashboard()
 	result.requestID = m.requestID
 	result.generation = m.publicationGeneration
+	result.refreshToken = m.refresh.token
 	return result
 }
 
@@ -335,6 +351,9 @@ func (m interactiveModel) transitionPublication(instanceID, dataEpoch string, re
 		m.statusQueries.invalidate()
 		m.rows, m.coverage = nil, nil
 		m.sessionCounts, m.lastSyncMs = db.SessionCounts{}, 0
+		m.refresh.loaded = false
+		m.refresh.displayedRevision, m.refresh.inputRevision, m.refresh.serverGeneration = 0, 0, 0
+		m.refresh.displayedToken, m.refresh.queryErr = "", nil
 		m.showingSnapshot, m.reloadInFlight = false, false
 		if fromStatus {
 			m.loading = true
@@ -348,10 +367,12 @@ func (m interactiveModel) transitionPublication(instanceID, dataEpoch string, re
 		m.observedRevision = revision
 		m.sharedSync.Revision = revision
 		m.filterQueries.invalidate()
-		m.filterValues, m.filterValueKeys = nil, nil
+		if identityChanged {
+			m.filterValues, m.filterValueKeys = nil, nil
+		}
 		m.filterErr = nil
 		if m.popup == popupFilterValues {
-			m.filterLoading = true
+			m.filterLoading = len(m.filterValues) == 0
 			commands = append(commands, m.filterValuesCmd(m.filterDimension))
 		}
 	}
@@ -527,11 +548,25 @@ func (m interactiveModel) tableContentWidth(rows []renderRow) int {
 
 func (m interactiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case collectionFinishedMsg:
+		m.collectionDone = nil
+		m.refresh.collectionPending = false
+		m.refresh.result = &msg.result
+		m.refresh.statusKnown = false
+		return m, m.sharedSyncCmdAfter(0)
+	case refreshAnimationTickMsg:
+		m.syncFrame++
+		if m.refreshBusy() {
+			return m, refreshAnimationCmd()
+		}
+		m.refreshAnimating = false
+		return m, nil
 	case sharedSyncMsg:
 		if msg.generation != m.publicationGeneration || !m.statusQueries.current(msg.requestID) {
 			return m, nil
 		}
 		if msg.err != nil {
+			m.refresh.statusErr = msg.err
 			return m, m.sharedSyncCmd()
 		}
 		previousReadiness := m.serviceReadiness
@@ -560,13 +595,18 @@ func (m interactiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m, commands = m.transitionPublication(msg.instanceID, msg.dataEpoch, msg.status.Revision, true)
 		m.sharedSync = msg.status
 		m.pendingRefresh = msg.pending
-		if !m.reloadInFlight && (advanced || previousReadiness != "ready" || m.err != nil) {
+		m = m.observeRefresh(msg)
+		if !m.reloadInFlight && (advanced || previousReadiness != "ready" || m.err != nil || m.refreshNeedsRead()) {
 			m.snapshotAllowed, m.reloadInFlight = true, true
 			if m.syncing {
 				commands = append(commands, m.snapshotCmd())
 			} else {
 				commands = append(commands, m.refreshCmd())
 			}
+		}
+		if m.refreshBusy() && !m.refreshAnimating {
+			m.refreshAnimating = true
+			commands = append(commands, refreshAnimationCmd())
 		}
 		commands = append(commands, m.sharedSyncCmd())
 		return m, tea.Batch(commands...)
@@ -623,16 +663,28 @@ func (m interactiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.loading, m.reloadInFlight = false, false
 		if msg.err != nil {
-			m.err = msg.err
+			if msg.preservePosition && m.refresh.loaded {
+				m.refresh.queryErr = msg.err
+			} else {
+				m.err = msg.err
+			}
 			return m, nil
 		}
 		if msg.instanceID == "" || msg.dataEpoch == "" || msg.revision < 0 || msg.instanceID == m.instanceID && msg.dataEpoch == m.dataEpoch && msg.revision < m.observedRevision {
+			if msg.preservePosition && m.refresh.loaded {
+				return m, nil
+			}
 			m.err = queryclient.ErrSnapshotChanged
 			return m, nil
 		}
 		var commands []tea.Cmd
 		m, commands = m.transitionPublication(msg.instanceID, msg.dataEpoch, msg.revision, false)
 		m.err = nil
+		m.refresh.queryErr = nil
+		m.refresh.loaded = true
+		m.refresh.displayedRevision, m.refresh.inputRevision, m.refresh.serverGeneration = msg.revision, msg.inputRevision, msg.serverGeneration
+		m.refresh.displayedToken = msg.refreshToken
+		focused := m.focusedRowKey()
 		m.rows = msg.rows
 		m.coverage = nil
 		m.sessionCounts = msg.sessionCounts
@@ -645,6 +697,7 @@ func (m interactiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m = m.reconcileStatusline()
 		m = m.reconcileTableSummary()
 		if msg.preservePosition {
+			m = m.restoreRowFocus(focused)
 			m = m.ensureCursorVisible()
 		} else {
 			m = m.resetRowPosition()
@@ -702,6 +755,13 @@ func (m interactiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		current := m.currentFilterValues(m.filterDimension)
+		draft := m.filterSelections
+		hadValues := len(m.filterValues) > 0
+		draftKeys := m.filterValueKeys
+		focusedValue := ""
+		if m.popupCursor >= 0 && m.popupCursor < len(m.filterValues) {
+			focusedValue = m.filterValues[m.popupCursor]
+		}
 		m.filterValueKeys = msg.keys
 		if m.filterDimension >= filterRepository {
 			m.filterValues = msg.values
@@ -716,6 +776,27 @@ func (m interactiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		} else {
 			m.filterValues = mergeSortedValues(msg.values, current)
 			m.filterSelections = selectedValuesMap(current)
+		}
+		if hadValues {
+			for value := range m.filterSelections {
+				m.filterSelections[value] = false
+			}
+		}
+		for value, selected := range draft {
+			m.filterSelections[value] = selected
+			if key, ok := draftKeys[value]; ok {
+				if m.filterValueKeys == nil {
+					m.filterValueKeys = make(map[string]string)
+				}
+				m.filterValueKeys[value] = key
+			}
+			if !slices.Contains(m.filterValues, value) {
+				m.filterValues = append(m.filterValues, value)
+			}
+		}
+		sort.Strings(m.filterValues)
+		if index := slices.Index(m.filterValues, focusedValue); index >= 0 {
+			m.popupCursor = index
 		}
 		m.popupCursor = clampPopupCursor(m.popupCursor, len(m.filterValues))
 		return m, nil
@@ -804,8 +885,9 @@ func (m interactiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if m.reloadInFlight {
 					return m, nil
 				}
-				m.err, m.loading, m.reloadInFlight = nil, true, true
-				return m, m.reloadCmd()
+				m.err, m.refresh.queryErr, m.reloadInFlight = nil, nil, true
+				m.loading = !m.refresh.loaded
+				return m, m.refreshCmd()
 			case "d":
 				m.popup = popupDateRange
 				m.popupCursor = indexOfPeriod(m.options.period)
@@ -1360,7 +1442,7 @@ func filterDimensionLabel(dimension filterDimension) string {
 }
 
 func (m interactiveModel) View() string {
-	if (m.syncing && !m.showingSnapshot) || m.sharedSync.Phase == "rebuilding" || m.sharedSync.Phase == "rebuild_failed" {
+	if m.syncing && !m.showingSnapshot {
 		return m.renderSyncProgress()
 	}
 	view := m.renderDesk()

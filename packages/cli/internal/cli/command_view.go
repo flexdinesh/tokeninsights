@@ -44,6 +44,9 @@ func runView(invocation commandInvocation, args []string) error {
 	}
 	options.local = runtime
 	model := newInteractiveModel(invocation.context, options, invocation.now, runtime.Hostname)
+	if options.syncOnStart {
+		model = model.startCollection()
+	}
 	defer model.cancelSync()
 	finalModel, err := runInteractiveProgram(model, invocation.stdout)
 	if err != nil {
@@ -56,24 +59,12 @@ func runView(invocation commandInvocation, args []string) error {
 }
 
 var runInteractiveProgram = func(model interactiveModel, stdout io.Writer) (interactiveModel, error) {
-	var initial tea.Model = model
-	if model.options.syncBeforeView {
-		startup := newStartupModel(model)
-		initial = startup
-		defer func() {
-			model.cancelSync()
-			startup.workers.Wait()
-		}()
-	}
-	finalModel, err := tea.NewProgram(initial, tea.WithAltScreen(), tea.WithInput(os.Stdin), tea.WithOutput(stdout)).Run()
+	finalModel, err := tea.NewProgram(model, tea.WithAltScreen(), tea.WithInput(os.Stdin), tea.WithOutput(stdout)).Run()
 	if err != nil {
 		return model, err
 	}
 	if interactive, ok := finalModel.(interactiveModel); ok {
 		return interactive, nil
-	}
-	if startup, ok := finalModel.(startupModel); ok {
-		return startup.dashboard, nil
 	}
 	return model, nil
 }

@@ -146,15 +146,24 @@ The application fills the terminal. The dashboard reserves one cell on either
 side; the leading cell also holds the focused-row marker. Table content width is
 terminal width minus two cells. Columns use the shared two-cell gap.
 
-The vertical sequence is status, navigation, scope controls, active filters,
+The vertical sequence is machine status, refresh strip, navigation, scope controls, active filters,
 readouts, table, coverage and shortcuts. The footer reserves four rows: spacer,
 coverage, horizontal divider and shortcuts. Remaining height belongs to the
 table, whose column header consumes one row. Multiline dimension values consume
 their actual line count; the viewport clips oversized rows to retain footer space.
-`tokeninsights tui` reads the same REST analytics as the browser. Status describes
-saved server data and query progress, never checked source days. Reload performs
-GET requests only; source completeness and collector progress are absent.
-`tui --sync` explicitly collects and publishes before opening the dashboard.
+`tokeninsights tui` reads the same analytics as the browser through a direct local
+adapter. It opens saved committed usage while command-owned capture, submission
+and processing run in background. The persistent refresh strip stays above
+navigation across busy, complete and failed states; real work uses the ASCII
+spinner and adaptive sky busy text. Phase copy explains that saved data is visible
+and updates automatically. Completion requires processing visibility and a
+successful current dashboard read; acceptance alone never claims completion.
+Failure stops the spinner, retains saved data and shows an incomplete refresh.
+Status remains understandable without color or animation; no speculative percentage
+or ETA appears. Compact layouts shorten copy before reducing table space.
+Automatic updates retain filters, sort, focused-row identity, scroll where possible,
+and drawer drafts. Reload queries only; `--sync=false` skips startup collection,
+while durable processing still resumes. TPS remains available with sparse timing.
 
 - At **30 rows or more**, add a blank row after status and navigation.
 - Readouts appear at **24 rows or more** and **72 content cells or more**.

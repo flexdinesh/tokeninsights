@@ -10,12 +10,21 @@ import (
 	"time"
 )
 
-func TestViewStartupUsesDirectDestinationInsideLoadingScreen(t *testing.T) {
+func TestViewBackgroundCollectionUsesDirectDestination(t *testing.T) {
 	root := t.TempDir()
 	collectorPath, serverPath := filepath.Join(root, "collector.sqlite"), filepath.Join(root, "server.duckdb")
-	synced := false
+	bindings := make(chan collector.Options, 1)
 	replaceViewCollector(t, func(_ context.Context, options collector.Options) (collector.Result, error) {
-		synced = true
+		bindings <- options
+		return collector.Result{}, nil
+	})
+	restore := replaceInteractiveProgramRunnerForTest(t, func(model interactiveModel, _ io.Writer) (interactiveModel, error) {
+		var options collector.Options
+		select {
+		case options = <-bindings:
+		case <-time.After(10 * time.Second):
+			t.Fatal("background collection missing")
+		}
 		if options.CollectorDBPath != collectorPath || options.ServerDBPath != serverPath {
 			t.Fatal("wrong role paths")
 		}
@@ -25,14 +34,8 @@ func TestViewStartupUsesDirectDestinationInsideLoadingScreen(t *testing.T) {
 		if len(options.SyncOptions.Harnesses) != len(pipeline.SupportedHarnesses) || !options.SyncOptions.Normalize {
 			t.Fatal("missing harnesses/normalization")
 		}
-		return collector.Result{}, nil
-	})
-	restore := replaceInteractiveProgramRunnerForTest(t, func(model interactiveModel, _ io.Writer) (interactiveModel, error) {
-		if synced {
-			t.Fatal("collected before loading screen")
-		}
-		dashboard, ok := driveStartupForTest(t, newStartupModel(model)).(interactiveModel)
-		if !ok || !synced || dashboard.options.local == nil || dashboard.options.serverURL != "" {
+		dashboard := finishCollectionForTest(t, model)
+		if dashboard.options.local == nil || dashboard.options.serverURL != "" || dashboard.refresh.result == nil || dashboard.refresh.result.Err != nil {
 			t.Fatal("wrong runtime")
 		}
 		return dashboard, nil

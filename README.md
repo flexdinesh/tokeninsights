@@ -31,7 +31,7 @@ See [release channels and workflow](docs/release.md).
 Single-process mode is the default. No daemon or separate server setup:
 
 ```sh
-tokeninsights tui                    # collect, ingest, show terminal dashboard
+tokeninsights tui                    # show saved usage; refresh in background
 tokeninsights web                    # open dashboard; collect and ingest in background
 tokeninsights web --host 0.0.0.0      # expose read-only dashboard on all IPv4 interfaces
 tokeninsights sync                   # collect and ingest without a viewer
@@ -47,7 +47,7 @@ and collected/ingested inside that viewer's process. TUI queries and local inges
 never use HTTP. Browser Reload and TUI `r` only query saved data. Browser Reload
 is available only in single-process mode, including `--sync=false`.
 
-Local Web opens after storage initialization, before collection finishes. The
+Local TUI and Web open after storage initialization, before collection finishes. The
 dashboard shows collection, submission, and processing progress while saved usage
 remains readable; new published revisions refresh automatically. Collection errors
 remain visible without closing the dashboard. Run `tokeninsights sync` to retry
@@ -55,13 +55,14 @@ collection through the owning viewer. Hosted dashboards expose no collector prog
 The local hostname identifies the machine running the viewer, not the producer of
 every historical fact. Imported history may include other machines.
 
-The TUI loading screen shows collection and acceptance progress, then waits for
-processing. Failures retain **Retry**, **View saved**, and **Quit**. Local startup
-recovers pending processing and unfinished generations before claiming fresh data.
-`processing_failed` reports a durable processing failure; `processing_timeout`
-means accepted usage is still processing. `query_timeout` refers to reading usage.
-For processing errors, Retry waits again without collecting; **View saved** queries the
-published generation immediately. Reprocessing is explicit, never automatic.
+The TUI keeps a visible refresh strip above navigation: saved usage remains usable
+during collection, submission, and processing. Completion appears only after
+processing is query-visible and a successful dashboard read displays that revision;
+acceptance alone is not completion. Failures and quarantined sources show an
+incomplete refresh without discarding saved usage. `--sync=false` skips startup
+collection while durable pending processing still resumes. Quit cancels and joins
+background work. `query_timeout` refers to reading usage. Reprocessing is explicit,
+never automatic.
 
 TUI loads its complete result in one consistent snapshot, using the same analytics
 as Web and retaining its 100,000-row limit. Date ranges narrow analytics work;
@@ -166,8 +167,8 @@ Server exposes processed metadata to reachable dashboard clients. Default localh
 
 DuckDB uses a shared 1 GB memory budget for ingestion, processing and analytics.
 
-Distributed `sync --wait` waits for acceptance; local TUI startup also waits for processing.
-Local Web shows saved data during collection and processing. The browser shows usage totals by default;
+Distributed `sync --wait` waits for acceptance. Local TUI and Web show saved data
+during collection and processing. The browser shows usage totals by default;
 **Review excluded usage** opens separate saved counters that cannot be confidently included.
 Date ranges and filters apply to both views; excluded usage never inflates the main totals.
 Unusable evidence retains diagnostics.

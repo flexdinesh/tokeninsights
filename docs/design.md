@@ -169,9 +169,12 @@ reject atomically. Safe semantic problems are accepted for async diagnosis.
 request hash, contiguous range/count, acceptance revision/time.
 Collector validates acceptance independently of mutable processing status.
 
-Sync finishes at acceptance, not query visibility. Local TUI startup additionally
-waits for query visibility; local Web reads published history while processing
-continues. Reload queries only. TUI submission progress compares acknowledged evidence entries with pending entries, rather than comparing batches with entries. Load failures expose fixed reason codes and distinguish server storage failures from authentication failures. Browser reports lag/separate estimates. No viewer
+Sync finishes at acceptance, not query visibility. Local TUI and Web read published
+history while command-owned capture, submission and processing continue. TUI refresh
+completion requires processing visibility and a successful read of the current
+published revision. Reload queries only. Collection progress retains acknowledged evidence counts; TUI
+phase text separates submission from processing. Load failures distinguish storage,
+collection and processing problems without exposing private error causes. Browser reports lag/separate estimates. No viewer
 waits for global hosted queue emptiness.
 `data wait` explicitly waits up to 30 seconds for maintenance/fixtures.
 Deprecated protocol-1 bridge preserves synchronous legacy bytes/receipts.
@@ -269,13 +272,14 @@ claims in this change.
 
 Single-process `tui` owns collector, direct ingestion, processing and direct query
 adapters. `web` adds a foreground read-only HTTP listener, bound to 127.0.0.1:8765
-by default or the requested IPv4 host/port. Reserve the listener before capture;
-initialize owned storage, register startup progress, then serve/open the browser
-before asynchronous capture. Saved published history remains readable during
-capture and processing; published revisions refresh the dashboard. Capture failure
-does not close Web. Command cancellation or HTTP failure cancels and joins capture
-and progress observers before closing storage/listeners. A database lifetime lock
-excludes a second viewer. TUI retains its fresh-data startup visibility wait.
+by default or the requested IPv4 host/port. Reserve the Web listener before capture.
+Both initialize owned storage, register startup progress and open saved usage
+before asynchronous capture. Shared local startup orchestration owns the background
+capture and progress observers; command cancellation or listener failure cancels and
+joins them before storage/listeners close. Saved published history remains readable
+during capture and processing; committed published revisions refresh the dashboard.
+Capture failures, including quarantine, preserve the dashboard and show incomplete
+refresh. A database lifetime lock excludes a second viewer.
 
 Distributed collectors submit to an authenticated remote hosted server in one
 container. Bearer auth selects the dataset; the server starts no collector. A
@@ -318,10 +322,24 @@ maps to distributed. Flags > environment > file > defaults. The config file is
 private/atomic; token entry uses prompt/stdin. Distributed requires bearer token and
 URL. Remote failures never select local fallback. Bare invocation prints help.
 
-Local TUI startup captures, directly accepts, then waits for pending work to drain
-and active/target generations to agree in a consistent status snapshot. Retry/View
-saved/Quit remain available. Saved-data viewing skips capture and visibility waiting.
-Reload is query-only. Remote TUI is unavailable; remote web syncs before browser login.
+Local TUI queries saved committed usage while displaying a persistent refresh
+strip below the machine header and above navigation. Collection, submission,
+processing and display-update states describe actual work; no estimated percentage
+or ETA is shown. A successful refresh requires capture/submission success, no pending
+work, matching active/target generations in a consistent status snapshot, and a
+successful dashboard read of the current published revision. Acceptance alone never
+claims refreshed usage. Failures stop the spinner and remain visible with saved
+usage; unavailable status cannot claim success.
+
+Automatic reads coalesce committed revisions and reject stale responses. Rows,
+totals and coverage update from one consistent snapshot while retaining filters,
+sort, focused row identity, scroll position where possible, and drawer drafts. An
+empty saved snapshot says usage will appear automatically during refresh; definitive
+empty-state guidance follows refresh completion. `--sync=false` skips startup
+capture and visibility waiting, but existing durable processing resumes and can
+refresh the displayed revision. Reload is query-only. Viewer filters never restart
+capture or select processing work. Remote TUI is unavailable; remote web syncs before
+browser login.
 
 Local visibility reads count pending scopes and failed pending scopes in the same
 dataset/generation snapshot, using existing durable scope error codes. A recorded
@@ -331,8 +349,8 @@ so finite commands can recover transient errors without rebuilding a generation.
 The bounded visibility deadline returns `processing_timeout`; caller cancellation
 and storage query errors retain their own classification. Native query interruption
 uses the caller's cancellation/deadline when present. Neither failure exposes
-raw database errors or source metadata in the TUI. Retry repeats visibility waiting
-without capture; View saved bypasses the wait and queries published history.
+raw database errors or source metadata in the TUI. Background viewers preserve
+published history and report processing failures without blocking interaction.
 Reprocessing remains explicit and keeps the old generation until replacement is
 complete. `data wait` resumes an interrupted rebuild without creating a new one.
 No automatic reset, index repair, or generation rebuild follows a processing error.
@@ -405,7 +423,7 @@ contracts; DuckDB is an adapter, not a required future backend.
 | `serverfeatures` | Typed kind/capability policy |
 | `accounts`, `appstore` | Credential contract/SQLite adapter, provisioning and application pairing |
 | `syncjob` | Durable finite jobs, native detachment and delivery retries |
-| `localruntime` | Command ownership, direct ingestion/query, local requests, finite import and development fixtures |
+| `localruntime` | Command ownership and background startup lifetime, direct ingestion/query, local requests, finite import and development fixtures |
 | `serverruntime` | Shared storage/worker/listener lifecycle |
 | `remoteserver` | Authenticated remote composition |
 
