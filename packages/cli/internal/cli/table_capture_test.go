@@ -76,6 +76,53 @@ func TestCaptureLabelsActivityEmptyAndUnchangedPrecisely(t *testing.T) {
 	}
 }
 
+func TestCaptureRowsUseSemanticStatusColors(t *testing.T) {
+	oldProfile, oldDark := lipgloss.ColorProfile(), lipgloss.HasDarkBackground()
+	t.Cleanup(func() { lipgloss.SetColorProfile(oldProfile); lipgloss.SetHasDarkBackground(oldDark) })
+	cases := []struct {
+		label   string
+		capture collectorprogress.Capture
+		color   lipgloss.AdaptiveColor
+	}{
+		{"Unchanged", collectorprogress.Capture{Phase: collectorprogress.CaptureComplete, TotalKnown: true, Total: 2, Checked: 2, Unchanged: 2}, themeMuted},
+		{"No sources", collectorprogress.Capture{Phase: collectorprogress.CaptureComplete, TotalKnown: true}, themeMuted},
+		{"Waiting", collectorprogress.Capture{Phase: collectorprogress.CaptureWaiting}, themeMuted},
+		{"Complete", collectorprogress.Capture{Phase: collectorprogress.CaptureComplete, TotalKnown: true, Total: 2, Checked: 2, Captured: 1, Unchanged: 1}, themeSuccess},
+		{"Discovering", collectorprogress.Capture{Phase: collectorprogress.CaptureDiscovering}, themeAccent},
+		{"Reading", collectorprogress.Capture{Phase: collectorprogress.CaptureReading}, themeAccent},
+		{"Saving", collectorprogress.Capture{Phase: collectorprogress.CaptureSaving}, themeAccent},
+		{"Failed", collectorprogress.Capture{Phase: collectorprogress.CaptureFailed}, themeDanger},
+		{"Interrupted", collectorprogress.Capture{Phase: collectorprogress.CaptureInterrupted}, themeDanger},
+		{"Incomplete", collectorprogress.Capture{Phase: collectorprogress.CaptureFailed, TotalKnown: true, Total: 1, Checked: 1, Failed: 1}, themeDanger},
+		{"Incomplete", collectorprogress.Capture{Phase: collectorprogress.CaptureFailed, TotalKnown: true, Total: 1, Checked: 1, Quarantined: 1}, themeDanger},
+	}
+	for _, dark := range []bool{false, true} {
+		lipgloss.SetHasDarkBackground(dark)
+		for _, profile := range []termenv.Profile{termenv.TrueColor, termenv.Ascii} {
+			lipgloss.SetColorProfile(profile)
+			for _, compact := range []bool{false, true} {
+				m := detailedRefreshModel(t)
+				for _, tc := range cases {
+					m.refresh.capture["codex"] = tc.capture
+					line := m.captureRow("codex", 80, compact)
+					plain := ansi.Strip(line)
+					label := tc.label
+					if compact {
+						label = compactCaptureState(label)
+					}
+					if !strings.Contains(plain, label) {
+						t.Fatalf("missing status %q: %s", label, plain)
+					}
+					want := lipgloss.NewStyle().Foreground(tc.color).Render(plain)
+					if line != want {
+						t.Fatalf("%s used wrong semantic color (dark=%v, profile=%v, compact=%v): got %q, want %q", tc.label, dark, profile, compact, line, want)
+					}
+				}
+			}
+		}
+	}
+}
+
 func TestCaptureSelectionDoesNotMixAttemptsAndRetainsExpiredFailure(t *testing.T) {
 	m := detailedRefreshModel(t)
 	failed := collectorprogress.Capture{Phase: collectorprogress.CaptureFailed, TotalKnown: true, Total: 5, Checked: 4, Captured: 1, Unchanged: 1, Failed: 1, Quarantined: 1}

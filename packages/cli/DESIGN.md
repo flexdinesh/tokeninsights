@@ -16,6 +16,8 @@ colors:
   text-dark: "#E7E7EE"
   total-light: "#A2306C"
   total-dark: "#F49AC2"
+  success-light: "#237A4A"
+  success-dark: "#85D9A6"
   danger-light: "#9C3530"
   danger-dark: "#F0A39B"
   selected-light: "#DFEAF3"
@@ -108,8 +110,11 @@ light and dark terminals; only active navigation and focused selections use fill
 ### Secondary
 
 - **Pink total** (`total-*`): total token readout, total column, summary total
-  and completed sync status.
-- **Warning red** (`danger-*`): failed sync status.
+  only.
+- **Success green** (`success-*`): completed capture, successful sync indicators,
+  and refreshed usage after processing and a successful dashboard read.
+- **Attention red** (`danger-*`): failed, interrupted, and incomplete refresh or
+  capture states, including quarantined sources.
 
 ### Neutral
 
@@ -118,7 +123,8 @@ light and dark terminals; only active navigation and focused selections use fill
 - **Brand** (`brand-*`): product name and messky blue titles.
 - **Text** (`text-*`): dimensions, ordinary metrics and drawer content.
 - **Muted** (`muted-*`): scope, readout labels, supporting dimensions, coverage
-  and shortcut guidance.
+  and shortcut guidance; unchanged, no sources, skipped, disabled, idle, waiting,
+  and not-requested capture states, plus saved usage and no-new-usage summaries.
 - **Faint** (`faint-*`): dividers and separators.
 - **Selected** (`selected-*`): focused table row and current drawer item.
 
@@ -174,7 +180,9 @@ acknowledged submission counts or current local dataset processing groups pendin
 Harness rows describe capture; complete capture alone does not mean usage refreshed.
 Keep rows through completion/failure so the table does not jump. Startup collection
 off shows disabled harness states; queued local requests can still supply progress.
-No new visual tokens, frames, interaction, percentage or ETA are introduced.
+Use semantic status colors consistently in full and compact rows. Preserve text
+labels so states remain understandable with color disabled. No frames,
+interaction, percentage or ETA are introduced.
 
 - At **30 rows or more**, add a blank row after status and navigation.
 - Readouts appear at **24 rows or more** and **72 content cells or more**.
