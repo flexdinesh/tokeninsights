@@ -415,7 +415,7 @@ test('path routes keep shared dashboard stable while view data loads', async ({ 
       .size,
   ).toBe(2)
 
-  await page.goto('/?tab=providers&period=all')
+  await page.goto('/providers?period=all')
   await expect(page).toHaveURL(/\/providers\?[^#]*period=all/)
   await expect(page.getByRole('region', { name: 'Providers details', exact: true })).toBeVisible()
   await page.reload()
@@ -551,40 +551,10 @@ test('themes, keyboard filters, mobile layout, and scalable typography', async (
 })
 
 for (const address of ['127.0.0.1', 'localhost']) {
-  test(`page server via ${address} ignores saved hosts and owns every API request`, async ({
-    page,
-  }) => {
+  test(`page server via ${address} owns every API request`, async ({ page }) => {
     const origin = `http://${address}:18765`
     const instanceResponse = await page.request.get(`${origin}/api/v2/instance`)
     const instance = InstanceResponseV2.parse(await instanceResponse.json())
-    await page.addInitScript(() => {
-      localStorage.setItem(
-        'tokeninsights.sources.v1',
-        JSON.stringify({
-          version: 1,
-          sources: [
-            {
-              baseUrl: 'http://obsolete-host:18766',
-              hostname: 'obsolete-host',
-              apiVersion: 'v1',
-              serverVersion: 'test',
-              capabilities: ['usage', 'facets', 'ingestion'],
-              defaults: {
-                period: 'week',
-                bucket: 'day',
-                from: '',
-                to: '',
-                providers: [],
-                models: [],
-                harnesses: [],
-                sessions: [],
-              },
-            },
-          ],
-          activeUrl: 'http://obsolete-host:18766',
-        }),
-      )
-    })
     const requests: string[] = []
     page.on('request', (request) => {
       if (new URL(request.url()).pathname.startsWith('/api/')) requests.push(request.url())

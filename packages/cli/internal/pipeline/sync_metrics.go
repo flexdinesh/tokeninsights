@@ -2,7 +2,6 @@ package pipeline
 
 import (
 	"context"
-	"database/sql"
 	"sync/atomic"
 )
 
@@ -15,13 +14,6 @@ type syncStats struct {
 }
 
 type syncStatsKey struct{}
-
-func withSyncStats(ctx context.Context, stats *syncStats) context.Context {
-	if stats == nil {
-		return ctx
-	}
-	return context.WithValue(ctx, syncStatsKey{}, stats)
-}
 
 func statsForSync(ctx context.Context) *syncStats {
 	stats, _ := ctx.Value(syncStatsKey{}).(*syncStats)
@@ -38,14 +30,4 @@ func recordSourceParse(ctx context.Context) {
 	if stats := statsForSync(ctx); stats != nil {
 		stats.sourceParses.Add(1)
 	}
-}
-
-func commitSyncTransaction(ctx context.Context, tx *sql.Tx) error {
-	if err := tx.Commit(); err != nil {
-		return err
-	}
-	if stats := statsForSync(ctx); stats != nil {
-		stats.writerCommits.Add(1)
-	}
-	return nil
 }

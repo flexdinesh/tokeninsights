@@ -29,9 +29,6 @@ func testAccounts(t *testing.T) (*Service, *accountTestStore) {
 	}
 	t.Cleanup(func() { _ = app.Close() })
 	repository := NewSQLite(app, store)
-	if err := repository.ImportLegacy(t.Context(), store.SQL()); err != nil {
-		t.Fatal(err)
-	}
 	return New(repository), &accountTestStore{Store: app, data: store}
 }
 

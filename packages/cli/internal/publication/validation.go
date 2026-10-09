@@ -23,33 +23,6 @@ func validLocationLabel(value string) bool {
 	return validString(value, false) && !strings.ContainsAny(value, `/\`)
 }
 
-func NewCapabilities(databaseID string) Capabilities {
-	return Capabilities{ProtocolVersion: ProtocolVersion, IdentityVersion: IdentityVersion, SemanticsVersion: SemanticsVersion,
-		DatabaseID: databaseID, MaxBodyBytes: MaxBodyBytes, MaxEntries: MaxEntries, MaxStringBytes: MaxStringBytes, MaxInteger: SafeInteger}
-}
-
-func ValidateBatch(b Batch) error {
-	if b.ProtocolVersion != ProtocolVersion || b.IdentityVersion != IdentityVersion || b.SemanticsVersion != SemanticsVersion {
-		return invalid("incompatible", "version")
-	}
-	if !validString(b.DatabaseID, true) || !validString(b.StreamID, true) || !validString(b.BatchID, true) || !validString(b.Hostname, false) {
-		return invalid("invalid_request", "batchIdentity")
-	}
-	if b.FromSequence < 1 || !validInteger(b.FromSequence) || !validInteger(b.ToSequence) || b.ToSequence < b.FromSequence ||
-		len(b.Entries) < 1 || len(b.Entries) > MaxEntries || b.ToSequence-b.FromSequence+1 != int64(len(b.Entries)) {
-		return invalid("invalid_request", "sequenceRange")
-	}
-	for i, entry := range b.Entries {
-		if entry.Sequence != b.FromSequence+int64(i) {
-			return invalid("invalid_request", "sequence")
-		}
-		if err := ValidateFact(entry.Fact); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
 func ValidateFact(f Fact) error {
 	switch f.Harness {
 	case "opencode", "pi", "codex", "claude-code":
@@ -113,19 +86,6 @@ func ValidateFact(f Fact) error {
 			(l.DirectoryKey == "" && l.DirectoryName != "") || (l.RepositoryKey == "" && (l.RepositoryName != "" || l.RepositorySource != "")) {
 			return invalid("invalid_request", "location")
 		}
-	}
-	return nil
-}
-
-func ValidateReceipt(r Receipt, b Batch, request []byte) error {
-	if r.DatabaseID != b.DatabaseID || r.StreamID != b.StreamID || r.BatchID != b.BatchID ||
-		r.FromSequence != b.FromSequence || r.ToSequence != b.ToSequence || r.RequestHash != RequestHash(request) {
-		return invalid("receipt_mismatch", "binding")
-	}
-	if !validInteger(r.Inserted) || !validInteger(r.Updated) || !validInteger(r.Noop) || !validInteger(r.CommittedAtMs) ||
-		!validInteger(r.Revision) || r.Inserted > int64(len(b.Entries)) || r.Updated > int64(len(b.Entries)) ||
-		r.Noop > int64(len(b.Entries)) || r.Inserted+r.Updated+r.Noop != int64(len(b.Entries)) {
-		return invalid("receipt_mismatch", "counts")
 	}
 	return nil
 }

@@ -9,28 +9,6 @@ import (
 	"github.com/muesli/termenv"
 )
 
-// Durable timing remains a future metric domain; unavailable timing must never
-// manufacture a numeric TPS readout when that domain returns.
-func TestTPSFormattersPreserveTimingSemantics(t *testing.T) {
-	for _, test := range []struct {
-		tokens, duration int64
-		want             string
-	}{{300, 2000, "150.00"}, {1, 4000, "0.25"}, {300, 0, ""}, {0, 2000, ""}, {300, -1, ""}} {
-		if got := formatWeightedTPS(test.tokens, test.duration); got != test.want {
-			t.Errorf("weighted TPS(%d,%d)=%q want%q", test.tokens, test.duration, got, test.want)
-		}
-	}
-	if got := formatMeanTPS(123.456); got != "123.46" {
-		t.Errorf("mean TPS=%q", got)
-	}
-	if got := formatMedianTPS(12.5); got != "12.50" {
-		t.Errorf("median TPS=%q", got)
-	}
-	if formatMeanTPS(0) != "" || formatMedianTPS(-1) != "" {
-		t.Fatal("unavailable TPS rendered as numeric usage")
-	}
-}
-
 func TestHorizontalViewportSlicesAndPadsStyledContent(t *testing.T) {
 	output := horizontalViewport("\x1b[31mabcdef\x1b[0m\n", 2, 3)
 	line := strings.TrimSuffix(output, "\n")

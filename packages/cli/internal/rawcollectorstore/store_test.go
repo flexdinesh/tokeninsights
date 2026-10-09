@@ -3,10 +3,11 @@ package rawcollectorstore
 import (
 	"bytes"
 	"encoding/json"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/db"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/evidence"
 	"path/filepath"
 	"testing"
+
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/db"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/evidence"
 )
 
 func TestOutboxRetryAcknowledgementAndResetProtection(t *testing.T) {
@@ -75,39 +76,5 @@ func TestOutboxRetryAcknowledgementAndResetProtection(t *testing.T) {
 	}
 	if err := store.Bind(t.Context(), "destination", "http://remote", "replacement"); err == nil {
 		t.Fatal("destination identity silently changed")
-	}
-}
-
-func TestVerifiedSchema16UpgradePreservesLegacyState(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "collector.sqlite")
-	legacy, _, err := db.CreateIfMissing(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var stream string
-	if err := legacy.QueryRow("SELECT stream_id FROM publication_state WHERE id=1").Scan(&stream); err != nil {
-		t.Fatal(err)
-	}
-	for _, table := range []string{"evidence_quarantine", "evidence_batches", "evidence_destinations", "evidence_outbox", "evidence_sources", "evidence_state"} {
-		if _, err := legacy.Exec("DROP TABLE " + table); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if _, err := legacy.Exec("PRAGMA user_version=16"); err != nil {
-		t.Fatal(err)
-	}
-	_ = legacy.Close()
-	store, err := Open(t.Context(), path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = store.Close() }()
-	var version int
-	var after string
-	if err := store.DB.QueryRow("PRAGMA user_version").Scan(&version); err != nil || version != db.SupportedSchemaVersion {
-		t.Fatal(version, err)
-	}
-	if err := store.DB.QueryRow("SELECT stream_id FROM publication_state WHERE id=1").Scan(&after); err != nil || after != stream {
-		t.Fatal("legacy delivery state reset", err)
 	}
 }

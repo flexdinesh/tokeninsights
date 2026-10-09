@@ -8,7 +8,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/ansi"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/db"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/querymodel"
 )
 
 func TestRepoTabGroupsAndFiltersWithoutChangingOtherTabs(t *testing.T) {
@@ -16,18 +16,12 @@ func TestRepoTabGroupsAndFiltersWithoutChangingOtherTabs(t *testing.T) {
 	defer func() { _ = database.Close() }()
 	now := time.Date(2026, 4, 20, 9, 0, 0, 0, time.Local)
 	insertLoadRowsCanonicalToken(t, database, now.UnixMilli(), "codex", "one", "openai", "gpt")
-	_, err := database.Exec(`INSERT INTO usage_locations (semantic_key, directory_key, directory_name, repository_key, repository_name)
-		VALUES ('location-one', 'dir-one', '~/work/repo', 'repo-one', 'repo')`)
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, err = database.Exec(`UPDATE canonical_token_usage SET location_id =
-		(SELECT id FROM usage_locations WHERE semantic_key = 'location-one')`)
+	_, err := database.Exec("UPDATE analytics.facts SET directory_key='dir-one',directory_name='~/work/repo',repository_key='repo-one',repository_name='repo'")
 	if err != nil {
 		t.Fatal(err)
 	}
 	insertLoadRowsCanonicalToken(t, database, now.Add(time.Second).UnixMilli(), "pi", "two", "anthropic", "claude")
-	options := tableOptions{serverURL: queryServerURL(t, path), period: periodAllTime, bucket: bucketDay, repoGroup: db.RepoGroupRepository}
+	options := tableOptions{serverURL: queryServerURL(t, path), period: periodAllTime, bucket: bucketDay, repoGroup: querymodel.RepoGroupRepository}
 	rows, err := loadRows(context.Background(), options, now, groupByNone, tabRepo)
 	if err != nil || len(rows) != 2 || (rows[0].location != "unknown" && rows[1].location != "unknown") {
 		t.Fatalf("repo rows = %+v, err = %v", rows, err)
@@ -43,7 +37,7 @@ func TestRepoTabGroupsAndFiltersWithoutChangingOtherTabs(t *testing.T) {
 			t.Fatalf("repo table missing %q: %s", want, table)
 		}
 	}
-	options.repoGroup = db.RepoGroupDirectory
+	options.repoGroup = querymodel.RepoGroupDirectory
 	rows, err = loadRows(context.Background(), options, now, groupByNone, tabRepo)
 	if err != nil || len(rows) != 1 || rows[0].location != "~/work/repo" {
 		t.Fatalf("directory row = %+v, err = %v", rows, err)
@@ -55,14 +49,14 @@ func TestRepoTabGroupsAndFiltersWithoutChangingOtherTabs(t *testing.T) {
 }
 
 func TestLocationFilterLabelsKeepDuplicateNamesSelectable(t *testing.T) {
-	labels, keys := locationFilterLabels([]db.LocationOption{{Key: "first", Name: "repo"}, {Key: "second", Name: "repo"}})
+	labels, keys := locationFilterLabels([]querymodel.LocationOption{{Key: "first", Name: "repo"}, {Key: "second", Name: "repo"}})
 	if len(labels) != 2 || labels[0] != "repo" || labels[1] != "repo (2)" || keys[labels[0]] != "first" || keys[labels[1]] != "second" {
 		t.Fatalf("location labels = %v, keys = %v", labels, keys)
 	}
 }
 
 func TestRepoTabControlsOnlyRepositoryAndDirectory(t *testing.T) {
-	if len(repoGroupOptions) != 2 || repoGroupOptions[0] != db.RepoGroupRepository || repoGroupOptions[1] != db.RepoGroupDirectory {
+	if len(repoGroupOptions) != 2 || repoGroupOptions[0] != querymodel.RepoGroupRepository || repoGroupOptions[1] != querymodel.RepoGroupDirectory {
 		t.Fatalf("repo group options = %v", repoGroupOptions)
 	}
 	m := newInteractiveModel(context.Background(), tableOptions{}, time.Now(), "host")
@@ -84,7 +78,7 @@ func TestRepoTabControlsOnlyRepositoryAndDirectory(t *testing.T) {
 	m.popupCursor = 1
 	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	m = updated.(interactiveModel)
-	if m.options.repoGroup != db.RepoGroupDirectory {
+	if m.options.repoGroup != querymodel.RepoGroupDirectory {
 		t.Fatalf("repo group = %q", m.options.repoGroup)
 	}
 }

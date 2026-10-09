@@ -2,12 +2,13 @@ package cli
 
 import (
 	"context"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/collector"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/pipeline"
 	"io"
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/collector"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/pipeline"
 )
 
 func TestViewBackgroundCollectionUsesDirectDestination(t *testing.T) {
@@ -28,10 +29,10 @@ func TestViewBackgroundCollectionUsesDirectDestination(t *testing.T) {
 		if options.CollectorDBPath != collectorPath || options.ServerDBPath != serverPath {
 			t.Fatal("wrong role paths")
 		}
-		if options.Destination == nil || !options.Destination.Local || options.Destination.Transport == nil || options.EnsureLocal != nil {
+		if options.Destination == nil || !options.Destination.Local || options.Destination.Transport == nil {
 			t.Fatal("not direct ingestion")
 		}
-		if len(options.SyncOptions.Harnesses) != len(pipeline.SupportedHarnesses) || !options.SyncOptions.Normalize {
+		if len(options.SyncOptions.Harnesses) != len(pipeline.SupportedHarnesses) {
 			t.Fatal("missing harnesses/normalization")
 		}
 		dashboard := finishCollectionForTest(t, model)

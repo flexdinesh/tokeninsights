@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/serverfeatures"
 	"io"
 	"mime"
 	"net/http"
@@ -17,6 +16,7 @@ import (
 	"time"
 
 	api "github.com/flexdinesh/tokeninsights/packages/cli/internal/server/api"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/serverfeatures"
 )
 
 const (
@@ -42,11 +42,11 @@ func (e *StatusError) Error() string {
 // Reader is the query contract shared by network and in-process compositions.
 // Each response describes a consistent publication snapshot.
 type Reader interface {
-	Instance(context.Context) (api.InstanceResponse, error)
-	Usage(context.Context, api.GetUsageParams) (api.UsageResponse, error)
-	AllUsage(context.Context, api.GetUsageParams, int) (api.UsageResponse, error)
-	Facets(context.Context, api.GetUsageFacetsParams) (api.UsageFacetsResponse, error)
-	Status(context.Context) (api.SyncResponse, error)
+	Instance(context.Context) (api.InstanceResponseV2, error)
+	Usage(context.Context, api.GetUsageParams) (api.UsageResponseV2, error)
+	AllUsage(context.Context, api.GetUsageParams, int) (api.UsageResponseV2, error)
+	Facets(context.Context, api.GetUsageFacetsParams) (api.UsageFacetsResponseV2, error)
+	Status(context.Context) (api.StatusResponseV2, error)
 }
 
 func NewDirect(reader Reader) *Client { return &Client{direct: reader} }
@@ -92,76 +92,45 @@ func New(baseURL string, httpClient *http.Client) (*Client, error) {
 	return &Client{base: *u, http: client}, nil
 }
 
-func (c *Client) Instance(ctx context.Context) (api.InstanceResponse, error) {
+func (c *Client) Instance(ctx context.Context) (api.InstanceResponseV2, error) {
 	if c.direct != nil {
 		return c.direct.Instance(ctx)
 	}
-	if c.dataset != "" {
-		response, err := c.Descriptor(ctx)
-		if err != nil {
-			return api.InstanceResponse{}, err
-		}
-		return api.InstanceResponse{ApiVersion: api.V1, DataEpoch: response.DataEpoch, DataReadiness: api.InstanceResponseDataReadiness(response.DataReadiness), Defaults: response.Defaults, Hostname: response.Hostname, InstanceId: response.InstanceId, ServerVersion: response.ServerVersion, Timezone: response.Timezone}, nil
-	}
-	var response api.InstanceResponse
-	err := c.get(ctx, "/api/v1/instance", nil, &response)
-	if err == nil && response.ApiVersion != api.V1 {
-		err = errors.New("unsupported server API version")
-	}
-	return response, err
+	return c.Descriptor(ctx)
 }
 
-func (c *Client) Usage(ctx context.Context, params api.GetUsageParams) (api.UsageResponse, error) {
+func (c *Client) Usage(ctx context.Context, params api.GetUsageParams) (api.UsageResponseV2, error) {
 	if c.direct != nil {
 		return c.direct.Usage(ctx, params)
 	}
-	if c.dataset != "" {
-		result, err := c.UsageV2(ctx, params)
-		if err != nil {
-			return api.UsageResponse{}, err
-		}
-		return usageV1(result), nil
-	}
-	var response api.UsageResponse
-	err := c.get(ctx, "/api/v1/usage", api.UsageValues(params), &response)
-	return response, err
+	var result api.UsageResponseV2
+	err := c.get(ctx, "/api/v2/usage", api.UsageValues(params), &result)
+	return result, err
 }
 
-func (c *Client) Facets(ctx context.Context, params api.GetUsageFacetsParams) (api.UsageFacetsResponse, error) {
+func (c *Client) Facets(ctx context.Context, params api.GetUsageFacetsParams) (api.UsageFacetsResponseV2, error) {
 	if c.direct != nil {
 		return c.direct.Facets(ctx, params)
 	}
-	if c.dataset != "" {
-		result, err := c.FacetsV2(ctx, params)
-		if err != nil {
-			return api.UsageFacetsResponse{}, err
-		}
-		return api.UsageFacetsResponse{DataEpoch: result.DataEpoch, Directories: result.Directories, Generation: result.Generation, Harnesses: result.Harnesses, InputRevision: result.InputRevision, InstanceId: result.InstanceId, Models: result.Models, Pending: result.Pending, Providers: result.Providers, Repositories: result.Repositories, Revision: result.Revision, Sessions: result.Sessions}, nil
-	}
-	var response api.UsageFacetsResponse
-	values := api.FacetValues(params)
-	err := c.get(ctx, "/api/v1/usage/facets", values, &response)
-	return response, err
+	var result api.UsageFacetsResponseV2
+	err := c.get(ctx, "/api/v2/usage/facets", api.FacetValues(params), &result)
+	return result, err
 }
 
 // Status observes published data readiness and revision without requesting work.
-func (c *Client) Status(ctx context.Context) (api.SyncResponse, error) {
+func (c *Client) Status(ctx context.Context) (api.StatusResponseV2, error) {
 	if c.direct != nil {
 		return c.direct.Status(ctx)
 	}
-	if c.dataset != "" {
-		response, err := c.StatusV2(ctx)
-		return api.SyncResponse{DataEpoch: response.DataEpoch, DataReadiness: api.SyncResponseDataReadiness(response.DataReadiness), InstanceId: response.InstanceId, Revision: response.Revision, Running: response.Pending > 0}, err
-	}
-	var response api.SyncResponse
-	err := c.get(ctx, "/api/v1/sync", nil, &response)
-	return response, err
+	var result api.StatusResponseV2
+	err := c.get(ctx, "/api/v2/status", nil, &result)
+	return result, err
 }
 
 // AllUsage returns every row from one publication revision. Summary, chart,
 // coverage, and other full-filter metadata retain the first page's values.
 // Page is 1 and PageSize remains the requested server page size (200).
-func (c *Client) AllUsage(ctx context.Context, params api.GetUsageParams) (api.UsageResponse, error) {
+func (c *Client) AllUsage(ctx context.Context, params api.GetUsageParams) (api.UsageResponseV2, error) {
 	if c.direct != nil {
 		page, size := 1, pageSize
 		params.Page, params.PageSize = &page, &size
@@ -173,56 +142,56 @@ func (c *Client) AllUsage(ctx context.Context, params api.GetUsageParams) (api.U
 			return response, err
 		}
 		if ctx.Err() != nil {
-			return api.UsageResponse{}, ctx.Err()
+			return api.UsageResponseV2{}, ctx.Err()
 		}
 	}
-	return api.UsageResponse{}, ErrSnapshotChanged
+	return api.UsageResponseV2{}, ErrSnapshotChanged
 }
 
-func (c *Client) allUsage(ctx context.Context, params api.GetUsageParams) (api.UsageResponse, error) {
+func (c *Client) allUsage(ctx context.Context, params api.GetUsageParams) (api.UsageResponseV2, error) {
 	instance, err := c.Instance(ctx)
 	if err != nil {
-		return api.UsageResponse{}, err
+		return api.UsageResponseV2{}, err
 	}
-	if instance.DataReadiness != api.InstanceResponseDataReadinessReady {
-		return api.UsageResponse{}, ErrUnavailable
+	if instance.DataReadiness != api.InstanceResponseV2DataReadinessReady {
+		return api.UsageResponseV2{}, ErrUnavailable
 	}
 	page, size := 1, pageSize
 	params.Page, params.PageSize = &page, &size
 	result, err := c.Usage(ctx, params)
 	if err != nil {
-		return api.UsageResponse{}, err
+		return api.UsageResponseV2{}, err
 	}
-	if instance.InstanceId != result.InstanceId || instance.DataEpoch != result.DataEpoch {
-		return api.UsageResponse{}, ErrSnapshotChanged
+	if instance.DatasetId != result.DatasetId || instance.InstanceId != result.InstanceId || instance.DataEpoch != result.DataEpoch {
+		return api.UsageResponseV2{}, ErrSnapshotChanged
 	}
 	if result.RowCount < 0 || result.RowCount > maxRows {
-		return api.UsageResponse{}, errors.New("server analytics count or revision is invalid")
+		return api.UsageResponseV2{}, errors.New("server analytics count or revision is invalid")
 	}
 	seen := make(map[string]bool)
 	if err := validatePage(result, page, size, seen); err != nil {
-		return api.UsageResponse{}, err
+		return api.UsageResponseV2{}, err
 	}
 	for int64(len(result.Rows)) < result.RowCount {
 		page++
 		next, err := c.Usage(ctx, params)
 		if err != nil {
-			return api.UsageResponse{}, err
+			return api.UsageResponseV2{}, err
 		}
-		if result.Revision != next.Revision || result.InstanceId != next.InstanceId || result.DataEpoch != next.DataEpoch || next.RowCount != result.RowCount || !sameGeneration(result.Generation, next.Generation) {
-			return api.UsageResponse{}, ErrSnapshotChanged
+		if result.DatasetId != next.DatasetId || result.Revision != next.Revision || result.InstanceId != next.InstanceId || result.DataEpoch != next.DataEpoch || next.RowCount != result.RowCount || !sameGeneration(result.Generation, next.Generation) {
+			return api.UsageResponseV2{}, ErrSnapshotChanged
 		}
 		if err := validatePage(next, page, size, seen); err != nil {
-			return api.UsageResponse{}, err
+			return api.UsageResponseV2{}, err
 		}
 		result.Rows = append(result.Rows, next.Rows...)
 	}
 	latest, err := c.Instance(ctx)
 	if err != nil {
-		return api.UsageResponse{}, err
+		return api.UsageResponseV2{}, err
 	}
-	if instance.InstanceId != latest.InstanceId || instance.DataEpoch != latest.DataEpoch || latest.DataReadiness != api.InstanceResponseDataReadinessReady {
-		return api.UsageResponse{}, ErrSnapshotChanged
+	if instance.DatasetId != latest.DatasetId || instance.InstanceId != latest.InstanceId || instance.DataEpoch != latest.DataEpoch || latest.DataReadiness != api.InstanceResponseV2DataReadinessReady {
+		return api.UsageResponseV2{}, ErrSnapshotChanged
 	}
 	return result, nil
 }
@@ -234,7 +203,7 @@ func sameGeneration(a, b *int64) bool {
 	return *a == *b
 }
 
-func validatePage(response api.UsageResponse, page, size int, seen map[string]bool) error {
+func validatePage(response api.UsageResponseV2, page, size int, seen map[string]bool) error {
 	expected := min(int64(size), response.RowCount-int64((page-1)*size))
 	if response.Page != page || response.PageSize != size || expected < 0 || int64(len(response.Rows)) != expected {
 		return errors.New("server analytics pagination is inconsistent")
@@ -348,7 +317,7 @@ func (c *Client) get(ctx context.Context, endpoint string, values url.Values, ta
 	return nil
 }
 
-// WithDataset pins reads to one authenticated dataset and selects the v2 API.
+// WithDataset pins reads to one authenticated dataset for every read.
 func (c *Client) WithDataset(dataset string) *Client {
 	copy := *c
 	copy.dataset = dataset
@@ -392,27 +361,4 @@ func HasPermission(descriptor api.InstanceResponseV2, permission serverfeatures.
 		}
 	}
 	return false
-}
-
-func (c *Client) UsageV2(ctx context.Context, params api.GetUsageParams) (api.UsageResponseV2, error) {
-	var result api.UsageResponseV2
-	err := c.get(ctx, "/api/v2/usage", api.UsageValues(params), &result)
-	return result, err
-}
-
-func (c *Client) FacetsV2(ctx context.Context, params api.GetUsageFacetsParams) (api.UsageFacetsResponseV2, error) {
-	var result api.UsageFacetsResponseV2
-	values := api.FacetValues(params)
-	err := c.get(ctx, "/api/v2/usage/facets", values, &result)
-	return result, err
-}
-
-func (c *Client) StatusV2(ctx context.Context) (api.StatusResponseV2, error) {
-	var result api.StatusResponseV2
-	err := c.get(ctx, "/api/v2/status", nil, &result)
-	return result, err
-}
-
-func usageV1(r api.UsageResponseV2) api.UsageResponse {
-	return api.UsageResponse{Chart: r.Chart, DataEpoch: r.DataEpoch, FactCount: r.FactCount, Generation: r.Generation, InputRevision: r.InputRevision, InstanceId: r.InstanceId, LastSynced: r.LastSynced, Page: r.Page, PageSize: r.PageSize, Pending: r.Pending, Quality: r.Quality, Range: r.Range, Revision: r.Revision, RowCount: r.RowCount, Rows: r.Rows, Summary: r.Summary, Unresolved: r.Unresolved}
 }

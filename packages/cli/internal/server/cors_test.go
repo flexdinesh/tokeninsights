@@ -1,24 +1,22 @@
 package server
 
 import (
-	"context"
-	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 )
 
 func TestAPIWithoutCrossOriginAccess(t *testing.T) {
-	a := newApp(context.Background(), Options{DBPath: fixture(t)}, io.Discard)
+	a := fixtureApp(t, fixture(t), Options{})
 	for _, route := range []struct {
 		method, path string
 		status       int
 	}{
-		{http.MethodGet, "/api/v1/instance", http.StatusOK},
-		{http.MethodGet, "/api/v1/usage", http.StatusOK},
-		{http.MethodGet, "/api/v1/usage/facets", http.StatusOK},
-		{http.MethodPost, "/api/v1/sync", http.StatusMethodNotAllowed},
-		{http.MethodOptions, "/api/v1/usage", http.StatusMethodNotAllowed},
+		{http.MethodGet, "/api/v2/instance", http.StatusOK},
+		{http.MethodGet, "/api/v2/usage", http.StatusOK},
+		{http.MethodGet, "/api/v2/usage/facets", http.StatusOK},
+		{http.MethodPost, "/api/v2/sync", http.StatusNotFound},
+		{http.MethodOptions, "/api/v2/usage", http.StatusNotFound},
 	} {
 		t.Run(route.method+route.path, func(t *testing.T) {
 			request := httptest.NewRequest(route.method, "http://usage.example.test"+route.path, nil)

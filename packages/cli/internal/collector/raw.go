@@ -3,10 +3,8 @@ package collector
 import (
 	"context"
 	"errors"
-	"net/http"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/db"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/evidence"
@@ -39,13 +37,13 @@ func captureRaw(ctx context.Context, options Options) (pipeline.Summary, error) 
 
 // NegotiateCapabilities validates the raw wire contract before source capture.
 // Client composition also compares its authenticated descriptor binding.
-func NegotiateCapabilities(ctx context.Context, destination *Destination, token string) (evidence.Capabilities, error) {
+func NegotiateCapabilities(ctx context.Context, destination *Destination) (evidence.Capabilities, error) {
 	var capabilities evidence.Capabilities
-	if destination == nil {
+	if destination == nil || destination.Transport == nil {
 		return capabilities, failure("configuration", "invalid_destination", nil)
 	}
 	var err error
-	capabilities, err = destinationDelivery(destination, token).Capabilities(ctx)
+	capabilities, err = destination.Transport.Capabilities(ctx)
 	if err != nil {
 		return capabilities, err
 	}
@@ -57,64 +55,14 @@ func NegotiateCapabilities(ctx context.Context, destination *Destination, token 
 
 func publishRaw(ctx context.Context, options Options, result *Result) error {
 	reportDeliveryProgress(options, result)
-	target := options.ServerURL
-	local := strings.TrimSpace(target) == ""
-	client := deliveryClient(nil)
-	var identity string
-	var capabilities evidence.Capabilities
-	if options.Destination != nil {
-		d := options.Destination
-		target, local = d.URL, d.Local
-		identity = d.Identity
-		if identity == "" {
-			identity = target
-		}
-		if d.Client != nil {
-			client = deliveryClient(d.Client)
-		}
-		capabilities = evidence.Capabilities{ProtocolVersion: evidence.ProtocolVersion, ExtractorVersion: evidence.ExtractorVersion, DatabaseID: d.DatabaseID, DatasetID: d.DatasetID, Completion: "acceptance", MaxBodyBytes: evidence.MaxBodyBytes, MaxEntries: evidence.MaxEntries}
-	} else {
-		if local {
-			if options.EnsureLocal == nil {
-				return failure("delivery", "local_server_unavailable", nil)
-			}
-			var err error
-			target, err = options.EnsureLocal(ctx)
-			if err != nil {
-				return failure("delivery", "local_server_unavailable", err)
-			}
-			target, err = endpoint(target)
-			if err != nil {
-				return err
-			}
-			identity = target
-			if options.LocalClient != nil {
-				client = deliveryClient(options.LocalClient)
-				target = "http://local"
-			}
 
-		} else {
-			var err error
-			target, err = endpoint(target)
-			if err != nil {
-				return err
-			}
-		}
-		if identity == "" {
-			identity = target
-		}
-		var err error
-		capabilities, err = NegotiateCapabilities(ctx, &Destination{URL: target, Client: client}, options.Token)
-		if err != nil {
-			return err
-		}
-
+	d := options.Destination
+	if d == nil || d.Transport == nil {
+		return failure("configuration", "invalid_destination", nil)
 	}
-	if capabilities.DatasetID == "default" {
-		if err := flushLegacy(ctx, options, result, target, identity, capabilities.DatabaseID, client, local); err != nil {
-			return err
-		}
-	}
+	identity := d.Identity
+	local := d.Local
+	capabilities := evidence.Capabilities{DatabaseID: d.DatabaseID, DatasetID: d.DatasetID}
 	release, err := db.AcquireWriterLock(ctx, options.CollectorDBPath)
 	if err != nil {
 		return failure("publication", "collector_busy", err)
@@ -125,7 +73,7 @@ func publishRaw(ctx context.Context, options Options, result *Result) error {
 		return failure("publication", "collector_database", err)
 	}
 	defer func() { _ = store.Close() }()
-	destination, err := store.ResolveDeliveryDestination(ctx, identity, capabilities.DatabaseID, capabilities.DatasetID, local)
+	destination, err := store.ResolveDestination(ctx, identity, capabilities.DatabaseID, capabilities.DatasetID, local)
 	if err != nil {
 		return failure("binding", "server_database_changed", err)
 	}
@@ -143,11 +91,7 @@ func publishRaw(ctx context.Context, options Options, result *Result) error {
 		if saved == nil {
 			return nil
 		}
-		transport := Delivery(HTTPDelivery{URL: target, Token: options.Token, Client: client})
-		if options.Destination != nil {
-			transport = destinationDelivery(options.Destination, options.Token)
-		}
-		response, err := transport.Submit(ctx, saved.Batch.ProtocolVersion, saved.Request)
+		response, err := d.Transport.Submit(ctx, saved.Batch.ProtocolVersion, saved.Request)
 		if err != nil {
 			var rejected *StageError
 			if errors.As(err, &rejected) {
@@ -170,7 +114,7 @@ func publishRaw(ctx context.Context, options Options, result *Result) error {
 		}
 		result.Batches++
 		result.Accepted += int64(len(saved.Batch.Entries))
-		destination, err = store.ResolveDeliveryDestination(ctx, identity, capabilities.DatabaseID, capabilities.DatasetID, local)
+		destination, err = store.ResolveDestination(ctx, identity, capabilities.DatabaseID, capabilities.DatasetID, local)
 		if err != nil {
 			return failure("binding", "server_database_changed", err)
 		}
@@ -180,41 +124,4 @@ func publishRaw(ctx context.Context, options Options, result *Result) error {
 		}
 		reportDeliveryProgress(options, result)
 	}
-}
-
-// Retained protocol-1 requests keep their original semantics/bytes. They are
-// delivered as legacy baselines before raw evidence can prove replacement.
-func flushLegacy(ctx context.Context, options Options, result *Result, target, identity, databaseID string, client *http.Client, local bool) error {
-	release, err := db.AcquireWriterLock(ctx, options.CollectorDBPath)
-	if err != nil {
-		return err
-	}
-	store, err := rawcollectorstore.Open(ctx, options.CollectorDBPath)
-	if err != nil {
-		release()
-		return err
-	}
-	var count int64
-	err = store.DB.QueryRowContext(ctx, "SELECT COUNT(*) FROM publication_journal").Scan(&count)
-	_ = store.Close()
-	release()
-	if err != nil {
-		return err
-	}
-	if count == 0 {
-		return nil
-	}
-	legacy := options
-	legacy.LocalClient = client
-	legacy.Destination = &Destination{URL: target, Identity: identity, DatabaseID: databaseID, DatasetID: "default", Local: local, Client: client}
-	if options.Destination != nil {
-		legacy.Destination.Transport = options.Destination.Transport
-	}
-	if local {
-		legacy.ServerURL = ""
-		legacy.EnsureLocal = func(context.Context) (string, error) { return target, nil }
-	} else {
-		legacy.ServerURL = target
-	}
-	return publishLegacy(ctx, legacy, result)
 }

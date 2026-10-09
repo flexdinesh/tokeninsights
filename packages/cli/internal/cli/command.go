@@ -5,15 +5,15 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/config"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/localruntime"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/serverfeatures"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/syncjob"
 	"io"
 	"os"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/config"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/localruntime"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/syncjob"
 )
 
 type commandInvocation struct {
@@ -160,9 +160,6 @@ func configFileArgument(args []string) ([]string, string, error) {
 func (invocation commandInvocation) defaults() config.Settings {
 	if invocation.settings != nil {
 		settings := *invocation.settings
-		if settings.ServerKind == "" {
-			settings.ServerKind = serverfeatures.Personal
-		}
 		return settings
 	}
 	settings := config.Defaults()

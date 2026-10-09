@@ -6,7 +6,64 @@ import (
 	"path/filepath"
 	"sync"
 	"testing"
+
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/serverfeatures"
 )
+
+func TestResolvedModeAndDestinationContract(t *testing.T) {
+	for _, scenario := range []struct {
+		name, fileMode, environmentMode, flagMode, url, token, wantMode string
+		valid                                                           bool
+	}{
+		{name: "default local", wantMode: SingleProcess, valid: true},
+		{name: "URL selects remote", url: "https://remote.example", token: "token", wantMode: Distributed, valid: true},
+		{name: "URL without token cannot fall back", url: "https://remote.example", wantMode: Distributed},
+		{name: "token without URL rejects", token: "token", wantMode: SingleProcess},
+		{name: "explicit local rejects remote settings", fileMode: SingleProcess, url: "https://remote.example", token: "token", wantMode: SingleProcess},
+		{name: "explicit remote requires URL", fileMode: Distributed, token: "token", wantMode: Distributed},
+		{name: "environment overrides file", fileMode: SingleProcess, environmentMode: Distributed, url: "https://remote.example", token: "token", wantMode: Distributed, valid: true},
+		{name: "flag overrides environment", fileMode: Distributed, environmentMode: Distributed, flagMode: SingleProcess, wantMode: SingleProcess, valid: true},
+		{name: "remote flag requires credentials", flagMode: Distributed, wantMode: Distributed},
+	} {
+		t.Run(scenario.name, func(t *testing.T) {
+			t.Setenv("TOKENINSIGHTS_MODE", scenario.environmentMode)
+			t.Setenv("TOKENINSIGHTS_SERVER_URL", scenario.url)
+			t.Setenv("TOKENINSIGHTS_ACCESS_TOKEN", scenario.token)
+			path := filepath.Join(t.TempDir(), "config.json")
+			if scenario.fileMode != "" {
+				if err := Update(t.Context(), path, func(v *Values) error { return v.Set("mode", scenario.fileMode, false) }); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if scenario.environmentMode == "" {
+				if err := os.Unsetenv("TOKENINSIGHTS_MODE"); err != nil {
+					t.Fatal(err)
+				}
+			}
+			overrides := Values{}
+			if scenario.flagMode != "" {
+				overrides.Mode = &scenario.flagMode
+			}
+			settings, err := ResolveWithOverrides(path, true, overrides)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if settings.EffectiveMode() != scenario.wantMode {
+				t.Fatalf("mode %q, want %q", settings.EffectiveMode(), scenario.wantMode)
+			}
+			wantKind := serverfeatures.Personal
+			if scenario.wantMode == Distributed {
+				wantKind = serverfeatures.Hosted
+			}
+			if settings.ExpectedKind() != wantKind {
+				t.Fatalf("mode %q selected kind %q", scenario.wantMode, settings.ExpectedKind())
+			}
+			if err := settings.ValidateDestination(); (err == nil) != scenario.valid {
+				t.Fatalf("destination error %v, want valid %v", err, scenario.valid)
+			}
+		})
+	}
+}
 
 func TestConfigValidationAndNoMutation(t *testing.T) {
 	for _, body := range []string{"null", "[]", `{"host":null}`, `{"port":"8765"}`, `{"port":-1}`, `{"port":65536}`, `{"host":"example.test"}`, `{"server-url":"http://u:p@example.test"}`, `{"unknown":true}`, `{"port":1,"port":2}`, `{} {}`} {

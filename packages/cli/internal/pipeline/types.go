@@ -1,12 +1,10 @@
 package pipeline
 
 import (
-	"context"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/processor"
 	"time"
 )
 
-type Harness = processor.Harness
+type Harness string
 
 const (
 	HarnessOpenCode   Harness = "opencode"
@@ -27,122 +25,54 @@ type Source struct {
 }
 
 type DiscoverOptions struct {
-	Sources              *SourceConfig
-	SourceDir            string
-	HarnessSubdirOnly    bool
-	SkipAncestryMetadata bool
+	Sources           *SourceConfig
+	SourceDir         string
+	HarnessSubdirOnly bool
 }
 
-type RawTokenFact struct {
-	Harness           Harness
-	SourceID          string
-	SourceKind        string
-	Collector         string
-	Parser            string
-	ObservedAtMs      int64
-	OccurredAtMs      *int64
-	SessionID         *string
-	MessageID         *string
-	Provider          *string
-	Model             *string
-	UsageScope        string
-	Quality           string
-	InputTokens       *int64
-	OutputTokens      *int64
-	ReasoningTokens   *int64
-	CacheReadTokens   *int64
-	CacheWriteTokens  *int64
-	TotalTokens       *int64
-	MetadataJSON      *string
-	Location          *Location
-	locationConflicts string
-	DedupeKey         string
-}
-
-type Diagnostic struct {
-	Harness      Harness
-	RawFactKey   string
-	Severity     string
-	Code         string
-	Message      string
-	MetadataJSON *string
+type sessionLocation struct {
+	SessionID *string
+	Location  *Location
 }
 
 type SyncOptions struct {
 	Sources          *SourceConfig
-	BeforeReset      func(context.Context) error
 	DBPath           string
 	Harnesses        []Harness
 	DryRun           bool
 	FullRefresh      bool
-	Normalize        bool
 	SourceDir        string
-	Collector        string
-	Parser           string
 	Now              time.Time
 	Progress         func(SyncProgressEvent)
-	Clock            func() time.Time
 	locationResolver *locationResolver
-	sourceSnapshot   *sourceSnapshot
 	workers          int
-	stats            *syncStats
-	jobID            int64
-	hostname         string
-	recovering       bool
 }
 
 type SyncProgressStatus string
 
 const (
-	SyncProgressResetting   SyncProgressStatus = "resetting"
-	SyncProgressRebuilding  SyncProgressStatus = "rebuilding"
 	SyncProgressDiscovering SyncProgressStatus = "discovering"
 	SyncProgressSyncing     SyncProgressStatus = "syncing"
 	SyncProgressSkipped     SyncProgressStatus = "skipped"
 	SyncProgressSynced      SyncProgressStatus = "synced"
 	SyncProgressFailed      SyncProgressStatus = "failed"
-	SyncProgressNormalizing SyncProgressStatus = "normalizing"
 	SyncProgressLoading     SyncProgressStatus = "loading dashboard"
 	SyncProgressWaiting     SyncProgressStatus = "waiting"
 )
 
 type SyncProgressEvent struct {
-	JobID       int64
 	Harness     Harness
 	Status      SyncProgressStatus
 	Published   bool
 	Quarantined int
 }
 
-type NormalizeOptions struct {
-	Sources     *SourceConfig
-	BeforeReset func(context.Context) error
-	DBPath      string
-	DryRun      bool
-	Harnesses   []Harness
-	Now         time.Time
-	Progress    func(SyncProgressEvent)
-}
-
-type RecoveryAction string
-
-const (
-	RecoveryNone   RecoveryAction = ""
-	RecoveryReset  RecoveryAction = "reset"
-	RecoveryResume RecoveryAction = "resume"
-)
-
 type Summary struct {
-	JobID              int64
-	Recovery           RecoveryAction
 	RequestedHarnesses int
 	Synced             int
 	Skipped            int
 	Failed             int
 	RawFacts           int
-	Observations       int
-	Canonical          int
-	Diagnostics        int
 	Quarantined        int
 	Errors             []error
 }

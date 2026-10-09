@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -90,7 +89,7 @@ func startHosted(t *testing.T, settings Settings) (string, func()) {
 func TestHostedSharedDatabaseIsolationAndProvisioning(t *testing.T) {
 	root := t.TempDir()
 	socket := filepath.Join(root, "admin.sock")
-	settings := Settings{Kind: "hosted", Listen: "127.0.0.1:0", DBPath: filepath.Join(root, "server.duckdb"), PublicURL: "https://usage.example", AdminSocket: socket}
+	settings := Settings{Listen: "127.0.0.1:0", DBPath: filepath.Join(root, "server.duckdb"), PublicURL: "https://usage.example", AdminSocket: socket}
 	target, stop := startHosted(t, settings)
 	t.Cleanup(stop)
 	info, err := os.Stat(socket)
@@ -230,41 +229,15 @@ func TestHostedSharedDatabaseIsolationAndProvisioning(t *testing.T) {
 	}
 }
 
-func TestPersonalForegroundOperatorReprocess(t *testing.T) {
-	root := t.TempDir()
-	socket := filepath.Join(root, "operator.sock")
-	target, stop := startHosted(t, Settings{Listen: "127.0.0.1:0", DBPath: filepath.Join(root, "personal.duckdb"), AdminSocket: socket})
-	defer stop()
-	var result struct {
-		Generation int64 `json:"generation"`
-	}
-	hostedAdmin(t, socket, accounts.AdminRequest{Operation: "reprocess"}, &result)
-	if result.Generation != 2 {
-		t.Fatal("personal operator reprocess", result)
-	}
-	if code, _ := hostedRequest(t, target+"/api/v2/processing/reprocess", "", "POST", []byte("{}")); code != http.StatusNotFound {
-		t.Fatal("public operator route", code)
-	}
-	settings := Settings{Listen: "127.0.0.1:0", DBPath: filepath.Join(root, "competing.duckdb"), AppDBPath: filepath.Join(root, "competing-app.sqlite"), AdminSocket: socket}
-	if err := Run(t.Context(), settings, io.Discard, nil); err == nil || !strings.Contains(err.Error(), "socket already owned") {
-		t.Fatal("competing admin socket accepted", err)
-	}
-	hostedAdmin(t, socket, accounts.AdminRequest{Operation: "reprocess"}, &result)
-	if result.Generation != 3 {
-		t.Fatal("competing server stole operator socket", result)
-	}
-}
-
 func TestHostedSettingsValidateBeforeMutation(t *testing.T) {
 	root := t.TempDir()
 	path := filepath.Join(root, "server.duckdb")
 	for _, settings := range []Settings{
-		{Kind: "hosted", Listen: "127.0.0.1:0", DBPath: path},
-		{Kind: "hosted", Listen: "127.0.0.1:0", DBPath: path, PublicURL: "http://usage.example"},
-		{Kind: "hosted", Listen: "127.0.0.1:0", DBPath: path, PublicURL: "https://usage.example/secret"},
-		{Kind: "hosted", Listen: "127.0.0.1:0", DBPath: path, PublicURL: "https://token@usage.example"},
-		{Kind: "hosted", Listen: "127.0.0.1:0", DBPath: path, PublicURL: "https://usage.example", AdminSocket: "relative.sock"},
-		{Kind: "unknown", Listen: "127.0.0.1:0", DBPath: path},
+		{Listen: "127.0.0.1:0", DBPath: path},
+		{Listen: "127.0.0.1:0", DBPath: path, PublicURL: "http://usage.example"},
+		{Listen: "127.0.0.1:0", DBPath: path, PublicURL: "https://usage.example/secret"},
+		{Listen: "127.0.0.1:0", DBPath: path, PublicURL: "https://token@usage.example"},
+		{Listen: "127.0.0.1:0", DBPath: path, PublicURL: "https://usage.example", AdminSocket: "relative.sock"},
 	} {
 		if err := Run(t.Context(), settings, io.Discard, nil); err == nil {
 			t.Fatal("invalid hosted settings accepted", settings)

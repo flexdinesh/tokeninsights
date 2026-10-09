@@ -20,9 +20,6 @@ type SavedBatch struct {
 }
 
 func Open(ctx context.Context, path string) (*Store, error) {
-	if err := db.UpgradeEvidence(ctx, path); err != nil {
-		return nil, err
-	}
 	database, err := db.OpenEvidence(ctx, path)
 	if err != nil {
 		return nil, err
@@ -112,9 +109,18 @@ func (s *Store) BindDataset(ctx context.Context, id, endpoint, databaseID, datas
 	return err
 }
 
-// ResolveDestination reuses verified old default bindings; tokens never identify cursors.
+// ResolveDestination binds endpoint, database and dataset; tokens never identify cursors.
 // Remote replacement rejects, while local replacement deliberately replays history.
 func (s *Store) ResolveDestination(ctx context.Context, endpoint, databaseID, datasetID string, local bool) (string, error) {
+	if !local {
+		var conflicting bool
+		if err := s.DB.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM evidence_destinations WHERE endpoint=? AND dataset_id=? AND database_id<>?)", endpoint, datasetID, databaseID).Scan(&conflicting); err != nil {
+			return "", err
+		}
+		if conflicting {
+			return "", errors.New("server_database_changed")
+		}
+	}
 	query := "SELECT destination_id,database_id FROM evidence_destinations WHERE endpoint=? AND dataset_id=?"
 	args := []interface{}{endpoint, datasetID}
 	if local {
@@ -224,7 +230,7 @@ func pending(ctx context.Context, tx *sql.Tx, id string) (*SavedBatch, error) {
 		return nil, errors.New("saved_request_corrupt")
 	}
 	saved.Batch, err = evidence.DecodeBatch(saved.Request)
-	if err == nil && (saved.Batch.ProtocolVersion != protocol || saved.Batch.EffectiveDatasetID() != datasetID) {
+	if err == nil && (saved.Batch.ProtocolVersion != protocol || saved.Batch.DatasetID != datasetID) {
 		return nil, errors.New("saved_request_binding_corrupt")
 	}
 	return saved, err

@@ -3,7 +3,7 @@
 Approved direction: [ADR 0007](adr/0007-raw-ingestion-and-server-processing.md).
 Implemented in the evidence contract and collector extractor. This list comes from fields recognized by the current
 TokenInsights adapters, not from collecting private user transcripts. It governs
-the implemented evidence contract, distinct from retained legacy normalized requests.
+the current evidence contract.
 
 ## Rules
 
@@ -44,8 +44,7 @@ Source: [opencode_sqlite.go](../packages/cli/internal/pipeline/opencode_sqlite.g
 The `data` column is never sent as a whole. Native millisecond timestamps stay
 unchanged. Preserve V1/V2 origin and both safe snapshots where the tables overlap;
 the server applies the supported native-session/message precedence, rather than
-counting both. Current parsing recognizes completion time; retention does not
-activate a new timing metric. `session.directory` is local-only enrichment input.
+counting both. Completion timestamps contribute to native message snapshot identity. `session.directory` is local-only enrichment input.
 Project IDs are metadata identifiers subject to the ID validation rule above.
 
 ## Pi: JSONL
@@ -87,7 +86,7 @@ excluded. No new parent/subagent fields are implied by this whitelist.
 ## Codex: JSONL
 
 Sources: [codex_jsonl.go](../packages/cli/internal/pipeline/codex_jsonl.go) and
-[codex_replay.go](../packages/cli/internal/pipeline/codex_replay.go).
+[processor/codex.go](../packages/cli/internal/processor/codex.go).
 
 | Source record | Allowed transmitted leaves |
 | --- | --- |

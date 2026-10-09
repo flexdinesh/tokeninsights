@@ -5,7 +5,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/x/ansi"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/db"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/querymodel"
 )
 
 type tableSummaryModel struct {
@@ -13,7 +13,7 @@ type tableSummaryModel struct {
 	totalValue    int64
 	showTotal     bool
 	loading       bool
-	sessionCounts db.SessionCounts
+	sessionCounts querymodel.SessionCounts
 }
 
 const tableSummarySeparator = " · "

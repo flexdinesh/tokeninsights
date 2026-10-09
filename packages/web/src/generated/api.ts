@@ -7,16 +7,6 @@
  */
 import * as zod from 'zod'
 
-export const ApiVersion = zod.enum(['v1'])
-
-export type ApiVersion = zod.input<typeof ApiVersion>
-export type ApiVersionOutput = zod.output<typeof ApiVersion>
-
-export const Capability = zod.enum(['usage', 'facets', 'ingestion'])
-
-export type Capability = zod.input<typeof Capability>
-export type CapabilityOutput = zod.output<typeof Capability>
-
 export const Period = zod.enum(['today', 'yesterday', 'week', 'month', 'year', 'all'])
 
 export type Period = zod.input<typeof Period>
@@ -77,24 +67,6 @@ export const SortDirection = zod.enum(['asc', 'desc'])
 export type SortDirection = zod.input<typeof SortDirection>
 export type SortDirectionOutput = zod.output<typeof SortDirection>
 
-export const SyncPhase = zod.enum(['ready'])
-
-export type SyncPhase = zod.input<typeof SyncPhase>
-export type SyncPhaseOutput = zod.output<typeof SyncPhase>
-
-export const HarnessSyncStatus = zod.enum([
-  'pending',
-  'discovering',
-  'syncing',
-  'normalizing',
-  'skipped',
-  'synced',
-  'failed',
-])
-
-export type HarnessSyncStatus = zod.input<typeof HarnessSyncStatus>
-export type HarnessSyncStatusOutput = zod.output<typeof HarnessSyncStatus>
-
 export const ErrorCode = zod.enum([
   'invalid_request',
   'not_found',
@@ -120,33 +92,6 @@ export const Selection = zod.strictObject({
 export type Selection = zod.input<typeof Selection>
 export type SelectionOutput = zod.output<typeof Selection>
 
-export const InstanceResponse = zod.strictObject({
-  instanceId: zod.string().min(1),
-  dataEpoch: zod
-    .string()
-    .describe('Durable database identity; nonempty when dataReadiness is ready.'),
-  dataReadiness: zod.enum(['ready', 'metadata', 'recovery', 'rebuild', 'unavailable']),
-  apiVersion: ApiVersion,
-  serverVersion: zod.string().min(1),
-  hostname: zod
-    .string()
-    .min(1)
-    .describe(
-      'Local viewers report their runtime hostname without requiring ingestion. Hosted servers reserve this field for dataset producer labels and return unknown when unavailable. Hosted server runtime hostnames never replace producer labels.',
-    ),
-  timezone: zod
-    .string()
-    .min(1)
-    .describe(
-      'Server reporting timezone, preferably an IANA name with historical DST rules. Unnamed system zones use an explicit UTC offset fallback.',
-    ),
-  capabilities: zod.array(Capability),
-  defaults: Selection,
-})
-
-export type InstanceResponse = zod.input<typeof InstanceResponse>
-export type InstanceResponseOutput = zod.output<typeof InstanceResponse>
-
 export const CountMin = 0
 export const CountMax = 9007199254740991
 
@@ -154,25 +99,6 @@ export const Count = zod.int().min(CountMin).max(CountMax)
 
 export type Count = zod.input<typeof Count>
 export type CountOutput = zod.output<typeof Count>
-
-export const SyncResponse = zod.strictObject({
-  instanceId: zod.string().min(1),
-  dataEpoch: zod
-    .string()
-    .describe('Durable database identity; nonempty when dataReadiness is ready.'),
-  dataReadiness: zod.enum(['ready', 'metadata', 'recovery', 'rebuild', 'unavailable']),
-  running: zod.boolean(),
-  phase: SyncPhase,
-  harnesses: zod.record(zod.string(), HarnessSyncStatus),
-  error: zod.string(),
-  revision: Count,
-  generation: Count.optional(),
-  inputRevision: Count.optional(),
-  pending: Count.optional(),
-})
-
-export type SyncResponse = zod.input<typeof SyncResponse>
-export type SyncResponseOutput = zod.output<typeof SyncResponse>
 
 export const TimestampMsMin = 0
 export const TimestampMsMax = 253402214399999
@@ -239,40 +165,6 @@ export const UsageSummary = zod.strictObject({
 export type UsageSummary = zod.input<typeof UsageSummary>
 export type UsageSummaryOutput = zod.output<typeof UsageSummary>
 
-export const UsageQuality = zod
-  .enum(['confirmed', 'estimated'])
-  .describe('Estimated evidence is queried separately and never included in confirmed totals.')
-
-export type UsageQuality = zod.input<typeof UsageQuality>
-export type UsageQualityOutput = zod.output<typeof UsageQuality>
-
-export const usageResponsePageSizeMax = 200
-
-export const UsageResponse = zod.strictObject({
-  factCount: Count.optional(),
-  instanceId: zod.string().min(1),
-  dataEpoch: zod.string().min(1),
-  revision: Count,
-  rows: zod.array(UsageRow),
-  chart: zod.array(UsageRow),
-  rowCount: Count,
-  page: zod.int().min(1),
-  pageSize: zod.int().min(1).max(usageResponsePageSizeMax),
-  summary: UsageSummary,
-  lastSynced: Count.describe(
-    'Time of the last committed ingestion, in Unix milliseconds; zero for an empty server.',
-  ),
-  range: zod.string(),
-  generation: Count.optional(),
-  inputRevision: Count.optional(),
-  pending: Count.optional(),
-  unresolved: Count.optional(),
-  quality: UsageQuality.optional(),
-})
-
-export type UsageResponse = zod.input<typeof UsageResponse>
-export type UsageResponseOutput = zod.output<typeof UsageResponse>
-
 export const LocationOption = zod.strictObject({
   key: zod.string(),
   name: zod.string().describe('Sanitized display label; full source paths are never ingested.'),
@@ -281,24 +173,6 @@ export const LocationOption = zod.strictObject({
 export type LocationOption = zod.input<typeof LocationOption>
 export type LocationOptionOutput = zod.output<typeof LocationOption>
 
-export const UsageFacetsResponse = zod.strictObject({
-  instanceId: zod.string().min(1),
-  dataEpoch: zod.string().min(1),
-  revision: Count,
-  providers: zod.array(zod.string()),
-  models: zod.array(zod.string()),
-  harnesses: zod.array(Harness),
-  sessions: zod.array(zod.string()),
-  repositories: zod.array(LocationOption),
-  directories: zod.array(LocationOption),
-  generation: Count.optional(),
-  inputRevision: Count.optional(),
-  pending: Count.optional(),
-})
-
-export type UsageFacetsResponse = zod.input<typeof UsageFacetsResponse>
-export type UsageFacetsResponseOutput = zod.output<typeof UsageFacetsResponse>
-
 export const ErrorResponse = zod.strictObject({
   code: ErrorCode,
   message: zod.string().min(1),
@@ -306,349 +180,6 @@ export const ErrorResponse = zod.strictObject({
 
 export type ErrorResponse = zod.input<typeof ErrorResponse>
 export type ErrorResponseOutput = zod.output<typeof ErrorResponse>
-
-export const ingestionCapabilitiesDatabaseIdMax = 256
-
-export const IngestionCapabilities = zod.strictObject({
-  protocolVersion: zod.literal(1),
-  identityVersion: zod.literal(1),
-  semanticsVersion: zod.literal(1),
-  databaseId: zod
-    .string()
-    .min(1)
-    .max(ingestionCapabilitiesDatabaseIdMax)
-    .describe('At most 256 UTF-8 bytes; no control characters.'),
-  maxBodyBytes: zod.literal(1048576),
-  maxEntries: zod.literal(256),
-  maxStringBytes: zod.literal(256),
-  maxInteger: zod.literal(9007199254740991),
-})
-
-export type IngestionCapabilities = zod.input<typeof IngestionCapabilities>
-export type IngestionCapabilitiesOutput = zod.output<typeof IngestionCapabilities>
-
-export const publicationSessionIdMax = 256
-
-export const publicationSessionNativeIdMax = 256
-
-export const PublicationSession = zod.strictObject({
-  id: zod
-    .string()
-    .min(1)
-    .max(publicationSessionIdMax)
-    .describe('At most 256 UTF-8 bytes; no control characters.'),
-  harness: Harness,
-  nativeId: zod
-    .string()
-    .min(1)
-    .max(publicationSessionNativeIdMax)
-    .describe('At most 256 UTF-8 bytes; no control characters.'),
-  firstOccurredAtMs: TimestampMs,
-  lastOccurredAtMs: TimestampMs,
-})
-
-export type PublicationSession = zod.input<typeof PublicationSession>
-export type PublicationSessionOutput = zod.output<typeof PublicationSession>
-
-export const publicationMessageIdMax = 256
-
-export const publicationMessageNativeIdMax = 256
-
-export const PublicationMessage = zod.strictObject({
-  id: zod
-    .string()
-    .min(1)
-    .max(publicationMessageIdMax)
-    .describe('At most 256 UTF-8 bytes; no control characters.'),
-  nativeId: zod
-    .string()
-    .min(1)
-    .max(publicationMessageNativeIdMax)
-    .describe('At most 256 UTF-8 bytes; no control characters.'),
-  occurredAtMs: TimestampMs,
-})
-
-export type PublicationMessage = zod.input<typeof PublicationMessage>
-export type PublicationMessageOutput = zod.output<typeof PublicationMessage>
-
-export const publicationLocationIdMax = 256
-
-export const publicationLocationDirectoryKeyMax = 256
-
-export const publicationLocationDirectoryNameMax = 256
-
-export const publicationLocationDirectoryNameRegExp = new RegExp('^[^/\\\\]*$')
-export const publicationLocationRepositoryKeyMax = 256
-
-export const publicationLocationRepositoryNameMax = 256
-
-export const publicationLocationRepositoryNameRegExp = new RegExp('^[^/\\\\]*$')
-export const publicationLocationRepositorySourceMax = 256
-
-export const PublicationLocation = zod.strictObject({
-  id: zod
-    .string()
-    .min(1)
-    .max(publicationLocationIdMax)
-    .describe('At most 256 UTF-8 bytes; no control characters.'),
-  directoryKey: zod
-    .string()
-    .min(1)
-    .max(publicationLocationDirectoryKeyMax)
-    .optional()
-    .describe('At most 256 UTF-8 bytes; no control characters.'),
-  directoryName: zod
-    .string()
-    .max(publicationLocationDirectoryNameMax)
-    .regex(publicationLocationDirectoryNameRegExp)
-    .optional()
-    .describe(
-      'Sanitized basename label, at most 256 UTF-8 bytes; no path separators or control characters.',
-    ),
-  repositoryKey: zod
-    .string()
-    .min(1)
-    .max(publicationLocationRepositoryKeyMax)
-    .optional()
-    .describe('At most 256 UTF-8 bytes; no control characters.'),
-  repositoryName: zod
-    .string()
-    .max(publicationLocationRepositoryNameMax)
-    .regex(publicationLocationRepositoryNameRegExp)
-    .optional()
-    .describe(
-      'Sanitized basename label, at most 256 UTF-8 bytes; no path separators or control characters.',
-    ),
-  repositorySource: zod
-    .string()
-    .max(publicationLocationRepositorySourceMax)
-    .optional()
-    .describe('At most 256 UTF-8 bytes; no control characters.'),
-})
-
-export type PublicationLocation = zod.input<typeof PublicationLocation>
-export type PublicationLocationOutput = zod.output<typeof PublicationLocation>
-
-export const PublicationRevision = zod
-  .strictObject({
-    rule: zod.enum(['claude-source-timestamp-v1']),
-    value: TimestampMs,
-  })
-  .describe(
-    'Only Claude Code facts with native request and message IDs can carry this source timestamp revision; value equals occurredAtMs.',
-  )
-
-export type PublicationRevision = zod.input<typeof PublicationRevision>
-export type PublicationRevisionOutput = zod.output<typeof PublicationRevision>
-
-export const publicationFactIdMax = 256
-
-export const publicationFactNativeRequestIdMax = 256
-
-export const publicationFactProviderMax = 256
-
-export const publicationFactModelMax = 256
-
-export const publicationFactInputTokensMin = 0
-export const publicationFactInputTokensMax = 9007199254740991
-
-export const publicationFactOutputTokensMin = 0
-export const publicationFactOutputTokensMax = 9007199254740991
-
-export const publicationFactReasoningTokensMin = 0
-export const publicationFactReasoningTokensMax = 9007199254740991
-
-export const publicationFactCacheReadTokensMin = 0
-export const publicationFactCacheReadTokensMax = 9007199254740991
-
-export const publicationFactCacheWriteTokensMin = 0
-export const publicationFactCacheWriteTokensMax = 9007199254740991
-
-export const publicationFactTotalTokensMin = 0
-export const publicationFactTotalTokensMax = 9007199254740991
-
-export const PublicationFact = zod
-  .strictObject({
-    id: zod
-      .string()
-      .min(1)
-      .max(publicationFactIdMax)
-      .describe('At most 256 UTF-8 bytes; no control characters.'),
-    harness: Harness,
-    session: PublicationSession,
-    message: PublicationMessage.optional(),
-    nativeRequestId: zod
-      .string()
-      .min(1)
-      .max(publicationFactNativeRequestIdMax)
-      .optional()
-      .describe('At most 256 UTF-8 bytes; no control characters.'),
-    occurredAtMs: TimestampMs,
-    provider: zod
-      .string()
-      .min(1)
-      .max(publicationFactProviderMax)
-      .describe('At most 256 UTF-8 bytes; no control characters.'),
-    providerSource: zod.enum(['explicit', 'inferred', 'unknown']),
-    model: zod
-      .string()
-      .min(1)
-      .max(publicationFactModelMax)
-      .describe('At most 256 UTF-8 bytes; no control characters.'),
-    usageScope: zod.enum(['message']),
-    quality: zod.enum(['exact', 'derived', 'estimated']),
-    countable: zod.boolean(),
-    inputTokens: zod.int().min(publicationFactInputTokensMin).max(publicationFactInputTokensMax),
-    outputTokens: zod.int().min(publicationFactOutputTokensMin).max(publicationFactOutputTokensMax),
-    reasoningTokens: zod
-      .int()
-      .min(publicationFactReasoningTokensMin)
-      .max(publicationFactReasoningTokensMax),
-    cacheReadTokens: zod
-      .int()
-      .min(publicationFactCacheReadTokensMin)
-      .max(publicationFactCacheReadTokensMax),
-    cacheWriteTokens: zod
-      .int()
-      .min(publicationFactCacheWriteTokensMin)
-      .max(publicationFactCacheWriteTokensMax),
-    totalTokens: zod.int().min(publicationFactTotalTokensMin).max(publicationFactTotalTokensMax),
-    location: PublicationLocation.optional(),
-    revision: PublicationRevision.optional(),
-  })
-  .describe(
-    'IDs are recomputed from native identity tuples. A native message or request ID is required. Total equals the five token components. Session bounds include fact occurrence. Reference envelopes may merge; immutable payload changes conflict unless a supported source revision applies.',
-  )
-
-export type PublicationFact = zod.input<typeof PublicationFact>
-export type PublicationFactOutput = zod.output<typeof PublicationFact>
-
-export const publicationEntrySequenceMax = 9007199254740991
-
-export const PublicationEntry = zod.strictObject({
-  sequence: zod.int().min(1).max(publicationEntrySequenceMax),
-  fact: PublicationFact,
-})
-
-export type PublicationEntry = zod.input<typeof PublicationEntry>
-export type PublicationEntryOutput = zod.output<typeof PublicationEntry>
-
-export const publicationBatchDatabaseIdMax = 256
-
-export const publicationBatchStreamIdMax = 256
-
-export const publicationBatchBatchIdMax = 256
-
-export const publicationBatchFromSequenceMax = 9007199254740991
-
-export const publicationBatchToSequenceMax = 9007199254740991
-
-export const publicationBatchHostnameMax = 256
-
-export const publicationBatchEntriesMax = 256
-
-export const PublicationBatch = zod
-  .strictObject({
-    protocolVersion: zod.literal(1),
-    identityVersion: zod.literal(1),
-    semanticsVersion: zod.literal(1),
-    databaseId: zod
-      .string()
-      .min(1)
-      .max(publicationBatchDatabaseIdMax)
-      .describe('At most 256 UTF-8 bytes; no control characters.'),
-    streamId: zod
-      .string()
-      .min(1)
-      .max(publicationBatchStreamIdMax)
-      .describe('At most 256 UTF-8 bytes; no control characters.'),
-    batchId: zod
-      .string()
-      .min(1)
-      .max(publicationBatchBatchIdMax)
-      .describe('At most 256 UTF-8 bytes; no control characters.'),
-    fromSequence: zod.int().min(1).max(publicationBatchFromSequenceMax),
-    toSequence: zod.int().min(1).max(publicationBatchToSequenceMax),
-    hostname: zod
-      .string()
-      .max(publicationBatchHostnameMax)
-      .optional()
-      .describe('At most 256 UTF-8 bytes; no control characters.'),
-    entries: zod.array(PublicationEntry).min(1).max(publicationBatchEntriesMax),
-  })
-  .describe(
-    'Immutable request bytes, at most 1 MiB. Entries form the contiguous inclusive sequence range. Database identity is obtained from capabilities. Unknown fields, duplicate JSON keys, null values, and non-integer numbers are rejected.',
-  )
-
-export type PublicationBatch = zod.input<typeof PublicationBatch>
-export type PublicationBatchOutput = zod.output<typeof PublicationBatch>
-
-export const ingestionReceiptDatabaseIdMax = 256
-
-export const ingestionReceiptStreamIdMax = 256
-
-export const ingestionReceiptBatchIdMax = 256
-
-export const ingestionReceiptFromSequenceMax = 9007199254740991
-
-export const ingestionReceiptToSequenceMax = 9007199254740991
-
-export const ingestionReceiptRequestHashMax = 256
-
-export const ingestionReceiptInsertedMin = 0
-export const ingestionReceiptInsertedMax = 9007199254740991
-
-export const ingestionReceiptUpdatedMin = 0
-export const ingestionReceiptUpdatedMax = 9007199254740991
-
-export const ingestionReceiptNoopMin = 0
-export const ingestionReceiptNoopMax = 9007199254740991
-
-export const ingestionReceiptCommittedAtMsMin = 0
-export const ingestionReceiptCommittedAtMsMax = 9007199254740991
-
-export const ingestionReceiptRevisionMin = 0
-export const ingestionReceiptRevisionMax = 9007199254740991
-
-export const IngestionReceipt = zod
-  .strictObject({
-    databaseId: zod
-      .string()
-      .min(1)
-      .max(ingestionReceiptDatabaseIdMax)
-      .describe('At most 256 UTF-8 bytes; no control characters.'),
-    streamId: zod
-      .string()
-      .min(1)
-      .max(ingestionReceiptStreamIdMax)
-      .describe('At most 256 UTF-8 bytes; no control characters.'),
-    batchId: zod
-      .string()
-      .min(1)
-      .max(ingestionReceiptBatchIdMax)
-      .describe('At most 256 UTF-8 bytes; no control characters.'),
-    fromSequence: zod.int().min(1).max(ingestionReceiptFromSequenceMax),
-    toSequence: zod.int().min(1).max(ingestionReceiptToSequenceMax),
-    requestHash: zod
-      .string()
-      .min(1)
-      .max(ingestionReceiptRequestHashMax)
-      .describe('At most 256 UTF-8 bytes; no control characters.'),
-    inserted: zod.int().min(ingestionReceiptInsertedMin).max(ingestionReceiptInsertedMax),
-    updated: zod.int().min(ingestionReceiptUpdatedMin).max(ingestionReceiptUpdatedMax),
-    noop: zod.int().min(ingestionReceiptNoopMin).max(ingestionReceiptNoopMax),
-    committedAtMs: zod
-      .int()
-      .min(ingestionReceiptCommittedAtMsMin)
-      .max(ingestionReceiptCommittedAtMsMax),
-    revision: zod.int().min(ingestionReceiptRevisionMin).max(ingestionReceiptRevisionMax),
-  })
-  .describe(
-    'Acknowledges the exact request hash after facts and receipt commit atomically. Counts sum to batch entry count. Exact batch replay returns the original receipt.',
-  )
-
-export type IngestionReceipt = zod.input<typeof IngestionReceipt>
-export type IngestionReceiptOutput = zod.output<typeof IngestionReceipt>
 
 export const ingestionErrorCodeMax = 256
 
@@ -687,6 +218,13 @@ export const IngestionError = zod
 
 export type IngestionError = zod.input<typeof IngestionError>
 export type IngestionErrorOutput = zod.output<typeof IngestionError>
+
+export const UsageQuality = zod
+  .enum(['confirmed', 'estimated'])
+  .describe('Estimated evidence is queried separately and never included in confirmed totals.')
+
+export type UsageQuality = zod.input<typeof UsageQuality>
+export type UsageQualityOutput = zod.output<typeof UsageQuality>
 
 export const NativeScalar = zod
   .union([zod.string().nullable(), zod.number(), zod.boolean()])
@@ -1063,67 +601,6 @@ export const RawEntry = zod.strictObject({
 export type RawEntry = zod.input<typeof RawEntry>
 export type RawEntryOutput = zod.output<typeof RawEntry>
 
-export const rawBatchDatabaseIdMax = 256
-
-export const rawBatchStreamIdMax = 256
-
-export const rawBatchBatchIdMax = 256
-
-export const rawBatchEntriesMax = 256
-
-export const RawBatch = zod.strictObject({
-  protocolVersion: zod.literal(2),
-  extractorVersion: zod.literal(1),
-  databaseId: zod.string().min(1).max(rawBatchDatabaseIdMax),
-  streamId: zod.string().min(1).max(rawBatchStreamIdMax),
-  batchId: zod.string().min(1).max(rawBatchBatchIdMax),
-  fromSequence: Count,
-  toSequence: Count,
-  entries: zod.array(RawEntry).min(1).max(rawBatchEntriesMax),
-})
-
-export type RawBatch = zod.input<typeof RawBatch>
-export type RawBatchOutput = zod.output<typeof RawBatch>
-
-export const rawCapabilitiesDatabaseIdMax = 256
-
-export const RawCapabilities = zod.strictObject({
-  protocolVersion: zod.literal(2),
-  extractorVersion: zod.literal(1),
-  databaseId: zod.string().min(1).max(rawCapabilitiesDatabaseIdMax),
-  datasetId: zod.enum(['default']),
-  completion: zod.enum(['acceptance']),
-  maxBodyBytes: zod.literal(1048576),
-  maxEntries: zod.literal(256),
-})
-
-export type RawCapabilities = zod.input<typeof RawCapabilities>
-export type RawCapabilitiesOutput = zod.output<typeof RawCapabilities>
-
-export const rawReceiptDatabaseIdMax = 256
-
-export const rawReceiptStreamIdMax = 256
-
-export const rawReceiptBatchIdMax = 256
-
-export const rawReceiptRequestHashMax = 256
-
-export const RawReceipt = zod.strictObject({
-  databaseId: zod.string().min(1).max(rawReceiptDatabaseIdMax),
-  datasetId: zod.enum(['default']),
-  streamId: zod.string().min(1).max(rawReceiptStreamIdMax),
-  batchId: zod.string().min(1).max(rawReceiptBatchIdMax),
-  requestHash: zod.string().min(1).max(rawReceiptRequestHashMax),
-  fromSequence: Count,
-  toSequence: Count,
-  accepted: Count,
-  acceptedAtMs: TimestampMs,
-  inputRevision: Count,
-})
-
-export type RawReceipt = zod.input<typeof RawReceipt>
-export type RawReceiptOutput = zod.output<typeof RawReceipt>
-
 export const evidenceOutcomeEvidenceIdMax = 256
 
 export const EvidenceOutcome = zod.strictObject({
@@ -1154,14 +631,6 @@ export const ProcessingStatus = zod.strictObject({
 
 export type ProcessingStatus = zod.input<typeof ProcessingStatus>
 export type ProcessingStatusOutput = zod.output<typeof ProcessingStatus>
-
-export const RawAcceptance = zod.strictObject({
-  receipt: RawReceipt,
-  processing: ProcessingStatus,
-})
-
-export type RawAcceptance = zod.input<typeof RawAcceptance>
-export type RawAcceptanceOutput = zod.output<typeof RawAcceptance>
 
 export const ReprocessAcceptance = zod.strictObject({
   generation: Count,
@@ -1446,261 +915,6 @@ export type GetStatusV2ResponseOutput = zod.output<typeof GetStatusV2Response>
  * from one validated read transaction. Date bounds use server-local dates.
  * @summary Query canonical token usage
  */
-export const getUsageV2QueryPeriodDefault = `month`
-export const getUsageV2QueryBucketDefault = `day`
-export const getUsageV2QueryTabDefault = `tokens`
-export const getUsageV2QueryPageDefault = 1
-
-export const getUsageV2QueryPageSizeDefault = 50
-export const getUsageV2QueryPageSizeMax = 200
-
-export const getUsageV2QueryQualityDefault = `confirmed`
-
-export const GetUsageV2QueryParams = zod.strictObject({
-  period: Period.default(getUsageV2QueryPeriodDefault),
-  bucket: Bucket.default(getUsageV2QueryBucketDefault),
-  from: zod.iso
-    .date()
-    .optional()
-    .describe('Inclusive lower local-date bound; replaces period when supplied.'),
-  to: zod.iso
-    .date()
-    .optional()
-    .describe('Inclusive upper local-date bound; replaces period when supplied.'),
-  provider: zod
-    .array(zod.string())
-    .optional()
-    .describe('Provider filter. Repeat the parameter to select multiple values.'),
-  model: zod
-    .array(zod.string())
-    .optional()
-    .describe('Model filter. Repeat the parameter to select multiple values.'),
-  harness: zod
-    .array(Harness)
-    .optional()
-    .describe('Harness filter. Repeat the parameter to select multiple values.'),
-  session: zod
-    .array(zod.string())
-    .optional()
-    .describe('Session-ID filter. Repeat the parameter to select multiple values.'),
-  repository: zod
-    .array(zod.string())
-    .optional()
-    .describe(
-      'Repo-tab stable repository key; repeat for multiple values. The key unknown selects missing values.',
-    ),
-  directory: zod
-    .array(zod.string())
-    .optional()
-    .describe(
-      'Repo-tab stable directory key; repeat for multiple values. The key unknown selects missing values.',
-    ),
-  tab: UsageTab.default(getUsageV2QueryTabDefault).describe(
-    'Aggregation shown in table and chart rows.',
-  ),
-  locationGroup: zod
-    .enum(['repository', 'directory'])
-    .optional()
-    .describe('Repo-tab grouping by repository or directory.'),
-  sort: zod
-    .enum([
-      'name',
-      'date',
-      'total',
-      'input',
-      'output',
-      'reasoning',
-      'cacheRead',
-      'cacheWrite',
-      'sessions',
-      'context',
-      'averageContext',
-      'medianContext',
-      'maxContext',
-      'harness',
-      'provider',
-      'model',
-    ])
-    .optional()
-    .describe('Sort field. Context-only fields are valid only for the context tab.'),
-  direction: zod.enum(['asc', 'desc']).optional(),
-  page: zod.int().min(1).default(getUsageV2QueryPageDefault),
-  pageSize: zod
-    .int()
-    .min(1)
-    .max(getUsageV2QueryPageSizeMax)
-    .default(getUsageV2QueryPageSizeDefault),
-  quality: UsageQuality.default(getUsageV2QueryQualityDefault),
-})
-
-export type GetUsageV2QueryParams = zod.input<typeof GetUsageV2QueryParams>
-export type GetUsageV2QueryParamsOutput = zod.output<typeof GetUsageV2QueryParams>
-
-export const GetUsageV2Response = UsageResponseV2
-
-export type GetUsageV2Response = zod.input<typeof GetUsageV2Response>
-export type GetUsageV2ResponseOutput = zod.output<typeof GetUsageV2Response>
-
-/**
- * Each facet applies the other active filters while omitting its own.
- * Session search is a case-insensitive literal substring search capped at
- * 100 results.
- * @summary Query available usage filters
- */
-export const getUsageFacetsV2QueryPeriodDefault = `month`
-export const getUsageFacetsV2QueryBucketDefault = `day`
-export const getUsageFacetsV2QuerySearchDefault = ``
-export const getUsageFacetsV2QueryTabDefault = `tokens`
-export const getUsageFacetsV2QueryQualityDefault = `confirmed`
-
-export const GetUsageFacetsV2QueryParams = zod.strictObject({
-  period: Period.default(getUsageFacetsV2QueryPeriodDefault),
-  bucket: Bucket.default(getUsageFacetsV2QueryBucketDefault),
-  from: zod.iso
-    .date()
-    .optional()
-    .describe('Inclusive lower local-date bound; replaces period when supplied.'),
-  to: zod.iso
-    .date()
-    .optional()
-    .describe('Inclusive upper local-date bound; replaces period when supplied.'),
-  provider: zod
-    .array(zod.string())
-    .optional()
-    .describe('Provider filter. Repeat the parameter to select multiple values.'),
-  model: zod
-    .array(zod.string())
-    .optional()
-    .describe('Model filter. Repeat the parameter to select multiple values.'),
-  harness: zod
-    .array(Harness)
-    .optional()
-    .describe('Harness filter. Repeat the parameter to select multiple values.'),
-  session: zod
-    .array(zod.string())
-    .optional()
-    .describe('Session-ID filter. Repeat the parameter to select multiple values.'),
-  repository: zod
-    .array(zod.string())
-    .optional()
-    .describe(
-      'Repo-tab stable repository key; repeat for multiple values. The key unknown selects missing values.',
-    ),
-  directory: zod
-    .array(zod.string())
-    .optional()
-    .describe(
-      'Repo-tab stable directory key; repeat for multiple values. The key unknown selects missing values.',
-    ),
-  search: zod
-    .string()
-    .default(getUsageFacetsV2QuerySearchDefault)
-    .describe('Literal substring used to filter session IDs.'),
-  tab: UsageTab.default(getUsageFacetsV2QueryTabDefault).describe(
-    'Active aggregation. Repository/directory filters require the repo tab.',
-  ),
-  quality: UsageQuality.default(getUsageFacetsV2QueryQualityDefault),
-})
-
-export type GetUsageFacetsV2QueryParams = zod.input<typeof GetUsageFacetsV2QueryParams>
-export type GetUsageFacetsV2QueryParamsOutput = zod.output<typeof GetUsageFacetsV2QueryParams>
-
-export const GetUsageFacetsV2Response = UsageFacetsResponseV2
-
-export type GetUsageFacetsV2Response = zod.input<typeof GetUsageFacetsV2Response>
-export type GetUsageFacetsV2ResponseOutput = zod.output<typeof GetUsageFacetsV2Response>
-
-/**
- * Describes durable acceptance limits and the effective server-owned dataset. Hosted requests require an ingest-scoped bearer token. Personal managed ingestion uses private Unix transport.
- * @summary Read raw ingestion contract and durable database identity
- */
-export const GetRawIngestionCapabilitiesV3Response = RawCapabilitiesV3
-
-export type GetRawIngestionCapabilitiesV3Response = zod.input<
-  typeof GetRawIngestionCapabilitiesV3Response
->
-export type GetRawIngestionCapabilitiesV3ResponseOutput = zod.output<
-  typeof GetRawIngestionCapabilitiesV3Response
->
-
-/**
- * Raw evidence, submitted item mappings, immutable receipt and pending work commit together. Duplicate evidence succeeds without double counting. Processing runs asynchronously. Database and authenticated dataset binding are verified before acceptance. Hosted ingestion requires an ingest-scoped bearer token. Managed personal HTTP is query-only; ingestion uses private Unix transport. Metadata strings are limited to 256 UTF-8 bytes.
- * @summary Durably accept immutable sanitized source evidence
- */
-export const IngestRawBatchV3Body = RawBatchV3
-
-export type IngestRawBatchV3Body = zod.input<typeof IngestRawBatchV3Body>
-export type IngestRawBatchV3BodyOutput = zod.output<typeof IngestRawBatchV3Body>
-
-export const IngestRawBatchV3Response = RawAcceptanceV3
-
-export type IngestRawBatchV3Response = zod.input<typeof IngestRawBatchV3Response>
-export type IngestRawBatchV3ResponseOutput = zod.output<typeof IngestRawBatchV3Response>
-
-/**
- * @summary Read immutable acceptance and current per-item processing status
- */
-export const getRawBatchStatusV3PathStreamMax = 256
-
-export const getRawBatchStatusV3PathBatchMax = 256
-
-export const GetRawBatchStatusV3Params = zod.strictObject({
-  stream: zod.string().min(1).max(getRawBatchStatusV3PathStreamMax),
-  batch: zod.string().min(1).max(getRawBatchStatusV3PathBatchMax),
-})
-
-export type GetRawBatchStatusV3Params = zod.input<typeof GetRawBatchStatusV3Params>
-export type GetRawBatchStatusV3ParamsOutput = zod.output<typeof GetRawBatchStatusV3Params>
-
-export const GetRawBatchStatusV3Response = RawAcceptanceV3
-
-export type GetRawBatchStatusV3Response = zod.input<typeof GetRawBatchStatusV3Response>
-export type GetRawBatchStatusV3ResponseOutput = zod.output<typeof GetRawBatchStatusV3Response>
-
-/**
- * Hosted-only, canonical same-origin exchange. Sets a host-only Secure HttpOnly SameSite=Lax cookie for 24 hours. The bearer token is never returned or persisted by the browser.
- * @summary Exchange bearer token for a read-only browser cookie
- */
-export const CreateBrowserSessionBody = BrowserSessionRequest
-
-export type CreateBrowserSessionBody = zod.input<typeof CreateBrowserSessionBody>
-export type CreateBrowserSessionBodyOutput = zod.output<typeof CreateBrowserSessionBody>
-
-export const CreateBrowserSessionResponse = zod.void()
-
-export type CreateBrowserSessionResponse = zod.input<typeof CreateBrowserSessionResponse>
-export type CreateBrowserSessionResponseOutput = zod.output<typeof CreateBrowserSessionResponse>
-
-/**
- * @summary End this browser session
- */
-export const DeleteBrowserSessionResponse = zod.void()
-
-export type DeleteBrowserSessionResponse = zod.input<typeof DeleteBrowserSessionResponse>
-export type DeleteBrowserSessionResponseOutput = zod.output<typeof DeleteBrowserSessionResponse>
-
-/**
- * @summary Describe this TokenInsights server
- */
-export const GetInstanceResponse = InstanceResponse
-
-export type GetInstanceResponse = zod.input<typeof GetInstanceResponse>
-export type GetInstanceResponseOutput = zod.output<typeof GetInstanceResponse>
-
-/**
- * Read-only compatibility endpoint. It never starts collection. POST is unsupported.
- * @summary Read ingestion readiness and committed revision
- */
-export const GetSyncResponse = SyncResponse
-
-export type GetSyncResponse = zod.input<typeof GetSyncResponse>
-export type GetSyncResponseOutput = zod.output<typeof GetSyncResponse>
-
-/**
- * Returns a sorted, paginated table, complete filtered summary, and chart
- * from one validated read transaction. Date bounds use server-local dates.
- * @summary Query canonical token usage
- */
 export const getUsageQueryPeriodDefault = `month`
 export const getUsageQueryBucketDefault = `day`
 export const getUsageQueryTabDefault = `tokens`
@@ -1787,7 +1001,7 @@ export const GetUsageQueryParams = zod.strictObject({
 export type GetUsageQueryParams = zod.input<typeof GetUsageQueryParams>
 export type GetUsageQueryParamsOutput = zod.output<typeof GetUsageQueryParams>
 
-export const GetUsageResponse = UsageResponse
+export const GetUsageResponse = UsageResponseV2
 
 export type GetUsageResponse = zod.input<typeof GetUsageResponse>
 export type GetUsageResponseOutput = zod.output<typeof GetUsageResponse>
@@ -1856,82 +1070,79 @@ export const GetUsageFacetsQueryParams = zod.strictObject({
 export type GetUsageFacetsQueryParams = zod.input<typeof GetUsageFacetsQueryParams>
 export type GetUsageFacetsQueryParamsOutput = zod.output<typeof GetUsageFacetsQueryParams>
 
-export const GetUsageFacetsResponse = UsageFacetsResponse
+export const GetUsageFacetsResponse = UsageFacetsResponseV2
 
 export type GetUsageFacetsResponse = zod.input<typeof GetUsageFacetsResponse>
 export type GetUsageFacetsResponseOutput = zod.output<typeof GetUsageFacetsResponse>
 
 /**
- * @deprecated
- * @summary Read normalized ingestion compatibility and database identity
- */
-export const GetIngestionCapabilitiesResponse = IngestionCapabilities
-
-export type GetIngestionCapabilitiesResponse = zod.input<typeof GetIngestionCapabilitiesResponse>
-export type GetIngestionCapabilitiesResponseOutput = zod.output<
-  typeof GetIngestionCapabilitiesResponse
->
-
-/**
- * Compatibility delivery for retained protocol-1 journal requests. Facts are stored as legacy baselines with synchronous receipts. New collectors use protocol 2. Local writes use private Unix transport. Matching proven raw contributions replace baselines by identity; unmatched baselines remain queryable.
- * @deprecated
- * @summary Retain a legacy normalized publication batch
- */
-export const IngestBatchBody = PublicationBatch
-
-export type IngestBatchBody = zod.input<typeof IngestBatchBody>
-export type IngestBatchBodyOutput = zod.output<typeof IngestBatchBody>
-
-export const IngestBatchResponse = IngestionReceipt
-
-export type IngestBatchResponse = zod.input<typeof IngestBatchResponse>
-export type IngestBatchResponseOutput = zod.output<typeof IngestBatchResponse>
-
-/**
+ * Describes durable acceptance limits and the effective server-owned dataset. Hosted requests require an ingest-scoped bearer token. Personal managed ingestion uses private Unix transport.
  * @summary Read raw ingestion contract and durable database identity
  */
-export const GetRawIngestionCapabilitiesResponse = RawCapabilities
+export const GetRawIngestionCapabilitiesV3Response = RawCapabilitiesV3
 
-export type GetRawIngestionCapabilitiesResponse = zod.input<
-  typeof GetRawIngestionCapabilitiesResponse
+export type GetRawIngestionCapabilitiesV3Response = zod.input<
+  typeof GetRawIngestionCapabilitiesV3Response
 >
-export type GetRawIngestionCapabilitiesResponseOutput = zod.output<
-  typeof GetRawIngestionCapabilitiesResponse
+export type GetRawIngestionCapabilitiesV3ResponseOutput = zod.output<
+  typeof GetRawIngestionCapabilitiesV3Response
 >
 
 /**
- * Raw evidence, every submitted item mapping, immutable receipt and pending work commit together. Duplicate evidence succeeds. Processing runs asynchronously. Local ingestion is private Unix transport; public local HTTP exposes queries only. Remote authentication remains a separate deployment concern. Metadata strings are limited to 256 UTF-8 bytes.
+ * Raw evidence, submitted item mappings, immutable receipt and pending work commit together. Duplicate evidence succeeds without double counting. Processing runs asynchronously. Database and authenticated dataset binding are verified before acceptance. Hosted ingestion requires an ingest-scoped bearer token. Managed personal HTTP is query-only; ingestion uses private Unix transport. Metadata strings are limited to 256 UTF-8 bytes.
  * @summary Durably accept immutable sanitized source evidence
  */
-export const IngestRawBatchBody = RawBatch
+export const IngestRawBatchV3Body = RawBatchV3
 
-export type IngestRawBatchBody = zod.input<typeof IngestRawBatchBody>
-export type IngestRawBatchBodyOutput = zod.output<typeof IngestRawBatchBody>
+export type IngestRawBatchV3Body = zod.input<typeof IngestRawBatchV3Body>
+export type IngestRawBatchV3BodyOutput = zod.output<typeof IngestRawBatchV3Body>
 
-export const IngestRawBatchResponse = RawAcceptance
+export const IngestRawBatchV3Response = RawAcceptanceV3
 
-export type IngestRawBatchResponse = zod.input<typeof IngestRawBatchResponse>
-export type IngestRawBatchResponseOutput = zod.output<typeof IngestRawBatchResponse>
+export type IngestRawBatchV3Response = zod.input<typeof IngestRawBatchV3Response>
+export type IngestRawBatchV3ResponseOutput = zod.output<typeof IngestRawBatchV3Response>
 
 /**
  * @summary Read immutable acceptance and current per-item processing status
  */
-export const getRawBatchStatusPathStreamMax = 256
+export const getRawBatchStatusV3PathStreamMax = 256
 
-export const getRawBatchStatusPathBatchMax = 256
+export const getRawBatchStatusV3PathBatchMax = 256
 
-export const GetRawBatchStatusParams = zod.strictObject({
-  stream: zod.string().min(1).max(getRawBatchStatusPathStreamMax),
-  batch: zod.string().min(1).max(getRawBatchStatusPathBatchMax),
+export const GetRawBatchStatusV3Params = zod.strictObject({
+  stream: zod.string().min(1).max(getRawBatchStatusV3PathStreamMax),
+  batch: zod.string().min(1).max(getRawBatchStatusV3PathBatchMax),
 })
 
-export type GetRawBatchStatusParams = zod.input<typeof GetRawBatchStatusParams>
-export type GetRawBatchStatusParamsOutput = zod.output<typeof GetRawBatchStatusParams>
+export type GetRawBatchStatusV3Params = zod.input<typeof GetRawBatchStatusV3Params>
+export type GetRawBatchStatusV3ParamsOutput = zod.output<typeof GetRawBatchStatusV3Params>
 
-export const GetRawBatchStatusResponse = RawAcceptance
+export const GetRawBatchStatusV3Response = RawAcceptanceV3
 
-export type GetRawBatchStatusResponse = zod.input<typeof GetRawBatchStatusResponse>
-export type GetRawBatchStatusResponseOutput = zod.output<typeof GetRawBatchStatusResponse>
+export type GetRawBatchStatusV3Response = zod.input<typeof GetRawBatchStatusV3Response>
+export type GetRawBatchStatusV3ResponseOutput = zod.output<typeof GetRawBatchStatusV3Response>
+
+/**
+ * Hosted-only, canonical same-origin exchange. Sets a host-only Secure HttpOnly SameSite=Lax cookie for 24 hours. The bearer token is never returned or persisted by the browser.
+ * @summary Exchange bearer token for a read-only browser cookie
+ */
+export const CreateBrowserSessionBody = BrowserSessionRequest
+
+export type CreateBrowserSessionBody = zod.input<typeof CreateBrowserSessionBody>
+export type CreateBrowserSessionBodyOutput = zod.output<typeof CreateBrowserSessionBody>
+
+export const CreateBrowserSessionResponse = zod.void()
+
+export type CreateBrowserSessionResponse = zod.input<typeof CreateBrowserSessionResponse>
+export type CreateBrowserSessionResponseOutput = zod.output<typeof CreateBrowserSessionResponse>
+
+/**
+ * @summary End this browser session
+ */
+export const DeleteBrowserSessionResponse = zod.void()
+
+export type DeleteBrowserSessionResponse = zod.input<typeof DeleteBrowserSessionResponse>
+export type DeleteBrowserSessionResponseOutput = zod.output<typeof DeleteBrowserSessionResponse>
 
 /**
  * Builds a new generation asynchronously. Published history stays active until replacement coverage is complete. Available on private local transport and the remote server.

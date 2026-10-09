@@ -72,7 +72,6 @@ require a separate authenticated harness export or realtime hooks.
   of table pagination. Distinguish sessions shown from all synced sessions.
 - Cost tracking is outside the active product. Thin completion plugins invoke
   the same collector sync; realtime/checkpoint accounting remains future work.
-  Preserve TPS concepts without claiming unavailable timing measurements.
 - Schema changes require explicit approval. UI changes must preserve canonical
   analytics semantics and sync behavior.
 

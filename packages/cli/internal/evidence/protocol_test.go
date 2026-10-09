@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-func TestDatasetRequiredOnlyInProtocol3(t *testing.T) {
+func TestOnlyCurrentProtocolWithDatasetAccepted(t *testing.T) {
 	batch := Batch{ProtocolVersion: ProtocolVersion, ExtractorVersion: ExtractorVersion, DatabaseID: "database", StreamID: "stream", BatchID: "batch", FromSequence: 1, ToSequence: 1, Entries: []Entry{{Sequence: 1, Record: Record{Harness: "pi", Format: "pi-jsonl", SourceID: "source", Lineage: "lineage", Ordinal: 1, Data: json.RawMessage(`{"type":"session","id":"session"}`)}}}}
 	body, _ := json.Marshal(batch)
 	if _, err := DecodeBatch(body); err == nil {
@@ -13,14 +13,14 @@ func TestDatasetRequiredOnlyInProtocol3(t *testing.T) {
 	}
 	batch.DatasetID = "user-a"
 	body, _ = json.Marshal(batch)
-	if got, err := DecodeBatch(body); err != nil || got.EffectiveDatasetID() != "user-a" {
+	if got, err := DecodeBatch(body); err != nil || got.DatasetID != "user-a" {
 		t.Fatal(got, err)
 	}
-	batch.ProtocolVersion = LegacyProtocolVersion
+	batch.ProtocolVersion = 2
 	batch.DatasetID = ""
 	body, _ = json.Marshal(batch)
-	if got, err := DecodeBatch(body); err != nil || got.EffectiveDatasetID() != "default" {
-		t.Fatal(got, err)
+	if _, err := DecodeBatch(body); err == nil {
+		t.Fatal("obsolete protocol accepted")
 	}
 	batch.DatasetID = "user-a"
 	body, _ = json.Marshal(batch)

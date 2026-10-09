@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
@@ -14,6 +13,7 @@ import (
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/collector"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/datastore"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/evidence"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/ingestionhttp"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/pipeline"
 )
 
@@ -45,7 +45,7 @@ func TestDirectCollectorGoldenReplayAndRebuild(t *testing.T) {
 		t.Fatal(err)
 	}
 	options := collector.Options{CollectorDBPath: filepath.Join(root, "collector.sqlite"), ServerDBPath: path,
-		Destination: &collector.Destination{URL: "http://local", DatabaseID: caps.DatabaseID, DatasetID: caps.DatasetID, Local: true, Transport: transport},
+		Destination: &collector.Destination{Identity: "http://local", DatabaseID: caps.DatabaseID, DatasetID: caps.DatasetID, Local: true, Transport: transport},
 		SyncOptions: pipeline.SyncOptions{SourceDir: acceptanceSources(t), Harnesses: pipeline.SupportedHarnesses}}
 	first, err := collector.Run(t.Context(), options)
 	if err == nil || first.CollectionError != nil || first.Pending == 0 {
@@ -86,7 +86,7 @@ func TestDirectAndHTTPShareAcceptanceReceiptsAndRejections(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = store.Close() }()
-	remote := httptest.NewServer(store.Handler())
+	remote := httptest.NewServer(ingestionhttp.Handler(store, ingestionhttp.IngestionPrefix, evidence.ProtocolVersion))
 	defer remote.Close()
 	direct := collector.DirectDelivery{Receiver: store}
 	network := collector.HTTPDelivery{URL: remote.URL}
@@ -160,15 +160,8 @@ func TestDirectAndHTTPShareAcceptanceReceiptsAndRejections(t *testing.T) {
 	}
 	// No HTTP client is consulted by the direct adapter, including capability
 	// preflight. URL is a durable local identity, not an endpoint to contact.
-	destination := &collector.Destination{URL: "http://local", Transport: direct, Client: &http.Client{Transport: rejectNetwork{t}}}
-	if _, err := collector.NegotiateCapabilities(t.Context(), destination, ""); err != nil {
+	destination := &collector.Destination{Identity: "http://local", Transport: direct}
+	if _, err := collector.NegotiateCapabilities(t.Context(), destination); err != nil {
 		t.Fatal(err)
 	}
-}
-
-type rejectNetwork struct{ t *testing.T }
-
-func (r rejectNetwork) RoundTrip(*http.Request) (*http.Response, error) {
-	r.t.Error("direct delivery used HTTP")
-	return nil, errors.New("unexpected HTTP")
 }

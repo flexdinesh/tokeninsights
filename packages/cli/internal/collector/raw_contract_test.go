@@ -1,6 +1,7 @@
 package collector_test
 
 import (
+	"bytes"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -8,13 +9,12 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
-	"sort"
 	"testing"
 
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/collector"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/datastore"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/evidence"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/ingestion"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/ingestionhttp"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/pipeline"
 )
 
@@ -28,57 +28,6 @@ func rawDrain(t *testing.T, store *datastore.Store) {
 		if !worked {
 			return
 		}
-	}
-}
-
-func TestAllHarnessLegacyImportCoveragePreservesNativeIDs(t *testing.T) {
-	for _, direct := range []bool{false, true} {
-		name := "http"
-		if direct {
-			name = "direct"
-		}
-		t.Run(name, func(t *testing.T) {
-			options, legacy, path := acceptanceSetup(t)
-			oldServer := httptest.NewServer(ingestion.NewHandler(ingestion.NewCore(legacy)))
-			options.ServerURL = oldServer.URL
-			acceptanceRun(t, options)
-			before := acceptanceAssert(t, legacy)
-			sort.Strings(before)
-			oldServer.Close()
-			if err := legacy.Close(); err != nil {
-				t.Fatal(err)
-			}
-			store, err := datastore.Open(t.Context(), filepath.Join(filepath.Dir(path), "server.duckdb"))
-			if err != nil {
-				t.Fatal(err)
-			}
-			defer func() { _ = store.Close() }()
-			if !reflect.DeepEqual(before, rawGolden(t, store)) {
-				t.Fatal("import changed native identity")
-			}
-			server := httptest.NewServer(store.Handler())
-			defer server.Close()
-			options.ServerURL = server.URL
-			if direct {
-				caps, err := store.RawCapabilities(t.Context())
-				if err != nil {
-					t.Fatal(err)
-				}
-				options.ServerDBPath = filepath.Join(filepath.Dir(path), "server.duckdb")
-				options.Destination = &collector.Destination{URL: "http://local", DatabaseID: caps.DatabaseID, DatasetID: caps.DatasetID, Local: true, Transport: collector.DirectDelivery{Receiver: store}}
-			}
-			if _, err := collector.Run(t.Context(), options); err != nil {
-				t.Fatal(err)
-			}
-			rawDrain(t, store)
-			if !reflect.DeepEqual(before, rawGolden(t, store)) {
-				t.Fatal("coverage changed native identity")
-			}
-			var covered int
-			if err := store.SQL().QueryRow("SELECT COUNT(*) FROM analytics.legacy_coverage").Scan(&covered); err != nil || covered != 12 {
-				t.Fatal("native coverage incomplete", covered, err)
-			}
-		})
 	}
 }
 
@@ -128,9 +77,9 @@ func TestRawCollectorNativeGoldenRebuildAndLostAcknowledgement(t *testing.T) {
 	}
 	defer func() { _ = store.Close() }()
 	lose := true
-	handler := store.Handler()
+	handler := ingestionhttp.Handler(store, ingestionhttp.IngestionPrefix, evidence.ProtocolVersion)
 	httpServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodPost && r.URL.Path == datastore.IngestionPrefix+"batches" && lose {
+		if r.Method == http.MethodPost && r.URL.Path == ingestionhttp.IngestionPrefix+"batches" && lose {
 			lose = false
 			body, err := io.ReadAll(r.Body)
 			if err != nil {
@@ -146,7 +95,11 @@ func TestRawCollectorNativeGoldenRebuildAndLostAcknowledgement(t *testing.T) {
 		handler.ServeHTTP(w, r)
 	}))
 	defer httpServer.Close()
-	options := collector.Options{CollectorDBPath: filepath.Join(root, "collector.sqlite"), ServerURL: httpServer.URL, SyncOptions: pipeline.SyncOptions{SourceDir: acceptanceSources(t), Harnesses: pipeline.SupportedHarnesses}}
+	metadata, err := store.Metadata(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	options := collector.Options{CollectorDBPath: filepath.Join(root, "collector.sqlite"), Destination: &collector.Destination{Identity: httpServer.URL, DatabaseID: metadata.DatabaseID, DatasetID: metadata.DatasetID, Transport: collector.HTTPDelivery{URL: httpServer.URL}}, SyncOptions: pipeline.SyncOptions{SourceDir: acceptanceSources(t), Harnesses: pipeline.SupportedHarnesses}}
 	first, err := collector.Run(t.Context(), options)
 	if err == nil || first.CollectionError != nil || !first.PendingKnown || first.Pending == 0 {
 		t.Fatalf("lost receipt unexpectedly acknowledged %+v %v", first, err)
@@ -190,5 +143,85 @@ func TestRawCollectorNativeGoldenRebuildAndLostAcknowledgement(t *testing.T) {
 	var record evidence.Record
 	if json.Unmarshal([]byte(body), &record) != nil {
 		t.Fatal("raw evidence not readable")
+	}
+	if err := os.RemoveAll(options.SyncOptions.SourceDir); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(options.CollectorDBPath); err != nil {
+		t.Fatal(err)
+	}
+	if result, err := collector.Run(t.Context(), options); err != nil || result.Batches != 0 {
+		t.Fatalf("missing sources submitted changes: %+v %v", result, err)
+	}
+	if !reflect.DeepEqual(ids, rawGolden(t, store)) {
+		t.Fatal("missing sources removed accepted history")
+	}
+}
+
+func TestRawCollectorKeepsPrivateContentOutOfTransportAndStorage(t *testing.T) {
+	sources := acceptanceSources(t)
+	artifact := filepath.Join(sources, "pi", "project", "main.jsonl")
+	body, err := os.ReadFile(artifact)
+	if err != nil {
+		t.Fatal(err)
+	}
+	private := []byte(`"role":"assistant","content":[{"type":"text","text":"SYNTHETIC_PRIVATE_MARKER"}],"toolOutput":"SYNTHETIC_TOOL_MARKER","request_headers":{"authorization":"SYNTHETIC_SECRET_MARKER"},`)
+	updated := bytes.ReplaceAll(body, []byte(`"role":"assistant",`), private)
+	if bytes.Equal(updated, body) {
+		t.Fatal("privacy fixture did not include an assistant message")
+	}
+	if err := os.WriteFile(artifact, updated, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	assertPrivate := func(where string, body []byte) {
+		for _, marker := range []string{"SYNTHETIC_PRIVATE_MARKER", "SYNTHETIC_TOOL_MARKER", "SYNTHETIC_SECRET_MARKER", sources} {
+			if bytes.Contains(body, []byte(marker)) {
+				t.Errorf("private source content reached %s", where)
+			}
+		}
+	}
+	root := t.TempDir()
+	path := filepath.Join(root, "server.duckdb")
+	store, err := datastore.Open(t.Context(), path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = store.Close() }()
+	handler := ingestionhttp.Handler(store, ingestionhttp.IngestionPrefix, evidence.ProtocolVersion)
+	remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			body, err := io.ReadAll(r.Body)
+			if err != nil {
+				t.Error(err)
+				return
+			}
+			assertPrivate("HTTP request", body)
+			r.Body = io.NopCloser(bytes.NewReader(body))
+		}
+		handler.ServeHTTP(w, r)
+	}))
+	defer remote.Close()
+	caps, err := store.RawCapabilities(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	collectorPath := filepath.Join(root, "collector.sqlite")
+	options := collector.Options{CollectorDBPath: collectorPath,
+		Destination: &collector.Destination{Identity: remote.URL, DatabaseID: caps.DatabaseID, DatasetID: caps.DatasetID, Transport: collector.HTTPDelivery{URL: remote.URL}},
+		SyncOptions: pipeline.SyncOptions{SourceDir: sources, Harnesses: pipeline.SupportedHarnesses}}
+	if _, err := collector.Run(t.Context(), options); err != nil {
+		t.Fatal(err)
+	}
+	rawDrain(t, store)
+	rawGolden(t, store)
+	if _, err := store.SQL().ExecContext(t.Context(), "CHECKPOINT"); err != nil {
+		t.Fatal(err)
+	}
+	for _, file := range []string{collectorPath, collectorPath + "-wal", path, path + ".wal"} {
+		body, err := os.ReadFile(file)
+		if err != nil && !os.IsNotExist(err) {
+			t.Fatal(err)
+		}
+		assertPrivate(filepath.Base(file), body)
 	}
 }

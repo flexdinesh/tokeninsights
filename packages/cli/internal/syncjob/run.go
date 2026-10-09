@@ -3,13 +3,14 @@ package syncjob
 import (
 	"context"
 	"errors"
+	"time"
+
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/clientworkflow"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/collector"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/config"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/evidence"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/pipeline"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/serverfeatures"
-	"time"
 )
 
 const retryAttempts = 3
@@ -141,8 +142,8 @@ func runRemoteClaim(ctx context.Context, store *Store, job Job, token string, de
 		return collector.Result{}, err
 	}
 	var receipts []evidence.Receipt
-	options := collector.Options{CollectorDBPath: job.Spec.CollectorPath, ServerDBPath: job.Spec.DataPath, ServerURL: job.Spec.URL, Token: token, Destination: session.Destination, PublishOnly: job.Spec.PublishOnly,
-		SyncOptions: pipeline.SyncOptions{Harnesses: job.Spec.Harnesses, SourceDir: job.Spec.SourceDir, FullRefresh: job.Spec.FullRefresh, Normalize: true, Now: time.Now(), Progress: progress.Collection}, DeliveryProgress: progress.Delivery,
+	options := collector.Options{CollectorDBPath: job.Spec.CollectorPath, ServerDBPath: job.Spec.DataPath, Destination: session.Destination, PublishOnly: job.Spec.PublishOnly,
+		SyncOptions: pipeline.SyncOptions{Harnesses: job.Spec.Harnesses, SourceDir: job.Spec.SourceDir, FullRefresh: job.Spec.FullRefresh, Now: time.Now(), Progress: progress.Collection}, DeliveryProgress: progress.Delivery,
 		AcceptedReceipt: func(receipt evidence.Receipt) error {
 			receipts = append(receipts, receipt)
 			return store.SaveReceipt(ctx, job.ID, receipt)
@@ -156,9 +157,6 @@ func runRemoteClaim(ctx context.Context, store *Store, job Job, token string, de
 		}
 		total.Accepted += result.Accepted
 		total.Batches += result.Batches
-		total.Inserted += result.Inserted
-		total.Updated += result.Updated
-		total.Noop += result.Noop
 		total.Pending, total.PendingKnown = result.Pending, result.PendingKnown
 		total.CollectionError, total.DeliveryError = result.CollectionError, result.DeliveryError
 		err = runErr

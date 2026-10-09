@@ -2,7 +2,7 @@
 
 Implements [ADR 0007](adr/0007-raw-ingestion-and-server-processing.md) and
 [ADR 0009](adr/0009-single-process-and-distributed-compositions.md).
-See the [original raw-ingestion plan](raw-ingestion-plan.md), [whitelist](raw-ingestion-whitelist.md)
+See the [whitelist](raw-ingestion-whitelist.md)
 and [OpenAPI](openapi.yaml). Supersedes collector-owned normalization,
 normalized-only ingestion, SQLite analytics and synchronous completion.
 
@@ -33,70 +33,49 @@ processing, generations, receipts and analytics.
 
 | Role | Default | Schema | Version |
 | --- | --- | --- | --- |
-| Collector | collector.sqlite | schema/schema.sql | 19 |
-| Token data | server.duckdb | schema/data.sql | 2 |
-| Application | app.sqlite | schema/app.sql | 1 |
+| Collector | collector.sqlite | schema/schema.sql | 20 |
+| Token data | server.duckdb | schema/data.sql | 3 |
+| Application | app.sqlite | schema/app.sql | 2 |
 | Sync jobs | collector.sqlite.jobs.sqlite | schema/jobs.sql | 1 |
-| Legacy import | server.sqlite | schema/server.sql | 2 |
 
 Defaults use XDG_DATA_HOME or ~/.local/share/tokeninsights. Role-specific flags/
 environment/config override them. Reject aliased paths, wrong roles, incompatible
 versions and corrupt contracts. Former tokeninsights.sqlite stays untouched.
 Current DuckDB startup validates the actual database read-only once before writable
-opening, reading column, constraint and index contracts in batches. Only the expected
+opening, reading column, constraint, index and view contracts in batches. Only the expected
 contract derived from the embedded schema is cached per process; actual database
-validation and generation checks always run. Migration/recovery validation remains
-separate.
+validation and generation checks always run.
 Application SQLite holds users, token/session digests and provisioning state. It is
 paired to the token database identity and kind. Local setup creates one default user.
-A one-time transaction copies legacy DuckDB accounts after validating dataset links;
-the completed marker prevents stale source credentials overwriting later revocations.
-DuckDB account tables remain read-only migration sources. App initialization publishes
-a fully initialized file atomically; wrong roles/pairs reject before app mutation.
+App initialization publishes a fully initialized file atomically; wrong roles/pairs
+reject before app mutation. Accounts exist only in application SQLite.
 
 Provisioning persists an inactive user and fixed dataset ID, idempotently creates the
 dataset through a contract, then activates the user. Restart resumes pending users;
 disabled ready users stay disabled. There is no cross-engine atomic transaction.
 
-Verified collector schemas 16/17/18 upgrade additively to 19, retaining legacy facts,
-journals, bindings, exact protocol-1/2 requests, hashes, receipts and cursors.
-Schema 18 adds dataset/protocol bindings to delivery state; existing saved requests
-retain `default` and their original protocol without byte rewriting. Schema 19 adds local-only durable capture quarantine without rewriting saved requests. Raw extraction has its own
-version/stream; older canonical generations need no rebuild for capture, newer
-generations reject. Maintenance cannot delete unaccepted raw outbox.
-
-Fresh default server.duckdb imports verified sibling server.sqlite read-only.
-Stage initialization/import/checkpoint before atomic publication. Preserve database
-identity, components/revisions/history/receipt bytes; verify copied counts/totals.
-Custom import uses data import --server-db-path NEW --legacy-server-db-path OLD,
-or remote startup with the same flag. Explicit import requires new target and
-no process owning the target database. Source never overwritten. Newer processors reject; older
-ones schedule a replacement generation.
-
-A verified DuckDB-1 database upgrades to personal DuckDB 2 through a staged,
-read-only copy: assign dataset `default`, verify identities/receipts/counts/token
-components, checkpoint and atomically publish with a recoverable previous copy.
-Database identity and interrupted generation state survive. Hosted starts fresh;
-personal/hosted kind mismatches and newer contracts reject without mutation.
-Recovery never overwrites the sole verified source. Legacy import format stays 2.
+Only current schemas are supported. Older/newer schemas and changed contracts
+reject without mutation. There are no schema migrations, automatic sibling imports
+or normalized-history baselines. New databases initialize atomically; source replay
+creates current evidence. Collector storage contains only capture state, checkpoints,
+immutable outbox, dataset-bound delivery state and quarantine. Maintenance cannot
+discard unaccepted evidence. Processor-version changes inside a current DuckDB
+schema still use durable replacement generations; this is projection recomputation,
+not storage compatibility.
 
 DuckDB schemas:
 - raw.evidence: immutable sanitized JSON and qualified scope.
 - ingestion.instance: global role/version/database/kind identity.
 - ingestion.metadata: dataset identity, active/target generations,
   acceptance/published revisions and times.
-- accounts.users/tokens/sessions: retained read-only legacy account migration source.
 - ingestion.batches/items/batch_items: exact request/receipt bytes, immutable
   stream/sequence bindings, every submitted mapping including duplicates.
 - processing.scopes/dependencies/outcomes: durable queue/revisions/generation,
   attempts/retry time/fixed errors, native ancestry and per-item dispositions.
 - analytics.generations/facts/estimates/provenance: versioned typed usage,
   flattened native/session/message/location dimensions and evidence edges.
-- analytics.legacy/legacy_coverage, ingestion.legacy_receipts: imported history,
-  exact contribution replacement proof and protocol-1 receipt replay.
 
-All raw, receipt, scope, dependency, generation, fact, estimate, provenance and
-legacy keys include dataset. Active views join generation by dataset; analytics
+All raw, receipt, scope, dependency, generation, fact, estimate and provenance keys include dataset. Active views join generation by dataset; analytics
 still explicitly filters the authorized dataset. DuckDB gives acceptance and projection their own atomic transaction boundaries.
 Application transactions remain in SQLite; no broker or cross-file commit is assumed.
 
@@ -106,7 +85,7 @@ SQLite evidence_state/sources/outbox/destinations/batches retain lineage/context
 immutable observations, monotonic sequences, bindings, exact saved requests and
 acceptance receipts. Capture/checkpoint commit together.
 
-Schema-19 evidence_quarantine retains only source key/format, an opaque fingerprint of local device/inode/size/mtime, parser policy version, fixed error code, byte offset and capture time. It stores no source path or record contents. Deterministic record-limit failures preserve the previous evidence/checkpoint and remain incomplete on later syncs while their fingerprint/policy matches. File changes, parser policy changes and `sync --full-refresh` retry capture; successful capture clears quarantine. Cancellation, transient I/O failures and source changes during capture remain retryable without quarantine.
+Collector evidence_quarantine retains only source key/format, an opaque fingerprint of local device/inode/size/mtime, parser policy version, fixed error code, byte offset and capture time. It stores no source path or record contents. Deterministic record-limit failures preserve the previous evidence/checkpoint and remain incomplete on later syncs while their fingerprint/policy matches. File changes, parser policy changes and `sync --full-refresh` retry capture; successful capture clears quarantine. Cancellation, transient I/O failures and source changes during capture remain retryable without quarantine.
 
 JSONL validates saved byte prefix, parses appended records, then verifies captured
 bytes and inode before commit. Rewrite/truncation rotates lineage without deleting
@@ -153,9 +132,7 @@ One destination per invocation; no relay/fan-out.
 GET capabilities, POST batches and GET batches/{stream}/{batch} under
 /api/v3/ingestion/. Envelopes bind databaseId and datasetId; authenticated hosted
 principal must match before mutation. Receipts and lookups are dataset-scoped.
-Hosted mounts only protocol 3. Personal retains protocol-2 and legacy protocol-1
-adapters for exact saved-byte replay, flushing older requests before new protocol-3
-delivery. Limits: 1 MiB, 256 entries, 256 UTF-8 bytes per metadata string.
+Both modes accept only protocol 3. Limits: 1 MiB, 256 entries, 256 UTF-8 bytes per metadata string.
 Strict decoding rejects unknown/private fields, duplicate keys, invalid UTF-8,
 trailing values and invalid envelopes.
 
@@ -177,9 +154,6 @@ phase text separates submission from processing. Load failures distinguish stora
 collection and processing problems without exposing private error causes. Browser reports lag/separate estimates. No viewer
 waits for global hosted queue emptiness.
 `data wait` explicitly waits up to 30 seconds for maintenance/fixtures.
-Deprecated protocol-1 bridge preserves synchronous legacy bytes/receipts.
-Flush retained old requests through their original personal adapters before new delivery; new sync never populates legacy
-canonical tables. Legacy maintenance handles old tables only.
 
 ## Processing
 
@@ -237,15 +211,9 @@ Raw arriving during build must be covered. On a processor upgrade, an interrupte
 older build is retained and a fresh generation uses the current rules; the old
 published generation stays active until that replacement completes.
 
-Imported baselines persist until matching contribution ID and equal components
-or valid newer native revision prove coverage. Proof binds exact new payload hash,
-preventing changed unproven projection from hiding history. Replace once;
-unmatched history remains. Rebuilding 300 of 500 keeps 500. Ambiguity cannot erase
-imported confirmed baseline.
-
 ## Querying and deployment
 
-Typed columnar SQL filters/groups/sorts/pages active facts and reconciled baselines;
+Typed columnar SQL filters/groups/sorts/pages active facts;
 dashboard queries never scan raw JSON. Raw tables' mere presence does not slow
 analytics scans. Read transaction covers metadata/summary/rows/facets. Responses
 identify instance/database/dataset/generation/published revision/input revision; browser guards
@@ -262,7 +230,6 @@ capability policy still gates terminal access. Date range filters constrain anal
 never collector discovery or capture.
 Repo-only location filters; unknown visible. Context: per-session prompt-side
 peak input+cache read+cache write, then average/median/max.
-TPS terminology remains; this change adds no timing inference.
 
 One connected session/ancestry component is processed in memory. Huge components,
 partitioning/preaggregations and retention need measured follow-up, not benchmark
@@ -294,31 +261,29 @@ and command/browser preflight. Unknown feature names are ignored; absent require
 features/unknown kinds reject. Hosted cannot enable terminal-dashboard,
 collector-progress or dashboard-reload. Local composition explicitly grants Reload,
 including saved-only viewers; it is independent of collection progress. Progress
-requires an installed command-owned registry. The shared observer publishes directly
+requires an installed command-owned registry. The localruntime observer publishes directly
 to that registry for startup and queued sync jobs, retaining bounded leases and
 heartbeats. Internal raw-ingestion support does not mount public HTTP ingestion:
 the local Web listener remains read-only. Server config may disable features but
 cannot disable hosted isolation. Modules consume resolved policy and injected
 dependencies; mode selection stays at composition boundaries.
 
-Read API v2 shares analytics with personal v1 adapters. Instance/status/usage/facets
+Read API v2 shares analytics with direct queries. Instance/status/usage/facets
 bind dataset snapshot identity. `/api/v2/status` contains processing readiness and
 user-scoped revisions/pending work, without collector status. Optional failed scope
 counts and earliest failure retry time distinguish retry backoff from ordinary
 processing; they come from the same dataset/generation snapshot. Accepted collector
 evidence is not yet query-ready: pending work or differing active/target generations
-still means processing. Hosted exposes no
-v1 read fallback. Feature support never substitutes for read/ingest permission.
+still means processing. No read API fallback is supported. Feature support never substitutes for read/ingest permission.
 
 Local direct/HTTP instance descriptors share runtime identity and the machine
 hostname resolved at ownership initialization. The hostname labels the local
-viewer machine, not historical producer attribution; imported history can span
-machines. Hosted never substitutes its operating-system hostname for producer
+viewer machine; captured history can span machines. Hosted never substitutes its operating-system hostname for producer
 metadata. Connection/storage, usage and facet errors remain distinct in Web.
 
 CLI configuration uses `mode=single-process|distributed`, URL/token, bind preferences
-and three database paths. Defaults are single-process; legacy hosted configuration
-maps to distributed. Flags > environment > file > defaults. The config file is
+and three database paths. Defaults are single-process; a configured server URL selects
+distributed unless mode is explicit. Flags > environment > file > defaults. The config file is
 private/atomic; token entry uses prompt/stdin. Distributed requires bearer token and
 URL. Remote failures never select local fallback. Bare invocation prints help.
 
@@ -380,7 +345,7 @@ while retaining a follow-up pass, and do not forward event payloads.
 
 Legacy `service`, `server`, and `collector` commands and the hidden daemon runner
 are removed. Local viewers use only command-owned foreground runtimes; finite
-`data import/reprocess/wait` provides local maintenance. Import and development
+`data reprocess/wait` provides local maintenance. Development
 fixtures use the shared database ownership locks. Public local
 web has no ingestion/admin/progress-write routes; remote admin remains private.
 
@@ -411,26 +376,34 @@ contracts; DuckDB is an adapter, not a required future backend.
 | Package | Behavior boundary |
 | --- | --- |
 | `evidence`, `publication` | Sanitized wire records and stable contribution contracts |
-| `pipeline` | Capture/native readers, continuity and safe enrichment; retained legacy normalization |
+| `pipeline` | Capture/native readers, continuity and safe enrichment |
 | `rawcollectorstore` | Collector capture/checkpoint/outbox transactions and immutable dataset-bound requests |
 | `collector` | Delivery orchestration with injected destination transport; no local-service discovery |
 | `clientworkflow` | Remote endpoint resolution and authenticated descriptor preflight |
 | `processor` | Pure evidence interpretation; no host reads, SQL, network or wall clock |
 | `dataengine` | Transport-independent work/processing orchestration and retry scheduling |
-| `datastore` | DuckDB adapter, upgrades/import and dataset-scoped atomic persistence operations |
+| `datastore` | DuckDB adapter and dataset-scoped atomic persistence operations |
 | `analytics` | Typed query contracts/results and dataset-scoped SQL |
 | `server`, `ingestionhttp` | Authorized REST/asset and ingestion adapters |
 | `serverfeatures` | Typed kind/capability policy |
+| `collectorprogress` | Sanitized progress values, registry and HTTP reads; no capture dependencies |
 | `accounts`, `appstore` | Credential contract/SQLite adapter, provisioning and application pairing |
 | `syncjob` | Durable finite jobs, native detachment and delivery retries |
-| `localruntime` | Command ownership and background startup lifetime, direct ingestion/query, local requests, finite import and development fixtures |
+| `localruntime` | Command ownership and background startup lifetime, direct ingestion/query, local requests and development fixtures |
 | `serverruntime` | Shared storage/worker/listener lifecycle |
 | `remoteserver` | Authenticated remote composition |
 
-Retain package names where they already express the boundary. Retained
-normalization/import/wire adapters are explicit compatibility paths; they are not
-relocated solely for directory symmetry. Small consumer interfaces describe atomic
-operations rather than generic backend CRUD.
+`querymodel` owns storage-independent query values. Direct queries receive an
+analytics repository and instance identity; they do not construct an HTTP app.
+Storage supplies semantic receiver operations; `ingestionhttp` mounts HTTP routes.
+The collector requires an injected delivery adapter before capture. Single-process
+composition supplies direct delivery; distributed discovery supplies HTTP delivery.
+No core discovers a daemon or substitutes a transport.
+
+[ADR 0010](adr/0010-current-contracts-and-boundaries.md) defines the cleanup and
+testing rules. Import tests enforce pure processing, capture/processing separation,
+and storage/HTTP separation. Real-adapter contract tests enforce the behaviors that
+types and import rules cannot prove.
 
 One process owns the shared database; two bounded compute workers. Docker packages
 the foreground executable with committed assets, non-root glibc runtime, CA/timezone
@@ -449,5 +422,4 @@ native build/JS-absent smoke and browser E2E.
 
 Application pairing also persists `<canonical-token-path>.application.json`, containing
 only the application instance ID. Keep this guard with both databases in stopped
-backups. A missing/replaced app database fails closed instead of re-importing stale
-legacy credentials. Restore the matched set; do not delete the guard to bypass recovery.
+backups. A missing/replaced app database fails closed to preserve credential revocations. Restore the matched set; do not delete the guard to bypass recovery.

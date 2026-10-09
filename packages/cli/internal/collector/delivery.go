@@ -4,12 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"net/http"
 	"net/url"
 
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/evidence"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/publication"
 )
 
 // Delivery transports immutable saved requests. Acceptance never means that
@@ -18,7 +16,6 @@ type Delivery interface {
 	Capabilities(context.Context) (evidence.Capabilities, error)
 	Submit(context.Context, int, []byte) ([]byte, error)
 	Receipt(context.Context, string, string) (evidence.Response, error)
-	LegacyCapabilities(context.Context) (publication.Capabilities, error)
 }
 
 type HTTPDelivery struct {
@@ -47,7 +44,10 @@ func (d HTTPDelivery) Capabilities(ctx context.Context) (evidence.Capabilities, 
 }
 
 func (d HTTPDelivery) Submit(ctx context.Context, protocol int, body []byte) ([]byte, error) {
-	return d.call(ctx, fmt.Sprintf("/api/v%d/ingestion/batches", protocol), body)
+	if protocol != evidence.ProtocolVersion {
+		return nil, failure("validation", "incompatible", nil)
+	}
+	return d.call(ctx, "/api/v3/ingestion/batches", body)
 }
 
 func (d HTTPDelivery) Receipt(ctx context.Context, stream, batch string) (evidence.Response, error) {
@@ -59,24 +59,11 @@ func (d HTTPDelivery) Receipt(ctx context.Context, stream, batch string) (eviden
 	return result, err
 }
 
-func (d HTTPDelivery) LegacyCapabilities(ctx context.Context) (publication.Capabilities, error) {
-	body, err := d.call(ctx, "/api/v1/ingestion/capabilities", nil)
-	if err != nil {
-		return publication.Capabilities{}, err
-	}
-	result, err := publication.DecodeCapabilities(body)
-	if err != nil {
-		return result, failure("capabilities", "incompatible_server", err)
-	}
-	return result, nil
-}
-
 // Receiver is an already authorized dataset. Its atomic operations are shared
 // by the direct and HTTP adapters; no listener or synthetic HTTP request is used.
 type Receiver interface {
 	RawCapabilities(context.Context) (evidence.Capabilities, error)
 	Accept(context.Context, []byte) (evidence.Response, error)
-	AcceptLegacy(context.Context, []byte) (publication.Receipt, error)
 	Receipt(context.Context, string, string) (evidence.Response, error)
 	AcquireAdmission() (func(), bool)
 }
@@ -93,19 +80,8 @@ func (d DirectDelivery) Submit(ctx context.Context, protocol int, body []byte) (
 		return nil, failure("admission", "busy", nil)
 	}
 	defer release()
-	limit := evidence.MaxBodyBytes
-	if protocol == 1 {
-		limit = publication.MaxBodyBytes
-	}
-	if len(body) > limit {
+	if len(body) > evidence.MaxBodyBytes {
 		return nil, failure("validation", "body_limit", nil)
-	}
-	if protocol == 1 {
-		result, err := d.Receiver.AcceptLegacy(ctx, body)
-		if err != nil {
-			return nil, directFailure(err)
-		}
-		return json.Marshal(result)
 	}
 	batch, err := evidence.DecodeBatch(body)
 	if err != nil {
@@ -128,22 +104,10 @@ func (d DirectDelivery) Receipt(ctx context.Context, stream, batch string) (evid
 	return d.Receiver.Receipt(ctx, stream, batch)
 }
 
-func (d DirectDelivery) LegacyCapabilities(ctx context.Context) (publication.Capabilities, error) {
-	caps, err := d.Capabilities(ctx)
-	return publication.Capabilities{ProtocolVersion: 1, IdentityVersion: 1, SemanticsVersion: 1, DatabaseID: caps.DatabaseID, MaxBodyBytes: publication.MaxBodyBytes, MaxEntries: publication.MaxEntries, MaxStringBytes: publication.MaxStringBytes, MaxInteger: publication.SafeInteger}, err
-}
-
 func directFailure(err error) error {
 	var rejected interface{ IngestionCode() string }
 	if errors.As(err, &rejected) {
 		return failure("admission", rejected.IngestionCode(), err)
 	}
 	return failure("admission", "transaction_failed", err)
-}
-
-func destinationDelivery(destination *Destination, token string) Delivery {
-	if destination.Transport != nil {
-		return destination.Transport
-	}
-	return HTTPDelivery{URL: destination.URL, Token: token, Client: destination.Client}
 }

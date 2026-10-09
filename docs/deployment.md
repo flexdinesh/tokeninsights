@@ -52,7 +52,7 @@ to an account. Every hosted user has one dataset; all users share `/data/server.
 The equivalent native process is:
 
 ```sh
-tokeninsights-server --kind hosted --listen 0.0.0.0:8765 \
+tokeninsights-server --listen 0.0.0.0:8765 \
   --server-db-path /var/lib/tokeninsights/server.duckdb \
   --app-db-path /var/lib/tokeninsights/app.sqlite \
   --public-url https://usage.example.com \
@@ -146,5 +146,4 @@ pre-upgrade copy. Local user setup creates one default account automatically.
 
 Application pairing also persists `<canonical-token-path>.application.json`, containing
 only the application instance ID. Keep this guard with both databases in stopped
-backups. A missing/replaced app database fails closed instead of re-importing stale
-legacy credentials. Restore the matched set; do not delete the guard to bypass recovery.
+backups. A missing/replaced app database fails closed to preserve credential revocations. Restore the matched set; do not delete the guard to bypass recovery.

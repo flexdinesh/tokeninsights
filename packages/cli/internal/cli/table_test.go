@@ -13,21 +13,22 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/datastore"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/querymodel"
 	"github.com/muesli/termenv"
 	_ "modernc.org/sqlite"
-
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/db"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/serverstore"
 )
 
 func newLoadRowsTestDB(t *testing.T) (*sql.DB, string) {
 	t.Helper()
-	path := filepath.Join(t.TempDir(), "server.sqlite")
-	store, err := serverstore.CreateIfMissing(path)
+	path := filepath.Join(t.TempDir(), "server.duckdb")
+	store, err := datastore.Open(t.Context(), path)
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = store.Close() })
+	queryStores.Store(path, store)
+	t.Cleanup(func() { queryStores.Delete(path) })
 	return store.SQL(), path
 }
 
@@ -38,30 +39,8 @@ func insertLoadRowsCanonicalToken(t *testing.T, database *sql.DB, recordedAtMs i
 
 func insertLoadRowsCanonicalTokenWithCounts(t *testing.T, database *sql.DB, recordedAtMs int64, harness string, sessionID string, provider string, model string, input int64, output int64, reasoning int64, cacheRead int64, cacheWrite int64, total int64) {
 	t.Helper()
-	sessionKey := harness + ":" + sessionID
-	_, err := database.Exec(`
-		INSERT INTO canonical_sessions (
-			semantic_key, harness, session_id, first_seen_at_ms, last_seen_at_ms
-		) VALUES (?, ?, ?, ?, ?)
-		ON CONFLICT(semantic_key) DO UPDATE SET last_seen_at_ms = excluded.last_seen_at_ms
-	`, sessionKey, harness, sessionID, recordedAtMs, recordedAtMs)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	var canonicalSessionID int64
-	if err := database.QueryRow("SELECT id FROM canonical_sessions WHERE semantic_key = ?", sessionKey).Scan(&canonicalSessionID); err != nil {
-		t.Fatal(err)
-	}
-
-	factKey := fmt.Sprintf("%s:%d:%s:%s", sessionKey, recordedAtMs, provider, model)
-	_, err = database.Exec(`
-  INSERT INTO canonical_token_usage (
-   semantic_key, recorded_at_ms, harness, session_id, provider, model, usage_scope, quality,
-   is_countable, input_tokens, output_tokens, reasoning_tokens, cache_read_tokens,
-   cache_write_tokens, total_tokens, payload_hash
-  ) VALUES (?, ?, ?, ?, ?, ?, 'message', 'exact', 1, ?, ?, ?, ?, ?, ?, 'fixture-payload')
- `, factKey, recordedAtMs, harness, canonicalSessionID, provider, model, input, output, reasoning, cacheRead, cacheWrite, total)
+	factKey := fmt.Sprintf("%s:%s:%d:%s:%s", harness, sessionID, recordedAtMs, provider, model)
+	_, err := database.Exec("INSERT INTO analytics.facts VALUES ('default',?,'fixture',?,?,?,'','',?,?,'explicit',?,'message','exact',true,?,?,?,?,?,?,'','','','','','{}',1,0)", factKey, harness, harness+":"+sessionID, sessionID, recordedAtMs, provider, model, input, output, reasoning, cacheRead, cacheWrite, total)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -236,8 +215,8 @@ func TestDashboardReadsServerWithoutCollectorDatabase(t *testing.T) {
 	if result.err != nil || len(result.rows) != 1 || result.rows[0].totalValue != 136 {
 		t.Fatalf("saved API snapshot = %+v", result)
 	}
-	assertTableTestCount(t, database, "canonical_token_usage", 1)
-	assertTableTestCount(t, database, "ingestion_receipts", 0)
+	assertTableTestCount(t, database, "analytics.facts", 1)
+	assertTableTestCount(t, database, "ingestion.batches", 0)
 }
 
 func TestDashboardCancellationPreservesSavedSnapshot(t *testing.T) {
@@ -1109,7 +1088,7 @@ func TestDashboardSessionCoverageAcrossDateFilters(t *testing.T) {
 			}
 			updated, _ := m.Update(msg)
 			m = updated.(interactiveModel)
-			if m.sessionCounts != (db.SessionCounts{Shown: test.shown, Synced: syncedSessions}) {
+			if m.sessionCounts != (querymodel.SessionCounts{Shown: test.shown, Synced: syncedSessions}) {
 				t.Fatalf("%s / %s: counts = %+v", test.period, tab, m.sessionCounts)
 			}
 			summary := ansi.Strip(m.renderTableSummary())
@@ -1119,8 +1098,8 @@ func TestDashboardSessionCoverageAcrossDateFilters(t *testing.T) {
 			}
 		}
 	}
-	assertTableTestCount(t, database, "canonical_token_usage", syncedSessions)
-	assertTableTestCount(t, database, "ingestion_receipts", 0)
+	assertTableTestCount(t, database, "analytics.facts", syncedSessions)
+	assertTableTestCount(t, database, "ingestion.batches", 0)
 }
 
 func TestSortPopupSpaceAppliesSelection(t *testing.T) {

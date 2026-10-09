@@ -6,8 +6,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/db"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/queryclient"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/querymodel"
 	api "github.com/flexdinesh/tokeninsights/packages/cli/internal/server/api"
 )
 
@@ -80,7 +80,7 @@ func tableUsageParams(options tableOptions, tab tabMode) api.GetUsageParams {
 	if tab == tabRepo {
 		group := options.repoGroup
 		if group == "" {
-			group = db.RepoGroupRepository
+			group = querymodel.RepoGroupRepository
 		}
 		params.LocationGroup = apiPointer(api.LocationGroup(group))
 		params.Repository = apiPointer([]string(options.filters.repositories))
@@ -161,7 +161,7 @@ func (m interactiveModel) loadServerDashboard() reloadMsg {
 	if result.InputRevision != nil {
 		inputRevision = *result.InputRevision
 	}
-	return reloadMsg{instanceID: result.InstanceId, dataEpoch: result.DataEpoch, selection: m.selectionKey(), rows: rows, revision: result.Revision, serverGeneration: serverGeneration, inputRevision: inputRevision, lastSyncMs: result.LastSynced, processingPending: result.Pending, sessionCounts: db.SessionCounts{Shown: result.Summary.Sessions, Synced: result.Summary.SyncedSessions}, hostname: instance.Hostname, timezone: instance.Timezone}
+	return reloadMsg{instanceID: result.InstanceId, dataEpoch: result.DataEpoch, selection: m.selectionKey(), rows: rows, revision: result.Revision, serverGeneration: serverGeneration, inputRevision: inputRevision, lastSyncMs: result.LastSynced, processingPending: result.Pending, sessionCounts: querymodel.SessionCounts{Shown: result.Summary.Sessions, Synced: result.Summary.SyncedSessions}, hostname: instance.Hostname, timezone: instance.Timezone}
 }
 
 func apiRenderRows(source []api.UsageRow, tab tabMode) []renderRow {
@@ -190,10 +190,10 @@ func loadRows(ctx context.Context, options tableOptions, _ time.Time, _ groupByM
 	return rows, nil
 }
 
-func loadFacets(ctx context.Context, options tableOptions) (api.UsageFacetsResponse, error) {
+func loadFacets(ctx context.Context, options tableOptions) (api.UsageFacetsResponseV2, error) {
 	client, err := tableClient(options)
 	if err != nil {
-		return api.UsageFacetsResponse{}, err
+		return api.UsageFacetsResponseV2{}, err
 	}
 	return client.Facets(ctx, tableFacetsParams(options))
 }
@@ -207,7 +207,7 @@ func (m interactiveModel) loadFacetValues(options tableOptions, dimension filter
 	return msg
 }
 
-func facetValues(response api.UsageFacetsResponse, dimension filterDimension) ([]string, map[string]string, error) {
+func facetValues(response api.UsageFacetsResponseV2, dimension filterDimension) ([]string, map[string]string, error) {
 	switch dimension {
 	case filterProvider:
 		return response.Providers, nil, nil
@@ -224,9 +224,9 @@ func facetValues(response api.UsageFacetsResponse, dimension filterDimension) ([
 		if dimension == filterDirectory {
 			source = response.Directories
 		}
-		locations := make([]db.LocationOption, 0, len(source))
+		locations := make([]querymodel.LocationOption, 0, len(source))
 		for _, value := range source {
-			locations = append(locations, db.LocationOption{Key: value.Key, Name: value.Name})
+			locations = append(locations, querymodel.LocationOption{Key: value.Key, Name: value.Name})
 		}
 		values, keys := locationFilterLabels(locations)
 		return values, keys, nil

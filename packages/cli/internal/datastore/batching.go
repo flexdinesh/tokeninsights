@@ -135,15 +135,13 @@ func acceptRecords(ctx context.Context, tx *sql.Tx, datasetID string, batch evid
 	return len(raw) > 0, nil
 }
 
-func factArguments(datasetID, table string, fact publication.Fact, generation, revision int64, evidenceID, reason string) ([]interface{}, string, error) {
-	if table != "analytics.legacy" {
-		if err := publication.ValidateFact(fact); err != nil {
-			return nil, "", err
-		}
+func factArguments(datasetID, table string, fact publication.Fact, generation, revision int64, evidenceID, reason string) ([]interface{}, error) {
+	if err := publication.ValidateFact(fact); err != nil {
+		return nil, err
 	}
 	body, err := json.Marshal(fact)
 	if err != nil {
-		return nil, "", err
+		return nil, err
 	}
 	message := ""
 	if fact.Message != nil {
@@ -157,29 +155,27 @@ func factArguments(datasetID, table string, fact publication.Fact, generation, r
 	if table == "analytics.estimates" {
 		args = append(args, evidenceID, reason)
 	}
-	return args, evidence.Hash(body), nil
+	return args, nil
 }
 
 type projectionRows struct {
 	facts, estimates, provenance, outcomes, scopes [][]interface{}
-	payloadHashes                                  map[string]string
 }
 
 func prepareProjection(work dataengine.Work, projection evidence.Projection) (projectionRows, error) {
-	rows := projectionRows{payloadHashes: map[string]string{}}
+	rows := projectionRows{}
 	for _, contribution := range projection.Contributions {
-		args, hash, err := factArguments(work.DatasetID, "analytics.facts", contribution.Fact, work.Generation, work.Revision, "", "")
+		args, err := factArguments(work.DatasetID, "analytics.facts", contribution.Fact, work.Generation, work.Revision, "", "")
 		if err != nil {
 			return rows, err
 		}
 		rows.facts = append(rows.facts, args)
-		rows.payloadHashes[contribution.Fact.ID] = hash
 		for _, id := range contribution.EvidenceIDs {
 			rows.provenance = append(rows.provenance, []interface{}{work.DatasetID, work.Generation, contribution.Fact.ID, id})
 		}
 	}
 	for _, estimate := range projection.Estimates {
-		args, _, err := factArguments(work.DatasetID, "analytics.estimates", estimate.Fact, work.Generation, work.Revision, estimate.EvidenceID, estimate.Code)
+		args, err := factArguments(work.DatasetID, "analytics.estimates", estimate.Fact, work.Generation, work.Revision, estimate.EvidenceID, estimate.Code)
 		if err != nil {
 			return rows, err
 		}
@@ -217,9 +213,6 @@ func publishRows(ctx context.Context, tx *sql.Tx, work dataengine.Work, projecti
 	if err := writeRows(ctx, tx, "INSERT INTO analytics.facts VALUES", "", rows.facts); err != nil {
 		return fmt.Errorf("insert projected contribution: %w", err)
 	}
-	if err := proveLegacyCoverageBatch(ctx, tx, work, projection, rows.payloadHashes); err != nil {
-		return err
-	}
 	if err := writeRows(ctx, tx, "INSERT INTO analytics.estimates VALUES", "", rows.estimates); err != nil {
 		return fmt.Errorf("insert projected contribution: %w", err)
 	}
@@ -230,47 +223,4 @@ func publishRows(ctx context.Context, tx *sql.Tx, work dataengine.Work, projecti
 		return err
 	}
 	return writeRows(ctx, tx, "UPDATE processing.scopes AS s SET processed_revision=v.revision,generation=v.generation,error_code='',attempts=0,retry_at_ms=0 FROM (VALUES", ") AS v(dataset_id,scope,revision,generation) WHERE s.dataset_id=v.dataset_id AND s.scope=v.scope", rows.scopes)
-}
-func proveLegacyCoverageBatch(ctx context.Context, tx *sql.Tx, work dataengine.Work, projection evidence.Projection, payloadHashes map[string]string) error {
-	var coverage [][]interface{}
-	for start := 0; start < len(projection.Contributions); start += sqlBatchRows {
-		end := min(start+sqlBatchRows, len(projection.Contributions))
-		args := []interface{}{work.DatasetID}
-		facts := map[string]publication.Fact{}
-		for _, contribution := range projection.Contributions[start:end] {
-			args = append(args, contribution.Fact.ID)
-			facts[contribution.Fact.ID] = contribution.Fact
-		}
-		rows, err := tx.QueryContext(ctx, "SELECT fact_id,payload_json FROM analytics.legacy WHERE dataset_id=? AND fact_id IN("+sqlPlaceholders(end-start)+")", args...)
-		if err != nil {
-			return err
-		}
-		for rows.Next() {
-			var id, body string
-			if err := rows.Scan(&id, &body); err != nil {
-				_ = rows.Close()
-				return err
-			}
-			var legacy publication.Fact
-			if err := json.Unmarshal([]byte(body), &legacy); err != nil {
-				_ = rows.Close()
-				return err
-			}
-			fact := facts[id]
-			proven := legacyComponentsEqual(legacy, fact)
-			if legacy.Revision != nil && fact.Revision != nil && legacy.Revision.Rule == fact.Revision.Rule && fact.Revision.Value >= legacy.Revision.Value {
-				proven = true
-			}
-			if !proven {
-				continue
-			}
-			coverage = append(coverage, []interface{}{work.DatasetID, work.Generation, id, payloadHashes[id]})
-		}
-		err = rows.Err()
-		_ = rows.Close()
-		if err != nil {
-			return err
-		}
-	}
-	return writeRows(ctx, tx, "INSERT INTO analytics.legacy_coverage VALUES", " ON CONFLICT(dataset_id,generation,fact_id) DO UPDATE SET payload_hash=excluded.payload_hash", coverage)
 }

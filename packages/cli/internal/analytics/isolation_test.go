@@ -8,8 +8,8 @@ import (
 	"time"
 
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/datastore"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/db"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/evidence"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/querymodel"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/viewer"
 )
 
@@ -90,9 +90,9 @@ func TestDatasetAnalyticsIsolateCollidingIdentities(t *testing.T) {
 		total, context, unresolved int64
 	}{{alice, 240, 100, 0}, {bob, 1840, 900, 1}} {
 		for _, tab := range []string{"tokens", "models", "providers", "harnesses", "sessions", "context", "repo", "directory"} {
-			queryTab, group := tab, db.RepoGroupRepository
+			queryTab, group := tab, querymodel.RepoGroupRepository
 			if tab == "directory" {
-				queryTab, group = "repo", db.RepoGroupDirectory
+				queryTab, group = "repo", querymodel.RepoGroupDirectory
 			}
 			q := Query{Selection: viewer.Selection{Period: "all", Bucket: "day"}, Quality: "confirmed", Tab: queryTab, Sort: "total", Direction: "desc", Page: 999, PageSize: 1, LocationGroup: group}
 			result, err := LoadDashboard(t.Context(), test.store, q, time.Now())

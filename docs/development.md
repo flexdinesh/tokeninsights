@@ -151,8 +151,7 @@ and first query for first ingest, unchanged restart and append. It excludes fixt
 setup, warm-up and owner shutdown. The small Pi fixture is not a mixed-harness or
 large-history latency claim. Writer benchmarks separate new observations from
 replay. Compare repeated samples on one machine/toolchain; optimize measured
-stages while preserving independent semantic fixtures. Retained `BenchmarkSync`
-exercises the compatibility pipeline rather than current raw startup.
+stages while preserving independent semantic fixtures.
 
 ## Build Tooling
 
@@ -164,7 +163,7 @@ Go uses `gofmt` and the repository-pinned `golangci-lint`. TypeScript, JavaScrip
 
 React source lives in `packages/web`. Vite stages output in ignored `packages/web/dist`; the build tooling copies it to committed `packages/cli/internal/server/static` assets for `go:embed`.
 
-Go tests cover SQL aggregation, API behavior, raw ingestion/replay, processing generations, history import and collector outbox/acknowledgements, assets, listener lifecycle, and date boundaries. React tests cover URL state, filtering, and cancelled requests. Browser tests launch the built binary with isolated synthetic data and verify the full dashboard.
+Go tests cover SQL aggregation, API behavior, raw ingestion/replay, processing generations and collector outbox/acknowledgements, assets, listener lifecycle, and date boundaries. React tests cover URL state, filtering, and cancelled requests. Browser tests launch the built binary with isolated synthetic data and verify the full dashboard.
 
 ## Skipping CI
 
@@ -182,4 +181,4 @@ git commit -m "docs: update readme [skip ci]"
 - [OpenAPI contract](openapi.yaml)
 - [Release guide](release.md)
 
-CGO/C/C++ builds DuckDB. Native CI/release Linux/macOS amd64/arm64 jobs build/test on matching runners. See [design](design.md) for current acceptance/migration.
+CGO/C/C++ builds DuckDB. Native CI/release Linux/macOS amd64/arm64 jobs build/test on matching runners. See [design](design.md) for current storage and acceptance contracts.

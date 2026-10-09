@@ -6,7 +6,7 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/db"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/querymodel"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/serverfeatures"
 )
 
@@ -49,7 +49,7 @@ func (m interactiveModel) loadSharedSync() sharedSyncMsg {
 		if err == nil {
 			message.refreshStatus = &state
 			pending := state.Pending > 0 || state.Metadata.Generation != state.Metadata.TargetGeneration
-			message.status = db.SyncStatus{Revision: state.Metadata.Revision, Running: pending}
+			message.status = querymodel.SyncStatus{Revision: state.Metadata.Revision, Running: pending}
 			message.pending = pending
 			message.instanceID, message.dataEpoch, message.readiness = runtime.InstanceID, state.Metadata.DatabaseID, "ready"
 		}
@@ -65,8 +65,8 @@ func (m interactiveModel) loadSharedSync() sharedSyncMsg {
 		message.err = err
 		return message
 	}
-	message.status = db.SyncStatus{Revision: state.Revision, Phase: string(state.Phase), Running: state.Running}
-	message.pending = state.Running
+	message.status = querymodel.SyncStatus{Revision: state.Revision, Running: state.Pending > 0 || state.Generation != state.TargetGeneration}
+	message.pending = message.status.Running
 	message.instanceID, message.dataEpoch, message.readiness = state.InstanceId, state.DataEpoch, string(state.DataReadiness)
 	return message
 }

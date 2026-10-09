@@ -8,8 +8,8 @@ import (
 	"time"
 
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/datastore"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/db"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/evidence"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/querymodel"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/viewer"
 )
 
@@ -52,7 +52,7 @@ func TestDuckDashboardTabsFiltersPaginationAndSeparateEstimates(t *testing.T) {
 	store := duckDashboardStore(t)
 	for _, tab := range []string{"tokens", "models", "providers", "harnesses", "sessions", "context", "repo"} {
 		t.Run(tab, func(t *testing.T) {
-			q := Query{Selection: viewer.Selection{Period: "all", Bucket: "day"}, Tab: tab, Quality: "confirmed", Sort: "total", Direction: "desc", Page: 1, PageSize: 2, LocationGroup: db.RepoGroupRepository}
+			q := Query{Selection: viewer.Selection{Period: "all", Bucket: "day"}, Tab: tab, Quality: "confirmed", Sort: "total", Direction: "desc", Page: 1, PageSize: 2, LocationGroup: querymodel.RepoGroupRepository}
 			if tab == "context" {
 				q.Sort = "averageContext"
 			}
@@ -116,7 +116,7 @@ func TestDuckCalendarBucketsAndDayFilters(t *testing.T) {
 		if err := store.SQL().QueryRow(statement, parameter, at.UnixMilli()).Scan(&got); err != nil || got != tc.day {
 			t.Fatal(tc, got, err)
 		}
-		where, args := duckWhere(db.Filter{DayFrom: tc.day, DayTo: tc.day}, tc.zone, "default")
+		where, args := duckWhere(querymodel.Filter{DayFrom: tc.day, DayTo: tc.day}, tc.zone, "default")
 		var n int
 		filterArgs := append([]interface{}{at.UnixMilli()}, args...)
 		if err := store.SQL().QueryRow("SELECT COUNT(*) FROM (SELECT CAST(? AS BIGINT) AS occurred_at_ms,TRUE AS countable, 'default' AS dataset_id)"+where, filterArgs...).Scan(&n); err != nil || n != 1 {

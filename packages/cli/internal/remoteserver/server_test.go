@@ -21,7 +21,7 @@ func TestRemoteRuntimeWithoutClientState(t *testing.T) {
 	ready := make(chan string, 1)
 	done := make(chan error, 1)
 	go func() {
-		done <- Run(ctx, Settings{Listen: "0.0.0.0:0", DBPath: filepath.Join(root, "server.sqlite")}, io.Discard, func(url string) error { ready <- url; return nil })
+		done <- Run(ctx, Settings{PublicURL: "https://usage.example", Listen: "0.0.0.0:0", DBPath: filepath.Join(root, "server.sqlite")}, io.Discard, func(url string) error { ready <- url; return nil })
 	}()
 	var target string
 	select {
@@ -31,14 +31,18 @@ func TestRemoteRuntimeWithoutClientState(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("startup timeout")
 	}
-	for _, endpoint := range []string{"/", "/api/v1/instance", "/api/v1/ingestion/capabilities"} {
+	for _, endpoint := range []string{"/", "/api/v2/instance", "/api/v3/ingestion/capabilities"} {
 		response, err := http.Get(target + endpoint)
 		if err != nil {
 			t.Fatal(err)
 		}
 		_, _ = io.Copy(io.Discard, response.Body)
 		_ = response.Body.Close()
-		if response.StatusCode != 200 {
+		want := 200
+		if endpoint != "/" {
+			want = 401
+		}
+		if response.StatusCode != want {
 			t.Fatal(endpoint, response.StatusCode)
 		}
 	}
@@ -72,7 +76,7 @@ func TestRemoteSettingsRejectBeforeStorage(t *testing.T) {
 
 func TestRemoteDatabaseHasSingleOwnerWithoutLocalControl(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "server.sqlite")
-	settings := Settings{Listen: "127.0.0.1:0", DBPath: path}
+	settings := Settings{PublicURL: "https://usage.example", Listen: "127.0.0.1:0", DBPath: path}
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 	ready := make(chan string, 1)

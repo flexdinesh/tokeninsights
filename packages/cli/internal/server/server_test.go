@@ -14,9 +14,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/db"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/analytics"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/datastore"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/querymodel"
 	serverapi "github.com/flexdinesh/tokeninsights/packages/cli/internal/server/api"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/serverstore"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/version"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/viewer"
 	_ "modernc.org/sqlite"
@@ -24,8 +25,8 @@ import (
 
 func fixture(t *testing.T) string {
 	t.Helper()
-	path := filepath.Join(t.TempDir(), "usage.sqlite")
-	store, err := serverstore.CreateIfMissing(path)
+	path := filepath.Join(t.TempDir(), "usage.duckdb")
+	store, err := datastore.Open(t.Context(), path)
 	database := store.SQL()
 	if err != nil {
 		t.Fatal(err)
@@ -49,73 +50,13 @@ func fixture(t *testing.T) string {
 		}
 		key := fmt.Sprintf("fact-%d", i)
 		sessionKey := f.harness + ":" + f.session
-		_, err = database.Exec(`INSERT OR IGNORE INTO canonical_sessions (semantic_key,harness,session_id,first_seen_at_ms,last_seen_at_ms) VALUES (?,?,?,?,?)`, sessionKey, f.harness, f.session, day.UnixMilli(), day.UnixMilli())
+		_, err = database.Exec("INSERT INTO analytics.facts VALUES ('default',?,'fixture',?,?,?,'','',?,?,'explicit',?,'message','exact',?,?,?,0,?,?,?,'','','','','','{}',1,0)", key, f.harness, sessionKey, f.session, day.UnixMilli(), f.provider, f.model, f.countable != 0, f.input, f.output, f.cacheRead, f.cacheWrite, f.total)
 		if err != nil {
 			t.Fatal(err)
 		}
-		_, err = database.Exec(`INSERT INTO canonical_token_usage (semantic_key,recorded_at_ms,harness,session_id,provider,model,usage_scope,quality,is_countable,input_tokens,output_tokens,cache_read_tokens,cache_write_tokens,total_tokens,payload_hash)
-			VALUES (?,?,?,(SELECT id FROM canonical_sessions WHERE semantic_key=?),?,?,'message','exact',?,?,?,?,?,?,?)`, key, day.UnixMilli(), f.harness, sessionKey, f.provider, f.model, f.countable, f.input, f.output, f.cacheRead, f.cacheWrite, f.total, key)
-		if err != nil {
-			t.Fatal(err)
-		}
-	}
-	if _, err := database.Exec(`INSERT INTO canonical_sessions (semantic_key,harness,session_id,first_seen_at_ms,last_seen_at_ms) VALUES ('empty','pi','empty',0,0)`); err != nil {
-		t.Fatal(err)
+
 	}
 	return path
-}
-
-func TestInstanceUsesSavedDataHostname(t *testing.T) {
-	path := fixture(t)
-	store, err := serverstore.Open(path)
-	database := store.SQL()
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = database.Close() }()
-	a := newApp(context.Background(), Options{DBPath: path}, io.Discard)
-	checkHostname := func(want string) {
-		t.Helper()
-		response := httptest.NewRecorder()
-		a.handler().ServeHTTP(response, httptest.NewRequest(http.MethodGet, "http://dashboard.example.test/api/v1/instance", nil))
-		var instance serverapi.InstanceResponse
-		if err := json.Unmarshal(response.Body.Bytes(), &instance); err != nil {
-			t.Fatal(err)
-		}
-		if response.Code != http.StatusOK || instance.Hostname != want {
-			t.Fatalf("instance hostname = %q, want %q (status %d)", instance.Hostname, want, response.Code)
-		}
-	}
-	checkHostname("unknown")
-	for i, hostname := range []string{"collector-workstation", "other-workstation"} {
-		if _, err := database.Exec("INSERT INTO ingestion_producers(stream_id,hostname,last_ingestion_at_ms) VALUES(?,?,1000)", fmt.Sprint(i), hostname); err != nil {
-			t.Fatal(err)
-		}
-		if i == 0 {
-			checkHostname("collector-workstation")
-		} else {
-			checkHostname("multiple machines")
-		}
-	}
-
-}
-
-func TestStatusSharesRevisionWithoutSyncJob(t *testing.T) {
-	path := fixture(t)
-	store, err := serverstore.Open(path)
-	database := store.SQL()
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = database.Close() }()
-	if _, err := database.Exec("UPDATE server_metadata SET revision = 7 WHERE id = 1"); err != nil {
-		t.Fatal(err)
-	}
-	a := newApp(context.Background(), Options{DBPath: path}, io.Discard)
-	if got := a.status().Revision; got != 7 {
-		t.Fatalf("revision = %d, want 7", got)
-	}
-
 }
 
 func TestDashboardCanonicalParityAndPagination(t *testing.T) {
@@ -201,7 +142,7 @@ func TestRepoUnknownAndDirectoryGrouping(t *testing.T) {
 	if len(transport) != 1 || transport[0].DirectoryNames == nil || !transport[0].HasUnknownDirectory {
 		t.Fatalf("unknown directory transport: %+v", transport)
 	}
-	q.LocationGroup = db.RepoGroupDirectory
+	q.LocationGroup = querymodel.RepoGroupDirectory
 	data, err = loadDashboard(context.Background(), path, q, time.Now())
 	if err != nil {
 		t.Fatal(err)
@@ -244,8 +185,8 @@ func TestDashboardSessionCoverageAcrossBucketsAndDates(t *testing.T) {
 			})
 		}
 	}
-	path = filepath.Join(t.TempDir(), "empty.sqlite")
-	store, err := serverstore.CreateIfMissing(path)
+	path = filepath.Join(t.TempDir(), "empty.duckdb")
+	store, err := datastore.Open(t.Context(), path)
 	database := store.SQL()
 	if err != nil {
 		t.Fatal(err)
@@ -262,11 +203,11 @@ func TestDashboardSessionCoverageAcrossBucketsAndDates(t *testing.T) {
 }
 
 func TestAPIValidationFacetsAndAssets(t *testing.T) {
-	a := newApp(context.Background(), Options{DBPath: fixture(t), Defaults: viewer.Selection{Period: "week", Bucket: "day", Providers: []string{}, Models: []string{}, Harnesses: []string{}, Sessions: []string{}}}, io.Discard)
+	a := fixtureApp(t, fixture(t), Options{Defaults: viewer.Selection{Period: "week", Bucket: "day", Providers: []string{}, Models: []string{}, Harnesses: []string{}, Sessions: []string{}}})
 	handler := a.handler()
-	for _, query := range []string{"period=bad", "bucket=hour", "tab=tps", "from=2026-02-30", "from=2026-10-01&to=2026-09-01", "page=0", "pageSize=201", "direction=bad", "tab=context&sort=total", "sort=sql", "harness=bad", "tab=repo&locationGroup=bad", "tab=repo&breakdown=provider", "tab=repo&worktree=old", "tab=repo&branch=main", "repository=unknown"} {
+	for _, query := range []string{"period=bad", "bucket=hour", "tab=invalid", "from=2026-02-30", "from=2026-10-01&to=2026-09-01", "page=0", "pageSize=201", "direction=bad", "tab=context&sort=total", "sort=sql", "harness=bad", "tab=repo&locationGroup=bad", "tab=repo&breakdown=provider", "tab=repo&worktree=old", "tab=repo&branch=main", "repository=unknown"} {
 		w := httptest.NewRecorder()
-		handler.ServeHTTP(w, httptest.NewRequest("GET", "/api/v1/usage?"+query, nil))
+		handler.ServeHTTP(w, httptest.NewRequest("GET", "/api/v2/usage?"+query, nil))
 		var responseError serverapi.ErrorResponse
 		if err := json.Unmarshal(w.Body.Bytes(), &responseError); err != nil {
 			t.Fatalf("%s: %v", query, err)
@@ -276,11 +217,11 @@ func TestAPIValidationFacetsAndAssets(t *testing.T) {
 		}
 	}
 	w := httptest.NewRecorder()
-	handler.ServeHTTP(w, httptest.NewRequest("GET", "/api/v1/usage/facets?from=2026-09-01&to=2026-09-30&model=absent", nil))
+	handler.ServeHTTP(w, httptest.NewRequest("GET", "/api/v2/usage/facets?from=2026-09-01&to=2026-09-30&model=absent", nil))
 	if w.Code != 200 {
 		t.Fatal(w.Body.String())
 	}
-	var facets serverapi.UsageFacetsResponse
+	var facets serverapi.UsageFacetsResponseV2
 	if err := json.Unmarshal(w.Body.Bytes(), &facets); err != nil {
 		t.Fatal(err)
 	}
@@ -288,8 +229,8 @@ func TestAPIValidationFacetsAndAssets(t *testing.T) {
 		t.Fatalf("facets must ignore own selection only: %v", facets)
 	}
 	w = httptest.NewRecorder()
-	handler.ServeHTTP(w, httptest.NewRequest("GET", "/api/v1/usage/facets?tab=repo&period=all", nil))
-	var locationFacets serverapi.UsageFacetsResponse
+	handler.ServeHTTP(w, httptest.NewRequest("GET", "/api/v2/usage/facets?tab=repo&period=all", nil))
+	var locationFacets serverapi.UsageFacetsResponseV2
 	if err := json.Unmarshal(w.Body.Bytes(), &locationFacets); err != nil {
 		t.Fatal(err)
 	}
@@ -297,7 +238,7 @@ func TestAPIValidationFacetsAndAssets(t *testing.T) {
 		t.Fatalf("unknown repository facet: %d %+v", w.Code, locationFacets)
 	}
 	w = httptest.NewRecorder()
-	handler.ServeHTTP(w, httptest.NewRequest("GET", "/api/v1/usage/facets?period=all&search=b", nil))
+	handler.ServeHTTP(w, httptest.NewRequest("GET", "/api/v2/usage/facets?period=all&search=b", nil))
 	if err := json.Unmarshal(w.Body.Bytes(), &facets); err != nil {
 		t.Fatal(err)
 	}
@@ -305,12 +246,12 @@ func TestAPIValidationFacetsAndAssets(t *testing.T) {
 		t.Fatalf("session search: %v", facets)
 	}
 	w = httptest.NewRecorder()
-	handler.ServeHTTP(w, httptest.NewRequest("GET", "/api/v1/instance", nil))
-	var instance serverapi.InstanceResponse
+	handler.ServeHTTP(w, httptest.NewRequest("GET", "/api/v2/instance", nil))
+	var instance serverapi.InstanceResponseV2
 	if err := json.Unmarshal(w.Body.Bytes(), &instance); err != nil {
 		t.Fatal(err)
 	}
-	if instance.ApiVersion != serverapi.V1 || instance.ServerVersion != version.Version || instance.Defaults.Period != serverapi.PeriodWeek || len(instance.Capabilities) != 3 || strings.Contains(w.Body.String(), a.options.DBPath) {
+	if instance.ApiVersion != "v2" || instance.ServerVersion != version.Version || instance.Defaults.Period != serverapi.PeriodWeek || len(instance.Capabilities) == 0 {
 		t.Fatalf("instance: %+v", instance)
 	}
 	w = httptest.NewRecorder()
@@ -343,100 +284,6 @@ func TestDashboardRoutesServeEmbeddedApp(t *testing.T) {
 	}
 }
 
-func TestAPIV1RoutesAndMethods(t *testing.T) {
-	a := newApp(context.Background(), Options{DBPath: fixture(t)}, io.Discard)
-	handler := a.handler()
-
-	for _, path := range []string{"/api/bootstrap", "/api/status", "/api/sync", "/api/dashboard", "/api/filters", "/api/v1/missing"} {
-		response := httptest.NewRecorder()
-		handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, path, nil))
-		var responseError serverapi.ErrorResponse
-		if err := json.Unmarshal(response.Body.Bytes(), &responseError); err != nil {
-			t.Fatalf("%s: %v", path, err)
-		}
-		if response.Code != http.StatusNotFound || responseError.Code != serverapi.ErrorCodeNotFound {
-			t.Fatalf("%s: %d %+v", path, response.Code, responseError)
-		}
-	}
-
-	for _, test := range []struct {
-		path, method, allow string
-	}{
-		{"/api/v1/instance", http.MethodPost, http.MethodGet},
-		{"/api/v1/sync", http.MethodPut, "GET"},
-		{"/api/v1/usage", http.MethodPost, http.MethodGet},
-		{"/api/v1/usage/facets", http.MethodPost, http.MethodGet},
-	} {
-		response := httptest.NewRecorder()
-		handler.ServeHTTP(response, httptest.NewRequest(test.method, test.path, nil))
-		var responseError serverapi.ErrorResponse
-		if err := json.Unmarshal(response.Body.Bytes(), &responseError); err != nil {
-			t.Fatalf("%s: %v", test.path, err)
-		}
-		if response.Code != http.StatusMethodNotAllowed || response.Header().Get("Allow") != test.allow || responseError.Code != serverapi.ErrorCodeMethodNotAllowed {
-			t.Fatalf("%s: %d allow=%q error=%+v", test.path, response.Code, response.Header().Get("Allow"), responseError)
-		}
-	}
-
-	response := httptest.NewRecorder()
-	handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/v1/sync", nil))
-	var status serverapi.SyncResponse
-	if err := json.Unmarshal(response.Body.Bytes(), &status); err != nil {
-		t.Fatal(err)
-	}
-	if response.Code != http.StatusOK || status.Running || status.Phase != serverapi.SyncPhaseReady || status.Harnesses == nil {
-		t.Fatalf("sync: %d %+v", response.Code, status)
-	}
-}
-
-func TestSyncPostsCannotTriggerCollection(t *testing.T) {
-	path := fixture(t)
-	a := newApp(context.Background(), Options{DBPath: path}, io.Discard)
-	for range 8 {
-		response := httptest.NewRecorder()
-		a.handler().ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/api/v1/sync", nil))
-		if response.Code != http.StatusMethodNotAllowed || response.Header().Get("Allow") != "GET" {
-			t.Fatal(response.Code, response.Body.String())
-		}
-	}
-	store, err := serverstore.Open(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = store.Close() }()
-	var rawTables, facts int
-	if err := store.SQL().QueryRow("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name IN ('raw_token_usage','ingest_runs','sync_jobs','source_refresh_state')").Scan(&rawTables); err != nil {
-		t.Fatal(err)
-	}
-	if err := store.SQL().QueryRow("SELECT COUNT(*) FROM canonical_token_usage").Scan(&facts); err != nil {
-		t.Fatal(err)
-	}
-	if rawTables != 0 || facts != 6 {
-		t.Fatalf("server source dependency or mutation: raw=%d facts=%d", rawTables, facts)
-	}
-}
-
-func TestAnalyticsRejectCollectorDatabaseWithoutMutation(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "collector.sqlite")
-	database, _, err := db.CreateIfMissing(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = database.Close() }()
-	a := newApp(context.Background(), Options{DBPath: path}, io.Discard)
-	for _, endpoint := range []string{"/api/v1/usage", "/api/v1/usage/facets"} {
-		response := httptest.NewRecorder()
-		a.handler().ServeHTTP(response, httptest.NewRequest(http.MethodGet, endpoint, nil))
-		if response.Code != http.StatusServiceUnavailable || strings.Contains(response.Body.String(), path) {
-			t.Fatal(response.Code, response.Body.String())
-		}
-	}
-	var rawTables int
-	if err := database.QueryRow("SELECT COUNT(*) FROM sqlite_master WHERE name='raw_token_usage'").Scan(&rawTables); err != nil || rawTables != 1 {
-		t.Fatal("collector changed", rawTables, err)
-	}
-}
-
 func TestListenerURLAndShutdown(t *testing.T) {
 	listener, err := listen("127.0.0.1", 0)
 	if err != nil {
@@ -455,4 +302,25 @@ func TestListenerURLAndShutdown(t *testing.T) {
 		t.Fatal("expected occupied port")
 	}
 	_ = listener.Close()
+}
+
+func loadDashboard(ctx context.Context, path string, q query, now time.Time) (dashboard, error) {
+	store, err := datastore.Open(ctx, path)
+	if err != nil {
+		return dashboard{}, err
+	}
+	defer func() { _ = store.Close() }()
+	return analytics.LoadDashboard(ctx, store, q, now)
+}
+func fixtureApp(t *testing.T, path string, options Options) *app {
+	t.Helper()
+	store, err := datastore.Open(t.Context(), path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	a := newApp(t.Context(), options, io.Discard)
+	a.data = store
+	a.queries = analytics.DuckDB{Store: store}
+	return a
 }

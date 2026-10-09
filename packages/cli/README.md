@@ -47,7 +47,7 @@ Browser Reload/TUI `r` only query; browser Reload is local-only, including
 `--sync=false`. Local Web shows collection/submission/processing progress alongside
 saved data, stays open on collection failure, and refreshes published revisions.
 Run `sync` to retry collection through the owner. The hostname labels the local
-viewer machine; imported history may include other producers. Hosted never exposes
+viewer machine; captured history may include other producers. Hosted never exposes
 collector progress. TUI capture failures offer Retry/View saved/Quit.
 
 ```sh
@@ -83,11 +83,10 @@ tokeninsights sync --dry-run
 a matching subdirectory when present, otherwise the given directory. Capture commits
 sanitized evidence/checkpoints together; source paths and private content never upload.
 Unchanged sources skip; full refresh retries quarantine. Publish-only never reads
-sources. Dry-run uses temporary storage and never submits. `--no-normalize` remains
-a deprecated flag; shared processing always interprets evidence.
+sources. Dry-run uses temporary storage and never submits. Shared processing interprets evidence.
 
 Configuration: `mode`, `server-url`, `server-token`, `host`, `port`, `collector-db-path`,
-`server-db-path`, `app-db-path`; legacy `server-kind` remains a migration alias.
+`server-db-path`, `app-db-path`.
 Flags > environment > private atomic config > defaults. Use `TOKENINSIGHTS_MODE`,
 `TOKENINSIGHTS_ACCESS_TOKEN`, `TOKENINSIGHTS_SERVER_URL` and role-path variables.
 `config get` reads preferences and masks tokens. `--config-file` or
@@ -98,7 +97,6 @@ Legacy `service`, `server`, and `collector` commands are removed.
 Finite local maintenance:
 
 ```sh
-tokeninsights data import --legacy-server-db-path OLD.sqlite --server-db-path NEW.duckdb
 tokeninsights data reprocess
 tokeninsights data wait
 ```
@@ -119,20 +117,16 @@ Default role paths:
 
 Application SQLite defaults to `app.sqlite` beside the selected token database; override with `--app-db-path` or `TOKENINSIGHTS_APP_DB_PATH`. Finite jobs use `<canonical-collector-path>.jobs.sqlite`.
 
-The former `tokeninsights.sqlite` remains untouched. Retained harness artifacts populate fresh collector/server storage through normal collection and ingestion; verified history import preserves baseline facts and receipts. Role checks precede mutation; a collector file cannot serve queries and a server file cannot enter producer recovery/reset. Identical, symlink-equivalent, and existing hard-linked collector/server paths are rejected.
+Retained harness artifacts populate fresh collector/server storage through normal collection and ingestion. Role checks precede mutation; a collector file cannot serve queries and a server file cannot enter producer recovery/reset. Identical, symlink-equivalent, and existing hard-linked collector/server paths are rejected.
 
 Use `--collector-db-path` for collection and maintenance, and `--server-db-path` for server storage. `tui` can select both roles. Previous command names, `--db-path`, and `--no-sync` are rejected. Legacy `TOKENINSIGHTS_DB_PATH` does not select either new default.
 
-Collector schema 19 retains raw outbox/continuity/exact delivery state,
-dataset/protocol bindings, local quarantine and legacy tables. Verified schemas 16/17/18 upgrade
-additively without changing saved request bytes. Application schema 1 stores accounts and provisioning; jobs schema 1 stores finite
-invocations/status without tokens. DuckDB schema 2 retains legacy accounts for one-time
-migration and stores dataset-scoped raw evidence/receipts/status/typed facts/estimates/retained baselines.
-Verified schema 1 upgrades to personal schema 2 through staged read-only copying,
-validation and atomic publication with a recoverable previous file. Hosted starts
-fresh; stored server-kind mismatch rejects without assigning existing history.
-Fresh default DuckDB imports verified sibling server.sqlite read-only; custom
-imports require explicit new target. Unsupported contracts reject without reset.
+Collector schema 20 stores raw outbox, continuity, exact delivery state,
+dataset/protocol bindings and local quarantine. Application schema 2 stores accounts
+and provisioning; jobs schema 1 stores finite invocations/status without tokens.
+DuckDB schema 3 stores dataset-scoped evidence, receipts, processing state, facts
+and estimates. Only current schemas are supported. Incompatible role, structure,
+version or stored server kind rejects before mutation. No imports or migrations.
 Remote database identity stays pinned; deliberate local replacement permits replay.
 
 ## TUI Arguments
@@ -224,30 +218,25 @@ total
 
 Missing model values are normalized to `unknown`. Missing provider values are normalized to `unknown`, except Claude Code artifact-derived rows, which appear as `maybe-anthropic` with inferred provider provenance.
 
-The active Aggregation Tabs are Tokens, Models, Providers, Harnesses, Sessions, Context, and Repo. Repo groups optional fact-level location attribution by repository or directory. Repo rows list distinct providers, harnesses, and models in the same row. Repository identity combines clones with the same remote. Missing location values display as **unknown**. TPS, request, and tool domains remain future-compatible data domains, but they are not active empty viewer tabs. Preserve `tps avg`, `tps mean`, and `tps median` when durable timing becomes available; no timing is inferred from token counts. The Sessions tab also shows derived `ctx used`, the peak prompt-side context load for the session. Context groups session peaks by harness, provider, and model, showing `sessions`, `avg ctx`, `median ctx`, and `max ctx`.
+The active Aggregation Tabs are Tokens, Models, Providers, Harnesses, Sessions, Context, and Repo. Repo groups optional fact-level location attribution by repository or directory. Repo rows list distinct providers, harnesses, and models in the same row. Repository identity combines clones with the same remote. Missing location values display as **unknown**. The Sessions tab also shows derived `ctx used`, the peak prompt-side context load for the session. Context groups session peaks by harness, provider, and model, showing `sessions`, `avg ctx`, `median ctx`, and `max ctx`.
 
 Session IDs are shortened in table output. Model names with `/` are shortened to the last path segment where a compact display is needed.
 
 
-## Evidence, processing and upgrades
+## Evidence and processing
 
 Sync waits for acceptance. Browser Confirmed / Estimated selects separate data;
 estimates never inflate confirmed totals. Unusable evidence retains diagnostics.
-Fresh default server.duckdb imports verified sibling server.sqlite read-only,
-preserving history, identity and receipts. Partial rebuilds preserve unmatched
-history. Custom paths, after closing processes using the target database:
+Fresh collection rebuilds usage from retained harness sources.
 
-    tokeninsights data import --server-db-path NEW.duckdb --legacy-server-db-path OLD.sqlite
     tokeninsights web
     tokeninsights data reprocess
     tokeninsights data wait
 
-Foreground personal accepts legacy-server-db-path for a new target. Source stays intact.
-Reprocessing keeps published generation until complete. Service wait is explicit
-30-second maintenance wait; sync does not wait. TUI queries confirmed usage.
+Reprocessing keeps the published generation until complete. Data wait is explicit
+bounded maintenance; sync does not wait for processing. TUI queries confirmed usage.
 CGO/C/C++ toolchain builds embedded DuckDB. Production native archives need no JS.
 
 Application pairing also persists `<canonical-token-path>.application.json`, containing
 only the application instance ID. Keep this guard with both databases in stopped
-backups. A missing/replaced app database fails closed instead of re-importing stale
-legacy credentials. Restore the matched set; do not delete the guard to bypass recovery.
+backups. A missing/replaced app database fails closed to preserve credential revocations. Restore the matched set; do not delete the guard to bypass recovery.

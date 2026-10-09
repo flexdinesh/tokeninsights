@@ -186,9 +186,6 @@ type renderRow struct {
 	model                    string
 	models                   string
 	thinkingLevels           string
-	tpsAvg                   string
-	tpsMean                  string
-	tpsMedian                string
 	inputTokens              string
 	inputValue               int64
 	outputTokens             string
@@ -228,31 +225,6 @@ func displayModel(value string) string {
 		return value[index+1:]
 	}
 	return value
-}
-
-func formatWeightedTPS(throughputTokens int64, durationMs int64) string {
-	if durationMs <= 0 || throughputTokens <= 0 {
-		return ""
-	}
-	return formatTPS(float64(throughputTokens) / (float64(durationMs) / 1000))
-}
-
-func formatMeanTPS(tpsMean float64) string {
-	if tpsMean <= 0 {
-		return ""
-	}
-	return formatTPS(tpsMean)
-}
-
-func formatMedianTPS(tpsMedian float64) string {
-	if tpsMedian <= 0 {
-		return ""
-	}
-	return formatTPS(tpsMedian)
-}
-
-func formatTPS(value float64) string {
-	return fmt.Sprintf("%.2f", value)
 }
 
 func formatTokens(value int64) string {
@@ -624,12 +596,6 @@ func formatRenderRows(rows []renderRow, cols []column) [][][]string {
 				value = displayModel(row.model)
 			case "models":
 				value = row.models
-			case "tpsAvg":
-				value = row.tpsAvg
-			case "tpsMean":
-				value = row.tpsMean
-			case "tpsMedian":
-				value = row.tpsMedian
 			case "inputTokens":
 				value = row.inputTokens
 			case "outputTokens":

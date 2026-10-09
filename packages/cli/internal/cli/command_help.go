@@ -34,7 +34,6 @@ Configuration:
   config set server-token     read bearer token securely from terminal/stdin
 
 Maintenance:
-  data import --legacy-server-db-path PATH --server-db-path NEW
   data reprocess|wait          finite local processing, no daemon
   tokeninsights-server         separate authenticated container/server executable
 
@@ -43,7 +42,7 @@ Config: --config-file PATH / TOKENINSIGHTS_CONFIG_PATH; default XDG config.json.
 Keys: mode, server-url, server-token, host, port, collector-db-path, server-db-path, app-db-path.
 Precedence: flags > environment > file > defaults. get reads saved preferences.
 Use TOKENINSIGHTS_MODE and TOKENINSIGHTS_ACCESS_TOKEN for environment overrides.
-Legacy server-kind hosted maps to distributed. Remote requires URL and bearer token.
+Distributed mode requires URL and bearer token.
 Distributed has no analytics TUI. Local commands need no daemon or HTTP ingestion.
 Bare invocation prints help. Reload queries saved data. Plugins pass --wait --harness.`
 }

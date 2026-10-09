@@ -229,7 +229,7 @@ func assertComponents(t *testing.T, target, path string, want [7]int64) []string
 
 	_ = path // HTTP owns the live data file; do not open a second DuckDB process.
 	deadline := time.Now().Add(10 * time.Second)
-	var data api.UsageResponse
+	var data api.UsageResponseV2
 	for {
 		request, err := http.NewRequestWithContext(t.Context(), http.MethodGet, target+"/api/v2/usage?period=all&tab=sessions", nil)
 		if err != nil {

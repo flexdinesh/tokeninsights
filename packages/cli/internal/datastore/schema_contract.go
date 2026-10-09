@@ -84,6 +84,24 @@ func schemaContracts(ctx context.Context, database *sql.DB) (map[string]string, 
 	if err := indexes.Err(); err != nil {
 		return nil, err
 	}
+	if err := indexes.Close(); err != nil {
+		return nil, err
+	}
+	views, err := database.QueryContext(ctx, "SELECT schema_name,view_name,sql FROM duckdb_views() WHERE NOT internal ORDER BY schema_name,view_name")
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = views.Close() }()
+	for views.Next() {
+		var schema, name, statement string
+		if err := views.Scan(&schema, &name, &statement); err != nil {
+			return nil, err
+		}
+		fmt.Fprintf(contract(schema, name), "view:%s\n", statement)
+	}
+	if err := views.Err(); err != nil {
+		return nil, err
+	}
 	result := make(map[string]string, len(contracts))
 	for table, text := range contracts {
 		result[table] = text.String()

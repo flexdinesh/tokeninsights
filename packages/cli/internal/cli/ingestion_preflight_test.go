@@ -60,7 +60,7 @@ func TestIngestionPreflightRejectsBeforeCapture(t *testing.T) {
 				}))
 				t.Cleanup(remote.Close)
 				settings := config.Defaults()
-				settings.ServerKind, settings.ServerURL, settings.ServerToken = kind, remote.URL, "fixture-token"
+				settings.Mode, settings.ServerURL, settings.ServerToken = config.Distributed, remote.URL, "fixture-token"
 				settings.CollectorDBPath, settings.ServerDBPath = filepath.Join(t.TempDir(), "collector.sqlite"), filepath.Join(t.TempDir(), "server.duckdb")
 				invocation := commandInvocation{context: t.Context(), stdout: io.Discard, stderr: io.Discard, settings: &settings}
 				spec, ok := commandByName(command)
@@ -94,7 +94,7 @@ func TestHostedQueryOnlyWebNeedsNoIngestionNegotiation(t *testing.T) {
 	}))
 	defer remote.Close()
 	settings := config.Defaults()
-	settings.ServerKind, settings.ServerURL, settings.ServerToken = serverfeatures.Hosted, remote.URL, "read-only-token"
+	settings.Mode, settings.ServerURL, settings.ServerToken = config.Distributed, remote.URL, "read-only-token"
 	previous := openDashboard
 	openDashboard = func(string) error { return nil }
 	defer func() { openDashboard = previous }()

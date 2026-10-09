@@ -2,17 +2,13 @@ package pipeline
 
 import (
 	"context"
-	"database/sql"
 	"net/url"
 	"os"
 	"os/exec"
 	pathpkg "path"
 	"path/filepath"
-	"sort"
 	"strings"
 	"sync"
-
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/publication"
 )
 
 const locationLabelLimit = 48
@@ -223,11 +219,6 @@ func isWindowsAbsolutePath(value string) bool {
 	return strings.HasPrefix(value, "\\\\") || strings.HasPrefix(value, "//")
 }
 
-func sanitizedLocationPath(value string) string {
-	home, _ := os.UserHomeDir()
-	return sanitizedLocationPathWithHome(value, home)
-}
-
 func sanitizedLocationPathWithHome(value, home string) string {
 	value = strings.ReplaceAll(value, "\\", "/")
 	value = strings.Map(func(r rune) rune {
@@ -271,126 +262,4 @@ func locationPathSuffix(value, home string) (string, bool) {
 	}
 	suffix := value[len(home):]
 	return suffix, suffix == "" || strings.HasPrefix(suffix, "/")
-}
-
-func locationSemanticKey(location Location) string {
-	return stableHash(strings.Join([]string{
-		location.DirectoryKey, location.RepositoryKey, location.RepositorySource,
-	}, "\x00"))
-}
-
-func upsertLocation(ctx context.Context, runner sqlRunner, location *Location) (*int64, error) {
-	if location == nil {
-		return nil, nil
-	}
-	key := locationSemanticKey(*location)
-	_, err := runner.ExecContext(ctx, `
-		INSERT OR IGNORE INTO usage_locations (
-			semantic_key, directory_key, directory_name, repository_key, repository_name, repository_source
-		) VALUES (?, ?, ?, ?, ?, ?)
-	`, key, locationValue(location.DirectoryKey), locationValue(location.DirectoryName),
-		locationValue(location.RepositoryKey), locationValue(location.RepositoryName), locationValue(location.RepositorySource))
-	if err != nil {
-		return nil, err
-	}
-	var id int64
-	if err := runner.QueryRowContext(ctx, "SELECT id FROM usage_locations WHERE semantic_key = ?", key).Scan(&id); err != nil {
-		return nil, err
-	}
-	return &id, nil
-}
-
-func locationValue(value string) interface{} {
-	if value == "" {
-		return nil
-	}
-	return value
-}
-
-func loadLocation(ctx context.Context, runner sqlRunner, id sql.NullInt64) (*Location, error) {
-	if !id.Valid {
-		return nil, nil
-	}
-	var fields [5]sql.NullString
-	err := runner.QueryRowContext(ctx, `SELECT directory_key, directory_name, repository_key, repository_name, repository_source FROM usage_locations WHERE id = ?`, id.Int64).
-		Scan(&fields[0], &fields[1], &fields[2], &fields[3], &fields[4])
-	if err != nil {
-		return nil, err
-	}
-	return &Location{
-		DirectoryKey: fields[0].String, DirectoryName: fields[1].String,
-		RepositoryKey: fields[2].String, RepositoryName: fields[3].String, RepositorySource: fields[4].String,
-	}, nil
-}
-
-func mergeLocations(existing, incoming *Location, priorConflicts string) (*Location, string, bool, bool) {
-	old := Location{}
-	if existing != nil {
-		old = *existing
-	}
-	next := Location{}
-	if incoming != nil {
-		next = *incoming
-	}
-	merged := old
-	conflicts := map[string]bool{}
-	for _, field := range strings.Split(priorConflicts, ",") {
-		if field != "" {
-			conflicts[field] = true
-		}
-	}
-	if conflicts["directory"] {
-		merged.DirectoryKey, merged.DirectoryName = "", ""
-	}
-	if conflicts["repository"] {
-		merged.RepositoryKey, merged.RepositoryName, merged.RepositorySource = "", "", ""
-	}
-	newConflict := false
-	merge := func(field string, currentKey, newKey string, accept func()) bool {
-		if conflicts[field] {
-			return false
-		}
-		if currentKey == "" && newKey != "" {
-			accept()
-		} else if currentKey != "" && newKey != "" && currentKey != newKey {
-			conflicts[field] = true
-			newConflict = true
-			return true
-		}
-		return false
-	}
-	if merge("directory", old.DirectoryKey, next.DirectoryKey, func() {
-		merged.DirectoryKey, merged.DirectoryName = next.DirectoryKey, next.DirectoryName
-	}) {
-		merged.DirectoryKey, merged.DirectoryName = "", ""
-	}
-	if !conflicts["repository"] && old.RepositoryKey != "" && next.RepositoryKey != "" && old.RepositoryKey != next.RepositoryKey &&
-		((repositorySourceRank(old.RepositorySource) < 3 && repositorySourceRank(next.RepositorySource) >= 3) ||
-			(repositorySourceRank(next.RepositorySource) < 3 && repositorySourceRank(old.RepositorySource) >= 3)) &&
-		old.DirectoryKey != "" && old.DirectoryKey == next.DirectoryKey {
-		if repositorySourceRank(next.RepositorySource) > repositorySourceRank(old.RepositorySource) {
-			merged.RepositoryKey, merged.RepositoryName, merged.RepositorySource = next.RepositoryKey, next.RepositoryName, next.RepositorySource
-		}
-	} else if merge("repository", old.RepositoryKey, next.RepositoryKey, func() {
-		merged.RepositoryKey, merged.RepositoryName, merged.RepositorySource = next.RepositoryKey, next.RepositoryName, next.RepositorySource
-	}) {
-		merged.RepositoryKey, merged.RepositoryName, merged.RepositorySource = "", "", ""
-	} else if old.RepositoryKey == next.RepositoryKey && repositorySourceRank(next.RepositorySource) > repositorySourceRank(old.RepositorySource) {
-		merged.RepositoryName, merged.RepositorySource = next.RepositoryName, next.RepositorySource
-	}
-	fields := make([]string, 0, len(conflicts))
-	for field := range conflicts {
-		fields = append(fields, field)
-	}
-	sort.Strings(fields)
-	joined := strings.Join(fields, ",")
-	var result *Location
-	if merged.DirectoryKey != "" || merged.RepositoryKey != "" {
-		result = &merged
-	}
-	return result, joined, result == nil && existing != nil || result != nil && (existing == nil || *result != old) || joined != priorConflicts, newConflict
-}
-
-func repositorySourceRank(source string) int {
-	return publication.RepositorySourceRank(source)
 }

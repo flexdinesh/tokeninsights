@@ -16,7 +16,7 @@ import (
 func publicationSnapshot(t *testing.T, store *Store) map[string]string {
 	t.Helper()
 	result := map[string]string{}
-	for _, table := range []string{"analytics.facts", "analytics.estimates", "analytics.provenance", "analytics.legacy_coverage", "processing.outcomes", "processing.scopes", "ingestion.metadata", "analytics.generations", "raw.evidence", "ingestion.batches", "ingestion.items", "ingestion.batch_items"} {
+	for _, table := range []string{"analytics.facts", "analytics.estimates", "analytics.provenance", "processing.outcomes", "processing.scopes", "ingestion.metadata", "analytics.generations", "raw.evidence", "ingestion.batches", "ingestion.items", "ingestion.batch_items"} {
 		var value string
 		if err := store.SQL().QueryRowContext(t.Context(), "SELECT COALESCE(CAST(to_json(list(t ORDER BY CAST(to_json(t) AS VARCHAR))) AS VARCHAR),'[]') FROM "+table+" t").Scan(&value); err != nil {
 			t.Fatal(err)
@@ -62,7 +62,7 @@ func TestPublicationRollbackReopenAndRetryPreservesUsage(t *testing.T) {
 			switch failure {
 			case "constraint":
 				invalid := projection
-				// A genuine unique-index error after facts and coverage were written.
+				// A genuine unique-index error after facts and provenance were written.
 				estimate := evidence.Estimate{Fact: projection.Contributions[0].Fact, EvidenceID: work.Records[0].ID, Code: "test_failure"}
 				invalid.Estimates = []evidence.Estimate{estimate, estimate}
 				if published, err := store.PublishProjection(t.Context(), work, invalid); err == nil || published {

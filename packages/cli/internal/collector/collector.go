@@ -15,8 +15,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/collectorstore"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/db"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/dbpath"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/evidence"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/pipeline"
@@ -27,14 +25,12 @@ const requestTimeout = 30 * time.Second
 const maxRetryAfter = 24 * time.Hour
 
 // Destination is resolved by command composition, before any source capture.
-// Identity is the canonical endpoint; URL may address a private local transport.
+// Identity binds durable delivery; Transport owns the actual endpoint.
 type Destination struct {
 	Transport  Delivery
-	URL        string
 	Identity   string
 	DatabaseID string
 	DatasetID  string
-	Client     *http.Client
 	Local      bool
 }
 
@@ -43,13 +39,9 @@ type Options struct {
 	Destination      *Destination
 	CollectorDBPath  string
 	ServerDBPath     string
-	ServerURL        string
-	Token            string
 	PublishOnly      bool
 	SyncOptions      pipeline.SyncOptions
-	EnsureLocal      func(context.Context) (string, error)
 	DeliveryProgress func(DeliveryProgress)
-	LocalClient      *http.Client
 }
 
 // DeliveryProgress reports acknowledged work, never estimated upload progress.
@@ -64,9 +56,6 @@ type Result struct {
 	Accepted        int64
 	Collection      pipeline.Summary
 	Batches         int64
-	Inserted        int64
-	Updated         int64
-	Noop            int64
 	Pending         int64
 	PendingKnown    bool
 	CollectionError error
@@ -131,21 +120,17 @@ func Run(ctx context.Context, options Options) (Result, error) {
 	if strings.TrimSpace(options.CollectorDBPath) == "" {
 		return result, failure("configuration", "missing_database_path", nil)
 	}
-	if options.Destination != nil && options.Destination.Local || options.Destination == nil && strings.TrimSpace(options.ServerURL) == "" {
+	if options.Destination != nil && options.Destination.Local {
 		if err := ValidatePaths(options.CollectorDBPath, options.ServerDBPath); err != nil {
 			return result, err
 		}
 	}
+	if !options.SyncOptions.DryRun && (options.Destination == nil || options.Destination.Transport == nil) {
+		return result, failure("configuration", "missing_destination", nil)
+	}
 	if options.Destination != nil {
 		destination := *options.Destination
 		var err error
-		destination.URL, err = endpoint(destination.URL)
-		if err != nil {
-			return result, err
-		}
-		if destination.Identity == "" {
-			destination.Identity = destination.URL
-		}
 		destination.Identity, err = endpoint(destination.Identity)
 		if err != nil {
 			return result, err
@@ -154,10 +139,6 @@ func Run(ctx context.Context, options Options) (Result, error) {
 			return result, failure("configuration", "invalid_destination", nil)
 		}
 		options.Destination = &destination
-	} else if strings.TrimSpace(options.ServerURL) != "" {
-		if _, err := endpoint(options.ServerURL); err != nil {
-			return result, err
-		}
 	}
 	options.SyncOptions.DBPath = options.CollectorDBPath
 	if !options.PublishOnly {
@@ -181,116 +162,6 @@ func endpoint(value string) (string, error) {
 
 // CanonicalEndpoint gives discovery and publication the same delivery identity.
 func CanonicalEndpoint(value string) (string, error) { return endpoint(value) }
-
-func publishLegacy(ctx context.Context, options Options, result *Result) error {
-	reportDeliveryProgress(options, result)
-	target := options.ServerURL
-	local := strings.TrimSpace(target) == ""
-	identity := ""
-	if options.Destination != nil {
-		target, local = options.Destination.URL, options.Destination.Local
-		identity = options.Destination.Identity
-	} else if local {
-		if options.EnsureLocal == nil {
-			return failure("delivery", "local_server_unavailable", nil)
-		}
-		var err error
-		target, err = options.EnsureLocal(ctx)
-		if err != nil {
-			return failure("delivery", "local_server_unavailable", err)
-		}
-	}
-	target, err := endpoint(target)
-	if err != nil {
-		return err
-	}
-	if identity == "" {
-		identity = target
-	}
-	identity, err = endpoint(identity)
-	if err != nil {
-		return err
-	}
-	client := deliveryClient(nil)
-	if options.Destination != nil && options.Destination.Client != nil {
-		client = deliveryClient(options.Destination.Client)
-	} else if options.LocalClient != nil {
-		client = deliveryClient(options.LocalClient)
-	}
-	transport := Delivery(HTTPDelivery{URL: target, Token: options.Token, Client: client})
-	if options.Destination != nil {
-		transport = destinationDelivery(options.Destination, options.Token)
-	}
-	capabilities, err := transport.LegacyCapabilities(ctx)
-	if err != nil {
-		return err
-	}
-	if options.Destination != nil && (options.Destination.DatasetID != "default" || options.Destination.DatabaseID != capabilities.DatabaseID) {
-		return failure("binding", "server_database_changed", nil)
-	}
-	release, err := db.AcquireWriterLock(ctx, options.CollectorDBPath)
-	if err != nil {
-		return failure("publication", "collector_busy", err)
-	}
-	defer release()
-	database, _, err := db.CreateIfMissing(options.CollectorDBPath)
-	if err != nil {
-		return failure("publication", "collector_database", err)
-	}
-	defer func() { _ = database.Close() }()
-	store := collectorstore.Store{DB: database}
-	hostname, _ := os.Hostname()
-	if len(hostname) > publication.MaxStringBytes {
-		hostname = ""
-	}
-	destinationID, err := store.ResolveDeliveryDestination(ctx, identity, capabilities.DatabaseID, local)
-	if err != nil {
-		return failure("binding", "server_database_changed", err)
-	}
-	result.Pending, err = store.Pending(ctx, destinationID)
-	if err != nil {
-		return failure("publication", "pending_read", err)
-	}
-	result.PendingKnown = true
-	reportDeliveryProgress(options, result)
-	for {
-		saved, err := store.PrepareBatch(ctx, destinationID, hostname, time.Now().UnixMilli())
-		if err != nil {
-			return failure("publication", "prepare_batch", err)
-		}
-		if saved == nil {
-			return nil
-		}
-		receiptBytes, err := transport.Submit(ctx, 1, saved.Request)
-		if err != nil {
-			var stage *StageError
-			if errors.As(err, &stage) {
-				stage.BatchID = saved.Batch.BatchID
-			}
-			return err
-		}
-		receipt, err := publication.DecodeReceipt(receiptBytes)
-		if err != nil {
-			return &StageError{Stage: "receipt", Code: "invalid_receipt", BatchID: saved.Batch.BatchID, Cause: err}
-		}
-		if err := store.Ack(ctx, destinationID, receiptBytes, time.Now().UnixMilli()); err != nil {
-			return &StageError{Stage: "receipt", Code: "acknowledgement_rejected", BatchID: saved.Batch.BatchID, Cause: err}
-		}
-		result.Batches++
-		result.Inserted += receipt.Inserted
-		result.Updated += receipt.Updated
-		result.Noop += receipt.Noop
-		destinationID, err = store.ResolveDeliveryDestination(ctx, identity, capabilities.DatabaseID, local)
-		if err != nil {
-			return failure("binding", "server_database_changed", err)
-		}
-		result.Pending, err = store.Pending(ctx, destinationID)
-		if err != nil {
-			return failure("publication", "pending_read", err)
-		}
-		reportDeliveryProgress(options, result)
-	}
-}
 
 func reportDeliveryProgress(options Options, result *Result) {
 	if options.DeliveryProgress != nil {

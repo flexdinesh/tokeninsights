@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/processor"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -125,73 +124,12 @@ func (a opencodeSQLiteAdapter) source(path string, root string) Source {
 	}
 }
 
-func (a opencodeSQLiteAdapter) Parse(ctx context.Context, source Source, options SyncOptions) ([]RawTokenFact, []Diagnostic, error) {
-	database, err := openReadOnlySQLite(source.Path)
-	if err != nil {
-		return nil, nil, err
-	}
-	defer func() { _ = database.Close() }()
-	tx, err := database.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
-	if err != nil {
-		return nil, nil, err
-	}
-	defer func() { _ = tx.Rollback() }()
-	return a.parseSnapshot(ctx, tx, source, options)
-}
-
-func (a opencodeSQLiteAdapter) parseSnapshot(ctx context.Context, tx openCodeReader, source Source, options SyncOptions) ([]RawTokenFact, []Diagnostic, error) {
-	recordSourceParse(ctx)
-	v1Exists, err := sqliteTableExists(ctx, tx, "message")
-	if err != nil {
-		return nil, nil, err
-	}
-	v2Exists, err := sqliteTableExists(ctx, tx, "session_message")
-	if err != nil {
-		return nil, nil, err
-	}
-	if !v1Exists && !v2Exists {
-		return nil, []Diagnostic{opencodeDiagnostic("opencode_sqlite_missing_message_table", "OpenCode SQLite source has no supported message table")}, nil
-	}
-
-	var facts []RawTokenFact
-	var diagnostics []Diagnostic
-	v2Facts := map[string]bool{}
-	if v2Exists {
-		if err := requireSQLiteColumns(ctx, tx, "session_message", []string{"id", "session_id", "type", "time_created", "data"}); err != nil {
-			diagnostics = append(diagnostics, opencodeDiagnostic("opencode_sqlite_invalid_schema", "OpenCode SQLite session_message table is missing required columns"))
-		} else {
-			parsed, parsedDiagnostics, err := a.parseV2Messages(ctx, tx, source, options, v2Facts)
-			if err != nil {
-				return nil, nil, err
-			}
-			facts = append(facts, parsed...)
-			diagnostics = append(diagnostics, parsedDiagnostics...)
-		}
-	}
-	if v1Exists {
-		if err := requireSQLiteColumns(ctx, tx, "message", []string{"id", "session_id", "time_created", "data"}); err != nil {
-			diagnostics = append(diagnostics, opencodeDiagnostic("opencode_sqlite_invalid_schema", "OpenCode SQLite message table is missing required columns"))
-		} else {
-			parsed, parsedDiagnostics, err := a.parseV1Messages(ctx, tx, source, options, v2Facts)
-			if err != nil {
-				return nil, nil, err
-			}
-			facts = append(facts, parsed...)
-			diagnostics = append(diagnostics, parsedDiagnostics...)
-		}
-	}
-	if err := attachOpenCodeLocations(ctx, tx, options, facts); err != nil {
-		return nil, nil, err
-	}
-	return facts, diagnostics, nil
-}
-
 type openCodeSessionLocation struct {
 	directory string
 	projectID string
 }
 
-func attachOpenCodeLocations(ctx context.Context, database openCodeReader, options SyncOptions, facts []RawTokenFact) error {
+func attachOpenCodeLocations(ctx context.Context, database openCodeReader, options SyncOptions, facts []sessionLocation) error {
 	if len(facts) == 0 {
 		return nil
 	}
@@ -249,104 +187,6 @@ func attachOpenCodeLocations(ctx context.Context, database openCodeReader, optio
 		facts[index].Location, _ = resolveFactLocation(ctx, options, session.directory, "", session.projectID)
 	}
 	return nil
-}
-
-func (a opencodeSQLiteAdapter) parseV1Messages(ctx context.Context, database openCodeReader, source Source, options SyncOptions, v2Facts map[string]bool) ([]RawTokenFact, []Diagnostic, error) {
-	rows, err := database.QueryContext(ctx, `
-		SELECT id, session_id, time_created, data
-		FROM message
-		ORDER BY time_created, id
-	`)
-	if err != nil {
-		return nil, nil, err
-	}
-	defer func() { _ = rows.Close() }()
-	var facts []RawTokenFact
-	var diagnostics []Diagnostic
-	for rows.Next() {
-		if ctx.Err() != nil {
-			return nil, nil, ctx.Err()
-		}
-		var messageID string
-		var sessionID sql.NullString
-		var timeCreated sql.NullInt64
-		var data string
-		if err := rows.Scan(&messageID, &sessionID, &timeCreated, &data); err != nil {
-			return nil, nil, err
-		}
-		fact, rowDiagnostics, ok := a.factFromMessage(source, options, messageID, sessionID, timeCreated, data)
-		diagnostics = append(diagnostics, rowDiagnostics...)
-		if ok {
-			if v2Facts[opencodeLogicalMessageKey(sessionID, messageID)] {
-				continue
-			}
-			facts = append(facts, fact)
-		}
-	}
-	if err := rows.Err(); err != nil {
-		return nil, nil, err
-	}
-	return facts, diagnostics, nil
-}
-
-func (a opencodeSQLiteAdapter) parseV2Messages(ctx context.Context, database openCodeReader, source Source, options SyncOptions, v2Facts map[string]bool) ([]RawTokenFact, []Diagnostic, error) {
-	rows, err := database.QueryContext(ctx, `
-		SELECT id, session_id, time_created, data
-		FROM session_message
-		WHERE type = 'assistant'
-		ORDER BY time_created, id
-	`)
-	if err != nil {
-		return nil, nil, err
-	}
-	defer func() { _ = rows.Close() }()
-	var facts []RawTokenFact
-	var diagnostics []Diagnostic
-	for rows.Next() {
-		if ctx.Err() != nil {
-			return nil, nil, ctx.Err()
-		}
-		var messageID string
-		var sessionID sql.NullString
-		var timeCreated sql.NullInt64
-		var data string
-		if err := rows.Scan(&messageID, &sessionID, &timeCreated, &data); err != nil {
-			return nil, nil, err
-		}
-		fact, rowDiagnostics, ok := a.factFromV2Message(source, options, messageID, sessionID, timeCreated, data)
-		diagnostics = append(diagnostics, rowDiagnostics...)
-		if ok {
-			facts = append(facts, fact)
-			v2Facts[opencodeLogicalMessageKey(sessionID, messageID)] = true
-		}
-	}
-	if err := rows.Err(); err != nil {
-		return nil, nil, err
-	}
-	return facts, diagnostics, nil
-}
-
-func (a opencodeSQLiteAdapter) factFromMessage(source Source, options SyncOptions, rowMessageID string, rowSessionID sql.NullString, rowTimeCreated sql.NullInt64, rawData string) (RawTokenFact, []Diagnostic, bool) {
-	return openCodeNativeFact(source, options, rowMessageID, rowSessionID, rowTimeCreated, rawData, false)
-}
-func (a opencodeSQLiteAdapter) factFromV2Message(source Source, options SyncOptions, rowMessageID string, rowSessionID sql.NullString, rowTimeCreated sql.NullInt64, rawData string) (RawTokenFact, []Diagnostic, bool) {
-	return openCodeNativeFact(source, options, rowMessageID, rowSessionID, rowTimeCreated, rawData, true)
-}
-func openCodeNativeFact(source Source, options SyncOptions, messageID string, sessionID sql.NullString, created sql.NullInt64, data string, v2 bool) (RawTokenFact, []Diagnostic, bool) {
-	var session *string
-	if sessionID.Valid {
-		session = &sessionID.String
-	}
-	var timestamp *int64
-	if created.Valid {
-		timestamp = &created.Int64
-	}
-	fact, diagnostics, ok := processor.OpenCodeMessage(nativeSource(source), nativeOptions(options), messageID, session, timestamp, data, v2)
-	return processorFact(fact), processorDiagnostics(diagnostics), ok
-}
-
-func opencodeLogicalMessageKey(sessionID sql.NullString, messageID string) string {
-	return trimSQLString(sessionID) + "\x00" + strings.TrimSpace(messageID)
 }
 
 func isOpenCodeSQLiteDB(path string) bool {
@@ -428,14 +268,4 @@ func requireSQLiteColumns(ctx context.Context, database openCodeReader, table st
 		}
 	}
 	return nil
-}
-
-func trimSQLString(value sql.NullString) string {
-	if !value.Valid {
-		return ""
-	}
-	return strings.TrimSpace(value.String)
-}
-func opencodeDiagnostic(code string, message string) Diagnostic {
-	return Diagnostic{Harness: HarnessOpenCode, Severity: "warning", Code: code, Message: message}
 }

@@ -71,12 +71,6 @@ describe('dashboard navigation', () => {
     })
   })
 
-  it('recognizes legacy tab query parameters for redirect', () => {
-    expect(parseDashboardSearch({ tab: 'models' }).legacyTab).toBe('models')
-    expect(parseDashboardSearchParams('?tab=providers').legacyTab).toBe('providers')
-    expect(parseDashboardSearch({ tab: 'invalid' }).legacyTab).toBeUndefined()
-  })
-
   it('round trips Repo options and clears location filters on other views', () => {
     const repo: QueryState = {
       ...initialQuery(defaults, 'repo'),

@@ -26,4 +26,4 @@ VOLUME ["/data"]
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
     CMD curl --fail --silent --show-error --max-time 3 http://127.0.0.1:8765/readyz || exit 1
 ENTRYPOINT ["/usr/local/bin/tokeninsights-server"]
-CMD ["--kind", "hosted", "--listen", "0.0.0.0:8765", "--server-db-path", "/data/server.duckdb", "--admin-socket", "/run/tokeninsights/admin.sock"]
+CMD ["--listen", "0.0.0.0:8765", "--server-db-path", "/data/server.duckdb", "--admin-socket", "/run/tokeninsights/admin.sock"]

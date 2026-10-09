@@ -6,7 +6,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/db"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/evidence"
 )
 
@@ -54,12 +53,6 @@ func TestQuarantineSurvivesReopenWithoutChangingCapturedEvidence(t *testing.T) {
 	var count int
 	if err := store.DB.QueryRow("SELECT COUNT(*) FROM evidence_outbox").Scan(&count); err != nil || count != 1 {
 		t.Fatal("quarantine discarded prior evidence", count, err)
-	}
-	if err := db.ResetCanonical(t.Context(), store.DB); err != nil {
-		t.Fatal(err)
-	}
-	if got, found, err := store.GetQuarantine(t.Context(), marker.SourceKey); err != nil || !found || got != marker {
-		t.Fatal("canonical reset discarded capture failure", got, found, err)
 	}
 	marker.Signature = evidence.Hash([]byte("changed-file"))
 	marker.ParserVersion++

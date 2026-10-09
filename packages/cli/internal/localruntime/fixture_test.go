@@ -10,6 +10,7 @@ import (
 
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/datastore"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/db"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/rawcollectorstore"
 )
 
 func TestPrepareFixtureRejectsHostedBeforeResettingCollector(t *testing.T) {
@@ -23,7 +24,7 @@ func TestPrepareFixtureRejectsHostedBeforeResettingCollector(t *testing.T) {
 		t.Fatal(err)
 	}
 	var beforeStream string
-	if err := collector.QueryRow("SELECT stream_id FROM publication_state WHERE id=1").Scan(&beforeStream); err != nil {
+	if err := collector.QueryRow("SELECT stream_id FROM evidence_state WHERE id=1").Scan(&beforeStream); err != nil {
 		t.Fatal(err)
 	}
 	_ = collector.Close()
@@ -54,7 +55,7 @@ func TestPrepareFixtureRejectsHostedBeforeResettingCollector(t *testing.T) {
 	}
 	defer func() { _ = collector.Close() }()
 	var afterStream string
-	if err := collector.QueryRow("SELECT stream_id FROM publication_state WHERE id=1").Scan(&afterStream); err != nil {
+	if err := collector.QueryRow("SELECT stream_id FROM evidence_state WHERE id=1").Scan(&afterStream); err != nil {
 		t.Fatal(err)
 	}
 	if beforeStream != afterStream {
@@ -79,7 +80,7 @@ func TestPrepareFixtureSeparateRolesPreserveInodesAndUnrelatedHistory(t *testing
 		t.Fatal(err)
 	}
 	var stream string
-	if err := collector.QueryRow("SELECT stream_id FROM publication_state WHERE id=1").Scan(&stream); err != nil {
+	if err := collector.QueryRow("SELECT stream_id FROM evidence_state WHERE id=1").Scan(&stream); err != nil {
 		t.Fatal(err)
 	}
 	_ = collector.Close()
@@ -91,7 +92,7 @@ func TestPrepareFixtureSeparateRolesPreserveInodesAndUnrelatedHistory(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := server.SQL().Exec("INSERT INTO ingestion.legacy_receipts(dataset_id,stream_id,batch_id,request_hash,receipt_json) VALUES(?,'fixture-stream','fixture-batch','hash','{}')", datastore.DatasetID); err != nil {
+	if _, err := server.SQL().Exec("INSERT INTO ingestion.batches(dataset_id,stream_id,batch_id,request_hash,request_bytes,receipt_json) VALUES(?,'fixture-stream','fixture-batch','hash','{}','{}')", datastore.DatasetID); err != nil {
 		t.Fatal(err)
 	}
 	_ = server.Close()
@@ -145,7 +146,7 @@ func TestPrepareFixtureSeparateRolesPreserveInodesAndUnrelatedHistory(t *testing
 	}
 	defer func() { _ = collector.Close() }()
 	var afterStream string
-	if err := collector.QueryRow("SELECT stream_id FROM publication_state WHERE id=1").Scan(&afterStream); err != nil {
+	if err := collector.QueryRow("SELECT stream_id FROM evidence_state WHERE id=1").Scan(&afterStream); err != nil {
 		t.Fatal(err)
 	}
 	if afterStream == stream {
@@ -164,19 +165,23 @@ func TestPrepareFixtureSeparateRolesPreserveInodesAndUnrelatedHistory(t *testing
 		t.Fatal("fixture server generation not reset", after)
 	}
 	var count int
-	if err := server.SQL().QueryRow("SELECT COUNT(*) FROM ingestion.legacy_receipts").Scan(&count); err != nil || count != 0 {
+	if err := server.SQL().QueryRow("SELECT COUNT(*) FROM ingestion.batches").Scan(&count); err != nil || count != 0 {
 		t.Fatal(count, err)
 	}
 }
 
 func TestPrepareFixtureRejectsLegacyRoleBeforeResettingCollector(t *testing.T) {
 	collectorPath, serverPath := fixturePaths(t)
-	collector, _, err := db.CreateIfMissing(collectorPath)
+	capture, err := rawcollectorstore.Open(t.Context(), collectorPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	collector := capture.DB
 	if err != nil {
 		t.Fatal(err)
 	}
 	var stream string
-	if err := collector.QueryRow("SELECT stream_id FROM publication_state WHERE id=1").Scan(&stream); err != nil {
+	if err := collector.QueryRow("SELECT stream_id FROM evidence_state WHERE id=1").Scan(&stream); err != nil {
 		t.Fatal(err)
 	}
 	_ = collector.Close()
@@ -208,7 +213,7 @@ func TestPrepareFixtureRejectsLegacyRoleBeforeResettingCollector(t *testing.T) {
 	}
 	defer func() { _ = collector.Close() }()
 	var afterStream string
-	if err := collector.QueryRow("SELECT stream_id FROM publication_state WHERE id=1").Scan(&afterStream); err != nil {
+	if err := collector.QueryRow("SELECT stream_id FROM evidence_state WHERE id=1").Scan(&afterStream); err != nil {
 		t.Fatal(err)
 	}
 	if stream != afterStream {

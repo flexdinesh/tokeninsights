@@ -34,7 +34,7 @@ Web remains foreground and joins capture/processing workers before storage close
 One viewer at a time; concurrent sync requests enter a separate durable queue, then
 the owner collects/ingests them directly. Reload only queries saved usage; the
 browser toolbar control is local-only. Local machine identity is shared by direct
-and HTTP descriptors; it does not attribute imported history to this machine.
+and HTTP descriptors; it does not attribute captured history to this machine.
 
 Distributed sync saves a job, starts a finite worker through private config/readiness
 pipes and returns after startup ACK. `--print` also submits. `--wait` ends at acceptance;
@@ -48,8 +48,7 @@ Shutdown/interruption leaves immutable saved requests available for replay.
 
 Account provisioning records an inactive user with a fixed dataset, idempotently
 creates that dataset, then activates the user. Restart resumes pending provisioning.
-Application SQLite is paired to token storage identity; migration copies legacy
-DuckDB accounts once, preserving revocation. There is no cross-engine transaction.
+Application SQLite is paired to token storage identity. There is no cross-engine transaction.
 
 Token storage, queue and query operations remain behind contracts. A future backend
 must preserve atomic acceptance/projection, dataset isolation, stable identities,
@@ -59,5 +58,5 @@ snapshots. Equal counters do not establish identity. See [design](design.md).
 Configuration is private home-directory JSON with flags > environment > file >
 default precedence. Default mode is single-process; remote URL/token select an
 authenticated distributed destination. Remote failures never fall back local.
-Bare invocation prints help. Local maintenance uses `data import/reprocess/wait`.
+Bare invocation prints help. Local maintenance uses `data reprocess/wait`.
 Legacy `service`, `server`, and `collector` commands are removed. Production remains Go-only.

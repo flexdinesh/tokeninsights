@@ -20,7 +20,7 @@ func TestAdminCommandsUseRunningOwner(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	ready := make(chan struct{}, 1)
 	done := make(chan error, 1)
-	settings := remoteserver.Settings{Kind: "hosted", Listen: "127.0.0.1:0", DBPath: filepath.Join(root, "hosted.duckdb"), PublicURL: "https://usage.example", AdminSocket: socket}
+	settings := remoteserver.Settings{Listen: "127.0.0.1:0", DBPath: filepath.Join(root, "hosted.duckdb"), PublicURL: "https://usage.example", AdminSocket: socket}
 	go func() {
 		done <- remoteserver.Run(ctx, settings, io.Discard, func(string) error { ready <- struct{}{}; return nil })
 	}()

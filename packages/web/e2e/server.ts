@@ -142,8 +142,6 @@ const hostedSocket = join(hostedHome, 'admin.sock')
 const hostedServer = spawn(
   resolve('../cli/bin/tokeninsights-server'),
   [
-    '--kind',
-    'hosted',
     '--listen',
     '127.0.0.1:18768',
     '--server-db-path',

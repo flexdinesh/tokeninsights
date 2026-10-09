@@ -14,6 +14,7 @@ import (
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/datastore"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/db"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/evidence"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/rawcollectorstore"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/serverownership"
 )
 
@@ -85,12 +86,19 @@ func PrepareFixture(ctx context.Context, collectorPath, serverPath string) error
 	if err := db.ResetAllLocked(ctx, collectorPath); err != nil {
 		return err
 	}
+	capture, err := rawcollectorstore.Open(ctx, collectorPath)
+	if err != nil {
+		return err
+	}
+	if err := capture.Close(); err != nil {
+		return err
+	}
 	tx, err := server.SQL().BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
-	for _, table := range []string{"analytics.facts", "analytics.estimates", "analytics.provenance", "analytics.legacy_coverage", "analytics.legacy", "processing.outcomes", "processing.dependencies", "processing.scopes", "ingestion.batch_items", "ingestion.items", "ingestion.batches", "ingestion.legacy_receipts", "raw.evidence", "analytics.generations"} {
+	for _, table := range []string{"analytics.facts", "analytics.estimates", "analytics.provenance", "processing.outcomes", "processing.dependencies", "processing.scopes", "ingestion.batch_items", "ingestion.items", "ingestion.batches", "raw.evidence", "analytics.generations"} {
 		if _, err := tx.ExecContext(ctx, "DELETE FROM "+table); err != nil {
 			return err
 		}

@@ -4,10 +4,6 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/config"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/localruntime"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/server"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/serverruntime"
 	"net"
 	"strings"
 	"time"
@@ -15,9 +11,13 @@ import (
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/browser"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/clientworkflow"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/collector"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/config"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/localruntime"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/networkprefs"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/pipeline"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/server"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/serverfeatures"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/serverruntime"
 )
 
 const localVisibilityTimeout = 30 * time.Second
@@ -100,9 +100,9 @@ func runWeb(invocation commandInvocation, args []string) error {
 	_, _ = fmt.Fprintln(invocation.stderr, "Syncing usage...")
 	terminal := newTerminalSyncProgress(invocation.stderr)
 	result, syncErr := runWebCollector(invocation.context, collector.Options{
-		CollectorDBPath: settings.CollectorDBPath, ServerDBPath: settings.ServerDBPath, ServerURL: settings.ServerURL, Token: settings.ServerToken,
+		CollectorDBPath: settings.CollectorDBPath, ServerDBPath: settings.ServerDBPath,
 		Destination:      session.Destination,
-		SyncOptions:      pipeline.SyncOptions{Harnesses: pipeline.SupportedHarnesses, Normalize: true, Now: invocation.now, Progress: terminal.Collection},
+		SyncOptions:      pipeline.SyncOptions{Harnesses: pipeline.SupportedHarnesses, Now: invocation.now, Progress: terminal.Collection},
 		DeliveryProgress: terminal.Delivery,
 	})
 	terminal.Finish(result)
@@ -126,7 +126,7 @@ func runLocalWeb(invocation commandInvocation, settings config.Settings, syncBef
 	}
 	defer func() { _ = runtime.Close() }()
 	if syncBefore {
-		runtime.StartCollection(ctx, pipeline.SyncOptions{Harnesses: pipeline.SupportedHarnesses, Normalize: true, Now: invocation.now}, runWebCollector)
+		runtime.StartCollection(ctx, pipeline.SyncOptions{Harnesses: pipeline.SupportedHarnesses, Now: invocation.now}, runWebCollector)
 	}
 	host, port, err := net.SplitHostPort(listener.Addr().String())
 	if err != nil {

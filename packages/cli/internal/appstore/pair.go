@@ -4,10 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/dbpath"
 	"io"
 	"os"
 	"path/filepath"
+
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/dbpath"
 )
 
 type attachment struct {
@@ -17,7 +18,7 @@ type attachment struct {
 const maxAttachmentBytes = 1024
 
 // OpenPaired runs under exclusive token-store ownership. Its durable sidecar
-// prevents loss/replacement of SQLite from resurrecting legacy DuckDB credentials.
+// prevents loss/replacement of SQLite from silently resetting account identity.
 // Restore the token DB, app DB and this guard together from a stopped backup.
 func OpenPaired(ctx context.Context, appPath, dataPath, id, kind string) (*Store, error) {
 	canonical, err := dbpath.Canonical(dataPath)

@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/collector"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -17,12 +16,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/collector"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/datastore"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/evidence"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/ingestion"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/localruntime"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/publication"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/server"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/serverstore"
 )
 
 func localViewOptions(t *testing.T, withUsage bool) tableOptions {
@@ -166,33 +164,18 @@ func TestViewParsesIndependentServerCollectorAndFilterOptions(t *testing.T) {
 
 type viewRequestCounts struct{ gets, posts atomic.Int64 }
 
-func newViewQueryServer(t *testing.T, withUsage bool) (*httptest.Server, *serverstore.Store, *viewRequestCounts) {
+func newViewQueryServer(t *testing.T, withUsage bool) (*httptest.Server, *datastore.Store, *viewRequestCounts) {
 	t.Helper()
-	path := filepath.Join(t.TempDir(), "query-server.sqlite")
-	store, err := serverstore.CreateIfMissing(path)
+	path := filepath.Join(t.TempDir(), "query-server.duckdb")
+	store, err := datastore.Open(t.Context(), path)
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = store.Close() })
-	core := ingestion.NewCore(store)
 	if withUsage {
-		metadata, err := store.Metadata(context.Background())
-		if err != nil {
-			t.Fatal(err)
-		}
-		occurred := int64(1767225600000)
-		fact := publication.Fact{Harness: "pi", Session: publication.Session{Harness: "pi", NativeID: "fixture-view-session", FirstOccurredAtMs: occurred, LastOccurredAtMs: occurred}, Message: &publication.Message{NativeID: "fixture-view-request", OccurredAtMs: occurred}, OccurredAtMs: occurred, Provider: "fixture-provider", ProviderSource: "explicit", Model: "fixture-model", UsageScope: "message", Quality: "exact", Countable: true, InputTokens: 80, OutputTokens: 20, TotalTokens: 100}
-		publication.SetIDs(&fact)
-		batch := publication.Batch{ProtocolVersion: publication.ProtocolVersion, IdentityVersion: publication.IdentityVersion, SemanticsVersion: publication.SemanticsVersion, DatabaseID: metadata.DatabaseID, StreamID: "view-fixture-stream", BatchID: "view-fixture-batch", FromSequence: 1, ToSequence: 1, Hostname: "fixture-producer", Entries: []publication.Entry{{Sequence: 1, Fact: fact}}}
-		body, err := publication.EncodeBatch(batch)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if _, err := core.Ingest(context.Background(), body); err != nil {
-			t.Fatal(err)
-		}
+		insertLoadRowsCanonicalTokenWithCounts(t, store.SQL(), 1767225600000, "pi", "fixture-view-session", "fixture-provider", "fixture-model", 80, 20, 0, 0, 0, 100)
 	}
-	handler := legacyViewV2Adapter(server.NewHandler(context.Background(), path, core, io.Discard, "127.0.0.1"))
+	handler := server.NewDataHandler(t.Context(), store, io.Discard, "127.0.0.1", "", true)
 	requests := &viewRequestCounts{}
 	remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
@@ -205,62 +188,6 @@ func newViewQueryServer(t *testing.T, withUsage bool) (*httptest.Server, *server
 	}))
 	t.Cleanup(remote.Close)
 	return remote, store, requests
-}
-
-// These tests retain legacy ingestion/component oracles. Only their test read
-// transport is adapted; production clients require the current descriptor.
-func legacyViewV2Adapter(handler http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/api/v3/ingestion/capabilities" {
-			clone := r.Clone(r.Context())
-			url := *r.URL
-			url.Path = "/api/v1/instance"
-			clone.URL = &url
-			recorder := httptest.NewRecorder()
-			handler.ServeHTTP(recorder, clone)
-			var instance struct {
-				DataEpoch string `json:"dataEpoch"`
-			}
-			if recorder.Code != http.StatusOK || json.Unmarshal(recorder.Body.Bytes(), &instance) != nil {
-				w.WriteHeader(http.StatusInternalServerError)
-				return
-			}
-			w.Header().Set("Content-Type", "application/json")
-			_ = json.NewEncoder(w).Encode(evidence.Capabilities{ProtocolVersion: evidence.ProtocolVersion, ExtractorVersion: evidence.ExtractorVersion, DatabaseID: instance.DataEpoch, DatasetID: "default", Completion: "acceptance", MaxBodyBytes: evidence.MaxBodyBytes, MaxEntries: evidence.MaxEntries})
-			return
-		}
-		if !strings.HasPrefix(r.URL.Path, "/api/v2/") {
-			handler.ServeHTTP(w, r)
-			return
-		}
-		clone := r.Clone(r.Context())
-		url := *r.URL
-		url.Path = strings.Replace(url.Path, "/api/v2/", "/api/v1/", 1)
-		if url.Path == "/api/v1/status" {
-			url.Path = "/api/v1/sync"
-		}
-		clone.URL = &url
-		recorder := httptest.NewRecorder()
-		handler.ServeHTTP(recorder, clone)
-		if recorder.Code != http.StatusOK {
-			w.WriteHeader(recorder.Code)
-			_, _ = w.Write(recorder.Body.Bytes())
-			return
-		}
-		var body map[string]any
-		if json.Unmarshal(recorder.Body.Bytes(), &body) != nil {
-			w.WriteHeader(http.StatusInternalServerError)
-			return
-		}
-		body["datasetId"] = "default"
-		if url.Path == "/api/v1/instance" {
-			body["apiVersion"], body["serverKind"] = "v2", "personal"
-			body["capabilities"] = []string{"usage", "facets", "web-dashboard", "raw-ingestion", "terminal-dashboard"}
-			body["permissions"] = []string{"read", "ingest"}
-		}
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(body)
-	})
 }
 
 func isolateViewSources(t *testing.T, root string) {

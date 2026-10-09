@@ -69,7 +69,7 @@ func BenchmarkLocalSavedQueries(b *testing.B) {
 			b.Run(string(period)+"/"+transport, func(b *testing.B) {
 				b.ReportAllocs()
 				for range b.N {
-					var result api.UsageResponse
+					var result api.UsageResponseV2
 					var err error
 					if transport == "DirectAll" {
 						result, err = runtime.Query.AllUsage(b.Context(), params)

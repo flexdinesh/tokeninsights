@@ -2,7 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState } 
 import type { ReactNode } from 'react'
 import { useNavigate, useParams, useSearch } from '@tanstack/react-router'
 import { z } from 'zod'
-import { bucketSchema, locationGroupSchema, periodSchema, sortSchema, tabSchema } from './contracts'
+import { bucketSchema, locationGroupSchema, periodSchema, sortSchema } from './contracts'
 import type { LocationGroup, Selection, Sort, Tab } from './contracts'
 
 export interface QueryState extends Selection {
@@ -35,7 +35,6 @@ export interface DashboardSearch {
   direction?: 'asc' | 'desc'
   page?: number
   pageSize?: number
-  legacyTab?: Tab
 }
 
 const themeSchema = z.enum(['system', 'light', 'dark'])
@@ -161,7 +160,6 @@ export function parseDashboardSearch(input: Record<string, unknown>): DashboardS
   const period = periodSchema.safeParse(input.period)
   const bucket = bucketSchema.safeParse(input.bucket)
   const sort = sortSchema.safeParse(input.sort)
-  const tab = tabSchema.safeParse(input.legacyTab ?? input.tab)
   const locationGroup = locationGroupSchema.safeParse(input.locationGroup)
   const harnesses = strings(input.harnesses ?? input.harness)
   return {
@@ -185,7 +183,6 @@ export function parseDashboardSearch(input: Record<string, unknown>): DashboardS
       input.direction === 'asc' || input.direction === 'desc' ? input.direction : undefined,
     page: positive(input.page, Number.MAX_SAFE_INTEGER),
     pageSize: positive(input.pageSize, 200),
-    legacyTab: tab.success ? tab.data : undefined,
   }
 }
 
@@ -242,7 +239,6 @@ export function stringifyDashboardSearch(
   scalar('direction', search.direction)
   scalar('page', search.page)
   scalar('pageSize', search.pageSize)
-  scalar('tab', search.legacyTab)
   const value = params.toString()
   return value === '' ? '' : `?${value}`
 }

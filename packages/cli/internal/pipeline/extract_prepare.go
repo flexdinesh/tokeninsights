@@ -186,32 +186,6 @@ func commitPreparedRaw(ctx context.Context, source Source, p *preparedCapture, s
 	return count, store.ClearQuarantine(ctx, source.ID)
 }
 
-func extractJSONL(ctx context.Context, source Source, options SyncOptions, store *rawcollectorstore.Store) (int, error) {
-	return extractSingleRaw(ctx, source, options, store)
-}
-func extractSQLite(ctx context.Context, source Source, options SyncOptions, store *rawcollectorstore.Store) (int, error) {
-	return extractSingleRaw(ctx, source, options, store)
-}
-func extractSingleRaw(ctx context.Context, source Source, options SyncOptions, store *rawcollectorstore.Store) (int, error) {
-	directory, err := os.MkdirTemp("", "tokeninsights-capture-*")
-	if err != nil {
-		return 0, err
-	}
-	defer func() { _ = os.RemoveAll(directory) }()
-	if options.locationResolver == nil {
-		options.locationResolver = &locationResolver{}
-	}
-	p, err := prepareRawSource(ctx, source, options, store, directory)
-	defer p.close()
-	if err != nil {
-		if p.quarantine != nil {
-			err = errors.Join(err, store.SaveQuarantine(ctx, *p.quarantine))
-		}
-		return 0, err
-	}
-	return commitPreparedRaw(ctx, source, p, store)
-}
-
 type rawHarnessState struct {
 	harness                          Harness
 	remaining, captured, quarantined int
@@ -255,7 +229,7 @@ func extractPrepared(ctx context.Context, options SyncOptions, store *rawcollect
 		if !ok {
 			return summary, errors.New("unsupported_harness")
 		}
-		sources, err := adapter.Discover(ctx, DiscoverOptions{Sources: options.Sources, SourceDir: options.SourceDir, HarnessSubdirOnly: len(harnesses) > 1, SkipAncestryMetadata: true})
+		sources, err := adapter.Discover(ctx, DiscoverOptions{Sources: options.Sources, SourceDir: options.SourceDir, HarnessSubdirOnly: len(harnesses) > 1})
 		if err != nil {
 			summary.Failed++
 			summary.Errors = append(summary.Errors, err)
