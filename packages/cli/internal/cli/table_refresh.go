@@ -140,7 +140,7 @@ func (m interactiveModel) refreshBusy() bool {
 func (m interactiveModel) refreshLine() string {
 	width := m.tableViewportWidth()
 	text, compact := "Saved usage · r Reload", "Saved usage"
-	busy, failed := false, false
+	busy, failed, refreshed := false, false, false
 	switch {
 	case m.refresh.queryErr != nil:
 		text, compact, failed = "Display update failed · showing saved usage · r Retry", "Update failed · r Retry", true
@@ -184,8 +184,10 @@ func (m interactiveModel) refreshLine() string {
 		text, compact, busy = "Updating displayed usage…", "Updating usage…", true
 	case m.refresh.statusKnown && m.refresh.loaded && m.refresh.token != "":
 		text, compact = "Usage refreshed", "Usage refreshed"
+		refreshed = true
 		if m.refresh.result != nil && m.refresh.attempt != nil && m.refresh.attempt.AttemptID == m.refresh.startupAttemptID && m.refresh.result.Result.Accepted == 0 && m.refresh.result.Result.Collection.RawFacts == 0 {
 			text, compact = "Usage checked · no new usage", "No new usage"
+			refreshed = false
 		}
 	case m.options.local != nil && !m.options.syncOnStart:
 		text, compact = "Saved usage · startup collection off · r Reload", "Saved usage · collection off"
@@ -198,6 +200,8 @@ func (m interactiveModel) refreshLine() string {
 	} else if failed {
 		text, compact = "! "+text, "! "+compact
 		style = syncFailStyle
+	} else if refreshed {
+		style = syncOKStyle
 	}
 	if ansi.StringWidth(text) > width {
 		text = compact

@@ -11,8 +11,10 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/analytics"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/collector"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/collectorprogress"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/datastore"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/localruntime"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/querymodel"
 	"github.com/muesli/termenv"
 )
@@ -73,6 +75,39 @@ func TestNoopAcceptanceRequiresANewDashboardRead(t *testing.T) {
 	m = updated.(interactiveModel)
 	if !m.refreshNeedsRead() || strings.Contains(m.refreshLine(), "Usage refreshed") {
 		t.Fatal("unchanged acceptance reused a dashboard read preceding acceptance")
+	}
+}
+
+func TestRefreshSummaryUsesSuccessOnlyAfterDisplayedPublication(t *testing.T) {
+	oldProfile, oldDark := lipgloss.ColorProfile(), lipgloss.HasDarkBackground()
+	t.Cleanup(func() { lipgloss.SetColorProfile(oldProfile); lipgloss.SetHasDarkBackground(oldDark) })
+	for _, dark := range []bool{false, true} {
+		lipgloss.SetHasDarkBackground(dark)
+		for _, profile := range []termenv.Profile{termenv.TrueColor, termenv.Ascii} {
+			lipgloss.SetColorProfile(profile)
+			m := savedRefreshModel(t)
+			assertColor := func(label string, color lipgloss.AdaptiveColor) {
+				t.Helper()
+				line := m.refreshLine()
+				plain := ansi.Strip(line)
+				if !strings.Contains(plain, label) || line != lipgloss.NewStyle().Foreground(color).Render(plain) {
+					t.Fatalf("%s used wrong label/color (dark=%v, profile=%v): %q", label, dark, profile, line)
+				}
+			}
+			assertColor("Saved usage", themeMuted)
+			updated, _ := m.Update(refreshStatusMessage(0, 2, 2, 1, 1))
+			m = updated.(interactiveModel)
+			assertColor("Updating displayed usage", themeAccent)
+			updated, _ = m.Update(reloadMsg{preservePosition: true, instanceID: "instance", dataEpoch: "database", revision: 2,
+				inputRevision: 2, serverGeneration: 1, refreshToken: m.refresh.token, rows: []renderRow{{totalValue: 200}}})
+			m = updated.(interactiveModel)
+			assertColor("Usage refreshed", themeSuccess)
+			m.refresh.startupAttemptID = m.refresh.attempt.AttemptID
+			m.refresh.result = &localruntime.CollectionResult{Result: collector.Result{}}
+			assertColor("no new usage", themeMuted)
+			m.refresh.queryErr = errors.New("query failure")
+			assertColor("Display update failed", themeDanger)
+		}
 	}
 }
 

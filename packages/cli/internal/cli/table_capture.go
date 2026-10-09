@@ -134,7 +134,7 @@ func (m interactiveModel) captureState(harness string) (string, lipgloss.Style) 
 				return "No sources", hintStyle
 			}
 			if detail.TotalKnown && detail.Unchanged == detail.Total && detail.Captured == 0 {
-				return "Unchanged", syncOKStyle
+				return "Unchanged", syncSkipStyle
 			}
 			return "Complete", syncOKStyle
 		case collectorprogress.CaptureFailed:

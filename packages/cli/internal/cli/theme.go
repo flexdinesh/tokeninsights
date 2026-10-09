@@ -20,6 +20,7 @@ var (
 	themeFaint   = lipgloss.AdaptiveColor{Light: "#A0A2AD", Dark: "#525460"}
 	themeText    = lipgloss.AdaptiveColor{Light: "#292B32", Dark: "#E7E7EE"}
 	themeTotal   = lipgloss.AdaptiveColor{Light: "#A2306C", Dark: "#F49AC2"}
+	themeSuccess = lipgloss.AdaptiveColor{Light: "#237A4A", Dark: "#85D9A6"}
 	themeDanger  = lipgloss.AdaptiveColor{Light: "#9C3530", Dark: "#F0A39B"}
 
 	themeTabActiveBg = themeAccent
@@ -74,7 +75,7 @@ var (
 	tableSummaryTotalStyle     = lipgloss.NewStyle().Bold(true).Foreground(themeTotal)
 	tableSummarySeparatorStyle = lipgloss.NewStyle().Foreground(themeFaint)
 
-	syncOKStyle   = lipgloss.NewStyle().Foreground(themeTotal)
+	syncOKStyle   = lipgloss.NewStyle().Foreground(themeSuccess)
 	syncFailStyle = lipgloss.NewStyle().Foreground(themeDanger)
 	syncBusyStyle = lipgloss.NewStyle().Foreground(themeAccent)
 	syncSkipStyle = lipgloss.NewStyle().Foreground(themeMuted)
