@@ -26,6 +26,40 @@ func publicationSnapshot(t *testing.T, store *Store) map[string]string {
 	return result
 }
 
+func TestPublicationTreatsProvenanceAsASet(t *testing.T) {
+	store := testStore(t)
+	if _, err := store.Accept(t.Context(), batchBody(t, store, "stream", "batch", piRecord("message", 100))); err != nil {
+		t.Fatal(err)
+	}
+	work, found, err := store.LoadWork(t.Context())
+	if err != nil || !found {
+		t.Fatal("missing work", found, err)
+	}
+	projection, err := processor.Process(t.Context(), work.Records)
+	if err != nil || len(projection.Contributions) != 1 || len(projection.Contributions[0].EvidenceIDs) != 1 {
+		t.Fatal("invalid fixture", err)
+	}
+	contribution := &projection.Contributions[0]
+	id := contribution.EvidenceIDs[0]
+	// Duplicate edges spanning SQL batches must still represent one relationship.
+	for range sqlBatchRows + 1 {
+		contribution.EvidenceIDs = append(contribution.EvidenceIDs, id)
+	}
+	for range 2 {
+		published, err := store.PublishProjection(t.Context(), work, projection)
+		if err != nil || !published {
+			t.Fatal("publish duplicate edges", published, err)
+		}
+		var count int
+		if err := store.SQL().QueryRow("SELECT COUNT(*) FROM analytics.provenance WHERE dataset_id=? AND fact_id=? AND evidence_id=?", store.DatasetID(), contribution.Fact.ID, id).Scan(&count); err != nil || count != 1 {
+			t.Fatal("provenance is not a set", count, err)
+		}
+		if got := total(t, store, "analytics.confirmed"); got != 120 {
+			t.Fatal("duplicate edges changed usage", got)
+		}
+	}
+}
+
 func TestPublicationRollbackReopenAndRetryPreservesUsage(t *testing.T) {
 	for _, failure := range []string{"constraint", "cancellation"} {
 		t.Run(failure, func(t *testing.T) {
@@ -76,7 +110,7 @@ func TestPublicationRollbackReopenAndRetryPreservesUsage(t *testing.T) {
 					t.Fatal(err)
 				}
 				err = store.WriteTransaction(ctx, func(tx *sql.Tx) error {
-					if err := publishRows(ctx, tx, work, projection, prepared); err != nil {
+					if err := publishRows(ctx, tx, work, prepared); err != nil {
 						return err
 					}
 					cancel() // Interrupt after all projection rows, before commit.

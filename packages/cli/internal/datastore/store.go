@@ -825,7 +825,7 @@ func (s *Store) PublishProjection(ctx context.Context, work dataengine.Work, pro
 	if !matched || count != len(work.Scopes) {
 		return false, nil
 	}
-	if err := publishRows(ctx, tx, work, projection, prepared); err != nil {
+	if err := publishRows(ctx, tx, work, prepared); err != nil {
 		return false, err
 	}
 	if m.Revision >= publication.SafeInteger {

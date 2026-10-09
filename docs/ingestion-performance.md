@@ -166,6 +166,128 @@ append/query timings encountered renewed host activity and are excluded from
 speedup claims; post-change queries averaged 33–42 ms with a 56 ms maximum in those
 runs. Recheck on an otherwise idle host before setting a latency regression budget.
 
+## Second optimization: provenance publication
+
+The next experiment starts from `609448a` (PR #71 plus TUI progress PR #70),
+using the same machine and Go 1.26.8. `BenchmarkPublication` measures the real
+`PublishProjection` transaction for 10,000 facts in 1, 50 or 500 independent
+components. Opening, acceptance, work loading and interpretation are untimed.
+Initial cases have no published rows. Replacement cases first publish one seed
+fact per component, then accept the remaining messages and replace each component
+within the current generation. They do not benchmark generation rebuilding.
+
+Each workload checks exact projected fact IDs and provenance edges, every token
+component, processed outcomes, session counts, no pending scopes and published
+revision advancement. The synthetic usage is 10 input, 5 output, 2 reasoning,
+3 cache-read and 4 cache-write tokens per fact: 240,000 total. `ns/op` covers all
+component publications; `ns/component` reports their mean. Timer pauses exclude
+setup, interpretation and verification; whole-process RSS still includes them.
+
+Temporary source overlays split publication into preparation, writer acquisition,
+transaction opening, metadata reads, dependency fencing, row writes, metadata
+publication and commit. Row-write instrumentation splits explicit prepare from
+execution using the pinned driver's existing prepare/execute/close lifecycle.
+These diagnostic timings include instrumentation and are separate from the
+uninstrumented comparisons; no profiling hooks enter production.
+
+For 500 initial components, an instrumented baseline took 7.12 s: row writes
+4.96 s, metadata reads 0.81 s, commits 0.63 s, fences 0.44 s, metadata writes
+0.20 s, and preparation/opening about 0.05 s each. Writer waiting was negligible
+in this isolated benchmark. Within row writes, provenance conflict-ignore
+execution took 1.02 s and outcomes upsert execution 1.17 s. A following uninstrumented
+baseline control took 7.24 s; instrumentation cost is not distinguishable from
+run variation in that pair. The instrumented candidate took 6.57 s, including
+0.19 s for provenance insertion. Use the repeated uninstrumented samples below
+for speedup claims. SQL execution timings
+include native execution and any planning/rebinding performed there; they are
+not pure row-copy timings.
+
+Publication already deletes the component's old provenance inside its transaction.
+The change deduplicates each fact's evidence IDs during preparation and uses a
+plain provenance insert. This preserves the previous set semantics without asking
+DuckDB to ignore duplicate conflicts on every insertion. Fact uniqueness,
+dataset/generation filters, whole-component fencing, transaction boundaries and
+the 128-row statement limit remain unchanged. The shared acceptance writer is
+unchanged. An unused projection argument was removed from `publishRows`.
+
+A real-store contract test covers duplicate edges beyond one SQL batch and repeat
+publication; it passes against both old and new implementations. Existing tests
+retain rollback/reopen/retry, cancellation, late-connected component rejection,
+dataset isolation and generation cutover coverage.
+
+Comparisons alternate baseline/candidate order across three fresh-process samples
+per case. The first attempted comparison overlapped another worktree's pre-push
+suite and was archived and excluded in full. The restarted runner checks for
+competing verification jobs during each sample. Performance assertions remain
+outside contract tests. A later overlapping test job interrupted an ingestion
+native-fixture pair; that pair was archived and repeated, retaining the completed
+uncontended pairs.
+
+Isolated publication, median (range), three samples per version:
+
+| Components | Publication | Before | After |
+| --- | --- | --- | --- |
+| 1 | Initial | 2.00 s (1.96–2.05) | 1.84 s (1.82–1.86) |
+| 1 | Replacement | 2.04 s (1.97–2.06) | 1.81 s (1.80–1.93) |
+| 50 | Initial | 2.60 s (2.57–2.62) | 2.35 s (2.35–2.38) |
+| 50 | Replacement | 2.62 s (2.57–2.64) | 2.45 s (2.39–2.45) |
+| 500 | Initial | 7.09 s (7.06–7.14) | 6.29 s (6.27–6.37) |
+| 500 | Replacement | 7.95 s (7.76–7.96) | 6.99 s (6.93–7.09) |
+
+The isolated medians improve about 6–12%, with separated sample ranges in each case.
+For 500 components this is about 14.18 → 12.58 ms per initial publication and
+15.91 → 13.97 ms per replacement. Go allocation volume is effectively unchanged
+(about 159–164 MiB per full workload). Process RSS varies and includes setup;
+these measurements do not establish a new memory-capacity limit.
+
+End-to-end elapsed time, median (range), three samples per version:
+
+| Shape | Delivery | Before | After |
+| --- | --- | --- | --- |
+| 1 session | Direct | 9.22 s (9.15–11.32) | 9.27 s (9.19–9.40) |
+| 1 session | Hosted HTTP | 9.37 s (9.19–10.91) | 9.44 s (9.38–9.53) |
+| 50 sessions | Direct | 7.95 s (7.82–8.01) | 7.59 s (7.55–9.22) |
+| 50 sessions | Hosted HTTP | 7.86 s (7.77–8.14) | 7.61 s (7.42–9.30) |
+| 500 sessions | Direct | 12.78 s (12.39–13.46) | 11.88 s (11.70–12.03) |
+| 500 sessions | Hosted HTTP | 12.86 s (12.56–13.24) | 11.81 s (11.76–11.91) |
+
+The clearest end-to-end gain is 500 sessions: about 7% direct and 8% hosted HTTP,
+with separated ranges. Every record loads once and exactly 500 publications
+complete with zero stale projections. Direct remaining visibility lag falls from
+5.73 to 4.93 s; HTTP falls from 5.95 to 4.98 s. Total Go allocation volume remains
+about 2.38–2.39 GiB. Median process RSS is 352 → 341 MiB direct and 343 → 334 MiB
+HTTP; sample ranges overlap.
+
+The 50-session ranges overlap, and each candidate transport has one slower sample;
+these are retained, not excluded. One session has no clear elapsed improvement.
+Direct single-session processing loads 101,137–102,673 records before versus
+102,673–108,817 after, with 6 publications before and 6–7 after. That scheduling
+variation raises median Go allocation volume from 4.88 to 5.06 GB (decimal), while
+median RSS remains about 407 MiB. This optimization does not solve repeated work
+under continuing arrivals or establish a universal ingestion speedup.
+
+Unchanged sync remains about 52 ms direct and 54 → 57 ms HTTP, with no submission
+or publication. HTTP append is 184 → 146 ms median, with overlapping ranges.
+Direct append and concurrent saved queries received three additional paired
+samples because the initial timings/RSS were variable. Across six samples,
+direct append is 149 ms (140–251) before and 177 ms (137–249) after. Four pairs
+improve and two regress; slower candidate runs also spend more time in unchanged
+capture/load/query stages. No consistent incremental latency improvement or
+regression is established; the 25 ms visibility polling interval also limits
+precision. Every append loads exactly 202 records and publishes once.
+
+Across six saved-query samples, median per-run mean query latency is 33.5 → 33.9 ms;
+the largest observed response is 64.7 → 63.5 ms. All reads retain saved sessions,
+nondecreasing totals and exact final accounting. Process RSS is 432 MiB median
+(417–448) before and 452 MiB (405–478) after. This higher median and overlapping
+ranges are retained as a measurement limitation/tradeoff, not a memory improvement.
+Worker/admission limits and the DuckDB memory budget are unchanged. Native
+four-harness fixture oracles pass in both modes; no native-fixture speedup is claimed.
+
+Retain the change for the reproducible publication and many-component ingestion
+gains. Acceptance validation remains the next focused optimization; scheduling
+still needs a separate design backed by measurements.
+
 ## Reproduction
 
 From the repository root, install the pinned development dependencies first.
@@ -182,6 +304,8 @@ env GOTOOLCHAIN=go1.26.8 go test ./internal/collector -run '^$' \
   -bench '^BenchmarkLocal(Startup|SavedQueries)$' -benchtime=3x -count=3
 env GOTOOLCHAIN=go1.26.8 go test ./internal/datastore -run '^$' \
   -bench '^Benchmark(Acceptance|Publication)256$' -benchtime=5x -count=3
+env GOTOOLCHAIN=go1.26.8 go test ./internal/datastore -run '^$' \
+  -bench '^BenchmarkPublication$' -benchtime=1x -count=3
 env GOTOOLCHAIN=go1.26.8 go test ./internal/datastore -run '^$' \
   -bench '^BenchmarkMetadataRead$' -benchtime=100x -count=3
 env GOTOOLCHAIN=go1.26.8 go test ./internal/rawcollectorstore -run '^$' \

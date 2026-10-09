@@ -170,7 +170,12 @@ func prepareProjection(work dataengine.Work, projection evidence.Projection) (pr
 			return rows, err
 		}
 		rows.facts = append(rows.facts, args)
+		seen := make(map[string]bool, len(contribution.EvidenceIDs))
 		for _, id := range contribution.EvidenceIDs {
+			if seen[id] {
+				continue
+			}
+			seen[id] = true
 			rows.provenance = append(rows.provenance, []interface{}{work.DatasetID, work.Generation, contribution.Fact.ID, id})
 		}
 	}
@@ -189,7 +194,7 @@ func prepareProjection(work dataengine.Work, projection evidence.Projection) (pr
 	}
 	return rows, nil
 }
-func publishRows(ctx context.Context, tx *sql.Tx, work dataengine.Work, projection evidence.Projection, rows projectionRows) error {
+func publishRows(ctx context.Context, tx *sql.Tx, work dataengine.Work, rows projectionRows) error {
 	scopes := make([]interface{}, 0, len(work.Scopes))
 	for scope := range work.Scopes {
 		scopes = append(scopes, scope)
@@ -216,7 +221,8 @@ func publishRows(ctx context.Context, tx *sql.Tx, work dataengine.Work, projecti
 	if err := writeRows(ctx, tx, "INSERT INTO analytics.estimates VALUES", "", rows.estimates); err != nil {
 		return fmt.Errorf("insert projected contribution: %w", err)
 	}
-	if err := writeRows(ctx, tx, "INSERT INTO analytics.provenance VALUES", " ON CONFLICT DO NOTHING", rows.provenance); err != nil {
+	// Old edges were deleted above; preparation deduplicates each fact's new edges.
+	if err := writeRows(ctx, tx, "INSERT INTO analytics.provenance VALUES", "", rows.provenance); err != nil {
 		return err
 	}
 	if err := writeRows(ctx, tx, "INSERT INTO processing.outcomes VALUES", " ON CONFLICT(dataset_id,generation,evidence_id) DO UPDATE SET disposition=excluded.disposition,code=excluded.code,fact_id=excluded.fact_id,input_revision=excluded.input_revision", rows.outcomes); err != nil {
