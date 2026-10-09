@@ -19,7 +19,8 @@ const ProcessingPrefix = "/api/v2/processing/"
 
 type Receiver interface {
 	RawCapabilities(context.Context) (evidence.Capabilities, error)
-	Accept(context.Context, []byte) (evidence.Response, error)
+	// Accept owns strict request decoding and requested-protocol validation.
+	Accept(context.Context, int, []byte) (evidence.Response, error)
 	Receipt(context.Context, string, string) (evidence.Response, error)
 	AcquireAdmission() (func(), bool)
 }
@@ -46,6 +47,15 @@ func responseStatus(response evidence.Response) int {
 	return http.StatusAccepted
 }
 func acceptanceError(w http.ResponseWriter, err error) {
+	var invalid *evidence.ValidationError
+	if errors.As(err, &invalid) {
+		status := http.StatusBadRequest
+		if invalid.Code == "incompatible" {
+			status = http.StatusUnprocessableEntity
+		}
+		fail(w, status, "validation", invalid.Code)
+		return
+	}
 	var refused rejection
 	status, code := http.StatusServiceUnavailable, "transaction_failed"
 	if errors.As(err, &refused) {
@@ -91,20 +101,7 @@ func Handler(receiver Receiver, prefix string, protocol int) http.Handler {
 			fail(w, 413, "validation", "body_limit")
 			return
 		}
-		batch, err := evidence.DecodeBatch(body)
-		if err != nil {
-			if err.Error() == "incompatible" {
-				fail(w, 422, "validation", "incompatible")
-			} else {
-				fail(w, 400, "validation", "invalid_request")
-			}
-			return
-		}
-		if batch.ProtocolVersion != protocol {
-			fail(w, 422, "validation", "incompatible")
-			return
-		}
-		response, err := receiver.Accept(r.Context(), body)
+		response, err := receiver.Accept(r.Context(), protocol, body)
 		if err != nil {
 			acceptanceError(w, err)
 			return

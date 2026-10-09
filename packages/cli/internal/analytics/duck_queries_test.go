@@ -33,7 +33,7 @@ func duckDashboardStore(t *testing.T) *datastore.Store {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.Accept(t.Context(), body); err != nil {
+	if _, err := store.Accept(t.Context(), evidence.ProtocolVersion, body); err != nil {
 		t.Fatal(err)
 	}
 	for {

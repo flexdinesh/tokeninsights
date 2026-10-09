@@ -20,7 +20,7 @@ func codexRecord(session, parent string) evidence.Record {
 func TestLateParentReprocessesAmbiguousCopiedEvidence(t *testing.T) {
 	store := testStore(t)
 	child := codexRecord("child", "parent")
-	first, err := store.Accept(t.Context(), batchBody(t, store, "child-stream", "batch", child))
+	first, err := store.Accept(t.Context(), evidence.ProtocolVersion, batchBody(t, store, "child-stream", "batch", child))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -35,7 +35,7 @@ func TestLateParentReprocessesAmbiguousCopiedEvidence(t *testing.T) {
 	if err != nil || before.Processing.Items[0].Disposition != "ambiguous" {
 		t.Fatal(before, err)
 	}
-	if _, err := store.Accept(t.Context(), batchBody(t, store, "parent-stream", "batch", codexRecord("parent", ""))); err != nil {
+	if _, err := store.Accept(t.Context(), evidence.ProtocolVersion, batchBody(t, store, "parent-stream", "batch", codexRecord("parent", ""))); err != nil {
 		t.Fatal(err)
 	}
 	pending, err := store.Receipt(t.Context(), "child-stream", "batch")
@@ -58,7 +58,7 @@ func TestLateParentReprocessesAmbiguousCopiedEvidence(t *testing.T) {
 func TestConflictingNativeAliasesRemainEstimated(t *testing.T) {
 	store := testStore(t)
 	record := evidence.Record{Harness: "claude-code", Format: "claude-code-jsonl", SourceID: "source", Lineage: "lineage", Ordinal: 1, Data: json.RawMessage(`{"type":"assistant","sessionId":"session","session_id":"other","requestId":"request","timestamp":"2026-01-01T00:00:00Z","message":{"id":"message","role":"assistant","model":"claude","usage":{"input_tokens":100,"output_tokens":20}}}`)}
-	if _, err := store.Accept(t.Context(), batchBody(t, store, "stream", "batch", record)); err != nil {
+	if _, err := store.Accept(t.Context(), evidence.ProtocolVersion, batchBody(t, store, "stream", "batch", record)); err != nil {
 		t.Fatal(err)
 	}
 	drain(t, store)
@@ -76,7 +76,7 @@ func TestProcessingFailureBackoffAllowsIndependentScope(t *testing.T) {
 	broken := piRecord("broken", 100)
 	good := piRecord("good", 200)
 	good.Context[0].Data = json.RawMessage(`{"type":"session","id":"z-good"}`)
-	if _, err := store.Accept(t.Context(), batchBody(t, store, "stream", "batch", broken, good)); err != nil {
+	if _, err := store.Accept(t.Context(), evidence.ProtocolVersion, batchBody(t, store, "stream", "batch", broken, good)); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := store.SQL().Exec("UPDATE raw.evidence SET record_json='invalid' WHERE scope=?", evidence.Scope(broken)); err != nil {
@@ -102,7 +102,7 @@ func TestProcessingFailureBackoffAllowsIndependentScope(t *testing.T) {
 func TestReprocessClearsObsoleteFailureBackoff(t *testing.T) {
 	store := testStore(t)
 	record := piRecord("message", 100)
-	if _, err := store.Accept(t.Context(), batchBody(t, store, "stream", "batch", record)); err != nil {
+	if _, err := store.Accept(t.Context(), evidence.ProtocolVersion, batchBody(t, store, "stream", "batch", record)); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := store.SQL().Exec("UPDATE processing.scopes SET attempts=6,retry_at_ms=9007199254740991,error_code='processing_failed'"); err != nil {

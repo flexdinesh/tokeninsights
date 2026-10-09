@@ -164,7 +164,7 @@ Server exposes processed metadata to reachable dashboard clients. Default localh
 
 - [CLI reference](packages/cli/README.md)
 - [Development guide](docs/development.md)
-- [Ingestion benchmarks and profiling](docs/ingestion-performance.md) — reproducible workloads, atomic publication measurements and optimization priorities.
+- [Ingestion benchmarks and profiling](docs/ingestion-performance.md) — reproducible acceptance/publication workloads, measurements and optimization priorities.
 - [System boundaries](docs/system.md) and [storage/processing contract](docs/design.md)
 - [Docker and hosted deployment](docs/deployment.md)
 - [Architecture principles](docs/adr/0010-current-contracts-and-boundaries.md) — ownership, composition, current contracts and verification.

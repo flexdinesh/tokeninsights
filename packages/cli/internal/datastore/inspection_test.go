@@ -5,6 +5,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/evidence"
 )
 
 func TestCurrentInspectionRejectsChangedContractsWithoutMutation(t *testing.T) {
@@ -26,7 +28,7 @@ func TestCurrentInspectionRejectsChangedContractsWithoutMutation(t *testing.T) {
 	} {
 		t.Run(change.name, func(t *testing.T) {
 			store := testStore(t)
-			if _, err := store.Accept(t.Context(), batchBody(t, store, "stream", "batch", piRecord("message", 100))); err != nil {
+			if _, err := store.Accept(t.Context(), evidence.ProtocolVersion, batchBody(t, store, "stream", "batch", piRecord("message", 100))); err != nil {
 				t.Fatal(err)
 			}
 			drain(t, store)

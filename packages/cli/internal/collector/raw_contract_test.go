@@ -86,7 +86,7 @@ func TestRawCollectorNativeGoldenRebuildAndLostAcknowledgement(t *testing.T) {
 				t.Error(err)
 				return
 			}
-			if _, err := store.Accept(r.Context(), body); err != nil {
+			if _, err := store.Accept(r.Context(), evidence.ProtocolVersion, body); err != nil {
 				t.Error(err)
 			}
 			http.Error(w, "lost acknowledgement", http.StatusServiceUnavailable)

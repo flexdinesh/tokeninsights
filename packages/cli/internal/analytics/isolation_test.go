@@ -40,11 +40,11 @@ func TestDatasetAnalyticsIsolateCollidingIdentities(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if _, err := store.Accept(t.Context(), body); err != nil {
+		if _, err := store.Accept(t.Context(), evidence.ProtocolVersion, body); err != nil {
 			t.Fatal(err)
 		}
 		// Lost responses can replay the exact same batch without adding usage.
-		if _, err := store.Accept(t.Context(), body); err != nil {
+		if _, err := store.Accept(t.Context(), evidence.ProtocolVersion, body); err != nil {
 			t.Fatal(err)
 		}
 	}

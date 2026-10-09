@@ -87,7 +87,7 @@ func acceptPublicationRecords(b *testing.B, store *Store, components, first, end
 			return
 		}
 		stream := fmt.Sprintf("phase-%d-batch-%d", first, batch)
-		response, err := store.Accept(b.Context(), batchBody(b, store, stream, "batch", records...))
+		response, err := store.Accept(b.Context(), evidence.ProtocolVersion, batchBody(b, store, stream, "batch", records...))
 		if err != nil || response.Receipt.Accepted != int64(len(records)) {
 			b.Fatal("accept fixture", response, err)
 		}

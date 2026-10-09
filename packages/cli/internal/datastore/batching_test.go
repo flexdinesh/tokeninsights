@@ -19,7 +19,7 @@ func TestLargeBatchPreservesDuplicatesAndProjection(t *testing.T) {
 		records[i] = piRecord(fmt.Sprintf("message-%d", i%uniqueRecords), 100)
 	}
 	body := batchBody(t, store, "stream", "large", records...)
-	accepted, err := store.Accept(t.Context(), body)
+	accepted, err := store.Accept(t.Context(), evidence.ProtocolVersion, body)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -44,7 +44,7 @@ func TestLargeBatchPreservesDuplicatesAndProjection(t *testing.T) {
 	if facts != uniqueRecords || provenance != uniqueRecords || outcomes != uniqueRecords {
 		t.Fatalf("lost projection rows: %d %d %d", facts, provenance, outcomes)
 	}
-	replay, err := store.Accept(t.Context(), body)
+	replay, err := store.Accept(t.Context(), evidence.ProtocolVersion, body)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -72,7 +72,7 @@ func TestLargeBatchPreservesDuplicatesAndProjection(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	response, err := store.Accept(t.Context(), overlap)
+	response, err := store.Accept(t.Context(), evidence.ProtocolVersion, overlap)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -96,7 +96,7 @@ func TestLargeBatchSequenceConflictRollsBack(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	first, err := store.Accept(t.Context(), encoded)
+	first, err := store.Accept(t.Context(), evidence.ProtocolVersion, encoded)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -104,7 +104,7 @@ func TestLargeBatchSequenceConflictRollsBack(t *testing.T) {
 	for i := range records {
 		records[i] = piRecord(fmt.Sprintf("new-%d", i), 100)
 	}
-	_, err = store.Accept(t.Context(), batchBody(t, store, "stream", "conflict", records...))
+	_, err = store.Accept(t.Context(), evidence.ProtocolVersion, batchBody(t, store, "stream", "conflict", records...))
 	var admission *AdmissionError
 	if !errors.As(err, &admission) || admission.Code != "sequence_conflict" {
 		t.Fatalf("expected immutable sequence conflict: %v", err)
@@ -152,7 +152,7 @@ func BenchmarkAcceptance256(b *testing.B) {
 		}
 		body := benchmarkBatch(b, store)
 		b.StartTimer()
-		response, err := store.Accept(b.Context(), body)
+		response, err := store.Accept(b.Context(), evidence.ProtocolVersion, body)
 		b.StopTimer()
 		if err != nil || response.Receipt.Accepted != evidence.MaxEntries {
 			_ = store.Close()
@@ -172,7 +172,7 @@ func BenchmarkPublication256(b *testing.B) {
 		if err != nil {
 			b.Fatal(err)
 		}
-		if _, err := store.Accept(b.Context(), benchmarkBatch(b, store)); err != nil {
+		if _, err := store.Accept(b.Context(), evidence.ProtocolVersion, benchmarkBatch(b, store)); err != nil {
 			_ = store.Close()
 			b.Fatal(err)
 		}

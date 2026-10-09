@@ -21,7 +21,7 @@ func TestClaimedComponentSpanningCandidatePagesDoesNotBlockIndependentWork(t *te
 	}
 	independent := piRecord("independent", 100)
 	records = append(records, independent)
-	if _, err := store.Accept(t.Context(), batchBody(t, store, "stream", "batch", records...)); err != nil {
+	if _, err := store.Accept(t.Context(), evidence.ProtocolVersion, batchBody(t, store, "stream", "batch", records...)); err != nil {
 		t.Fatal(err)
 	}
 	first, found, err := store.LoadWork(t.Context())
@@ -45,7 +45,7 @@ func TestRunningWorkerPublishesIsolatedDatasetsAndJoins(t *testing.T) {
 	}()
 	defer func() { cancel(); <-joined }()
 	for _, store := range []*Store{alice, bob} {
-		if _, err := store.Accept(ctx, batchBody(t, store, "same-stream", "same-batch", piRecord("same-message", 100))); err != nil {
+		if _, err := store.Accept(ctx, evidence.ProtocolVersion, batchBody(t, store, "same-stream", "same-batch", piRecord("same-message", 100))); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -79,7 +79,7 @@ func TestRunningWorkerPublishesIsolatedDatasetsAndJoins(t *testing.T) {
 func TestClaimsSkipLateConnectedComponentAndFenceStalePublication(t *testing.T) {
 	store := testStore(t)
 	child := codexRecord("child", "parent")
-	if _, err := store.Accept(t.Context(), batchBody(t, store, "child", "batch", child)); err != nil {
+	if _, err := store.Accept(t.Context(), evidence.ProtocolVersion, batchBody(t, store, "child", "batch", child)); err != nil {
 		t.Fatal(err)
 	}
 	first, found, err := store.LoadWork(t.Context())
@@ -88,7 +88,7 @@ func TestClaimsSkipLateConnectedComponentAndFenceStalePublication(t *testing.T) 
 	}
 	good := piRecord("good", 200)
 	good.Context[0].Data = json.RawMessage(`{"type":"session","id":"independent"}`)
-	if _, err := store.Accept(t.Context(), batchBody(t, store, "later", "batch", codexRecord("parent", ""), good)); err != nil {
+	if _, err := store.Accept(t.Context(), evidence.ProtocolVersion, batchBody(t, store, "later", "batch", codexRecord("parent", ""), good)); err != nil {
 		t.Fatal(err)
 	}
 	second, found, err := store.LoadWorkExcluding(t.Context(), []dataengine.Work{first}, 32<<20)
@@ -112,7 +112,7 @@ func TestWorkByteBudgetDefersLargeComponentWithoutStarvation(t *testing.T) {
 	store := testStore(t)
 	large := codexRecord("a-large", "")
 	small := piRecord("small", 100)
-	if _, err := store.Accept(t.Context(), batchBody(t, store, "stream", "batch", large, small)); err != nil {
+	if _, err := store.Accept(t.Context(), evidence.ProtocolVersion, batchBody(t, store, "stream", "batch", large, small)); err != nil {
 		t.Fatal(err)
 	}
 	// Codex context makes this component larger than the independent Pi component.
@@ -142,7 +142,7 @@ func TestComponentFailureBackoffFencesNewInputs(t *testing.T) {
 	store := testStore(t)
 	parent := codexRecord("parent", "")
 	child := codexRecord("child", "parent")
-	if _, err := store.Accept(t.Context(), batchBody(t, store, "first", "batch", parent, child)); err != nil {
+	if _, err := store.Accept(t.Context(), evidence.ProtocolVersion, batchBody(t, store, "first", "batch", parent, child)); err != nil {
 		t.Fatal(err)
 	}
 	work, found, err := store.LoadWork(t.Context())
@@ -155,7 +155,7 @@ func TestComponentFailureBackoffFencesNewInputs(t *testing.T) {
 	}
 	newer := codexRecord("parent", "")
 	newer.Ordinal = 4
-	if _, err := store.Accept(t.Context(), batchBody(t, store, "second", "batch", newer)); err != nil {
+	if _, err := store.Accept(t.Context(), evidence.ProtocolVersion, batchBody(t, store, "second", "batch", newer)); err != nil {
 		t.Fatal(err)
 	}
 	store.RecordFailure(t.Context(), work) // Old worker failure must not delay newer revision.
