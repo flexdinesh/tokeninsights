@@ -64,6 +64,7 @@ type snapshotMsg struct{ reloadMsg }
 type sharedSyncMsg struct {
 	refreshStatus         *analytics.ProcessingStatus
 	collection            *collectorprogress.Snapshot
+	capture               map[string]map[string]collectorprogress.Capture
 	requestID             uint64
 	generation            uint64
 	instanceID, dataEpoch string

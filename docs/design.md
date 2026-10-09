@@ -263,7 +263,17 @@ collector-progress or dashboard-reload. Local composition explicitly grants Relo
 including saved-only viewers; it is independent of collection progress. Progress
 requires an installed command-owned registry. The localruntime observer publishes directly
 to that registry for startup and queued sync jobs, retaining bounded leases and
-heartbeats. Internal raw-ingestion support does not mount public HTTP ingestion:
+heartbeats. Single-process TUI composition additionally enables opt-in capture
+measurements before background startup. Pipeline emits typed per-harness source
+snapshots; localruntime translates them into collectorprogress values. The registry
+remains independent of capture and owns validation, attempt isolation, snapshot
+copies and expiry. Measurements contain only approved harnesses, phases and bounded
+counters, never source identities, paths or native text. Detail snapshots are a
+Go-only contract separate from existing HTTP messages/responses. Web and distributed
+compositions leave the detail callback unset; public API and hosted capability
+policy are unchanged. Reporting does no I/O or blocking channel sends, and rejected
+observations cannot invalidate capture or delivery.
+Internal raw-ingestion support does not mount public HTTP ingestion:
 the local Web listener remains read-only. Server config may disable features but
 cannot disable hosted isolation. Modules consume resolved policy and injected
 dependencies; mode selection stays at composition boundaries.
@@ -290,7 +300,27 @@ URL. Remote failures never select local fallback. Bare invocation prints help.
 Local TUI queries saved committed usage while displaying a persistent refresh
 strip below the machine header and above navigation. Collection, submission,
 processing and display-update states describe actual work; no estimated percentage
-or ETA is shown. A successful refresh requires capture/submission success, no pending
+or ETA is shown. Four persistent harness rows extend the strip, retaining layout
+through completion and failure. Compact terminals use two paired rows when width
+allows; labels shorten before table space is reduced. Drawers start below the
+complete progress header so measurements remain visible.
+
+Source totals remain unknown during discovery. Enumerated sources wait until an
+actual reader starts; writing is reported while finalizing capture. Checked counts
+only finalized outcomes: captured sources with new committed evidence, sources
+with no new evidence, ordinary failures and quarantined sources. Outcomes are
+mutually exclusive; failed/quarantined counts do not imply successful capture.
+Remaining is total minus checked, including unissued sources after cancellation.
+Counts measure sources, not sessions or evidence records. Source preparation alone
+does not advance checked counts. Startup and queued jobs use the same observer,
+with detail keyed to the selected attempt rather than combined across jobs.
+Submission shows entries acknowledged after receipt validation and pending entries
+when known. Processing shows current dataset scopes pending, including earlier
+accepted work; it is not a per-attempt completion denominator. Harness rows describe
+capture only, independently of submission and processing. With startup collection
+off they show disabled until a queued attempt supplies progress.
+
+A successful refresh requires capture/submission success, no pending
 work, matching active/target generations in a consistent status snapshot, and a
 successful dashboard read of the current published revision. Acceptance alone never
 claims refreshed usage. Failures stop the spinner and remain visible with saved

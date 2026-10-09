@@ -44,6 +44,7 @@ type SyncOptions struct {
 	SourceDir        string
 	Now              time.Time
 	Progress         func(SyncProgressEvent)
+	CaptureProgress  func(CaptureProgressEvent)
 	locationResolver *locationResolver
 	workers          int
 }

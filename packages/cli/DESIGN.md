@@ -146,7 +146,7 @@ The application fills the terminal. The dashboard reserves one cell on either
 side; the leading cell also holds the focused-row marker. Table content width is
 terminal width minus two cells. Columns use the shared two-cell gap.
 
-The vertical sequence is machine status, refresh strip, navigation, scope controls, active filters,
+The vertical sequence is machine status, refresh summary and harness rows, navigation, scope controls, active filters,
 readouts, table, coverage and shortcuts. The footer reserves four rows: spacer,
 coverage, horizontal divider and shortcuts. Remaining height belongs to the
 table, whose column header consumes one row. Multiline dimension values consume
@@ -165,14 +165,28 @@ Automatic updates retain filters, sort, focused-row identity, scroll where possi
 and drawer drafts. Reload queries only; `--sync=false` skips startup collection,
 while durable processing still resumes.
 
+The single-process TUI refresh strip has four persistent harness rows in the
+existing OpenCode, Pi, Codex, Claude Code order. Labels and phase text align left;
+checked/total source counts align right. Remaining sources appear beside counts.
+Discovery uses unknown totals; a known zero total says no sources. Failures and
+quarantine remain explicit rather than looking complete. The phase summary shows
+acknowledged submission counts or current local dataset processing groups pending.
+Harness rows describe capture; complete capture alone does not mean usage refreshed.
+Keep rows through completion/failure so the table does not jump. Startup collection
+off shows disabled harness states; queued local requests can still supply progress.
+No new visual tokens, frames, interaction, percentage or ETA are introduced.
+
 - At **30 rows or more**, add a blank row after status and navigation.
 - Readouts appear at **24 rows or more** and **72 content cells or more**.
 - Below **96 content cells**, shorten readout labels to Total, Cache R and Cache W.
 - Below **72 terminal cells**, abbreviate tab labels to three characters.
+- Below **30 rows** with at least **72 content cells**, arrange harnesses in two
+  paired rows and shorten phase copy. Otherwise retain four rows. Progress height
+  depends only on terminal dimensions, never source counts or refresh state.
 - Readouts divide available content width into six cells of equal floor width;
   the final readout takes the remainder. Each has a two-cell left inset.
-- The drawer is at most **44 cells** wide, anchored right, starting at row index
-  **2**, with height equal to terminal height minus two rows. Its left rule
+- The drawer is at most **44 cells** wide, anchored right, starting below the
+  complete progress header, with height equal to the remaining terminal rows. Its left rule
   consumes one cell; content uses two-cell insets.
 - Shortcuts collapse when the full hint plus position cannot fit. Horizontal
   table scrolling retains access to columns beyond the viewport.

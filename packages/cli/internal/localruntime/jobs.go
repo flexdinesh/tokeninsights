@@ -49,7 +49,7 @@ func (r *Runtime) consumeJob(ctx context.Context, dataPath, appPath string) {
 		observer := r.Observe(attempt)
 		result, err = collector.Run(attempt, collector.Options{CollectorDBPath: job.Spec.CollectorPath, ServerDBPath: job.Spec.DataPath, Destination: r.Destination, PublishOnly: job.Spec.PublishOnly,
 			AcceptedReceipt:  func(receipt evidence.Receipt) error { return r.Jobs.SaveReceipt(attempt, job.ID, receipt) },
-			SyncOptions:      pipeline.SyncOptions{Harnesses: job.Spec.Harnesses, SourceDir: job.Spec.SourceDir, FullRefresh: job.Spec.FullRefresh, Now: time.Now(), Progress: observer.Collection},
+			SyncOptions:      pipeline.SyncOptions{Harnesses: job.Spec.Harnesses, SourceDir: job.Spec.SourceDir, FullRefresh: job.Spec.FullRefresh, Now: time.Now(), Progress: observer.Collection, CaptureProgress: observer.captureProgress()},
 			DeliveryProgress: observer.Delivery,
 		})
 		observer.Finish(result, err)

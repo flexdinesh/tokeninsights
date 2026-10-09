@@ -41,8 +41,8 @@ func (m interactiveModel) loadSharedSync() sharedSyncMsg {
 		// Read collection before processing: an accepted attempt then observes a
 		// status snapshot taken after acceptance, never an earlier empty queue.
 		if runtime.Policy.Capabilities.Has(serverfeatures.CollectorProgress) {
-			snapshot := runtime.Progress.Snapshot()
-			message.collection = &snapshot
+			details := runtime.Progress.Details()
+			message.collection, message.capture = &details.Collection, details.Captures
 		}
 		state, err := runtime.ProcessingStatus(m.ctx)
 		message.err = err

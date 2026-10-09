@@ -49,7 +49,8 @@ func TestLayerDependencies(t *testing.T) {
 	}{
 		{"processor", []string{"database/sql", "net/http", "os", prefix + "pipeline", prefix + "datastore"}},
 		{"dataengine", []string{"database/sql", "net/http", "os", prefix + "pipeline", prefix + "datastore", prefix + "server"}},
-		{"pipeline", []string{prefix + "processor", prefix + "datastore", prefix + "server", prefix + "accounts"}},
+		{"pipeline", []string{prefix + "processor", prefix + "datastore", prefix + "server", prefix + "accounts", prefix + "collectorprogress"}},
+		{"collectorprogress", []string{prefix + "pipeline", prefix + "collector", prefix + "localruntime", prefix + "datastore"}},
 		{"datastore", []string{"net/http", prefix + "ingestionhttp", prefix + "collector", prefix + "pipeline", prefix + "server"}},
 		{"querymodel", []string{"database/sql", "net/http", prefix + "db", prefix + "datastore", prefix + "server"}},
 		{"server", []string{prefix + "pipeline", prefix + "collector", prefix + "localruntime", prefix + "remoteserver"}},
