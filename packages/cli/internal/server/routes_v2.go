@@ -24,12 +24,12 @@ import (
 )
 
 type DataHandlerOptions struct {
-	Host, InstanceID string
-	AllowIngestion   bool
-	Policy           serverfeatures.Policy
-	Accounts         *accounts.Service
-	PublicURL        string
-	Progress         *collectorprogress.Registry
+	Host, InstanceID, Hostname string
+	AllowIngestion             bool
+	Policy                     serverfeatures.Policy
+	Accounts                   *accounts.Service
+	PublicURL                  string
+	Progress                   *collectorprogress.Registry
 }
 
 const loginBodyMaxBytes = 4 << 10
@@ -51,7 +51,10 @@ func NewDataHandlerWithOptions(ctx context.Context, store *datastore.Store, log 
 			apiError(w, 503, api.ErrorCodeUnavailable, "Invalid server composition.")
 		})
 	}
-	a := newApp(ctx, Options{InstanceID: options.InstanceID, Defaults: viewer.Selection{Period: "month", Bucket: "day"}}, log)
+	if options.Policy.Kind == serverfeatures.Hosted {
+		options.Hostname = ""
+	}
+	a := newApp(ctx, Options{InstanceID: options.InstanceID, Hostname: options.Hostname, Defaults: viewer.Selection{Period: "month", Bucket: "day"}}, log)
 	a.data = store
 	a.queries = analytics.DuckDB{Store: store}
 	a.allowIngestion = options.AllowIngestion && options.Policy.Capabilities.Has(serverfeatures.RawIngestion)
@@ -230,7 +233,7 @@ func (a *app) instanceV2(w http.ResponseWriter, r *http.Request, p accounts.Prin
 	for _, permission := range p.Permissions {
 		permissions = append(permissions, api.InstanceResponseV2Permissions(permission))
 	}
-	writeJSON(w, 200, api.InstanceResponseV2{ApiVersion: "v2", ServerKind: api.InstanceResponseV2ServerKind(a.policy.Kind), Capabilities: caps, Permissions: permissions, DataEpoch: status.Metadata.DatabaseID, DatasetId: status.Metadata.DatasetID, InstanceId: a.options.InstanceID, DataReadiness: "ready", ServerVersion: version.Version, Hostname: status.Hostname, Timezone: reportingTimezone(time.Local, time.Now()), Defaults: apiSelection(a.options.Defaults)})
+	writeJSON(w, 200, api.InstanceResponseV2{ApiVersion: "v2", ServerKind: api.InstanceResponseV2ServerKind(a.policy.Kind), Capabilities: caps, Permissions: permissions, DataEpoch: status.Metadata.DatabaseID, DatasetId: status.Metadata.DatasetID, InstanceId: a.options.InstanceID, DataReadiness: "ready", ServerVersion: version.Version, Hostname: a.instanceHostname(status.Hostname), Timezone: reportingTimezone(time.Local, time.Now()), Defaults: apiSelection(a.options.Defaults)})
 }
 
 func (a *app) statusV2(w http.ResponseWriter, r *http.Request) {
@@ -240,7 +243,7 @@ func (a *app) statusV2(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	m := status.Metadata
-	writeJSON(w, 200, api.StatusResponseV2{InstanceId: a.options.InstanceID, DataEpoch: m.DatabaseID, DatasetId: m.DatasetID, DataReadiness: "ready", Generation: m.Generation, TargetGeneration: m.TargetGeneration, InputRevision: m.InputRevision, Revision: m.Revision, Pending: status.Pending})
+	writeJSON(w, 200, api.StatusResponseV2{InstanceId: a.options.InstanceID, DataEpoch: m.DatabaseID, DatasetId: m.DatasetID, DataReadiness: "ready", Generation: m.Generation, TargetGeneration: m.TargetGeneration, InputRevision: m.InputRevision, Revision: m.Revision, Pending: status.Pending, Failed: &status.Failed, FailedRetryAtMs: &status.FailedRetryAtMs})
 }
 
 func (a *app) usageV2(w http.ResponseWriter, r *http.Request) {

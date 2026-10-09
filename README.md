@@ -32,7 +32,7 @@ Single-process mode is the default. No daemon or separate server setup:
 
 ```sh
 tokeninsights tui                    # collect, ingest, show terminal dashboard
-tokeninsights web                    # collect, ingest, serve browser dashboard
+tokeninsights web                    # open dashboard; collect and ingest in background
 tokeninsights web --host 0.0.0.0      # expose read-only dashboard on all IPv4 interfaces
 tokeninsights sync                   # collect and ingest without a viewer
 tokeninsights tui --sync=false       # query saved usage
@@ -44,7 +44,16 @@ tokeninsights web --sync=false
 `--open=false` to print the URL without opening a browser. One viewer owns a token
 database at a time. Sync requests arriving while a viewer runs are queued locally
 and collected/ingested inside that viewer's process. TUI queries and local ingestion
-never use HTTP. Browser Reload and TUI `r` only query saved data.
+never use HTTP. Browser Reload and TUI `r` only query saved data. Browser Reload
+is available only in single-process mode, including `--sync=false`.
+
+Local Web opens after storage initialization, before collection finishes. The
+dashboard shows collection, submission, and processing progress while saved usage
+remains readable; new published revisions refresh automatically. Collection errors
+remain visible without closing the dashboard. Run `tokeninsights sync` to retry
+collection through the owning viewer. Hosted dashboards expose no collector progress.
+The local hostname identifies the machine running the viewer, not the producer of
+every historical fact. Imported history may include other machines.
 
 The TUI loading screen shows collection and acceptance progress, then waits for
 processing. Failures retain **Retry**, **View saved**, and **Quit**. Local startup
@@ -153,7 +162,8 @@ Server exposes processed metadata to reachable dashboard clients. Default localh
 
 DuckDB uses a shared 1 GB memory budget for ingestion, processing and analytics.
 
-Distributed `sync --wait` waits for acceptance; local viewers also wait for processing. Browser Confirmed / Estimated selects separate data;
+Distributed `sync --wait` waits for acceptance; local TUI startup also waits for processing.
+Local Web shows saved data during collection and processing. Browser Confirmed / Estimated selects separate data;
 estimates never inflate confirmed totals. Unusable evidence retains diagnostics.
 Fresh default server.duckdb imports verified sibling server.sqlite read-only,
 preserving history, identity and receipts. Partial rebuilds preserve unmatched

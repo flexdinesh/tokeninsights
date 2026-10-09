@@ -55,6 +55,21 @@ func TestViewerConsumesQueuedRequestsInProcessAndReplaysWithoutInflation(t *test
 			t.Fatal(result, err)
 		}
 	}
+	progress := runtime.Progress.Snapshot()
+	if progress.InstanceID != runtime.InstanceID || len(progress.Attempts) != 2 {
+		t.Fatal("queued progress missing", progress)
+	}
+	var accepted int64
+	for _, attempt := range progress.Attempts {
+		// Unchanged sources may skip capture on the replay job.
+		if attempt.Stage != "accepted" || attempt.Harnesses["pi"] != "complete" && attempt.Harnesses["pi"] != "skipped" {
+			t.Fatal("queued capture not finished", attempt)
+		}
+		accepted += attempt.AcknowledgedEntries
+	}
+	if accepted == 0 {
+		t.Fatal("queued acceptance not reported", progress)
+	}
 	var total int64
 	if err := runtime.Store.SQL().QueryRowContext(ctx, "SELECT COALESCE(SUM(total_tokens),0) FROM analytics.confirmed").Scan(&total); err != nil || total != 100 {
 		t.Fatal("queued replay inflated/lost usage", total, err)

@@ -8,6 +8,7 @@ import { ResultsTable } from './ResultsTable'
 import { Button } from './ui/button'
 import { Skeleton } from './ui/skeleton'
 import { Alert, AlertDescription } from './ui/alert'
+import { formatServerDateTime } from '../format'
 
 export function DashboardResults({
   analytics,
@@ -29,6 +30,9 @@ export function DashboardResults({
   const received = analytics.data?.dashboard
   const data = (received?.quality ?? 'confirmed') === query.quality ? received : undefined
   const hasData = Boolean(data)
+  const waitingForFirstData = controller.loading && data?.summary.syncedSessions === 0
+  const failed = statusQuery.data?.failed ?? 0
+  const retryAt = statusQuery.data?.failedRetryAtMs ?? 0
   const resultsMatchView =
     analytics.data?.tab === query.tab &&
     (query.tab !== 'repo' || analytics.data?.locationGroup === query.locationGroup)
@@ -53,8 +57,20 @@ export function DashboardResults({
       {query.quality === 'estimated' && (
         <p>Ambiguous evidence with usable counters. Excluded from confirmed totals.</p>
       )}
-      {(controller.statusQuery.data?.pending ?? 0) > 0 && (
-        <p role="status">{controller.statusQuery.data?.pending} sessions awaiting processing.</p>
+      {controller.processingPending && (
+        <p role="status">
+          {statusQuery.data?.generation !== statusQuery.data?.targetGeneration
+            ? 'Rebuilding saved usage. Existing totals remain available.'
+            : `Processing usage · ${statusQuery.data?.pending.toLocaleString()} pending.`}
+        </p>
+      )}
+      {failed > 0 && (
+        <p role="status">
+          {controller.processingBackoff
+            ? `Some usage needs a processing retry. Retry scheduled at ${formatServerDateTime(retryAt, timezone)}.`
+            : 'Retrying usage processing.'}{' '}
+          Saved totals remain available.
+        </p>
       )}
       {(data?.unresolved ?? 0) > 0 && <p>{data?.unresolved} observations need more evidence.</p>}
       {(connectionError || statusQuery.error) && (
@@ -72,15 +88,28 @@ export function DashboardResults({
       {enabled && facets.error && (
         <ErrorBanner message="Filter values couldn’t load." onRetry={() => void facets.refetch()} />
       )}
-      {enabled && !hasData && !analytics.error && <DashboardSkeleton />}
-      {enabled && data && data.summary.syncedSessions === 0 && !analytics.error && (
-        <p role="status">
-          {query.quality === 'estimated'
-            ? 'No estimated usage.'
-            : 'No usage saved yet. Run tokeninsights sync.'}
-        </p>
+      {controller.collectionUnknown && (
+        <ErrorBanner
+          message="Collection status couldn’t load. Saved usage remains available."
+          onRetry={() => void controller.progressQuery.refetch()}
+        />
       )}
-      {enabled && data && hasData && (
+      {enabled && (!hasData || waitingForFirstData) && !analytics.error && <DashboardSkeleton />}
+      {enabled &&
+        data &&
+        data.summary.syncedSessions === 0 &&
+        !analytics.error &&
+        !controller.loading &&
+        !controller.collectionFailed &&
+        !controller.collectionUnknown &&
+        failed === 0 && (
+          <p role="status">
+            {query.quality === 'estimated'
+              ? 'No estimated usage.'
+              : 'No usage saved yet. Run tokeninsights sync.'}
+          </p>
+        )}
+      {enabled && data && hasData && !waitingForFirstData && (
         <div className="analytics" aria-busy={analytics.isFetching}>
           <div className="usage-workbench">
             <SummaryCards summary={data.summary} estimated={query.quality === 'estimated'} />

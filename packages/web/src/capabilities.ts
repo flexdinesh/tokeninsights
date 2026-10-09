@@ -7,6 +7,7 @@ export type Capability =
   | 'raw-ingestion'
   | 'terminal-dashboard'
   | 'collector-progress'
+  | 'dashboard-reload'
   | 'reprocess'
 
 export function hasCapability(server: Bootstrap, capability: Capability): boolean {
@@ -14,5 +15,17 @@ export function hasCapability(server: Bootstrap, capability: Capability): boolea
 }
 
 export function showsCollectorProgress(server: Bootstrap): boolean {
-  return server.serverKind === 'personal' && hasCapability(server, 'collector-progress')
+  return (
+    server.serverKind === 'personal' &&
+    server.permissions.includes('read') &&
+    hasCapability(server, 'collector-progress')
+  )
+}
+
+export function allowsDashboardReload(server: Bootstrap): boolean {
+  return (
+    server.serverKind === 'personal' &&
+    server.permissions.includes('read') &&
+    hasCapability(server, 'dashboard-reload')
+  )
 }

@@ -69,11 +69,11 @@ A typed, server-owned feature declaration exposed by the instance REST endpoint.
 _Avoid_: Client-selected feature, authentication scope
 
 **Collector Progress**:
-Bounded, sanitized capture/submission attempt state published by a managed personal client over the private control socket. The server does not collect. Processing lag is separate and available to authorized viewers of either kind.
+Bounded, sanitized capture/submission attempt state published by the command-owned local collector into an in-process registry. The local Web dashboard reads it through a capability-gated endpoint. Hosted servers never collect or expose collector progress. Processing lag is separate and available to authorized viewers of either kind.
 _Avoid_: Server collection, global queue progress, upload completion as query freshness
 
 **Read-only View**:
-`tokeninsights tui` runs caller-side collection/publication in a loading screen, then queries committed personal-server data through the same REST API as the browser. `tokeninsights web` syncs and opens a browser dashboard for either kind. `--sync=false` skips collection. Dashboard Reload requests queries only; viewer filters remain display constraints. TUI startup failures offer Retry, View saved data, and Quit.
+`tokeninsights tui` collects/publishes in a loading screen, waits for processing, then queries committed usage directly. Local `web` opens after storage initialization and shows collection/processing progress alongside saved data; distributed `web` syncs before opening the remote dashboard. `--sync=false` skips collection. The local-only dashboard Reload and TUI `r` request queries only; viewer filters remain display constraints. TUI startup failures offer Retry, View saved data, and Quit.
 _Avoid_: Implicit View Sync, dashboard source refresh
 
 **Durable Publication**:

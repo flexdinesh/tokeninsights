@@ -4,11 +4,14 @@ package localruntime
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -16,10 +19,12 @@ import (
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/analytics"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/appstore"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/collector"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/collectorprogress"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/datastore"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/db"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/queryclient"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/server"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/serverfeatures"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/serverownership"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/serverruntime"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/syncjob"
@@ -33,6 +38,10 @@ var ErrProcessingTimeout = fmt.Errorf("processing_timeout: usage is still proces
 const visibilityPoll = 25 * time.Millisecond
 
 type Runtime struct {
+	InstanceID  string
+	Hostname    string
+	Policy      serverfeatures.Policy
+	Progress    *collectorprogress.Registry
 	Jobs        *syncjob.Store
 	jobsDone    chan struct{}
 	Store       *datastore.Store
@@ -141,13 +150,50 @@ func OpenWithApp(ctx context.Context, collectorPath, dataPath, appPath string) (
 		return nil, err
 	}
 	workerCtx, cancel := context.WithCancel(ctx)
-	r := &Runtime{Jobs: jobs, jobsDone: make(chan struct{}), Store: store, App: app, owner: owner, cancel: cancel, done: make(chan struct{}), queries: analytics.DuckDB{Store: store}}
-	r.Query = queryclient.NewDirect(server.NewDirectQuery(workerCtx, r.queries, ""))
+	policy, err := serverfeatures.NewLocalViewer(true)
+	if err != nil {
+		cancel()
+		_ = jobs.Close()
+		_ = app.Close()
+		_ = store.Close()
+		_ = owner.Close()
+		return nil, err
+	}
+	var instance [16]byte
+	if _, err := rand.Read(instance[:]); err != nil {
+		cancel()
+		_ = jobs.Close()
+		_ = app.Close()
+		_ = store.Close()
+		_ = owner.Close()
+		return nil, err
+	}
+	hostname := resolveHostname(os.Hostname)
+	id := hex.EncodeToString(instance[:])
+	r := &Runtime{InstanceID: id, Hostname: hostname, Policy: policy, Progress: collectorprogress.New(id), Jobs: jobs, jobsDone: make(chan struct{}), Store: store, App: app, owner: owner, cancel: cancel, done: make(chan struct{}), queries: analytics.DuckDB{Store: store}}
+	r.Query = queryclient.NewDirect(server.NewDirectQueryWithIdentity(workerCtx, r.queries, id, hostname))
 	r.Destination = &collector.Destination{URL: "http://local", Identity: "http://local", DatabaseID: metadata.DatabaseID, DatasetID: metadata.DatasetID, Local: true, Transport: collector.DirectDelivery{Receiver: store}}
 	// WaitVisible reads durable failure state, including failures from a prior owner.
 	go func() { defer close(r.done); store.Run(workerCtx, nil) }()
 	go r.runJobs(workerCtx, path, appPath)
 	return r, nil
+}
+
+func (r *Runtime) Observe(ctx context.Context) *collectorprogress.Observer {
+	if !r.Policy.Capabilities.Has(serverfeatures.CollectorProgress) {
+		return collectorprogress.NewObserver(ctx, nil)
+	}
+	return collectorprogress.NewObserver(ctx, func(_ context.Context, message collectorprogress.Message) error {
+		return r.Progress.Apply(message)
+	})
+}
+
+func resolveHostname(lookup func() (string, error)) string {
+	hostname, err := lookup()
+	if err != nil || strings.TrimSpace(hostname) == "" {
+		return "unknown"
+	}
+	return strings.TrimSpace(hostname)
 }
 
 // WaitVisible includes interrupted generation recovery. Local ownership excludes
@@ -193,6 +239,7 @@ func (r *Runtime) Close() error {
 		r.cancel()
 		<-r.done
 		<-r.jobsDone
+		r.Progress.InterruptAll()
 		err = errors.Join(r.Store.Close(), r.Jobs.Close(), r.App.Close(), r.owner.Close())
 	})
 	return err

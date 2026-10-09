@@ -41,23 +41,47 @@ func Open(ctx context.Context, path string) (*Store, error) {
 
 func (s *Store) Close() error { return s.DB.Close() }
 
+const (
+	observationExistsSQL = "SELECT EXISTS(SELECT 1 FROM evidence_outbox WHERE observation_key=?)"
+	insertObservationSQL = "INSERT INTO evidence_outbox(observation_key,harness,record_json,created_at_ms) VALUES(?,?,?,?)"
+)
+
+type recordStatements struct{ exists, insert *sql.Stmt }
+
 func Record(ctx context.Context, tx *sql.Tx, record evidence.Record, now int64) (bool, error) {
+	return recordObservation(ctx, tx, nil, record, now)
+}
+
+func recordObservation(ctx context.Context, tx *sql.Tx, statements *recordStatements, record evidence.Record, now int64) (bool, error) {
 	if err := evidence.ValidateRecord(record); err != nil {
 		return false, err
 	}
-	key := evidence.ObservationKey(record)
+	// Observation identity and stored bytes use the same encoding. Keep the
+	// existence check before insertion: ignored AUTOINCREMENT conflicts leave
+	// gaps, but delivery requires contiguous outbox sequences.
+	body, err := json.Marshal(record)
+	if err != nil {
+		return false, err
+	}
+	key := evidence.Hash(body)
 	var found bool
-	if err := tx.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM evidence_outbox WHERE observation_key=?)", key).Scan(&found); err != nil {
+	var row *sql.Row
+	if statements != nil {
+		row = statements.exists.QueryRowContext(ctx, key)
+	} else {
+		row = tx.QueryRowContext(ctx, observationExistsSQL, key)
+	}
+	if err := row.Scan(&found); err != nil {
 		return false, err
 	}
 	if found {
 		return false, nil
 	}
-	body, err := json.Marshal(record)
-	if err != nil {
-		return false, err
+	if statements != nil {
+		_, err = statements.insert.ExecContext(ctx, key, record.Harness, string(body), now)
+	} else {
+		_, err = tx.ExecContext(ctx, insertObservationSQL, key, record.Harness, string(body), now)
 	}
-	_, err = tx.ExecContext(ctx, "INSERT INTO evidence_outbox(observation_key,harness,record_json,created_at_ms) VALUES(?,?,?,?)", key, record.Harness, string(body), now)
 	return err == nil, err
 }
 

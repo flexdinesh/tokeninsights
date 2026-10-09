@@ -30,8 +30,13 @@ Plugins initially select their harness only. No plugin event/counter payload.
 
 One local viewer owns a database. Concurrent sync/plugin requests use durable
 local handoff, executed by that owner without HTTP ingestion. No collector daemon
-or periodic source scanning. Local viewer startup awaits query visibility;
-distributed delivery normally finishes at acceptance.
+or periodic source scanning. Local TUI startup awaits query visibility;
+local Web opens after storage initialization and displays command-owned collection
+and processing progress alongside saved usage. Distributed delivery normally
+finishes at acceptance. Local-only capability flags control collector progress and
+dashboard Reload; Reload refreshes queries only. This Web startup refinement was
+approved on 9 October 2026, including additive processing-status fields and local
+machine hostname semantics; it changes no database schema.
 
 ## Rollout
 

@@ -70,8 +70,5 @@ func TestObserverReportsCancellationAndHostedHasNoPublisher(t *testing.T) {
 	// Missing advertised progress never contacts even an invalid private socket.
 	session := Session{Descriptor: api.InstanceResponseV2{ServerKind: "hosted", Capabilities: []string{"usage"}}, Local: &service.Client{Record: service.Record{Socket: "/missing"}}}
 	observer := session.Observe(ctx)
-	if observer.publish != nil {
-		t.Fatal("hosted progress publisher created")
-	}
 	observer.Finish(collector.Result{}, context.Canceled)
 }

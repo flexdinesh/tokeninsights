@@ -1,5 +1,5 @@
 import { afterEach, expect, it, vi } from 'vitest'
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { RouterProvider, createMemoryHistory } from '@tanstack/react-router'
@@ -126,7 +126,11 @@ it('revoked browser sessions hide and clear cached usage immediately', async () 
   const client = renderApp()
   expect(await screen.findByLabelText('Total tokens: 647,000')).toBeVisible()
   revoked = true
-  await userEvent.click(screen.getByRole('button', { name: 'Reload' }))
+  expect(screen.queryByRole('button', { name: 'Reload' })).not.toBeInTheDocument()
+  // Status polling observes revocation even when no manual Reload is exposed.
+  await act(async () => {
+    await client.invalidateQueries({ queryKey: ['sync'] })
+  })
   expect(await screen.findByRole('heading', { name: 'Sign in to TokenInsights' })).toBeVisible()
   expect(screen.queryByLabelText('Total tokens: 647,000')).not.toBeInTheDocument()
   await waitFor(() =>

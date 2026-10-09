@@ -132,7 +132,7 @@ export const InstanceResponse = zod.strictObject({
     .string()
     .min(1)
     .describe(
-      'Producer hostname: unknown before ingestion; multiple machines when distinct producer labels are present.',
+      'Local viewers report their runtime hostname without requiring ingestion. Hosted servers reserve this field for dataset producer labels and return unknown when unavailable. Hosted server runtime hostnames never replace producer labels.',
     ),
   timezone: zod
     .string()
@@ -1184,7 +1184,7 @@ export const InstanceResponseV2 = zod.strictObject({
     .string()
     .min(1)
     .describe(
-      'Producer hostname: unknown before ingestion; multiple machines when distinct producer labels are present.',
+      'Local viewers report their runtime hostname without requiring ingestion. Hosted servers reserve this field for dataset producer labels and return unknown when unavailable. Hosted server runtime hostnames never replace producer labels.',
     ),
   timezone: zod
     .string()
@@ -1197,7 +1197,7 @@ export const InstanceResponseV2 = zod.strictObject({
       .string()
       .min(1)
       .describe(
-        'Unknown capabilities are ignored by clients. Known names: usage, facets, web-dashboard, raw-ingestion, terminal-dashboard, collector-progress, reprocess.',
+        'Unknown capabilities are ignored by clients. Known names: usage, facets, web-dashboard, dashboard-reload, raw-ingestion, terminal-dashboard, collector-progress, reprocess. dashboard-reload is query-only and available only to local viewers.',
       ),
   ),
   defaults: Selection,
@@ -1211,6 +1211,12 @@ export type InstanceResponseV2Output = zod.output<typeof InstanceResponseV2>
 
 export const statusResponseV2DatasetIdMax = 256
 
+export const statusResponseV2FailedMin = 0
+export const statusResponseV2FailedMax = 9007199254740991
+
+export const statusResponseV2FailedRetryAtMsMin = 0
+export const statusResponseV2FailedRetryAtMsMax = 253402214399999
+
 export const StatusResponseV2 = zod.strictObject({
   instanceId: zod.string().min(1),
   dataEpoch: zod
@@ -1223,6 +1229,22 @@ export const StatusResponseV2 = zod.strictObject({
   pending: Count,
   datasetId: zod.string().min(1).max(statusResponseV2DatasetIdMax),
   targetGeneration: Count,
+  failed: zod
+    .int()
+    .min(statusResponseV2FailedMin)
+    .max(statusResponseV2FailedMax)
+    .optional()
+    .describe(
+      'Pending scopes with a durable processing error in this dataset and target generation.',
+    ),
+  failedRetryAtMs: zod
+    .int()
+    .min(statusResponseV2FailedRetryAtMsMin)
+    .max(statusResponseV2FailedRetryAtMsMax)
+    .optional()
+    .describe(
+      'Earliest retry time for failed pending scopes, as Unix milliseconds; zero when none exist.',
+    ),
 })
 
 export type StatusResponseV2 = zod.input<typeof StatusResponseV2>

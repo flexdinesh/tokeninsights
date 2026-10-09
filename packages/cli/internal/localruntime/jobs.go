@@ -45,10 +45,13 @@ func (r *Runtime) consumeJob(ctx context.Context, dataPath, appPath string) {
 	err = r.Jobs.Bind(attempt, job.ID, r.Destination.DatabaseID, r.Destination.DatasetID)
 	var result collector.Result
 	if err == nil {
+		observer := r.Observe(attempt)
 		result, err = collector.Run(attempt, collector.Options{CollectorDBPath: job.Spec.CollectorPath, ServerDBPath: job.Spec.DataPath, Destination: r.Destination, PublishOnly: job.Spec.PublishOnly,
-			AcceptedReceipt: func(receipt evidence.Receipt) error { return r.Jobs.SaveReceipt(attempt, job.ID, receipt) },
-			SyncOptions:     pipeline.SyncOptions{Harnesses: job.Spec.Harnesses, SourceDir: job.Spec.SourceDir, FullRefresh: job.Spec.FullRefresh, Normalize: true, Now: time.Now()},
+			AcceptedReceipt:  func(receipt evidence.Receipt) error { return r.Jobs.SaveReceipt(attempt, job.ID, receipt) },
+			SyncOptions:      pipeline.SyncOptions{Harnesses: job.Spec.Harnesses, SourceDir: job.Spec.SourceDir, FullRefresh: job.Spec.FullRefresh, Normalize: true, Now: time.Now(), Progress: observer.Collection},
+			DeliveryProgress: observer.Delivery,
 		})
+		observer.Finish(result, err)
 	}
 	if err == nil {
 		err = r.WaitVisible(attempt)

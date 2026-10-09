@@ -1401,3 +1401,17 @@ a {
   padding-block: var(--space-3);
   color: var(--color-text-muted);
 }
+.collector-progress p {
+  margin-block: var(--space-1);
+}
+.collector-progress ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-4);
+  margin-block: var(--space-1);
+  padding: 0;
+  list-style: none;
+}
+.collector-progress [role='alert'] {
+  color: var(--color-error);
+}

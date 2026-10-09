@@ -25,6 +25,7 @@ const localVisibilityTimeout = 30 * time.Second
 var webCommand = commandSpec{name: "web", run: runWeb}
 var openDashboard = browser.Open
 var runWebCollector = collector.Run
+var serveLocalWeb = serverruntime.Serve
 
 func runWeb(invocation commandInvocation, args []string) error {
 	settings := invocation.defaults()
@@ -114,35 +115,35 @@ func runWeb(invocation commandInvocation, args []string) error {
 }
 
 func runLocalWeb(invocation commandInvocation, settings config.Settings, syncBefore, openBrowser bool) error {
+	ctx, cancel := context.WithCancel(invocation.context)
+	defer cancel()
 	listener, err := net.Listen("tcp4", net.JoinHostPort(settings.Host, fmt.Sprint(settings.Port)))
 	if err != nil {
 		return err
 	}
 	defer func() { _ = listener.Close() }()
-	runtime, err := localruntime.OpenWithApp(invocation.context, settings.CollectorDBPath, settings.ServerDBPath, settings.ApplicationPath())
+	runtime, err := localruntime.OpenWithApp(ctx, settings.CollectorDBPath, settings.ServerDBPath, settings.ApplicationPath())
 	if err != nil {
 		return err
 	}
 	defer func() { _ = runtime.Close() }()
+	collectionDone := make(chan struct{})
 	if syncBefore {
-		terminal := newTerminalSyncProgress(invocation.stderr)
-		result, err := runWebCollector(invocation.context, collector.Options{
-			CollectorDBPath: settings.CollectorDBPath, ServerDBPath: settings.ServerDBPath,
-			Destination:      runtime.Destination,
-			SyncOptions:      pipeline.SyncOptions{Harnesses: pipeline.SupportedHarnesses, Normalize: true, Now: invocation.now, Progress: terminal.Collection},
-			DeliveryProgress: terminal.Delivery,
-		})
-		terminal.Finish(result)
-		if err != nil {
-			return err
-		}
-		visible, cancel := context.WithTimeout(invocation.context, localVisibilityTimeout)
-		err = runtime.WaitVisible(visible)
-		cancel()
-		if err != nil {
-			return err
-		}
+		observer := runtime.Observe(ctx)
+		go func() {
+			defer close(collectionDone)
+			result, err := runWebCollector(ctx, collector.Options{
+				CollectorDBPath: settings.CollectorDBPath, ServerDBPath: settings.ServerDBPath,
+				Destination:      runtime.Destination,
+				SyncOptions:      pipeline.SyncOptions{Harnesses: pipeline.SupportedHarnesses, Normalize: true, Now: invocation.now, Progress: observer.Collection},
+				DeliveryProgress: observer.Delivery,
+			})
+			observer.Finish(result, err)
+		}()
+	} else {
+		close(collectionDone)
 	}
+	defer func() { cancel(); <-collectionDone }()
 	host, port, err := net.SplitHostPort(listener.Addr().String())
 	if err != nil {
 		return err
@@ -151,8 +152,11 @@ func runLocalWeb(invocation commandInvocation, settings config.Settings, syncBef
 		host = "127.0.0.1"
 	}
 	url := "http://" + net.JoinHostPort(host, port)
-	handler := server.NewDataHandler(invocation.context, runtime.Store, invocation.stderr, settings.Host, "", false)
-	return serverruntime.Serve(invocation.context, runtime.Store, []serverruntime.Binding{{Listener: listener, Handler: handler}}, func() error {
+	handler := server.NewDataHandlerWithOptions(ctx, runtime.Store, invocation.stderr, server.DataHandlerOptions{
+		Host: settings.Host, InstanceID: runtime.InstanceID, Hostname: runtime.Hostname,
+		Policy: runtime.Policy, Progress: runtime.Progress,
+	})
+	return serveLocalWeb(ctx, runtime.Store, []serverruntime.Binding{{Listener: listener, Handler: handler}}, func() error {
 		_, _ = fmt.Fprintln(invocation.stdout, "Dashboard: "+url)
 		if openBrowser && openDashboard(url) != nil {
 			_, _ = fmt.Fprintln(invocation.stderr, "Could not open browser; open dashboard URL above.")

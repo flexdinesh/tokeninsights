@@ -7,14 +7,18 @@ export function DashboardHeader({
   hostname,
   timezone,
   reloading,
-  serverUnavailable,
+  statusLabel,
+  localMachine,
+  allowReload,
   lastSynced,
   onReload,
 }: {
   hostname: string
   timezone: string
   reloading: boolean
-  serverUnavailable: boolean
+  statusLabel: string
+  localMachine: boolean
+  allowReload: boolean
   lastSynced?: number
   onReload: () => void
 }) {
@@ -28,11 +32,18 @@ export function DashboardHeader({
         </span>
       </div>
       <div className="header-actions">
-        <span className="server-identity" title={window.location.origin}>
+        <span
+          className="server-identity"
+          title={
+            localMachine
+              ? `Local machine running this dashboard · ${window.location.origin}`
+              : window.location.origin
+          }
+        >
           {hostname}
         </span>
         <span className="header-status" role="status">
-          {serverUnavailable ? 'Unavailable' : reloading ? 'Loading…' : 'Ready'}
+          {statusLabel}
         </span>
         {lastSynced ? (
           <time
@@ -62,10 +73,12 @@ export function DashboardHeader({
             <Monitor size="1.1em" />
           )}
         </Button>
-        <Button className="sync-button" size="sm" disabled={reloading} onClick={onReload}>
-          {reloading ? <LoaderCircle size="1em" className="spin" /> : <RefreshCw size="1em" />}
-          <span>Reload</span>
-        </Button>
+        {allowReload && (
+          <Button className="sync-button" size="sm" disabled={reloading} onClick={onReload}>
+            {reloading ? <LoaderCircle size="1em" className="spin" /> : <RefreshCw size="1em" />}
+            <span>Reload</span>
+          </Button>
+        )}
       </div>
     </header>
   )

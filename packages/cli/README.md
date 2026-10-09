@@ -1,6 +1,6 @@
 # tokeninsights
 
-Single-process and distributed token analytics. Shared Go ingestion/processing uses DuckDB for token history and SQLite for accounts/system state. Local TUI and web commands collect before viewing; remote collectors submit over authenticated HTTP.
+Single-process and distributed token analytics. Shared Go ingestion/processing uses DuckDB for token history and SQLite for accounts/system state. Local TUI collects before viewing; local Web opens while collection runs. Remote collectors submit over authenticated HTTP.
 
 ## Install
 
@@ -33,7 +33,7 @@ claude-code
 
 ```sh
 tokeninsights tui                       # local collect, ingest, process, direct query
-tokeninsights web                       # local collect then foreground web server
+tokeninsights web                       # foreground dashboard with background collection
 tokeninsights web --host 0.0.0.0         # read-only dashboard on all IPv4 interfaces
 tokeninsights web --port 0 --open=false  # select available port; print URL
 tokeninsights tui --sync=false          # saved usage only
@@ -43,7 +43,12 @@ tokeninsights web --sync=false
 Local commands own storage and processing until exit. No daemon or ingestion HTTP.
 One viewer owns the token database; concurrent sync/plugin requests are persisted
 and executed inside that viewer. If the owner exits, a waiting sync can take over.
-Browser Reload/TUI `r` only query. TUI capture failures offer Retry/View saved/Quit.
+Browser Reload/TUI `r` only query; browser Reload is local-only, including
+`--sync=false`. Local Web shows collection/submission/processing progress alongside
+saved data, stays open on collection failure, and refreshes published revisions.
+Run `sync` to retry collection through the owner. The hostname labels the local
+viewer machine; imported history may include other producers. Hosted never exposes
+collector progress. TUI capture failures offer Retry/View saved/Quit.
 
 ```sh
 tokeninsights config set mode distributed

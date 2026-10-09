@@ -23,7 +23,14 @@ export const mockBootstrap: Bootstrap = bootstrapSchema.parse({
   serverVersion: 'dev-mock',
   hostname: 'mock.tokeninsights.local',
   timezone: 'Australia/Sydney',
-  capabilities: ['usage', 'facets', 'web-dashboard', 'raw-ingestion', 'terminal-dashboard'],
+  capabilities: [
+    'usage',
+    'facets',
+    'web-dashboard',
+    'raw-ingestion',
+    'terminal-dashboard',
+    'dashboard-reload',
+  ],
   defaults: {
     period: 'all',
     bucket: 'day',

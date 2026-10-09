@@ -19,9 +19,9 @@ import {
   useFacets,
 } from './api'
 import { clearAccountQueries } from './session'
-import { hasCapability, showsCollectorProgress } from './capabilities'
+import { allowsDashboardReload, hasCapability, showsCollectorProgress } from './capabilities'
 import { TokenLogin } from './components/TokenLogin'
-import { CollectorProgress } from './components/CollectorProgress'
+import { CollectorProgress, collectorStages } from './components/CollectorProgress'
 import type { Bootstrap, Tab } from './contracts'
 import { locationGroupSchema } from './contracts'
 import {
@@ -181,7 +181,11 @@ function DashboardShell({
   onSignOut: () => Promise<void>
 }) {
   const { query, setLocationGroup } = useDashboardQuery()
-  const controller = useDashboardSync(bootstrap.datasetId)
+  const showProgress = showsCollectorProgress(bootstrap)
+  const controller = useDashboardSync(bootstrap.datasetId, {
+    enabled: showProgress,
+    instanceId: bootstrap.instanceId,
+  })
   const { revision, analyticsEnabled: enabled } = controller
   const analytics = useAnalytics(
     query,
@@ -195,8 +199,12 @@ function DashboardShell({
     enabled && hasCapability(bootstrap, 'facets'),
     controller.identity,
   )
-  const serverUnavailable = Boolean(
-    connectionError || controller.statusQuery.error || analytics.error || facets.error,
+  const statusLabel = dashboardStatusLabel(
+    controller,
+    analytics,
+    facets,
+    bootstrap,
+    connectionError,
   )
   return (
     <div className="app-shell">
@@ -207,7 +215,9 @@ function DashboardShell({
         hostname={bootstrap.hostname}
         timezone={bootstrap.timezone}
         reloading={controller.reloading}
-        serverUnavailable={serverUnavailable}
+        statusLabel={statusLabel}
+        localMachine={bootstrap.serverKind === 'personal'}
+        allowReload={allowsDashboardReload(bootstrap)}
         lastSynced={analytics.data?.dashboard.lastSynced}
         onReload={() => void controller.reload()}
       />
@@ -218,9 +228,7 @@ function DashboardShell({
             Sign out
           </Button>
         )}
-        {showsCollectorProgress(bootstrap) && (
-          <CollectorProgress instanceId={bootstrap.instanceId} />
-        )}
+        {showProgress && <CollectorProgress progress={controller.progressQuery.data} />}
         <div className="view-controls">
           <nav className="view-tabs" aria-label="Analytics views">
             {tabs.map(({ id, icon: Icon }) => (
@@ -293,4 +301,32 @@ function DashboardShell({
       </main>
     </div>
   )
+}
+
+function dashboardStatusLabel(
+  controller: ReturnType<typeof useDashboardSync>,
+  analytics: ReturnType<typeof useAnalytics>,
+  facets: ReturnType<typeof useFacets>,
+  bootstrap: Bootstrap,
+  connectionError: Error | null,
+): string {
+  if (connectionError || controller.statusQuery.error) return 'Connection unavailable'
+  if (analytics.error) return 'Usage couldn’t load'
+  if (facets.error) return 'Filters couldn’t load'
+  if (showsCollectorProgress(bootstrap) && controller.progressQuery.error)
+    return 'Collection status unavailable'
+  if (controller.collectionFailed) return 'Collection needs attention'
+  if (controller.collectionStage) return collectorStages[controller.collectionStage]
+  if (controller.processingPending)
+    return controller.processingBackoff ? 'Processing retry pending' : 'Processing usage'
+  if (controller.loading || controller.reloading) return 'Loading…'
+  if (
+    controller.analyticsEnabled &&
+    hasCapability(bootstrap, 'usage') &&
+    (analytics.isPending || analytics.isFetching)
+  )
+    return analytics.data ? 'Refreshing usage…' : 'Loading…'
+  if (controller.analyticsEnabled && hasCapability(bootstrap, 'facets') && facets.isPending)
+    return 'Loading filters…'
+  return 'Ready'
 }
