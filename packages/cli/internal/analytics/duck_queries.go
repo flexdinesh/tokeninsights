@@ -184,6 +184,20 @@ func readDuckRows(ctx context.Context, tx *sql.Tx, statement string, args []inte
 }
 
 func LoadDashboard(ctx context.Context, store *datastore.Store, q Query, now time.Time) (Dashboard, error) {
+	return loadDashboard(ctx, store, q, now, 0)
+}
+
+// LoadAllDashboard shares paginated analytics but reads all rows in one bounded
+// snapshot. The page metadata retains the first page's requested size.
+func LoadAllDashboard(ctx context.Context, store *datastore.Store, q Query, now time.Time, maxRows int) (Dashboard, error) {
+	if maxRows < 1 {
+		return Dashboard{}, fmt.Errorf("invalid analytics row limit")
+	}
+	q.Page = 1
+	return loadDashboard(ctx, store, q, now, maxRows)
+}
+
+func loadDashboard(ctx context.Context, store *datastore.Store, q Query, now time.Time, maxRows int) (Dashboard, error) {
 	result := Dashboard{Page: q.Page, PageSize: q.PageSize, Quality: q.Quality}
 	tx, err := store.BeginRead(ctx)
 	if err != nil {
@@ -227,9 +241,16 @@ func LoadDashboard(ctx context.Context, store *datastore.Store, q Query, now tim
 	if err := tx.QueryRowContext(ctx, "SELECT COUNT(*) FROM("+grouped+") grouped", groupArgs...).Scan(&result.RowCount); err != nil {
 		return result, err
 	}
+	if maxRows > 0 && result.RowCount > maxRows {
+		return Dashboard{}, fmt.Errorf("analytics row limit exceeded (%d)", maxRows)
+	}
 	pages := max(1, (result.RowCount+q.PageSize-1)/q.PageSize)
 	result.Page = min(q.Page, pages)
-	pageArgs := append(append([]interface{}{}, groupArgs...), q.PageSize, (result.Page-1)*q.PageSize)
+	limit := q.PageSize
+	if maxRows > 0 {
+		limit = maxRows
+	}
+	pageArgs := append(append([]interface{}{}, groupArgs...), limit, (result.Page-1)*q.PageSize)
 	result.Rows, err = readDuckRows(ctx, tx, grouped+duckOrder(q, q.Sort, q.Direction)+" LIMIT ? OFFSET ?", pageArgs)
 	if err != nil {
 		return result, err
@@ -238,7 +259,7 @@ func LoadDashboard(ctx context.Context, store *datastore.Store, q Query, now tim
 	chartArgs := groupArgs
 	chartSQL := grouped
 	chartSort, chartDirection := "total", "desc"
-	limit := chartLimit
+	limit = chartLimit
 	switch q.Tab {
 	case "tokens", "sessions":
 		chartQuery.Tab = "tokens"

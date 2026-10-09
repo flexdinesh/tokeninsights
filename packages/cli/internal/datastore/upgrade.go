@@ -33,25 +33,17 @@ func inspectCurrent(ctx context.Context, database *sql.DB, expectedKind string) 
 	if role != "server-data" || version != SchemaVersion || id == "" || (kind != KindPersonal && kind != KindHosted) {
 		return errors.New("incompatible_server_data")
 	}
-	reference, err := connect("", false)
+	expected, err := currentSchemaContracts()
 	if err != nil {
 		return err
 	}
-	defer func() { _ = reference.Close() }()
-	if _, err := reference.ExecContext(ctx, Schema); err != nil {
+	actual, err := schemaContracts(ctx, database)
+	if err != nil {
 		return err
 	}
 	tables := append([]string{"ingestion.instance", "ingestion.metadata", "accounts.users", "accounts.tokens", "accounts.sessions"}, datasetTables...)
 	for _, table := range tables {
-		actual, err := columnContract(ctx, database, table)
-		if err != nil {
-			return err
-		}
-		expected, err := columnContract(ctx, reference, table)
-		if err != nil {
-			return err
-		}
-		if actual != expected {
+		if actual[table] == "" || actual[table] != expected[table] {
 			return errors.New("incompatible_server_data")
 		}
 	}
@@ -88,7 +80,7 @@ func inspectCurrent(ctx context.Context, database *sql.DB, expectedKind string) 
 			return errors.New("incompatible_server_data")
 		}
 	}
-	return nil
+	return inspectQueryContracts(ctx, database)
 }
 
 func inspectAndUpgrade(ctx context.Context, path, kind string) error {
@@ -119,10 +111,7 @@ func inspectAndUpgrade(ctx context.Context, path, kind string) error {
 	if version == SchemaVersion {
 		err = inspectCurrent(ctx, database, kind)
 		_ = database.Close()
-		if err != nil {
-			return err
-		}
-		return Inspect(ctx, path)
+		return err
 	}
 	if version != 1 {
 		_ = database.Close()

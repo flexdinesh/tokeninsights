@@ -63,6 +63,10 @@ means accepted usage is still processing. `query_timeout` refers to reading usag
 For processing errors, Retry waits again without collecting; **View saved** queries the
 published generation immediately. Reprocessing is explicit, never automatic.
 
+TUI loads its complete result in one consistent snapshot, using the same analytics
+as Web and retaining its 100,000-row limit. Date ranges narrow analytics work;
+startup collection checks the same sources for every range.
+
 For distributed mode, run one authenticated [server container](docs/deployment.md)
 and configure the collector:
 

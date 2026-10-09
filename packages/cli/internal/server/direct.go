@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"time"
 
@@ -34,11 +35,28 @@ func (d *DirectQuery) Instance(ctx context.Context) (api.InstanceResponse, error
 }
 
 func (d *DirectQuery) Usage(ctx context.Context, params api.GetUsageParams) (api.UsageResponse, error) {
+	return d.usage(ctx, params, 0)
+}
+
+// AllUsage is composed for local viewers only; REST retains bounded pages.
+func (d *DirectQuery) AllUsage(ctx context.Context, params api.GetUsageParams, maxRows int) (api.UsageResponse, error) {
+	if maxRows < 1 {
+		return api.UsageResponse{}, fmt.Errorf("invalid analytics row limit")
+	}
+	return d.usage(ctx, params, maxRows)
+}
+
+func (d *DirectQuery) usage(ctx context.Context, params api.GetUsageParams, maxRows int) (api.UsageResponse, error) {
 	q, err := parseQuery(api.UsageValues(params))
 	if err != nil {
 		return api.UsageResponse{}, err
 	}
-	data, err := d.app.queries.Dashboard(ctx, q, time.Now())
+	var data analytics.Dashboard
+	if maxRows > 0 {
+		data, err = d.app.queries.AllDashboard(ctx, q, time.Now(), maxRows)
+	} else {
+		data, err = d.app.queries.Dashboard(ctx, q, time.Now())
+	}
 	if err != nil {
 		return api.UsageResponse{}, err
 	}

@@ -102,6 +102,10 @@ func TestDatasetAnalyticsIsolateCollidingIdentities(t *testing.T) {
 			if result.DatasetID != test.store.DatasetID() || result.Summary.TotalTokens != test.total || result.Summary.SyncedSessions != 2 || result.Summary.SessionCount != 2 || result.Unresolved != test.unresolved || result.FactCount != 2 {
 				t.Fatalf("%s dataset %s leaked: %+v", tab, test.store.DatasetID(), result)
 			}
+			complete, err := LoadAllDashboard(t.Context(), test.store, q, time.Now(), 2)
+			if err != nil || complete.DatasetID != test.store.DatasetID() || complete.Summary != result.Summary || complete.Unresolved != result.Unresolved || len(complete.Rows) != complete.RowCount {
+				t.Fatalf("complete %s dataset %s leaked: %+v %v", tab, test.store.DatasetID(), complete, err)
+			}
 			if tab == "models" || tab == "sessions" || tab == "context" {
 				if result.RowCount != 2 || result.Page != 2 || len(result.Rows) != 1 {
 					t.Fatalf("pagination %s: %+v", tab, result)

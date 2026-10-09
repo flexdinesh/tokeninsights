@@ -16,16 +16,17 @@ import (
 )
 
 const (
-	startupBenchmarkSources = 8
-	startupBenchmarkFacts   = 32
-	startupBenchmarkTokens  = 120
+	startupBenchmarkSources     = 8
+	startupBenchmarkFacts       = 32
+	startupBenchmarkTokens      = 120
+	startupBenchmarkManySources = 240
 )
 
 func startupBenchmarkMessage(source, message int) string {
 	return fmt.Sprintf("{\"type\":\"message\",\"id\":\"message-%d-%d\",\"message\":{\"role\":\"assistant\",\"timestamp\":1700000000000,\"provider\":\"openai\",\"model\":\"model\",\"usage\":{\"input\":100,\"output\":20}}}\n", source, message)
 }
 
-func startupBenchmarkRun(b *testing.B, runtime *localruntime.Runtime, options collector.Options, wantTokens int64) (time.Duration, time.Duration, time.Duration) {
+func startupBenchmarkRun(b *testing.B, runtime *localruntime.Runtime, options collector.Options, wantTokens int64, wantSessions int) (time.Duration, time.Duration, time.Duration) {
 	b.Helper()
 	started := time.Now()
 	if _, err := collector.Run(b.Context(), options); err != nil {
@@ -38,7 +39,7 @@ func startupBenchmarkRun(b *testing.B, runtime *localruntime.Runtime, options co
 	visible := time.Now()
 	query := analytics.Query{Selection: viewer.Selection{Period: "all", Bucket: "day"}, Tab: "sessions", Quality: "confirmed", Sort: "total", Direction: "desc", Page: 1, PageSize: 200}
 	dashboard, err := analytics.LoadDashboard(b.Context(), runtime.Store, query, time.Now())
-	if err != nil || dashboard.Summary.TotalTokens != wantTokens || dashboard.Summary.SessionCount != startupBenchmarkSources || dashboard.Pending != 0 {
+	if err != nil || dashboard.Summary.TotalTokens != wantTokens || dashboard.Summary.SessionCount != int64(wantSessions) || dashboard.Pending != 0 {
 		b.Fatalf("startup totals: %+v %v", dashboard, err)
 	}
 	return captured.Sub(started), visible.Sub(captured), time.Since(visible)
@@ -49,10 +50,14 @@ func startupBenchmarkRun(b *testing.B, runtime *localruntime.Runtime, options co
 // and owner shutdown are excluded. This synthetic Pi workload is not a claim
 // about the duration of an interactive startup or a mixed-harness history.
 func BenchmarkLocalStartup(b *testing.B) {
-	for _, scenario := range []string{"FirstIngest", "Unchanged", "Append"} {
+	for _, scenario := range []string{"FirstIngest", "Unchanged", "Append", "UnchangedManySources"} {
 		b.Run(scenario, func(b *testing.B) {
 			b.ReportAllocs()
 			b.StopTimer()
+			sourceCount, factCount := startupBenchmarkSources, startupBenchmarkFacts
+			if scenario == "UnchangedManySources" {
+				sourceCount, factCount = startupBenchmarkManySources, 1
+			}
 			var opened, captured, visible, queried time.Duration
 			for range b.N {
 				root := b.TempDir()
@@ -60,10 +65,10 @@ func BenchmarkLocalStartup(b *testing.B) {
 				if err := os.Mkdir(sources, 0o700); err != nil {
 					b.Fatal(err)
 				}
-				for source := range startupBenchmarkSources {
+				for source := range sourceCount {
 					var body strings.Builder
 					fmt.Fprintf(&body, "{\"type\":\"session\",\"id\":\"session-%d\"}\n", source)
-					for message := range startupBenchmarkFacts {
+					for message := range factCount {
 						body.WriteString(startupBenchmarkMessage(source, message))
 					}
 					if err := os.WriteFile(filepath.Join(sources, fmt.Sprintf("session-%d.jsonl", source)), []byte(body.String()), 0o600); err != nil {
@@ -72,14 +77,14 @@ func BenchmarkLocalStartup(b *testing.B) {
 				}
 				collectorPath, dataPath := filepath.Join(root, "collector.sqlite"), filepath.Join(root, "server.duckdb")
 				options := collector.Options{CollectorDBPath: collectorPath, ServerDBPath: dataPath, SyncOptions: pipeline.SyncOptions{SourceDir: sources, Harnesses: []pipeline.Harness{pipeline.HarnessPi}}}
-				wantTokens := int64(startupBenchmarkSources * startupBenchmarkFacts * startupBenchmarkTokens)
+				wantTokens := int64(sourceCount * factCount * startupBenchmarkTokens)
 				if scenario != "FirstIngest" {
 					warm, err := localruntime.Open(b.Context(), collectorPath, dataPath)
 					if err != nil {
 						b.Fatal(err)
 					}
 					options.Destination = warm.Destination
-					startupBenchmarkRun(b, warm, options, wantTokens)
+					startupBenchmarkRun(b, warm, options, wantTokens, sourceCount)
 					if err := warm.Close(); err != nil {
 						b.Fatal(err)
 					}
@@ -105,7 +110,7 @@ func BenchmarkLocalStartup(b *testing.B) {
 				}
 				opened += time.Since(started)
 				options.Destination = runtime.Destination
-				capture, visibility, query := startupBenchmarkRun(b, runtime, options, wantTokens)
+				capture, visibility, query := startupBenchmarkRun(b, runtime, options, wantTokens, sourceCount)
 				captured += capture
 				visible += visibility
 				queried += query
