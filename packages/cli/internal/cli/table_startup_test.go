@@ -364,7 +364,7 @@ func TestStartupLoadFailureShowsSafeReasonAndRelevantRecovery(t *testing.T) {
 	}{
 		{localruntime.ErrProcessingFailed, "processing_failed", "Retry or run tokeninsights data reprocess."},
 		{localruntime.ErrProcessingTimeout, "processing_timeout", "Still processing; retry or view saved usage."},
-		{&queryclient.StatusError{StatusCode: http.StatusServiceUnavailable}, "http_503", "Server read failed; check service logs."},
+		{&queryclient.StatusError{StatusCode: http.StatusServiceUnavailable}, "http_503", "Server read failed; check server logs."},
 		{&queryclient.StatusError{StatusCode: http.StatusUnauthorized}, "http_401", "Check server URL and token."},
 		{&queryclient.StatusError{StatusCode: http.StatusForbidden}, "http_403", "Check server URL and token."},
 		{queryclient.ErrSnapshotChanged, "snapshot_changed", "Usage changed during loading; retry."},

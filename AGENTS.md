@@ -6,7 +6,7 @@ TokenInsights is a Go CLI composed as single-process or distributed. Bare invoca
 
 Distributed `sync` starts a finite detached authenticated HTTP submission; `--print` also submits, `--wait` waits for acceptance, and `--debug` shows receipt processing. `sync status` reports durable jobs. Plugins pass `--wait --harness`. Remote servers run as one authenticated Docker/native process and never collect. No remote analytics TUI. Application SQLite stores users/credentials; DuckDB stores token evidence/receipts/processing. Legacy wire kinds remain personal/hosted.
 
-Everyday commands are `sync`, `tui`, `web`, and `config`; finite local maintenance uses `data import|reprocess|wait` and `collector normalize|reset-canonical|reset-all`. `service stop|status` only migrates old daemon owners. Remote admin uses the private owner socket. Default paths: collector.sqlite, server.duckdb and paired app.sqlite; operational requests use `<canonical-collector-path>.jobs.sqlite`.
+Everyday commands are `sync`, `tui`, `web`, and `config`; finite local maintenance uses `data import|reprocess|wait`. Legacy `service`, `server`, and `collector` commands are removed. Remote admin uses the private owner socket. Default paths: collector.sqlite, server.duckdb and paired app.sqlite; operational requests use `<canonical-collector-path>.jobs.sqlite`.
 
 Full architecture, schema contract, pipelines, and invariants are in [`docs/design.md`](docs/design.md). Read it before any non-trivial change.
 

@@ -22,17 +22,23 @@ func TestRemovedCommandsRejectWithoutStorageOrServiceSideEffects(t *testing.T) {
 	if err := os.WriteFile(path, contents, 0600); err != nil {
 		t.Fatal(err)
 	}
-	for _, name := range []string{"view", "serve", "normalize", "reset-canonical", "reset-all"} {
+	for _, name := range []string{"view", "serve", "service", "server", "collector", "normalize", "reset-canonical", "reset-all", "__service-run"} {
 		if _, exists := commandByName(name); exists {
 			t.Fatalf("removed command %s still registered", name)
 		}
-		err := Run(context.Background(), []string{name, "--confirm", "--collector-db-path", path}, io.Discard, io.Discard, time.Now())
-		if !errors.Is(err, ErrUsage) {
-			t.Fatalf("removed %s: %v", name, err)
-		}
-		contentsAfter, err := os.ReadFile(path)
-		if err != nil || !bytes.Equal(contentsAfter, contents) {
-			t.Fatalf("removed %s changed storage: %v", name, err)
+		for _, args := range [][]string{
+			{name},
+			{name, "--help"},
+			{name, "--confirm", "--collector-db-path", path},
+		} {
+			err := Run(context.Background(), args, io.Discard, io.Discard, time.Now())
+			if !errors.Is(err, ErrUsage) {
+				t.Fatalf("removed %v: %v", args, err)
+			}
+			contentsAfter, err := os.ReadFile(path)
+			if err != nil || !bytes.Equal(contentsAfter, contents) {
+				t.Fatalf("removed %v changed storage: %v", args, err)
+			}
 		}
 	}
 	entries, err := os.ReadDir(root)

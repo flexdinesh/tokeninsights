@@ -89,7 +89,7 @@ work can still be delivered after a collection error. Earlier acknowledged
 batches remain acknowledged when a later batch fails. Collection and delivery
 outcomes are reported separately; no autonomous retry worker is implied.
 
-Bare invocation ensures the local query service. `tui` collects and publishes
+Bare invocation prints help. Local viewers own their foreground runtime. `tui` collects and publishes
 inside a startup progress screen, then queries saved data. `--sync=false` skips
 collection. Startup errors offer Retry, View saved data, and Quit. TUI dashboard
 reload and web Reload fetch saved server data. `GET /api/v1/sync` reports readiness and revision; POST returns 405.
@@ -104,11 +104,11 @@ it explicitly returns the current fixed UTC offset; that fallback cannot
 describe historical DST. Producer labels are `unknown`, a sole known hostname,
 or `multiple machines`; absent producer metadata never becomes serving hostname.
 
-Root commands are `service`, `sync`, `tui` and `server`. Advanced producer
-maintenance uses `collector normalize`, `collector reset-canonical` and
-`collector reset-all`. These operate on collector state and preserve server
-history. Previous commands and `--db-path` / `--no-sync` are removed; use role
-flags and the read-only `tui` default.
+Root commands are `sync`, `tui`, `web`, `config`, and `data` (plus help/version).
+Finite local maintenance uses `data import|reprocess|wait`; remote administration
+uses `tokeninsights-server admin`. Legacy `service`, `server`, `collector`, and
+top-level normalization/reset commands are removed, along with `--db-path` /
+`--no-sync`; use role flags and `tui|web --sync=false` for saved usage.
 
 ## Identity and canonical values
 

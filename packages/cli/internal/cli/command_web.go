@@ -77,7 +77,7 @@ func runWeb(invocation commandInvocation, args []string) error {
 	if settings.EffectiveMode() == config.SingleProcess {
 		return runLocalWeb(invocation, settings, syncBefore, *openBrowser)
 	}
-	session, err := clientworkflow.Resolve(invocation.context, settings, nil)
+	session, err := clientworkflow.Resolve(invocation.context, settings)
 	if err != nil {
 		return err
 	}
@@ -97,16 +97,14 @@ func runWeb(invocation commandInvocation, args []string) error {
 	if err := session.VerifyIngestion(invocation.context); err != nil {
 		return err
 	}
-	observer := session.Observe(invocation.context)
 	_, _ = fmt.Fprintln(invocation.stderr, "Syncing usage...")
 	terminal := newTerminalSyncProgress(invocation.stderr)
 	result, syncErr := runWebCollector(invocation.context, collector.Options{
 		CollectorDBPath: settings.CollectorDBPath, ServerDBPath: settings.ServerDBPath, ServerURL: settings.ServerURL, Token: settings.ServerToken,
 		Destination:      session.Destination,
-		SyncOptions:      pipeline.SyncOptions{Harnesses: pipeline.SupportedHarnesses, Normalize: true, Now: invocation.now, Progress: func(event pipeline.SyncProgressEvent) { terminal.Collection(event); observer.Collection(event) }},
-		DeliveryProgress: func(progress collector.DeliveryProgress) { terminal.Delivery(progress); observer.Delivery(progress) },
+		SyncOptions:      pipeline.SyncOptions{Harnesses: pipeline.SupportedHarnesses, Normalize: true, Now: invocation.now, Progress: terminal.Collection},
+		DeliveryProgress: terminal.Delivery,
 	})
-	observer.Finish(result, syncErr)
 	terminal.Finish(result)
 	printSummary(invocation.stdout, "sync", result.Collection, false)
 	printDeliverySummary(invocation.stdout, result)

@@ -1,4 +1,4 @@
-package service
+package localruntime
 
 import (
 	"bytes"
@@ -64,8 +64,7 @@ func TestPrepareFixtureRejectsHostedBeforeResettingCollector(t *testing.T) {
 
 func fixturePaths(t *testing.T) (string, string) {
 	t.Helper()
-	options := environment(t)
-	root := filepath.Join(filepath.Dir(options.DBPath), ".tokeninsights-dev")
+	root := filepath.Join(t.TempDir(), ".tokeninsights-dev")
 	return filepath.Join(root, "collector.sqlite"), filepath.Join(root, "server.duckdb")
 }
 
@@ -223,11 +222,11 @@ func TestPrepareFixtureRejectsRunningAndUncontrolledServer(t *testing.T) {
 	if err := PrepareFixture(ctx, collectorPath, serverPath); err != nil {
 		t.Fatal(err)
 	}
-	port := 0
-	if _, err := Ensure(ctx, Options{DBPath: serverPath, Port: &port}); err != nil {
+	runtime, err := Open(ctx, collectorPath, serverPath)
+	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() { _ = Stop(ctx, serverPath) }()
+	defer func() { _ = runtime.Close() }()
 	if err := PrepareFixture(ctx, collectorPath, serverPath); err == nil {
 		t.Fatal("running fixture reset accepted")
 	}

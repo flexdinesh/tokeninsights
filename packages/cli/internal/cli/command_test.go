@@ -65,7 +65,7 @@ func TestCommandHelpSucceedsWithoutDatabaseSideEffects(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "missing.sqlite")
 	t.Setenv("TOKENINSIGHTS_COLLECTOR_DB_PATH", path)
 	t.Setenv("TOKENINSIGHTS_SERVER_DB_PATH", path)
-	for _, command := range []string{"tui", "sync", "collector"} {
+	for _, command := range []string{"tui", "web", "sync"} {
 		if err := Run(context.Background(), []string{command, "--help"}, io.Discard, io.Discard, time.Now()); err != nil {
 			t.Errorf("%s help: %v", command, err)
 		}
