@@ -320,7 +320,7 @@ func parseSQLite(ctx context.Context, source Source, options SyncOptions, captur
 func extractOpenCodeContext(ctx context.Context, snapshot *sql.Tx, capture captureSink, source Source, options SyncOptions, cursor extractionCursor) (map[string]*evidence.Location, int, error) {
 	locations := map[string]*evidence.Location{}
 	count := 0
-	sessions := []RawTokenFact{}
+	sessions := []sessionLocation{}
 	for _, kind := range []struct{ table, format, column string }{{"session", "opencode-session", "project_id"}, {"project", "opencode-project", "vcs"}} {
 		if err := requireSQLiteColumns(ctx, snapshot, kind.table, []string{"id", kind.column}); err != nil {
 			continue
@@ -338,7 +338,7 @@ func extractOpenCodeContext(ctx context.Context, snapshot *sql.Tx, capture captu
 			}
 			if kind.table == "session" {
 				native := id
-				sessions = append(sessions, RawTokenFact{SessionID: &native})
+				sessions = append(sessions, sessionLocation{SessionID: &native})
 			}
 			if kind.table == "project" && value.String != "git" {
 				continue

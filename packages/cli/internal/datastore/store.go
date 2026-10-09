@@ -7,7 +7,6 @@ import (
 	_ "embed"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -20,7 +19,7 @@ import (
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/publication"
 )
 
-const SchemaVersion = 2
+const SchemaVersion = 3
 const KindPersonal = "personal"
 const KindHosted = "hosted"
 const DatasetID = "default"
@@ -159,7 +158,7 @@ func (s *Store) CreateDatasetInTx(ctx context.Context, tx *sql.Tx, datasetID str
 	if _, err := tx.ExecContext(ctx, "INSERT INTO analytics.generations VALUES(?,1,?,'active',?,?)", datasetID, evidence.ProcessorVersion, now, now); err != nil {
 		return err
 	}
-	_, err := tx.ExecContext(ctx, "INSERT INTO ingestion.metadata(dataset_id,role,schema_version,database_id,server_kind,generation,target_generation,created_at_ms) VALUES(?,'server-data',2,?,?,1,1,?)", datasetID, databaseID, s.kind, now)
+	_, err := tx.ExecContext(ctx, "INSERT INTO ingestion.metadata(dataset_id,role,schema_version,database_id,server_kind,generation,target_generation,created_at_ms) VALUES(?,'server-data',?, ?,?,1,1,?)", datasetID, SchemaVersion, databaseID, s.kind, now)
 	return err
 }
 func connect(path string, readOnly bool) (*sql.DB, error) {
@@ -191,15 +190,8 @@ func Open(ctx context.Context, path string) (*Store, error) {
 	return OpenWithOptions(ctx, path, Options{Kind: KindPersonal})
 }
 
-// OpenWithLegacy imports a verified SQLite baseline into a staged new DuckDB.
-// Existing targets reject explicit imports; neither source nor target is reset.
-func OpenWithLegacy(ctx context.Context, path, legacyPath string) (*Store, error) {
-	return OpenWithOptions(ctx, path, Options{Kind: KindPersonal, LegacyPath: legacyPath})
-}
-
 type Options struct {
-	Kind       string
-	LegacyPath string
+	Kind string
 }
 
 func OpenKind(ctx context.Context, path, kind string) (*Store, error) {
@@ -213,20 +205,13 @@ func OpenWithOptions(ctx context.Context, path string, options Options) (*Store,
 	if kind != KindPersonal && kind != KindHosted {
 		return nil, errors.New("invalid_server_kind")
 	}
-	legacyPath := options.LegacyPath
-	if kind == KindHosted && legacyPath != "" {
-		return nil, errors.New("hosted_legacy_import_unsupported")
-	}
 
 	abs, err := filepath.Abs(path)
 	if err != nil {
 		return nil, err
 	}
 	if _, err := os.Stat(abs); err == nil {
-		if legacyPath != "" {
-			return nil, errors.New("legacy_import_requires_new_target")
-		}
-		if err := inspectAndUpgrade(ctx, abs, kind); err != nil {
+		if err := inspectPath(ctx, abs, kind); err != nil {
 			return nil, err
 		}
 	} else if !errors.Is(err, os.ErrNotExist) {
@@ -249,13 +234,6 @@ func OpenWithOptions(ctx context.Context, path string, options Options) (*Store,
 		}
 		store := &Store{database: database, writer: &sync.Mutex{}, worker: dataengine.NewWorker(), datasetID: DatasetID, kind: kind, root: true, nextDataset: new(string), selection: &sync.Mutex{}}
 		err = store.initialize(ctx)
-		if err == nil {
-			if legacyPath != "" {
-				err = store.ImportLegacy(ctx, legacyPath)
-			} else if kind == KindPersonal {
-				err = store.importDefaultLegacy(ctx, abs)
-			}
-		}
 		if err == nil {
 			_, err = database.ExecContext(ctx, "CHECKPOINT")
 		}
@@ -313,7 +291,7 @@ func (s *Store) initialize(ctx context.Context) error {
 		return err
 	}
 	now := time.Now().UnixMilli()
-	if _, err := tx.ExecContext(ctx, "INSERT INTO ingestion.instance VALUES(1,'server-data',2,?,?,?)", id, s.kind, now); err != nil {
+	if _, err := tx.ExecContext(ctx, "INSERT INTO ingestion.instance VALUES(1,'server-data',?,?,?,?)", SchemaVersion, id, s.kind, now); err != nil {
 		return err
 	}
 	if s.kind == KindPersonal {
@@ -471,7 +449,7 @@ func (s *Store) Accept(ctx context.Context, body []byte) (evidence.Response, err
 	if err != nil {
 		return evidence.Response{}, err
 	}
-	if batch.EffectiveDatasetID() != m.DatasetID {
+	if batch.DatasetID != m.DatasetID {
 		return evidence.Response{}, reject("dataset_mismatch")
 	}
 	if s.kind == KindHosted && batch.ProtocolVersion != evidence.ProtocolVersion {
@@ -871,17 +849,6 @@ func (s *Store) PublishProjection(ctx context.Context, work dataengine.Work, pro
 		return false, err
 	}
 	return true, nil
-}
-
-func insertFact(ctx context.Context, tx *sql.Tx, datasetID, table string, fact publication.Fact, generation, revision int64, evidenceID, reason string) error {
-	args, _, err := factArguments(datasetID, table, fact, generation, revision, evidenceID, reason)
-	if err != nil {
-		return err
-	}
-	if err := writeRows(ctx, tx, "INSERT INTO "+table+" VALUES", "", [][]interface{}{args}); err != nil {
-		return fmt.Errorf("insert projected contribution: %w", err)
-	}
-	return nil
 }
 
 // Failures remain pending and retryable. Backoff lets independent scopes progress.

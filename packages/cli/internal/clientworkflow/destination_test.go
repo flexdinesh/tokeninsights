@@ -8,7 +8,6 @@ import (
 
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/config"
 	api "github.com/flexdinesh/tokeninsights/packages/cli/internal/server/api"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/serverfeatures"
 )
 
 func TestRemoteDestinationCanonicalizesTrailingSlash(t *testing.T) {
@@ -21,11 +20,11 @@ func TestRemoteDestinationCanonicalizesTrailingSlash(t *testing.T) {
 	}))
 	defer server.Close()
 	for _, suffix := range []string{"/", ""} {
-		session, err := Resolve(t.Context(), config.Settings{ServerKind: serverfeatures.Hosted, ServerToken: "fixture", ServerURL: server.URL + suffix})
+		session, err := Resolve(t.Context(), config.Settings{Mode: config.Distributed, ServerToken: "fixture", ServerURL: server.URL + suffix})
 		if err != nil {
 			t.Fatal(err)
 		}
-		if session.URL != server.URL || session.Destination == nil || session.Destination.URL != server.URL || session.Destination.Identity != server.URL {
+		if session.URL != server.URL || session.Destination == nil || session.Destination.Identity != server.URL {
 			t.Fatal("slash changed canonical transport or identity", session)
 		}
 	}

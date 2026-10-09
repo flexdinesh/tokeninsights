@@ -37,7 +37,7 @@ func (m interactiveModel) startCollection() interactiveModel {
 	m.refresh.requested, m.refresh.collectionPending = true, true
 	m.refreshAnimating = true
 	m.collectionDone = m.options.local.StartCollection(m.ctx, pipeline.SyncOptions{
-		Harnesses: pipeline.SupportedHarnesses, Normalize: true, Now: m.now,
+		Harnesses: pipeline.SupportedHarnesses, Now: m.now,
 	}, runViewCollector)
 	if attempt := currentCollection(m.options.local.Progress.Snapshot()); attempt != nil {
 		m.refresh.startupAttemptID = attempt.AttemptID

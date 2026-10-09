@@ -88,23 +88,17 @@ void test('each role checks embedded bytes, independent version, and application
   )
 })
 
-void test('repository collector and server source and embedded contracts both agree', async () => {
+void test('repository collector source and embedded contracts agree', async () => {
   const paths = [
     '../../../schema/schema.sql',
     '../../../packages/cli/internal/db/schema/schema.sql',
     '../../../packages/cli/internal/db/schema.go',
-    '../../../schema/server.sql',
-    '../../../packages/cli/internal/serverstore/schema/server.sql',
-    '../../../packages/cli/internal/serverstore/store.go',
   ]
-  const [collector, embeddedCollector, collectorGo, server, embeddedServer, serverGo] =
-    await Promise.all(paths.map((path) => readFile(new URL(path, import.meta.url), 'utf8')))
-  assert.deepEqual(
-    schemaContractMismatches(collector, embeddedCollector, collectorGo, 'CollectorApplicationID'),
-    [],
+  const [collector, embeddedCollector, collectorGo] = await Promise.all(
+    paths.map((path) => readFile(new URL(path, import.meta.url), 'utf8')),
   )
   assert.deepEqual(
-    schemaContractMismatches(server, embeddedServer, serverGo, 'ApplicationID', false),
+    schemaContractMismatches(collector, embeddedCollector, collectorGo, 'CollectorApplicationID'),
     [],
   )
 })

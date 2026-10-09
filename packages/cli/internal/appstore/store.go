@@ -16,7 +16,7 @@ import (
 )
 
 const ApplicationID = 1414091585
-const SchemaVersion = 1
+const SchemaVersion = 2
 
 //go:embed schema/app.sql
 var Schema string

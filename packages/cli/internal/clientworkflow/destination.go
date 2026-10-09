@@ -4,6 +4,7 @@ package clientworkflow
 import (
 	"context"
 	"fmt"
+
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/collector"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/config"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/queryclient"
@@ -16,12 +17,10 @@ type Session struct {
 	Descriptor  api.InstanceResponseV2
 	Query       *queryclient.Client
 	Destination *collector.Destination
-	token       string
 }
 
 func Resolve(ctx context.Context, settings config.Settings) (Session, error) {
 	var result Session
-	result.token = settings.ServerToken
 	if err := settings.ValidateDestination(); err != nil {
 		return result, err
 	}
@@ -41,10 +40,10 @@ func Resolve(ctx context.Context, settings config.Settings) (Session, error) {
 		return result, err
 	}
 	if serverfeatures.Kind(result.Descriptor.ServerKind) != settings.ExpectedKind() {
-		return result, fmt.Errorf("server kind mismatch; update server-kind or server-url")
+		return result, fmt.Errorf("server kind mismatch; distributed mode requires an authenticated remote server")
 	}
 	result.Query = client.WithDataset(result.Descriptor.DatasetId)
-	result.Destination = &collector.Destination{URL: result.URL, Identity: result.URL, DatabaseID: result.Descriptor.DataEpoch, DatasetID: result.Descriptor.DatasetId}
+	result.Destination = &collector.Destination{Transport: collector.HTTPDelivery{URL: result.URL, Token: settings.ServerToken}, Identity: result.URL, DatabaseID: result.Descriptor.DataEpoch, DatasetID: result.Descriptor.DatasetId}
 	return result, nil
 }
 
@@ -57,7 +56,7 @@ func (s Session) VerifyIngestion(ctx context.Context) error {
 	if s.Destination == nil {
 		return fmt.Errorf("ingestion destination unavailable")
 	}
-	capabilities, err := collector.NegotiateCapabilities(ctx, s.Destination, s.token)
+	capabilities, err := collector.NegotiateCapabilities(ctx, s.Destination)
 	if err != nil {
 		return err
 	}

@@ -30,7 +30,6 @@ func runSync(invocation commandInvocation, args []string) error {
 	var all bool
 	var dryRun bool
 	var fullRefresh bool
-	var noNormalize bool
 	var sourceDir string
 	var harnesses stringList
 	var serverDBPath, serverURL string
@@ -49,7 +48,6 @@ func runSync(invocation commandInvocation, args []string) error {
 	flags.BoolVar(&all, "all", false, "sync all supported harnesses")
 	flags.BoolVar(&dryRun, "dry-run", false, "discover and parse without writing")
 	flags.BoolVar(&fullRefresh, "full-refresh", false, "ignore source refresh state and retry quarantined sources")
-	flags.BoolVar(&noNormalize, "no-normalize", false, "deprecated compatibility option; processing is always on server")
 	flags.StringVar(&sourceDir, "source-dir", "", "override harness source directory")
 	if err := flags.Parse(args); err != nil {
 		return fmt.Errorf("%w\n%w", err, ErrUsage)
@@ -92,14 +90,13 @@ func runSync(invocation commandInvocation, args []string) error {
 	}
 	terminal := newTerminalSyncProgress(invocation.stderr)
 	result, err := collector.Run(invocation.context, collector.Options{
-		CollectorDBPath: strings.TrimSpace(dbPath), ServerDBPath: strings.TrimSpace(serverDBPath), ServerURL: serverURL, Token: settings.ServerToken, PublishOnly: publishOnly,
+		CollectorDBPath: strings.TrimSpace(dbPath), ServerDBPath: strings.TrimSpace(serverDBPath), PublishOnly: publishOnly,
 		Destination:      destination,
 		DeliveryProgress: terminal.Delivery,
 		SyncOptions: pipeline.SyncOptions{
 			Harnesses:   selectedHarnesses,
 			DryRun:      dryRun,
 			FullRefresh: fullRefresh,
-			Normalize:   !noNormalize,
 			SourceDir:   strings.TrimSpace(sourceDir),
 			Now:         invocation.now,
 			Progress:    terminal.Collection,

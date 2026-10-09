@@ -5,9 +5,11 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"sync"
 	"sync/atomic"
 	"testing"
 
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/datastore"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/server"
 )
 
@@ -16,7 +18,7 @@ import (
 func queryServerURL(t *testing.T, path string) string {
 	t.Helper()
 	var writes atomic.Int64
-	handler := server.NewHandler(context.Background(), path, nil, io.Discard, "127.0.0.1")
+	handler := queryHandler(t, path, "")
 	fixture := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet && r.Method != http.MethodHead {
 			writes.Add(1)
@@ -31,3 +33,18 @@ func queryServerURL(t *testing.T, path string) string {
 	})
 	return fixture.URL
 }
+
+func queryHandler(t *testing.T, path, instance string) http.Handler {
+	t.Helper()
+	value, ok := queryStores.Load(path)
+	if !ok {
+		t.Fatal("missing fixture store", path)
+	}
+	store, ok := value.(*datastore.Store)
+	if !ok {
+		t.Fatal("invalid fixture store")
+	}
+	return server.NewDataHandler(context.Background(), store, io.Discard, "127.0.0.1", instance, false)
+}
+
+var queryStores sync.Map

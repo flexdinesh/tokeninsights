@@ -6,14 +6,14 @@ Deployment/authentication and separate application-store choices superseded by
 record this decision's original implementation; [design.md](../design.md) is current.
 Supersedes collector-owned normalization, normalized-only ingestion, server
 SQLite analytics and synchronous publication completion in
-[ADR 0006](0006-collector-server-ingestion.md) and the corresponding parts of
+the former normalized-ingestion architecture and the corresponding parts of
 [system design](../system.md). Deployment/configuration decisions remain unless
 explicitly revised below. [design.md](../design.md) describes the implementation
 and its concrete storage contracts.
 
-Architecture and concrete schema/protocol/import contracts separately approved.
-Implemented with collector schema 17, DuckDB schema 1 and raw protocol 2; see the
-[implementation plan](../raw-ingestion-plan.md).
+Architecture and concrete schema/protocol contracts separately approved.
+Current versions are defined by the
+[design contract](../design.md).
 
 ## Context
 
@@ -243,8 +243,7 @@ to fact scans, although shared resources still matter. DuckDB's
 describes ordering/zonemap benefits and selective index use. Add rebuildable
 summaries only when needed. Distinct sessions, peak context and medians cannot
 be obtained by summing every bucket's summary. Use exact integer accounting and
-explicit overflow/transport limits. TPS concepts remain; evidence retention
-does not by itself establish a reliable duration.
+explicit overflow/transport limits.
 
 Initially retain unique sanitized evidence, confirmed history, ambiguous evidence
 and delivery/dedupe registries indefinitely. Prune transient logs, redundant
@@ -252,31 +251,12 @@ operational sightings and obsolete projection generations after safe cutover.
 Retention enables replay but is not a backup; preserve recoverable server
 storage. No additional infrastructure or capacity target is required now.
 
-## Existing history and compatibility
+## Current contracts
 
-Existing history means canonical facts already committed to today's server
-SQLite. Some original sources may no longer exist; those facts cannot be
-reconstructed as raw evidence. Preserve them as a marked legacy baseline with
-their identities, token components and provenance, keeping the original database
-untouched during verified import. Do not fabricate raw payloads from legacy facts.
-
-An active confirmed projection includes each legacy contribution until a new
-projection proves its replacement. Coverage requires identity reconciliation
-with the specific legacy contributions, supported processing semantics and
-atomic activation. A successful job, a matching total or a date-range scan alone
-does not prove coverage. A replacement may legitimately correct counters; it
-must explain which old contribution it replaces. Unmatched legacy contributions
-remain queryable. Potentially overlapping new evidence without a proof stays
-ambiguous/estimated; proven distinct new contributions count normally.
-
-Example: existing usage is 500 tokens. Reprocessing accounts for 300 tokens of
-that history. Keep the other 200; confirmed usage stays 500, not 800 or 300.
-Never union legacy and rebuilt copies without reconciliation, and never delete
-all server history because a Collector was reset or a new generation appeared.
-
-Preserve database identity, receipts and destination bindings through a deliberate
-upgrade; do not make storage replacement look like a fresh empty server. The approved import contract verifies supported legacy server SQLite read-only
-and preserves database identity and receipts. Legacy protocol-1 completion remains unchanged.
+[ADR 0010](0010-current-contracts-and-boundaries.md) removes normalized ingestion,
+legacy baselines and storage migrations. Only current schemas and raw protocol 3
+remain. Incompatible databases reject without mutation. Processor replacement
+generations still preserve published usage while recomputing retained evidence.
 
 ## Trade-offs and implementation boundaries
 
@@ -296,9 +276,9 @@ assets; verify DuckDB native-driver packaging separately before release.
 Required behavioral verification covers duplicate/concurrent/overlapping batches,
 changed batch bytes, lost responses, every commit crash boundary, stale revisions,
 late ancestry, rewritten sources, snapshot conflicts, ambiguous-to-confirmed
-transitions, generation cutover and legacy replacement without double-counting.
+transitions, generation cutover without double-counting.
 Use existing semantic fixtures for all token components and copied histories.
 Performance tuning follows working, accurate queries; no benchmark gate now.
 
 Unresolved questions: none. Concrete contracts separately approved in the
-[implementation plan](../raw-ingestion-plan.md).
+[design contract](../design.md).

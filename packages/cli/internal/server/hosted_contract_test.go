@@ -346,8 +346,5 @@ func newHostedAccounts(t *testing.T, store *datastore.Store) *accounts.Service {
 	}
 	t.Cleanup(func() { _ = app.Close() })
 	repository := accounts.NewSQLite(app, store)
-	if err := repository.ImportLegacy(t.Context(), store.SQL()); err != nil {
-		t.Fatal(err)
-	}
 	return accounts.New(repository)
 }

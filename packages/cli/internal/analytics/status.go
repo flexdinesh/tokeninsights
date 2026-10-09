@@ -4,13 +4,13 @@ import (
 	"context"
 
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/datastore"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/db"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/querymodel"
 )
 
 // Facets contains filter choices from one dataset and one read snapshot.
 type Facets struct {
 	Providers, Models, Harnesses, Sessions []string
-	Repositories, Directories              []db.LocationOption
+	Repositories, Directories              []querymodel.LocationOption
 	Revision, Generation, InputRevision    int64
 	DatabaseID, DatasetID                  string
 }

@@ -9,7 +9,6 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/x/term"
-
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/config"
 )
 
@@ -17,7 +16,7 @@ var configCommand = commandSpec{name: "config", run: runConfig}
 
 func runConfig(invocation commandInvocation, args []string) error {
 	if len(args) == 1 && (args[0] == "--help" || args[0] == "-h") {
-		_, err := fmt.Fprintln(invocation.stdout, "usage: tokeninsights config set KEY VALUE | get KEY | remove KEY\nKeys: mode, server-kind, server-url, server-token, host, port, collector-db-path, server-db-path, app-db-path\nSet server-token without VALUE to read securely from terminal/stdin. get never prints tokens.\nRuntime precedence: flags > environment > file > defaults.")
+		_, err := fmt.Fprintln(invocation.stdout, "usage: tokeninsights config set KEY VALUE | get KEY | remove KEY\nKeys: mode, server-url, server-token, host, port, collector-db-path, server-db-path, app-db-path\nSet server-token without VALUE to read securely from terminal/stdin. get never prints tokens.\nRuntime precedence: flags > environment > file > defaults.")
 		return err
 	}
 	if len(args) < 2 {

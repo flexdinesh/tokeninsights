@@ -3,7 +3,6 @@ package server
 import (
 	"context"
 	"fmt"
-	"io"
 	"time"
 
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/analytics"
@@ -14,74 +13,75 @@ import (
 
 // DirectQuery adapts the same query validation, analytics and presentation used
 // by REST without constructing HTTP requests or opening a listener.
-type DirectQuery struct{ app *app }
-
-func NewDirectQuery(ctx context.Context, source analytics.Repository, instance string) *DirectQuery {
-	return NewDirectQueryWithIdentity(ctx, source, instance, "")
+type DirectQuery struct {
+	source             analytics.Repository
+	instance, hostname string
+	defaults           viewer.Selection
 }
 
-func NewDirectQueryWithIdentity(ctx context.Context, source analytics.Repository, instance, hostname string) *DirectQuery {
-	a := newApp(ctx, Options{InstanceID: instance, Hostname: hostname, Defaults: viewer.Selection{Period: "month", Bucket: "day"}}, io.Discard)
-	a.queries = source
-	return &DirectQuery{app: a}
+func NewDirectQuery(source analytics.Repository, instance, hostname string) *DirectQuery {
+	return &DirectQuery{source: source, instance: instance, hostname: hostname, defaults: viewer.Selection{Period: "month", Bucket: "day"}}
 }
-
-func (d *DirectQuery) Instance(ctx context.Context) (api.InstanceResponse, error) {
-	status, err := d.app.queries.Status(ctx)
+func (d *DirectQuery) Instance(ctx context.Context) (api.InstanceResponseV2, error) {
+	status, err := d.source.Status(ctx)
 	if err != nil {
-		return api.InstanceResponse{}, err
+		return api.InstanceResponseV2{}, err
 	}
-	return api.InstanceResponse{ApiVersion: api.V1, DataEpoch: status.Metadata.DatabaseID, DataReadiness: api.InstanceResponseDataReadinessReady, InstanceId: d.app.options.InstanceID, ServerVersion: version.Version, Hostname: d.app.instanceHostname(status.Hostname), Timezone: reportingTimezone(time.Local, time.Now()), Defaults: apiSelection(d.app.options.Defaults)}, nil
+	hostname := status.Hostname
+	if d.hostname != "" {
+		hostname = d.hostname
+	}
+	return api.InstanceResponseV2{ApiVersion: api.V2, DatasetId: status.Metadata.DatasetID, ServerKind: "personal", Capabilities: []string{"usage", "facets", "terminal-dashboard"}, Permissions: []api.InstanceResponseV2Permissions{"read"}, DataEpoch: status.Metadata.DatabaseID, DataReadiness: api.InstanceResponseV2DataReadinessReady, InstanceId: d.instance, ServerVersion: version.Version, Hostname: hostname, Timezone: reportingTimezone(time.Local, time.Now()), Defaults: apiSelection(d.defaults)}, nil
 }
 
-func (d *DirectQuery) Usage(ctx context.Context, params api.GetUsageParams) (api.UsageResponse, error) {
+func (d *DirectQuery) Usage(ctx context.Context, params api.GetUsageParams) (api.UsageResponseV2, error) {
 	return d.usage(ctx, params, 0)
 }
 
 // AllUsage is composed for local viewers only; REST retains bounded pages.
-func (d *DirectQuery) AllUsage(ctx context.Context, params api.GetUsageParams, maxRows int) (api.UsageResponse, error) {
+func (d *DirectQuery) AllUsage(ctx context.Context, params api.GetUsageParams, maxRows int) (api.UsageResponseV2, error) {
 	if maxRows < 1 {
-		return api.UsageResponse{}, fmt.Errorf("invalid analytics row limit")
+		return api.UsageResponseV2{}, fmt.Errorf("invalid analytics row limit")
 	}
 	return d.usage(ctx, params, maxRows)
 }
 
-func (d *DirectQuery) usage(ctx context.Context, params api.GetUsageParams, maxRows int) (api.UsageResponse, error) {
+func (d *DirectQuery) usage(ctx context.Context, params api.GetUsageParams, maxRows int) (api.UsageResponseV2, error) {
 	q, err := parseQuery(api.UsageValues(params))
 	if err != nil {
-		return api.UsageResponse{}, err
+		return api.UsageResponseV2{}, err
 	}
 	var data analytics.Dashboard
 	if maxRows > 0 {
-		data, err = d.app.queries.AllDashboard(ctx, q, time.Now(), maxRows)
+		data, err = d.source.AllDashboard(ctx, q, time.Now(), maxRows)
 	} else {
-		data, err = d.app.queries.Dashboard(ctx, q, time.Now())
+		data, err = d.source.Dashboard(ctx, q, time.Now())
 	}
 	if err != nil {
-		return api.UsageResponse{}, err
+		return api.UsageResponseV2{}, err
 	}
 	result := apiDashboard(data)
-	result.InstanceId, result.DataEpoch = d.app.options.InstanceID, data.DatabaseID
+	result.InstanceId, result.DataEpoch = d.instance, data.DatabaseID
 	return result, nil
 }
 
-func (d *DirectQuery) Facets(ctx context.Context, params api.GetUsageFacetsParams) (api.UsageFacetsResponse, error) {
+func (d *DirectQuery) Facets(ctx context.Context, params api.GetUsageFacetsParams) (api.UsageFacetsResponseV2, error) {
 	values := api.FacetValues(params)
 	q, err := parseQuery(values)
 	if err != nil {
-		return api.UsageFacetsResponse{}, err
+		return api.UsageFacetsResponseV2{}, err
 	}
-	facets, err := d.app.queries.Facets(ctx, q, values.Get("search"), time.Now())
+	facets, err := d.source.Facets(ctx, q, values.Get("search"), time.Now())
 	result := apiFacets(facets)
-	result.InstanceId = d.app.options.InstanceID
+	result.InstanceId = d.instance
 	return result, err
 }
 
-func (d *DirectQuery) Status(ctx context.Context) (api.SyncResponse, error) {
-	status, err := d.app.queries.Status(ctx)
+func (d *DirectQuery) Status(ctx context.Context) (api.StatusResponseV2, error) {
+	status, err := d.source.Status(ctx)
 	if err != nil {
-		return api.SyncResponse{}, err
+		return api.StatusResponseV2{}, err
 	}
 	m := status.Metadata
-	return apiSyncState(syncState{InstanceID: d.app.options.InstanceID, DataEpoch: m.DatabaseID, DataReadiness: "ready", Revision: uint64(m.Revision), Generation: m.Generation, InputRevision: m.InputRevision, Pending: status.Pending, Running: status.Pending > 0, Phase: "ready", Harnesses: map[string]string{}}), nil
+	return api.StatusResponseV2{InstanceId: d.instance, DataEpoch: m.DatabaseID, DatasetId: m.DatasetID, DataReadiness: "ready", Revision: m.Revision, Generation: m.Generation, TargetGeneration: m.TargetGeneration, InputRevision: m.InputRevision, Pending: status.Pending, Failed: &status.Failed, FailedRetryAtMs: &status.FailedRetryAtMs}, nil
 }

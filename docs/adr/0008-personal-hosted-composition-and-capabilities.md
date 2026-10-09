@@ -39,8 +39,8 @@ Multiple collectors of one user dedupe; identical evidence from different users
 remains independent. Bind collector acknowledgements to endpoint/database/dataset,
 so token rotation resumes and switching users cannot skip delivery.
 
-Store accounts, token/session digests and data in the same DuckDB file. Use the
-shared write coordinator; create a user/dataset in one transaction. Administrators
+Store accounts and credential digests in paired SQLite. Recoverable provisioning
+creates the DuckDB dataset before activating the user. Administrators
 provision users and scoped tokens through a private socket. Browser token login
 creates a read-only opaque secure cookie; never persist bearer credentials in
 browser URLs or localStorage. Initial deployment is one instance behind TLS.
@@ -56,10 +56,7 @@ capture/checkpoints, exact saved request recovery, per-dataset acknowledgements,
 locking and compaction; evaluate a journal only after a smaller state boundary
 exists and equivalent crash semantics are measured.
 
-Approved contracts: collector schema 18, DuckDB schema 2, raw protocol 3 and read
-API v2. Personal compatibility adapters preserve old wire bytes. Verified upgrades
-preserve history and recoverable previous files. Hosted starts fresh; assigning
-personal history to a user is a separate operation outside this decision.
+Current schema/protocol contracts are in [design.md](../design.md). [ADR 0010](0010-current-contracts-and-boundaries.md) removes compatibility adapters and migrations.
 
 ## Consequences
 

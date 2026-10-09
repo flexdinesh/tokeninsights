@@ -9,7 +9,6 @@ import {
 import { App } from './App'
 import { tabSchema } from './contracts'
 import { parseDashboardSearch, parseDashboardSearchParams, stringifyDashboardSearch } from './state'
-import type { DashboardSearch } from './state'
 import { Button } from './components/ui/button'
 
 function Root() {
@@ -40,11 +39,10 @@ const indexRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/',
   beforeLoad: ({ search }) => {
-    const cleanSearch: DashboardSearch = { ...search, legacyTab: undefined }
     throw redirect({
       to: '/$tab',
-      params: { tab: search.legacyTab ?? 'tokens' },
-      search: cleanSearch,
+      params: { tab: 'tokens' },
+      search,
       replace: true,
     })
   },

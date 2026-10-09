@@ -10,16 +10,6 @@ const EMBEDDED_SCHEMA_SQL_PATH = new URL(
 const SCHEMA_GO_PATH = new URL('../../../packages/cli/internal/db/schema.go', import.meta.url)
   .pathname
 
-const SERVER_SCHEMA_SQL_PATH = new URL('../../../schema/server.sql', import.meta.url).pathname
-const EMBEDDED_SERVER_SCHEMA_SQL_PATH = new URL(
-  '../../../packages/cli/internal/serverstore/schema/server.sql',
-  import.meta.url,
-).pathname
-const SERVER_SCHEMA_GO_PATH = new URL(
-  '../../../packages/cli/internal/serverstore/store.go',
-  import.meta.url,
-).pathname
-
 const SQL_KEYWORDS = new Set([
   'PRIMARY',
   'KEY',
@@ -203,15 +193,8 @@ export function schemaContractMismatches(
 }
 
 async function main() {
-  const [sql, embeddedSQL, go, serverSQL, embeddedServerSQL, serverGo] = await Promise.all(
-    [
-      SCHEMA_SQL_PATH,
-      EMBEDDED_SCHEMA_SQL_PATH,
-      SCHEMA_GO_PATH,
-      SERVER_SCHEMA_SQL_PATH,
-      EMBEDDED_SERVER_SCHEMA_SQL_PATH,
-      SERVER_SCHEMA_GO_PATH,
-    ].map(readText),
+  const [sql, embeddedSQL, go] = await Promise.all(
+    [SCHEMA_SQL_PATH, EMBEDDED_SCHEMA_SQL_PATH, SCHEMA_GO_PATH].map(readText),
   )
   const [dataSQL, embeddedDataSQL, dataGo] = await Promise.all([
     readText(new URL('../../../schema/data.sql', import.meta.url).pathname),
@@ -265,16 +248,7 @@ async function main() {
     ...schemaContractMismatches(sql, embeddedSQL, go, 'CollectorApplicationID').map(
       (message) => `collector: ${message}`,
     ),
-    ...schemaContractMismatches(serverSQL, embeddedServerSQL, serverGo, 'ApplicationID', false).map(
-      (message) => `server: ${message}`,
-    ),
   ]
-  if (
-    extractSchemaSqlIdentifiers(sql).applicationID ===
-    extractSchemaSqlIdentifiers(serverSQL).applicationID
-  ) {
-    mismatches.push('collector and server application_id must differ')
-  }
   if (mismatches.length > 0) {
     for (const mismatch of mismatches) {
       console.error(mismatch)

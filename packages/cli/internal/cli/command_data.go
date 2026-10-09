@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/config"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/localruntime"
 )
@@ -12,10 +13,10 @@ var dataCommand = commandSpec{name: "data", run: runData}
 
 func runData(invocation commandInvocation, args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("data requires import|reprocess|wait\n%w", ErrUsage)
+		return fmt.Errorf("data requires reprocess|wait\n%w", ErrUsage)
 	}
 	action := args[0]
-	if action != "import" && action != "reprocess" && action != "wait" {
+	if action != "reprocess" && action != "wait" {
 		return ErrUsage
 	}
 	settings := invocation.defaults()
@@ -24,7 +25,6 @@ func runData(invocation commandInvocation, args []string) error {
 	flags.StringVar(&settings.ServerDBPath, "server-db-path", settings.ServerDBPath, "token database")
 	flags.StringVar(&settings.CollectorDBPath, "collector-db-path", settings.CollectorDBPath, "collector database")
 	flags.StringVar(&settings.AppDBPath, "app-db-path", settings.AppDBPath, "application database")
-	legacy := flags.String("legacy-server-db-path", "", "verified read-only SQLite import source")
 	if err := flags.Parse(args[1:]); err != nil {
 		return err
 	}
@@ -33,9 +33,6 @@ func runData(invocation commandInvocation, args []string) error {
 	}
 	if settings.EffectiveMode() != config.SingleProcess {
 		return fmt.Errorf("use tokeninsights-server admin for distributed maintenance")
-	}
-	if action == "import" {
-		return localruntime.ImportLegacy(invocation.context, settings.ServerDBPath, *legacy)
 	}
 	runtime, err := localruntime.OpenWithApp(invocation.context, settings.CollectorDBPath, settings.ServerDBPath, settings.ApplicationPath())
 	if err != nil {

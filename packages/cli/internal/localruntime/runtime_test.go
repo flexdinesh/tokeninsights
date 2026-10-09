@@ -68,9 +68,6 @@ func TestRuntimeOwnsDatabaseResumesProcessingAndReleases(t *testing.T) {
 	if err := runtime.WaitVisible(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if err := localruntime.ImportLegacy(ctx, dataPath, filepath.Join(root, "legacy.sqlite")); !errors.Is(err, localruntime.ErrOwned) {
-		t.Fatalf("import bypassed active ownership: %v", err)
-	}
 	after, err := runtime.Destination.Transport.Receipt(ctx, "stream", "batch")
 	if err != nil || after.Receipt != receipt || after.Processing.Pending != 0 {
 		t.Fatalf("restart lost acceptance: %+v %v", after, err)

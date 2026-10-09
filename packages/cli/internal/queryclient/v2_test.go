@@ -2,10 +2,11 @@ package queryclient
 
 import (
 	"errors"
-	api "github.com/flexdinesh/tokeninsights/packages/cli/internal/server/api"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/serverfeatures"
 	"net/http"
 	"testing"
+
+	api "github.com/flexdinesh/tokeninsights/packages/cli/internal/server/api"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/serverfeatures"
 )
 
 func TestV2DatasetPinnedReads(t *testing.T) {
@@ -32,7 +33,7 @@ func TestV2DatasetPinnedReads(t *testing.T) {
 		t.Fatal("foreign dataset accepted", err)
 	}
 	status, err := client.Status(t.Context())
-	if err != nil || !status.Running {
+	if err != nil || status.Pending == 0 {
 		t.Fatal(status, err)
 	}
 }

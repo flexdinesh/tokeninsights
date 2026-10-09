@@ -11,7 +11,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/db"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/querymodel"
 	"github.com/muesli/termenv"
 )
 
@@ -94,7 +94,7 @@ func TestInstrumentDeskFitsTerminalAndKeepsNavigationAndCoverage(t *testing.T) {
 			lipgloss.SetColorProfile(profile)
 			for _, size := range [][2]int{{160, 45}, {120, 35}, {80, 24}, {60, 18}} {
 				for _, tab := range aggregationTabs {
-					m := interactiveModel{width: size[0], height: size[1], activeTab: tab, options: tableOptions{period: periodAllTime, bucket: bucketDay}, sessionCounts: db.SessionCounts{Shown: 2, Synced: 8}, rows: []renderRow{{bucket: "2026-09-23", model: "model-a", totalTokens: "123", totalValue: 123}}}
+					m := interactiveModel{width: size[0], height: size[1], activeTab: tab, options: tableOptions{period: periodAllTime, bucket: bucketDay}, sessionCounts: querymodel.SessionCounts{Shown: 2, Synced: 8}, rows: []renderRow{{bucket: "2026-09-23", model: "model-a", totalTokens: "123", totalValue: 123}}}
 					view := m.View()
 					assertDeskBounds(t, view, size[0], size[1])
 					for _, line := range append([]string{strings.Split(view, "\n")[0]}, m.deskReadouts(m.tableViewportWidth())...) {
@@ -180,7 +180,7 @@ func TestDrawerCtrlCAlwaysQuits(t *testing.T) {
 }
 
 func TestCoverageStaysPinnedForEmptyAndTallRows(t *testing.T) {
-	m := interactiveModel{width: 120, height: 35, activeTab: tabModels, sessionCounts: db.SessionCounts{Shown: 1, Synced: 8}, rows: []renderRow{{model: "short", totalValue: 1}}}
+	m := interactiveModel{width: 120, height: 35, activeTab: tabModels, sessionCounts: querymodel.SessionCounts{Shown: 1, Synced: 8}, rows: []renderRow{{model: "short", totalValue: 1}}}
 	_, baseline := viewSummaryLine(m.View())
 	m.rows = nil
 	_, empty := viewSummaryLine(m.View())

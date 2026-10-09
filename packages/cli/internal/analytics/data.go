@@ -5,7 +5,7 @@ import (
 	"net/url"
 	"strconv"
 
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/db"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/querymodel"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/viewer"
 )
 
@@ -18,7 +18,7 @@ type Query struct {
 	Quality        string
 	Selection      viewer.Selection
 	Tab            string
-	LocationGroup  db.RepoGroup
+	LocationGroup  querymodel.RepoGroup
 	RepositoryKeys []string
 	DirectoryKeys  []string
 	Sort           string
@@ -56,9 +56,9 @@ func ParseQuery(values url.Values) (Query, error) {
 	default:
 		return q, fmt.Errorf("invalid tab")
 	}
-	q.LocationGroup = db.RepoGroupRepository
+	q.LocationGroup = querymodel.RepoGroupRepository
 	if values.Has("locationGroup") {
-		q.LocationGroup = db.RepoGroup(values.Get("locationGroup"))
+		q.LocationGroup = querymodel.RepoGroup(values.Get("locationGroup"))
 	}
 	if values.Has("breakdown") || values.Has("worktree") || values.Has("branch") {
 		return q, fmt.Errorf("unsupported location option")
@@ -69,7 +69,7 @@ func ParseQuery(values url.Values) (Query, error) {
 		}
 	}
 	switch q.LocationGroup {
-	case db.RepoGroupRepository, db.RepoGroupDirectory:
+	case querymodel.RepoGroupRepository, querymodel.RepoGroupDirectory:
 	default:
 		return q, fmt.Errorf("invalid locationGroup")
 	}
@@ -163,7 +163,7 @@ type Dashboard struct {
 	RowCount      int
 	Page          int
 	PageSize      int
-	Summary       db.ViewerSummaryRow
+	Summary       querymodel.ViewerSummaryRow
 	LastSynced    int64
 	Range         string
 }

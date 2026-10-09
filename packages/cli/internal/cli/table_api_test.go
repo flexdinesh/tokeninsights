@@ -16,11 +16,11 @@ import (
 func TestReloadCancelsObsoleteSameSelectionAndRejectsLateError(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		if r.URL.Path == "/api/v1/instance" {
-			_ = json.NewEncoder(w).Encode(api.InstanceResponse{ApiVersion: api.V1, InstanceId: "instance", DataEpoch: "epoch", DataReadiness: api.InstanceResponseDataReadinessReady, Hostname: "producer", Timezone: "UTC +00:00"})
+		if r.URL.Path == "/api/v2/instance" {
+			_ = json.NewEncoder(w).Encode(api.InstanceResponseV2{DatasetId: "default", ServerKind: "personal", Capabilities: []string{"usage", "facets"}, Permissions: []api.InstanceResponseV2Permissions{"read"}, ApiVersion: api.V2, InstanceId: "instance", DataEpoch: "epoch", DataReadiness: api.InstanceResponseV2DataReadinessReady, Hostname: "producer", Timezone: "UTC +00:00"})
 			return
 		}
-		_ = json.NewEncoder(w).Encode(api.UsageResponse{InstanceId: "instance", DataEpoch: "epoch", Revision: 1, Page: 1, PageSize: 200, RowCount: 1, Rows: []api.UsageRow{{Key: "one", Name: "2026-01-01", Total: 42}}, Summary: api.UsageSummary{Total: 42, Sessions: 1, SyncedSessions: 1}})
+		_ = json.NewEncoder(w).Encode(api.UsageResponseV2{DatasetId: "default", InstanceId: "instance", DataEpoch: "epoch", Revision: 1, Page: 1, PageSize: 200, RowCount: 1, Rows: []api.UsageRow{{Key: "one", Name: "2026-01-01", Total: 42}}, Summary: api.UsageSummary{Total: 42, Sessions: 1, SyncedSessions: 1}})
 	}))
 	defer server.Close()
 	m := newInteractiveModel(t.Context(), tableOptions{serverURL: server.URL, dbPath: "/unusable/local/path", period: periodAllTime, bucket: bucketDay}, time.Now(), "unknown")
@@ -90,10 +90,7 @@ func TestLocationFacetsUseRepoAPIAndInactiveFiltersDoNotHideOtherTabs(t *testing
 	defer func() { _ = database.Close() }()
 	now := time.Now()
 	insertLoadRowsCanonicalToken(t, database, now.UnixMilli(), "pi", "located", "provider-one", "model-one")
-	if _, err := database.Exec(`INSERT INTO usage_locations (semantic_key,directory_key,directory_name,repository_key,repository_name) VALUES ('fixture-location','fixture-directory','fixture/dir','fixture-repository','fixture-repo')`); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := database.Exec(`UPDATE canonical_token_usage SET location_id=(SELECT id FROM usage_locations WHERE semantic_key='fixture-location')`); err != nil {
+	if _, err := database.Exec("UPDATE analytics.facts SET directory_key='fixture-directory',directory_name='fixture/dir',repository_key='fixture-repository',repository_name='fixture-repo'"); err != nil {
 		t.Fatal(err)
 	}
 	insertLoadRowsCanonicalToken(t, database, now.Add(time.Second).UnixMilli(), "codex", "unlocated", "provider-two", "model-two")

@@ -9,21 +9,6 @@ import (
 	"github.com/oapi-codegen/runtime"
 )
 
-// Defines values for ApiVersion.
-const (
-	V1 ApiVersion = "v1"
-)
-
-// Valid indicates whether the value is a known member of the ApiVersion enum.
-func (e ApiVersion) Valid() bool {
-	switch e {
-	case V1:
-		return true
-	default:
-		return false
-	}
-}
-
 // Defines values for Bucket.
 const (
 	BucketDay   Bucket = "day"
@@ -42,27 +27,6 @@ func (e Bucket) Valid() bool {
 	case BucketWeek:
 		return true
 	case BucketYear:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for Capability.
-const (
-	Facets    Capability = "facets"
-	Ingestion Capability = "ingestion"
-	Usage     Capability = "usage"
-)
-
-// Valid indicates whether the value is a known member of the Capability enum.
-func (e Capability) Valid() bool {
-	switch e {
-	case Facets:
-		return true
-	case Ingestion:
-		return true
-	case Usage:
 		return true
 	default:
 		return false
@@ -255,171 +219,6 @@ func (e Harness) Valid() bool {
 	}
 }
 
-// Defines values for HarnessSyncStatus.
-const (
-	HarnessSyncStatusDiscovering HarnessSyncStatus = "discovering"
-	HarnessSyncStatusFailed      HarnessSyncStatus = "failed"
-	HarnessSyncStatusNormalizing HarnessSyncStatus = "normalizing"
-	HarnessSyncStatusPending     HarnessSyncStatus = "pending"
-	HarnessSyncStatusSkipped     HarnessSyncStatus = "skipped"
-	HarnessSyncStatusSynced      HarnessSyncStatus = "synced"
-	HarnessSyncStatusSyncing     HarnessSyncStatus = "syncing"
-)
-
-// Valid indicates whether the value is a known member of the HarnessSyncStatus enum.
-func (e HarnessSyncStatus) Valid() bool {
-	switch e {
-	case HarnessSyncStatusDiscovering:
-		return true
-	case HarnessSyncStatusFailed:
-		return true
-	case HarnessSyncStatusNormalizing:
-		return true
-	case HarnessSyncStatusPending:
-		return true
-	case HarnessSyncStatusSkipped:
-		return true
-	case HarnessSyncStatusSynced:
-		return true
-	case HarnessSyncStatusSyncing:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for IngestionCapabilitiesIdentityVersion.
-const (
-	IngestionCapabilitiesIdentityVersionN1 IngestionCapabilitiesIdentityVersion = 1
-)
-
-// Valid indicates whether the value is a known member of the IngestionCapabilitiesIdentityVersion enum.
-func (e IngestionCapabilitiesIdentityVersion) Valid() bool {
-	switch e {
-	case IngestionCapabilitiesIdentityVersionN1:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for IngestionCapabilitiesMaxBodyBytes.
-const (
-	IngestionCapabilitiesMaxBodyBytesN1048576e06 IngestionCapabilitiesMaxBodyBytes = 1.048576e+06
-)
-
-// Valid indicates whether the value is a known member of the IngestionCapabilitiesMaxBodyBytes enum.
-func (e IngestionCapabilitiesMaxBodyBytes) Valid() bool {
-	switch e {
-	case IngestionCapabilitiesMaxBodyBytesN1048576e06:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for IngestionCapabilitiesMaxEntries.
-const (
-	IngestionCapabilitiesMaxEntriesN256 IngestionCapabilitiesMaxEntries = 256
-)
-
-// Valid indicates whether the value is a known member of the IngestionCapabilitiesMaxEntries enum.
-func (e IngestionCapabilitiesMaxEntries) Valid() bool {
-	switch e {
-	case IngestionCapabilitiesMaxEntriesN256:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for IngestionCapabilitiesMaxInteger.
-const (
-	N9007199254740991e15 IngestionCapabilitiesMaxInteger = 9.007199254740991e+15
-)
-
-// Valid indicates whether the value is a known member of the IngestionCapabilitiesMaxInteger enum.
-func (e IngestionCapabilitiesMaxInteger) Valid() bool {
-	switch e {
-	case N9007199254740991e15:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for IngestionCapabilitiesMaxStringBytes.
-const (
-	IngestionCapabilitiesMaxStringBytesN256 IngestionCapabilitiesMaxStringBytes = 256
-)
-
-// Valid indicates whether the value is a known member of the IngestionCapabilitiesMaxStringBytes enum.
-func (e IngestionCapabilitiesMaxStringBytes) Valid() bool {
-	switch e {
-	case IngestionCapabilitiesMaxStringBytesN256:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for IngestionCapabilitiesProtocolVersion.
-const (
-	IngestionCapabilitiesProtocolVersionN1 IngestionCapabilitiesProtocolVersion = 1
-)
-
-// Valid indicates whether the value is a known member of the IngestionCapabilitiesProtocolVersion enum.
-func (e IngestionCapabilitiesProtocolVersion) Valid() bool {
-	switch e {
-	case IngestionCapabilitiesProtocolVersionN1:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for IngestionCapabilitiesSemanticsVersion.
-const (
-	IngestionCapabilitiesSemanticsVersionN1 IngestionCapabilitiesSemanticsVersion = 1
-)
-
-// Valid indicates whether the value is a known member of the IngestionCapabilitiesSemanticsVersion enum.
-func (e IngestionCapabilitiesSemanticsVersion) Valid() bool {
-	switch e {
-	case IngestionCapabilitiesSemanticsVersionN1:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for InstanceResponseDataReadiness.
-const (
-	InstanceResponseDataReadinessMetadata    InstanceResponseDataReadiness = "metadata"
-	InstanceResponseDataReadinessReady       InstanceResponseDataReadiness = "ready"
-	InstanceResponseDataReadinessRebuild     InstanceResponseDataReadiness = "rebuild"
-	InstanceResponseDataReadinessRecovery    InstanceResponseDataReadiness = "recovery"
-	InstanceResponseDataReadinessUnavailable InstanceResponseDataReadiness = "unavailable"
-)
-
-// Valid indicates whether the value is a known member of the InstanceResponseDataReadiness enum.
-func (e InstanceResponseDataReadiness) Valid() bool {
-	switch e {
-	case InstanceResponseDataReadinessMetadata:
-		return true
-	case InstanceResponseDataReadinessReady:
-		return true
-	case InstanceResponseDataReadinessRebuild:
-		return true
-	case InstanceResponseDataReadinessRecovery:
-		return true
-	case InstanceResponseDataReadinessUnavailable:
-		return true
-	default:
-		return false
-	}
-}
-
 // Defines values for InstanceResponseV2ApiVersion.
 const (
 	V2 InstanceResponseV2ApiVersion = "v2"
@@ -546,153 +345,6 @@ func (e Period) Valid() bool {
 	}
 }
 
-// Defines values for PublicationBatchIdentityVersion.
-const (
-	PublicationBatchIdentityVersionN1 PublicationBatchIdentityVersion = 1
-)
-
-// Valid indicates whether the value is a known member of the PublicationBatchIdentityVersion enum.
-func (e PublicationBatchIdentityVersion) Valid() bool {
-	switch e {
-	case PublicationBatchIdentityVersionN1:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for PublicationBatchProtocolVersion.
-const (
-	PublicationBatchProtocolVersionN1 PublicationBatchProtocolVersion = 1
-)
-
-// Valid indicates whether the value is a known member of the PublicationBatchProtocolVersion enum.
-func (e PublicationBatchProtocolVersion) Valid() bool {
-	switch e {
-	case PublicationBatchProtocolVersionN1:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for PublicationBatchSemanticsVersion.
-const (
-	PublicationBatchSemanticsVersionN1 PublicationBatchSemanticsVersion = 1
-)
-
-// Valid indicates whether the value is a known member of the PublicationBatchSemanticsVersion enum.
-func (e PublicationBatchSemanticsVersion) Valid() bool {
-	switch e {
-	case PublicationBatchSemanticsVersionN1:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for PublicationFactProviderSource.
-const (
-	Explicit PublicationFactProviderSource = "explicit"
-	Inferred PublicationFactProviderSource = "inferred"
-	Unknown  PublicationFactProviderSource = "unknown"
-)
-
-// Valid indicates whether the value is a known member of the PublicationFactProviderSource enum.
-func (e PublicationFactProviderSource) Valid() bool {
-	switch e {
-	case Explicit:
-		return true
-	case Inferred:
-		return true
-	case Unknown:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for PublicationFactQuality.
-const (
-	PublicationFactQualityDerived   PublicationFactQuality = "derived"
-	PublicationFactQualityEstimated PublicationFactQuality = "estimated"
-	PublicationFactQualityExact     PublicationFactQuality = "exact"
-)
-
-// Valid indicates whether the value is a known member of the PublicationFactQuality enum.
-func (e PublicationFactQuality) Valid() bool {
-	switch e {
-	case PublicationFactQualityDerived:
-		return true
-	case PublicationFactQualityEstimated:
-		return true
-	case PublicationFactQualityExact:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for PublicationFactUsageScope.
-const (
-	Message PublicationFactUsageScope = "message"
-)
-
-// Valid indicates whether the value is a known member of the PublicationFactUsageScope enum.
-func (e PublicationFactUsageScope) Valid() bool {
-	switch e {
-	case Message:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for PublicationRevisionRule.
-const (
-	ClaudeSourceTimestampV1 PublicationRevisionRule = "claude-source-timestamp-v1"
-)
-
-// Valid indicates whether the value is a known member of the PublicationRevisionRule enum.
-func (e PublicationRevisionRule) Valid() bool {
-	switch e {
-	case ClaudeSourceTimestampV1:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for RawBatchExtractorVersion.
-const (
-	RawBatchExtractorVersionN1 RawBatchExtractorVersion = 1
-)
-
-// Valid indicates whether the value is a known member of the RawBatchExtractorVersion enum.
-func (e RawBatchExtractorVersion) Valid() bool {
-	switch e {
-	case RawBatchExtractorVersionN1:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for RawBatchProtocolVersion.
-const (
-	RawBatchProtocolVersionN2 RawBatchProtocolVersion = 2
-)
-
-// Valid indicates whether the value is a known member of the RawBatchProtocolVersion enum.
-func (e RawBatchProtocolVersion) Valid() bool {
-	switch e {
-	case RawBatchProtocolVersionN2:
-		return true
-	default:
-		return false
-	}
-}
-
 // Defines values for RawBatchV3ExtractorVersion.
 const (
 	RawBatchV3ExtractorVersionN1 RawBatchV3ExtractorVersion = 1
@@ -723,105 +375,15 @@ func (e RawBatchV3ProtocolVersion) Valid() bool {
 	}
 }
 
-// Defines values for RawCapabilitiesCompletion.
-const (
-	RawCapabilitiesCompletionAcceptance RawCapabilitiesCompletion = "acceptance"
-)
-
-// Valid indicates whether the value is a known member of the RawCapabilitiesCompletion enum.
-func (e RawCapabilitiesCompletion) Valid() bool {
-	switch e {
-	case RawCapabilitiesCompletionAcceptance:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for RawCapabilitiesDatasetId.
-const (
-	RawCapabilitiesDatasetIdDefault RawCapabilitiesDatasetId = "default"
-)
-
-// Valid indicates whether the value is a known member of the RawCapabilitiesDatasetId enum.
-func (e RawCapabilitiesDatasetId) Valid() bool {
-	switch e {
-	case RawCapabilitiesDatasetIdDefault:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for RawCapabilitiesExtractorVersion.
-const (
-	RawCapabilitiesExtractorVersionN1 RawCapabilitiesExtractorVersion = 1
-)
-
-// Valid indicates whether the value is a known member of the RawCapabilitiesExtractorVersion enum.
-func (e RawCapabilitiesExtractorVersion) Valid() bool {
-	switch e {
-	case RawCapabilitiesExtractorVersionN1:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for RawCapabilitiesMaxBodyBytes.
-const (
-	RawCapabilitiesMaxBodyBytesN1048576e06 RawCapabilitiesMaxBodyBytes = 1.048576e+06
-)
-
-// Valid indicates whether the value is a known member of the RawCapabilitiesMaxBodyBytes enum.
-func (e RawCapabilitiesMaxBodyBytes) Valid() bool {
-	switch e {
-	case RawCapabilitiesMaxBodyBytesN1048576e06:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for RawCapabilitiesMaxEntries.
-const (
-	RawCapabilitiesMaxEntriesN256 RawCapabilitiesMaxEntries = 256
-)
-
-// Valid indicates whether the value is a known member of the RawCapabilitiesMaxEntries enum.
-func (e RawCapabilitiesMaxEntries) Valid() bool {
-	switch e {
-	case RawCapabilitiesMaxEntriesN256:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for RawCapabilitiesProtocolVersion.
-const (
-	RawCapabilitiesProtocolVersionN2 RawCapabilitiesProtocolVersion = 2
-)
-
-// Valid indicates whether the value is a known member of the RawCapabilitiesProtocolVersion enum.
-func (e RawCapabilitiesProtocolVersion) Valid() bool {
-	switch e {
-	case RawCapabilitiesProtocolVersionN2:
-		return true
-	default:
-		return false
-	}
-}
-
 // Defines values for RawCapabilitiesV3Completion.
 const (
-	RawCapabilitiesV3CompletionAcceptance RawCapabilitiesV3Completion = "acceptance"
+	Acceptance RawCapabilitiesV3Completion = "acceptance"
 )
 
 // Valid indicates whether the value is a known member of the RawCapabilitiesV3Completion enum.
 func (e RawCapabilitiesV3Completion) Valid() bool {
 	switch e {
-	case RawCapabilitiesV3CompletionAcceptance:
+	case Acceptance:
 		return true
 	default:
 		return false
@@ -845,13 +407,13 @@ func (e RawCapabilitiesV3ExtractorVersion) Valid() bool {
 
 // Defines values for RawCapabilitiesV3MaxBodyBytes.
 const (
-	RawCapabilitiesV3MaxBodyBytesN1048576e06 RawCapabilitiesV3MaxBodyBytes = 1.048576e+06
+	N1048576e06 RawCapabilitiesV3MaxBodyBytes = 1.048576e+06
 )
 
 // Valid indicates whether the value is a known member of the RawCapabilitiesV3MaxBodyBytes enum.
 func (e RawCapabilitiesV3MaxBodyBytes) Valid() bool {
 	switch e {
-	case RawCapabilitiesV3MaxBodyBytesN1048576e06:
+	case N1048576e06:
 		return true
 	default:
 		return false
@@ -860,13 +422,13 @@ func (e RawCapabilitiesV3MaxBodyBytes) Valid() bool {
 
 // Defines values for RawCapabilitiesV3MaxEntries.
 const (
-	RawCapabilitiesV3MaxEntriesN256 RawCapabilitiesV3MaxEntries = 256
+	N256 RawCapabilitiesV3MaxEntries = 256
 )
 
 // Valid indicates whether the value is a known member of the RawCapabilitiesV3MaxEntries enum.
 func (e RawCapabilitiesV3MaxEntries) Valid() bool {
 	switch e {
-	case RawCapabilitiesV3MaxEntriesN256:
+	case N256:
 		return true
 	default:
 		return false
@@ -882,21 +444,6 @@ const (
 func (e RawCapabilitiesV3ProtocolVersion) Valid() bool {
 	switch e {
 	case RawCapabilitiesV3ProtocolVersionN3:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for RawReceiptDatasetId.
-const (
-	RawReceiptDatasetIdDefault RawReceiptDatasetId = "default"
-)
-
-// Valid indicates whether the value is a known member of the RawReceiptDatasetId enum.
-func (e RawReceiptDatasetId) Valid() bool {
-	switch e {
-	case RawReceiptDatasetIdDefault:
 		return true
 	default:
 		return false
@@ -1041,60 +588,18 @@ func (e StatusResponseV2DataReadiness) Valid() bool {
 	}
 }
 
-// Defines values for SyncPhase.
-const (
-	SyncPhaseReady SyncPhase = "ready"
-)
-
-// Valid indicates whether the value is a known member of the SyncPhase enum.
-func (e SyncPhase) Valid() bool {
-	switch e {
-	case SyncPhaseReady:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for SyncResponseDataReadiness.
-const (
-	SyncResponseDataReadinessMetadata    SyncResponseDataReadiness = "metadata"
-	SyncResponseDataReadinessReady       SyncResponseDataReadiness = "ready"
-	SyncResponseDataReadinessRebuild     SyncResponseDataReadiness = "rebuild"
-	SyncResponseDataReadinessRecovery    SyncResponseDataReadiness = "recovery"
-	SyncResponseDataReadinessUnavailable SyncResponseDataReadiness = "unavailable"
-)
-
-// Valid indicates whether the value is a known member of the SyncResponseDataReadiness enum.
-func (e SyncResponseDataReadiness) Valid() bool {
-	switch e {
-	case SyncResponseDataReadinessMetadata:
-		return true
-	case SyncResponseDataReadinessReady:
-		return true
-	case SyncResponseDataReadinessRebuild:
-		return true
-	case SyncResponseDataReadinessRecovery:
-		return true
-	case SyncResponseDataReadinessUnavailable:
-		return true
-	default:
-		return false
-	}
-}
-
 // Defines values for UsageQuality.
 const (
-	UsageQualityConfirmed UsageQuality = "confirmed"
-	UsageQualityEstimated UsageQuality = "estimated"
+	Confirmed UsageQuality = "confirmed"
+	Estimated UsageQuality = "estimated"
 )
 
 // Valid indicates whether the value is a known member of the UsageQuality enum.
 func (e UsageQuality) Valid() bool {
 	switch e {
-	case UsageQualityConfirmed:
+	case Confirmed:
 		return true
-	case UsageQualityEstimated:
+	case Estimated:
 		return true
 	default:
 		return false
@@ -1134,9 +639,6 @@ func (e UsageTab) Valid() bool {
 	}
 }
 
-// ApiVersion defines model for ApiVersion.
-type ApiVersion string
-
 // BrowserSessionRequest defines model for BrowserSessionRequest.
 type BrowserSessionRequest struct {
 	Token string `json:"token"`
@@ -1144,9 +646,6 @@ type BrowserSessionRequest struct {
 
 // Bucket defines model for Bucket.
 type Bucket string
-
-// Capability defines model for Capability.
-type Capability string
 
 // CollectorAttempt defines model for CollectorAttempt.
 type CollectorAttempt struct {
@@ -1218,43 +717,6 @@ type ExtractionDiagnostic string
 // Harness defines model for Harness.
 type Harness string
 
-// HarnessSyncStatus defines model for HarnessSyncStatus.
-type HarnessSyncStatus string
-
-// IngestionCapabilities defines model for IngestionCapabilities.
-type IngestionCapabilities struct {
-	// DatabaseId At most 256 UTF-8 bytes; no control characters.
-	DatabaseId       string                                `json:"databaseId"`
-	IdentityVersion  IngestionCapabilitiesIdentityVersion  `json:"identityVersion"`
-	MaxBodyBytes     IngestionCapabilitiesMaxBodyBytes     `json:"maxBodyBytes"`
-	MaxEntries       IngestionCapabilitiesMaxEntries       `json:"maxEntries"`
-	MaxInteger       IngestionCapabilitiesMaxInteger       `json:"maxInteger"`
-	MaxStringBytes   IngestionCapabilitiesMaxStringBytes   `json:"maxStringBytes"`
-	ProtocolVersion  IngestionCapabilitiesProtocolVersion  `json:"protocolVersion"`
-	SemanticsVersion IngestionCapabilitiesSemanticsVersion `json:"semanticsVersion"`
-}
-
-// IngestionCapabilitiesIdentityVersion defines model for IngestionCapabilities.IdentityVersion.
-type IngestionCapabilitiesIdentityVersion int
-
-// IngestionCapabilitiesMaxBodyBytes defines model for IngestionCapabilities.MaxBodyBytes.
-type IngestionCapabilitiesMaxBodyBytes int
-
-// IngestionCapabilitiesMaxEntries defines model for IngestionCapabilities.MaxEntries.
-type IngestionCapabilitiesMaxEntries int
-
-// IngestionCapabilitiesMaxInteger defines model for IngestionCapabilities.MaxInteger.
-type IngestionCapabilitiesMaxInteger int64
-
-// IngestionCapabilitiesMaxStringBytes defines model for IngestionCapabilities.MaxStringBytes.
-type IngestionCapabilitiesMaxStringBytes int
-
-// IngestionCapabilitiesProtocolVersion defines model for IngestionCapabilities.ProtocolVersion.
-type IngestionCapabilitiesProtocolVersion int
-
-// IngestionCapabilitiesSemanticsVersion defines model for IngestionCapabilities.SemanticsVersion.
-type IngestionCapabilitiesSemanticsVersion int
-
 // IngestionError Safe diagnostic codes and correlation IDs; request content is never echoed.
 type IngestionError struct {
 	// BatchId At most 256 UTF-8 bytes; no control characters.
@@ -1269,50 +731,6 @@ type IngestionError struct {
 	// Stage At most 256 UTF-8 bytes; no control characters.
 	Stage string `json:"stage"`
 }
-
-// IngestionReceipt Acknowledges the exact request hash after facts and receipt commit atomically. Counts sum to batch entry count. Exact batch replay returns the original receipt.
-type IngestionReceipt struct {
-	// BatchId At most 256 UTF-8 bytes; no control characters.
-	BatchId       string `json:"batchId"`
-	CommittedAtMs int64  `json:"committedAtMs"`
-
-	// DatabaseId At most 256 UTF-8 bytes; no control characters.
-	DatabaseId   string `json:"databaseId"`
-	FromSequence int64  `json:"fromSequence"`
-	Inserted     int64  `json:"inserted"`
-	Noop         int64  `json:"noop"`
-
-	// RequestHash At most 256 UTF-8 bytes; no control characters.
-	RequestHash string `json:"requestHash"`
-	Revision    int64  `json:"revision"`
-
-	// StreamId At most 256 UTF-8 bytes; no control characters.
-	StreamId   string `json:"streamId"`
-	ToSequence int64  `json:"toSequence"`
-	Updated    int64  `json:"updated"`
-}
-
-// InstanceResponse defines model for InstanceResponse.
-type InstanceResponse struct {
-	ApiVersion   ApiVersion   `json:"apiVersion"`
-	Capabilities []Capability `json:"capabilities"`
-
-	// DataEpoch Durable database identity; nonempty when dataReadiness is ready.
-	DataEpoch     string                        `json:"dataEpoch"`
-	DataReadiness InstanceResponseDataReadiness `json:"dataReadiness"`
-	Defaults      Selection                     `json:"defaults"`
-
-	// Hostname Local viewers report their runtime hostname without requiring ingestion. Hosted servers reserve this field for dataset producer labels and return unknown when unavailable. Hosted server runtime hostnames never replace producer labels.
-	Hostname      string `json:"hostname"`
-	InstanceId    string `json:"instanceId"`
-	ServerVersion string `json:"serverVersion"`
-
-	// Timezone Server reporting timezone, preferably an IANA name with historical DST rules. Unnamed system zones use an explicit UTC offset fallback.
-	Timezone string `json:"timezone"`
-}
-
-// InstanceResponseDataReadiness defines model for InstanceResponse.DataReadiness.
-type InstanceResponseDataReadiness string
 
 // InstanceResponseV2 defines model for InstanceResponseV2.
 type InstanceResponseV2 struct {
@@ -1384,177 +802,11 @@ type ProcessingStatus struct {
 	Pending       Count             `json:"pending"`
 }
 
-// PublicationBatch Immutable request bytes, at most 1 MiB. Entries form the contiguous inclusive sequence range. Database identity is obtained from capabilities. Unknown fields, duplicate JSON keys, null values, and non-integer numbers are rejected.
-type PublicationBatch struct {
-	// BatchId At most 256 UTF-8 bytes; no control characters.
-	BatchId string `json:"batchId"`
-
-	// DatabaseId At most 256 UTF-8 bytes; no control characters.
-	DatabaseId   string             `json:"databaseId"`
-	Entries      []PublicationEntry `json:"entries"`
-	FromSequence int64              `json:"fromSequence"`
-
-	// Hostname At most 256 UTF-8 bytes; no control characters.
-	Hostname         *string                          `json:"hostname,omitempty"`
-	IdentityVersion  PublicationBatchIdentityVersion  `json:"identityVersion"`
-	ProtocolVersion  PublicationBatchProtocolVersion  `json:"protocolVersion"`
-	SemanticsVersion PublicationBatchSemanticsVersion `json:"semanticsVersion"`
-
-	// StreamId At most 256 UTF-8 bytes; no control characters.
-	StreamId   string `json:"streamId"`
-	ToSequence int64  `json:"toSequence"`
-}
-
-// PublicationBatchIdentityVersion defines model for PublicationBatch.IdentityVersion.
-type PublicationBatchIdentityVersion int
-
-// PublicationBatchProtocolVersion defines model for PublicationBatch.ProtocolVersion.
-type PublicationBatchProtocolVersion int
-
-// PublicationBatchSemanticsVersion defines model for PublicationBatch.SemanticsVersion.
-type PublicationBatchSemanticsVersion int
-
-// PublicationEntry defines model for PublicationEntry.
-type PublicationEntry struct {
-	// Fact IDs are recomputed from native identity tuples. A native message or request ID is required. Total equals the five token components. Session bounds include fact occurrence. Reference envelopes may merge; immutable payload changes conflict unless a supported source revision applies.
-	Fact     PublicationFact `json:"fact"`
-	Sequence int64           `json:"sequence"`
-}
-
-// PublicationFact IDs are recomputed from native identity tuples. A native message or request ID is required. Total equals the five token components. Session bounds include fact occurrence. Reference envelopes may merge; immutable payload changes conflict unless a supported source revision applies.
-type PublicationFact struct {
-	CacheReadTokens  int64   `json:"cacheReadTokens"`
-	CacheWriteTokens int64   `json:"cacheWriteTokens"`
-	Countable        bool    `json:"countable"`
-	Harness          Harness `json:"harness"`
-
-	// Id At most 256 UTF-8 bytes; no control characters.
-	Id          string               `json:"id"`
-	InputTokens int64                `json:"inputTokens"`
-	Location    *PublicationLocation `json:"location,omitempty"`
-	Message     *PublicationMessage  `json:"message,omitempty"`
-
-	// Model At most 256 UTF-8 bytes; no control characters.
-	Model string `json:"model"`
-
-	// NativeRequestId At most 256 UTF-8 bytes; no control characters.
-	NativeRequestId *string `json:"nativeRequestId,omitempty"`
-
-	// OccurredAtMs Unix milliseconds through 9999-12-30T23:59:59.999Z. One day of headroom preserves calendar query support after timezone conversion. Source units are never guessed or rescaled.
-	OccurredAtMs TimestampMs `json:"occurredAtMs"`
-	OutputTokens int64       `json:"outputTokens"`
-
-	// Provider At most 256 UTF-8 bytes; no control characters.
-	Provider        string                        `json:"provider"`
-	ProviderSource  PublicationFactProviderSource `json:"providerSource"`
-	Quality         PublicationFactQuality        `json:"quality"`
-	ReasoningTokens int64                         `json:"reasoningTokens"`
-
-	// Revision Only Claude Code facts with native request and message IDs can carry this source timestamp revision; value equals occurredAtMs.
-	Revision    *PublicationRevision      `json:"revision,omitempty"`
-	Session     PublicationSession        `json:"session"`
-	TotalTokens int64                     `json:"totalTokens"`
-	UsageScope  PublicationFactUsageScope `json:"usageScope"`
-}
-
-// PublicationFactProviderSource defines model for PublicationFact.ProviderSource.
-type PublicationFactProviderSource string
-
-// PublicationFactQuality defines model for PublicationFact.Quality.
-type PublicationFactQuality string
-
-// PublicationFactUsageScope defines model for PublicationFact.UsageScope.
-type PublicationFactUsageScope string
-
-// PublicationLocation defines model for PublicationLocation.
-type PublicationLocation struct {
-	// DirectoryKey At most 256 UTF-8 bytes; no control characters.
-	DirectoryKey *string `json:"directoryKey,omitempty"`
-
-	// DirectoryName Sanitized basename label, at most 256 UTF-8 bytes; no path separators or control characters.
-	DirectoryName *string `json:"directoryName,omitempty"`
-
-	// Id At most 256 UTF-8 bytes; no control characters.
-	Id string `json:"id"`
-
-	// RepositoryKey At most 256 UTF-8 bytes; no control characters.
-	RepositoryKey *string `json:"repositoryKey,omitempty"`
-
-	// RepositoryName Sanitized basename label, at most 256 UTF-8 bytes; no path separators or control characters.
-	RepositoryName *string `json:"repositoryName,omitempty"`
-
-	// RepositorySource At most 256 UTF-8 bytes; no control characters.
-	RepositorySource *string `json:"repositorySource,omitempty"`
-}
-
-// PublicationMessage defines model for PublicationMessage.
-type PublicationMessage struct {
-	// Id At most 256 UTF-8 bytes; no control characters.
-	Id string `json:"id"`
-
-	// NativeId At most 256 UTF-8 bytes; no control characters.
-	NativeId string `json:"nativeId"`
-
-	// OccurredAtMs Unix milliseconds through 9999-12-30T23:59:59.999Z. One day of headroom preserves calendar query support after timezone conversion. Source units are never guessed or rescaled.
-	OccurredAtMs TimestampMs `json:"occurredAtMs"`
-}
-
-// PublicationRevision Only Claude Code facts with native request and message IDs can carry this source timestamp revision; value equals occurredAtMs.
-type PublicationRevision struct {
-	Rule PublicationRevisionRule `json:"rule"`
-
-	// Value Unix milliseconds through 9999-12-30T23:59:59.999Z. One day of headroom preserves calendar query support after timezone conversion. Source units are never guessed or rescaled.
-	Value TimestampMs `json:"value"`
-}
-
-// PublicationRevisionRule defines model for PublicationRevision.Rule.
-type PublicationRevisionRule string
-
-// PublicationSession defines model for PublicationSession.
-type PublicationSession struct {
-	// FirstOccurredAtMs Unix milliseconds through 9999-12-30T23:59:59.999Z. One day of headroom preserves calendar query support after timezone conversion. Source units are never guessed or rescaled.
-	FirstOccurredAtMs TimestampMs `json:"firstOccurredAtMs"`
-	Harness           Harness     `json:"harness"`
-
-	// Id At most 256 UTF-8 bytes; no control characters.
-	Id string `json:"id"`
-
-	// LastOccurredAtMs Unix milliseconds through 9999-12-30T23:59:59.999Z. One day of headroom preserves calendar query support after timezone conversion. Source units are never guessed or rescaled.
-	LastOccurredAtMs TimestampMs `json:"lastOccurredAtMs"`
-
-	// NativeId At most 256 UTF-8 bytes; no control characters.
-	NativeId string `json:"nativeId"`
-}
-
-// RawAcceptance defines model for RawAcceptance.
-type RawAcceptance struct {
-	Processing ProcessingStatus `json:"processing"`
-	Receipt    RawReceipt       `json:"receipt"`
-}
-
 // RawAcceptanceV3 defines model for RawAcceptanceV3.
 type RawAcceptanceV3 struct {
 	Processing ProcessingStatus `json:"processing"`
 	Receipt    RawReceiptV3     `json:"receipt"`
 }
-
-// RawBatch defines model for RawBatch.
-type RawBatch struct {
-	BatchId          string                   `json:"batchId"`
-	DatabaseId       string                   `json:"databaseId"`
-	Entries          []RawEntry               `json:"entries"`
-	ExtractorVersion RawBatchExtractorVersion `json:"extractorVersion"`
-	FromSequence     Count                    `json:"fromSequence"`
-	ProtocolVersion  RawBatchProtocolVersion  `json:"protocolVersion"`
-	StreamId         string                   `json:"streamId"`
-	ToSequence       Count                    `json:"toSequence"`
-}
-
-// RawBatchExtractorVersion defines model for RawBatch.ExtractorVersion.
-type RawBatchExtractorVersion int
-
-// RawBatchProtocolVersion defines model for RawBatch.ProtocolVersion.
-type RawBatchProtocolVersion int
 
 // RawBatchV3 defines model for RawBatchV3.
 type RawBatchV3 struct {
@@ -1574,35 +826,6 @@ type RawBatchV3ExtractorVersion int
 
 // RawBatchV3ProtocolVersion defines model for RawBatchV3.ProtocolVersion.
 type RawBatchV3ProtocolVersion int
-
-// RawCapabilities defines model for RawCapabilities.
-type RawCapabilities struct {
-	Completion       RawCapabilitiesCompletion       `json:"completion"`
-	DatabaseId       string                          `json:"databaseId"`
-	DatasetId        RawCapabilitiesDatasetId        `json:"datasetId"`
-	ExtractorVersion RawCapabilitiesExtractorVersion `json:"extractorVersion"`
-	MaxBodyBytes     RawCapabilitiesMaxBodyBytes     `json:"maxBodyBytes"`
-	MaxEntries       RawCapabilitiesMaxEntries       `json:"maxEntries"`
-	ProtocolVersion  RawCapabilitiesProtocolVersion  `json:"protocolVersion"`
-}
-
-// RawCapabilitiesCompletion defines model for RawCapabilities.Completion.
-type RawCapabilitiesCompletion string
-
-// RawCapabilitiesDatasetId defines model for RawCapabilities.DatasetId.
-type RawCapabilitiesDatasetId string
-
-// RawCapabilitiesExtractorVersion defines model for RawCapabilities.ExtractorVersion.
-type RawCapabilitiesExtractorVersion int
-
-// RawCapabilitiesMaxBodyBytes defines model for RawCapabilities.MaxBodyBytes.
-type RawCapabilitiesMaxBodyBytes int
-
-// RawCapabilitiesMaxEntries defines model for RawCapabilities.MaxEntries.
-type RawCapabilitiesMaxEntries int
-
-// RawCapabilitiesProtocolVersion defines model for RawCapabilities.ProtocolVersion.
-type RawCapabilitiesProtocolVersion int
 
 // RawCapabilitiesV3 defines model for RawCapabilitiesV3.
 type RawCapabilitiesV3 struct {
@@ -1652,25 +875,6 @@ type RawLocation struct {
 	RepositoryName   *string `json:"repositoryName,omitempty"`
 	RepositorySource *string `json:"repositorySource,omitempty"`
 }
-
-// RawReceipt defines model for RawReceipt.
-type RawReceipt struct {
-	Accepted Count `json:"accepted"`
-
-	// AcceptedAtMs Unix milliseconds through 9999-12-30T23:59:59.999Z. One day of headroom preserves calendar query support after timezone conversion. Source units are never guessed or rescaled.
-	AcceptedAtMs  TimestampMs         `json:"acceptedAtMs"`
-	BatchId       string              `json:"batchId"`
-	DatabaseId    string              `json:"databaseId"`
-	DatasetId     RawReceiptDatasetId `json:"datasetId"`
-	FromSequence  Count               `json:"fromSequence"`
-	InputRevision Count               `json:"inputRevision"`
-	RequestHash   string              `json:"requestHash"`
-	StreamId      string              `json:"streamId"`
-	ToSequence    Count               `json:"toSequence"`
-}
-
-// RawReceiptDatasetId defines model for RawReceipt.DatasetId.
-type RawReceiptDatasetId string
 
 // RawReceiptV3 defines model for RawReceiptV3.
 type RawReceiptV3 struct {
@@ -1975,46 +1179,8 @@ type StatusResponseV2 struct {
 // StatusResponseV2DataReadiness defines model for StatusResponseV2.DataReadiness.
 type StatusResponseV2DataReadiness string
 
-// SyncPhase defines model for SyncPhase.
-type SyncPhase string
-
-// SyncResponse defines model for SyncResponse.
-type SyncResponse struct {
-	// DataEpoch Durable database identity; nonempty when dataReadiness is ready.
-	DataEpoch     string                       `json:"dataEpoch"`
-	DataReadiness SyncResponseDataReadiness    `json:"dataReadiness"`
-	Error         string                       `json:"error"`
-	Generation    *Count                       `json:"generation,omitempty"`
-	Harnesses     map[string]HarnessSyncStatus `json:"harnesses"`
-	InputRevision *Count                       `json:"inputRevision,omitempty"`
-	InstanceId    string                       `json:"instanceId"`
-	Pending       *Count                       `json:"pending,omitempty"`
-	Phase         SyncPhase                    `json:"phase"`
-	Revision      Count                        `json:"revision"`
-	Running       bool                         `json:"running"`
-}
-
-// SyncResponseDataReadiness defines model for SyncResponse.DataReadiness.
-type SyncResponseDataReadiness string
-
 // TimestampMs Unix milliseconds through 9999-12-30T23:59:59.999Z. One day of headroom preserves calendar query support after timezone conversion. Source units are never guessed or rescaled.
 type TimestampMs = int64
-
-// UsageFacetsResponse defines model for UsageFacetsResponse.
-type UsageFacetsResponse struct {
-	DataEpoch     string           `json:"dataEpoch"`
-	Directories   []LocationOption `json:"directories"`
-	Generation    *Count           `json:"generation,omitempty"`
-	Harnesses     []Harness        `json:"harnesses"`
-	InputRevision *Count           `json:"inputRevision,omitempty"`
-	InstanceId    string           `json:"instanceId"`
-	Models        []string         `json:"models"`
-	Pending       *Count           `json:"pending,omitempty"`
-	Providers     []string         `json:"providers"`
-	Repositories  []LocationOption `json:"repositories"`
-	Revision      Count            `json:"revision"`
-	Sessions      []string         `json:"sessions"`
-}
 
 // UsageFacetsResponseV2 defines model for UsageFacetsResponseV2.
 type UsageFacetsResponseV2 struct {
@@ -2035,31 +1201,6 @@ type UsageFacetsResponseV2 struct {
 
 // UsageQuality Estimated evidence is queried separately and never included in confirmed totals.
 type UsageQuality string
-
-// UsageResponse defines model for UsageResponse.
-type UsageResponse struct {
-	Chart         []UsageRow `json:"chart"`
-	DataEpoch     string     `json:"dataEpoch"`
-	FactCount     *Count     `json:"factCount,omitempty"`
-	Generation    *Count     `json:"generation,omitempty"`
-	InputRevision *Count     `json:"inputRevision,omitempty"`
-	InstanceId    string     `json:"instanceId"`
-
-	// LastSynced Time of the last committed ingestion, in Unix milliseconds; zero for an empty server.
-	LastSynced Count  `json:"lastSynced"`
-	Page       int    `json:"page"`
-	PageSize   int    `json:"pageSize"`
-	Pending    *Count `json:"pending,omitempty"`
-
-	// Quality Estimated evidence is queried separately and never included in confirmed totals.
-	Quality    *UsageQuality `json:"quality,omitempty"`
-	Range      string        `json:"range"`
-	Revision   Count         `json:"revision"`
-	RowCount   Count         `json:"rowCount"`
-	Rows       []UsageRow    `json:"rows"`
-	Summary    UsageSummary  `json:"summary"`
-	Unresolved *Count        `json:"unresolved,omitempty"`
-}
 
 // UsageResponseV2 defines model for UsageResponseV2.
 type UsageResponseV2 struct {
@@ -2257,96 +1398,8 @@ type GetUsageFacetsParams struct {
 	Quality *QualityFilter `form:"quality,omitempty" json:"quality,omitempty"`
 }
 
-// GetUsageV2Params defines parameters for GetUsageV2.
-type GetUsageV2Params struct {
-	Period *PeriodFilter `form:"period,omitempty" json:"period,omitempty"`
-	Bucket *BucketFilter `form:"bucket,omitempty" json:"bucket,omitempty"`
-
-	// From Inclusive lower local-date bound; replaces period when supplied.
-	From *FromFilter `form:"from,omitempty" json:"from,omitempty"`
-
-	// To Inclusive upper local-date bound; replaces period when supplied.
-	To *ToFilter `form:"to,omitempty" json:"to,omitempty"`
-
-	// Provider Provider filter. Repeat the parameter to select multiple values.
-	Provider *ProviderFilter `form:"provider,omitempty" json:"provider,omitempty"`
-
-	// Model Model filter. Repeat the parameter to select multiple values.
-	Model *ModelFilter `form:"model,omitempty" json:"model,omitempty"`
-
-	// Harness Harness filter. Repeat the parameter to select multiple values.
-	Harness *HarnessFilter `form:"harness,omitempty" json:"harness,omitempty"`
-
-	// Session Session-ID filter. Repeat the parameter to select multiple values.
-	Session *SessionFilter `form:"session,omitempty" json:"session,omitempty"`
-
-	// Repository Repo-tab stable repository key; repeat for multiple values. The key unknown selects missing values.
-	Repository *RepositoryFilter `form:"repository,omitempty" json:"repository,omitempty"`
-
-	// Directory Repo-tab stable directory key; repeat for multiple values. The key unknown selects missing values.
-	Directory *DirectoryFilter `form:"directory,omitempty" json:"directory,omitempty"`
-
-	// Tab Aggregation shown in table and chart rows.
-	Tab *UsageTab `form:"tab,omitempty" json:"tab,omitempty"`
-
-	// LocationGroup Repo-tab grouping by repository or directory.
-	LocationGroup *LocationGroup `form:"locationGroup,omitempty" json:"locationGroup,omitempty"`
-
-	// Sort Sort field. Context-only fields are valid only for the context tab.
-	Sort      *SortField     `form:"sort,omitempty" json:"sort,omitempty"`
-	Direction *SortDirection `form:"direction,omitempty" json:"direction,omitempty"`
-	Page      *int           `form:"page,omitempty" json:"page,omitempty"`
-	PageSize  *int           `form:"pageSize,omitempty" json:"pageSize,omitempty"`
-	Quality   *QualityFilter `form:"quality,omitempty" json:"quality,omitempty"`
-}
-
-// GetUsageFacetsV2Params defines parameters for GetUsageFacetsV2.
-type GetUsageFacetsV2Params struct {
-	Period *PeriodFilter `form:"period,omitempty" json:"period,omitempty"`
-	Bucket *BucketFilter `form:"bucket,omitempty" json:"bucket,omitempty"`
-
-	// From Inclusive lower local-date bound; replaces period when supplied.
-	From *FromFilter `form:"from,omitempty" json:"from,omitempty"`
-
-	// To Inclusive upper local-date bound; replaces period when supplied.
-	To *ToFilter `form:"to,omitempty" json:"to,omitempty"`
-
-	// Provider Provider filter. Repeat the parameter to select multiple values.
-	Provider *ProviderFilter `form:"provider,omitempty" json:"provider,omitempty"`
-
-	// Model Model filter. Repeat the parameter to select multiple values.
-	Model *ModelFilter `form:"model,omitempty" json:"model,omitempty"`
-
-	// Harness Harness filter. Repeat the parameter to select multiple values.
-	Harness *HarnessFilter `form:"harness,omitempty" json:"harness,omitempty"`
-
-	// Session Session-ID filter. Repeat the parameter to select multiple values.
-	Session *SessionFilter `form:"session,omitempty" json:"session,omitempty"`
-
-	// Repository Repo-tab stable repository key; repeat for multiple values. The key unknown selects missing values.
-	Repository *RepositoryFilter `form:"repository,omitempty" json:"repository,omitempty"`
-
-	// Directory Repo-tab stable directory key; repeat for multiple values. The key unknown selects missing values.
-	Directory *DirectoryFilter `form:"directory,omitempty" json:"directory,omitempty"`
-
-	// Search Literal substring used to filter session IDs.
-	Search *string `form:"search,omitempty" json:"search,omitempty"`
-
-	// Tab Active aggregation. Repository/directory filters require the repo tab.
-	Tab     *UsageTab      `form:"tab,omitempty" json:"tab,omitempty"`
-	Quality *QualityFilter `form:"quality,omitempty" json:"quality,omitempty"`
-}
-
-// IngestBatchJSONRequestBody defines body for IngestBatch for application/json ContentType.
-//
-// Deprecated: this type has been marked as deprecated upstream, but no `x-deprecated-reason` was set
-type IngestBatchJSONRequestBody = PublicationBatch
-
 // CreateBrowserSessionJSONRequestBody defines body for CreateBrowserSession for application/json ContentType.
 type CreateBrowserSessionJSONRequestBody = BrowserSessionRequest
-
-// IngestRawBatchJSONRequestBody defines body for IngestRawBatch for application/json ContentType.
-type IngestRawBatchJSONRequestBody = RawBatch
 
 // IngestRawBatchV3JSONRequestBody defines body for IngestRawBatchV3 for application/json ContentType.
 type IngestRawBatchV3JSONRequestBody = RawBatchV3

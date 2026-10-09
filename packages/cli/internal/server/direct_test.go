@@ -50,7 +50,7 @@ func TestDirectCompleteQueryMatchesHTTPPagination(t *testing.T) {
 			break
 		}
 	}
-	direct := server.NewDirectQuery(t.Context(), analytics.DuckDB{Store: store}, "instance")
+	direct := server.NewDirectQuery(analytics.DuckDB{Store: store}, "instance", "")
 	local := queryclient.NewDirect(direct)
 	httpServer := httptest.NewServer(server.NewDataHandler(t.Context(), store, nil, "127.0.0.1", "instance", false))
 	t.Cleanup(httpServer.Close)

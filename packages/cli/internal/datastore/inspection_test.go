@@ -1,6 +1,8 @@
 package datastore
 
 import (
+	"crypto/sha256"
+	"os"
 	"path/filepath"
 	"testing"
 )
@@ -15,6 +17,8 @@ func TestCurrentInspectionRejectsChangedContractsWithoutMutation(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, change := range []struct{ name, sql string }{
+		{"extra table", "CREATE TABLE raw.obsolete (id INTEGER)"},
+		{"view semantics", "CREATE OR REPLACE VIEW analytics.confirmed AS SELECT * FROM analytics.facts"},
 		{"column", "ALTER TABLE raw.evidence ADD COLUMN unexpected VARCHAR"},
 		{"constraint", "ALTER TABLE ingestion.instance ALTER COLUMN created_at_ms DROP NOT NULL"},
 		{"index", "DROP INDEX raw.evidence_scope"},
@@ -68,4 +72,9 @@ func TestConcurrentCurrentInspection(t *testing.T) {
 			}
 		})
 	}
+}
+
+func fileDigest(path string) ([32]byte, error) {
+	body, err := os.ReadFile(path)
+	return sha256.Sum256(body), err
 }

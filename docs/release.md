@@ -55,27 +55,18 @@ The tap repository owns Homebrew-native validation. Its CI should run style, aud
 
 ### Database Compatibility
 
-Collector SQLite schema 18 and server DuckDB schema 2 have distinct roles.
-Verified collector schemas 16/17 upgrade additively, preserving legacy journals,
-saved requests and dataset/protocol bindings. Verified DuckDB-1 upgrades stage
-personal schema-2 data with preserved identities/receipts/components and a
-recoverable previous file. Hosted starts fresh; stored kind mismatches reject. Unsupported/newer/corrupt contracts reject without mutation.
-Former tokeninsights.sqlite stays untouched. Fresh default server.duckdb imports
-verified sibling server.sqlite schema 2 read-only; custom sources use an explicit
-import into a new target. Original history remains until specific replacement
-coverage is proven.
+Collector SQLite 20, DuckDB 3, application SQLite 2 and jobs SQLite 1 have
+distinct roles. Only current contracts are supported. Incompatible, newer or corrupt
+contracts reject without mutation. There are no migrations or legacy imports.
 
-Sync captures evidence and waits for durable acceptance, then returns while
-processing runs asynchronously. Local maintenance uses `data import|reprocess|wait`
-with command-owned storage. Legacy daemon and collector maintenance commands
-are removed; retained history and evidence compatibility remain unchanged.
+Sync captures evidence and waits for durable acceptance; processing runs
+asynchronously. Local maintenance uses `data reprocess|wait` with command-owned storage.
 
-Verification preserves stable native contribution identities, all token
-components, exact receipt replay, source continuity, separate estimates,
-dataset-local generation cutover, colliding multi-user identities and unmatched
-imported history. Verify auth/revocation, capability gates, personal/hosted progress
-and container persistence/shutdown. Both binaries must work
-without Node/npm/pnpm. See [design](design.md) for the complete contract.
+Verification preserves native contribution identities, all token components, exact
+receipt replay, source continuity, separate estimates, dataset-local generation
+cutover and colliding multi-user identities. Verify auth/revocation, capability gates,
+local progress and container persistence/shutdown. Both binaries must work without
+Node/npm/pnpm. See [design](design.md) for the complete contract.
 
 ### Checks
 

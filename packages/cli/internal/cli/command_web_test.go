@@ -55,7 +55,7 @@ func TestWebCompositionOrderingAndQueryOnly(t *testing.T) {
 			t.Run(string(kind)+map[bool]string{true: "/query", false: "/sync"}[queryOnly], func(t *testing.T) {
 				remote := descriptorServer(t, kind, []string{"usage", "facets", "web-dashboard", "raw-ingestion"})
 				settings := config.Defaults()
-				settings.ServerKind, settings.ServerURL = kind, remote.URL
+				settings.Mode, settings.ServerURL = config.Distributed, remote.URL
 				if kind == serverfeatures.Hosted {
 					settings.ServerToken = "fixture-token"
 				}
@@ -72,7 +72,7 @@ func TestWebCompositionOrderingAndQueryOnly(t *testing.T) {
 				}
 				runWebCollector = func(_ context.Context, options collector.Options) (collector.Result, error) {
 					events = append(events, "sync")
-					if options.Destination == nil || options.Destination.DatabaseID != "fixture-database" || options.Destination.DatasetID != "fixture-dataset" || options.Destination.Local || options.Token != settings.ServerToken {
+					if options.Destination == nil || options.Destination.DatabaseID != "fixture-database" || options.Destination.DatasetID != "fixture-dataset" || options.Destination.Local || options.Destination.Transport == nil {
 						t.Fatal("unbound delivery")
 					}
 					return collector.Result{}, nil
@@ -108,7 +108,7 @@ func TestWebCompositionOrderingAndQueryOnly(t *testing.T) {
 func TestWebSyncFailureStillOpensHostedSavedDashboard(t *testing.T) {
 	remote := descriptorServer(t, serverfeatures.Hosted, []string{"usage", "facets", "web-dashboard", "raw-ingestion"})
 	settings := config.Defaults()
-	settings.ServerKind, settings.ServerURL, settings.ServerToken = serverfeatures.Hosted, remote.URL, "fixture-token"
+	settings.Mode, settings.ServerURL, settings.ServerToken = config.Distributed, remote.URL, "fixture-token"
 	previousOpen, previousCollector := openDashboard, runWebCollector
 	t.Cleanup(func() { openDashboard, runWebCollector = previousOpen, previousCollector })
 	expected := errors.New("delivery unavailable")
@@ -125,14 +125,14 @@ func TestWebSyncFailureStillOpensHostedSavedDashboard(t *testing.T) {
 
 func TestViewerCapabilitiesRejectBeforeCollection(t *testing.T) {
 	settings := config.Defaults()
-	settings.ServerKind = serverfeatures.Hosted
+	settings.Mode = config.Distributed
 	for _, args := range [][]string{nil, {"--sync=false"}} {
 		if err := runView(commandInvocation{context: t.Context(), stdout: io.Discard, stderr: io.Discard, settings: &settings}, args); !errors.Is(err, ErrUsage) {
 			t.Fatal("hosted tui accepted", err)
 		}
 	}
 	remote := descriptorServer(t, serverfeatures.Personal, []string{"usage", "facets"})
-	settings.ServerKind, settings.ServerURL = serverfeatures.Personal, remote.URL
+	settings.Mode, settings.ServerURL = config.Distributed, remote.URL
 	if err := runView(commandInvocation{context: t.Context(), stdout: io.Discard, stderr: io.Discard, settings: &settings}, []string{"--sync=false"}); err == nil || !strings.Contains(err.Error(), "single-process") {
 		t.Fatal("disabled terminal enabled", err)
 	}
@@ -159,7 +159,7 @@ func TestConfigTokenStdinAndMaskedGet(t *testing.T) {
 func TestHostedWebShowsCaptureAndAcceptanceBeforeOpening(t *testing.T) {
 	remote := descriptorServer(t, serverfeatures.Hosted, []string{"usage", "facets", "web-dashboard", "raw-ingestion"})
 	settings := config.Defaults()
-	settings.ServerKind, settings.ServerURL, settings.ServerToken = serverfeatures.Hosted, remote.URL, "fixture-token"
+	settings.Mode, settings.ServerURL, settings.ServerToken = config.Distributed, remote.URL, "fixture-token"
 	previousOpen, previousCollector := openDashboard, runWebCollector
 	t.Cleanup(func() { openDashboard, runWebCollector = previousOpen, previousCollector })
 	var stdout, stderr bytes.Buffer

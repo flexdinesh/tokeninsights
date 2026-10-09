@@ -2,13 +2,11 @@ package pipeline
 
 import (
 	"context"
-	"encoding/json"
 	"os"
-	"path/filepath"
 	"testing"
 )
 
-func TestExplicitSourcesPreserveLexicalOpenCodeIdentityAndFingerprint(t *testing.T) {
+func TestExplicitSourcesPreserveLexicalOpenCodeIdentity(t *testing.T) {
 	root := t.TempDir()
 	t.Chdir(root)
 	t.Setenv("HOME", "home")
@@ -36,31 +34,6 @@ func TestExplicitSourcesPreserveLexicalOpenCodeIdentityAndFingerprint(t *testing
 		}
 		if len(legacy) != 1 || len(explicit) != 1 || legacy[0].ID != explicit[0].ID || legacy[0].RawSourceID != explicit[0].RawSourceID {
 			t.Fatal("source identity changed", legacy, explicit)
-		}
-		parts := []string{"rebuild-sources-v1"}
-		if override != "" {
-			abs, err := filepath.Abs(override)
-			if err != nil {
-				t.Fatal(err)
-			}
-			parts = append(parts, "override", abs)
-		} else {
-			parts = append(parts, "defaults")
-			for _, path := range []string{"data/opencode", "home/.pi/agent/sessions", "codex/sessions", "codex/archived_sessions", "claude/projects"} {
-				abs, err := filepath.Abs(path)
-				if err != nil {
-					t.Fatal(err)
-				}
-				parts = append(parts, abs)
-			}
-		}
-		encoded, err := json.Marshal(parts)
-		if err != nil {
-			t.Fatal(err)
-		}
-		got, err := recoverySourceKey(SyncOptions{Sources: c})
-		if err != nil || got != stableHash(string(encoded)) {
-			t.Fatal("recovery fingerprint changed", err)
 		}
 		// A different daemon environment does not redirect captured sources.
 		t.Setenv("XDG_DATA_HOME", "other-data")
@@ -100,16 +73,5 @@ func TestSourceConfigMissingRootsAndOverrideSubdirectoryPolicy(t *testing.T) {
 		if err != nil || len(single) != 1 || single[0] != root {
 			t.Fatal("single-harness fallback changed")
 		}
-	}
-	before, err := recoverySourceKey(SyncOptions{Sources: c})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Mkdir(filepath.Join(root, "pi"), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	after, err := recoverySourceKey(SyncOptions{Sources: c})
-	if err != nil || before != after {
-		t.Fatal("directory availability changed recovery scope")
 	}
 }

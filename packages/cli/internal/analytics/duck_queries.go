@@ -10,8 +10,8 @@ import (
 	"time"
 
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/datastore"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/db"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/publication"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/querymodel"
 )
 
 func dataTable(q Query) string {
@@ -20,7 +20,7 @@ func dataTable(q Query) string {
 	}
 	return "analytics.confirmed"
 }
-func duckWhere(f db.Filter, timezone, datasetID string) (string, []interface{}) {
+func duckWhere(f querymodel.Filter, timezone, datasetID string) (string, []interface{}) {
 	where := " WHERE countable AND dataset_id=?"
 	args := []interface{}{datasetID}
 	if !f.Start.IsZero() {
@@ -79,7 +79,7 @@ func safeAggregate(values ...int64) error {
 	}
 	return nil
 }
-func queryFilter(q Query, now time.Time) db.Filter {
+func queryFilter(q Query, now time.Time) querymodel.Filter {
 	f := q.Selection.Filter(now)
 	if q.Tab == "repo" {
 		f.RepositoryKeys = q.RepositoryKeys
@@ -119,7 +119,7 @@ func groupedSQL(q Query, where, zone string) string {
 	case "repo":
 		key = "COALESCE(NULLIF(repository_key,''),'unknown')"
 		name = "COALESCE(NULLIF(MIN(repository_name),''),'unknown')"
-		if q.LocationGroup == db.RepoGroupDirectory {
+		if q.LocationGroup == querymodel.RepoGroupDirectory {
 			key = "COALESCE(NULLIF(directory_key,''),'unknown')"
 			name = "COALESCE(NULLIF(MIN(directory_name),''),'unknown')"
 		}
@@ -285,7 +285,7 @@ func loadDashboard(ctx context.Context, store *datastore.Store, q Query, now tim
 }
 
 func LoadFacets(ctx context.Context, store *datastore.Store, q Query, search string, now time.Time) (Facets, error) {
-	result := Facets{Providers: []string{}, Models: []string{}, Harnesses: []string{}, Sessions: []string{}, Repositories: []db.LocationOption{}, Directories: []db.LocationOption{}}
+	result := Facets{Providers: []string{}, Models: []string{}, Harnesses: []string{}, Sessions: []string{}, Repositories: []querymodel.LocationOption{}, Directories: []querymodel.LocationOption{}}
 	tx, err := store.BeginRead(ctx)
 	if err != nil {
 		return result, err
@@ -331,7 +331,7 @@ func LoadFacets(ctx context.Context, store *datastore.Store, q Query, search str
 		}
 		for rows.Next() {
 			if location {
-				var option db.LocationOption
+				var option querymodel.LocationOption
 				if err := rows.Scan(&option.Key, &option.Name); err != nil {
 					_ = rows.Close()
 					return result, err

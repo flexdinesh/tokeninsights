@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"io"
 	"net"
-	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -28,7 +27,7 @@ import (
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/serverruntime"
 )
 
-type Settings struct{ Listen, DBPath, AppDBPath, LegacyDBPath, Kind, PublicURL, AdminSocket string }
+type Settings struct{ Listen, DBPath, AppDBPath, PublicURL, AdminSocket string }
 
 func canonicalPublicURL(raw string) (string, error) {
 	u, err := url.Parse(raw)
@@ -60,25 +59,11 @@ func (settings Settings) Validate() (string, int, error) {
 	if settings.DBPath == "" {
 		return "", 0, fmt.Errorf("--server-db-path required")
 	}
-	kind := settings.Kind
-	if kind == "" {
-		kind = string(serverfeatures.Personal)
-	}
-	if kind != string(serverfeatures.Personal) && kind != string(serverfeatures.Hosted) {
-		return "", 0, fmt.Errorf("invalid --kind; use personal or hosted")
-	}
 	if settings.AdminSocket != "" && !filepath.IsAbs(settings.AdminSocket) {
 		return "", 0, fmt.Errorf("--admin-socket requires absolute path")
 	}
-	if kind == string(serverfeatures.Hosted) {
-		if _, err := canonicalPublicURL(settings.PublicURL); err != nil {
-			return "", 0, err
-		}
-		if settings.LegacyDBPath != "" {
-			return "", 0, fmt.Errorf("hosted does not import personal history")
-		}
-	} else if settings.PublicURL != "" {
-		return "", 0, fmt.Errorf("--public-url requires hosted kind")
+	if _, err := canonicalPublicURL(settings.PublicURL); err != nil {
+		return "", 0, err
 	}
 	return host, port, nil
 }
@@ -119,15 +104,8 @@ func Run(ctx context.Context, settings Settings, log io.Writer, ready func(strin
 		return err
 	}
 	defer func() { _ = listener.Close() }()
-	kind := serverfeatures.Kind(settings.Kind)
-	if kind == "" {
-		kind = serverfeatures.Personal
-	}
-	policy, err := serverfeatures.New(kind, false)
-	if err != nil {
-		return err
-	}
-	store, err := serverruntime.Open(ctx, path, datastore.Options{Kind: string(kind), LegacyPath: settings.LegacyDBPath})
+	policy, _ := serverfeatures.New(serverfeatures.Hosted, false)
+	store, err := serverruntime.Open(ctx, path, datastore.Options{Kind: datastore.KindHosted})
 	if err != nil {
 		return err
 	}
@@ -136,22 +114,14 @@ func Run(ctx context.Context, settings Settings, log io.Writer, ready func(strin
 	if err != nil {
 		return err
 	}
-	app, err := appstore.OpenPaired(ctx, settings.AppDBPath, path, identity, string(kind))
+	app, err := appstore.OpenPaired(ctx, settings.AppDBPath, path, identity, datastore.KindHosted)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = app.Close() }()
 	repository := accounts.NewSQLite(app, store)
-	if err := repository.ImportLegacy(ctx, store.SQL()); err != nil {
-		return err
-	}
 	if err := repository.Resume(ctx); err != nil {
 		return err
-	}
-	if kind == serverfeatures.Personal {
-		if err := repository.EnsureDefault(ctx); err != nil {
-			return err
-		}
 	}
 	options := server.DataHandlerOptions{Host: host, AllowIngestion: true, Policy: policy}
 	if log == nil {
@@ -159,19 +129,17 @@ func Run(ctx context.Context, settings Settings, log io.Writer, ready func(strin
 	}
 	runCtx, stop := context.WithCancel(ctx)
 	defer stop()
-	if kind == serverfeatures.Hosted {
-		options.PublicURL, err = canonicalPublicURL(settings.PublicURL)
-		if err != nil {
-			return err
-		}
-		options.Accounts = accounts.New(repository)
-		cleanupDone := make(chan struct{})
-		go func() {
-			defer close(cleanupDone)
-			options.Accounts.RunCleanup(runCtx, func(err error) { _, _ = fmt.Fprintf(log, "account cleanup: %v\n", err) })
-		}()
-		defer func() { stop(); <-cleanupDone }()
+	options.PublicURL, err = canonicalPublicURL(settings.PublicURL)
+	if err != nil {
+		return err
 	}
+	options.Accounts = accounts.New(repository)
+	cleanupDone := make(chan struct{})
+	go func() {
+		defer close(cleanupDone)
+		options.Accounts.RunCleanup(runCtx, func(err error) { _, _ = fmt.Fprintf(log, "account cleanup: %v\n", err) })
+	}()
+	defer func() { stop(); <-cleanupDone }()
 	socket := settings.AdminSocket
 	if socket == "" {
 		socket = path + ".admin.sock"
@@ -183,13 +151,7 @@ func Run(ctx context.Context, settings Settings, log io.Writer, ready func(strin
 	defer closePrivate()
 	handler := server.NewDataHandlerWithOptions(runCtx, store, log, options)
 	bindings := []serverruntime.Binding{{Listener: listener, Handler: handler, Health: true}}
-	if kind == serverfeatures.Hosted {
-		bindings = append(bindings, serverruntime.Binding{Listener: private, Handler: options.Accounts.AdminHandler()})
-	} else {
-		operator := http.NewServeMux()
-		operator.Handle(datastore.ProcessingPrefix, store.AdminHandler())
-		bindings = append(bindings, serverruntime.Binding{Listener: private, Handler: operator})
-	}
+	bindings = append(bindings, serverruntime.Binding{Listener: private, Handler: options.Accounts.AdminHandler()})
 	release()
 	address := listener.Addr().String()
 	if host == "0.0.0.0" {

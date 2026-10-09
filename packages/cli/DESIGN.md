@@ -163,7 +163,7 @@ Status remains understandable without color or animation; no speculative percent
 or ETA appears. Compact layouts shorten copy before reducing table space.
 Automatic updates retain filters, sort, focused-row identity, scroll where possible,
 and drawer drafts. Reload queries only; `--sync=false` skips startup collection,
-while durable processing still resumes. TPS remains available with sparse timing.
+while durable processing still resumes.
 
 - At **30 rows or more**, add a blank row after status and navigation.
 - Readouts appear at **24 rows or more** and **72 content cells or more**.

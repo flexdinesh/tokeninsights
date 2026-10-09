@@ -35,12 +35,7 @@ func (p *terminalSyncProgress) Collection(event pipeline.SyncProgressEvent) {
 		switch event.Status {
 		case pipeline.SyncProgressWaiting:
 			p.once("waiting", "Waiting for another sync...")
-		case pipeline.SyncProgressResetting, pipeline.SyncProgressRebuilding:
-			key := string(event.Status)
-			if !p.seen[key] {
-				p.seen[key] = true
-				recoveryNotice(p.out)(event)
-			}
+
 		}
 		return
 	}

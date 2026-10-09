@@ -1,7 +1,6 @@
 package publication
 
 import (
-	"encoding/json"
 	"fmt"
 	"testing"
 	"time"
@@ -37,25 +36,7 @@ func TestTimestampDomainAcrossNormalizedFields(t *testing.T) {
 				if err := ValidateFact(fact); (err == nil) != wantValid {
 					t.Fatalf("ValidateFact error=%v wantValid=%v", err, wantValid)
 				}
-				body, err := json.Marshal(fact)
-				if err != nil {
-					t.Fatal(err)
-				}
-				if _, err := DecodeFact(body); (err == nil) != wantValid {
-					t.Fatalf("DecodeFact error=%v wantValid=%v", err, wantValid)
-				}
-				batch := fixtureBatch()
-				batch.Entries[0].Fact = fact
-				if _, err := EncodeBatch(batch); (err == nil) != wantValid {
-					t.Fatalf("EncodeBatch error=%v wantValid=%v", err, wantValid)
-				}
-				body, err = json.Marshal(batch)
-				if err != nil {
-					t.Fatal(err)
-				}
-				if _, err := DecodeBatch(body); (err == nil) != wantValid {
-					t.Fatalf("DecodeBatch error=%v wantValid=%v", err, wantValid)
-				}
+
 			})
 		}
 	}

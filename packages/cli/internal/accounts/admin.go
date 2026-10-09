@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/datastore"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/ingestionhttp"
 )
 
 const maxAdminBody = 4096
@@ -87,7 +87,7 @@ func AdminCall(ctx context.Context, socket string, request AdminRequest, output 
 	path := "/control/v1/accounts"
 	status := http.StatusOK
 	if request.Operation == "reprocess" {
-		path = datastore.ProcessingPrefix + "reprocess"
+		path = ingestionhttp.ProcessingPrefix + "reprocess"
 		body = []byte("{}")
 		status = http.StatusAccepted
 	}

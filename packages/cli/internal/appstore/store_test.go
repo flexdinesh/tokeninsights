@@ -15,7 +15,7 @@ func TestRelativeApplicationPathRetainsPairAndSavedData(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.SQL().ExecContext(t.Context(), "UPDATE application_metadata SET legacy_accounts_imported=1 WHERE id=1"); err != nil {
+	if _, err := store.SQL().ExecContext(t.Context(), "INSERT INTO users VALUES('user','dataset','Saved user',1,'2026-01-01T00:00:00Z','ready')"); err != nil {
 		t.Fatal(err)
 	}
 	if err := store.Close(); err != nil {
@@ -27,7 +27,7 @@ func TestRelativeApplicationPathRetainsPairAndSavedData(t *testing.T) {
 	}
 	defer func() { _ = reopened.Close() }()
 	var imported int
-	if err := reopened.SQL().QueryRowContext(t.Context(), "SELECT legacy_accounts_imported FROM application_metadata WHERE id=1").Scan(&imported); err != nil || imported != 1 {
+	if err := reopened.SQL().QueryRowContext(t.Context(), "SELECT COUNT(*) FROM users WHERE display_name='Saved user'").Scan(&imported); err != nil || imported != 1 {
 		t.Fatal("relative path did not reopen saved application", imported, err)
 	}
 }

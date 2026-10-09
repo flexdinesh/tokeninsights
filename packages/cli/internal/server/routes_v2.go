@@ -16,6 +16,7 @@ import (
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/collectorprogress"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/datastore"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/evidence"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/ingestionhttp"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/publication"
 	api "github.com/flexdinesh/tokeninsights/packages/cli/internal/server/api"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/serverfeatures"
@@ -90,7 +91,7 @@ func (a *app) scoped(r *http.Request) (*app, accounts.Principal, error) {
 // Raw acceptance uses protocol errors even when authentication/admission rejects
 // before body decoding. Query routes retain their versioned read-API envelope.
 func accessError(w http.ResponseWriter, r *http.Request, status int, code api.ErrorCode, message, rawCode string) {
-	if strings.HasPrefix(r.URL.Path, datastore.IngestionPrefix) {
+	if strings.HasPrefix(r.URL.Path, ingestionhttp.IngestionPrefix) {
 		writeJSON(w, status, publication.ErrorResponse{Stage: "admission", Code: rawCode})
 		return
 	}
@@ -122,9 +123,6 @@ func (a *app) access(capability serverfeatures.Capability, permission string, ha
 }
 
 func (a *app) handler() http.Handler {
-	if a.data == nil {
-		return a.legacyHandler()
-	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/v2/instance", a.access("", "", func(scoped *app, p accounts.Principal, w http.ResponseWriter, r *http.Request) {
 		scoped.instanceV2(w, r, p)
@@ -133,9 +131,9 @@ func (a *app) handler() http.Handler {
 	mux.HandleFunc("GET /api/v2/usage", a.access(serverfeatures.Usage, accounts.Read, func(scoped *app, _ accounts.Principal, w http.ResponseWriter, r *http.Request) { scoped.usageV2(w, r) }))
 	mux.HandleFunc("GET /api/v2/usage/facets", a.access(serverfeatures.Facets, accounts.Read, func(scoped *app, _ accounts.Principal, w http.ResponseWriter, r *http.Request) { scoped.facetsV2(w, r) }))
 	if a.allowIngestion {
-		mux.Handle(datastore.IngestionPrefix, a.access(serverfeatures.RawIngestion, "", func(scoped *app, p accounts.Principal, w http.ResponseWriter, r *http.Request) {
+		mux.Handle(ingestionhttp.IngestionPrefix, a.access(serverfeatures.RawIngestion, "", func(scoped *app, p accounts.Principal, w http.ResponseWriter, r *http.Request) {
 			permission := accounts.Ingest
-			if r.Method == http.MethodGet && r.URL.Path != datastore.IngestionPrefix+"capabilities" {
+			if r.Method == http.MethodGet && r.URL.Path != ingestionhttp.IngestionPrefix+"capabilities" {
 				permission = accounts.Read
 			}
 			if !p.HasPermission(permission) {
@@ -156,34 +154,10 @@ func (a *app) handler() http.Handler {
 				}
 				defer release()
 			}
-			scoped.data.RawHandler(evidence.ProtocolVersion).ServeHTTP(w, r)
+			ingestionhttp.Handler(scoped.data, ingestionhttp.IngestionPrefix, evidence.ProtocolVersion).ServeHTTP(w, r)
 		}))
 	}
 	if a.policy.Kind == serverfeatures.Personal {
-		legacy := a.legacyHandler()
-		mux.Handle("/api/v1/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			capability := serverfeatures.Capability("")
-			switch {
-			case strings.HasPrefix(r.URL.Path, datastore.LegacyIngestionPrefix):
-				capability = serverfeatures.RawIngestion
-				if !a.allowIngestion {
-					apiNotFound(w)
-					return
-				}
-			case r.URL.Path == "/api/v1/usage/facets":
-				capability = serverfeatures.Facets
-			case r.URL.Path == "/api/v1/usage":
-				capability = serverfeatures.Usage
-			}
-			if capability != "" && !a.policy.Capabilities.Has(capability) {
-				apiNotFound(w)
-				return
-			}
-			legacy.ServeHTTP(w, r)
-		}))
-		if a.allowIngestion {
-			mux.Handle(datastore.RawV2IngestionPrefix, a.data.RawHandler(evidence.LegacyProtocolVersion))
-		}
 		if a.progress != nil && a.policy.Capabilities.Has(serverfeatures.CollectorProgress) {
 			mux.Handle("/api/v2/collector-progress", a.progress.ReadHandler())
 		}
@@ -260,7 +234,8 @@ func (a *app) usageV2(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	v := apiDashboard(data)
-	writeJSON(w, 200, api.UsageResponseV2{InstanceId: a.options.InstanceID, DataEpoch: data.DatabaseID, DatasetId: data.DatasetID, Generation: v.Generation, InputRevision: v.InputRevision, Revision: v.Revision, Pending: v.Pending, FactCount: v.FactCount, Unresolved: v.Unresolved, Quality: v.Quality, Chart: v.Chart, Rows: v.Rows, RowCount: v.RowCount, Page: v.Page, PageSize: v.PageSize, LastSynced: v.LastSynced, Range: v.Range, Summary: v.Summary})
+	v.InstanceId = a.options.InstanceID
+	writeJSON(w, 200, v)
 }
 
 func (a *app) facetsV2(w http.ResponseWriter, r *http.Request) {
@@ -277,7 +252,8 @@ func (a *app) facetsV2(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	v := apiFacets(data)
-	writeJSON(w, 200, api.UsageFacetsResponseV2{InstanceId: a.options.InstanceID, DataEpoch: data.DatabaseID, DatasetId: data.DatasetID, Generation: v.Generation, InputRevision: v.InputRevision, Revision: v.Revision, Providers: v.Providers, Models: v.Models, Harnesses: v.Harnesses, Sessions: v.Sessions, Repositories: v.Repositories, Directories: v.Directories})
+	v.InstanceId = a.options.InstanceID
+	writeJSON(w, 200, v)
 }
 
 func (a *app) sameOrigin(r *http.Request) bool {

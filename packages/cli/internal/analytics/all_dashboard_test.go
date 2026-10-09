@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/db"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/querymodel"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/viewer"
 )
 
@@ -21,7 +21,7 @@ func TestAllDashboardMatchesPaginatedSnapshots(t *testing.T) {
 		for _, tab := range []string{"tokens", "models", "providers", "harnesses", "sessions", "context", "repo"} {
 			for _, direction := range []string{"asc", "desc"} {
 				t.Run(quality+"/"+tab+"/"+direction, func(t *testing.T) {
-					q := Query{Selection: viewer.Selection{Period: "month", Bucket: "day"}, Quality: quality, Tab: tab, Sort: "total", Direction: direction, Page: 1, PageSize: 2, LocationGroup: db.RepoGroupDirectory}
+					q := Query{Selection: viewer.Selection{Period: "month", Bucket: "day"}, Quality: quality, Tab: tab, Sort: "total", Direction: direction, Page: 1, PageSize: 2, LocationGroup: querymodel.RepoGroupDirectory}
 					if tab == "context" {
 						q.Sort = "averageContext"
 					}

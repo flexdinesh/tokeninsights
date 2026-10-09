@@ -1,11 +1,10 @@
--- Application SQLite schema, version 1. No token usage or source evidence.
+-- Application SQLite schema, version 2. No token usage or source evidence.
 CREATE TABLE application_metadata (
  id INTEGER PRIMARY KEY CHECK(id=1),
  role TEXT NOT NULL CHECK(role='application'),
  database_id TEXT NOT NULL,
  instance_id TEXT NOT NULL,
- server_kind TEXT NOT NULL CHECK(server_kind IN ('personal','hosted')),
- legacy_accounts_imported INTEGER NOT NULL DEFAULT 0 CHECK(legacy_accounts_imported IN (0,1))
+ server_kind TEXT NOT NULL CHECK(server_kind IN ('personal','hosted'))
 );
 CREATE TABLE users (
  user_id TEXT PRIMARY KEY, dataset_id TEXT UNIQUE NOT NULL,
@@ -24,4 +23,4 @@ CREATE TABLE sessions (
  digest TEXT UNIQUE NOT NULL, created_at TEXT NOT NULL, expires_at TEXT NOT NULL, revoked_at TEXT
 );
 PRAGMA application_id = 1414091585;
-PRAGMA user_version = 1;
+PRAGMA user_version = 2;

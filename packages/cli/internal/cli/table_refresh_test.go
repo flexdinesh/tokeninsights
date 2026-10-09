@@ -13,7 +13,7 @@ import (
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/analytics"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/collectorprogress"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/datastore"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/db"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/querymodel"
 	"github.com/muesli/termenv"
 )
 
@@ -25,7 +25,7 @@ func savedRefreshModel(t *testing.T) interactiveModel {
 	m.instanceID, m.dataEpoch, m.serviceReadiness, m.observedRevision = "instance", "database", "ready", 1
 	m.loading, m.refresh.loaded = false, true
 	m.rows = []renderRow{{bucket: "2026-10-09", totalValue: 100, totalTokens: "100"}}
-	m.sessionCounts = db.SessionCounts{Shown: 1, Synced: 1}
+	m.sessionCounts = querymodel.SessionCounts{Shown: 1, Synced: 1}
 	m.refresh.displayedRevision, m.refresh.inputRevision, m.refresh.serverGeneration = 1, 1, 1
 	return m
 }
@@ -39,7 +39,7 @@ func refreshStatusMessage(pending int64, revision, inputRevision, generation, ta
 	}}}
 	busy := pending > 0 || generation != target
 	return sharedSyncMsg{instanceID: "instance", dataEpoch: "database", readiness: "ready",
-		status: db.SyncStatus{Revision: revision, Running: busy}, pending: busy, refreshStatus: &status, collection: &snapshot}
+		status: querymodel.SyncStatus{Revision: revision, Running: busy}, pending: busy, refreshStatus: &status, collection: &snapshot}
 }
 
 func TestRefreshCompletionRequiresProcessingAndDisplayedPublication(t *testing.T) {
@@ -158,7 +158,7 @@ func TestRefreshStripFitsThemesAndCompactTerminalsWithoutLayoutJumps(t *testing.
 
 func TestColdStartEmptyStateWaitsForRefresh(t *testing.T) {
 	m := savedRefreshModel(t)
-	m.rows, m.sessionCounts = nil, db.SessionCounts{}
+	m.rows, m.sessionCounts = nil, querymodel.SessionCounts{}
 	m.refresh.collectionPending = true
 	view := ansi.Strip(m.View())
 	if !strings.Contains(view, "Usage appears automatically") || strings.Contains(view, "No ingested usage yet") {

@@ -15,9 +15,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/datastore"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/server"
 	api "github.com/flexdinesh/tokeninsights/packages/cli/internal/server/api"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/serverstore"
 	_ "modernc.org/sqlite"
 )
 
@@ -35,8 +35,8 @@ func newClient(t *testing.T, handler http.Handler) *Client {
 }
 
 func TestRealServerPaginationAndComponents(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "server.sqlite")
-	store, err := serverstore.CreateIfMissing(path)
+	path := filepath.Join(t.TempDir(), "server.duckdb")
+	store, err := datastore.Open(t.Context(), path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -45,16 +45,14 @@ func TestRealServerPaginationAndComponents(t *testing.T) {
 	const sessions = 225
 	for i := 0; i < sessions; i++ {
 		key := fmt.Sprintf("synthetic-%03d", i)
-		if _, err := database.Exec(`INSERT INTO canonical_sessions (semantic_key,harness,session_id,first_seen_at_ms,last_seen_at_ms) VALUES (?,'pi',?,1000,1000)`, key, key); err != nil {
+		if _, err := database.Exec("INSERT INTO analytics.facts VALUES ('default',?,'fixture','pi',?,?,'','',1000,'synthetic-provider','explicit','synthetic-model','message','exact',true,10,2,3,4,5,24,'','','','','','{}',1,0)", key, key, key); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := database.Exec(`INSERT INTO canonical_token_usage (semantic_key,recorded_at_ms,harness,session_id,provider,model,usage_scope,quality,is_countable,input_tokens,output_tokens,reasoning_tokens,cache_read_tokens,cache_write_tokens,total_tokens,payload_hash) VALUES (?,1000,'pi',(SELECT id FROM canonical_sessions WHERE semantic_key=?),'synthetic-provider','synthetic-model','message','exact',1,10,2,3,4,5,24,?)`, key, key, key); err != nil {
-			t.Fatal(err)
-		}
+
 	}
-	c := newClient(t, server.NewHandler(context.Background(), path, nil, io.Discard, "127.0.0.1"))
+	c := newClient(t, server.NewDataHandler(context.Background(), store, io.Discard, "127.0.0.1", "", false))
 	instance, err := c.Instance(t.Context())
-	if err != nil || instance.ApiVersion != api.V1 {
+	if err != nil || instance.ApiVersion != api.V2 {
 		t.Fatalf("instance = %#v, %v", instance, err)
 	}
 	params := api.GetUsageParams{Period: pointer(api.Period("all")), Tab: pointer(api.UsageTab("sessions")), Page: pointer(7), PageSize: pointer(1)}
@@ -94,12 +92,12 @@ func serveJSON(w http.ResponseWriter, value interface{}) {
 	_ = json.NewEncoder(w).Encode(value)
 }
 
-func instanceResponse(identity string) api.InstanceResponse {
-	return api.InstanceResponse{ApiVersion: api.V1, InstanceId: identity, DataEpoch: "epoch", DataReadiness: api.InstanceResponseDataReadinessReady}
+func instanceResponse(identity string) api.InstanceResponseV2 {
+	return api.InstanceResponseV2{DatasetId: "default", ServerKind: "personal", Capabilities: []string{"usage", "facets"}, Permissions: []api.InstanceResponseV2Permissions{"read"}, ApiVersion: api.V2, InstanceId: identity, DataEpoch: "epoch", DataReadiness: api.InstanceResponseV2DataReadinessReady}
 }
 
-func usagePage(page int, revision int64, identity string) api.UsageResponse {
-	response := api.UsageResponse{Page: page, PageSize: pageSize, RowCount: pageSize + 1, Revision: revision, InstanceId: identity, DataEpoch: "epoch", Summary: api.UsageSummary{Total: 12345}}
+func usagePage(page int, revision int64, identity string) api.UsageResponseV2 {
+	response := api.UsageResponseV2{DatasetId: "default", Page: page, PageSize: pageSize, RowCount: pageSize + 1, Revision: revision, InstanceId: identity, DataEpoch: "epoch", Summary: api.UsageSummary{Total: 12345}}
 	for i := (page - 1) * pageSize; i < min(page*pageSize, pageSize+1); i++ {
 		response.Rows = append(response.Rows, api.UsageRow{Key: strconv.Itoa(i), Total: int64(i)})
 	}
@@ -107,11 +105,11 @@ func usagePage(page int, revision int64, identity string) api.UsageResponse {
 }
 
 func TestAllUsageRetriesWholeSnapshot(t *testing.T) {
-	for _, changed := range []string{"revision", "instance", "epoch"} {
+	for _, changed := range []string{"revision", "instance", "epoch", "dataset"} {
 		t.Run(changed, func(t *testing.T) {
 			calls := 0
 			c := newClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				if r.URL.Path == "/api/v1/instance" {
+				if r.URL.Path == "/api/v2/instance" {
 					serveJSON(w, instanceResponse("stable"))
 					return
 				}
@@ -126,6 +124,8 @@ func TestAllUsageRetriesWholeSnapshot(t *testing.T) {
 						response.InstanceId = "restarted"
 					case "epoch":
 						response.DataEpoch = "reset"
+					case "dataset":
+						response.DatasetId = "other-user"
 					}
 				}
 				serveJSON(w, response)
@@ -141,7 +141,7 @@ func TestAllUsageRetriesWholeSnapshot(t *testing.T) {
 func TestAllUsageChurnIsBounded(t *testing.T) {
 	calls := 0
 	c := newClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/api/v1/instance" {
+		if r.URL.Path == "/api/v2/instance" {
 			serveJSON(w, instanceResponse("stable"))
 			return
 		}
@@ -158,7 +158,7 @@ func TestAllUsageChurnIsBounded(t *testing.T) {
 func TestAllUsageRejectsResetAfterFinalPage(t *testing.T) {
 	instanceCalls := 0
 	c := newClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/api/v1/instance" {
+		if r.URL.Path == "/api/v2/instance" {
 			instanceCalls++
 			identity := "stable"
 			if instanceCalls%2 == 0 {
@@ -180,7 +180,7 @@ func TestAllUsageRejectsInvalidPagination(t *testing.T) {
 	for _, invalid := range []string{"empty-page", "duplicate-key", "missing-key", "page", "size", "count-limit", "revision"} {
 		t.Run(invalid, func(t *testing.T) {
 			c := newClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				if r.URL.Path == "/api/v1/instance" {
+				if r.URL.Path == "/api/v2/instance" {
 					serveJSON(w, instanceResponse("stable"))
 					return
 				}
@@ -218,7 +218,7 @@ func TestAllUsageCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 	c := newClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/api/v1/instance" {
+		if r.URL.Path == "/api/v2/instance" {
 			serveJSON(w, instanceResponse("stable"))
 			return
 		}
@@ -240,10 +240,10 @@ func TestQueryEncodingPreservesRepeatedFilters(t *testing.T) {
 	params := api.GetUsageParams{Period: pointer(api.Period("all")), Bucket: pointer(api.Bucket("week")), From: pointer("2026-01-01"), To: pointer("2026-02-01"), Provider: pointer([]string{"a+b", "a&b"}), Model: pointer([]string{"m/1", "m 2"}), Harness: pointer([]api.Harness{"pi", "codex"}), Session: pointer([]string{"s?1", "s#2"}), Repository: pointer([]string{"repo"}), Directory: pointer([]string{"dir"}), Tab: pointer(api.UsageTab("repo")), LocationGroup: pointer(api.LocationGroup("directory")), Sort: pointer(api.SortField("input")), Direction: pointer(api.SortDirection("asc")), Page: pointer(2), PageSize: pointer(1)}
 	want := url.Values{"period": {"all"}, "bucket": {"week"}, "from": {"2026-01-01"}, "to": {"2026-02-01"}, "provider": {"a+b", "a&b"}, "model": {"m/1", "m 2"}, "harness": {"pi", "codex"}, "session": {"s?1", "s#2"}, "repository": {"repo"}, "directory": {"dir"}, "tab": {"repo"}, "locationGroup": {"directory"}, "sort": {"input"}, "direction": {"asc"}, "page": {"2"}, "pageSize": {"1"}}
 	c := newClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet || r.URL.Path != "/api/v1/usage" || !reflect.DeepEqual(r.URL.Query(), want) {
+		if r.Method != http.MethodGet || r.URL.Path != "/api/v2/usage" || !reflect.DeepEqual(r.URL.Query(), want) {
 			t.Errorf("unexpected query %s %s", r.Method, r.URL)
 		}
-		serveJSON(w, api.UsageResponse{InstanceId: "stable", DataEpoch: "epoch", Revision: 0})
+		serveJSON(w, api.UsageResponseV2{DatasetId: "default", InstanceId: "stable", DataEpoch: "epoch", Revision: 0})
 	}))
 	if _, err := c.Usage(t.Context(), params); err != nil {
 		t.Fatal(err)
@@ -267,8 +267,8 @@ func TestReadOnlyStatusAndBearerClientCopy(t *testing.T) {
 			t.Errorf("query mutated server: %s", r.Method)
 		}
 		requests <- r.Header.Get("Authorization")
-		if r.URL.Path == "/api/v1/sync" {
-			serveJSON(w, api.SyncResponse{Revision: 7, InstanceId: "stable", DataEpoch: "epoch", DataReadiness: api.SyncResponseDataReadinessReady})
+		if r.URL.Path == "/api/v2/status" {
+			serveJSON(w, api.StatusResponseV2{DatasetId: "default", Revision: 7, InstanceId: "stable", DataEpoch: "epoch", DataReadiness: api.StatusResponseV2DataReadinessReady})
 			return
 		}
 		serveJSON(w, instanceResponse("stable"))

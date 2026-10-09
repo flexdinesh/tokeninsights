@@ -5,8 +5,6 @@ services:
       context: ..
     image: tokeninsights-server:local
     command:
-      - --kind
-      - hosted
       - --listen
       - '0.0.0.0:8765'
       - --server-db-path

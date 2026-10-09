@@ -66,7 +66,11 @@ func TestWriterLockAliasesAndCancellation(t *testing.T) {
 }
 
 func TestWriterLockDatabaseSymlink(t *testing.T) {
-	database, path := newTestDB(t)
+	path := filepath.Join(t.TempDir(), "collector.sqlite")
+	database, _, err := CreateIfMissing(path)
+	if err != nil {
+		t.Fatal(err)
+	}
 	defer func() { _ = database.Close() }()
 	alias := filepath.Join(t.TempDir(), "linked.sqlite")
 	if err := os.Symlink(path, alias); err != nil {
@@ -85,35 +89,6 @@ func TestWriterLockDatabaseSymlink(t *testing.T) {
 		}
 		t.Fatalf("symlink used a different lock: %v", err)
 	}
-}
-
-func TestResetAllOwnsWriterLock(t *testing.T) {
-	database, path := newTestDB(t)
-	defer func() { _ = database.Close() }()
-	insertCanonicalToken(t, database, 1000, "codex", "old", "openai", "gpt", 10, 2, 0, 0, 0, 12)
-	release, err := AcquireWriterLock(context.Background(), path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer release()
-	done := make(chan error, 1)
-	go func() { done <- ResetAll(path) }()
-	select {
-	case err := <-done:
-		t.Fatalf("reset bypassed writer lock: %v", err)
-	case <-time.After(75 * time.Millisecond):
-	}
-	assertDBCount(t, database, TableCanonicalTokenUsage, 1)
-	release()
-	select {
-	case err := <-done:
-		if err != nil {
-			t.Fatal(err)
-		}
-	case <-time.After(5 * time.Second):
-		t.Fatal("reset did not acquire released lock")
-	}
-	assertDBCount(t, database, TableCanonicalTokenUsage, 0)
 }
 
 func TestWriterLockSubprocessCrashRelease(t *testing.T) {

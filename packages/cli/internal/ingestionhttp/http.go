@@ -14,6 +14,9 @@ import (
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/publication"
 )
 
+const IngestionPrefix = "/api/v3/ingestion/"
+const ProcessingPrefix = "/api/v2/processing/"
+
 type Receiver interface {
 	RawCapabilities(context.Context) (evidence.Capabilities, error)
 	Accept(context.Context, []byte) (evidence.Response, error)

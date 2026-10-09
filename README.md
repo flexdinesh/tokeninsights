@@ -107,14 +107,14 @@ Equal token counts never establish duplicate identity. Durable native session,
 message and request identities govern contributions; all five components remain
 atomic. Exact retries return original receipts. Collector deletion, source removal
 and interrupted uploads do not erase server history or inflate confirmed totals.
-Ambiguous usable counters remain separate estimates; TPS tabs/metrics remain available.
+Ambiguous usable counters remain separate estimates.
 
 Configuration lives in `${XDG_CONFIG_HOME:-~/.config}/tokeninsights/config.json`,
 private and atomically written. Keys: `mode`, `server-url`, `server-token`, `host`,
 `port`, `collector-db-path`, `server-db-path`, `app-db-path`. Flags override environment,
 then file, then defaults. `TOKENINSIGHTS_MODE`, `TOKENINSIGHTS_ACCESS_TOKEN` and the
 role-specific path environment variables are supported. `config get server-token`
-only reports whether configured. Legacy hosted configuration maps to distributed.
+only reports whether configured. A configured remote URL selects distributed mode unless mode is explicit.
 To return local, remove remote URL/token and set mode `single-process`.
 
 Storage: `collector.sqlite` for source continuity/outbox, `server.duckdb` for token
@@ -123,7 +123,7 @@ token databases are paired by identity. Operational sync jobs use
 `<canonical-collector-path>.jobs.sqlite`. Defaults live under XDG data home.
 
 Bare invocation prints help. Local viewers own their foreground runtime.
-Local maintenance uses `data import|reprocess|wait`. Legacy `service`, `server`, and
+Local maintenance uses `data reprocess|wait`. Legacy `service`, `server`, and
 `collector` commands are removed. Never pair one
 `app.sqlite` with another token database or reuse personal history as a hosted account.
 
@@ -140,9 +140,9 @@ Default files under `${XDG_DATA_HOME:-~/.local/share}/tokeninsights/`:
 | Application | `app.sqlite` | `--app-db-path` / `TOKENINSIGHTS_APP_DB_PATH` |
 | Sync jobs | `<collector-path>.jobs.sqlite` | Derived from collector path |
 
-The old `tokeninsights.sqlite` remains untouched. Retained sources rebuild the fresh collector and populate the fresh server through ingestion; verified sibling server.sqlite imports read-only into new default DuckDB. The two files cannot alias one another. Server storage cannot be opened as collector storage or subjected to collector recovery.
+Each role uses its own database. Fresh databases collect retained sources and ingest sanitized evidence. Paths cannot alias; wrong storage roles reject without mutation. Existing unrelated files stay untouched.
 
-Storage uses collector schema 19, DuckDB schema 2, application SQLite schema 1 and job SQLite schema 1. Verified collector schemas 16/17/18 upgrade additively while preserving exact saved requests. A verified DuckDB-1 upgrade stages a personal schema-2 database, checks retained identities, receipts and token components, then publishes it with a recoverable previous copy. Hosted databases start fresh; opening one kind as the other rejects. Incompatible/newer contracts reject without mutation. Current-schema collector data-generation rebuilds remain local; they cannot delete server history.
+Storage uses collector schema **20**, DuckDB schema **3**, application SQLite schema **2** and job SQLite schema **1**. Only current schemas are supported; incompatible contracts reject without mutation. No imports or migrations. Fresh collection rebuilds usage from retained sources. Reprocessing within a current DuckDB preserves the published generation until its replacement is complete.
 
 Rebuild earlier PR databases from retained sources into fresh files. Normalized source times must be valid Unix milliseconds; invalid observations remain server evidence with diagnostics. Filename-derived Pi/Claude sessions remain raw-only until native session evidence exists. Local ingestion runs directly within the owning command; its web listener exposes no ingestion route. Hosted access uses per-user tokens; it does not restore the removed shared-server-token mode.
 
@@ -158,7 +158,7 @@ Server exposes processed metadata to reachable dashboard clients. Default localh
 - [Development guide](docs/development.md)
 - [System boundaries](docs/system.md) and [storage/processing contract](docs/design.md)
 - [Docker and hosted deployment](docs/deployment.md)
-- [Collector/server architecture](docs/collector-server-architecture.md) — ownership, raw acceptance, storage roles, and recovery guarantees.
+- [Architecture principles](docs/adr/0010-current-contracts-and-boundaries.md) — ownership, composition, current contracts and verification.
 - [Collector/ingestion failure tests](docs/collector-ingestion-tests.md) — guarantees, synthetic fixtures, executable coverage, and future acceptance gates.
 - [Completion plugins](docs/plugins.md) — thin completion hooks, install artifacts, and host verification scope.
 
@@ -172,15 +172,12 @@ during collection and processing. The browser shows usage totals by default;
 **Review excluded usage** opens separate saved counters that cannot be confidently included.
 Date ranges and filters apply to both views; excluded usage never inflates the main totals.
 Unusable evidence retains diagnostics.
-Fresh default server.duckdb imports verified sibling server.sqlite read-only,
-preserving history, identity and receipts. Partial rebuilds preserve unmatched
-history. Custom paths, after closing processes using the target database:
+Local maintenance:
 
-    tokeninsights data import --server-db-path NEW.duckdb --legacy-server-db-path OLD.sqlite
     tokeninsights data reprocess
     tokeninsights data wait
 
-Source stays intact. Reprocessing keeps the published generation until complete.
+Reprocessing keeps the published generation until complete.
 Local data maintenance has a 30-second visibility wait. TUI queries confirmed usage.
 If reprocessing exceeds that wait, `data wait` resumes the saved generation without
 starting another rebuild. Persistent `processing_failed` errors can be recovered
@@ -190,5 +187,4 @@ CGO/C/C++ toolchain builds embedded DuckDB. Production native archives need no J
 
 Application pairing also persists `<canonical-token-path>.application.json`, containing
 only the application instance ID. Keep this guard with both databases in stopped
-backups. A missing/replaced app database fails closed instead of re-importing stale
-legacy credentials. Restore the matched set; do not delete the guard to bypass recovery.
+backups. A missing/replaced app database fails closed to preserve credential revocations. Restore the matched set; do not delete the guard to bypass recovery.

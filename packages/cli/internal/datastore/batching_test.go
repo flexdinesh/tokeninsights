@@ -1,7 +1,6 @@
 package datastore
 
 import (
-	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -197,50 +196,5 @@ func BenchmarkPublication256(b *testing.B) {
 		if err := store.Close(); err != nil {
 			b.Fatal(err)
 		}
-	}
-}
-
-func TestLargeProjectionPreservesUnprovenLegacyHistory(t *testing.T) {
-	store := testStore(t)
-	const recordCount = 150
-	records := make([]evidence.Record, recordCount)
-	stored := make([]evidence.Stored, recordCount)
-	for i := range records {
-		records[i] = piRecord(fmt.Sprintf("message-%d", i), 100)
-		stored[i] = evidence.Stored{ID: evidence.EvidenceID(records[i]), Scope: evidence.Scope(records[i]), Record: records[i]}
-	}
-	projection, err := processor.Process(t.Context(), stored)
-	if err != nil || len(projection.Contributions) != recordCount {
-		t.Fatalf("projection: %d %v", len(projection.Contributions), err)
-	}
-	if err := store.WriteTransaction(t.Context(), func(tx *sql.Tx) error {
-		for i, contribution := range projection.Contributions {
-			fact := contribution.Fact
-			if i == 0 || i == 129 {
-				fact.InputTokens += 30
-				fact.TotalTokens += 30
-				fact.Revision = nil
-			}
-			if err := insertFact(t.Context(), tx, store.DatasetID(), "analytics.legacy", fact, 0, 0, "", ""); err != nil {
-				return err
-			}
-		}
-		return nil
-	}); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := store.Accept(t.Context(), batchBody(t, store, "stream", "batch", records...)); err != nil {
-		t.Fatal(err)
-	}
-	drain(t, store)
-	if got := total(t, store, "analytics.confirmed"); got != recordCount*120+60 {
-		t.Fatalf("unproven history lost or double-counted: %d", got)
-	}
-	var covered int64
-	if err := store.SQL().QueryRowContext(t.Context(), "SELECT COUNT(*) FROM analytics.legacy_coverage").Scan(&covered); err != nil {
-		t.Fatal(err)
-	}
-	if covered != recordCount-2 {
-		t.Fatalf("unexpected replacement proofs: %d", covered)
 	}
 }

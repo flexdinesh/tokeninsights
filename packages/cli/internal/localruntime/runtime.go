@@ -128,12 +128,6 @@ func OpenWithApp(ctx context.Context, collectorPath, dataPath, appPath string) (
 		return nil, err
 	}
 	repository := accounts.NewSQLite(app, store)
-	if err := repository.ImportLegacy(ctx, store.SQL()); err != nil {
-		_ = app.Close()
-		_ = store.Close()
-		_ = owner.Close()
-		return nil, err
-	}
 	if err := repository.EnsureDefault(ctx); err != nil {
 		_ = app.Close()
 		_ = store.Close()
@@ -177,19 +171,19 @@ func OpenWithApp(ctx context.Context, collectorPath, dataPath, appPath string) (
 	hostname := resolveHostname(os.Hostname)
 	id := hex.EncodeToString(instance[:])
 	r := &Runtime{InstanceID: id, Hostname: hostname, Policy: policy, Progress: collectorprogress.New(id), Jobs: jobs, jobsDone: make(chan struct{}), Store: store, App: app, owner: owner, cancel: cancel, ctx: workerCtx, collectorPath: canonicalCollector, dataPath: path, done: make(chan struct{}), queries: analytics.DuckDB{Store: store}}
-	r.Query = queryclient.NewDirect(server.NewDirectQueryWithIdentity(workerCtx, r.queries, id, hostname))
-	r.Destination = &collector.Destination{URL: "http://local", Identity: "http://local", DatabaseID: metadata.DatabaseID, DatasetID: metadata.DatasetID, Local: true, Transport: collector.DirectDelivery{Receiver: store}}
+	r.Query = queryclient.NewDirect(server.NewDirectQuery(r.queries, id, hostname))
+	r.Destination = &collector.Destination{Identity: "http://local", DatabaseID: metadata.DatabaseID, DatasetID: metadata.DatasetID, Local: true, Transport: collector.DirectDelivery{Receiver: store}}
 	// WaitVisible reads durable failure state, including failures from a prior owner.
 	go func() { defer close(r.done); store.Run(workerCtx, nil) }()
 	go r.runJobs(workerCtx, path, appPath)
 	return r, nil
 }
 
-func (r *Runtime) Observe(ctx context.Context) *collectorprogress.Observer {
+func (r *Runtime) Observe(ctx context.Context) *Observer {
 	if !r.Policy.Capabilities.Has(serverfeatures.CollectorProgress) {
-		return collectorprogress.NewObserver(ctx, nil)
+		return newObserver(ctx, nil)
 	}
-	return collectorprogress.NewObserver(ctx, func(_ context.Context, message collectorprogress.Message) error {
+	return newObserver(ctx, func(_ context.Context, message collectorprogress.Message) error {
 		return r.Progress.Apply(message)
 	})
 }

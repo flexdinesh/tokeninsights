@@ -3,11 +3,9 @@ package accounts
 import (
 	"context"
 	"errors"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/appstore"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/datastore"
-	"path/filepath"
 	"testing"
-	"time"
+
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/datastore"
 )
 
 type interruptedDatasets struct {
@@ -61,68 +59,5 @@ func TestProvisioningResumesSameIdentityBeforeAndAfterDatasetCreation(t *testing
 				t.Fatal("resume reenabled user", err)
 			}
 		})
-	}
-}
-func TestLegacyMigrationIsAtomicAndNeverResurrectsRevokedToken(t *testing.T) {
-	data, err := datastore.OpenKind(t.Context(), filepath.Join(t.TempDir(), "data.duckdb"), "hosted")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = data.Close() }()
-	now := time.Now().UTC().Format(time.RFC3339Nano)
-	secret, err := opaque()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := data.SQL().ExecContext(t.Context(), "INSERT INTO accounts.users VALUES('user','dataset','Alice',true,?)", now); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := data.SQL().ExecContext(t.Context(), "INSERT INTO accounts.tokens VALUES('token','user',?,'[\"read\"]',?,NULL,NULL)", digest(secret), now); err != nil {
-		t.Fatal(err)
-	}
-	identity, err := data.DatabaseIdentity(t.Context())
-	if err != nil {
-		t.Fatal(err)
-	}
-	path := filepath.Join(t.TempDir(), "app.sqlite")
-	app, err := appstore.Open(t.Context(), path, identity, "hosted")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = app.Close() }()
-	repository := NewSQLite(app, data)
-	if err := repository.ImportLegacy(t.Context(), data.SQL()); err == nil {
-		t.Fatal("missing dataset imported")
-	}
-	var count int
-	if err := app.SQL().QueryRowContext(t.Context(), "SELECT COUNT(*) FROM users").Scan(&count); err != nil || count != 0 {
-		t.Fatal("partial migration", count, err)
-	}
-	if err := data.EnsureDataset(t.Context(), "dataset"); err != nil {
-		t.Fatal(err)
-	}
-	if err := repository.ImportLegacy(t.Context(), data.SQL()); err != nil {
-		t.Fatal(err)
-	}
-	service := New(repository)
-	if _, err := service.AuthenticateBearer(t.Context(), secret); err != nil {
-		t.Fatal("migrated token invalid", err)
-	}
-	if err := service.RevokeToken(t.Context(), "token"); err != nil {
-		t.Fatal(err)
-	}
-	if err := app.Close(); err != nil {
-		t.Fatal(err)
-	}
-	app, err = appstore.Open(t.Context(), path, identity, "hosted")
-	if err != nil {
-		t.Fatal(err)
-	}
-	repository = NewSQLite(app, data)
-	if err := repository.ImportLegacy(t.Context(), data.SQL()); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := New(repository).AuthenticateBearer(t.Context(), secret); !errors.Is(err, ErrUnauthenticated) {
-		t.Fatal("stale legacy token resurrected", err)
 	}
 }

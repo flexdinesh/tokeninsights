@@ -4,14 +4,13 @@ import (
 	"flag"
 	"fmt"
 	"io"
-
 	"strings"
 	"time"
 
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/config"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/db"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/localruntime"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/pipeline"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/querymodel"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/viewer"
 )
 
@@ -93,7 +92,7 @@ type tableOptions struct {
 	period          period
 	bucket          timeBucket
 	sort            sortMode
-	repoGroup       db.RepoGroup
+	repoGroup       querymodel.RepoGroup
 	filters         filters
 }
 

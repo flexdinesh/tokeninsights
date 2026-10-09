@@ -26,21 +26,19 @@ const SingleProcess = "single-process"
 const Distributed = "distributed"
 
 type Values struct {
-	Mode            *string              `json:"mode,omitempty"`
-	AppDBPath       *string              `json:"app-db-path,omitempty"`
-	ServerKind      *serverfeatures.Kind `json:"server-kind,omitempty"`
-	ServerToken     *string              `json:"server-token,omitempty"`
-	ServerURL       *string              `json:"server-url,omitempty"`
-	Host            *string              `json:"host,omitempty"`
-	Port            *int                 `json:"port,omitempty"`
-	CollectorDBPath *string              `json:"collector-db-path,omitempty"`
-	ServerDBPath    *string              `json:"server-db-path,omitempty"`
+	Mode            *string `json:"mode,omitempty"`
+	AppDBPath       *string `json:"app-db-path,omitempty"`
+	ServerToken     *string `json:"server-token,omitempty"`
+	ServerURL       *string `json:"server-url,omitempty"`
+	Host            *string `json:"host,omitempty"`
+	Port            *int    `json:"port,omitempty"`
+	CollectorDBPath *string `json:"collector-db-path,omitempty"`
+	ServerDBPath    *string `json:"server-db-path,omitempty"`
 }
 
 type Settings struct {
 	Mode            string
 	AppDBPath       string
-	ServerKind      serverfeatures.Kind
 	ServerToken     string
 	ServerURL       string
 	Host            string
@@ -72,7 +70,7 @@ func Defaults() Settings {
 	if base == "" {
 		base = filepath.Join(os.Getenv("HOME"), ".local", "share")
 	}
-	return Settings{ServerKind: serverfeatures.Personal, Host: networkprefs.DefaultHost, Port: networkprefs.DefaultPort, CollectorDBPath: filepath.Join(base, "tokeninsights", "collector.sqlite"), ServerDBPath: filepath.Join(base, "tokeninsights", "server.duckdb")}
+	return Settings{Host: networkprefs.DefaultHost, Port: networkprefs.DefaultPort, CollectorDBPath: filepath.Join(base, "tokeninsights", "collector.sqlite"), ServerDBPath: filepath.Join(base, "tokeninsights", "server.duckdb")}
 }
 
 func Read(path string) (Values, error) {
@@ -139,11 +137,6 @@ func (v Values) Validate() error {
 	if v.Mode != nil && *v.Mode != SingleProcess && *v.Mode != Distributed {
 		return fmt.Errorf("invalid mode; use single-process or distributed")
 	}
-	if v.ServerKind != nil {
-		if err := v.ServerKind.Validate(); err != nil {
-			return err
-		}
-	}
 	if v.ServerToken != nil && (*v.ServerToken == "" || strings.TrimSpace(*v.ServerToken) != *v.ServerToken || strings.ContainsAny(*v.ServerToken, "\r\n\x00\t ")) {
 		return fmt.Errorf("invalid server-token")
 	}
@@ -205,9 +198,6 @@ func resolveValues(v Values, base string, environment bool, overrides Values) (S
 	if v.Mode != nil {
 		s.Mode = *v.Mode
 	}
-	if v.ServerKind != nil {
-		s.ServerKind = *v.ServerKind
-	}
 	if v.ServerToken != nil {
 		s.ServerToken = *v.ServerToken
 	}
@@ -238,9 +228,6 @@ func resolveValues(v Values, base string, environment bool, overrides Values) (S
 	if environment {
 		if value, ok := os.LookupEnv("TOKENINSIGHTS_MODE"); ok && overrides.Mode == nil {
 			s.Mode = value
-		}
-		if value, ok := os.LookupEnv("TOKENINSIGHTS_SERVER_KIND"); ok && overrides.ServerKind == nil {
-			s.ServerKind = serverfeatures.Kind(value)
 		}
 		if value, ok := os.LookupEnv("TOKENINSIGHTS_ACCESS_TOKEN"); ok && overrides.ServerToken == nil {
 			s.ServerToken = value
@@ -277,9 +264,6 @@ func resolveValues(v Values, base string, environment bool, overrides Values) (S
 	if overrides.ServerURL != nil {
 		s.ServerURL = *overrides.ServerURL
 	}
-	if overrides.ServerKind != nil {
-		s.ServerKind = *overrides.ServerKind
-	}
 	if overrides.ServerToken != nil {
 		s.ServerToken = *overrides.ServerToken
 	}
@@ -295,7 +279,7 @@ func resolveValues(v Values, base string, environment bool, overrides Values) (S
 	if overrides.ServerDBPath != nil {
 		s.ServerDBPath = *overrides.ServerDBPath
 	}
-	if err := (Values{Mode: pointerMode(s.EffectiveMode()), AppDBPath: optionalPath(s.AppDBPath), ServerKind: &s.ServerKind, ServerURL: &s.ServerURL, Host: &s.Host, Port: &s.Port, CollectorDBPath: &s.CollectorDBPath, ServerDBPath: &s.ServerDBPath}).Validate(); err != nil {
+	if err := (Values{Mode: pointerMode(s.EffectiveMode()), AppDBPath: optionalPath(s.AppDBPath), ServerURL: &s.ServerURL, Host: &s.Host, Port: &s.Port, CollectorDBPath: &s.CollectorDBPath, ServerDBPath: &s.ServerDBPath}).Validate(); err != nil {
 		return Settings{}, err
 	}
 	if s.ServerToken != "" {
@@ -318,7 +302,7 @@ func (s Settings) EffectiveMode() string {
 	if s.Mode != "" {
 		return s.Mode
 	}
-	if s.ServerKind == serverfeatures.Hosted || s.ServerURL != "" {
+	if s.ServerURL != "" {
 		return Distributed
 	}
 	return SingleProcess
@@ -366,8 +350,6 @@ func (v Values) Get(key string, base string) (string, error) {
 		return s.EffectiveMode(), nil
 	case "app-db-path":
 		return s.ApplicationPath(), nil
-	case "server-kind":
-		return string(s.ServerKind), nil
 	case "server-token":
 		if s.ServerToken == "" {
 			return "unset", nil
@@ -398,12 +380,6 @@ func (v *Values) Set(key, value string, remove bool) error {
 	switch key {
 	case "mode":
 		v.Mode = stringValue()
-	case "server-kind":
-		v.ServerKind = nil
-		if !remove {
-			kind := serverfeatures.Kind(value)
-			v.ServerKind = &kind
-		}
 	case "server-token":
 		v.ServerToken = stringValue()
 	case "server-url":

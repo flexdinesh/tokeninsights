@@ -52,14 +52,11 @@ changes no schema, accounting semantics, capture scope or hosted capabilities.
 
 The [design contract](../design.md) specifies runtime boundaries; the
 [development guide](../development.md) defines verification gates.
-All command compositions now use the shared adapters. Application SQLite and finite
-sync jobs have separate role schemas; DuckDB remains version 2 with read-only legacy
-account tables. ADR 0008's daemon composition and shared account-storage decisions
-are superseded; its wire capabilities, authentication and dataset isolation remain.
-
-Schema approval is recorded; it does not authorize silent deletion of history.
-Preserve stable database/dataset IDs, exact pending requests, acknowledgements,
-account identities and revocations. Retain recoverable migration copies.
+All compositions use shared semantic adapters. Application SQLite and finite sync
+jobs have separate role schemas. [ADR 0010](0010-current-contracts-and-boundaries.md)
+removes compatibility paths and defines current-schema rejection without mutation.
+Stable identities, exact pending requests, receipts and credential revocations remain
+required within supported contracts.
 
 ## Unresolved questions
 

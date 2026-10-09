@@ -160,10 +160,10 @@ func DecodeBatch(body []byte) (Batch, error) {
 	if err := StrictDecode(body, &batch); err != nil {
 		return batch, err
 	}
-	if (batch.ProtocolVersion != ProtocolVersion && batch.ProtocolVersion != LegacyProtocolVersion) || batch.ExtractorVersion != ExtractorVersion {
+	if batch.ProtocolVersion != ProtocolVersion || batch.ExtractorVersion != ExtractorVersion {
 		return batch, errors.New("incompatible")
 	}
-	if batch.ProtocolVersion == ProtocolVersion && !ValidDatasetID(batch.DatasetID) || batch.ProtocolVersion == LegacyProtocolVersion && batch.DatasetID != "" {
+	if !ValidDatasetID(batch.DatasetID) {
 		return batch, errors.New("invalid_dataset")
 	}
 	if !validID(batch.DatabaseID) || !validID(batch.StreamID) || !validID(batch.BatchID) || len(batch.Entries) == 0 || len(batch.Entries) > MaxEntries || batch.FromSequence <= 0 || batch.ToSequence > publication.SafeInteger || batch.ToSequence < batch.FromSequence || batch.ToSequence-batch.FromSequence+1 != int64(len(batch.Entries)) {
@@ -182,7 +182,7 @@ func DecodeBatch(body []byte) (Batch, error) {
 
 func ValidateReceipt(batch Batch, request []byte, response Response) error {
 	r := response.Receipt
-	if r.DatabaseID != batch.DatabaseID || r.DatasetID != batch.EffectiveDatasetID() || r.StreamID != batch.StreamID || r.BatchID != batch.BatchID || r.RequestHash != Hash(request) || r.FromSequence != batch.FromSequence || r.ToSequence != batch.ToSequence || r.Accepted != int64(len(batch.Entries)) || !publication.ValidTimestampMs(r.AcceptedAtMs) || r.InputRevision < 0 || r.InputRevision > publication.SafeInteger {
+	if r.DatabaseID != batch.DatabaseID || r.DatasetID != batch.DatasetID || r.StreamID != batch.StreamID || r.BatchID != batch.BatchID || r.RequestHash != Hash(request) || r.FromSequence != batch.FromSequence || r.ToSequence != batch.ToSequence || r.Accepted != int64(len(batch.Entries)) || !publication.ValidTimestampMs(r.AcceptedAtMs) || r.InputRevision < 0 || r.InputRevision > publication.SafeInteger {
 		return errors.New("receipt_mismatch")
 	}
 	return nil

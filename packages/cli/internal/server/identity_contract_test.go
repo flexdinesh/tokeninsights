@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/serverstore"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/datastore"
 )
 
 // R08: unavailable metadata stays observable, while successful analytics always
@@ -24,7 +24,7 @@ func TestQueryIdentityContractForEmptyAndUnavailableStorage(t *testing.T) {
 			path := filepath.Join(t.TempDir(), "server.sqlite")
 			epoch := ""
 			if ready {
-				store, err := serverstore.CreateIfMissing(path)
+				store, err := datastore.Open(t.Context(), path)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -37,11 +37,20 @@ func TestQueryIdentityContractForEmptyAndUnavailableStorage(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			handler := newApp(context.Background(), Options{DBPath: path, InstanceID: "test-instance"}, io.Discard).handler()
-			for _, route := range []string{"instance", "sync", "usage", "usage/facets"} {
+			var store *datastore.Store
+			if ready {
+				var err error
+				store, err = datastore.Open(t.Context(), path)
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer func() { _ = store.Close() }()
+			}
+			handler := NewDataHandler(t.Context(), store, io.Discard, "0.0.0.0", "test-instance", false)
+			for _, route := range []string{"instance", "status", "usage", "usage/facets"} {
 				response := httptest.NewRecorder()
-				handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/v1/"+route, nil))
-				if !ready && (route == "usage" || route == "usage/facets") {
+				handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/v2/"+route, nil))
+				if !ready {
 					if response.Code != http.StatusServiceUnavailable {
 						t.Fatalf("%s unavailable status = %d", route, response.Code)
 					}
@@ -61,7 +70,7 @@ func TestQueryIdentityContractForEmptyAndUnavailableStorage(t *testing.T) {
 						t.Fatalf("%s %s = %s, want %q", route, field, data, want)
 					}
 				}
-				if route == "instance" || route == "sync" {
+				if route == "instance" || route == "status" {
 					want := `"unavailable"`
 					if ready {
 						want = `"ready"`

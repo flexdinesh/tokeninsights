@@ -2,7 +2,7 @@ package server
 
 import (
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/analytics"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/db"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/querymodel"
 	serverapi "github.com/flexdinesh/tokeninsights/packages/cli/internal/server/api"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/viewer"
 )
@@ -35,30 +35,11 @@ func nonNilStrings(values []string) []string {
 	return values
 }
 
-func apiSyncState(state syncState) serverapi.SyncResponse {
-	harnesses := make(map[string]serverapi.HarnessSyncStatus, len(state.Harnesses))
-	for harness, status := range state.Harnesses {
-		harnesses[harness] = serverapi.HarnessSyncStatus(status)
-	}
-	response := serverapi.SyncResponse{
-		InstanceId: state.InstanceID, DataEpoch: state.DataEpoch, DataReadiness: serverapi.SyncResponseDataReadiness(state.DataReadiness),
-		Running:   state.Running,
-		Phase:     serverapi.SyncPhase(state.Phase),
-		Harnesses: harnesses,
-		Error:     state.Error,
-		Revision:  int64(state.Revision),
-	}
-	if state.Generation > 0 {
-		response.Generation = &state.Generation
-		response.InputRevision = &state.InputRevision
-		response.Pending = &state.Pending
-	}
-	return response
-}
-
-func apiDashboard(data dashboard) serverapi.UsageResponse {
-	response := serverapi.UsageResponse{
+func apiDashboard(data dashboard) serverapi.UsageResponseV2 {
+	response := serverapi.UsageResponseV2{
 		Revision:   data.Revision,
+		DatasetId:  data.DatasetID,
+		DataEpoch:  data.DatabaseID,
 		Rows:       apiUsageRows(data.Rows),
 		Chart:      apiUsageRows(data.Chart),
 		RowCount:   int64(data.RowCount),
@@ -121,20 +102,20 @@ func apiUsageRows(rows []Row) []serverapi.UsageRow {
 	return result
 }
 
-func apiLocationOptions(options []db.LocationOption) []serverapi.LocationOption {
+func apiLocationOptions(options []querymodel.LocationOption) []serverapi.LocationOption {
 	result := make([]serverapi.LocationOption, 0, len(options))
 	for _, option := range options {
-		result = append(result, serverapi.LocationOption{Key: option.Key, Name: db.LocationDisplayName(option)})
+		result = append(result, serverapi.LocationOption{Key: option.Key, Name: querymodel.LocationDisplayName(option)})
 	}
 	return result
 }
 
-func apiFacets(data analytics.Facets) serverapi.UsageFacetsResponse {
-	response := serverapi.UsageFacetsResponse{
+func apiFacets(data analytics.Facets) serverapi.UsageFacetsResponseV2 {
+	response := serverapi.UsageFacetsResponseV2{
 		Providers: nonNilStrings(data.Providers), Models: nonNilStrings(data.Models),
 		Harnesses: apiHarnesses(data.Harnesses), Sessions: nonNilStrings(data.Sessions),
 		Repositories: apiLocationOptions(data.Repositories), Directories: apiLocationOptions(data.Directories),
-		Revision: data.Revision, DataEpoch: data.DatabaseID,
+		Revision: data.Revision, DataEpoch: data.DatabaseID, DatasetId: data.DatasetID,
 	}
 	if data.Generation > 0 {
 		response.Generation = &data.Generation

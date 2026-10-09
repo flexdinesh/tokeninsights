@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/evidence"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/ingestionhttp"
 )
 
 func testStore(t *testing.T) *Store {
@@ -106,19 +107,19 @@ func TestAcceptanceReplayAndConcurrentDuplicates(t *testing.T) {
 	if replay.Receipt != response.Receipt || replay.Processing.Pending != 0 || len(replay.Processing.Items) != 2 {
 		t.Fatalf("receipt/status replay: %+v", replay)
 	}
-	request := httptest.NewRequest(http.MethodPost, IngestionPrefix+"batches", bytes.NewReader(body))
+	request := httptest.NewRequest(http.MethodPost, ingestionhttp.IngestionPrefix+"batches", bytes.NewReader(body))
 	request.Header.Set("Content-Type", "application/json")
 	writer := httptest.NewRecorder()
-	store.Handler().ServeHTTP(writer, request)
+	ingestionhttp.Handler(store, ingestionhttp.IngestionPrefix, evidence.ProtocolVersion).ServeHTTP(writer, request)
 	if writer.Code != 200 {
 		t.Fatalf("processed duplicate status: %d %s", writer.Code, writer.Body.String())
 	}
 	// A different Collector/batch also gets terminal status for identical evidence.
 	lateBody := batchBody(t, store, "late-copy", "new-batch", record, record)
-	lateRequest := httptest.NewRequest(http.MethodPost, IngestionPrefix+"batches", bytes.NewReader(lateBody))
+	lateRequest := httptest.NewRequest(http.MethodPost, ingestionhttp.IngestionPrefix+"batches", bytes.NewReader(lateBody))
 	lateRequest.Header.Set("Content-Type", "application/json")
 	lateWriter := httptest.NewRecorder()
-	store.Handler().ServeHTTP(lateWriter, lateRequest)
+	ingestionhttp.Handler(store, ingestionhttp.IngestionPrefix, evidence.ProtocolVersion).ServeHTTP(lateWriter, lateRequest)
 	var late evidence.Response
 	if lateWriter.Code != http.StatusOK || json.Unmarshal(lateWriter.Body.Bytes(), &late) != nil || late.Receipt.Accepted != 2 || late.Processing.Pending != 0 || len(late.Processing.Items) != 2 {
 		t.Fatalf("already processed evidence lost status/mappings: %d %s", lateWriter.Code, lateWriter.Body.String())

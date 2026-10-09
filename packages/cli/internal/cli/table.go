@@ -2,7 +2,6 @@ package cli
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"slices"
 	"sort"
@@ -14,10 +13,10 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/analytics"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/collectorprogress"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/db"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/localruntime"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/pipeline"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/queryclient"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/querymodel"
 )
 
 type reloadMsg struct {
@@ -26,7 +25,7 @@ type reloadMsg struct {
 	instanceID, dataEpoch string
 	selection             string
 	rows                  []renderRow
-	coverage              []db.DayCoverage
+	coverage              []querymodel.DayCoverage
 	revision              int64
 	preservePosition      bool
 	refreshToken          string
@@ -35,7 +34,7 @@ type reloadMsg struct {
 	lastSyncMs            int64
 	processingPending     *int64
 	hostname, timezone    string
-	sessionCounts         db.SessionCounts
+	sessionCounts         querymodel.SessionCounts
 	err                   error
 }
 
@@ -70,7 +69,7 @@ type sharedSyncMsg struct {
 	instanceID, dataEpoch string
 	readiness             string
 	pending               bool
-	status                db.SyncStatus
+	status                querymodel.SyncStatus
 	err                   error
 }
 
@@ -124,7 +123,7 @@ type interactiveModel struct {
 	activeTab             tabMode
 	statusline            statuslineModel
 	tableSummary          tableSummaryModel
-	sessionCounts         db.SessionCounts
+	sessionCounts         querymodel.SessionCounts
 	width                 int
 	height                int
 	scrollOffset          int
@@ -145,8 +144,8 @@ type interactiveModel struct {
 	requestID             uint64
 	cancel                context.CancelFunc
 	statusPolling         bool
-	sharedSync            db.SyncStatus
-	coverage              []db.DayCoverage
+	sharedSync            querymodel.SyncStatus
+	coverage              []querymodel.DayCoverage
 	options               tableOptions
 	now                   time.Time
 	err                   error
@@ -176,7 +175,7 @@ type syncProgressRow struct {
 }
 
 var aggregationTabs = []tabMode{tabTokens, tabModels, tabProviders, tabHarnesses, tabSessions, tabContext, tabRepo}
-var repoGroupOptions = []db.RepoGroup{db.RepoGroupRepository, db.RepoGroupDirectory}
+var repoGroupOptions = []querymodel.RepoGroup{querymodel.RepoGroupRepository, querymodel.RepoGroupDirectory}
 var dateRangeOptions = []period{periodToday, periodYesterday, periodWeek, periodMonth, periodYear, periodAllTime}
 var bucketOptions = []timeBucket{bucketDay, bucketWeek, bucketMonth, bucketYear}
 var defaultSortOptions = []sortMode{sortDate, sortTokens, sortInput, sortOutput, sortCacheRead, sortName}
@@ -223,7 +222,7 @@ func (m interactiveModel) Init() tea.Cmd {
 
 func newInteractiveModel(ctx context.Context, options tableOptions, now time.Time, hostname string) interactiveModel {
 	if options.repoGroup == "" {
-		options.repoGroup = db.RepoGroupRepository
+		options.repoGroup = querymodel.RepoGroupRepository
 	}
 	syncContext, cancel := context.WithCancel(ctx)
 	m := interactiveModel{
@@ -350,7 +349,7 @@ func (m interactiveModel) transitionPublication(instanceID, dataEpoch string, re
 		m.queries.invalidate()
 		m.statusQueries.invalidate()
 		m.rows, m.coverage = nil, nil
-		m.sessionCounts, m.lastSyncMs = db.SessionCounts{}, 0
+		m.sessionCounts, m.lastSyncMs = querymodel.SessionCounts{}, 0
 		m.refresh.loaded = false
 		m.refresh.displayedRevision, m.refresh.inputRevision, m.refresh.serverGeneration = 0, 0, 0
 		m.refresh.displayedToken, m.refresh.queryErr = "", nil
@@ -612,10 +611,6 @@ func (m interactiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tea.Batch(commands...)
 	case syncProgressMsg:
 		m = m.withSyncProgress(msg.event)
-		if msg.event.Status == pipeline.SyncProgressResetting || msg.event.Status == pipeline.SyncProgressRebuilding {
-			m.showingSnapshot = false
-			m.snapshotAllowed = false
-		}
 		if m.syncing && m.syncInFlight && m.syncMessages != nil {
 			return m, readSyncProgressCmd(m.syncMessages)
 		}
@@ -630,14 +625,10 @@ func (m interactiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.err != nil {
 			m.syncSummary = msg.summary
 			m.syncErr = msg.err
-			if !errors.Is(msg.err, db.ErrRebuildPending) && !errors.Is(msg.err, db.ErrRecoveryRequired) {
-				m.syncing = false
-				m.syncInFlight = false
-				m.reloadInFlight = true
-				return m, m.reloadCmd()
-			}
-			m.syncing, m.syncInFlight = false, false
-			return m, nil
+			m.syncing = false
+			m.syncInFlight = false
+			m.reloadInFlight = true
+			return m, m.reloadCmd()
 		}
 		m.syncSummary = msg.summary
 		m.syncInFlight = false
@@ -1045,7 +1036,7 @@ func (m interactiveModel) handlePopupKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 }
 
-func indexOfRepoGroup(value db.RepoGroup) int {
+func indexOfRepoGroup(value querymodel.RepoGroup) int {
 	for i, option := range repoGroupOptions {
 		if option == value {
 			return i
@@ -1477,12 +1468,6 @@ func (m interactiveModel) renderSyncProgress() string {
 	height := max(1, m.height)
 	title := titleStyle.Render("Syncing data")
 	subtitle := hintStyle.Render("Refreshing all supported harnesses")
-	switch m.syncStatus {
-	case pipeline.SyncProgressResetting:
-		subtitle = hintStyle.Render("Resetting local usage data for compatibility")
-	case pipeline.SyncProgressRebuilding:
-		subtitle = hintStyle.Render("Rebuilding usage from all configured local harnesses")
-	}
 	lines := []string{title, subtitle}
 	rawRows := make([]string, 0, len(m.syncProgressRows)+2)
 	for _, row := range m.syncProgressRows {
@@ -1500,7 +1485,7 @@ func (m interactiveModel) syncProgressStatusIcon(status pipeline.SyncProgressSta
 	switch status {
 	case "", "pending":
 		return syncSkipStyle.Render(padSyncProgressIcon(syncPendingDots(m.syncFrame)))
-	case pipeline.SyncProgressDiscovering, pipeline.SyncProgressSyncing, pipeline.SyncProgressNormalizing, pipeline.SyncProgressLoading, pipeline.SyncProgressResetting, pipeline.SyncProgressRebuilding:
+	case pipeline.SyncProgressDiscovering, pipeline.SyncProgressSyncing, pipeline.SyncProgressLoading:
 		return syncBusyStyle.Render(padSyncProgressIcon(syncSpinnerFrame(m.syncFrame)))
 	case pipeline.SyncProgressSynced:
 		return syncOKStyle.Render(padSyncProgressIcon("✓"))
@@ -1593,11 +1578,11 @@ func activeRepoFiltersLabel(f filters) string {
 	return " · " + strings.Join(parts, " · ")
 }
 
-func locationFilterLabels(source []db.LocationOption) ([]string, map[string]string) {
+func locationFilterLabels(source []querymodel.LocationOption) ([]string, map[string]string) {
 	values := make([]string, 0, len(source))
 	keys := make(map[string]string, len(source))
 	for _, option := range source {
-		base := db.LocationDisplayName(option)
+		base := querymodel.LocationDisplayName(option)
 		label := base
 		for suffix := 2; ; suffix++ {
 			if _, exists := keys[label]; !exists {

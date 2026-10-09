@@ -19,7 +19,7 @@ func TestQueryResponsesRequirePublicationEnvelope(t *testing.T) {
 				continue
 			}
 			t.Run(endpoint+"/"+invalid, func(t *testing.T) {
-				body := map[string]any{"apiVersion": "v1", "instanceId": "instance", "dataEpoch": "epoch", "revision": 0, "dataReadiness": "ready"}
+				body := map[string]any{"apiVersion": "v2", "datasetId": "default", "serverKind": "personal", "capabilities": []string{"usage", "facets"}, "permissions": []string{"read"}, "instanceId": "instance", "dataEpoch": "epoch", "revision": 0, "dataReadiness": "ready"}
 				switch invalid {
 				case "missing-instance":
 					delete(body, "instanceId")
@@ -64,7 +64,7 @@ func TestQueryEnvelopeAcceptsZeroRevisionAndExplicitUnavailableMetadata(t *testi
 			if unavailable && (endpoint == "usage" || endpoint == "facets") {
 				continue
 			}
-			body := map[string]any{"apiVersion": "v1", "instanceId": "instance", "dataEpoch": "epoch", "revision": 0, "dataReadiness": "ready"}
+			body := map[string]any{"apiVersion": "v2", "datasetId": "default", "serverKind": "personal", "capabilities": []string{"usage", "facets"}, "permissions": []string{"read"}, "instanceId": "instance", "dataEpoch": "epoch", "revision": 0, "dataReadiness": "ready"}
 			if unavailable {
 				body["dataEpoch"], body["dataReadiness"] = "", "unavailable"
 			}
@@ -80,10 +80,10 @@ func TestAllUsageDoesNotReadUnavailableMetadata(t *testing.T) {
 	requests := 0
 	c := newClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		requests++
-		if r.URL.Path != "/api/v1/instance" {
+		if r.URL.Path != "/api/v2/instance" {
 			t.Errorf("unavailable metadata authorized %s", r.URL.Path)
 		}
-		serveJSON(w, map[string]any{"apiVersion": "v1", "instanceId": "instance", "dataEpoch": "", "dataReadiness": "unavailable"})
+		serveJSON(w, map[string]any{"apiVersion": "v2", "datasetId": "default", "serverKind": "personal", "capabilities": []string{"usage", "facets"}, "permissions": []string{"read"}, "instanceId": "instance", "dataEpoch": "", "dataReadiness": "unavailable"})
 	}))
 	result, err := c.AllUsage(t.Context(), api.GetUsageParams{})
 	if !errors.Is(err, ErrUnavailable) || requests != 1 || len(result.Rows) != 0 {

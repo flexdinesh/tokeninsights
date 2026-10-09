@@ -4,11 +4,12 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"time"
+
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/collector"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/evidence"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/pipeline"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/syncjob"
-	"time"
 )
 
 func (r *Runtime) runJobs(ctx context.Context, dataPath, appPath string) {
@@ -48,7 +49,7 @@ func (r *Runtime) consumeJob(ctx context.Context, dataPath, appPath string) {
 		observer := r.Observe(attempt)
 		result, err = collector.Run(attempt, collector.Options{CollectorDBPath: job.Spec.CollectorPath, ServerDBPath: job.Spec.DataPath, Destination: r.Destination, PublishOnly: job.Spec.PublishOnly,
 			AcceptedReceipt:  func(receipt evidence.Receipt) error { return r.Jobs.SaveReceipt(attempt, job.ID, receipt) },
-			SyncOptions:      pipeline.SyncOptions{Harnesses: job.Spec.Harnesses, SourceDir: job.Spec.SourceDir, FullRefresh: job.Spec.FullRefresh, Normalize: true, Now: time.Now(), Progress: observer.Collection},
+			SyncOptions:      pipeline.SyncOptions{Harnesses: job.Spec.Harnesses, SourceDir: job.Spec.SourceDir, FullRefresh: job.Spec.FullRefresh, Now: time.Now(), Progress: observer.Collection},
 			DeliveryProgress: observer.Delivery,
 		})
 		observer.Finish(result, err)
