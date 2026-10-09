@@ -373,6 +373,108 @@ the independent collector boundary. Total sampled CPU is 14.32 versus 13.93 seco
 These are one diagnostic run per version, separate from latency samples;
 cumulative percentages overlap and do not establish a total-CPU speedup budget.
 
+## Fourth optimization: delay stale component retries
+
+Starting from `ec925c4` (PR #74), the concurrent dispatcher now preserves the
+publication outcome and waits 250 ms before retrying a stale component. It passes
+payload-free component exclusions to existing storage selection, which resolves
+the current dependency graph before loading JSON. Independent work keeps its
+dataset rotation, two-worker limit and byte admission. First attempts and work
+following successful publication remain eager; serial maintenance is unchanged.
+
+Wakeups cannot extend a deadline, and a dedicated timer makes expired hints
+eligible without waiting for the one-second failure poll. Tracking is bounded to
+128 components and 4,096 scope bindings, with immediate eligibility at capacity.
+It retains no raw records and has no durable state. Restart drops only scheduling
+hints; stale work does not become a recorded failure. Generation, membership and
+revision fences remain authoritative. This bounds the deliberate scheduling wait,
+not publication time for a component changing faster than it can be processed.
+
+Deterministic virtual-time tests cover immediate first attempts, recurring retries
+under continuous wakeups, idle deadline wakeup, independent dataset progress,
+oversized delayed work releasing admission, successful publication and restart.
+Real-store tests cover payload-free exclusions, late ancestors, alternate roots,
+dataset isolation, unchanged durable backoff and eventual exact accounting.
+Existing generation, failure, cancellation, recovery and pure accounting contracts
+remain in place.
+
+`BenchmarkPacedProcessing` uses real direct delivery and the shared two-worker
+dispatcher against hosted DuckDB datasets. Forty 256-message batches grow one
+session on a 100 ms ticker; a second dataset receives one message after batch 11.
+The ticker can drop ticks under load. Opening, fixture construction and provisioning
+are untimed; capture and HTTP are absent from this fixture and remain covered by
+the ingestion matrix. Every run checks receipt hashes/counts/dataset binding,
+all token components (1,228,800 hot tokens and 120 independent tokens), one hot
+session, no pending work, and independent publication before submission finishes.
+It reports first publication and independent-dataset latency separately from final
+visibility. This finite stream cannot prove publication under endless changes.
+
+The delay trial used Go 1.26.8 on the same machine, three fresh-process samples
+per policy/workload, reversing policy order on the second round. Medians:
+
+| Retry delay | Single-session loaded records | Single-session elapsed | Paced loaded records | Paced elapsed | Paced final visibility lag |
+| --- | --- | --- | --- | --- | --- |
+| None | 99,089 | 8.11 s | 104,193 | 6.45 s | 2.35 s |
+| 100 ms | 64,529 | 7.62 s | 75,265 | 6.50 s | 2.30 s |
+| 250 ms | 53,265 | 7.93 s | 50,689 | 6.11 s | 2.12 s |
+| 500 ms | 37,649 | 7.67 s | 39,681 | 6.49 s | 2.51 s |
+
+Select 250 ms for its balance of repeated work and added scheduling delay. The
+500 ms policy saves more work but increases paced visibility lag. The 250 ms
+single-session elapsed ranges overlap baseline (7.33–8.26 versus 7.83–8.12 s),
+so this trial does not establish a universal ingestion speedup. Paced elapsed
+ranges are 6.04–6.23 versus 6.45–6.46 s. Trial Go allocation medians fall from
+4.51 to 3.34 GB for one session and 3.26 to 1.89 GB for paced arrivals; these are
+decimal allocation volumes, not live heap. Paced peak RSS rises from 383 to 395 MiB
+at the median, so no peak-memory improvement is claimed.
+
+The selected policy then ran through a separate paired matrix: three alternating
+fresh-process samples per version, one iteration each. No competing verification
+was detected. Elapsed medians (ranges) include visibility and the final query:
+
+| Shape | Adapter | Before | After |
+| --- | --- | --- | --- |
+| 1 session | Direct | 8.14 s (8.04–8.47) | 7.92 s (7.68–7.95) |
+| 1 session | Hosted HTTP | 8.32 s (8.14–8.37) | 8.02 s (7.86–8.36) |
+| 50 sessions | Direct | 7.08 s (7.08–7.35) | 6.80 s (6.71–6.89) |
+| 50 sessions | Hosted HTTP | 7.24 s (7.22–7.26) | 7.06 s (6.62–7.14) |
+| 500 sessions | Direct | 11.13 s (11.05–11.29) | 11.15 s (11.09–11.16) |
+| 500 sessions | Hosted HTTP | 11.61 s (11.54–11.63) | 11.46 s (11.43–11.59) |
+| Paced arrivals | Direct, two datasets | 6.42 s (6.28–6.48) | 6.26 s (6.25–6.29) |
+
+The growing session loads 92,945 → 54,545 records direct and 99,089 → 52,753
+over HTTP at the median; stale publications fall from 18/19 to eight. Go allocation
+volume falls 23–26%. Paced loading falls 103,937 → 51,201, stale publications
+21 → nine, and Go allocations 3.25 → 1.91 GB. Paced first publication stays at
+115 ms median; the independent dataset publishes in 30 → 28 ms (27–49 versus
+23–34 ms), while submissions are still arriving. Its final visibility lag is
+2.33 → 2.26 s. Peak RSS varies across shapes, with some increases; no general
+memory-capacity improvement follows from the allocation savings.
+
+The deliberate delay has observable costs. For 50 sessions, direct delivery falls
+6.25 → 5.66 s but remaining visibility lag rises 80 → 380 ms; HTTP lag rises
+79 → 356 ms. Successful publications fall from 79 to 68, while stale attempts
+increase from ten to 17/20. Total elapsed still improves, but staleness does not
+uniformly decrease across shapes. Single-session direct lag also rises 2.38 →
+2.63 s despite its lower total elapsed. Retain this as a substantial reduction
+in repeated loading for growing components, with modest workload-dependent latency
+gains and an explicit scheduling tradeoff.
+
+Append still loads its 202-record component once: median elapsed is 147 → 145 ms
+direct and 139 → 143 ms HTTP, with overlapping ranges. Unchanged sync submits and
+processes nothing (49 → 45 ms direct, 45 → 46 ms HTTP). Saved-query means stay
+roughly 32–33 ms, with maximum query latency 45 → 42 ms. Every query retains saved
+sessions and nondecreasing totals; final totals remain exact.
+
+The small native fixture takes 137 → 158 ms direct and 136 → 152 ms HTTP in
+the one-iteration matrix. Both versions perform seven successful publications and
+zero stale retries, so the 250 ms delay never activates. A longer control used
+three alternating fresh-process samples of ten iterations each: direct medians
+are 146 → 143 ms (ranges 139–148 versus 138–149 ms), HTTP 145 → 140 ms
+(143–147 versus 140–152 ms). This does not reproduce a consistent slowdown;
+the small fixture's 25 ms visibility polling makes single-iteration differences
+too coarse to attribute to scheduler overhead. Both sets of results are retained.
+
 ## Reproduction
 
 From the repository root, install the pinned development dependencies first.
@@ -387,6 +489,8 @@ env GOTOOLCHAIN=go1.26.8 go test ./internal/collector -run '^$' \
   -bench '^BenchmarkIngestionSavedQueries$' -benchtime=1x -count=3
 env GOTOOLCHAIN=go1.26.8 go test ./internal/collector -run '^$' \
   -bench '^BenchmarkReceiverAcceptance$' -benchtime=10x -count=3
+env GOTOOLCHAIN=go1.26.8 go test ./internal/collector -run '^$' \
+  -bench '^BenchmarkPacedProcessing$' -benchtime=1x -count=3
 env GOTOOLCHAIN=go1.26.8 go test ./internal/collector -run '^$' \
   -bench '^BenchmarkLocal(Startup|SavedQueries)$' -benchtime=3x -count=3
 env GOTOOLCHAIN=go1.26.8 go test ./internal/datastore -run '^$' \

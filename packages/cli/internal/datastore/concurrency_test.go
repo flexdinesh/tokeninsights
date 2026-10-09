@@ -138,6 +138,54 @@ func lenMustMarshal(t *testing.T, value evidence.Record) int {
 	return len(body)
 }
 
+func TestDelayedMembershipSkipsLateAncestorsWithoutBlockingOtherDatasets(t *testing.T) {
+	root, alice, bob := hostedStores(t)
+	if _, err := alice.Accept(t.Context(), evidence.ProtocolVersion, batchBody(t, alice, "child", "batch", codexRecord("child", "parent"))); err != nil {
+		t.Fatal(err)
+	}
+	first, found, err := root.LoadWork(t.Context())
+	if err != nil || !found {
+		t.Fatal(first, found, err)
+	}
+	projection, err := processor.Process(t.Context(), first.Records)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := alice.Accept(t.Context(), evidence.ProtocolVersion, batchBody(t, alice, "parent", "batch", codexRecord("parent", ""))); err != nil {
+		t.Fatal(err)
+	}
+	if published, err := root.PublishProjection(t.Context(), first, projection); err != nil || published {
+		t.Fatal("late ancestor escaped fence", published, err)
+	}
+	// The scheduler retains only membership, not payload or byte admission.
+	first.Records, first.Bytes = nil, 0
+	if _, err := bob.Accept(t.Context(), evidence.ProtocolVersion, batchBody(t, bob, "child", "batch", codexRecord("child", ""))); err != nil {
+		t.Fatal(err)
+	}
+	work, found, err := root.LoadWorkExcluding(t.Context(), []dataengine.Work{first}, 0)
+	if err != nil || !found || work.DatasetID != "bob" {
+		t.Fatal("delay crossed datasets", work, found, err)
+	}
+	if _, found, err := root.LoadWorkExcluding(t.Context(), []dataengine.Work{first, work}, 0); err != nil || found {
+		t.Fatal("alternate root bypassed delayed membership", found, err)
+	}
+	var failures int
+	if err := root.SQL().QueryRow("SELECT COUNT(*) FROM processing.scopes WHERE error_code<>'' OR attempts<>0 OR retry_at_ms<>0").Scan(&failures); err != nil || failures != 0 {
+		t.Fatal("stale work changed durable backoff", failures, err)
+	}
+	// Removing only the ephemeral hint makes durable work immediately available.
+	resumed, found, err := root.LoadWorkExcluding(t.Context(), []dataengine.Work{work}, 0)
+	if err != nil || !found || resumed.DatasetID != "alice" || len(resumed.Scopes) != 2 {
+		t.Fatal("pending component lost", resumed, found, err)
+	}
+	drain(t, root)
+	for _, dataset := range []*Store{alice, bob} {
+		if total(t, dataset, "analytics.confirmed") != 120 {
+			t.Fatal("delay changed native accounting", dataset.DatasetID())
+		}
+	}
+}
+
 func TestComponentFailureBackoffFencesNewInputs(t *testing.T) {
 	store := testStore(t)
 	parent := codexRecord("parent", "")

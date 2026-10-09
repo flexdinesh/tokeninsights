@@ -177,7 +177,21 @@ another user's dependency graph. Late parent arrivals invalidate terminal depend
 
 Read consistent connected component; interpret outside write lock; fence generation,
 complete component membership and each scope revision before publishing.
-Stale work retries; unrelated ingestion cannot starve processing.
+After a stale publication, the concurrent dispatcher delays that component's next
+attempt by 250 ms. The deadline does not move with acceptance wakeups; a dedicated
+timer restores eligibility even during continuous arrivals. First attempts and
+successful publications remain eager. Delayed membership is excluded before raw
+JSON loading, using the current dataset-qualified dependency graph, so late
+ancestors and alternate roots cannot bypass it. Independent components remain
+eligible; delayed components occupy neither worker slots nor active byte admission.
+The dispatcher retains at most 128 delayed components and 4,096 scope bindings,
+without evidence records. Excess hints fall back to immediate eligibility. Hints
+expire and disappear on restart; durable pending scopes remain authoritative.
+Serial maintenance remains eager. Staleness never increments failure attempts or
+changes durable retry status. This bounds intentional scheduling delay, not total
+visibility: admission, processing and failure backoff still apply, and continuous
+changes to the same component can invalidate every snapshot. Revision/membership
+fences stay strict; unrelated ingestion cannot starve processing.
 Facts/estimates/provenance/outcomes/completed revisions commit atomically.
 Failures stay pending with fixed error/attempts/exponential retry capped 64 seconds;
 independent scopes proceed. Backoff applies to every unchanged scope in a failed component; revised input remains eligible. Join dispatcher and workers before closing storage. Acceptance/projection inserts use bounded bulk statements under the shared writer, preserving conflict checks, receipt bytes, provenance and transaction fences.
