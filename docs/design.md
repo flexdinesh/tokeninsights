@@ -45,6 +45,10 @@ Current DuckDB startup validates the actual database read-only once before writa
 opening, reading column, constraint, index and view contracts in batches. Only the expected
 contract derived from the embedded schema is cached per process; actual database
 validation and generation checks always run.
+Frequent dataset metadata reads retrieve metadata, active/target generation states,
+the active-generation count and newest processor version in one SQL statement
+within the caller's snapshot. All generation checks remain dataset-scoped and run
+on every read, including newer processor versions in retained generations.
 Application SQLite holds users, token/session digests and provisioning state. It is
 paired to the token database identity and kind. Local setup creates one default user.
 App initialization publishes a fully initialized file atomically; wrong roles/pairs

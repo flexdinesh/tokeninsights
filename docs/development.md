@@ -153,6 +153,10 @@ large-history latency claim. Writer benchmarks separate new observations from
 replay. Compare repeated samples on one machine/toolchain; optimize measured
 stages while preserving independent semantic fixtures.
 
+See the [ingestion performance baseline](ingestion-performance.md) for workload
+shape comparisons, authenticated HTTP, incremental sync, queries during ingestion,
+scoped profiling commands and the measured optimization priorities.
+
 ## Build Tooling
 
 The private `@tokeninsights/build-tools` workspace under `tools/build` owns schema validation, fixture preparation and safety checks, embedded-web checks, and Homebrew formula generation. Root pnpm scripts are the stable entry points.

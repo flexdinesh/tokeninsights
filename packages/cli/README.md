@@ -240,3 +240,6 @@ CGO/C/C++ toolchain builds embedded DuckDB. Production native archives need no J
 Application pairing also persists `<canonical-token-path>.application.json`, containing
 only the application instance ID. Keep this guard with both databases in stopped
 backups. A missing/replaced app database fails closed to preserve credential revocations. Restore the matched set; do not delete the guard to bypass recovery.
+
+For development, see [ingestion benchmarks and profiling](../../docs/ingestion-performance.md)
+for reproducible capture, acceptance, processing and query measurements.

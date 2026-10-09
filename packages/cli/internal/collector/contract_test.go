@@ -8,7 +8,7 @@ import (
 	"testing"
 )
 
-func acceptanceSources(t *testing.T) string {
+func acceptanceSources(t testing.TB) string {
 	t.Helper()
 	root := filepath.Join(t.TempDir(), "source")
 	fixture := filepath.Join("..", "..", "testdata", "conformance", "collector-rebuild", "source")
