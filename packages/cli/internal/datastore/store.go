@@ -73,31 +73,32 @@ func ReadMetadataForDataset(ctx context.Context, reader metadataReader, datasetI
 	var m Metadata
 	var role string
 	var version int
-	err := reader.QueryRowContext(ctx, "SELECT role,schema_version,database_id,dataset_id,server_kind,generation,target_generation,input_revision,revision,last_ingestion_at_ms,created_at_ms FROM ingestion.metadata WHERE dataset_id=?", datasetID).Scan(&role, &version, &m.DatabaseID, &m.DatasetID, &m.Kind, &m.Generation, &m.TargetGeneration, &m.InputRevision, &m.Revision, &m.LastIngestionAtMs, &m.CreatedAtMs)
+	var activeState, targetState sql.NullString
+	var newestProcessor sql.NullInt64
+	var activeCount int64
+	// One dataset-scoped snapshot supplies metadata and every generation guard.
+	// LEFT JOIN preserves missing generations so they still reject explicitly;
+	// the maximum includes retained generations, not only active/target ones.
+	err := reader.QueryRowContext(ctx, `SELECT
+ m.role,m.schema_version,m.database_id,m.dataset_id,m.server_kind,
+ m.generation,m.target_generation,m.input_revision,m.revision,m.last_ingestion_at_ms,m.created_at_ms,
+ MAX(g.state) FILTER (WHERE g.generation=m.generation),
+ MAX(g.state) FILTER (WHERE g.generation=m.target_generation),
+ COUNT(*) FILTER (WHERE g.state='active'),MAX(g.processor_version)
+ FROM ingestion.metadata m LEFT JOIN analytics.generations g ON g.dataset_id=m.dataset_id
+ WHERE m.dataset_id=? GROUP BY ALL`, datasetID).Scan(&role, &version, &m.DatabaseID, &m.DatasetID, &m.Kind, &m.Generation, &m.TargetGeneration, &m.InputRevision, &m.Revision, &m.LastIngestionAtMs, &m.CreatedAtMs, &activeState, &targetState, &activeCount, &newestProcessor)
 	if err == nil && (role != "server-data" || version != SchemaVersion || m.DatasetID == "" || (m.Kind != KindPersonal && m.Kind != KindHosted) || m.DatabaseID == "" || m.Generation < 1 || m.TargetGeneration < m.Generation || m.TargetGeneration > publication.SafeInteger || m.InputRevision < 0 || m.InputRevision > publication.SafeInteger || m.Revision < 0 || m.Revision > publication.SafeInteger) {
 		err = errors.New("incompatible_server_data")
 	}
 	if err == nil {
-		var activeState, targetState string
-		var activeCount int64
-		err = reader.QueryRowContext(ctx, "SELECT active.state,target.state,(SELECT COUNT(*) FROM analytics.generations WHERE dataset_id=? AND state='active') FROM analytics.generations active JOIN analytics.generations target ON target.dataset_id=active.dataset_id WHERE active.dataset_id=? AND active.generation=? AND target.generation=?", datasetID, datasetID, m.Generation, m.TargetGeneration).Scan(&activeState, &targetState, &activeCount)
-		if err == nil && !validGenerationStates(activeState, targetState, activeCount, m.Generation, m.TargetGeneration) {
+		if !activeState.Valid || !targetState.Valid || !newestProcessor.Valid {
+			err = sql.ErrNoRows
+		} else if !validGenerationStates(activeState.String, targetState.String, activeCount, m.Generation, m.TargetGeneration) {
 			err = errors.New("incompatible_server_data")
 		}
 	}
-	if err == nil {
-		var processor int
-		err = reader.QueryRowContext(ctx, "SELECT processor_version FROM analytics.generations WHERE dataset_id=? AND generation=?", datasetID, m.TargetGeneration).Scan(&processor)
-		if err == nil && processor > evidence.ProcessorVersion {
-			err = errors.New("newer_processor_version")
-		}
-		if err == nil {
-			var newest int
-			err = reader.QueryRowContext(ctx, "SELECT MAX(processor_version) FROM analytics.generations WHERE dataset_id=?", datasetID).Scan(&newest)
-			if err == nil && newest > evidence.ProcessorVersion {
-				err = errors.New("newer_processor_version")
-			}
-		}
+	if err == nil && newestProcessor.Int64 > evidence.ProcessorVersion {
+		err = errors.New("newer_processor_version")
 	}
 	return m, err
 }

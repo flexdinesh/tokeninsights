@@ -31,7 +31,7 @@ func rawDrain(t *testing.T, store *datastore.Store) {
 	}
 }
 
-func rawGolden(t *testing.T, store *datastore.Store) []string {
+func rawGolden(t testing.TB, store *datastore.Store) []string {
 	t.Helper()
 	var components [7]int64
 	if err := store.SQL().QueryRow(`SELECT COUNT(*),CAST(SUM(input_tokens) AS BIGINT),CAST(SUM(output_tokens) AS BIGINT),CAST(SUM(reasoning_tokens) AS BIGINT),CAST(SUM(cache_read_tokens) AS BIGINT),CAST(SUM(cache_write_tokens) AS BIGINT),CAST(SUM(total_tokens) AS BIGINT) FROM analytics.confirmed WHERE countable`).Scan(&components[0], &components[1], &components[2], &components[3], &components[4], &components[5], &components[6]); err != nil {
