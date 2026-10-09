@@ -12,6 +12,7 @@ import (
 // select a different dataset through user-supplied filter values.
 type Repository interface {
 	Dashboard(context.Context, Query, time.Time) (Dashboard, error)
+	AllDashboard(context.Context, Query, time.Time, int) (Dashboard, error)
 	Facets(context.Context, Query, string, time.Time) (Facets, error)
 	Status(context.Context) (ProcessingStatus, error)
 }
@@ -22,6 +23,11 @@ type DuckDB struct{ Store *datastore.Store }
 
 func (d DuckDB) Dashboard(ctx context.Context, q Query, now time.Time) (Dashboard, error) {
 	return LoadDashboard(ctx, d.Store, q, now)
+}
+
+// AllDashboard reads bounded complete results within one publication snapshot.
+func (d DuckDB) AllDashboard(ctx context.Context, q Query, now time.Time, maxRows int) (Dashboard, error) {
+	return LoadAllDashboard(ctx, d.Store, q, now, maxRows)
 }
 
 func (d DuckDB) Facets(ctx context.Context, q Query, search string, now time.Time) (Facets, error) {

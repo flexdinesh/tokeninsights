@@ -44,6 +44,7 @@ func (e *StatusError) Error() string {
 type Reader interface {
 	Instance(context.Context) (api.InstanceResponse, error)
 	Usage(context.Context, api.GetUsageParams) (api.UsageResponse, error)
+	AllUsage(context.Context, api.GetUsageParams, int) (api.UsageResponse, error)
 	Facets(context.Context, api.GetUsageFacetsParams) (api.UsageFacetsResponse, error)
 	Status(context.Context) (api.SyncResponse, error)
 }
@@ -161,6 +162,11 @@ func (c *Client) Status(ctx context.Context) (api.SyncResponse, error) {
 // coverage, and other full-filter metadata retain the first page's values.
 // Page is 1 and PageSize remains the requested server page size (200).
 func (c *Client) AllUsage(ctx context.Context, params api.GetUsageParams) (api.UsageResponse, error) {
+	if c.direct != nil {
+		page, size := 1, pageSize
+		params.Page, params.PageSize = &page, &size
+		return c.direct.AllUsage(ctx, params, maxRows)
+	}
 	for attempt := 0; attempt < snapshotTries; attempt++ {
 		response, err := c.allUsage(ctx, params)
 		if !errors.Is(err, ErrSnapshotChanged) {

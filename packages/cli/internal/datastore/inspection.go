@@ -2,6 +2,7 @@ package datastore
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"os"
 	"path/filepath"
@@ -134,9 +135,10 @@ func Inspect(ctx context.Context, path string) error {
 	if err := database.QueryRowContext(ctx, "SELECT schema_version FROM ingestion.metadata WHERE id=1 LIMIT 1").Scan(&version); err == nil && version == 1 {
 		return verifyV1(ctx, database)
 	}
-	if err := inspectCurrent(ctx, database, ""); err != nil {
-		return err
-	}
+	return inspectCurrent(ctx, database, "")
+}
+
+func inspectQueryContracts(ctx context.Context, database *sql.DB) error {
 	// Validate table contracts without reading source/analytics rows.
 	rows, err := database.QueryContext(ctx, `SELECT e.dataset_id,b.dataset_id,i.dataset_id,bi.dataset_id,s.dataset_id,d.dataset_id,o.dataset_id,g.dataset_id,f.dataset_id,c.dataset_id,p.dataset_id,l.dataset_id,e.evidence_id,e.scope,e.harness,e.record_json,e.first_received_at_ms,b.stream_id,b.batch_id,b.request_hash,b.request_bytes,b.receipt_json,i.sequence,i.evidence_id,bi.sequence,bi.evidence_id,s.scope,s.revision,s.processed_revision,s.generation,s.error_code,s.attempts,s.retry_at_ms,d.child,d.parent,o.evidence_id,o.disposition,o.code,o.fact_id,o.generation,o.input_revision,g.generation,g.processor_version,g.state,f.fact_id,f.scope,f.harness,f.session_id,f.session_native_id,f.message_native_id,f.native_request_id,f.occurred_at_ms,f.provider,f.provider_source,f.model,f.usage_scope,f.quality,f.countable,f.input_tokens,f.output_tokens,f.reasoning_tokens,f.cache_read_tokens,f.cache_write_tokens,f.total_tokens,f.directory_key,f.directory_name,f.repository_key,f.repository_name,f.repository_source,f.payload_json,f.generation,f.input_revision,c.generation,c.fact_id,c.payload_hash,p.generation,p.fact_id,p.evidence_id,l.receipt_json FROM raw.evidence e,ingestion.batches b,ingestion.items i,ingestion.batch_items bi,processing.scopes s,processing.dependencies d,processing.outcomes o,analytics.generations g,analytics.facts f,analytics.legacy_coverage c,analytics.provenance p,ingestion.legacy_receipts l LIMIT 0`)
 	if err != nil {

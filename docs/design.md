@@ -42,6 +42,11 @@ processing, generations, receipts and analytics.
 Defaults use XDG_DATA_HOME or ~/.local/share/tokeninsights. Role-specific flags/
 environment/config override them. Reject aliased paths, wrong roles, incompatible
 versions and corrupt contracts. Former tokeninsights.sqlite stays untouched.
+Current DuckDB startup validates the actual database read-only once before writable
+opening, reading column, constraint and index contracts in batches. Only the expected
+contract derived from the embedded schema is cached per process; actual database
+validation and generation checks always run. Migration/recovery validation remains
+separate.
 Application SQLite holds users, token/session digests and provisioning state. It is
 paired to the token database identity and kind. Local setup creates one default user.
 A one-time transaction copies legacy DuckDB accounts after validating dataset links;
@@ -245,6 +250,13 @@ snapshot identities. Values are bound; identifiers are fixed selections.
 Clamp page before offset arithmetic; reject unsafe JavaScript integer aggregates.
 IANA/fixed local offsets apply to calendars. Pages 50 default/200 max, dimensions
 12 chart groups, time charts 1000 buckets, session facets 100.
+The direct query adapter offers bounded complete results for TUI through the same
+analytics contract and SQL as paginated HTTP reads. It loads metadata, summaries,
+counts, chart and all requested rows within one read transaction, avoiding repeated
+dashboard aggregation per page. The TUI retains its 100,000-row limit; HTTP keeps
+its existing page limits. Adapter selection stays in command composition and existing
+capability policy still gates terminal access. Date range filters constrain analytics,
+never collector discovery or capture.
 Repo-only location filters; unknown visible. Context: per-session prompt-side
 peak input+cache read+cache write, then average/median/max.
 TPS terminology remains; this change adds no timing inference.

@@ -13,12 +13,13 @@ import (
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/viewer"
 )
 
-func TestDuckDashboardTabsFiltersPaginationAndSeparateEstimates(t *testing.T) {
+func duckDashboardStore(t *testing.T) *datastore.Store {
+	t.Helper()
 	store, err := datastore.Open(t.Context(), filepath.Join(t.TempDir(), "server.duckdb"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() { _ = store.Close() }()
+	t.Cleanup(func() { _ = store.Close() })
 	metadata, err := store.Metadata(t.Context())
 	if err != nil {
 		t.Fatal(err)
@@ -44,6 +45,11 @@ func TestDuckDashboardTabsFiltersPaginationAndSeparateEstimates(t *testing.T) {
 			break
 		}
 	}
+	return store
+}
+
+func TestDuckDashboardTabsFiltersPaginationAndSeparateEstimates(t *testing.T) {
+	store := duckDashboardStore(t)
 	for _, tab := range []string{"tokens", "models", "providers", "harnesses", "sessions", "context", "repo"} {
 		t.Run(tab, func(t *testing.T) {
 			q := Query{Selection: viewer.Selection{Period: "all", Bucket: "day"}, Tab: tab, Quality: "confirmed", Sort: "total", Direction: "desc", Page: 1, PageSize: 2, LocationGroup: db.RepoGroupRepository}
