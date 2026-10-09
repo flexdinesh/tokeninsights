@@ -241,7 +241,7 @@ func (m startupModel) View() string {
 		}
 		switch m.phase {
 		case startupServer:
-			guidance = "tokeninsights service status"
+			guidance = "Close another viewer, then retry."
 		case startupLoad:
 			guidance = m.loadFailureGuidance()
 		}
@@ -316,7 +316,7 @@ func (m startupModel) loadFailureGuidance() string {
 		case http.StatusUnauthorized, http.StatusForbidden:
 			return "Check server URL and token."
 		case http.StatusServiceUnavailable:
-			return "Server read failed; check service logs."
+			return "Server read failed; check server logs."
 		}
 	}
 	if errors.Is(m.err, queryclient.ErrSnapshotChanged) {
@@ -362,7 +362,7 @@ func (m startupModel) harnessStatus(status pipeline.SyncProgressStatus) string {
 func (m startupModel) failureLabel() string {
 	switch m.phase {
 	case startupServer:
-		return "Couldn't start the local server."
+		return "Couldn't open saved usage."
 	case startupPublish:
 		return "Couldn't publish usage."
 	case startupLoad:

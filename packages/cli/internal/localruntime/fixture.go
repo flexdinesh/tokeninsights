@@ -1,7 +1,9 @@
-package service
+package localruntime
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"os"
@@ -12,16 +14,17 @@ import (
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/datastore"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/db"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/evidence"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/serverownership"
 )
 
 // PrepareFixture resets only the two compatible development databases. Keep
 // database/lock inodes, WAL sidecars and unrelated files, including old databases.
 func PrepareFixture(ctx context.Context, collectorPath, serverPath string) error {
-	collectorPath, _, err := identify(collectorPath)
+	collectorPath, _, err := serverownership.Identify(collectorPath)
 	if err != nil {
 		return err
 	}
-	serverPath, key, err := identify(serverPath)
+	serverPath, _, err = serverownership.Identify(serverPath)
 	if err != nil {
 		return err
 	}
@@ -29,18 +32,19 @@ func PrepareFixture(ctx context.Context, collectorPath, serverPath string) error
 	if filepath.Base(root) != ".tokeninsights-dev" || filepath.Base(collectorPath) != "collector.sqlite" || filepath.Base(serverPath) != "server.duckdb" || filepath.Dir(serverPath) != root {
 		return fmt.Errorf("uncontrolled development databases")
 	}
-	release, err := admission(ctx, serverPath)
+	release, err := db.AcquireWriterLock(ctx, serverPath+".service.op")
 	if err != nil {
 		return err
 	}
 	defer release()
-	state, err := Probe(ctx, serverPath)
+	owner, held, err := serverownership.Lifetime(serverPath, true)
 	if err != nil {
 		return err
 	}
-	if state.Running {
-		return fmt.Errorf("stop development service before recreating fixtures")
+	if held {
+		return ErrOwned
 	}
+	defer func() { _ = owner.Close() }()
 	// Check both roles before resetting either file. Legacy databases stay intact.
 	if err := inspectFixtureRoles(collectorPath, serverPath); err != nil {
 		return err
@@ -92,7 +96,11 @@ func PrepareFixture(ctx context.Context, collectorPath, serverPath string) error
 		}
 	}
 	now := time.Now().UnixMilli()
-	databaseID := instanceID()
+	var identity [16]byte
+	if _, err := rand.Read(identity[:]); err != nil {
+		return err
+	}
+	databaseID := hex.EncodeToString(identity[:])
 	if _, err := tx.ExecContext(ctx, `UPDATE ingestion.instance SET database_id=?,created_at_ms=? WHERE id=1`, databaseID, now); err != nil {
 		return err
 	}
@@ -114,13 +122,6 @@ func PrepareFixture(ctx context.Context, collectorPath, serverPath string) error
 		if err := os.RemoveAll(filepath.Join(root, name)); err != nil {
 			return err
 		}
-	}
-	p, err := servicePaths(key, false)
-	if err != nil {
-		return err
-	}
-	if err := os.Remove(p.config); err != nil && !errors.Is(err, os.ErrNotExist) {
-		return err
 	}
 	return nil
 }

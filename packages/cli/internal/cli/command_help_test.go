@@ -22,3 +22,17 @@ func TestHelpAliases(t *testing.T) {
 		})
 	}
 }
+
+func TestHelpListsCurrentCommands(t *testing.T) {
+	help := usageText()
+	for _, name := range []string{"tui", "web", "sync --debug", "sync --print", "sync status", "config set", "data reprocess|wait", "tokeninsights-server"} {
+		if !strings.Contains(help, name) {
+			t.Fatalf("help missing %q", name)
+		}
+	}
+	for _, name := range []string{"service stop", "collector normalize", "reset-canonical", "reset-all", "server run", "Deprecated aliases"} {
+		if strings.Contains(help, name) {
+			t.Fatalf("help advertises removed %q", name)
+		}
+	}
+}

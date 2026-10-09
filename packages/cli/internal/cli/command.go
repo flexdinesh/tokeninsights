@@ -6,8 +6,8 @@ import (
 	"flag"
 	"fmt"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/config"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/localruntime"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/serverfeatures"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/service"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/syncjob"
 	"io"
 	"os"
@@ -39,10 +39,7 @@ var commands = []commandSpec{
 	versionCommand,
 	tuiCommand,
 	webCommand,
-	serviceCommand,
-	serverCommand,
 	syncCommand,
-	collectorCommand,
 	dataCommand,
 	configCommand,
 }
@@ -50,10 +47,7 @@ var commands = []commandSpec{
 func Run(ctx context.Context, args []string, stdout io.Writer, stderr io.Writer, now time.Time) error {
 	invocation := commandInvocation{context: ctx, stdin: os.Stdin, stdout: stdout, stderr: stderr, now: now}
 	if len(args) == 5 && args[0] == "__prepare-dev-data" && args[1] == "--collector-db-path" && args[3] == "--server-db-path" {
-		return service.PrepareFixture(ctx, args[2], args[4])
-	}
-	if len(args) > 0 && args[0] == "__service-run" {
-		return service.Child(ctx)
+		return localruntime.PrepareFixture(ctx, args[2], args[4])
 	}
 	if len(args) == 1 && args[0] == "__sync-run" {
 		return syncjob.Child(ctx)
@@ -67,6 +61,11 @@ func Run(ctx context.Context, args []string, stdout io.Writer, stderr io.Writer,
 	invocation.configPath, err = config.Path(selectedPath)
 	if err != nil {
 		return err
+	}
+	if len(args) > 0 && !strings.HasPrefix(args[0], "-") {
+		if _, ok := commandByName(args[0]); !ok {
+			return fmt.Errorf("unknown command %q\n%w", args[0], ErrUsage)
+		}
 	}
 	help := len(args) == 0 || (len(args) > 0 && (args[0] == "help" || args[0] == "version"))
 	for _, arg := range args {
@@ -87,8 +86,7 @@ func Run(ctx context.Context, args []string, stdout io.Writer, stderr io.Writer,
 			return fmt.Errorf("configuration: %w", err)
 		}
 		invocation.settings = &settings
-		lifecycleRecovery := len(args) > 1 && args[0] == "service" && (args[1] == "stop" || args[1] == "status")
-		if os.Getenv("TOKENINSIGHTS_SERVER_TOKEN") != "" && !lifecycleRecovery {
+		if os.Getenv("TOKENINSIGHTS_SERVER_TOKEN") != "" {
 			return fmt.Errorf("TOKENINSIGHTS_SERVER_TOKEN removed; use TOKENINSIGHTS_ACCESS_TOKEN or config set server-token\n%w", ErrUsage)
 		}
 	}
@@ -123,7 +121,7 @@ func commandByName(name string) (commandSpec, bool) {
 	return commandSpec{}, false
 }
 
-var ErrUsage = errors.New("usage: tokeninsights <sync|tui|web|data|collector|config> [options]")
+var ErrUsage = errors.New("usage: tokeninsights <sync|tui|web|data|config> [options]")
 
 func configFileArgument(args []string) ([]string, string, error) {
 	result := make([]string, 0, len(args))

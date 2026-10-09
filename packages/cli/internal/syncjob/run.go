@@ -93,7 +93,7 @@ func RunRemote(ctx context.Context, store *Store, job Job, token string, debug b
 				settings.Mode = config.Distributed
 				settings.ServerURL = job.Spec.URL
 				settings.ServerToken = token
-				session, err := clientworkflow.Resolve(ctx, settings, nil)
+				session, err := clientworkflow.Resolve(ctx, settings)
 				if err != nil {
 					return result, err
 				}
@@ -126,7 +126,7 @@ func runRemoteClaim(ctx context.Context, store *Store, job Job, token string, de
 	settings.Mode = config.Distributed
 	settings.ServerURL = job.Spec.URL
 	settings.ServerToken = token
-	session, err := clientworkflow.Resolve(ctx, settings, nil)
+	session, err := clientworkflow.Resolve(ctx, settings)
 	if err == nil {
 		err = session.VerifyIngestion(ctx)
 	}

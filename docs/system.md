@@ -59,5 +59,5 @@ snapshots. Equal counters do not establish identity. See [design](design.md).
 Configuration is private home-directory JSON with flags > environment > file >
 default precedence. Default mode is single-process; remote URL/token select an
 authenticated distributed destination. Remote failures never fall back local.
-Bare invocation prints help. `service stop/status` only migrate old daemon owners;
-local maintenance uses `data import/reprocess/wait`. Production remains Go-only.
+Bare invocation prints help. Local maintenance uses `data import/reprocess/wait`.
+Legacy `service`, `server`, and `collector` commands are removed. Production remains Go-only.

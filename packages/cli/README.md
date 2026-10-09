@@ -93,21 +93,18 @@ Flags > environment > private atomic config > defaults. Use `TOKENINSIGHTS_MODE`
 `config get` reads preferences and masks tokens. `--config-file` or
 `TOKENINSIGHTS_CONFIG_PATH` selects a config file. Remote settings never fall back local.
 
-Bare invocation shows help. Old daemon owners must be explicitly stopped with
-`service stop`; `service status` remains for migration. Start/restart/run are retired.
+Bare invocation shows help. Local viewers own their foreground runtime.
+Legacy `service`, `server`, and `collector` commands are removed.
 Finite local maintenance:
 
 ```sh
 tokeninsights data import --legacy-server-db-path OLD.sqlite --server-db-path NEW.duckdb
 tokeninsights data reprocess
 tokeninsights data wait
-tokeninsights collector normalize
-tokeninsights collector reset-canonical --confirm
-tokeninsights collector reset-all --confirm
 ```
 
 Remote admin uses the running container's private socket; see [deployment](../../docs/deployment.md).
-Collector reset never removes token history, and pending raw evidence prevents reset.
+Local data maintenance preserves raw evidence and server history.
 Native contribution identity, all token components, estimates, receipts and processing
 generations follow [the shared contract](../../docs/design.md).
 
@@ -136,7 +133,6 @@ validation and atomic publication with a recoverable previous file. Hosted start
 fresh; stored server-kind mismatch rejects without assigning existing history.
 Fresh default DuckDB imports verified sibling server.sqlite read-only; custom
 imports require explicit new target. Unsupported contracts reject without reset.
-Pending raw prevents collector reset; reset never retracts server data.
 Remote database identity stays pinned; deliberate local replacement permits replay.
 
 ## TUI Arguments
@@ -239,7 +235,7 @@ Sync waits for acceptance. Browser Confirmed / Estimated selects separate data;
 estimates never inflate confirmed totals. Unusable evidence retains diagnostics.
 Fresh default server.duckdb imports verified sibling server.sqlite read-only,
 preserving history, identity and receipts. Partial rebuilds preserve unmatched
-history. Custom paths, after stopping local service:
+history. Custom paths, after closing processes using the target database:
 
     tokeninsights data import --server-db-path NEW.duckdb --legacy-server-db-path OLD.sqlite
     tokeninsights web

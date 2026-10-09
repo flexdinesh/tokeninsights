@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/config"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/localruntime"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/service"
 )
 
 var dataCommand = commandSpec{name: "data", run: runData}
@@ -36,7 +35,7 @@ func runData(invocation commandInvocation, args []string) error {
 		return fmt.Errorf("use tokeninsights-server admin for distributed maintenance")
 	}
 	if action == "import" {
-		return service.ImportLegacy(invocation.context, settings.ServerDBPath, *legacy)
+		return localruntime.ImportLegacy(invocation.context, settings.ServerDBPath, *legacy)
 	}
 	runtime, err := localruntime.OpenWithApp(invocation.context, settings.CollectorDBPath, settings.ServerDBPath, settings.ApplicationPath())
 	if err != nil {

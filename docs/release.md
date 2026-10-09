@@ -66,9 +66,9 @@ import into a new target. Original history remains until specific replacement
 coverage is proven.
 
 Sync captures evidence and waits for durable acceptance, then returns while
-processing runs asynchronously. Collector reset does not retract server facts;
-reset-all rejects unacknowledged evidence. Old canonical generation recovery
-applies only to retained legacy collector maintenance, not the new raw capture.
+processing runs asynchronously. Local maintenance uses `data import|reprocess|wait`
+with command-owned storage. Legacy daemon and collector maintenance commands
+are removed; retained history and evidence compatibility remain unchanged.
 
 Verification preserves stable native contribution identities, all token
 components, exact receipt replay, source continuity, separate estimates,

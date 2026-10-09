@@ -30,7 +30,7 @@ import (
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/syncjob"
 )
 
-var ErrOwned = errors.New("database already owned; close the viewer or stop the legacy service")
+var ErrOwned = errors.New("database already owned; close the process using this database")
 
 var ErrProcessingFailed = errors.New("processing_failed: saved usage needs attention; retry or run tokeninsights data reprocess")
 var ErrProcessingTimeout = fmt.Errorf("processing_timeout: usage is still processing; retry or view saved data: %w", context.DeadlineExceeded)

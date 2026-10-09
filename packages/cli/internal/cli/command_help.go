@@ -36,8 +36,6 @@ Configuration:
 Maintenance:
   data import --legacy-server-db-path PATH --server-db-path NEW
   data reprocess|wait          finite local processing, no daemon
-  collector normalize|reset-canonical|reset-all
-  service stop|status          migrate an owner created by an older release
   tokeninsights-server         separate authenticated container/server executable
 
 Paths: --collector-db-path, --server-db-path, --app-db-path.

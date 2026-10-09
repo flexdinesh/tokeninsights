@@ -6,6 +6,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -293,6 +294,20 @@ func assertAcknowledged(t *testing.T, c client) {
 	}
 }
 
+// Simulate collector loss after foreground submission has closed storage.
+// Keep ownership lock inodes and server history intact.
+func (c client) deleteCollector(t *testing.T) {
+	t.Helper()
+	if err := os.Remove(c.collector); err != nil {
+		t.Fatal(err)
+	}
+	for _, suffix := range []string{"-wal", "-shm"} {
+		if err := os.Remove(c.collector + suffix); err != nil && !errors.Is(err, os.ErrNotExist) {
+			t.Fatal(err)
+		}
+	}
+}
+
 func TestConfigRemoteSyncTracerAndCopiedClients(t *testing.T) {
 	target, path := startRemote(t)
 	a, b := newClient(t), newClient(t)
@@ -311,7 +326,7 @@ func TestConfigRemoteSyncTracerAndCopiedClients(t *testing.T) {
 	if output := a.must(t); !strings.Contains(output, "usage: tokeninsights") {
 		t.Fatal("bare invocation", output)
 	}
-	a.must(t, "collector", "reset-all", "--confirm")
+	a.deleteCollector(t)
 	a.sync(t)
 	after = assertUsage(t, target, path, 1, 120)
 	if strings.Join(before, ",") != strings.Join(after, ",") {
@@ -696,7 +711,7 @@ func TestAllHarnessesPublishThroughConfiguredRemoteBinaryAndRebuild(t *testing.T
 		assertComponents(t, target, path, [7]int64{12, 800, 148, 52, 96, 6, 1102})
 	}
 	before := assertComponents(t, target, path, [7]int64{12, 800, 148, 52, 96, 6, 1102})
-	a.must(t, "collector", "reset-all", "--confirm")
+	a.deleteCollector(t)
 	a.must(t, "sync", "--all", "--source-dir", a.source)
 	after := assertComponents(t, target, path, [7]int64{12, 800, 148, 52, 96, 6, 1102})
 	if strings.Join(before, ",") != strings.Join(after, ",") {

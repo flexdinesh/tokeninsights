@@ -65,7 +65,7 @@ Stage initialization/import/checkpoint before atomic publication. Preserve datab
 identity, components/revisions/history/receipt bytes; verify copied counts/totals.
 Custom import uses data import --server-db-path NEW --legacy-server-db-path OLD,
 or remote startup with the same flag. Explicit import requires new target and
-stopped local service. Source never overwritten. Newer processors reject; older
+no process owning the target database. Source never overwritten. Newer processors reject; older
 ones schedule a replacement generation.
 
 A verified DuckDB-1 database upgrades to personal DuckDB 2 through a staged,
@@ -168,7 +168,7 @@ Sync finishes at acceptance, not query visibility. Local TUI startup additionall
 waits for query visibility; local Web reads published history while processing
 continues. Reload queries only. TUI submission progress compares acknowledged evidence entries with pending entries, rather than comparing batches with entries. Load failures expose fixed reason codes and distinguish server storage failures from authentication failures. Browser reports lag/separate estimates. No viewer
 waits for global hosted queue emptiness.
-Service wait explicitly waits up to 30 seconds for maintenance/fixtures.
+`data wait` explicitly waits up to 30 seconds for maintenance/fixtures.
 Deprecated protocol-1 bridge preserves synchronous legacy bytes/receipts.
 Flush retained old requests through their original personal adapters before new delivery; new sync never populates legacy
 canonical tables. Legacy maintenance handles old tables only.
@@ -210,7 +210,7 @@ retaining evidence. Confirmed reflects current evidence/rules, not infallible tr
 
 ## Generations and preserved history
 
-Private administration or service reprocess queues a new generation per dataset;
+Private administration or `data reprocess` queues a new generation per dataset;
 reprocessing never follows implicitly from ingestion permission.
 Old published data remains queryable; restart resumes. Immutable receipt status
 reflects target/latest scope revision. Activate only after every scope covers
@@ -338,8 +338,10 @@ it. Pending requests survive shutdown and are consumed by the next local owner.
 Plugin subprocesses use `--wait --harness`; TypeScript adapters coalesce overlaps
 while retaining a follow-up pass, and do not forward event payloads.
 
-Legacy `service stop/status` only migrate old owners; new lifecycle startup is retired.
-Finite `data import/reprocess/wait` replaces local service maintenance. Public local
+Legacy `service`, `server`, and `collector` commands and the hidden daemon runner
+are removed. Local viewers use only command-owned foreground runtimes; finite
+`data import/reprocess/wait` provides local maintenance. Import and development
+fixtures use the shared database ownership locks. Public local
 web has no ingestion/admin/progress-write routes; remote admin remains private.
 
 Hosted administrator creates/disables users and creates/revokes scoped tokens
@@ -381,9 +383,9 @@ contracts; DuckDB is an adapter, not a required future backend.
 | `serverfeatures` | Typed kind/capability policy |
 | `accounts`, `appstore` | Credential contract/SQLite adapter, provisioning and application pairing |
 | `syncjob` | Durable finite jobs, native detachment and delivery retries |
-| `localruntime` | Command ownership, direct ingestion/query and local request consumption |
+| `localruntime` | Command ownership, direct ingestion/query, local requests, finite import and development fixtures |
 | `serverruntime` | Shared storage/worker/listener lifecycle |
-| `service`, `remoteserver` | Legacy migration/fixture support and authenticated remote composition |
+| `remoteserver` | Authenticated remote composition |
 
 Retain package names where they already express the boundary. Retained
 normalization/import/wire adapters are explicit compatibility paths; they are not

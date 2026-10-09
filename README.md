@@ -117,9 +117,9 @@ history/receipts/processing, `app.sqlite` for users/credentials/system state. Ap
 token databases are paired by identity. Operational sync jobs use
 `<canonical-collector-path>.jobs.sqlite`. Defaults live under XDG data home.
 
-Bare invocation prints help. Managed service startup is retired. Before upgrading
-an active old service, run `tokeninsights service stop`; stop/status remain migration
-commands. Local maintenance uses `data import|reprocess|wait`. Never pair one
+Bare invocation prints help. Local viewers own their foreground runtime.
+Local maintenance uses `data import|reprocess|wait`. Legacy `service`, `server`, and
+`collector` commands are removed. Never pair one
 `app.sqlite` with another token database or reuse personal history as a hosted account.
 
 ## Privacy
@@ -167,7 +167,7 @@ Local Web shows saved data during collection and processing. Browser Confirmed /
 estimates never inflate confirmed totals. Unusable evidence retains diagnostics.
 Fresh default server.duckdb imports verified sibling server.sqlite read-only,
 preserving history, identity and receipts. Partial rebuilds preserve unmatched
-history. Custom paths, after stopping local service:
+history. Custom paths, after closing processes using the target database:
 
     tokeninsights data import --server-db-path NEW.duckdb --legacy-server-db-path OLD.sqlite
     tokeninsights data reprocess
