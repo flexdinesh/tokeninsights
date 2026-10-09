@@ -15,9 +15,9 @@ export function SummaryCards({
     className: string
   }[] = [
     {
-      label: 'Total tokens',
+      label: estimated ? 'Excluded tokens' : 'Total tokens',
       value: summary.total,
-      detail: estimated ? 'Estimated; excluded from confirmed' : 'Canonical, countable usage',
+      detail: estimated ? 'Excluded from your usage total' : 'Included in your usage total',
       className: 'total-card',
     },
     {
@@ -39,21 +39,28 @@ export function SummaryCards({
       className: 'cache-card',
     },
     {
-      label: 'Sessions shown',
+      label: estimated ? 'Excluded sessions shown' : 'Sessions shown',
       value: summary.sessions,
-      detail: `${exactCount(summary.syncedSessions)} synced across all dates & harnesses`,
+      detail: `${exactCount(summary.syncedSessions)} ${estimated ? 'with excluded usage' : 'synced'} across all dates & harnesses`,
       className: 'sessions-card',
     },
   ]
   return (
-    <section className="summary-grid" aria-label="Filtered usage summary">
+    <section
+      className="summary-grid"
+      aria-label={estimated ? 'Filtered excluded usage summary' : 'Filtered usage summary'}
+    >
       {cards.map((card) => (
         <div key={card.label} className={`summary-card ${card.className}`}>
           <span className="metric-label">{card.label}</span>
           <strong aria-label={`${card.label}: ${exactCount(card.value)}`}>
             {formatCount(card.value)}
           </strong>
-          <span className="card-detail">{card.detail}</span>
+          <span
+            className={`card-detail${estimated && card.className === 'total-card' ? ' essential-detail' : ''}`}
+          >
+            {card.detail}
+          </span>
         </div>
       ))}
     </section>

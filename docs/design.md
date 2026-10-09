@@ -208,6 +208,16 @@ Unusable session/time/counters remain unresolved receipt diagnostics.
 Confirmed/estimated never combine. Conflict withdraws confirmed projection while
 retaining evidence. Confirmed reflects current evidence/rules, not infallible truth.
 
+Browser usage totals show confirmed data by default. A secondary **Review excluded
+usage** action appears below the summary when estimates match the active date range
+and dimension filters. The review labels its totals, chart, table and session coverage
+as excluded usage; **Back to usage** restores the confirmed view. Both views retain
+filters and URL/browser-history state, with clear-filter recovery for empty results.
+An estimate-summary request uses the existing read API, dataset snapshot identity
+and revision; failure offers a separate retry without hiding normal usage. Excluded
+usage and unusable-evidence diagnostics remain distinct. No totals combine the two
+datasets, and no evidence classification or storage contract changes.
+
 ## Generations and preserved history
 
 Private administration or `data reprocess` queues a new generation per dataset;

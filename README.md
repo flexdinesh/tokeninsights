@@ -163,8 +163,10 @@ Server exposes processed metadata to reachable dashboard clients. Default localh
 DuckDB uses a shared 1 GB memory budget for ingestion, processing and analytics.
 
 Distributed `sync --wait` waits for acceptance; local TUI startup also waits for processing.
-Local Web shows saved data during collection and processing. Browser Confirmed / Estimated selects separate data;
-estimates never inflate confirmed totals. Unusable evidence retains diagnostics.
+Local Web shows saved data during collection and processing. The browser shows usage totals by default;
+**Review excluded usage** opens separate saved counters that cannot be confidently included.
+Date ranges and filters apply to both views; excluded usage never inflates the main totals.
+Unusable evidence retains diagnostics.
 Fresh default server.duckdb imports verified sibling server.sqlite read-only,
 preserving history, identity and receipts. Partial rebuilds preserve unmatched
 history. Custom paths, after closing processes using the target database:

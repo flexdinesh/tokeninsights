@@ -237,8 +237,28 @@ function ResultsCell({
   )
 }
 
-export function ResultsTable({ data, timezone }: { data: Dashboard; timezone: string }) {
-  const { query, sortBy, setPage, setPageSize } = useDashboardQuery()
+export function ResultsTable({
+  data,
+  timezone,
+  hasExcludedUsage,
+}: {
+  data: Dashboard
+  timezone: string
+  hasExcludedUsage: boolean
+}) {
+  const { query, sortBy, setPage, setPageSize, clearFilters, setQuality } = useDashboardQuery()
+  const reviewingExcluded = query.quality === 'estimated'
+  const baseTitle = query.tab === 'repo' ? 'Repo totals' : `${labels[query.tab]} breakdown`
+  const title = reviewingExcluded ? `Excluded ${baseTitle.toLowerCase()}` : baseTitle
+  const hasFilters =
+    [
+      query.providers,
+      query.models,
+      query.harnesses,
+      query.sessions,
+      query.repositories,
+      query.directories,
+    ].some((values) => values.length > 0) || Boolean(query.from || query.to)
   const { hiddenColumns: hidden, toggleColumn } = useDashboardPreferences()
   const specs = useMemo(() => columnsFor(query.tab), [query.tab])
   const displayRows = data.rows
@@ -284,11 +304,11 @@ export function ResultsTable({ data, timezone }: { data: Dashboard; timezone: st
     <Card
       className={`table-panel panel${query.tab === 'repo' ? ' repo-table-panel' : ''}`}
       role="region"
-      aria-label={`${labels[query.tab]} details`}
+      aria-label={`${reviewingExcluded ? 'Excluded ' : ''}${labels[query.tab]} details`}
     >
       <div className="panel-heading">
         <div className="table-title">
-          <h2>{query.tab === 'repo' ? 'Repo totals' : `${labels[query.tab]} breakdown`}</h2>
+          <h2>{title}</h2>
           <Badge>{exactCount(data.rowCount)}</Badge>
         </div>
         <div className="table-controls">
@@ -449,8 +469,34 @@ export function ResultsTable({ data, timezone }: { data: Dashboard; timezone: st
         {data.rowCount === 0 && displayRows.length === 0 && (
           <div className="empty-state">
             <SearchEmpty />
-            <h3>No matching usage</h3>
-            <p>Try a wider date range, clear filters, or sync your local data.</p>
+            <h3>
+              {reviewingExcluded
+                ? 'No excluded usage matches these filters'
+                : 'No usage matches these filters'}
+            </h3>
+            <p>
+              {reviewingExcluded
+                ? 'Only usage excluded from your total appears here.'
+                : 'Your date range and filters apply to usage included in your total.'}{' '}
+              Try a wider date range{hasFilters ? ' or clear your filters' : ''}.
+            </p>
+            {(hasFilters || hasExcludedUsage || reviewingExcluded) && (
+              <div className="empty-state-actions">
+                {hasFilters && (
+                  <Button variant="outline" onClick={clearFilters}>
+                    Clear filters
+                  </Button>
+                )}
+                {(hasExcludedUsage || reviewingExcluded) && (
+                  <Button
+                    variant="ghost"
+                    onClick={() => setQuality(reviewingExcluded ? 'confirmed' : 'estimated')}
+                  >
+                    {reviewingExcluded ? 'Back to usage' : 'Review excluded usage'}
+                  </Button>
+                )}
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -458,10 +504,16 @@ export function ResultsTable({ data, timezone }: { data: Dashboard; timezone: st
         <div className="result-counts">
           <span
             className="session-coverage"
-            title="Shown: distinct countable sessions matching all filters, across all pages. Synced: all countable sessions in this database, ignoring filters."
+            title={
+              reviewingExcluded
+                ? 'Shown: sessions with excluded usage matching all filters, across all pages. All dates: sessions with excluded usage in this dataset, ignoring filters.'
+                : 'Shown: distinct countable sessions matching all filters, across all pages. Synced: all countable sessions in this dataset, ignoring filters.'
+            }
           >
-            Sessions <strong>{exactCount(data.summary.sessions)}</strong> shown /{' '}
-            <strong>{exactCount(data.summary.syncedSessions)}</strong> synced
+            {reviewingExcluded ? 'Excluded sessions' : 'Sessions'}{' '}
+            <strong>{exactCount(data.summary.sessions)}</strong> shown /{' '}
+            <strong>{exactCount(data.summary.syncedSessions)}</strong>{' '}
+            {reviewingExcluded ? 'across all dates' : 'synced'}
           </span>
           <span className="summary-dot">·</span>
           <span>
@@ -471,7 +523,7 @@ export function ResultsTable({ data, timezone }: { data: Dashboard; timezone: st
             <>
               <span className="summary-dot">·</span>
               <span>
-                Total{' '}
+                {reviewingExcluded ? 'Excluded total' : 'Total'}{' '}
                 <strong title={exactCount(data.summary.total)}>
                   {formatCount(data.summary.total)}
                 </strong>
