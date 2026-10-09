@@ -458,6 +458,34 @@ The collector requires an injected delivery adapter before capture. Single-proce
 composition supplies direct delivery; distributed discovery supplies HTTP delivery.
 No core discovers a daemon or substitutes a transport.
 
+### Runtime resource ownership
+
+Composition acquires storage, lifetime locks and listeners and cleans up every
+partially completed startup. Invalid listener bindings reject before starting
+workers or taking listener ownership. A failed ready callback or listener failure
+shuts down all started listeners and preserves the originating error.
+
+`serverruntime.Serve` owns HTTP lifetime only; `Run` also starts, cancels and joins
+processing. Neither closes the caller's store. Shutdown cancels request contexts
+and starts draining every listener concurrently under one 15-second deadline, so
+a slow public request cannot leave the private admin listener accepting work.
+Listener loops join before return. Deadline expiry returns an error and forcibly
+closes connections; it cannot force a Go handler to return. Handlers must honor
+request cancellation and keep storage work within their request lifetime.
+
+Local runtime stops admitting collection, cancels and joins active collection,
+processing and queued-job workers, interrupts progress, then closes databases and
+releases the lifetime lock. Web drains its HTTP server before closing that runtime.
+Hosted composition joins server processing and account cleanup before closing its
+databases and releasing ownership; it also removes the private admin socket.
+Failed startup must permit a subsequent owner to open the same resources.
+
+Shutdown does not wait for the durable processing queue to become empty. Accepted
+evidence and immutable receipts survive cancellation; the next owner resumes
+pending projection work. Tests cover startup failures, multi-listener draining,
+forced connection close, ownership during collection shutdown and receipt/totals
+recovery, alongside processor join and transactional cancellation tests.
+
 [ADR 0010](adr/0010-current-contracts-and-boundaries.md) defines the cleanup and
 testing rules. Import tests enforce pure processing, capture/processing separation,
 and storage/HTTP separation. Real-adapter contract tests enforce the behaviors that
