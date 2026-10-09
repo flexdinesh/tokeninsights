@@ -2,7 +2,7 @@
 
 Track local token usage for OpenCode, Pi, Codex, and Claude Code.
 
-TokenInsights is a Go CLI composed as single-process or distributed. Bare invocation prints help. Local `tui` collects, directly ingests/processes, then queries directly; `web` also starts a foreground read-only HTTP dashboard. Both support `--sync=false`. Reload only queries. One viewer owns storage; concurrent sync requests enter a durable local queue and execute within that owner.
+TokenInsights is a Go CLI composed as single-process or distributed. Bare invocation prints help. Local `tui` shows saved usage while background capture directly ingests/processes, then refreshes direct queries; `web` adds a foreground read-only HTTP dashboard with the same background startup. Both support `--sync=false`. Reload only queries. One viewer owns storage; concurrent sync requests enter a durable local queue and execute within that owner.
 
 Distributed `sync` starts a finite detached authenticated HTTP submission; `--print` also submits, `--wait` waits for acceptance, and `--debug` shows receipt processing. `sync status` reports durable jobs. Plugins pass `--wait --harness`. Remote servers run as one authenticated Docker/native process and never collect. No remote analytics TUI. Application SQLite stores users/credentials; DuckDB stores token evidence/receipts/processing. Legacy wire kinds remain personal/hosted.
 

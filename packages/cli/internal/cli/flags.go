@@ -89,7 +89,7 @@ type tableOptions struct {
 	token           string
 	datasetID       string
 	collectorDBPath string
-	syncBeforeView  bool
+	syncOnStart     bool
 	period          period
 	bucket          timeBucket
 	sort            sortMode
@@ -115,7 +115,7 @@ func parseViewerOptionsWithDefaults(args []string, stderr io.Writer, requirePeri
 	var month bool
 	var year bool
 	var allTime bool
-	var syncBeforeView bool
+	var syncOnStart bool
 	var serverURL, collectorDBPath string
 	var bucket string
 	var queryFilters filters
@@ -124,7 +124,7 @@ func parseViewerOptionsWithDefaults(args []string, stderr io.Writer, requirePeri
 	flags.StringVar(&dbPath, "server-db-path", settings.ServerDBPath, "local query server database path")
 	flags.StringVar(&collectorDBPath, "collector-db-path", settings.CollectorDBPath, "collector database used by startup sync")
 	flags.StringVar(&serverURL, "server-url", settings.ServerURL, "query server; empty selects local")
-	flags.BoolVar(&syncBeforeView, "sync", true, "collect and publish before viewing; --sync=false reads saved data only")
+	flags.BoolVar(&syncOnStart, "sync", true, "refresh usage in the background; --sync=false reads saved data only")
 	flags.BoolVar(&today, "today", false, "show today")
 	flags.BoolVar(&yesterday, "yesterday", false, "show yesterday")
 	flags.BoolVar(&week, "week", false, "show current calendar week (Mon-Sun)")
@@ -185,7 +185,7 @@ func parseViewerOptionsWithDefaults(args []string, stderr io.Writer, requirePeri
 		}
 	}
 
-	return tableOptions{mode: settings.EffectiveMode(), appDBPath: settings.AppDBPath, dbPath: selectedDBPath, serverURL: strings.TrimSpace(serverURL), token: settings.ServerToken, collectorDBPath: collectorDBPath, syncBeforeView: syncBeforeView, period: selected, bucket: selectedBucket, filters: queryFilters}, nil
+	return tableOptions{mode: settings.EffectiveMode(), appDBPath: settings.AppDBPath, dbPath: selectedDBPath, serverURL: strings.TrimSpace(serverURL), token: settings.ServerToken, collectorDBPath: collectorDBPath, syncOnStart: syncOnStart, period: selected, bucket: selectedBucket, filters: queryFilters}, nil
 }
 
 func selectedPeriod(today bool, yesterday bool, week bool, month bool, year bool, allTime bool, required bool, fallback period) (period, error) {

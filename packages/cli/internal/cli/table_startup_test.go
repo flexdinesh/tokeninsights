@@ -5,21 +5,18 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"fmt"
 	"io"
-	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/collector"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/localruntime"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/pipeline"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/queryclient"
 )
 
 func replaceViewCollector(t *testing.T, run func(context.Context, collector.Options) (collector.Result, error)) {
@@ -29,34 +26,101 @@ func replaceViewCollector(t *testing.T, run func(context.Context, collector.Opti
 	t.Cleanup(func() { runViewCollector = previous })
 }
 
-func driveStartupForTest(t *testing.T, model startupModel) tea.Model {
+func finishCollectionForTest(t *testing.T, model interactiveModel) interactiveModel {
 	t.Helper()
-	model.dashboard.width, model.dashboard.height = 120, 35
-	model.Init()
-	t.Cleanup(func() { model.dashboard.cancelSync(); model.workers.Wait() })
-	deadline := time.NewTimer(10 * time.Second)
-	defer deadline.Stop()
-	for {
-		select {
-		case msg, ok := <-model.messages:
-			if !ok {
-				t.Fatal("startup closed without result")
-			}
-			updated, _ := model.Update(msg)
-			if dashboard, ok := updated.(interactiveModel); ok {
-				return dashboard
-			}
-			model = updated.(startupModel)
-			if model.err != nil {
-				return model
-			}
-		case <-deadline.C:
-			t.Fatal("startup did not finish")
-		}
+	select {
+	case result := <-model.collectionDone:
+		updated, _ := model.Update(collectionFinishedMsg{result: result})
+		return updated.(interactiveModel)
+	case <-time.After(10 * time.Second):
+		t.Fatal("background collection did not finish")
+		return model
 	}
 }
 
-func TestTUIDefaultSyncAcceptsInsideLoadingScreenAndReloadQueriesProcessedData(t *testing.T) {
+func loadDashboardForTest(t *testing.T, model interactiveModel) interactiveModel {
+	t.Helper()
+	request := model
+	request.ctx, request.requestID = model.queryContext(model.queries)
+	message := request.loadDashboard()
+	if message.err != nil {
+		t.Fatal(message.err)
+	}
+	updated, _ := model.Update(message)
+	return updated.(interactiveModel)
+}
+
+func loadRefreshStatusForTest(t *testing.T, model interactiveModel) interactiveModel {
+	t.Helper()
+	request := model
+	request.ctx, request.requestID = model.queryContext(model.statusQueries)
+	message := request.loadSharedSync()
+	if message.err != nil {
+		t.Fatal(message.err)
+	}
+	updated, _ := model.Update(message)
+	return updated.(interactiveModel)
+}
+
+func TestTUIDefaultSyncShowsSavedUsageWhileCollectionRunsAndQuitCancels(t *testing.T) {
+	options := localViewOptions(t, true)
+	if err := options.local.Close(); err != nil {
+		t.Fatal(err)
+	}
+	started, stopped := make(chan struct{}), make(chan struct{})
+	var calls atomic.Int64
+	replaceViewCollector(t, func(ctx context.Context, _ collector.Options) (collector.Result, error) {
+		calls.Add(1)
+		close(started)
+		<-ctx.Done()
+		close(stopped)
+		return collector.Result{}, ctx.Err()
+	})
+	restore := replaceInteractiveProgramRunnerForTest(t, func(model interactiveModel, _ io.Writer) (interactiveModel, error) {
+		select {
+		case <-started:
+		case <-time.After(10 * time.Second):
+			t.Fatal("startup collection missing")
+		}
+		model.width, model.height = 120, 35
+		model = loadDashboardForTest(t, model)
+		if model.loading || len(model.rows) != 1 || model.rows[0].totalValue != 100 {
+			t.Fatal("saved usage blocked on collection")
+		}
+		view := ansi.Strip(model.View())
+		for _, text := range []string{"Total tokens", "Refreshing", "automatically"} {
+			if !strings.Contains(view, text) {
+				t.Fatalf("missing %q during refresh: %s", text, view)
+			}
+		}
+		updated, cmd := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'r'}})
+		model = updated.(interactiveModel)
+		if cmd == nil {
+			t.Fatal("query reload unavailable during collection")
+		}
+		updated, _ = model.Update(cmd())
+		model = updated.(interactiveModel)
+		if calls.Load() != 1 || len(model.rows) != 1 || model.rows[0].totalValue != 100 {
+			t.Fatal("reload collected again or lost saved usage")
+		}
+		updated, cmd = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
+		if cmd == nil {
+			t.Fatal("quit unavailable during collection")
+		}
+		select {
+		case <-stopped:
+		case <-time.After(10 * time.Second):
+			t.Fatal("quit left collection running")
+		}
+		return updated.(interactiveModel), nil
+	})
+	defer restore()
+	if err := Run(t.Context(), []string{"tui", "--all-time", "--collector-db-path", options.collectorDBPath, "--server-db-path", options.dbPath}, io.Discard, io.Discard, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestTUIBackgroundIngestionAndReplayPreserveUsageAndReloadOnlyQueries(t *testing.T) {
 	root := t.TempDir()
 	isolateViewSources(t, root)
 	piPath := filepath.Join(root, "home", ".pi", "agent", "sessions", "project", "session.jsonl")
@@ -69,16 +133,26 @@ func TestTUIDefaultSyncAcceptsInsideLoadingScreenAndReloadQueriesProcessedData(t
 	}
 	collectorPath, serverPath := filepath.Join(root, "collector.sqlite"), filepath.Join(root, "server.duckdb")
 	restore := replaceInteractiveProgramRunnerForTest(t, func(model interactiveModel, _ io.Writer) (interactiveModel, error) {
-		assertViewMissingPath(t, collectorPath)
-		startup := newStartupModel(model)
-		startup.dashboard.width, startup.dashboard.height = 120, 35
-		if !strings.Contains(startup.View(), "Updating usage") || strings.Contains(startup.View(), "Total tokens") {
-			t.Fatal("startup skipped the loading screen")
+		model.width, model.height = 120, 35
+		model = finishCollectionForTest(t, model)
+		if model.refresh.result == nil || model.refresh.result.Err != nil {
+			t.Fatalf("collection failed: %+v", model.refresh.result)
 		}
-		final := driveStartupForTest(t, startup)
-		dashboard, ok := final.(interactiveModel)
-		if !ok || dashboard.loading || len(dashboard.rows) != 1 || dashboard.rows[0].totalValue != 100 {
-			t.Fatal("startup did not wait for visible usage")
+		if strings.Contains(model.refreshLine(), "Usage refreshed") {
+			t.Fatal("acceptance claimed query visibility")
+		}
+		ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+		defer cancel()
+		if err := model.options.local.WaitVisible(ctx); err != nil {
+			t.Fatal(err)
+		}
+		model = loadRefreshStatusForTest(t, model)
+		if strings.Contains(model.refreshLine(), "Usage refreshed") {
+			t.Fatal("processing claimed displayed usage before dashboard read")
+		}
+		model = loadDashboardForTest(t, model)
+		if len(model.rows) != 1 || model.rows[0].totalValue != 100 || !strings.Contains(model.refreshLine(), "Usage refreshed") {
+			t.Fatalf("published refresh missing: rows=%+v state=%s", model.rows, model.refreshLine())
 		}
 		store := model.options.local.Store
 		assertCLIQueryCount(t, store.SQL(), "SELECT SUM(total_tokens) FROM analytics.confirmed", 100)
@@ -86,23 +160,31 @@ func TestTUIDefaultSyncAcceptsInsideLoadingScreenAndReloadQueriesProcessedData(t
 		if err := store.SQL().QueryRowContext(t.Context(), "SELECT COUNT(*) FROM ingestion.batches").Scan(&before); err != nil {
 			t.Fatal(err)
 		}
-		updated, cmd := dashboard.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'r'}})
-		dashboard = updated.(interactiveModel)
-		dashboard.Update(cmd())
+		updated, cmd := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'r'}})
+		if cmd == nil {
+			t.Fatal("reload unavailable after refresh")
+		}
+		model = updated.(interactiveModel)
+		updated, _ = model.Update(cmd())
+		model = updated.(interactiveModel)
 		assertCLIQueryCount(t, store.SQL(), "SELECT COUNT(*) FROM ingestion.batches", before)
-		repeated := driveStartupForTest(t, newStartupModel(model)).(interactiveModel)
-		if len(repeated.rows) != 1 || repeated.rows[0].totalValue != 100 {
-			t.Fatal("repeat sync changed saved usage")
+		repeated := newInteractiveModel(t.Context(), model.options, model.now, "unknown").startCollection()
+		defer repeated.cancelSync()
+		repeated.width, repeated.height = model.width, model.height
+		repeated = finishCollectionForTest(t, repeated)
+		if repeated.refresh.result == nil || repeated.refresh.result.Err != nil || repeated.refresh.result.Result.Collection.Skipped == 0 {
+			t.Fatalf("unchanged source not skipped: %+v", repeated.refresh.result)
 		}
-		for _, row := range repeated.syncProgressRows {
-			if row.harness == pipeline.HarnessPi && row.status != pipeline.SyncProgressSkipped {
-				t.Fatal("unchanged Pi source was not skipped")
-			}
+		if err := model.options.local.WaitVisible(ctx); err != nil {
+			t.Fatal(err)
 		}
-		if status := ansi.Strip(newStartupModel(repeated).harnessStatus(pipeline.SyncProgressSkipped)); status != "No new usage" {
-			t.Fatalf("unchanged source label=%q", status)
+		repeated = loadRefreshStatusForTest(t, repeated)
+		repeated = loadDashboardForTest(t, repeated)
+		if len(repeated.rows) != 1 || repeated.rows[0].totalValue != 100 || !strings.Contains(repeated.refreshLine(), "no new usage") {
+			t.Fatalf("replay changed usage or status: rows=%+v state=%s", repeated.rows, repeated.refreshLine())
 		}
-		return dashboard, nil
+		assertCLIQueryCount(t, store.SQL(), "SELECT COUNT(*) FROM ingestion.batches", before)
+		return model, nil
 	})
 	defer restore()
 	var stdout bytes.Buffer
@@ -110,191 +192,70 @@ func TestTUIDefaultSyncAcceptsInsideLoadingScreenAndReloadQueriesProcessedData(t
 		t.Fatal(err)
 	}
 	if stdout.Len() != 0 {
-		t.Fatal("startup printed CLI summaries or did not publish")
+		t.Fatal("background refresh printed CLI summaries")
 	}
 }
 
-func TestStartupFailureCanRetryOrViewSavedWithoutCollection(t *testing.T) {
-	for _, key := range []rune{'r', 'v'} {
-		t.Run(string(key), func(t *testing.T) {
+func TestTUIRefreshFailureAndQuarantinePreserveSavedUsage(t *testing.T) {
+	for _, quarantined := range []bool{false, true} {
+		name := "submission"
+		if quarantined {
+			name = "quarantine"
+		}
+		t.Run(name, func(t *testing.T) {
 			options := localViewOptions(t, true)
-			calls := 0
 			replaceViewCollector(t, func(context.Context, collector.Options) (collector.Result, error) {
-				calls++
-				if calls == 1 {
-					return collector.Result{DeliveryError: errors.New("unavailable")}, errors.New("unavailable")
+				if quarantined {
+					return collector.Result{Collection: pipeline.Summary{Quarantined: 2}}, nil
 				}
-				return collector.Result{}, nil
+				err := &collector.StageError{Stage: "delivery", Code: "reference_conflict", Cause: errors.New("https://private.test?token=secret")}
+				return collector.Result{DeliveryError: err}, err
 			})
-			dashboard := newInteractiveModel(t.Context(), options, time.Now(), "unknown")
-			failed := driveStartupForTest(t, newStartupModel(dashboard)).(startupModel)
-			if failed.busy || !strings.Contains(failed.View(), "Couldn't publish usage") || !strings.Contains(failed.View(), "View saved") {
-				t.Fatal("failure lost recovery actions")
+			model := newInteractiveModel(t.Context(), options, time.Now(), "unknown").startCollection()
+			defer model.cancelSync()
+			model.width, model.height = 120, 35
+			model = loadDashboardForTest(t, model)
+			model = finishCollectionForTest(t, model)
+			model = loadRefreshStatusForTest(t, model)
+			if model.err != nil || model.loading || len(model.rows) != 1 || model.rows[0].totalValue != 100 {
+				t.Fatal("refresh failure lost saved data")
 			}
-			updated, _ := failed.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{key}})
-			retry := updated.(startupModel)
-			// Update starts the next worker; drive its messages without another Init.
-			for retry.busy {
-				select {
-				case msg := <-retry.messages:
-					updated, _ = retry.Update(msg)
-					if result, ok := updated.(interactiveModel); ok {
-						if len(result.rows) != 1 || result.rows[0].totalValue != 100 {
-							t.Fatal("saved data not restored")
-						}
-						want := 2
-						if key == 'v' {
-							want = 1
-						}
-						if calls != want {
-							t.Fatalf("collection calls=%d want=%d", calls, want)
-						}
-						return
-					}
-					retry = updated.(startupModel)
-				case <-time.After(10 * time.Second):
-					t.Fatal("recovery did not finish")
-				}
+			view := ansi.Strip(model.View())
+			if !strings.Contains(view, "Refresh incomplete") || model.refreshBusy() {
+				t.Fatalf("failure still busy or not visible: %s", view)
 			}
-			t.Fatal("recovery failed")
-		})
-	}
-}
-
-func TestStartupProcessingFailureRetryWaitsAndSavedBypasses(t *testing.T) {
-	for _, key := range []rune{'r', 'v'} {
-		t.Run(string(key), func(t *testing.T) {
-			options := localViewOptions(t, true)
-			// Keep a failed pending revision while retaining published usage.
-			if err := options.local.Store.WriteTransaction(t.Context(), func(tx *sql.Tx) error {
-				if _, err := tx.Exec("UPDATE ingestion.metadata SET input_revision=input_revision+1"); err != nil {
-					return err
-				}
-				_, err := tx.Exec("UPDATE processing.scopes SET revision=revision+1,error_code='processing_failed',attempts=1,retry_at_ms=?", time.Now().Add(time.Hour).UnixMilli())
-				return err
-			}); err != nil {
-				t.Fatal(err)
-			}
-			replaceViewCollector(t, func(context.Context, collector.Options) (collector.Result, error) {
-				t.Error("processing recovery collected again")
-				return collector.Result{}, nil
-			})
-			startup := newStartupModel(newInteractiveModel(t.Context(), options, time.Now(), "unknown"))
-			startup.collect = false
-			failed := driveStartupForTest(t, startup).(startupModel)
-			if failed.failureCode() != "processing_failed" || !strings.Contains(failed.View(), "Couldn't finish processing usage.") {
-				t.Fatal("processing failure rendered as query failure", failed.View())
-			}
-			updated, _ := failed.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{key}})
-			retry := updated.(startupModel)
-			defer func() { retry.dashboard.cancelSync(); retry.workers.Wait() }()
-			deadline := time.NewTimer(time.Second)
-			defer deadline.Stop()
-			for {
-				select {
-				case msg := <-retry.messages:
-					updated, _ = retry.Update(msg)
-					if dashboard, ok := updated.(interactiveModel); ok {
-						if key != 'v' || len(dashboard.rows) != 1 || dashboard.rows[0].totalValue != 100 {
-							t.Fatal("retry bypassed processing or saved usage lost")
-						}
-						return
-					}
-					retry = updated.(startupModel)
-					if retry.err != nil {
-						if key != 'r' || retry.failureCode() != "processing_failed" {
-							t.Fatal("saved viewing waited or retry lost failure", retry.err)
-						}
-						return
-					}
-				case <-deadline.C:
-					t.Fatal("processing recovery did not finish")
-				}
+			if strings.Contains(view, "secret") || strings.Contains(view, "private.test") {
+				t.Fatal("refresh failure exposed sensitive error cause")
 			}
 		})
 	}
 }
 
-func TestStartupQuitCancelsWorkerAndIgnoresOtherKeysWhileBusy(t *testing.T) {
-	options := localViewOptions(t, false)
-	started, stopped := make(chan struct{}), make(chan struct{})
-	replaceViewCollector(t, func(ctx context.Context, _ collector.Options) (collector.Result, error) {
-		close(started)
-		<-ctx.Done()
-		close(stopped)
-		return collector.Result{}, ctx.Err()
+func TestTUIFailedProcessingPreservesPublishedUsageWithoutCollection(t *testing.T) {
+	options := localViewOptions(t, true)
+	if err := options.local.Store.WriteTransaction(t.Context(), func(tx *sql.Tx) error {
+		if _, err := tx.Exec("UPDATE ingestion.metadata SET input_revision=input_revision+1"); err != nil {
+			return err
+		}
+		_, err := tx.Exec("UPDATE processing.scopes SET revision=revision+1,error_code='processing_failed',attempts=1,retry_at_ms=?", time.Now().Add(time.Hour).UnixMilli())
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+	replaceViewCollector(t, func(context.Context, collector.Options) (collector.Result, error) {
+		t.Error("query-only processing status collected again")
+		return collector.Result{}, nil
 	})
-	dashboard := newInteractiveModel(t.Context(), options, time.Now(), "unknown")
-	model := newStartupModel(dashboard)
-	model.Init()
-	defer func() { dashboard.cancelSync(); model.workers.Wait() }()
-	<-started
-	updated, cmd := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'r'}})
-	if cmd != nil || !updated.(startupModel).busy {
-		t.Fatal("busy retry overlapped collection")
+	model := newInteractiveModel(t.Context(), options, time.Now(), "unknown")
+	defer model.cancelSync()
+	model.width, model.height = 120, 35
+	model = loadDashboardForTest(t, model)
+	model = loadRefreshStatusForTest(t, model)
+	if model.err != nil || len(model.rows) != 1 || model.rows[0].totalValue != 100 || model.refreshBusy() {
+		t.Fatal("failed pending processing blocked saved usage")
 	}
-	_, cmd = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
-	if cmd == nil {
-		t.Fatal("quit missing")
-	}
-	select {
-	case <-stopped:
-	case <-time.After(time.Second):
-		t.Fatal("quit left collector running")
-	}
-}
-
-func TestStartupQuarantineRetainsIncompleteStateAndRetryGuidance(t *testing.T) {
-	m := newStartupModel(newInteractiveModel(t.Context(), tableOptions{serverURL: "http://127.0.0.1:1"}, time.Now(), "unknown"))
-	defer m.dashboard.cancelSync()
-	m.dashboard.width, m.dashboard.height = 120, 35
-	updated, _ := m.Update(syncProgressMsg{event: pipeline.SyncProgressEvent{Harness: pipeline.HarnessCodex, Status: pipeline.SyncProgressFailed, Quarantined: 2}})
-	m = updated.(startupModel)
-	if !strings.Contains(ansi.Strip(m.View()), "2 quarantined") {
-		t.Fatal("quarantine hidden during delivery")
-	}
-	updated, _ = m.Update(startupFailedMsg{phase: startupCollect, err: errors.New("capture_failed")})
-	m = updated.(startupModel)
-	view := ansi.Strip(m.View())
-	for _, text := range []string{"usage incomplete", "sync --full-refresh", "v View saved", "r Retry"} {
-		if !strings.Contains(view, text) {
-			t.Fatalf("missing %q: %s", text, view)
-		}
-	}
-}
-
-func TestStartupFitsTerminalAndKeepsRecoveryKeys(t *testing.T) {
-	for _, size := range [][2]int{{120, 35}, {80, 24}, {40, 14}, {30, 9}} {
-		for _, failed := range []bool{false, true} {
-			m := newStartupModel(newInteractiveModel(t.Context(), tableOptions{serverURL: "http://127.0.0.1:1"}, time.Now(), "unknown"))
-			defer m.dashboard.cancelSync()
-			m.dashboard.width, m.dashboard.height = size[0], size[1]
-			m.phase = startupPublish
-			m.delivery = collector.DeliveryProgress{Accepted: 8448, Batches: 33, Pending: 36199, PendingKnown: true}
-			m.dashboard = m.dashboard.withSyncProgress(pipeline.SyncProgressEvent{Harness: pipeline.HarnessCodex, Status: pipeline.SyncProgressSyncing})
-			if failed {
-				m.busy, m.err = false, errors.New("failure")
-			}
-			view := ansi.Strip(m.View())
-			lines := strings.Split(view, "\n")
-			if len(lines) != size[1] {
-				t.Fatalf("height=%d want=%d", len(lines), size[1])
-			}
-			for _, line := range lines {
-				if ansi.StringWidth(line) > size[0] {
-					t.Fatalf("startup overflow: %q", line)
-				}
-			}
-			if !strings.Contains(view, "q Quit") {
-				t.Fatalf("quit missing: %s", view)
-			}
-			if !strings.Contains(view, "8448 entries accepted") || !strings.Contains(view, "36199 entries pending") {
-				t.Fatalf("acknowledged progress truncated: %s", view)
-			}
-			if failed && (!strings.Contains(view, "r Retry") || !strings.Contains(view, "v ")) {
-				t.Fatalf("recovery keys missing: %s", view)
-			}
-		}
+	if !strings.Contains(ansi.Strip(model.View()), "Processing needs attention") {
+		t.Fatal("processing failure hidden", model.View())
 	}
 }
 
@@ -304,89 +265,8 @@ func TestTUIStartupSyncDefaultsAndReadOnlyOptOut(t *testing.T) {
 		want bool
 	}{{nil, true}, {[]string{"--sync"}, true}, {[]string{"--sync=false"}, false}} {
 		options, err := parseTableOptions(test.args, io.Discard, false, periodMonth)
-		if err != nil || options.syncBeforeView != test.want {
-			t.Fatalf("args=%v sync=%v err=%v", test.args, options.syncBeforeView, err)
+		if err != nil || options.syncOnStart != test.want {
+			t.Fatalf("args=%v sync=%v err=%v", test.args, options.syncOnStart, err)
 		}
-	}
-}
-
-func TestStartupFailureShowsSafeReasonAndDiagnosticsAtCompactSizes(t *testing.T) {
-	for _, code := range []string{"reference_conflict", "http_401", "server_database_changed", "collector_database"} {
-		for _, size := range [][2]int{{120, 35}, {40, 14}, {30, 9}} {
-			m := newStartupModel(newInteractiveModel(t.Context(), tableOptions{serverURL: "http://127.0.0.1:1"}, time.Now(), "unknown"))
-			m.dashboard.width, m.dashboard.height = size[0], size[1]
-			m.busy, m.phase = false, startupPublish
-			m.err = &collector.StageError{Stage: "delivery", Code: code, Cause: errors.New("https://private.test?token=secret")}
-			m.delivery = collector.DeliveryProgress{Accepted: 8448, Batches: 33, Pending: 36199, PendingKnown: true}
-			view := ansi.Strip(m.View())
-			m.dashboard.cancelSync()
-			for _, want := range []string{code, "tokeninsights sync", "8448 entries accepted", "36199 entries pending", "r Retry", "v ", "q Quit"} {
-				if !strings.Contains(view, want) {
-					t.Fatalf("missing %q at %v: %s", want, size, view)
-				}
-			}
-			if strings.Contains(view, "secret") || strings.Contains(view, "private.test") {
-				t.Fatal("error cause exposed credentials")
-			}
-		}
-	}
-}
-
-func TestStartupDeliveryShowsComparableEntryCounts(t *testing.T) {
-	m := newStartupModel(newInteractiveModel(t.Context(), tableOptions{}, time.Now(), "unknown"))
-	defer m.dashboard.cancelSync()
-	m.dashboard.width, m.dashboard.height = 120, 35
-	const entries = 513
-	for _, progress := range []collector.DeliveryProgress{
-		{Pending: entries, PendingKnown: true},
-		{Accepted: 256, Batches: 1, Pending: 257, PendingKnown: true},
-		{Accepted: 512, Batches: 2, Pending: 1, PendingKnown: true},
-		{Accepted: entries, Batches: 3, PendingKnown: true},
-	} {
-		updated, _ := m.Update(startupDeliveryMsg{progress: progress})
-		m = updated.(startupModel)
-		view := ansi.Strip(m.View())
-		for _, want := range []string{fmt.Sprintf("%d entries accepted", progress.Accepted), fmt.Sprintf("%d entries pending", progress.Pending)} {
-			if !strings.Contains(view, want) {
-				t.Fatalf("missing comparable progress %q: %s", want, view)
-			}
-		}
-		if strings.Contains(view, "batches accepted") {
-			t.Fatal("batch count presented alongside pending entry count")
-		}
-	}
-}
-
-func TestStartupLoadFailureShowsSafeReasonAndRelevantRecovery(t *testing.T) {
-	for _, test := range []struct {
-		err            error
-		code, guidance string
-	}{
-		{localruntime.ErrProcessingFailed, "processing_failed", "Retry or run tokeninsights data reprocess."},
-		{localruntime.ErrProcessingTimeout, "processing_timeout", "Still processing; retry or view saved usage."},
-		{&queryclient.StatusError{StatusCode: http.StatusServiceUnavailable}, "http_503", "Server read failed; check server logs."},
-		{&queryclient.StatusError{StatusCode: http.StatusUnauthorized}, "http_401", "Check server URL and token."},
-		{&queryclient.StatusError{StatusCode: http.StatusForbidden}, "http_403", "Check server URL and token."},
-		{queryclient.ErrSnapshotChanged, "snapshot_changed", "Usage changed during loading; retry."},
-		{queryclient.ErrUnavailable, "analytics_unavailable", "Check server status and retry."},
-		{context.DeadlineExceeded, "query_timeout", "Check server status and retry."},
-		{errors.New("https://private.test?token=secret"), "query_failed", "Check server status and retry."},
-	} {
-		t.Run(test.code, func(t *testing.T) {
-			m := newStartupModel(newInteractiveModel(t.Context(), tableOptions{serverURL: "http://127.0.0.1:1"}, time.Now(), "unknown"))
-			defer m.dashboard.cancelSync()
-			m.dashboard.width, m.dashboard.height = 120, 35
-			updated, _ := m.Update(startupFailedMsg{phase: startupLoad, err: fmt.Errorf("load: %w", test.err)})
-			m = updated.(startupModel)
-			view := ansi.Strip(m.View())
-			for _, want := range []string{test.code, test.guidance, "r Retry", "v View saved", "q Quit"} {
-				if !strings.Contains(view, want) {
-					t.Fatalf("missing %q: %s", want, view)
-				}
-			}
-			if strings.Contains(view, "secret") || strings.Contains(view, "private.test") {
-				t.Fatal("load error exposed credentials")
-			}
-		})
 	}
 }

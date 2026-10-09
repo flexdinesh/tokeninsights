@@ -110,8 +110,8 @@ func tokenReadouts(rows []renderRow) []deskMetric {
 
 func (m interactiveModel) deskHeader() []string {
 	width := m.tableViewportWidth()
-	lines := []string{m.renderStatusline()}
-	if m.timezone != "" {
+	lines := []string{m.renderStatusline(), m.refreshLine()}
+	if m.timezone != "" && m.height >= deskRoomyHeight {
 		lines = append(lines, hintStyle.Render(truncateCell("Server time: "+m.timezone+" · r Reload saved usage", width)))
 	}
 	roomy := m.height >= deskRoomyHeight
@@ -229,8 +229,10 @@ func (m interactiveModel) renderDesk() string {
 		message, recovery := "No rows match the current scope.", "d Change date range · f Adjust filters"
 		if m.sessionCounts.Synced == 0 {
 			message, recovery = "No ingested usage yet.", "Run tokeninsights sync, then press r to reload."
-			if m.sharedSync.Running {
-				message, recovery = "Accepted usage is processing.", "Dashboard updates as processing finishes."
+			if m.refreshBusy() {
+				message, recovery = "Checking local sessions…", "Usage appears automatically as refresh completes."
+			} else if m.collectionFailed() {
+				message, recovery = "Refresh incomplete.", "Run tokeninsights sync to retry; saved usage remains available."
 			}
 		}
 		table = m.deskMessage(message, "", recovery, visible+1)

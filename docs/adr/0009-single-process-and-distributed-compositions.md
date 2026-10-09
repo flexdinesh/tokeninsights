@@ -30,13 +30,23 @@ Plugins initially select their harness only. No plugin event/counter payload.
 
 One local viewer owns a database. Concurrent sync/plugin requests use durable
 local handoff, executed by that owner without HTTP ingestion. No collector daemon
-or periodic source scanning. Local TUI startup awaits query visibility;
-local Web opens after storage initialization and displays command-owned collection
-and processing progress alongside saved usage. Distributed delivery normally
-finishes at acceptance. Local-only capability flags control collector progress and
+or periodic source scanning. Local TUI and Web open after storage initialization
+and display command-owned collection and processing progress alongside saved usage.
+Distributed delivery normally finishes at acceptance. Local-only capability flags control collector progress and
 dashboard Reload; Reload refreshes queries only. This Web startup refinement was
 approved on 9 October 2026, including additive processing-status fields and local
 machine hostname semantics; it changes no database schema.
+
+The user-approved TUI refinement on 9 October 2026 supersedes the initial
+fresh-data startup wait: show saved committed usage immediately, with a persistent
+refresh strip while capture, submission and processing run in the owning process.
+Refresh published revisions automatically without resetting viewer controls.
+Acceptance is not completion; TUI completion requires processing visibility and a
+successful dashboard read of the current published revision. Failure/quarantine
+preserves saved usage and shows an incomplete refresh. `--sync=false` skips startup
+capture but resumes durable processing. Shared local startup orchestration owns
+cancellation and joins background tasks before storage closes. This refinement
+changes no schema, accounting semantics, capture scope or hosted capabilities.
 
 ## Rollout
 

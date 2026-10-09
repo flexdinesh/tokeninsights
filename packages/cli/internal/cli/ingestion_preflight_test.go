@@ -21,9 +21,6 @@ func TestIngestionPreflightRejectsBeforeCapture(t *testing.T) {
 		for _, incompatible := range []string{"protocol", "extractor", "database", "dataset", "completion", "body-limit", "entry-limit"} {
 			t.Run(command+"/"+incompatible, func(t *testing.T) {
 				kind := serverfeatures.Hosted
-				if command == "tui" {
-					kind = serverfeatures.Personal
-				}
 				caps := evidence.Capabilities{ProtocolVersion: evidence.ProtocolVersion, ExtractorVersion: evidence.ExtractorVersion, DatabaseID: "database", DatasetID: "dataset", Completion: "acceptance", MaxBodyBytes: evidence.MaxBodyBytes, MaxEntries: evidence.MaxEntries}
 				switch incompatible {
 				case "protocol":
@@ -66,17 +63,6 @@ func TestIngestionPreflightRejectsBeforeCapture(t *testing.T) {
 				settings.ServerKind, settings.ServerURL, settings.ServerToken = kind, remote.URL, "fixture-token"
 				settings.CollectorDBPath, settings.ServerDBPath = filepath.Join(t.TempDir(), "collector.sqlite"), filepath.Join(t.TempDir(), "server.duckdb")
 				invocation := commandInvocation{context: t.Context(), stdout: io.Discard, stderr: io.Discard, settings: &settings}
-				if command == "tui" {
-					restore := replaceInteractiveProgramRunnerForTest(t, func(model interactiveModel, _ io.Writer) (interactiveModel, error) {
-						final := driveStartupForTest(t, newStartupModel(model))
-						failed, ok := final.(startupModel)
-						if !ok {
-							t.Fatal("viewer launched after incompatible negotiation")
-						}
-						return model, failed.err
-					})
-					defer restore()
-				}
 				spec, ok := commandByName(command)
 				if !ok {
 					t.Fatal("missing command")

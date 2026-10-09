@@ -58,8 +58,8 @@ blue-tinted selection fills retain focus. Both light and dark terminals are supp
 
 ## Startup extension — 2026-10-05
 
-`tui` now collects and publishes all four harnesses inside the loading screen,
-then opens committed REST data in the same alternate screen. Viewer filters apply
+The original extension collected and published all four harnesses inside the loading
+screen, then opened committed REST data in the same alternate screen. Viewer filters apply
 after sync. `--sync=false` opens saved data directly; dashboard `r` remains GET-only.
 The extension reuses the Instrument desk: transparent terminal background,
 adaptive sky action/busy text, pink ready states, warning-red failures, ANSI bold,
@@ -83,3 +83,31 @@ the misleading skipped label and missing delivery reason were resolved.
 A separate PTY runtime check confirmed publication and display of 100 fixture
 tokens. Existing native `DESIGN.md` and `.impeccable/design.json` remain the visual
 authority; this extension introduces no system tokens.
+
+## Saved-first refresh refinement — 2026-10-09
+
+User approved opening saved committed usage while refreshing in the owning process.
+This supersedes the loading-screen collection wait above. Preserve the Instrument
+desk and its sky busy text, ASCII spinner, transparent canvas and readable text
+states. Reserve one persistent strip below the machine header and above navigation;
+keep its row when refresh completes or fails so the table does not jump.
+
+During capture: `Refreshing usage · checking local sessions · updates automatically`.
+Submission and processing use truthful phase text; a newer publication being read
+says `Updating displayed usage…`. Completion says `Usage refreshed` only after
+processing visibility and a successful current dashboard read; unchanged usage says
+`Usage checked · no new usage`. Failed or quarantined
+capture says `Refresh incomplete · showing saved usage` with retry guidance;
+processing failure says `Processing needs attention · showing saved usage · r Reload`.
+Unavailable status says `Refresh status unavailable · showing saved usage`
+and cannot imply completion. Busy animation stops on failure.
+No percentage or ETA without reliable work measurements. Compact layouts shorten
+to `Refreshing · auto-updating`; status remains clear without color or animation.
+
+Retain saved rows, totals and coverage while background work runs. Update them
+together from a consistent snapshot, preserving filters, sort, focused-row identity,
+scroll where possible and drawer drafts. Empty saved usage during refresh explains
+that usage appears automatically; definitive empty-state guidance follows completion.
+`r` remains query-only. `--sync=false` skips startup collection, while durable
+processing resumes. Quit cancels and joins background tasks before storage closes.
+No schema, accounting, capture-priority or hosted capability changes.

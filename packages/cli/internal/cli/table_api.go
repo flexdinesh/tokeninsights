@@ -154,7 +154,14 @@ func (m interactiveModel) loadServerDashboard() reloadMsg {
 		}
 	}
 	sortRenderRows(rows, m.activeTab, m.options.sort)
-	return reloadMsg{instanceID: result.InstanceId, dataEpoch: result.DataEpoch, selection: m.selectionKey(), rows: rows, revision: result.Revision, lastSyncMs: result.LastSynced, processingPending: result.Pending, sessionCounts: db.SessionCounts{Shown: result.Summary.Sessions, Synced: result.Summary.SyncedSessions}, hostname: instance.Hostname, timezone: instance.Timezone}
+	var serverGeneration, inputRevision int64
+	if result.Generation != nil {
+		serverGeneration = *result.Generation
+	}
+	if result.InputRevision != nil {
+		inputRevision = *result.InputRevision
+	}
+	return reloadMsg{instanceID: result.InstanceId, dataEpoch: result.DataEpoch, selection: m.selectionKey(), rows: rows, revision: result.Revision, serverGeneration: serverGeneration, inputRevision: inputRevision, lastSyncMs: result.LastSynced, processingPending: result.Pending, sessionCounts: db.SessionCounts{Shown: result.Summary.Sessions, Synced: result.Summary.SyncedSessions}, hostname: instance.Hostname, timezone: instance.Timezone}
 }
 
 func apiRenderRows(source []api.UsageRow, tab tabMode) []renderRow {

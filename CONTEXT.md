@@ -69,11 +69,11 @@ A typed, server-owned feature declaration exposed by the instance REST endpoint.
 _Avoid_: Client-selected feature, authentication scope
 
 **Collector Progress**:
-Bounded, sanitized capture/submission attempt state published by the command-owned local collector into an in-process registry. The local Web dashboard reads it through a capability-gated endpoint. Hosted servers never collect or expose collector progress. Processing lag is separate and available to authorized viewers of either kind.
+Bounded, sanitized capture/submission attempt state published by the command-owned local collector into an in-process registry. Local TUI reads it directly; local Web reads it through a capability-gated endpoint. Hosted servers never collect or expose collector progress. Processing lag is separate and available to authorized viewers of either kind.
 _Avoid_: Server collection, global queue progress, upload completion as query freshness
 
 **Read-only View**:
-`tokeninsights tui` collects/publishes in a loading screen, waits for processing, then queries committed usage directly. Local `web` opens after storage initialization and shows collection/processing progress alongside saved data; distributed `web` syncs before opening the remote dashboard. `--sync=false` skips collection. The local-only dashboard Reload and TUI `r` request queries only; viewer filters remain display constraints. TUI startup failures offer Retry, View saved data, and Quit.
+Local `tui` and `web` open saved committed usage after storage initialization while command-owned capture/submission/processing continues in background. TUI queries directly and keeps a visible refresh strip; published revisions refresh both viewers automatically. Refresh completion requires processing visibility and a successful current dashboard read; failures preserve saved usage. Distributed `web` syncs before opening the remote dashboard. `--sync=false` skips startup collection, while durable processing resumes. The local-only dashboard Reload and TUI `r` request queries only; viewer filters remain display constraints.
 _Avoid_: Implicit View Sync, dashboard source refresh
 
 **Durable Publication**:

@@ -112,7 +112,7 @@ func (o *Observer) Finish(result collector.Result, err error) {
 	o.state.Operation, o.state.Stage = "finish", "accepted"
 	o.state.AcknowledgedEntries, o.state.AcknowledgedBatches = result.Accepted, result.Batches
 	o.state.PendingKnown, o.state.Pending = result.PendingKnown, result.Pending
-	if err != nil {
+	if err != nil || result.Collection.Quarantined > 0 {
 		o.state.Stage, o.state.ErrorCode = "failed", "collection_failed"
 		if result.DeliveryError != nil {
 			o.state.ErrorCode = "submission_failed"

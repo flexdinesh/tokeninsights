@@ -40,7 +40,7 @@ func runWeb(invocation commandInvocation, args []string) error {
 	flags.StringVar(&settings.CollectorDBPath, "collector-db-path", settings.CollectorDBPath, "collector database")
 	flags.StringVar(&settings.Host, "host", settings.Host, "local web/API bind IPv4 address")
 	flags.IntVar(&settings.Port, "port", settings.Port, "local web/API port (0 chooses available)")
-	flags.BoolVar(&syncBefore, "sync", true, "collect and submit before viewing; --sync=false reads saved data")
+	flags.BoolVar(&syncBefore, "sync", true, "refresh usage in the background; --sync=false reads saved data")
 	if err := flags.Parse(args); err != nil {
 		return fmt.Errorf("%w\n%w", err, ErrUsage)
 	}
@@ -125,23 +125,9 @@ func runLocalWeb(invocation commandInvocation, settings config.Settings, syncBef
 		return err
 	}
 	defer func() { _ = runtime.Close() }()
-	collectionDone := make(chan struct{})
 	if syncBefore {
-		observer := runtime.Observe(ctx)
-		go func() {
-			defer close(collectionDone)
-			result, err := runWebCollector(ctx, collector.Options{
-				CollectorDBPath: settings.CollectorDBPath, ServerDBPath: settings.ServerDBPath,
-				Destination:      runtime.Destination,
-				SyncOptions:      pipeline.SyncOptions{Harnesses: pipeline.SupportedHarnesses, Normalize: true, Now: invocation.now, Progress: observer.Collection},
-				DeliveryProgress: observer.Delivery,
-			})
-			observer.Finish(result, err)
-		}()
-	} else {
-		close(collectionDone)
+		runtime.StartCollection(ctx, pipeline.SyncOptions{Harnesses: pipeline.SupportedHarnesses, Normalize: true, Now: invocation.now}, runWebCollector)
 	}
-	defer func() { cancel(); <-collectionDone }()
 	host, port, err := net.SplitHostPort(listener.Addr().String())
 	if err != nil {
 		return err
