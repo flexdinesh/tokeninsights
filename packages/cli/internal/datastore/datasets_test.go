@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/evidence"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/persistence/sqlutil"
 )
 
 func TestStoredReceiptCannotRedirectScopedProcessingRead(t *testing.T) {
@@ -18,7 +19,7 @@ func TestStoredReceiptCannotRedirectScopedProcessingRead(t *testing.T) {
 	}
 	drain(t, root)
 	var body string
-	if err := root.SQL().QueryRow("SELECT receipt_json FROM ingestion.batches WHERE dataset_id='bob'").Scan(&body); err != nil {
+	if err := root.SQL().QueryRow(sqlutil.Bind("SELECT receipt_json FROM ingestion_batches WHERE dataset_id='bob'")).Scan(&body); err != nil {
 		t.Fatal(err)
 	}
 	var receipt evidence.Receipt
@@ -30,7 +31,7 @@ func TestStoredReceiptCannotRedirectScopedProcessingRead(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := root.SQL().Exec("UPDATE ingestion.batches SET receipt_json=? WHERE dataset_id='bob'", string(encoded)); err != nil {
+	if _, err := root.SQL().Exec(sqlutil.Bind("UPDATE ingestion_batches SET receipt_json=? WHERE dataset_id='bob'"), string(encoded)); err != nil {
 		t.Fatal(err)
 	}
 	if response, err := bob.Receipt(t.Context(), "stream", "batch"); err == nil || len(response.Processing.Items) != 0 {
@@ -40,7 +41,7 @@ func TestStoredReceiptCannotRedirectScopedProcessingRead(t *testing.T) {
 
 func hostedStores(t *testing.T) (*Store, *Store, *Store) {
 	t.Helper()
-	root, err := OpenKind(t.Context(), filepath.Join(t.TempDir(), "server.duckdb"), KindHosted)
+	root, err := OpenKind(t.Context(), filepath.Join(t.TempDir(), "server.sqlite"), KindHosted)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -73,7 +74,7 @@ func TestDatasetsIsolateIdenticalNativeAndDeliveryIdentities(t *testing.T) {
 	}
 	drain(t, root)
 	for _, store := range []*Store{alice, bob} {
-		if got := total(t, store, "analytics.confirmed"); got != 120 {
+		if got := total(t, store, "analytics_confirmed"); got != 120 {
 			t.Fatalf("dataset %s: total %d", store.DatasetID(), got)
 		}
 		response, err := store.Receipt(t.Context(), "same-stream", "same-batch")
@@ -81,7 +82,7 @@ func TestDatasetsIsolateIdenticalNativeAndDeliveryIdentities(t *testing.T) {
 			t.Fatal(response, err)
 		}
 		var count int
-		if err := root.SQL().QueryRow("SELECT COUNT(*) FROM raw.evidence WHERE dataset_id=?", store.DatasetID()).Scan(&count); err != nil || count != 1 {
+		if err := root.SQL().QueryRow(sqlutil.Bind("SELECT COUNT(*) FROM raw_evidence WHERE dataset_id=?"), store.DatasetID()).Scan(&count); err != nil || count != 1 {
 			t.Fatal(count, err)
 		}
 	}
@@ -93,7 +94,7 @@ func TestDatasetsIsolateIdenticalNativeAndDeliveryIdentities(t *testing.T) {
 		t.Fatal("foreign batch accepted")
 	}
 	var count int
-	if err := root.SQL().QueryRow("SELECT COUNT(*) FROM ingestion.batches WHERE dataset_id='bob'").Scan(&count); err != nil || count != 1 {
+	if err := root.SQL().QueryRow(sqlutil.Bind("SELECT COUNT(*) FROM ingestion_batches WHERE dataset_id='bob'")).Scan(&count); err != nil || count != 1 {
 		t.Fatal("foreign batch mutated Bob", count, err)
 	}
 }
@@ -127,10 +128,10 @@ func TestGenerationAndProjectionReplacementAreDatasetLocal(t *testing.T) {
 		t.Fatal(err)
 	}
 	drain(t, root)
-	if total(t, alice, "analytics.confirmed") != 0 || total(t, bob, "analytics.confirmed") != 120 {
+	if total(t, alice, "analytics_confirmed") != 0 || total(t, bob, "analytics_confirmed") != 120 {
 		t.Fatal("projection replacement crossed dataset")
 	}
-	if total(t, bob, "analytics.estimated") != 0 {
+	if total(t, bob, "analytics_estimated") != 0 {
 		t.Fatal("Alice ambiguity exposed to Bob")
 	}
 }
@@ -153,14 +154,14 @@ func TestAncestorEvidenceNeverCrossesDatasets(t *testing.T) {
 	if err != nil || after != before {
 		t.Fatal("foreign ancestor invalidated Bob", before, after, err)
 	}
-	if total(t, bob, "analytics.confirmed") != 0 || total(t, bob, "analytics.estimated") != 120 {
+	if total(t, bob, "analytics_confirmed") != 0 || total(t, bob, "analytics_estimated") != 120 {
 		t.Fatal("foreign parent attributed copied evidence")
 	}
 	if _, err := bob.Accept(t.Context(), evidence.ProtocolVersion, batchBody(t, bob, "parent", "batch", codexRecord("parent", ""))); err != nil {
 		t.Fatal(err)
 	}
 	drain(t, root)
-	if total(t, bob, "analytics.confirmed") != 120 || total(t, bob, "analytics.estimated") != 0 {
+	if total(t, bob, "analytics_confirmed") != 120 || total(t, bob, "analytics_estimated") != 0 {
 		t.Fatal("same-dataset parent did not resolve ambiguity")
 	}
 }
@@ -172,7 +173,7 @@ func TestWorkerRotatesDatasetsAndSkipsFailedScopes(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if _, err := root.SQL().Exec("UPDATE raw.evidence SET record_json='invalid' WHERE dataset_id='alice'"); err != nil {
+	if _, err := root.SQL().Exec(sqlutil.Bind("UPDATE raw_evidence SET record_json='invalid' WHERE dataset_id='alice'")); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := root.ProcessNext(t.Context()); err == nil {
@@ -181,7 +182,7 @@ func TestWorkerRotatesDatasetsAndSkipsFailedScopes(t *testing.T) {
 	if worked, err := root.ProcessNext(t.Context()); err != nil || !worked {
 		t.Fatal("Alice failure blocked Bob", worked, err)
 	}
-	if total(t, bob, "analytics.confirmed") != 120 {
+	if total(t, bob, "analytics_confirmed") != 120 {
 		t.Fatal("Bob did not progress")
 	}
 }

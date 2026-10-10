@@ -9,13 +9,14 @@ import (
 	"time"
 
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/accounts"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/adapters/accountsql"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/appstore"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/datastore"
 )
 
 func testAccounts(t *testing.T) (*accounts.Service, *accountTestStore) {
 	t.Helper()
-	store, err := datastore.OpenKind(t.Context(), filepath.Join(t.TempDir(), "hosted.duckdb"), "hosted")
+	store, err := datastore.OpenKind(t.Context(), filepath.Join(t.TempDir(), "hosted.sqlite"), "hosted")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -184,7 +185,7 @@ func TestCleanupRemovesExpiredCredentialsWithoutRemovingDatasets(t *testing.T) {
 type accountTestStore struct {
 	*appstore.Store
 	data       *datastore.Store
-	repository *SQLite
+	repository *accountsql.Repository
 }
 
 func (s *accountTestStore) ForDataset(id string) *datastore.Store { return s.data.ForDataset(id) }

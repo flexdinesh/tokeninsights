@@ -1,4 +1,4 @@
-package duckdb
+package sqlanalytics
 
 import (
 	"encoding/json"
@@ -14,9 +14,9 @@ import (
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/viewer"
 )
 
-func duckDashboardStore(t *testing.T) *datastore.Store {
+func dashboardStore(t *testing.T) *datastore.Store {
 	t.Helper()
-	store, err := datastore.Open(t.Context(), filepath.Join(t.TempDir(), "server.duckdb"))
+	store, err := datastore.Open(t.Context(), filepath.Join(t.TempDir(), "server.sqlite"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -49,8 +49,8 @@ func duckDashboardStore(t *testing.T) *datastore.Store {
 	return store
 }
 
-func TestDuckDashboardTabsFiltersPaginationAndSeparateEstimates(t *testing.T) {
-	store := duckDashboardStore(t)
+func TestSQLDashboardTabsFiltersPaginationAndSeparateEstimates(t *testing.T) {
+	store := dashboardStore(t)
 	for _, tab := range []string{"tokens", "models", "providers", "harnesses", "sessions", "context", "repo"} {
 		t.Run(tab, func(t *testing.T) {
 			q := analytics.Query{Selection: viewer.Selection{Period: "all", Bucket: "day"}, Tab: tab, Quality: "confirmed", Sort: "total", Direction: "desc", Page: 1, PageSize: 2, LocationGroup: querymodel.RepoGroupRepository}
@@ -85,43 +85,5 @@ func TestDuckDashboardTabsFiltersPaginationAndSeparateEstimates(t *testing.T) {
 	data, err := LoadDashboard(t.Context(), store, q, time.Now())
 	if err != nil || data.Summary.TotalTokens != 120 || data.Page != 1 || data.Rows[0].Name != "model-2" {
 		t.Fatalf("filter/page %+v %v", data, err)
-	}
-}
-
-func TestDuckCalendarBucketsAndDayFilters(t *testing.T) {
-	store, err := datastore.Open(t.Context(), filepath.Join(t.TempDir(), "server.duckdb"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = store.Close() }()
-	// Test SQL calendar conversion independently of the machine's reporting zone.
-	cases := []struct {
-		zone      string
-		timestamp string
-		day       string
-	}{
-		{"@19800", "2026-01-01T20:00:00Z", "2026-01-02"},
-		{"@-28800", "2026-01-02T02:00:00Z", "2026-01-01"},
-		{"America/Los_Angeles", "2026-03-08T07:59:59Z", "2026-03-07"},
-		{"America/Los_Angeles", "2026-03-08T10:00:00Z", "2026-03-08"},
-		{"Australia/Sydney", "2026-10-03T16:00:00Z", "2026-10-04"},
-	}
-	for _, tc := range cases {
-		at, err := time.Parse(time.RFC3339, tc.timestamp)
-		if err != nil {
-			t.Fatal(err)
-		}
-		expression, parameter := duckTimeExpression(tc.zone)
-		var got string
-		statement := "SELECT strftime(" + expression + ",'%Y-%m-%d') FROM (SELECT CAST(? AS BIGINT) AS occurred_at_ms)"
-		if err := store.SQL().QueryRow(statement, parameter, at.UnixMilli()).Scan(&got); err != nil || got != tc.day {
-			t.Fatal(tc, got, err)
-		}
-		where, args := duckWhere(querymodel.Filter{DayFrom: tc.day, DayTo: tc.day}, tc.zone, "default")
-		var n int
-		filterArgs := append([]interface{}{at.UnixMilli()}, args...)
-		if err := store.SQL().QueryRow("SELECT COUNT(*) FROM (SELECT CAST(? AS BIGINT) AS occurred_at_ms,TRUE AS countable, 'default' AS dataset_id)"+where, filterArgs...).Scan(&n); err != nil || n != 1 {
-			t.Fatal("inclusive calendar bounds", tc, n, err)
-		}
 	}
 }

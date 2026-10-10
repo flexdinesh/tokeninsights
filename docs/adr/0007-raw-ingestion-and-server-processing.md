@@ -1,5 +1,6 @@
 # Sanitized raw ingestion and server-owned processing
 
+Engine details below are historical; [ADR 0012](0012-sqlite-and-postgres-persistence.md) supersedes them with SQLite/PostgreSQL.
 Status: **Accepted; implemented**. Date: 6 October 2026.
 Deployment/authentication and separate application-store choices superseded by
 [ADR 0008](0008-personal-hosted-composition-and-capabilities.md). Versions below

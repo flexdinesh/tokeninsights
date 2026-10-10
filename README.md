@@ -1,6 +1,6 @@
 # TokenInsights
 
-TokenInsights is a token usage dashboard for OpenCode, Pi, Codex, and Claude Code. A Go collector captures sanitized evidence in SQLite. Shared ingestion and processing store token data in DuckDB, either inside one local command or in an authenticated remote container.
+TokenInsights is a token usage dashboard for OpenCode, Pi, Codex, and Claude Code. A Go collector captures sanitized evidence in SQLite. Shared ingestion and processing store token data in SQLite inside local commands, or SQLite/PostgreSQL in an authenticated remote server.
 
 The Repo view groups token, model, and provider usage by repository or directory. Location filters apply only there. Missing location data appears as **unknown**; the web view lets you expand an unknown row to see recorded contributing directories when available.
 
@@ -125,7 +125,7 @@ role-specific path environment variables are supported. `config get server-token
 only reports whether configured. A configured remote URL selects distributed mode unless mode is explicit.
 To return local, remove remote URL/token and set mode `single-process`.
 
-Storage: `collector.sqlite` for source continuity/outbox, `server.duckdb` for token
+Storage: `collector.sqlite` for source continuity/outbox, `server.sqlite` for token
 history/receipts/processing, `app.sqlite` for users/credentials/system state. App and
 token databases are paired by identity. Operational sync jobs use
 `<canonical-collector-path>.jobs.sqlite`. Defaults live under XDG data home.
@@ -144,13 +144,13 @@ Default files under `${XDG_DATA_HOME:-~/.local/share}/tokeninsights/`:
 | Role | File | Flag / environment |
 | --- | --- | --- |
 | Host collector | `collector.sqlite` | `--collector-db-path` / `TOKENINSIGHTS_COLLECTOR_DB_PATH` |
-| Token data | `server.duckdb` | `--server-db-path` / `TOKENINSIGHTS_SERVER_DB_PATH` |
+| Token data | `server.sqlite` | `--server-db-path` / `TOKENINSIGHTS_SERVER_DB_PATH` |
 | Application | `app.sqlite` | `--app-db-path` / `TOKENINSIGHTS_APP_DB_PATH` |
 | Sync jobs | `<collector-path>.jobs.sqlite` | Derived from collector path |
 
 Each role uses its own database. Fresh databases collect retained sources and ingest sanitized evidence. Paths cannot alias; wrong storage roles reject without mutation. Existing unrelated files stay untouched.
 
-Storage uses collector schema **20**, DuckDB schema **3**, application SQLite schema **2** and job SQLite schema **1**. Only current schemas are supported; incompatible contracts reject without mutation. No imports or migrations. Fresh collection rebuilds usage from retained sources. Reprocessing within a current DuckDB preserves the published generation until its replacement is complete.
+Storage uses collector schema **20**, token SQLite schema **1** (PostgreSQL token/account schemas **1**), application SQLite schema **2** and job SQLite schema **1**. Only current schemas are supported; incompatible contracts reject without mutation. No imports or migrations. Fresh collection rebuilds usage from retained sources. Reprocessing within a current SQLite/PostgreSQL preserves the published generation until its replacement is complete.
 
 Rebuild earlier PR databases from retained sources into fresh files. Normalized source times must be valid Unix milliseconds; invalid observations remain server evidence with diagnostics. Filename-derived Pi/Claude sessions remain raw-only until native session evidence exists. Local ingestion runs directly within the owning command; its web listener exposes no ingestion route. Hosted access uses per-user tokens; it does not restore the removed shared-server-token mode.
 
@@ -168,14 +168,15 @@ Server exposes processed metadata to reachable dashboard clients. Default localh
 - [System boundaries](docs/system.md) and [storage/processing contract](docs/design.md)
 - [Docker and hosted deployment](docs/deployment.md)
 - [Architecture principles](docs/adr/0010-current-contracts-and-boundaries.md) — ownership, composition, current contracts and verification.
-- [Storage adapter contracts](docs/adr/0011-storage-adapter-contracts.md) — backend interfaces, conformance tests and planned PostgreSQL support.
+- [Storage adapter contracts](docs/adr/0011-storage-adapter-contracts.md) — backend interfaces and conformance tests.
+- [SQLite/PostgreSQL persistence](docs/adr/0012-sqlite-and-postgres-persistence.md) — supported engines, ownership and schema contracts.
 - [Collector/ingestion failure tests](docs/collector-ingestion-tests.md) — guarantees, synthetic fixtures, executable coverage, and future acceptance gates.
 - [Completion plugins](docs/plugins.md) — thin completion hooks, install artifacts, and host verification scope.
 
 
 ## Evidence, processing and upgrades
 
-DuckDB uses a shared 1 GB memory budget for ingestion, processing and analytics.
+SQLite uses pooled reads and a serialized WAL writer. PostgreSQL uses a dedicated owned writer and pooled snapshot reads.
 
 Distributed `sync --wait` waits for acceptance. Local TUI and Web show saved data
 during collection and processing. The browser shows usage totals by default;
@@ -193,7 +194,7 @@ If reprocessing exceeds that wait, `data wait` resumes the saved generation with
 starting another rebuild. Persistent `processing_failed` errors can be recovered
 with `data reprocess`; keep a stopped backup of the paired databases and application
 guard before maintenance. Raw evidence and the old published generation remain intact.
-CGO/C/C++ toolchain builds embedded DuckDB. Production native archives need no JS.
+Production builds support `CGO_ENABLED=0` and need no JavaScript runtime. Race tests require CGO.
 
 Application pairing also persists `<canonical-token-path>.application.json`, containing
 only the application instance ID. Keep this guard with both databases in stopped
@@ -208,3 +209,9 @@ rm -rf ~/.local/share/tokeninsights
 ```
 
 Then reinstall TokenInsights using your preferred installation method.
+
+Hosted persistence selects `--storage-backend=sqlite|postgres` (default SQLite).
+PostgreSQL 18 stores both tokens and accounts through separate interfaces; supply
+`TOKENINSIGHTS_POSTGRES_DSN` and an absolute `--admin-socket`, without SQLite paths.
+In-process mode, collector/outbox and jobs use SQLite. No extensions, migrations or
+automatic fallback. See [deployment](docs/deployment.md) for configuration and backups.

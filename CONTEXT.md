@@ -57,7 +57,7 @@ The wire/storage kind used by single-process local commands. One default dataset
 _Avoid_: Simple server, prod server, local-only server
 
 **Hosted Server**:
-The distributed server kind: authenticated datasets share token storage, with accounts behind a separate repository. Current adapters use DuckDB and SQLite; PostgreSQL is planned for both domains. Browser dashboard supported; analytics TUI unavailable. Collector sync uses finite jobs.
+The distributed server kind: authenticated datasets share token storage, with accounts behind a separate repository. Hosted composition selects SQLite or PostgreSQL for both domains; local composition always uses SQLite. Browser dashboard supported; analytics TUI unavailable. Collector sync uses finite jobs.
 _Avoid_: Prod server, database per tenant, authenticated personal server
 
 **Dataset**:

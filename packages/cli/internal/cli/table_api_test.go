@@ -90,7 +90,7 @@ func TestLocationFacetsUseRepoAPIAndInactiveFiltersDoNotHideOtherTabs(t *testing
 	defer func() { _ = database.Close() }()
 	now := time.Now()
 	insertLoadRowsCanonicalToken(t, database, now.UnixMilli(), "pi", "located", "provider-one", "model-one")
-	if _, err := database.Exec("UPDATE analytics.facts SET directory_key='fixture-directory',directory_name='fixture/dir',repository_key='fixture-repository',repository_name='fixture-repo'"); err != nil {
+	if _, err := database.Exec("UPDATE analytics_facts SET directory_key='fixture-directory',directory_name='fixture/dir',repository_key='fixture-repository',repository_name='fixture-repo'"); err != nil {
 		t.Fatal(err)
 	}
 	insertLoadRowsCanonicalToken(t, database, now.Add(time.Second).UnixMilli(), "codex", "unlocated", "provider-two", "model-two")

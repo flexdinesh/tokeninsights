@@ -7,24 +7,24 @@ import (
 	"testing"
 	"time"
 
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/adapters/duckdb"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/adapters/sqlanalytics"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/datastore"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/localruntime"
 )
 
 func TestVisibilityReportsDurableFailureAfterRestartAndRecovers(t *testing.T) {
 	root := t.TempDir()
-	path := filepath.Join(root, "server.duckdb")
+	path := filepath.Join(root, "server.sqlite")
 	store, err := datastore.Open(t.Context(), path)
 	if err != nil {
 		t.Fatal(err)
 	}
 	receipt := pendingBatch(t, store)
 	var body string
-	if err := store.SQL().QueryRow("SELECT record_json FROM raw.evidence").Scan(&body); err != nil {
+	if err := store.SQL().QueryRow("SELECT record_json FROM raw_evidence").Scan(&body); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.SQL().Exec("UPDATE raw.evidence SET record_json='invalid'"); err != nil {
+	if _, err := store.SQL().Exec("UPDATE raw_evidence SET record_json='invalid'"); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := store.ProcessNext(t.Context()); err == nil {
@@ -43,7 +43,7 @@ func TestVisibilityReportsDurableFailureAfterRestartAndRecovers(t *testing.T) {
 	if err := runtime.WaitVisible(ctx); !errors.Is(err, localruntime.ErrProcessingFailed) || errors.Is(err, context.DeadlineExceeded) {
 		t.Fatal("durable failure mislabeled or hidden until deadline", err)
 	}
-	status, err := duckdb.Status(t.Context(), runtime.Store)
+	status, err := sqlanalytics.Status(t.Context(), runtime.Store)
 	if err != nil || status.Pending != 1 || status.Failed != 1 {
 		t.Fatal("failed scope missing from status", status, err)
 	}
@@ -52,7 +52,7 @@ func TestVisibilityReportsDurableFailureAfterRestartAndRecovers(t *testing.T) {
 		t.Fatal("visibility failure changed acceptance", after, err)
 	}
 	// Restore the deliberately corrupted fixture, then use normal generation recovery.
-	if _, err := runtime.Store.SQL().Exec("UPDATE raw.evidence SET record_json=?", body); err != nil {
+	if _, err := runtime.Store.SQL().Exec("UPDATE raw_evidence SET record_json=?", body); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := runtime.Store.Reprocess(t.Context()); err != nil {
@@ -61,7 +61,7 @@ func TestVisibilityReportsDurableFailureAfterRestartAndRecovers(t *testing.T) {
 	if err := runtime.WaitVisible(ctx); err != nil {
 		t.Fatal("recovery retained obsolete processing failure", err)
 	}
-	status, err = duckdb.Status(t.Context(), runtime.Store)
+	status, err = sqlanalytics.Status(t.Context(), runtime.Store)
 	if err != nil || status.Pending != 0 || status.Failed != 0 || status.Metadata.Generation != status.Metadata.TargetGeneration {
 		t.Fatal("recovery did not become visible", status, err)
 	}
@@ -73,14 +73,14 @@ func TestVisibilityReportsDurableFailureAfterRestartAndRecovers(t *testing.T) {
 
 func TestVisibilityDistinguishesSlowProcessingCancellationAndReadFailure(t *testing.T) {
 	root := t.TempDir()
-	path := filepath.Join(root, "server.duckdb")
+	path := filepath.Join(root, "server.sqlite")
 	store, err := datastore.Open(t.Context(), path)
 	if err != nil {
 		t.Fatal(err)
 	}
 	pendingBatch(t, store)
 	// Hold eligible work without recording a failure; no wall-clock race with a worker.
-	if _, err := store.SQL().Exec("UPDATE processing.scopes SET retry_at_ms=?", time.Now().Add(time.Hour).UnixMilli()); err != nil {
+	if _, err := store.SQL().Exec("UPDATE processing_scopes SET retry_at_ms=?", time.Now().Add(time.Hour).UnixMilli()); err != nil {
 		t.Fatal(err)
 	}
 	if err := store.Close(); err != nil {
@@ -111,7 +111,7 @@ func TestVisibilityDistinguishesSlowProcessingCancellationAndReadFailure(t *test
 
 func TestVisibilityAllowsDueFailureRetryWithoutRebuilding(t *testing.T) {
 	root := t.TempDir()
-	path := filepath.Join(root, "server.duckdb")
+	path := filepath.Join(root, "server.sqlite")
 	store, err := datastore.Open(t.Context(), path)
 	if err != nil {
 		t.Fatal(err)
@@ -122,7 +122,7 @@ func TestVisibilityAllowsDueFailureRetryWithoutRebuilding(t *testing.T) {
 		t.Fatal("missing retry work", found, err)
 	}
 	store.RecordFailure(t.Context(), work)
-	if _, err := store.SQL().Exec("UPDATE processing.scopes SET retry_at_ms=0"); err != nil {
+	if _, err := store.SQL().Exec("UPDATE processing_scopes SET retry_at_ms=0"); err != nil {
 		t.Fatal(err)
 	}
 	if err := store.Close(); err != nil {
@@ -138,7 +138,7 @@ func TestVisibilityAllowsDueFailureRetryWithoutRebuilding(t *testing.T) {
 	if err := runtime.WaitVisible(ctx); err != nil {
 		t.Fatal("old failure prevented due retry", err)
 	}
-	status, err := duckdb.Status(t.Context(), runtime.Store)
+	status, err := sqlanalytics.Status(t.Context(), runtime.Store)
 	if err != nil || status.Pending != 0 || status.Failed != 0 || status.FailedRetryAtMs != 0 || status.Metadata.Generation != 1 {
 		t.Fatal("retry retained failure or rebuilt generation", status, err)
 	}

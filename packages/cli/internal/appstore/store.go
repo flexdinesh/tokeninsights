@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/persistence/sqlitecore"
 	_ "modernc.org/sqlite"
 )
 
@@ -25,6 +26,16 @@ type Store struct{ database *sql.DB }
 
 func (s *Store) SQL() *sql.DB { return s.database }
 func (s *Store) Close() error { return s.database.Close() }
+func (s *Store) Ready(ctx context.Context, id, kind string) error {
+	var savedID, savedKind string
+	if err := s.database.QueryRowContext(ctx, "SELECT database_id,server_kind FROM application_metadata WHERE id=1 AND role='application'").Scan(&savedID, &savedKind); err != nil {
+		return err
+	}
+	if id != savedID || kind != savedKind {
+		return errors.New("application_database_pair_mismatch")
+	}
+	return nil
+}
 func (s *Store) WriteTransaction(ctx context.Context, operation func(*sql.Tx) error) error {
 	tx, err := s.database.BeginTx(ctx, nil)
 	if err != nil {
@@ -92,6 +103,8 @@ func connect(path string, readOnly bool) (*sql.DB, error) {
 		q.Set("mode", "ro")
 	} else {
 		q.Set("mode", "rw")
+		q.Set("_txlock", "immediate")
+		q.Add("_pragma", "synchronous(FULL)")
 	}
 	q.Add("_pragma", "busy_timeout(5000)")
 	q.Add("_pragma", "foreign_keys(on)")
@@ -113,6 +126,9 @@ func validate(ctx context.Context, database *sql.DB, id, kind string) error {
 	}
 	if role != ApplicationID || version != SchemaVersion {
 		return errors.New("incompatible_application_database")
+	}
+	if err := sqlitecore.Validate(ctx, database, Schema); err != nil {
+		return err
 	}
 	var savedID, savedKind string
 	if err := database.QueryRowContext(ctx, "SELECT database_id,server_kind FROM application_metadata WHERE id=1 AND role='application'").Scan(&savedID, &savedKind); err != nil {

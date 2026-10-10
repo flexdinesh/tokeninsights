@@ -16,7 +16,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/adapters/duckdb"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/adapters/sqlanalytics"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/collector"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/datastore"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/evidence"
@@ -27,7 +27,7 @@ import (
 func localViewOptions(t *testing.T, withUsage bool) tableOptions {
 	t.Helper()
 	root := t.TempDir()
-	options := tableOptions{dbPath: filepath.Join(root, "server.duckdb"), collectorDBPath: filepath.Join(root, "collector.sqlite"), period: periodAllTime, bucket: bucketDay}
+	options := tableOptions{dbPath: filepath.Join(root, "server.sqlite"), collectorDBPath: filepath.Join(root, "collector.sqlite"), period: periodAllTime, bucket: bucketDay}
 	runtime, err := localruntime.Open(t.Context(), options.collectorDBPath, options.dbPath)
 	if err != nil {
 		t.Fatal(err)
@@ -167,7 +167,7 @@ type viewRequestCounts struct{ gets, posts atomic.Int64 }
 
 func newViewQueryServer(t *testing.T, withUsage bool) (*httptest.Server, *datastore.Store, *viewRequestCounts) {
 	t.Helper()
-	path := filepath.Join(t.TempDir(), "query-server.duckdb")
+	path := filepath.Join(t.TempDir(), "query-server.sqlite")
 	store, err := datastore.Open(t.Context(), path)
 	if err != nil {
 		t.Fatal(err)
@@ -176,7 +176,7 @@ func newViewQueryServer(t *testing.T, withUsage bool) (*httptest.Server, *datast
 	if withUsage {
 		insertLoadRowsCanonicalTokenWithCounts(t, store.SQL(), 1767225600000, "pi", "fixture-view-session", "fixture-provider", "fixture-model", 80, 20, 0, 0, 0, 100)
 	}
-	handler := server.NewDataHandler(t.Context(), duckdb.Source{Store: store}, io.Discard, "127.0.0.1", "", true)
+	handler := server.NewDataHandler(t.Context(), sqlanalytics.Source{Store: store}, io.Discard, "127.0.0.1", "", true)
 	requests := &viewRequestCounts{}
 	remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {

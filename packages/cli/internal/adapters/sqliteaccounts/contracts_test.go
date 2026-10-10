@@ -4,6 +4,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/accounts"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/appstore"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/datastore"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/storagecontract"
@@ -12,7 +13,7 @@ import (
 func TestAccountStorageContract(t *testing.T) {
 	storagecontract.RunAccounts(t, func(t *testing.T) storagecontract.Accounts {
 		root := t.TempDir()
-		dataPath, appPath := filepath.Join(root, "tokens.duckdb"), filepath.Join(root, "app.sqlite")
+		dataPath, appPath := filepath.Join(root, "tokens.sqlite"), filepath.Join(root, "app.sqlite")
 		var open func() storagecontract.Accounts
 		open = func() storagecontract.Accounts {
 			data, err := datastore.OpenKind(t.Context(), dataPath, datastore.KindHosted)
@@ -30,7 +31,7 @@ func TestAccountStorageContract(t *testing.T) {
 			}
 			t.Cleanup(func() { _ = app.Close() })
 			r := NewSQLite(app, data)
-			return storagecontract.Accounts{Repository: r, Datasets: data, Resume: r.Resume, Reopen: func() storagecontract.Accounts {
+			return storagecontract.Accounts{WithDatasets: func(d accounts.Datasets) accounts.Repository { return NewSQLite(app, d) }, Repository: r, Datasets: data, Resume: r.Resume, Reopen: func() storagecontract.Accounts {
 				if err := app.Close(); err != nil {
 					t.Fatal(err)
 				}

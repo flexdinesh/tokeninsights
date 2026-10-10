@@ -15,7 +15,7 @@ import (
 
 func TestViewBackgroundCollectionUsesDirectDestination(t *testing.T) {
 	root := t.TempDir()
-	collectorPath, serverPath := filepath.Join(root, "collector.sqlite"), filepath.Join(root, "server.duckdb")
+	collectorPath, serverPath := filepath.Join(root, "collector.sqlite"), filepath.Join(root, "server.sqlite")
 	bindings := make(chan collector.Options, 1)
 	replaceViewCollector(t, func(_ context.Context, options collector.Options) (collector.Result, error) {
 		if options.SyncOptions.CaptureProgress == nil {

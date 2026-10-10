@@ -3,8 +3,10 @@ package datastore
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/evidence"
 	"testing"
+
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/evidence"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/persistence/sqlutil"
 )
 
 func codexRecord(session, parent string) evidence.Record {
@@ -25,10 +27,10 @@ func TestLateParentReprocessesAmbiguousCopiedEvidence(t *testing.T) {
 		t.Fatal(err)
 	}
 	drain(t, store)
-	if got := total(t, store, "analytics.confirmed"); got != 0 {
+	if got := total(t, store, "analytics_confirmed"); got != 0 {
 		t.Fatal("unproven child counted", got)
 	}
-	if got := total(t, store, "analytics.estimated"); got != 120 {
+	if got := total(t, store, "analytics_estimated"); got != 120 {
 		t.Fatal("usable ambiguity missing", got)
 	}
 	before, err := store.Receipt(t.Context(), "child-stream", "batch")
@@ -43,10 +45,10 @@ func TestLateParentReprocessesAmbiguousCopiedEvidence(t *testing.T) {
 		t.Fatal("late dependency not invalidated", pending, err)
 	}
 	drain(t, store)
-	if got := total(t, store, "analytics.confirmed"); got != 120 {
+	if got := total(t, store, "analytics_confirmed"); got != 120 {
 		t.Fatal("copied history inflated totals", got)
 	}
-	if got := total(t, store, "analytics.estimated"); got != 0 {
+	if got := total(t, store, "analytics_estimated"); got != 0 {
 		t.Fatal("proven copy remained estimated", got)
 	}
 	after, err := store.Receipt(t.Context(), "child-stream", "batch")
@@ -62,7 +64,7 @@ func TestConflictingNativeAliasesRemainEstimated(t *testing.T) {
 		t.Fatal(err)
 	}
 	drain(t, store)
-	if got := total(t, store, "analytics.confirmed"); got != 0 {
+	if got := total(t, store, "analytics_confirmed"); got != 0 {
 		t.Fatal("contradictory identity counted", got)
 	}
 	status, err := store.Receipt(t.Context(), "stream", "batch")
@@ -79,7 +81,7 @@ func TestProcessingFailureBackoffAllowsIndependentScope(t *testing.T) {
 	if _, err := store.Accept(t.Context(), evidence.ProtocolVersion, batchBody(t, store, "stream", "batch", broken, good)); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.SQL().Exec("UPDATE raw.evidence SET record_json='invalid' WHERE scope=?", evidence.Scope(broken)); err != nil {
+	if _, err := store.SQL().Exec(sqlutil.Bind("UPDATE raw_evidence SET record_json='invalid' WHERE scope=?"), evidence.Scope(broken)); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := store.ProcessNext(t.Context()); err == nil {
@@ -87,13 +89,13 @@ func TestProcessingFailureBackoffAllowsIndependentScope(t *testing.T) {
 	}
 	var attempts int
 	var code string
-	if err := store.SQL().QueryRow("SELECT attempts,error_code FROM processing.scopes WHERE scope=?", evidence.Scope(broken)).Scan(&attempts, &code); err != nil || attempts != 1 || code != "processing_failed" {
+	if err := store.SQL().QueryRow(sqlutil.Bind("SELECT attempts,error_code FROM processing_scopes WHERE scope=?"), evidence.Scope(broken)).Scan(&attempts, &code); err != nil || attempts != 1 || code != "processing_failed" {
 		t.Fatal(attempts, code, err)
 	}
 	if worked, err := store.ProcessNext(t.Context()); err != nil || !worked {
 		t.Fatal("independent scope blocked", worked, err)
 	}
-	if got := total(t, store, "analytics.confirmed"); got != 220 {
+	if got := total(t, store, "analytics_confirmed"); got != 220 {
 		t.Fatal(got)
 	}
 }
@@ -105,7 +107,7 @@ func TestReprocessClearsObsoleteFailureBackoff(t *testing.T) {
 	if _, err := store.Accept(t.Context(), evidence.ProtocolVersion, batchBody(t, store, "stream", "batch", record)); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.SQL().Exec("UPDATE processing.scopes SET attempts=6,retry_at_ms=9007199254740991,error_code='processing_failed'"); err != nil {
+	if _, err := store.SQL().Exec(sqlutil.Bind("UPDATE processing_scopes SET attempts=6,retry_at_ms=9007199254740991,error_code='processing_failed'")); err != nil {
 		t.Fatal(err)
 	}
 	if worked, err := store.ProcessNext(t.Context()); err != nil || worked {
@@ -116,7 +118,7 @@ func TestReprocessClearsObsoleteFailureBackoff(t *testing.T) {
 	}
 	drain(t, store)
 	status, err := store.Receipt(t.Context(), "stream", "batch")
-	if err != nil || status.Processing.Pending != 0 || total(t, store, "analytics.confirmed") != 120 {
+	if err != nil || status.Processing.Pending != 0 || total(t, store, "analytics_confirmed") != 120 {
 		t.Fatal("new generation retained old backoff", status, err)
 	}
 }

@@ -7,21 +7,52 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"slices"
 	"testing"
 
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/evidence"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/persistence/sqlutil"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/processor"
 )
 
 func publicationSnapshot(t *testing.T, store *Store) map[string]string {
 	t.Helper()
 	result := map[string]string{}
-	for _, table := range []string{"analytics.facts", "analytics.estimates", "analytics.provenance", "processing.outcomes", "processing.scopes", "ingestion.metadata", "analytics.generations", "raw.evidence", "ingestion.batches", "ingestion.items", "ingestion.batch_items"} {
-		var value string
-		if err := store.SQL().QueryRowContext(t.Context(), "SELECT COALESCE(CAST(to_json(list(t ORDER BY CAST(to_json(t) AS VARCHAR))) AS VARCHAR),'[]') FROM "+table+" t").Scan(&value); err != nil {
+	for _, table := range []string{"analytics_facts", "analytics_estimates", "analytics_provenance", "processing_outcomes", "processing_scopes", "ingestion_metadata", "analytics_generations", "raw_evidence", "ingestion_batches", "ingestion_items", "ingestion_batch_items"} {
+		rows, err := store.SQL().QueryContext(t.Context(), "SELECT * FROM "+table)
+		if err != nil {
 			t.Fatal(err)
 		}
-		result[table] = value
+		columns, err := rows.Columns()
+		if err != nil {
+			t.Fatal(err)
+		}
+		var encoded []string
+		for rows.Next() {
+			values := make([]interface{}, len(columns))
+			dest := make([]interface{}, len(columns))
+			for i := range values {
+				dest[i] = &values[i]
+			}
+			if err := rows.Scan(dest...); err != nil {
+				t.Fatal(err)
+			}
+			body, err := json.Marshal(values)
+			if err != nil {
+				t.Fatal(err)
+			}
+			encoded = append(encoded, string(body))
+		}
+		if err := rows.Err(); err != nil {
+			t.Fatal(err)
+		}
+		_ = rows.Close()
+		slices.Sort(encoded)
+		body, err := json.Marshal(encoded)
+		if err != nil {
+			t.Fatal(err)
+		}
+		result[table] = string(body)
 	}
 	return result
 }
@@ -51,10 +82,10 @@ func TestPublicationTreatsProvenanceAsASet(t *testing.T) {
 			t.Fatal("publish duplicate edges", published, err)
 		}
 		var count int
-		if err := store.SQL().QueryRow("SELECT COUNT(*) FROM analytics.provenance WHERE dataset_id=? AND fact_id=? AND evidence_id=?", store.DatasetID(), contribution.Fact.ID, id).Scan(&count); err != nil || count != 1 {
+		if err := store.SQL().QueryRow(sqlutil.Bind("SELECT COUNT(*) FROM analytics_provenance WHERE dataset_id=? AND fact_id=? AND evidence_id=?"), store.DatasetID(), contribution.Fact.ID, id).Scan(&count); err != nil || count != 1 {
 			t.Fatal("provenance is not a set", count, err)
 		}
-		if got := total(t, store, "analytics.confirmed"); got != 120 {
+		if got := total(t, store, "analytics_confirmed"); got != 120 {
 			t.Fatal("duplicate edges changed usage", got)
 		}
 	}
@@ -140,7 +171,7 @@ func TestPublicationRollbackReopenAndRetryPreservesUsage(t *testing.T) {
 			}
 			drain(t, reopened)
 			var components [6]int64
-			if err := reopened.SQL().QueryRow("SELECT SUM(input_tokens),SUM(output_tokens),SUM(reasoning_tokens),SUM(cache_read_tokens),SUM(cache_write_tokens),SUM(total_tokens) FROM analytics.confirmed").Scan(&components[0], &components[1], &components[2], &components[3], &components[4], &components[5]); err != nil {
+			if err := reopened.SQL().QueryRow(sqlutil.Bind("SELECT SUM(input_tokens),SUM(output_tokens),SUM(reasoning_tokens),SUM(cache_read_tokens),SUM(cache_write_tokens),SUM(total_tokens) FROM analytics_confirmed")).Scan(&components[0], &components[1], &components[2], &components[3], &components[4], &components[5]); err != nil {
 				t.Fatal(err)
 			}
 			count := int64(newRecords + 1)
@@ -149,7 +180,7 @@ func TestPublicationRollbackReopenAndRetryPreservesUsage(t *testing.T) {
 			}
 			for _, contribution := range projection.Contributions {
 				var edges int64
-				if err := reopened.SQL().QueryRow("SELECT COUNT(*) FROM analytics.provenance WHERE fact_id=?", contribution.Fact.ID).Scan(&edges); err != nil || edges != int64(len(contribution.EvidenceIDs)) {
+				if err := reopened.SQL().QueryRow(sqlutil.Bind("SELECT COUNT(*) FROM analytics_provenance WHERE fact_id=?"), contribution.Fact.ID).Scan(&edges); err != nil || edges != int64(len(contribution.EvidenceIDs)) {
 					t.Fatal("retry changed fact identity or provenance", edges, err)
 				}
 			}
@@ -161,7 +192,7 @@ func TestPublicationRollbackReopenAndRetryPreservesUsage(t *testing.T) {
 			if err != nil || replay.Receipt != accepted.Receipt || replay.Processing.Pending != 0 {
 				t.Fatal("replay changed accepted delivery", replay, err)
 			}
-			if total(t, reopened, "analytics.confirmed") != count*24 {
+			if total(t, reopened, "analytics_confirmed") != count*24 {
 				t.Fatal("replay inflated usage")
 			}
 		})

@@ -48,7 +48,7 @@ func TestLayerDependencies(t *testing.T) {
 			continue
 		}
 		for _, dependency := range dependencies {
-			if dependency == prefix+"storagecontract" {
+			if dependency == prefix+"storagecontract" || dependency == prefix+"persistence/postgres/testdb" {
 				t.Errorf("production package %s imports test contracts", name)
 			}
 		}
@@ -69,6 +69,9 @@ func TestLayerDependencies(t *testing.T) {
 		{"serverruntime", []string{"database/sql", prefix + "datastore", prefix + "appstore", prefix + "db", prefix + "adapters"}},
 	}
 	for _, rule := range rules {
+		if rule.name != "datastore" && rule.name != "pipeline" {
+			rule.forbidden = append(rule.forbidden, prefix+"persistence", prefix+"adapters")
+		}
 		t.Run(rule.name, func(t *testing.T) {
 			if _, found := imports[rule.name]; !found {
 				t.Fatalf("boundary package %s is missing; update its contract", rule.name)

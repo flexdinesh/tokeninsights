@@ -15,7 +15,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/adapters/duckdb"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/adapters/sqlanalytics"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/adapters/sqlite"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/adapters/sqliteaccounts"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/analytics"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/appstore"
@@ -121,7 +122,7 @@ func OpenWithAppOptions(ctx context.Context, collectorPath, dataPath, appPath st
 	if held {
 		return nil, ErrOwned
 	}
-	store, err := duckdb.Open(ctx, path, datastore.Options{Kind: datastore.KindPersonal})
+	store, err := sqlite.Open(ctx, path, datastore.Options{Kind: datastore.KindPersonal})
 	if err != nil {
 		_ = owner.Close()
 		return nil, err
@@ -181,7 +182,7 @@ func OpenWithAppOptions(ctx context.Context, collectorPath, dataPath, appPath st
 	}
 	hostname := resolveHostname(os.Hostname)
 	id := hex.EncodeToString(instance[:])
-	r := &Runtime{InstanceID: id, Hostname: hostname, Policy: policy, Progress: collectorprogress.New(id), Jobs: jobs, jobsDone: make(chan struct{}), Store: store, App: app, owner: owner, cancel: cancel, ctx: workerCtx, collectorPath: canonicalCollector, dataPath: path, done: make(chan struct{}), queries: duckdb.Queries{Store: store}, captureDetails: options.CaptureDetails}
+	r := &Runtime{InstanceID: id, Hostname: hostname, Policy: policy, Progress: collectorprogress.New(id), Jobs: jobs, jobsDone: make(chan struct{}), Store: store, App: app, owner: owner, cancel: cancel, ctx: workerCtx, collectorPath: canonicalCollector, dataPath: path, done: make(chan struct{}), queries: sqlanalytics.Queries{Store: store}, captureDetails: options.CaptureDetails}
 	r.Query = queryclient.NewDirect(server.NewDirectQuery(r.queries, id, hostname))
 	r.Destination = &collector.Destination{Identity: "http://local", DatabaseID: metadata.DatabaseID, DatasetID: metadata.DatasetID, Local: true, Transport: collector.DirectDelivery{Receiver: store}}
 	// WaitVisible reads durable failure state, including failures from a prior owner.
@@ -238,7 +239,7 @@ func (r *Runtime) WaitVisible(ctx context.Context) error {
 }
 
 func visibilityError(ctx context.Context, err error) error {
-	// Native DuckDB queries may report Interrupted instead of wrapping ctx.Err().
+	// SQL queries may report Interrupted instead of wrapping ctx.Err().
 	if ctx.Err() != nil {
 		err = ctx.Err()
 	}

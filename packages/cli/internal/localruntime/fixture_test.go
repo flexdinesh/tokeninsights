@@ -66,7 +66,7 @@ func TestPrepareFixtureRejectsHostedBeforeResettingCollector(t *testing.T) {
 func fixturePaths(t *testing.T) (string, string) {
 	t.Helper()
 	root := filepath.Join(t.TempDir(), ".tokeninsights-dev")
-	return filepath.Join(root, "collector.sqlite"), filepath.Join(root, "server.duckdb")
+	return filepath.Join(root, "collector.sqlite"), filepath.Join(root, "server.sqlite")
 }
 
 func TestPrepareFixtureSeparateRolesPreserveInodesAndUnrelatedHistory(t *testing.T) {
@@ -92,7 +92,7 @@ func TestPrepareFixtureSeparateRolesPreserveInodesAndUnrelatedHistory(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := server.SQL().Exec("INSERT INTO ingestion.batches(dataset_id,stream_id,batch_id,request_hash,request_bytes,receipt_json) VALUES(?,'fixture-stream','fixture-batch','hash','{}','{}')", datastore.DatasetID); err != nil {
+	if _, err := server.SQL().Exec("INSERT INTO ingestion_batches(dataset_id,stream_id,batch_id,request_hash,request_bytes,receipt_json) VALUES(?,'fixture-stream','fixture-batch','hash',CAST('{}' AS BLOB),'{}')", datastore.DatasetID); err != nil {
 		t.Fatal(err)
 	}
 	_ = server.Close()
@@ -165,7 +165,7 @@ func TestPrepareFixtureSeparateRolesPreserveInodesAndUnrelatedHistory(t *testing
 		t.Fatal("fixture server generation not reset", after)
 	}
 	var count int
-	if err := server.SQL().QueryRow("SELECT COUNT(*) FROM ingestion.batches").Scan(&count); err != nil || count != 0 {
+	if err := server.SQL().QueryRow("SELECT COUNT(*) FROM ingestion_batches").Scan(&count); err != nil || count != 0 {
 		t.Fatal(count, err)
 	}
 }

@@ -4,7 +4,7 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/adapters/duckdb"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/adapters/sqlanalytics"
 	api "github.com/flexdinesh/tokeninsights/packages/cli/internal/server/api"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/serverfeatures"
 )
@@ -15,7 +15,7 @@ func TestHostedIdentityNeverUsesRuntimeHostname(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	handler := NewDataHandlerWithOptions(t.Context(), duckdb.Source{Store: fixture.store}, nil, DataHandlerOptions{Host: "0.0.0.0", Hostname: "private-deployment-host", Policy: policy, Accounts: fixture.accounts, PublicURL: hostedTestOrigin})
+	handler := NewDataHandlerWithOptions(t.Context(), sqlanalytics.Source{Store: fixture.store}, nil, DataHandlerOptions{Host: "0.0.0.0", Hostname: "private-deployment-host", Policy: policy, Accounts: fixture.accounts, PublicURL: hostedTestOrigin})
 	response := hostedRequest(t, handler, http.MethodGet, "/api/v2/instance", fixture.aliceToken.Secret, nil, nil)
 	requireHostedStatus(t, response, http.StatusOK)
 	instance := hostedDecode[api.InstanceResponseV2](t, response)
@@ -26,7 +26,7 @@ func TestHostedIdentityNeverUsesRuntimeHostname(t *testing.T) {
 
 func TestHTTPStatusReportsOnlyDatasetFailedPendingScopes(t *testing.T) {
 	fixture := newHostedContractFixture(t)
-	if _, err := fixture.store.SQL().Exec(`INSERT INTO processing.scopes(dataset_id,scope,revision,processed_revision,generation,error_code,retry_at_ms) VALUES
+	if _, err := fixture.store.SQL().Exec(`INSERT INTO processing_scopes(dataset_id,scope,revision,processed_revision,generation,error_code,retry_at_ms) VALUES
 		(?, 'pi:session:complete',1,1,1,'processing_failed',1000),
 		(?, 'pi:session:failed',1,0,0,'processing_failed',1234),
 		(?, 'pi:session:pending',1,0,0,'',0),

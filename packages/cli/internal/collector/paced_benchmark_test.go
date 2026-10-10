@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/adapters/duckdb"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/adapters/sqlanalytics"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/analytics"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/collector"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/dataengine"
@@ -44,7 +44,7 @@ func BenchmarkPacedProcessing(b *testing.B) {
 	metrics := make(map[string]float64)
 	for range b.N {
 		func() {
-			store, err := datastore.OpenKind(b.Context(), filepath.Join(b.TempDir(), "data.duckdb"), datastore.KindHosted)
+			store, err := datastore.OpenKind(b.Context(), filepath.Join(b.TempDir(), "data.sqlite"), datastore.KindHosted)
 			if err != nil {
 				b.Fatal(err)
 			}
@@ -121,7 +121,7 @@ func BenchmarkPacedProcessing(b *testing.B) {
 			}
 			visible := time.Now()
 			query := analytics.Query{Selection: viewer.Selection{Period: "all", Bucket: "day"}, Tab: "sessions", Quality: "confirmed", Sort: "total", Direction: "desc", Page: 1, PageSize: 200}
-			dashboard, err := duckdb.LoadDashboard(ctx, hot, query, time.Now())
+			dashboard, err := sqlanalytics.LoadDashboard(ctx, hot, query, time.Now())
 			b.StopTimer()
 			queried := time.Now()
 			if err != nil || dashboard.Summary.TotalTokens != batches*evidence.MaxEntries*120 || dashboard.Summary.SessionCount != 1 {
@@ -133,7 +133,7 @@ func BenchmarkPacedProcessing(b *testing.B) {
 					messages = batches * evidence.MaxEntries
 				}
 				var components [7]int64
-				err := store.SQL().QueryRowContext(ctx, `SELECT COUNT(*),CAST(SUM(input_tokens) AS BIGINT),CAST(SUM(output_tokens) AS BIGINT),CAST(SUM(reasoning_tokens) AS BIGINT),CAST(SUM(cache_read_tokens) AS BIGINT),CAST(SUM(cache_write_tokens) AS BIGINT),CAST(SUM(total_tokens) AS BIGINT) FROM analytics.confirmed WHERE countable AND dataset_id=?`, dataset.DatasetID()).Scan(&components[0], &components[1], &components[2], &components[3], &components[4], &components[5], &components[6])
+				err := store.SQL().QueryRowContext(ctx, `SELECT COUNT(*),CAST(SUM(input_tokens) AS BIGINT),CAST(SUM(output_tokens) AS BIGINT),CAST(SUM(reasoning_tokens) AS BIGINT),CAST(SUM(cache_read_tokens) AS BIGINT),CAST(SUM(cache_write_tokens) AS BIGINT),CAST(SUM(total_tokens) AS BIGINT) FROM analytics_confirmed WHERE countable AND dataset_id=?`, dataset.DatasetID()).Scan(&components[0], &components[1], &components[2], &components[3], &components[4], &components[5], &components[6])
 				if err != nil || components != [7]int64{messages, messages * 100, messages * 20, 0, 0, 0, messages * 120} {
 					b.Fatal("component totals", components, err)
 				}

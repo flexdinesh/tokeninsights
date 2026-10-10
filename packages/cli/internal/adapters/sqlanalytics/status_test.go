@@ -1,14 +1,15 @@
-package duckdb
+package sqlanalytics
 
 import (
 	"path/filepath"
 	"testing"
 
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/datastore"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/persistence/sqlutil"
 )
 
 func TestStatusCountsOnlyFailedPendingScopesInAuthorizedDataset(t *testing.T) {
-	store, err := datastore.OpenKind(t.Context(), filepath.Join(t.TempDir(), "server.duckdb"), datastore.KindHosted)
+	store, err := datastore.OpenKind(t.Context(), filepath.Join(t.TempDir(), "server.sqlite"), datastore.KindHosted)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -18,15 +19,15 @@ func TestStatusCountsOnlyFailedPendingScopesInAuthorizedDataset(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if _, err := store.SQL().Exec("UPDATE ingestion.metadata SET input_revision=1"); err != nil {
+	if _, err := store.SQL().Exec(sqlutil.Bind("UPDATE ingestion_metadata SET input_revision=1")); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.SQL().Exec(`INSERT INTO processing.scopes(dataset_id,scope,revision,processed_revision,generation,error_code,retry_at_ms) VALUES
+	if _, err := store.SQL().Exec(sqlutil.Bind(`INSERT INTO processing_scopes(dataset_id,scope,revision,processed_revision,generation,error_code,retry_at_ms) VALUES
 		('alice','pi:session:complete',1,1,1,'processing_failed',1234),
 		('bob','pi:session:failed',1,0,0,'processing_failed',1234),
 		('bob','pi:session:pending',1,0,0,'',0),
 		('carol','pi:session:failed',1,0,0,'processing_failed',1234),
-		('carol','pi:session:due',1,0,0,'processing_failed',0)`); err != nil {
+		('carol','pi:session:due',1,0,0,'processing_failed',0)`)); err != nil {
 		t.Fatal(err)
 	}
 	for _, test := range []struct {

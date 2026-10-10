@@ -17,7 +17,7 @@ func defaultServerDBPath() string {
 	if value := strings.TrimSpace(os.Getenv("TOKENINSIGHTS_SERVER_DB_PATH")); value != "" {
 		return value
 	}
-	return filepath.Join(defaultDataPath(), "server.duckdb")
+	return filepath.Join(defaultDataPath(), "server.sqlite")
 }
 
 func defaultServerURL() string { return strings.TrimSpace(os.Getenv("TOKENINSIGHTS_SERVER_URL")) }

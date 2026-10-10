@@ -1,6 +1,6 @@
 # Development
 
-TokenInsights is a pnpm monorepo with a Go CLI and a Vite/React browser application. `mise.toml` pins Go, Node, and pnpm for local development and GitHub Actions. Direct Go builds require Go 1.26+ and a CGO/C/C++ toolchain for DuckDB, without JavaScript tooling.
+TokenInsights is a pnpm monorepo with a Go CLI and a Vite/React browser application. `mise.toml` pins Go, Node, and pnpm for local development and GitHub Actions. Direct Go builds require Go 1.26+, without a C/C++ or JavaScript toolchain. Race verification requires CGO.
 
 ## Development builds
 
@@ -51,7 +51,7 @@ Run commands from the repository root unless noted otherwise.
 | Lint Go and TypeScript | `pnpm run lint` |
 | Run all tests | `pnpm run test` |
 | Run Go race-detector suite | `pnpm run test:race` |
-| Validate SQLite/DuckDB schema copies | `pnpm run check-schema` |
+| Validate SQLite/PostgreSQL schema copies | `pnpm run check-schema` |
 | Validate generated API files | `pnpm run check-api` |
 | Regenerate API files | `pnpm run generate:api` |
 | Build and sync embedded web assets | `pnpm run build:web` |
@@ -59,9 +59,9 @@ Run commands from the repository root unless noted otherwise.
 | Run browser end-to-end tests | `pnpm run test:web-e2e` |
 | Build production binary and validate contracts | `pnpm run build` |
 
-The pre-push hook clears Git-local environment variables before running `mise run check:push`, so fixture Git commands operate on their own repositories rather than the repository being pushed. Verification covers formatting, lint, SQLite/DuckDB/API contracts, unit/conformance tests, all Go race tests, a frontend rebuild with committed-asset comparison, native build, and browser E2E. Checks fail fast and never repair tracked files. Regenerate stale API/assets explicitly before committing and pushing. There is no pre-commit test suite.
+The pre-push hook clears Git-local environment variables before running `mise run check:push`, so fixture Git commands operate on their own repositories rather than the repository being pushed. Verification covers formatting, lint, SQLite/PostgreSQL/API contracts, unit/conformance tests, all Go race tests, a frontend rebuild with committed-asset comparison, native build, and browser E2E. Checks fail fast and never repair tracked files. Regenerate stale API/assets explicitly before committing and pushing. There is no pre-commit test suite.
 
-CI and release preparation run `mise run check:ci`: formatting, SQLite/DuckDB schema-copy consistency, and a native Go build against committed browser assets. CI installs no browser and runs no full lint/test suites, API generation, or frontend rebuild. Release additionally builds and publishes native archives. Native CI/release jobs also build both binaries and test the data stores on matching Linux/macOS amd64/arm64 runners. CI only verifies; development installs resolve `main` directly without publication or waiting for CI. Both workflows disable hook installation with `HUSKY=0`. Hooks run locally after dependency setup; GUI clients must have mise on PATH. Root pnpm scripts own commands; mise tasks delegate to those same scripts.
+CI and release preparation run `mise run check:ci`: formatting, SQLite/PostgreSQL schema-copy consistency, and a native Go build against committed browser assets. CI installs no browser and runs no full lint/test suites, API generation, or frontend rebuild. Release additionally builds and publishes native archives. Native CI/release jobs also build both binaries and test the data stores on matching Linux/macOS amd64/arm64 runners. A separate CI job runs live PostgreSQL storage/hosted contracts. CI only verifies; development installs resolve `main` directly without publication or waiting for CI. Both workflows disable hook installation with `HUSKY=0`. Hooks run locally after dependency setup; GUI clients must have mise on PATH. Root pnpm scripts own commands; mise tasks delegate to those same scripts.
 
 Install Chromium once before browser tests when using pnpm directly:
 
@@ -115,7 +115,7 @@ with links only to tracked documentation. Disposable `packages/web/previews/` ar
 The shared fixture is under `packages/cli/testdata/conformance/sync-first-basic/source/`. It contains compact, synthetic source data for all supported harnesses and excludes conversations, tool payloads, credentials, request data, user paths, and identifying values. Never commit raw local harness databases or transcripts.
 
 `dev:data` resets only the controlled `.tokeninsights-dev/collector.sqlite` and
-`server.duckdb` data tables, then recreates synthetic source/home
+`server.sqlite` data tables, then recreates synthetic source/home
 subdirectories. Stop the fixture viewer first; live or unreachable ownership
 prevents recreation. Existing DB and lock inodes, unrelated files, and the old
 `tokeninsights.sqlite` are preserved. Wrong-role databases are rejected before
@@ -185,4 +185,11 @@ git commit -m "docs: update readme [skip ci]"
 - [OpenAPI contract](openapi.yaml)
 - [Release guide](release.md)
 
-CGO/C/C++ builds DuckDB. Native CI/release Linux/macOS amd64/arm64 jobs build/test on matching runners. See [design](design.md) for current storage and acceptance contracts.
+Native CI/release Linux/macOS amd64/arm64 jobs build with `CGO_ENABLED=0` and test on matching runners. See [design](design.md) for current storage and acceptance contracts.
+
+Live PostgreSQL verification: `pnpm test` and `pnpm test:race` start a pinned
+PostgreSQL 18 Docker container and remove it afterward. Alternatively set
+`TOKENINSIGHTS_TEST_POSTGRES_DSN` to a test server with CREATEDB privileges; tests
+create random databases and delete only those. Never use production credentials.
+Direct `go test` skips PostgreSQL cases without that variable; root verification
+always supplies a live database and fails if it cannot start one.

@@ -15,7 +15,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/adapters/duckdb"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/adapters/sqlanalytics"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/datastore"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/server"
 	api "github.com/flexdinesh/tokeninsights/packages/cli/internal/server/api"
@@ -36,7 +36,7 @@ func newClient(t *testing.T, handler http.Handler) *Client {
 }
 
 func TestRealServerPaginationAndComponents(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "server.duckdb")
+	path := filepath.Join(t.TempDir(), "server.sqlite")
 	store, err := datastore.Open(t.Context(), path)
 	if err != nil {
 		t.Fatal(err)
@@ -46,12 +46,12 @@ func TestRealServerPaginationAndComponents(t *testing.T) {
 	const sessions = 225
 	for i := 0; i < sessions; i++ {
 		key := fmt.Sprintf("synthetic-%03d", i)
-		if _, err := database.Exec("INSERT INTO analytics.facts VALUES ('default',?,'fixture','pi',?,?,'','',1000,'synthetic-provider','explicit','synthetic-model','message','exact',true,10,2,3,4,5,24,'','','','','','{}',1,0)", key, key, key); err != nil {
+		if _, err := database.Exec("INSERT INTO analytics_facts VALUES ('default',?,'fixture','pi',?,?,'','',1000,'synthetic-provider','explicit','synthetic-model','message','exact',true,10,2,3,4,5,24,'','','','','','{}',1,0)", key, key, key); err != nil {
 			t.Fatal(err)
 		}
 
 	}
-	c := newClient(t, server.NewDataHandler(context.Background(), duckdb.Source{Store: store}, io.Discard, "127.0.0.1", "", false))
+	c := newClient(t, server.NewDataHandler(context.Background(), sqlanalytics.Source{Store: store}, io.Discard, "127.0.0.1", "", false))
 	instance, err := c.Instance(t.Context())
 	if err != nil || instance.ApiVersion != api.V2 {
 		t.Fatalf("instance = %#v, %v", instance, err)

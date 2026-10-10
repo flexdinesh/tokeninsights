@@ -18,7 +18,7 @@ const child = spawn(
     '--collector-db-path',
     join(root, 'collector.sqlite'),
     '--server-db-path',
-    join(root, 'server.duckdb'),
+    join(root, 'server.sqlite'),
     '--app-db-path',
     join(root, 'app.sqlite'),
     '--server-url',

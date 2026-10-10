@@ -7,10 +7,36 @@ import (
 	"testing"
 )
 
+func TestChangedSchemaRejectsWithoutMutation(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "app.sqlite")
+	store, err := Open(t.Context(), path, "database", "hosted")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.SQL().ExecContext(t.Context(), "ALTER TABLE users ADD COLUMN unexpected TEXT"); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Close(); err != nil {
+		t.Fatal(err)
+	}
+	before, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if other, err := Open(t.Context(), path, "database", "hosted"); err == nil {
+		_ = other.Close()
+		t.Fatal("changed schema accepted")
+	}
+	after, err := os.ReadFile(path)
+	if err != nil || !bytes.Equal(before, after) {
+		t.Fatal("rejection mutated application", err)
+	}
+}
+
 func TestRelativeApplicationPathRetainsPairAndSavedData(t *testing.T) {
 	t.Chdir(t.TempDir())
 	path := filepath.Join("relative #? directory", "app.sqlite")
-	data := filepath.Join("relative #? directory", "data.duckdb")
+	data := filepath.Join("relative #? directory", "data.sqlite")
 	store, err := OpenPaired(t.Context(), path, data, "database", "personal")
 	if err != nil {
 		t.Fatal(err)
@@ -76,7 +102,7 @@ func TestPairAndRoleMismatchDoNotMutateDatabase(t *testing.T) {
 func TestAttachmentRejectsMissingOrReplacedApplicationWithoutCreatingFile(t *testing.T) {
 	root := t.TempDir()
 	path := filepath.Join(root, "app.sqlite")
-	data := filepath.Join(root, "data.duckdb")
+	data := filepath.Join(root, "data.sqlite")
 	store, err := OpenPaired(t.Context(), path, data, "database", "hosted")
 	if err != nil {
 		t.Fatal(err)

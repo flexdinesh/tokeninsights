@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/evidence"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/persistence/sqlutil"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/processor"
 )
 
@@ -27,18 +28,18 @@ func TestLargeBatchPreservesDuplicatesAndProjection(t *testing.T) {
 		t.Fatalf("lost duplicate mappings: %+v", accepted)
 	}
 	var raw, mappings, scopes int64
-	if err := store.SQL().QueryRowContext(t.Context(), "SELECT (SELECT COUNT(*) FROM raw.evidence),(SELECT COUNT(*) FROM ingestion.batch_items),(SELECT COUNT(*) FROM processing.scopes)").Scan(&raw, &mappings, &scopes); err != nil {
+	if err := store.SQL().QueryRowContext(t.Context(), sqlutil.Bind("SELECT (SELECT COUNT(*) FROM raw_evidence),(SELECT COUNT(*) FROM ingestion_batch_items),(SELECT COUNT(*) FROM processing_scopes)")).Scan(&raw, &mappings, &scopes); err != nil {
 		t.Fatal(err)
 	}
 	if raw != uniqueRecords || mappings != evidence.MaxEntries || scopes != 1 {
 		t.Fatalf("unexpected storage counts: %d %d %d", raw, mappings, scopes)
 	}
 	drain(t, store)
-	if got := total(t, store, "analytics.confirmed"); got != uniqueRecords*120 {
+	if got := total(t, store, "analytics_confirmed"); got != uniqueRecords*120 {
 		t.Fatalf("wrong usage total: %d", got)
 	}
 	var facts, provenance, outcomes int64
-	if err := store.SQL().QueryRowContext(t.Context(), "SELECT (SELECT COUNT(*) FROM analytics.facts),(SELECT COUNT(*) FROM analytics.provenance),(SELECT COUNT(*) FROM processing.outcomes)").Scan(&facts, &provenance, &outcomes); err != nil {
+	if err := store.SQL().QueryRowContext(t.Context(), sqlutil.Bind("SELECT (SELECT COUNT(*) FROM analytics_facts),(SELECT COUNT(*) FROM analytics_provenance),(SELECT COUNT(*) FROM processing_outcomes)")).Scan(&facts, &provenance, &outcomes); err != nil {
 		t.Fatal(err)
 	}
 	if facts != uniqueRecords || provenance != uniqueRecords || outcomes != uniqueRecords {
@@ -110,7 +111,7 @@ func TestLargeBatchSequenceConflictRollsBack(t *testing.T) {
 		t.Fatalf("expected immutable sequence conflict: %v", err)
 	}
 	var raw, mappings, batches int64
-	if err := store.SQL().QueryRowContext(t.Context(), "SELECT (SELECT COUNT(*) FROM raw.evidence),(SELECT COUNT(*) FROM ingestion.batch_items),(SELECT COUNT(*) FROM ingestion.batches)").Scan(&raw, &mappings, &batches); err != nil {
+	if err := store.SQL().QueryRowContext(t.Context(), sqlutil.Bind("SELECT (SELECT COUNT(*) FROM raw_evidence),(SELECT COUNT(*) FROM ingestion_batch_items),(SELECT COUNT(*) FROM ingestion_batches)")).Scan(&raw, &mappings, &batches); err != nil {
 		t.Fatal(err)
 	}
 	if raw != 1 || mappings != 1 || batches != 1 {
@@ -146,7 +147,7 @@ func BenchmarkAcceptance256(b *testing.B) {
 	b.ReportAllocs()
 	b.StopTimer()
 	for range b.N {
-		store, err := Open(b.Context(), filepath.Join(b.TempDir(), "server.duckdb"))
+		store, err := Open(b.Context(), filepath.Join(b.TempDir(), "server.sqlite"))
 		if err != nil {
 			b.Fatal(err)
 		}
@@ -168,7 +169,7 @@ func BenchmarkPublication256(b *testing.B) {
 	b.ReportAllocs()
 	b.StopTimer()
 	for range b.N {
-		store, err := Open(b.Context(), filepath.Join(b.TempDir(), "server.duckdb"))
+		store, err := Open(b.Context(), filepath.Join(b.TempDir(), "server.sqlite"))
 		if err != nil {
 			b.Fatal(err)
 		}

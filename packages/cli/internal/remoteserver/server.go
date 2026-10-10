@@ -1,5 +1,5 @@
 // Package remoteserver composes an explicit foreground canonical server.
-// Deployment supervision and future backend/auth selection belong here.
+// Deployment supervision and backend/auth selection belong here.
 package remoteserver
 
 import (
@@ -17,19 +17,13 @@ import (
 	"time"
 
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/accounts"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/adapters/duckdb"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/adapters/sqliteaccounts"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/appstore"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/collector"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/datastore"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/db"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/server"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/serverfeatures"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/serverownership"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/serverruntime"
 )
 
-type Settings struct{ Listen, DBPath, AppDBPath, PublicURL, AdminSocket string }
+type Settings struct{ Listen, DBPath, AppDBPath, PublicURL, AdminSocket, Backend, PostgresDSN string }
 
 func canonicalPublicURL(raw string) (string, error) {
 	u, err := url.Parse(raw)
@@ -58,8 +52,26 @@ func (settings Settings) Validate() (string, int, error) {
 	if err != nil || port < 0 || port > 65535 {
 		return "", 0, fmt.Errorf("invalid listen port")
 	}
-	if settings.DBPath == "" {
-		return "", 0, fmt.Errorf("--server-db-path required")
+	switch settings.Backend {
+	case "", "sqlite":
+		if settings.DBPath == "" {
+			return "", 0, fmt.Errorf("--server-db-path required")
+		}
+		if settings.PostgresDSN != "" {
+			return "", 0, fmt.Errorf("postgres configuration requires --storage-backend=postgres")
+		}
+	case "postgres":
+		if settings.PostgresDSN == "" {
+			return "", 0, fmt.Errorf("TOKENINSIGHTS_POSTGRES_DSN required")
+		}
+		if settings.DBPath != "" || settings.AppDBPath != "" {
+			return "", 0, fmt.Errorf("postgres backend rejects SQLite paths")
+		}
+		if settings.AdminSocket == "" {
+			return "", 0, fmt.Errorf("postgres backend requires --admin-socket")
+		}
+	default:
+		return "", 0, fmt.Errorf("invalid storage backend")
 	}
 	if settings.AdminSocket != "" && !filepath.IsAbs(settings.AdminSocket) {
 		return "", 0, fmt.Errorf("--admin-socket requires absolute path")
@@ -75,86 +87,46 @@ func Run(ctx context.Context, settings Settings, log io.Writer, ready func(strin
 	if err != nil {
 		return err
 	}
-	path, _, err := serverownership.Identify(settings.DBPath)
-	if err != nil {
-		return err
-	}
-	if settings.AppDBPath == "" {
-		settings.AppDBPath = filepath.Join(filepath.Dir(path), "app.sqlite")
-	}
-	if err := collector.ValidatePaths(settings.AppDBPath, path+".application.json"); err != nil {
-		return err
-	}
-	if err := collector.ValidatePaths(settings.AppDBPath, path); err != nil {
-		return err
-	}
-	release, err := db.AcquireWriterLock(ctx, path+".service.op")
-	if err != nil {
-		return err
-	}
-	defer release()
-	owner, held, err := serverownership.Lifetime(path, true)
-	if err != nil {
-		return err
-	}
-	if held {
-		return fmt.Errorf("server already owns database")
-	}
-	defer func() { _ = owner.Close() }()
 	listener, err := server.Listen(host, port)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = listener.Close() }()
+	storage, err := openStorage(ctx, settings)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = storage.close() }()
+	if err := storage.accounts.Resume(storage.ctx); err != nil {
+		return err
+	}
 	policy, _ := serverfeatures.New(serverfeatures.Hosted, false)
-	store, err := duckdb.Open(ctx, path, datastore.Options{Kind: datastore.KindHosted})
-	if err != nil {
-		return err
-	}
-	defer func() { _ = store.Close() }()
-	identity, err := store.DatabaseIdentity(ctx)
-	if err != nil {
-		return err
-	}
-	app, err := appstore.OpenPaired(ctx, settings.AppDBPath, path, identity, datastore.KindHosted)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = app.Close() }()
-	repository := sqliteaccounts.NewSQLite(app, store)
-	if err := repository.Resume(ctx); err != nil {
-		return err
-	}
 	options := server.DataHandlerOptions{Host: host, AllowIngestion: true, Policy: policy}
 	if log == nil {
 		log = io.Discard
 	}
-	runCtx, stop := context.WithCancel(ctx)
+	runCtx, stop := context.WithCancel(storage.ctx)
 	defer stop()
 	options.PublicURL, err = canonicalPublicURL(settings.PublicURL)
 	if err != nil {
 		return err
 	}
-	options.Accounts = accounts.New(repository)
+	options.Accounts = accounts.New(storage.accounts)
 	cleanupDone := make(chan struct{})
 	go func() {
 		defer close(cleanupDone)
 		options.Accounts.RunCleanup(runCtx, func(err error) { _, _ = fmt.Fprintf(log, "account cleanup: %v\n", err) })
 	}()
 	defer func() { stop(); <-cleanupDone }()
-	socket := settings.AdminSocket
-	if socket == "" {
-		socket = path + ".admin.sock"
-	}
+	socket := storage.socket
 	private, closePrivate, err := adminListener(socket)
 	if err != nil {
 		return err
 	}
 	defer closePrivate()
-	handler := server.NewDataHandlerWithOptions(runCtx, duckdb.Source{Store: store}, log, options)
+	handler := server.NewDataHandlerWithOptions(runCtx, storage.source, log, options)
 	bindings := []serverruntime.Binding{{Listener: listener, Handler: handler, Health: true}}
 	bindings = append(bindings, serverruntime.Binding{Listener: private, Handler: options.Accounts.AdminHandler()})
-	release()
 	address := listener.Addr().String()
 	if host == "0.0.0.0" {
 		_, assignedPort, err := net.SplitHostPort(address)
@@ -163,12 +135,13 @@ func Run(ctx context.Context, settings Settings, log io.Writer, ready func(strin
 		}
 		address = net.JoinHostPort("127.0.0.1", assignedPort)
 	}
-	return serverruntime.Run(runCtx, store, log, bindings, func() error {
+	runErr := serverruntime.Run(runCtx, storage.worker, log, bindings, func() error {
 		if ready != nil {
 			return ready("http://" + address)
 		}
 		return nil
 	})
+	return errors.Join(runErr, storage.failure())
 }
 
 func adminListener(path string) (net.Listener, func(), error) {

@@ -33,7 +33,7 @@ func (d *lostDirectReply) Submit(ctx context.Context, protocol int, body []byte)
 
 func TestDirectCollectorGoldenReplayAndRebuild(t *testing.T) {
 	root := t.TempDir()
-	path := filepath.Join(root, "server.duckdb")
+	path := filepath.Join(root, "server.sqlite")
 	store, err := datastore.Open(t.Context(), path)
 	if err != nil {
 		t.Fatal(err)
@@ -81,7 +81,7 @@ func TestDirectCollectorGoldenReplayAndRebuild(t *testing.T) {
 }
 
 func TestDirectAndHTTPShareAcceptanceReceiptsAndRejections(t *testing.T) {
-	store, err := datastore.Open(t.Context(), filepath.Join(t.TempDir(), "data.duckdb"))
+	store, err := datastore.Open(t.Context(), filepath.Join(t.TempDir(), "data.sqlite"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -129,7 +129,7 @@ func TestDirectAndHTTPShareAcceptanceReceiptsAndRejections(t *testing.T) {
 		t.Fatalf("terminal receipt differs: %+v %v", right, err)
 	}
 	var total int64
-	if err := store.SQL().QueryRow("SELECT CAST(SUM(total_tokens) AS BIGINT) FROM analytics.confirmed").Scan(&total); err != nil || total != 120 {
+	if err := store.SQL().QueryRow("SELECT CAST(SUM(total_tokens) AS BIGINT) FROM analytics_confirmed").Scan(&total); err != nil || total != 120 {
 		t.Fatalf("duplicates counted: %d %v", total, err)
 	}
 	batch.DatabaseID = "other-database"

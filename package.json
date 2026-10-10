@@ -22,7 +22,7 @@
     "build:cli": "pnpm run build:web && pnpm --filter @tokeninsights/cli run build",
     "dev": "pnpm --workspace-root --parallel run \"/^dev:(server|web)$/\"",
     "dev:data": "pnpm --filter @tokeninsights/cli run build && pnpm --filter @tokeninsights/build-tools run setup-dev-data",
-    "dev:cli": "pnpm run dev:data && TOKENINSIGHTS_ACCESS_TOKEN= ./packages/cli/bin/tokeninsights tui --mode single-process --sync=false --all-time --collector-db-path .tokeninsights-dev/collector.sqlite --server-db-path .tokeninsights-dev/server.duckdb --app-db-path .tokeninsights-dev/app.sqlite --server-url \"\"",
+    "dev:cli": "pnpm run dev:data && TOKENINSIGHTS_ACCESS_TOKEN= ./packages/cli/bin/tokeninsights tui --mode single-process --sync=false --all-time --collector-db-path .tokeninsights-dev/collector.sqlite --server-db-path .tokeninsights-dev/server.sqlite --app-db-path .tokeninsights-dev/app.sqlite --server-url \"\"",
     "dev:server": "pnpm run dev:data && node tools/build/src/dev-server.ts",
     "dev:web": "pnpm --filter @tokeninsights/web run dev",
     "dev:web:mock": "pnpm --filter @tokeninsights/web run dev:mock",

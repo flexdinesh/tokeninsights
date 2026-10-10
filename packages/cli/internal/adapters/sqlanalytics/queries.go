@@ -1,4 +1,4 @@
-package duckdb
+package sqlanalytics
 
 import (
 	"context"
@@ -11,17 +11,18 @@ import (
 
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/analytics"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/datastore"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/persistence/sqlutil"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/publication"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/querymodel"
 )
 
 func dataTable(q analytics.Query) string {
 	if q.Quality == "estimated" {
-		return "analytics.estimated"
+		return "analytics_estimated"
 	}
-	return "analytics.confirmed"
+	return "analytics_confirmed"
 }
-func duckWhere(f querymodel.Filter, timezone, datasetID string) (string, []interface{}) {
+func queryWhere(f querymodel.Filter, timezone, datasetID string) (string, []interface{}, error) {
 	where := " WHERE countable AND dataset_id=?"
 	args := []interface{}{datasetID}
 	if !f.Start.IsZero() {
@@ -44,16 +45,31 @@ func duckWhere(f querymodel.Filter, timezone, datasetID string) (string, []inter
 			args = append(args, value)
 		}
 	}
-	for _, filter := range []struct{ value, op string }{{f.DayFrom, ">="}, {f.DayTo, "<="}} {
-		if filter.value != "" {
-			expression, zone := duckTimeExpression(timezone)
-			where += " AND CAST(" + expression + " AS DATE) " + filter.op + " CAST(? AS DATE)"
-			args = append(args, zone, filter.value)
-		}
+	loc, err := location(timezone)
+	if err != nil {
+		return "", nil, err
 	}
-	return where, args
+	for _, filter := range []struct {
+		value, op string
+		next      bool
+	}{{f.DayFrom, ">=", false}, {f.DayTo, "<", true}} {
+		if filter.value == "" {
+			continue
+		}
+		day, err := time.ParseInLocation(time.DateOnly, filter.value, loc)
+		if err != nil {
+			return "", nil, err
+		}
+		if filter.next {
+			day = day.AddDate(0, 0, 1)
+		}
+		where += " AND occurred_at_ms" + filter.op + "?"
+		args = append(args, day.UnixMilli())
+	}
+	return where, args, nil
 }
-func duckTimezone(now time.Time) string {
+
+func reportingZone(now time.Time) string {
 	name := analytics.ReportingTimezone(time.Local, now)
 	if strings.HasPrefix(name, "UTC+") || strings.HasPrefix(name, "UTC-") {
 		_, offset := now.In(time.Local).Zone()
@@ -62,16 +78,6 @@ func duckTimezone(now time.Time) string {
 	return name
 }
 
-func duckTimeExpression(zone string) (string, string) {
-	if strings.HasPrefix(zone, "@") {
-		return "(epoch_ms(occurred_at_ms)+CAST(? AS BIGINT)*INTERVAL 1 SECOND)", strings.TrimPrefix(zone, "@")
-	}
-	return "timezone(?,timezone('UTC',epoch_ms(occurred_at_ms)))", zone
-}
-func duckTimeParameter(zone string) string {
-	_, parameter := duckTimeExpression(zone)
-	return parameter
-}
 func safeAggregate(values ...int64) error {
 	for _, value := range values {
 		if value < 0 || value > publication.SafeInteger {
@@ -88,14 +94,17 @@ func queryFilter(q analytics.Query, now time.Time) querymodel.Filter {
 	}
 	return f
 }
-func duckSum(column string) string { return "CAST(COALESCE(SUM(" + column + "),0) AS BIGINT)" }
-func dimensionSummary(column string) string {
-	return "string_agg(DISTINCT " + column + ", ', ' ORDER BY " + column + ")"
+func sumSQL(column string) string { return "CAST(COALESCE(SUM(" + column + "),0) AS BIGINT)" }
+func dimensionSummary(column string, postgres bool) string {
+	if postgres {
+		return "string_agg(DISTINCT " + column + ", ', ' ORDER BY " + column + ")"
+	}
+	return "ti_dimensions(" + column + ")"
 }
 
 // Only fixed SQL identifiers enter these statements. Filters, zone, limits and
-// offsets are bound parameters; aggregation and pagination stay in DuckDB.
-func groupedSQL(q analytics.Query, where, zone string) string {
+// offsets are bound parameters; aggregation and pagination stay in SQL.
+func groupedSQL(q analytics.Query, where, zone string, postgres bool) string {
 	key, name, group := "model", "model", "model"
 	switch q.Tab {
 	case "providers":
@@ -105,18 +114,9 @@ func groupedSQL(q analytics.Query, where, zone string) string {
 	case "sessions":
 		key, name, group = "harness || ':' || session_native_id", "session_native_id", "harness,session_native_id"
 	case "tokens":
-		local, _ := duckTimeExpression(zone)
-		bucket := "strftime(" + local + ",'%Y-%m-%d')"
-		switch q.Selection.Bucket {
-		case "week":
-			bucket = "strftime(date_trunc('week'," + local + "),'%Y-%m-%d')"
-		case "month":
-			bucket = "strftime(" + local + ",'%Y-%m')"
-		case "year":
-			bucket = "strftime(" + local + ",'%Y')"
-		}
+		bucket := bucketSQL(zone, q.Selection.Bucket, postgres)
 		key, name, group = "bucket", "bucket", "bucket"
-		return "WITH filtered AS (SELECT *," + bucket + " AS bucket FROM " + dataTable(q) + where + ") " + groupedSelect(q, key, name, group, "filtered")
+		return "WITH filtered AS (SELECT *," + bucket + " AS bucket FROM " + dataTable(q) + where + ") " + groupedSelect(q, key, name, group, "filtered", postgres)
 	case "repo":
 		key = "COALESCE(NULLIF(repository_key,''),'unknown')"
 		name = "COALESCE(NULLIF(MIN(repository_name),''),'unknown')"
@@ -126,30 +126,33 @@ func groupedSQL(q analytics.Query, where, zone string) string {
 		}
 		group = key
 	case "context":
-		return `WITH peaks AS (SELECT harness,provider,model,session_id,MAX(input_tokens+cache_read_tokens+cache_write_tokens) AS peak,MAX(occurred_at_ms) AS latest FROM ` + dataTable(q) + where + ` GROUP BY harness,provider,model,session_id)
+		return `WITH peaks AS (SELECT harness,provider,model,session_id,MAX(input_tokens+cache_read_tokens+cache_write_tokens) AS peak,MAX(occurred_at_ms) AS latest FROM ` + dataTable(q) + where + ` GROUP BY harness,provider,model,session_id), ranked AS (SELECT *,ROW_NUMBER() OVER(PARTITION BY harness,provider,model ORDER BY peak) AS position,COUNT(*) OVER(PARTITION BY harness,provider,model) AS size FROM peaks)
  SELECT harness||':'||provider||':'||model AS key,model AS name,harness,provider,model,MAX(latest) AS date,COUNT(*) AS sessions,
  CAST(0 AS BIGINT) AS input,CAST(0 AS BIGINT) AS output,CAST(0 AS BIGINT) AS reasoning,CAST(0 AS BIGINT) AS cache_read,CAST(0 AS BIGINT) AS cache_write,CAST(0 AS BIGINT) AS total,CAST(0 AS BIGINT) AS context,
- CAST(FLOOR(AVG(peak)) AS BIGINT) AS average_context,CAST(FLOOR(MEDIAN(peak)) AS BIGINT) AS median_context,MAX(peak) AS max_context,
+ CAST(FLOOR(SUM(peak)/COUNT(*)) AS BIGINT) AS average_context,CAST(FLOOR(SUM(CASE WHEN position IN((size+1)/2,(size+2)/2) THEN peak ELSE 0 END)/SUM(CASE WHEN position IN((size+1)/2,(size+2)/2) THEN 1 ELSE 0 END)) AS BIGINT) AS median_context,MAX(peak) AS max_context,
  '' AS location_key,'' AS location_name,'[]' AS directory_names,FALSE AS unknown_directory,'' AS repository_key,'' AS repository_name
- FROM peaks GROUP BY harness,provider,model`
+ FROM ranked GROUP BY harness,provider,model`
 	}
-	return groupedSelect(q, key, name, group, dataTable(q)+where)
+	return groupedSelect(q, key, name, group, dataTable(q)+where, postgres)
 }
-func groupedSelect(q analytics.Query, key, name, group, from string) string {
+func groupedSelect(q analytics.Query, key, name, group, from string, postgres bool) string {
 	locationKey, locationName, dirs, unknown, repoKey, repoName := "''", "''", "'[]'", "FALSE", "''", "''"
 	if q.Tab == "repo" {
 		locationKey, locationName = key, name
-		dirs = "CAST(to_json(list_sort(list(DISTINCT directory_name) FILTER(WHERE directory_name<>''))) AS VARCHAR)"
+		dirs = "ti_directories(directory_name) FILTER(WHERE directory_name<>'')"
+		if postgres {
+			dirs = "CAST(json_agg(DISTINCT directory_name ORDER BY directory_name) FILTER(WHERE directory_name<>'') AS TEXT)"
+		}
 		dirs = "COALESCE(" + dirs + ",'[]')"
-		unknown = "bool_or(directory_key='' OR directory_name='')"
+		unknown = "(MAX(CASE WHEN directory_key='' OR directory_name='' THEN 1 ELSE 0 END)=1)"
 		repoKey = "CASE WHEN COUNT(DISTINCT repository_key)=1 THEN MIN(repository_key) ELSE 'unknown' END"
 		repoName = "CASE WHEN COUNT(DISTINCT repository_key)=1 THEN MIN(repository_name) ELSE 'unknown' END"
 	}
-	return "SELECT " + key + " AS key," + name + " AS name," + dimensionSummary("harness") + " AS harness," + dimensionSummary("provider") + " AS provider," + dimensionSummary("model") + " AS model,MAX(occurred_at_ms) AS date,COUNT(DISTINCT session_id) AS sessions," +
-		duckSum("input_tokens") + " AS input," + duckSum("output_tokens") + " AS output," + duckSum("reasoning_tokens") + " AS reasoning," + duckSum("cache_read_tokens") + " AS cache_read," + duckSum("cache_write_tokens") + " AS cache_write," + duckSum("total_tokens") + " AS total,MAX(input_tokens+cache_read_tokens+cache_write_tokens) AS context," +
+	return "SELECT " + key + " AS key," + name + " AS name," + dimensionSummary("harness", postgres) + " AS harness," + dimensionSummary("provider", postgres) + " AS provider," + dimensionSummary("model", postgres) + " AS model,MAX(occurred_at_ms) AS date,COUNT(DISTINCT session_id) AS sessions," +
+		sumSQL("input_tokens") + " AS input," + sumSQL("output_tokens") + " AS output," + sumSQL("reasoning_tokens") + " AS reasoning," + sumSQL("cache_read_tokens") + " AS cache_read," + sumSQL("cache_write_tokens") + " AS cache_write," + sumSQL("total_tokens") + " AS total,MAX(input_tokens+cache_read_tokens+cache_write_tokens) AS context," +
 		"CAST(0 AS BIGINT) AS average_context,CAST(0 AS BIGINT) AS median_context,CAST(0 AS BIGINT) AS max_context," + locationKey + " AS location_key," + locationName + " AS location_name," + dirs + " AS directory_names," + unknown + " AS unknown_directory," + repoKey + " AS repository_key," + repoName + " AS repository_name FROM " + from + " GROUP BY " + group
 }
-func duckOrder(q analytics.Query, sort, direction string) string {
+func orderSQL(q analytics.Query, sort, direction string) string {
 	columns := map[string]string{"name": "name", "date": "date", "total": "total", "input": "input", "output": "output", "reasoning": "reasoning", "cacheRead": "cache_read", "cacheWrite": "cache_write", "sessions": "sessions", "context": "context", "averageContext": "average_context", "medianContext": "median_context", "maxContext": "max_context", "harness": "harness", "provider": "provider", "model": "model"}
 	column := columns[sort]
 	if column == "" {
@@ -160,8 +163,8 @@ func duckOrder(q analytics.Query, sort, direction string) string {
 	}
 	return " ORDER BY " + column + " " + direction + ",key ASC"
 }
-func readDuckRows(ctx context.Context, tx *sql.Tx, statement string, args []interface{}) ([]analytics.Row, error) {
-	rows, err := tx.QueryContext(ctx, statement, args...)
+func readRows(ctx context.Context, tx *sql.Tx, statement string, args []interface{}) ([]analytics.Row, error) {
+	rows, err := tx.QueryContext(ctx, sqlutil.Bind(statement), args...)
 	if err != nil {
 		return nil, err
 	}
@@ -215,31 +218,34 @@ func loadDashboard(ctx context.Context, store *datastore.Store, q analytics.Quer
 	result.InputRevision = m.InputRevision
 	result.Generation = m.Generation
 	result.LastSynced = m.LastIngestionAtMs
-	if err := tx.QueryRowContext(ctx, "SELECT COUNT(*) FROM processing.scopes WHERE dataset_id=? AND (processed_revision<>revision OR generation<>?)", store.DatasetID(), m.TargetGeneration).Scan(&result.Pending); err != nil {
+	if err := tx.QueryRowContext(ctx, sqlutil.Bind("SELECT COUNT(*) FROM processing_scopes WHERE dataset_id=? AND (processed_revision<>revision OR generation<>?)"), store.DatasetID(), m.TargetGeneration).Scan(&result.Pending); err != nil {
 		return result, err
 	}
-	if err := tx.QueryRowContext(ctx, "SELECT COUNT(*) FROM processing.outcomes o WHERE o.dataset_id=? AND o.generation=? AND disposition='ambiguous' AND o.code='unusable_usage'", store.DatasetID(), m.Generation).Scan(&result.Unresolved); err != nil {
+	if err := tx.QueryRowContext(ctx, sqlutil.Bind("SELECT COUNT(*) FROM processing_outcomes o WHERE o.dataset_id=? AND o.generation=? AND disposition='ambiguous' AND o.code='unusable_usage'"), store.DatasetID(), m.Generation).Scan(&result.Unresolved); err != nil {
 		return result, err
 	}
-	where, args := duckWhere(queryFilter(q, now), duckTimezone(now), store.DatasetID())
-	if err := tx.QueryRowContext(ctx, "SELECT "+duckSum("total_tokens")+","+duckSum("input_tokens")+","+duckSum("output_tokens")+","+duckSum("reasoning_tokens")+","+duckSum("cache_read_tokens")+","+duckSum("cache_write_tokens")+",COUNT(DISTINCT session_id) FROM "+dataTable(q)+where, args...).Scan(&result.Summary.TotalTokens, &result.Summary.InputTokens, &result.Summary.OutputTokens, &result.Summary.ReasoningTokens, &result.Summary.CacheReadTokens, &result.Summary.CacheWriteTokens, &result.Summary.SessionCount); err != nil {
+	where, args, err := queryWhere(queryFilter(q, now), reportingZone(now), store.DatasetID())
+	if err != nil {
 		return result, err
 	}
-	if err := tx.QueryRowContext(ctx, "SELECT COUNT(DISTINCT session_id) FROM "+dataTable(q)+" WHERE countable AND dataset_id=?", store.DatasetID()).Scan(&result.Summary.SyncedSessions); err != nil {
+	if err := tx.QueryRowContext(ctx, sqlutil.Bind("SELECT "+sumSQL("total_tokens")+","+sumSQL("input_tokens")+","+sumSQL("output_tokens")+","+sumSQL("reasoning_tokens")+","+sumSQL("cache_read_tokens")+","+sumSQL("cache_write_tokens")+",COUNT(DISTINCT session_id) FROM "+dataTable(q)+where), args...).Scan(&result.Summary.TotalTokens, &result.Summary.InputTokens, &result.Summary.OutputTokens, &result.Summary.ReasoningTokens, &result.Summary.CacheReadTokens, &result.Summary.CacheWriteTokens, &result.Summary.SessionCount); err != nil {
+		return result, err
+	}
+	if err := tx.QueryRowContext(ctx, sqlutil.Bind("SELECT COUNT(DISTINCT session_id) FROM "+dataTable(q)+" WHERE countable AND dataset_id=?"), store.DatasetID()).Scan(&result.Summary.SyncedSessions); err != nil {
 		return result, err
 	}
 	if err := safeAggregate(result.Summary.TotalTokens, result.Summary.InputTokens, result.Summary.OutputTokens, result.Summary.ReasoningTokens, result.Summary.CacheReadTokens, result.Summary.CacheWriteTokens, result.Summary.SessionCount, result.Summary.SyncedSessions); err != nil {
 		return result, err
 	}
-	if err := tx.QueryRowContext(ctx, "SELECT COUNT(*) FROM "+dataTable(q)+where, args...).Scan(&result.FactCount); err != nil {
+	if err := tx.QueryRowContext(ctx, sqlutil.Bind("SELECT COUNT(*) FROM "+dataTable(q)+where), args...).Scan(&result.FactCount); err != nil {
 		return result, err
 	}
-	grouped := groupedSQL(q, where, duckTimezone(now))
+	grouped := groupedSQL(q, where, reportingZone(now), store.PostgreSQL())
 	groupArgs := append([]interface{}{}, args...)
 	if q.Tab == "tokens" {
-		groupArgs = append([]interface{}{duckTimeParameter(duckTimezone(now))}, args...)
+		groupArgs = append([]interface{}{reportingZone(now)}, args...)
 	}
-	if err := tx.QueryRowContext(ctx, "SELECT COUNT(*) FROM("+grouped+") grouped", groupArgs...).Scan(&result.RowCount); err != nil {
+	if err := tx.QueryRowContext(ctx, sqlutil.Bind("SELECT COUNT(*) FROM("+grouped+") grouped"), groupArgs...).Scan(&result.RowCount); err != nil {
 		return result, err
 	}
 	if maxRows > 0 && result.RowCount > maxRows {
@@ -252,7 +258,7 @@ func loadDashboard(ctx context.Context, store *datastore.Store, q analytics.Quer
 		limit = maxRows
 	}
 	pageArgs := append(append([]interface{}{}, groupArgs...), limit, (result.Page-1)*q.PageSize)
-	result.Rows, err = readDuckRows(ctx, tx, grouped+duckOrder(q, q.Sort, q.Direction)+" LIMIT ? OFFSET ?", pageArgs)
+	result.Rows, err = readRows(ctx, tx, grouped+orderSQL(q, q.Sort, q.Direction)+" LIMIT ? OFFSET ?", pageArgs)
 	if err != nil {
 		return result, err
 	}
@@ -264,14 +270,14 @@ func loadDashboard(ctx context.Context, store *datastore.Store, q analytics.Quer
 	switch q.Tab {
 	case "tokens", "sessions":
 		chartQuery.Tab = "tokens"
-		chartSQL = groupedSQL(chartQuery, where, duckTimezone(now))
-		chartArgs = append([]interface{}{duckTimeParameter(duckTimezone(now))}, args...)
+		chartSQL = groupedSQL(chartQuery, where, reportingZone(now), store.PostgreSQL())
+		chartArgs = append([]interface{}{reportingZone(now)}, args...)
 		chartSort, chartDirection = "date", "asc"
 		limit = 1000
 	case "context":
 		chartSort = "averageContext"
 	}
-	result.Chart, err = readDuckRows(ctx, tx, chartSQL+duckOrder(chartQuery, chartSort, chartDirection)+" LIMIT ?", append(append([]interface{}{}, chartArgs...), limit))
+	result.Chart, err = readRows(ctx, tx, chartSQL+orderSQL(chartQuery, chartSort, chartDirection)+" LIMIT ?", append(append([]interface{}{}, chartArgs...), limit))
 	if err != nil {
 		return result, err
 	}
@@ -311,11 +317,18 @@ func LoadFacets(ctx context.Context, store *datastore.Store, q analytics.Query, 
 		case "directory_key":
 			f.DirectoryKeys = nil
 		}
-		where, args := duckWhere(f, duckTimezone(now), store.DatasetID())
+		where, args, err := queryWhere(f, reportingZone(now), store.DatasetID())
+		if err != nil {
+			return result, err
+		}
 		statement := "SELECT DISTINCT " + field + " FROM " + dataTable(q) + where
 		limit := 1000
 		if field == "session_native_id" {
-			statement += " AND contains(lower(session_native_id),lower(?))"
+			if store.PostgreSQL() {
+				statement += " AND position(lower(?) in lower(session_native_id))>0"
+			} else {
+				statement += " AND instr(lower(session_native_id),lower(?))>0"
+			}
 			args = append(args, search)
 			limit = analytics.SessionOptionLimit
 		}
@@ -326,7 +339,7 @@ func LoadFacets(ctx context.Context, store *datastore.Store, q analytics.Query, 
 		}
 		statement += " ORDER BY 1 LIMIT ?"
 		args = append(args, limit)
-		rows, err := tx.QueryContext(ctx, statement, args...)
+		rows, err := tx.QueryContext(ctx, sqlutil.Bind(statement), args...)
 		if err != nil {
 			return result, fmt.Errorf("facets %s: %w", field, err)
 		}
@@ -376,4 +389,27 @@ func LoadFacets(ctx context.Context, store *datastore.Store, q analytics.Query, 
 	result.Generation = m.Generation
 	result.InputRevision = m.InputRevision
 	return result, tx.Commit()
+}
+
+// All identifiers here are fixed selections. Zones are bound, including fixed
+// offsets, and calendar boundaries retain historical DST rules.
+func bucketSQL(zone, bucket string, postgres bool) string {
+	if bucket != "week" && bucket != "month" && bucket != "year" {
+		bucket = "day"
+	}
+	if !postgres {
+		return "ti_bucket(occurred_at_ms,?,'" + bucket + "')"
+	}
+	expression := "timezone(?,to_timestamp(occurred_at_ms / 1000.0))"
+	if strings.HasPrefix(zone, "@") {
+		expression = "timezone(make_interval(secs => CAST(substring(CAST(? AS TEXT) FROM 2) AS DOUBLE PRECISION)),to_timestamp(occurred_at_ms / 1000.0))"
+	}
+	format := "YYYY-MM-DD"
+	if bucket == "month" {
+		format = "YYYY-MM"
+	}
+	if bucket == "year" {
+		format = "YYYY"
+	}
+	return "to_char(date_trunc('" + bucket + "'," + expression + "),'" + format + "')"
 }

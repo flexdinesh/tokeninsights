@@ -4,7 +4,7 @@ Implements [ADR 0007](adr/0007-raw-ingestion-and-server-processing.md) and
 [ADR 0009](adr/0009-single-process-and-distributed-compositions.md).
 See the [whitelist](raw-ingestion-whitelist.md)
 and [OpenAPI](openapi.yaml). Supersedes collector-owned normalization,
-normalized-only ingestion, SQLite analytics and synchronous completion.
+normalized-only ingestion and synchronous completion. [ADR 0012](adr/0012-sqlite-and-postgres-persistence.md) defines current persistence engines.
 
 ## Ownership
 
@@ -17,7 +17,7 @@ The remote server resumes processing without reading host sources. Local command
 compose capture, acceptance, processing and queries within their own process.
 
     Sources -> whitelist extraction -> Collector SQLite -> acceptance
-      -> DuckDB raw/receipts/scopes -> async processor -> facts/estimates -> views
+      -> SQLite/PostgreSQL raw/receipts/scopes -> async processor -> facts/estimates -> views
 
 Delivery IDs are operational stream/sequence/batch identities. Evidence IDs name
 qualified native records plus preserved snapshots/context; missing native record
@@ -25,7 +25,7 @@ IDs use source lineage/order only as evidence witnesses. Contributions use stabl
 native harness/session/message/request rules, independent of collector installation,
 row IDs, capture times or deliveries. Equal counters/hash alone never identify
 globally shared consumption. Personal uses dataset `default`; hosted assigns one
-dataset per user in the same DuckDB file. Native identity hashes remain stable
+dataset per user in shared SQLite or PostgreSQL storage. Native identity hashes remain stable
 inside a dataset; isolation keys include dataset throughout acceptance, dependency
 processing, generations, receipts and analytics.
 
@@ -34,25 +34,29 @@ processing, generations, receipts and analytics.
 | Role | Default | Schema | Version |
 | --- | --- | --- | --- |
 | Collector | collector.sqlite | schema/schema.sql | 20 |
-| Token data | server.duckdb | schema/data.sql | 3 |
+| Token data (SQLite) | server.sqlite | schema/data.sql | 1 |
+| Token data (PostgreSQL 18) | tokeninsights_data namespace | schema/data.postgres.sql | 1 |
+| Accounts (PostgreSQL 18) | tokeninsights_accounts namespace | schema/app.postgres.sql | 1 |
 | Application | app.sqlite | schema/app.sql | 2 |
 | Sync jobs | collector.sqlite.jobs.sqlite | schema/jobs.sql | 1 |
 
 Defaults use XDG_DATA_HOME or ~/.local/share/tokeninsights. Role-specific flags/
 environment/config override them. Reject aliased paths, wrong roles, incompatible
 versions and corrupt contracts. Former tokeninsights.sqlite stays untouched.
-Current DuckDB startup validates the actual database read-only once before writable
-opening, reading column, constraint, index and view contracts in batches. Only the expected
-contract derived from the embedded schema is cached per process; actual database
-validation and generation checks always run.
+SQLite startup validates role/version and actual schema objects read-only before writable opening. Expected objects are derived from embedded SQL and cached; actual storage is inspected on every open. PostgreSQL validates both fixed namespaces against the committed catalog contract, paired identity and role versions. Missing halves and incompatible contracts reject without repair. New PostgreSQL namespaces initialize together in one transaction.
+
+Local composition always uses SQLite. Remote `--storage-backend=sqlite|postgres` (or `TOKENINSIGHTS_STORAGE_BACKEND`) selects both token/account adapters. PostgreSQL requires `TOKENINSIGHTS_POSTGRES_DSN` and an absolute `--admin-socket`; SQLite paths cannot be mixed with PostgreSQL settings. Credentials stay out of argv, client config and descriptors. PostgreSQL 18 is supported; no extensions are required.
+
+SQLite uses one immediate writer, WAL, FULL synchronous durability and read snapshots. PostgreSQL serializes all token/account writes on one dedicated advisory-locked connection with synchronous commit. That connection never reconnects; loss cancels the server. Pooled multi-statement reads use REPEATABLE READ. Writes use READ COMMITTED under the owner mutex; failures roll back and existing durable replay/processing retries resolve work. No multi-server scheduling is implied.
+
 Frequent dataset metadata reads retrieve metadata, active/target generation states,
 the active-generation count and newest processor version in one SQL statement
 within the caller's snapshot. All generation checks remain dataset-scoped and run
 on every read, including newer processor versions in retained generations.
-Application SQLite holds users, token/session digests and provisioning state. It is
+The account adapter holds users, token/session digests and provisioning state. SQLite uses a separate application file. It is
 paired to the token database identity and kind. Local setup creates one default user.
 App initialization publishes a fully initialized file atomically; wrong roles/pairs
-reject before app mutation. Accounts exist only in application SQLite.
+reject before app mutation. PostgreSQL stores the same account contract in its separate namespace, paired by database and application instance IDs.
 
 Provisioning persists an inactive user and fixed dataset ID, idempotently creates the
 dataset through a contract, then activates the user. Restart resumes pending users;
@@ -63,25 +67,25 @@ reject without mutation. There are no schema migrations, automatic sibling impor
 or normalized-history baselines. New databases initialize atomically; source replay
 creates current evidence. Collector storage contains only capture state, checkpoints,
 immutable outbox, dataset-bound delivery state and quarantine. Maintenance cannot
-discard unaccepted evidence. Processor-version changes inside a current DuckDB
+discard unaccepted evidence. Processor-version changes inside a current SQLite/PostgreSQL
 schema still use durable replacement generations; this is projection recomputation,
 not storage compatibility.
 
-DuckDB schemas:
-- raw.evidence: immutable sanitized JSON and qualified scope.
-- ingestion.instance: global role/version/database/kind identity.
-- ingestion.metadata: dataset identity, active/target generations,
+Token tables (same logical names in each engine):
+- raw_evidence: immutable sanitized JSON and qualified scope.
+- ingestion_instance: global role/version/database/kind identity.
+- ingestion_metadata: dataset identity, active/target generations,
   acceptance/published revisions and times.
-- ingestion.batches/items/batch_items: exact request/receipt bytes, immutable
+- ingestion_batches / ingestion_items / ingestion_batch_items: exact request/receipt bytes, immutable
   stream/sequence bindings, every submitted mapping including duplicates.
-- processing.scopes/dependencies/outcomes: durable queue/revisions/generation,
+- processing_scopes / processing_dependencies / processing_outcomes: durable queue/revisions/generation,
   attempts/retry time/fixed errors, native ancestry and per-item dispositions.
-- analytics.generations/facts/estimates/provenance: versioned typed usage,
+- analytics_generations / analytics_facts / analytics_estimates / analytics_provenance: versioned typed usage,
   flattened native/session/message/location dimensions and evidence edges.
 
 All raw, receipt, scope, dependency, generation, fact, estimate and provenance keys include dataset. Active views join generation by dataset; analytics
-still explicitly filters the authorized dataset. DuckDB gives acceptance and projection their own atomic transaction boundaries.
-Application transactions remain in SQLite; no broker or cross-file commit is assumed.
+still explicitly filters the authorized dataset. SQLite/PostgreSQL gives acceptance and projection their own atomic transaction boundaries.
+Account transactions remain separate; no broker or cross-domain commit is assumed.
 
 ## Capture and reliable submission
 
@@ -168,7 +172,7 @@ waits for global hosted queue emptiness.
 ## Processing
 
 One server owns file/lifetime lock. Connections share its engine; HTTP never
-reopens paths. Four admission slots, shared short write transactions, two processing workers. The shared DuckDB engine uses two threads and a 1 GB memory budget for acceptance, processing and analytics. One dispatcher owns fair dataset selection and claims whole dataset-qualified components; components connected to an in-flight claim wait. A 32 MiB estimated raw-JSON admission budget bounds concurrent loading; a component over budget runs alone.
+reopens paths. Four admission slots, shared short write transactions, two processing workers. One dispatcher owns fair dataset selection and claims whole dataset-qualified components; components connected to an in-flight claim wait. A 32 MiB estimated raw-JSON admission budget bounds concurrent loading; a component over budget runs alone.
 Scopes are dataset-qualified native sessions or unresolved source lineages; Codex
 ancestry connects dependencies only within that dataset. Pending counts, revision
 fences, generation activation and receipt outcomes are dataset-local. Worker
@@ -279,7 +283,7 @@ refresh. A database lifetime lock excludes a second viewer.
 Distributed collectors submit to an authenticated remote hosted server in one
 container. Bearer auth selects the dataset; the server starts no collector. A
 canonical HTTPS public origin governs browser login/session security. The existing
-DuckDB processing queue remains behind dataengine's backend contract.
+SQLite/PostgreSQL processing queue remains behind dataengine's backend contract.
 
 `serverfeatures` owns typed kind/capabilities and validates dependent features.
 `GET /api/v2/instance` returns serverKind, datasetId, bounded capabilities and caller
@@ -425,16 +429,20 @@ returns 503. Saved requests remain unacknowledged for manual retry.
 
 ## Package and deployment boundaries
 
+For every non-trivial change, apply the architecture checklist in
+[`AGENTS.md`](../AGENTS.md#architecture). Identify the owning module and semantic
+contract before choosing implementation details. Resolve mode policy and adapter
+selection in composition roots; keep domain behavior independent of deployment.
+Review affected modes/backends and failure lifecycles, not just the successful
+request path. ADRs 0010 and 0011 define the principles and contract guarantees;
+dependency tests and real-adapter suites enforce their executable portions.
+
 [ADR 0009](adr/0009-single-process-and-distributed-compositions.md) preserves
 processing semantics while changing composition. `collector.Delivery` has direct and
 HTTP adapters; `analytics.Repository` shares direct/HTTP query semantics. `accounts.Repository`
-and its SQLite adapter isolate application persistence. Dataengine owns processing
-contracts; DuckDB is an adapter, not a required future backend.
+and its adapters isolate application persistence. Dataengine owns processing contracts; storage implementation remains behind these boundaries.
 
-[ADR 0011](adr/0011-storage-adapter-contracts.md) makes PostgreSQL a planned remote
-backend for both tokens and accounts through separate contracts. Current production
-adapters remain embedded; PostgreSQL implementation follows. Account and token
-transactions stay separate even when they share one physical database.
+[ADR 0011](adr/0011-storage-adapter-contracts.md) defines separate token/account contracts. [ADR 0012](adr/0012-sqlite-and-postgres-persistence.md) implements SQLite and PostgreSQL adapters. Shared relational transaction code owns behavior; small engine-specific SQL fragments remain private. Account and token transactions stay separate even when they share a physical database.
 
 | Package | Behavior boundary |
 | --- | --- |
@@ -445,14 +453,16 @@ transactions stay separate even when they share one physical database.
 | `clientworkflow` | Remote endpoint resolution and authenticated descriptor preflight |
 | `processor` | Pure evidence interpretation; no host reads, SQL, network or wall clock |
 | `dataengine` | Transport-independent work/processing orchestration and retry scheduling |
-| `datastore` | DuckDB adapter and dataset-scoped atomic persistence operations |
+| `datastore` | Shared relational token transactions and dataset-scoped persistence |
 | `analytics` | Backend-independent query contracts, results and query policy |
-| `adapters/duckdb` | Dataset-scoped DuckDB queries, receiver/query composition and embedded opening |
+| `adapters/sqlanalytics` | Dataset-scoped SQL queries and receiver/query composition |
 | `server`, `ingestionhttp` | Authorized REST/asset and ingestion adapters |
 | `serverfeatures` | Typed kind/capability policy |
 | `collectorprogress` | Sanitized progress values, registry and HTTP reads; no capture dependencies |
 | `accounts` | Credential contracts, shared policy and dataset provisioning contract |
-| `adapters/sqliteaccounts`, `appstore` | SQLite account transactions/provisioning and physical application pairing |
+| `adapters/accountsql` | Shared account transactions and recoverable provisioning |
+| `adapters/sqlite`, `adapters/sqliteaccounts`, `appstore` | SQLite opening and physical application pairing |
+| `adapters/postgres`, `persistence/postgres` | Paired PostgreSQL composition, schemas, connections and ownership |
 | `syncjob` | Durable finite jobs, native detachment and delivery retries |
 | `localruntime` | Command ownership and background startup lifetime, direct ingestion/query, local requests and development fixtures |
 | `serverruntime` | Shared worker/readiness/listener lifecycle through interfaces |
@@ -521,7 +531,7 @@ storage. See [deployment](deployment.md) for TLS, provisioning and backup.
 Collector JSONL replacement, per-user DBs, organizations, external queues,
 replicas and public signup/OIDC are out of scope.
 
-Go embeds committed web assets. CGO/C/C++ needed to build DuckDB; native CI/release
+Go embeds committed web assets. Production builds use pure Go (`CGO_ENABLED=0`); native CI/release
 Linux/macOS amd64/arm64 runners. Production needs no JavaScript runtime.
 Verification: format/lint/schema/API, native semantic fixtures, full/race tests,
 native build/JS-absent smoke and browser E2E.

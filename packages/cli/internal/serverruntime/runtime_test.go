@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/adapters/duckdb"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/adapters/sqlite"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/datastore"
 )
 
@@ -51,7 +51,7 @@ func await[T any](t *testing.T, ch <-chan T) T {
 
 func openStore(t *testing.T) *datastore.Store {
 	t.Helper()
-	s, err := duckdb.Open(t.Context(), filepath.Join(t.TempDir(), "data.duckdb"), datastore.Options{})
+	s, err := sqlite.Open(t.Context(), filepath.Join(t.TempDir(), "data.sqlite"), datastore.Options{})
 	if err != nil {
 		t.Fatal(err)
 	}

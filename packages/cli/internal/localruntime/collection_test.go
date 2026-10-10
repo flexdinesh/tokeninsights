@@ -16,7 +16,7 @@ import (
 
 func TestStartCollectionKeepsSavedUsageReadable(t *testing.T) {
 	root := t.TempDir()
-	collectorPath, dataPath := filepath.Join(root, "collector.sqlite"), filepath.Join(root, "data.duckdb")
+	collectorPath, dataPath := filepath.Join(root, "collector.sqlite"), filepath.Join(root, "data.sqlite")
 	runtime, err := localruntime.Open(t.Context(), collectorPath, dataPath)
 	if err != nil {
 		t.Fatal(err)
@@ -89,7 +89,7 @@ func TestStartCollectionKeepsSavedUsageReadable(t *testing.T) {
 
 func TestCloseCancelsAndJoinsStartupCollectionBeforeClosingStorage(t *testing.T) {
 	root := t.TempDir()
-	runtime, err := localruntime.Open(t.Context(), filepath.Join(root, "collector.sqlite"), filepath.Join(root, "data.duckdb"))
+	runtime, err := localruntime.Open(t.Context(), filepath.Join(root, "collector.sqlite"), filepath.Join(root, "data.sqlite"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -129,7 +129,7 @@ func TestCloseCancelsAndJoinsStartupCollectionBeforeClosingStorage(t *testing.T)
 		t.Fatalf("Close returned before collection joined: %v", err)
 	default:
 	}
-	if second, err := localruntime.Open(ctx, filepath.Join(root, "collector.sqlite"), filepath.Join(root, "data.duckdb")); !errors.Is(err, localruntime.ErrOwned) {
+	if second, err := localruntime.Open(ctx, filepath.Join(root, "collector.sqlite"), filepath.Join(root, "data.sqlite")); !errors.Is(err, localruntime.ErrOwned) {
 		if second != nil {
 			_ = second.Close()
 		}
@@ -166,7 +166,7 @@ func TestCloseCancelsAndJoinsStartupCollectionBeforeClosingStorage(t *testing.T)
 	if !errors.Is(result.Err, context.Canceled) {
 		t.Fatalf("closed runtime accepted collection: %+v", result)
 	}
-	reopened, err := localruntime.Open(ctx, filepath.Join(root, "collector.sqlite"), filepath.Join(root, "data.duckdb"))
+	reopened, err := localruntime.Open(ctx, filepath.Join(root, "collector.sqlite"), filepath.Join(root, "data.sqlite"))
 	if err != nil {
 		t.Fatal("ownership leaked after shutdown", err)
 	}
@@ -187,7 +187,7 @@ func TestCloseCancelsAndJoinsStartupCollectionBeforeClosingStorage(t *testing.T)
 
 func TestCallerCancellationKeepsRuntimeAvailable(t *testing.T) {
 	root := t.TempDir()
-	runtime, err := localruntime.Open(t.Context(), filepath.Join(root, "collector.sqlite"), filepath.Join(root, "data.duckdb"))
+	runtime, err := localruntime.Open(t.Context(), filepath.Join(root, "collector.sqlite"), filepath.Join(root, "data.sqlite"))
 	if err != nil {
 		t.Fatal(err)
 	}

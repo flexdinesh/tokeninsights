@@ -10,16 +10,53 @@ import (
 )
 
 type Accounts struct {
-	Repository accounts.Repository
-	Datasets   accounts.Datasets
-	Resume     func(context.Context) error
-	Reopen     func() Accounts
+	Repository   accounts.Repository
+	Datasets     accounts.Datasets
+	Resume       func(context.Context) error
+	Reopen       func() Accounts
+	WithDatasets func(accounts.Datasets) accounts.Repository
 }
 
-// RunAccounts checks the same account semantics for SQLite and future adapters;
+// RunAccounts checks the same account semantics for SQLite and PostgreSQL;
 // account and token repositories remain separate even on a shared database.
 func RunAccounts(t *testing.T, factory func(*testing.T) Accounts) {
 	t.Helper()
+	for _, after := range []bool{false, true} {
+		t.Run(map[bool]string{false: "provision_interrupted_before_dataset", true: "provision_interrupted_after_dataset"}[after], func(t *testing.T) {
+			store := factory(t)
+			r := store.WithDatasets(interruptedDatasets{Datasets: store.Datasets, after: after})
+			pending, err := r.CreateUser(t.Context(), "Alice")
+			if err == nil || pending.UserID == "" || pending.DatasetID == "" {
+				t.Fatal("lost pending identity", pending, err)
+			}
+			if _, err := r.CreateToken(t.Context(), pending.UserID, []string{accounts.Read}, nil); err == nil {
+				t.Fatal("pending account authorized")
+			}
+			store = store.Reopen()
+			for range 2 {
+				if err := store.Resume(t.Context()); err != nil {
+					t.Fatal(err)
+				}
+			}
+			token, err := store.Repository.CreateToken(t.Context(), pending.UserID, []string{accounts.Read}, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			principal, err := store.Repository.AuthenticateBearer(t.Context(), token.Secret)
+			if err != nil || principal.DatasetID != pending.DatasetID {
+				t.Fatal("resume changed identity", principal, err)
+			}
+			if err := store.Repository.DisableUser(t.Context(), pending.UserID); err != nil {
+				t.Fatal(err)
+			}
+			if err := store.Resume(t.Context()); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := store.Repository.AuthenticateBearer(t.Context(), token.Secret); !errors.Is(err, accounts.ErrUnauthenticated) {
+				t.Fatal("resume reenabled account", err)
+			}
+		})
+	}
 	t.Run("durable_identity_revocation_and_isolation", func(t *testing.T) {
 		store := factory(t)
 		r := store.Repository
@@ -145,4 +182,18 @@ func RunAccounts(t *testing.T, factory func(*testing.T) Accounts) {
 			t.Fatal("logout revoked bearer", err)
 		}
 	})
+}
+
+type interruptedDatasets struct {
+	accounts.Datasets
+	after bool
+}
+
+func (d interruptedDatasets) EnsureDataset(ctx context.Context, id string) error {
+	if d.after {
+		if err := d.Datasets.EnsureDataset(ctx, id); err != nil {
+			return err
+		}
+	}
+	return errors.New("simulated provisioning interruption")
 }

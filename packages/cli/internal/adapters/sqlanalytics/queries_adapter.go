@@ -1,4 +1,4 @@
-package duckdb
+package sqlanalytics
 
 import (
 	"context"
@@ -8,7 +8,7 @@ import (
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/datastore"
 )
 
-// Queries is the embedded analytics adapter. Its store is scoped by composition
+// Queries is the SQL analytics adapter. Its store is scoped by composition
 // after authentication; consumers do not open paths or execute SQL.
 type Queries struct{ Store *datastore.Store }
 

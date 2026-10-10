@@ -10,16 +10,18 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/config"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/db"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/evidence"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/pipeline"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/serverownership"
-	_ "modernc.org/sqlite"
 	"net/url"
 	"os"
 	"path/filepath"
 	"time"
+
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/config"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/db"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/evidence"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/persistence/sqlitecore"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/pipeline"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/serverownership"
+	_ "modernc.org/sqlite"
 )
 
 const ApplicationID = 1414091594
@@ -119,7 +121,7 @@ func Open(ctx context.Context, collectorPath string) (*Store, error) {
 	} else if err != nil {
 		return nil, err
 	}
-	database, err := connect(path)
+	database, err := connectMode(path, "ro")
 	if err != nil {
 		return nil, err
 	}
@@ -131,18 +133,33 @@ func Open(ctx context.Context, collectorPath string) (*Store, error) {
 		err = errors.New("incompatible_sync_jobs")
 	}
 	if err == nil {
+		err = sqlitecore.Validate(ctx, database, Schema)
+	}
+	if err == nil {
+		err = database.Close()
+		if err == nil {
+			database, err = connect(path)
+		}
+	}
+	if err == nil {
 		_, err = database.ExecContext(ctx, "PRAGMA journal_mode=WAL")
 	}
 	if err != nil {
-		_ = database.Close()
+		if database != nil {
+			_ = database.Close()
+		}
 		return nil, err
 	}
 	return &Store{database: database, Path: path}, nil
 }
-func connect(path string) (*sql.DB, error) {
+func connect(path string) (*sql.DB, error) { return connectMode(path, "rw") }
+func connectMode(path, mode string) (*sql.DB, error) {
 	u := url.URL{Scheme: "file", Path: path}
 	q := url.Values{}
-	q.Set("mode", "rw")
+	q.Set("mode", mode)
+	if mode == "ro" {
+		q.Add("_pragma", "query_only(on)")
+	}
 	q.Add("_pragma", "busy_timeout(5000)")
 	u.RawQuery = q.Encode()
 	database, err := sql.Open("sqlite", u.String())

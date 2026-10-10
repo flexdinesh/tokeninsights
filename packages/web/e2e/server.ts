@@ -110,7 +110,7 @@ function startServer(home: string, port: string) {
       '--collector-db-path',
       join(home, 'collector.sqlite'),
       '--server-db-path',
-      join(home, 'server.duckdb'),
+      join(home, 'server.sqlite'),
     ],
     { stdio: 'inherit', env: localEnvironment(home) },
   )
@@ -126,7 +126,7 @@ await new Promise<void>((resolveRun, rejectRun) => {
       '--collector-db-path',
       join(localHome, 'collector.sqlite'),
       '--server-db-path',
-      join(localHome, 'server.duckdb'),
+      join(localHome, 'server.sqlite'),
     ],
     { stdio: 'inherit', env: localEnvironment(localHome) },
   )
@@ -145,7 +145,7 @@ const hostedServer = spawn(
     '--listen',
     '127.0.0.1:18768',
     '--server-db-path',
-    join(hostedHome, 'server.duckdb'),
+    join(hostedHome, 'server.sqlite'),
     '--public-url',
     hostedOrigin,
     '--admin-socket',

@@ -1,4 +1,4 @@
-package duckdb
+package sqlanalytics
 
 import (
 	"context"
@@ -8,13 +8,14 @@ import (
 	"time"
 
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/analytics"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/persistence/sqlutil"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/querymodel"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/viewer"
 )
 
 func TestAllDashboardMatchesPaginatedSnapshots(t *testing.T) {
-	store := duckDashboardStore(t)
-	if _, err := store.SQL().ExecContext(t.Context(), "INSERT INTO analytics.estimates SELECT *,fact_id,'fixture' FROM analytics.facts"); err != nil {
+	store := dashboardStore(t)
+	if _, err := store.SQL().ExecContext(t.Context(), sqlutil.Bind("INSERT INTO analytics_estimates SELECT *,fact_id,'fixture' FROM analytics_facts")); err != nil {
 		t.Fatal(err)
 	}
 	now := time.Date(2023, 11, 16, 12, 0, 0, 0, time.Local)
@@ -64,7 +65,7 @@ func TestAllDashboardMatchesPaginatedSnapshots(t *testing.T) {
 }
 
 func TestAllDashboardBoundsAndCancellation(t *testing.T) {
-	store := duckDashboardStore(t)
+	store := dashboardStore(t)
 	q := analytics.Query{Selection: viewer.Selection{Period: "all", Bucket: "day"}, Quality: "confirmed", Tab: "sessions", Sort: "total", Direction: "desc", Page: 1, PageSize: 2}
 	for _, limit := range []int{0, -1, 5} {
 		result, err := LoadAllDashboard(t.Context(), store, q, time.Now(), limit)
@@ -81,7 +82,7 @@ func TestAllDashboardBoundsAndCancellation(t *testing.T) {
 }
 
 func TestAllDashboardDuringAtomicPublication(t *testing.T) {
-	store := duckDashboardStore(t)
+	store := dashboardStore(t)
 	metadata, err := store.Metadata(t.Context())
 	if err != nil {
 		t.Fatal(err)
@@ -91,10 +92,10 @@ func TestAllDashboardDuringAtomicPublication(t *testing.T) {
 	go func() {
 		for range publications {
 			err := store.WriteTransaction(t.Context(), func(tx *sql.Tx) error {
-				if _, err := tx.ExecContext(t.Context(), "UPDATE analytics.facts SET input_tokens=input_tokens+1,total_tokens=total_tokens+1 WHERE dataset_id=?", store.DatasetID()); err != nil {
+				if _, err := tx.ExecContext(t.Context(), sqlutil.Bind("UPDATE analytics_facts SET input_tokens=input_tokens+1,total_tokens=total_tokens+1 WHERE dataset_id=?"), store.DatasetID()); err != nil {
 					return err
 				}
-				_, err := tx.ExecContext(t.Context(), "UPDATE ingestion.metadata SET revision=revision+1 WHERE dataset_id=?", store.DatasetID())
+				_, err := tx.ExecContext(t.Context(), sqlutil.Bind("UPDATE ingestion_metadata SET revision=revision+1 WHERE dataset_id=?"), store.DatasetID())
 				return err
 			})
 			if err != nil {

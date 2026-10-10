@@ -63,7 +63,7 @@ void test('materializes deterministic development sources and removes stale outp
     ...fixtureFiles.filter((path) => path.endsWith('.jsonl')).map((path) => join('source', path)),
     join('source', 'opencode', 'opencode.db'),
     'collector.sqlite',
-    'server.duckdb',
+    'server.sqlite',
   ].toSorted()
   assert.deepEqual(firstFiles, expectedFiles)
 
