@@ -100,7 +100,7 @@ not interchangeable engine-capacity measurements. `growth-bytes` is the change
 during the entire append or concurrent sub-benchmark, not bytes per operation or
 logical evidence size. Checkpoints, page reuse and relation allocation affect it.
 
-## Current measurements
+## Initial full-workload baseline
 
 Baseline: 10 October 2026, Linux amd64, Intel Core Ultra 7 155U (14 logical CPUs),
 Go 1.26.8, host timezone AEDT. SQLite fixtures used a disk-backed btrfs temporary
@@ -169,23 +169,71 @@ is seeded count + 2,313; independent datasets and retained generations remain.
 
 Follow-up priorities:
 
-1. Profile large-history dashboard queries: at 100k facts, SQLite views take
-   roughly 1.6 seconds and PostgreSQL views 0.25–0.55 seconds. Separate query
-   execution, row materialization and dashboard composition before changing SQL.
-2. Profile publication and allocation volume under concurrent reads. At 100k
+1. Profile publication and allocation volume under concurrent reads. At 100k
    facts, the median post-acceptance burst visibility is about 42 seconds for
    SQLite and 6.9 seconds for PostgreSQL. These are continuous-read stress
    measurements, not ordinary dashboard polling. Multi-GB Go allocation volume
    is cumulative allocation, not evidence of equivalent resident memory.
-3. Investigate physical growth and initial/replacement publication. At 10k facts,
+2. Investigate physical growth and initial/replacement publication. At 10k facts,
    both engines' measured token footprint exceeds 200 MB after only 2,313 added
    facts. During PostgreSQL's untimed multi-tenant/reprocessing setup, repeated
    activity snapshots showed the provenance DELETE in `publishRows` executing.
    Capture its query plan and a scoped profile before attributing the cost or
    choosing an index. Footprint probes alone do not establish leaks or WAL volume.
+3. Dashboard counting is optimized below. Remaining full-history summaries and
+   row/chart aggregation still scan active facts; profile those stages before
+   proposing caching, preaggregation or new indexes.
 
 Optimize one measured stage per follow-up; keep the shared workloads and semantic
 oracles unchanged so performance changes cannot hide lost or duplicated usage.
+
+## Dashboard count optimization
+
+Follow-up on 10 October 2026, with the same host, engines, durability settings and
+disk-backed temporary directory as above. Before uses the query implementation at
+`ece86c6`; after counts group identities without evaluating unused row aggregates
+and obtains fact count in the existing filtered summary scan. Both retain the
+same dataset/generation snapshot, SQL pagination and accounting rules. No schema,
+index, cache or publication change is involved.
+
+Separate scoped CPU profiles, stage timings and query plans at 10k facts identified
+SQL execution as the main SQLite cost. Its old group-count plans retained
+distinct-count work and, for context, session-peak/window machinery. The new count
+plans remove that work. PostgreSQL already pruned most unused aggregates; its
+context count now also avoids the inner per-session grouping. Removing the separate
+fact-count scan benefits both engines.
+
+The timing comparison reruns only History10K/History100K dashboard queries against
+fresh fixtures, with unchanged workloads/oracles, three iterations per sample and
+three samples. Engines run sequentially without profiling or concurrent verification:
+
+```sh
+env TMPDIR="$PWD/.scratch/storage-tmp" \
+  pnpm --filter @tokeninsights/cli exec node ../../tools/build/src/test-go.ts \
+  -run '^$' -bench '^BenchmarkStorage$/^History(10K|100K)$/Query' -benchtime=3x -count=3 -p=1
+```
+
+Median milliseconds, before → after:
+
+| Engine | Facts | Sessions | Context | Tokens |
+| --- | ---: | ---: | ---: | ---: |
+| SQLite | 10,000 | 136.5 → 113.4 | 126.0 → 108.7 | 142.5 → 117.9 |
+| SQLite | 100,000 | 1563.5 → 1333.1 | 1525.2 → 1308.0 | 1586.0 → 1372.2 |
+| PostgreSQL | 10,000 | 43.3 → 40.9 | 24.8 → 21.3 | 56.4 → 54.2 |
+| PostgreSQL | 100,000 | 361.5 → 346.9 | 239.7 → 214.5 | 504.9 → 480.3 |
+
+At 100k facts, median Go allocation volume per SQLite read falls from 66.4 to
+49.4 MB for sessions and 96.6 to 80.5 MB for tokens. Context and PostgreSQL reads
+allocate roughly 4 KB more per call; this is not a general memory optimization.
+PostgreSQL server memory remains outside these Go measurements.
+
+All timing cases passed their component, session and dataset assertions. Shared
+adapter contracts additionally cover each grouping, filtered/empty counts, page
+clamping, complete-result limits, unknown locations and retained generations.
+The earlier mutation/concurrency figures remain the initial baseline; these
+query-only samples do not update burst visibility or prove production tail latency.
+Full-history reads still scan active facts and remain around 1.3 seconds on SQLite
+at 100k facts. The small PostgreSQL gains are local samples, not latency guarantees.
 
 ## Focused investigation
 
@@ -205,7 +253,29 @@ removed `range()` call even when ordinary unit tests pass.
 
 For CPU and allocation profiles, use a separate run, not a timing sample. Standard
 `go test -cpuprofile/-memprofile` includes untimed fixture setup; do not attribute
-the whole profile to dashboard latency. The ingestion suite retains its scoped
+the whole profile to dashboard latency. The shared query benchmarks accept
+`TOKENINSIGHTS_QUERY_PROFILE_DIR` to start CPU/allocation sampling after ingestion
+and fixture opening. Use an absolute path, a fresh output directory and
+`-count=1`; existing case directories reject rather than overwrite profiles.
+For example, from the repository root:
+
+```sh
+env TMPDIR="$PWD/.scratch/storage-tmp" \
+  TOKENINSIGHTS_QUERY_PROFILE_DIR="$PWD/.scratch/query-profiles" \
+  pnpm --filter @tokeninsights/cli exec node ../../tools/build/src/test-go.ts \
+  -run '^$' -bench '^BenchmarkStorage$/^History10K$/Query' -benchtime=20x -count=1 -p=1
+go tool pprof -top .scratch/query-profiles/sqlanalytics.test/BenchmarkStorage-History10K-Query-tokens/cpu.pprof
+go tool pprof -top -alloc_space \
+  -base .scratch/query-profiles/sqlanalytics.test/BenchmarkStorage-History10K-Query-tokens/heap-before.pprof \
+  .scratch/query-profiles/sqlanalytics.test/BenchmarkStorage-History10K-Query-tokens/heap-after.pprof
+```
+
+Each case writes `cpu.pprof`, `heap-before.pprof` and `heap-after.pprof` beneath
+its test binary name and benchmark name. Subtract heap-before from heap-after
+for query allocation volume; neither reports peak RSS. PostgreSQL query execution
+runs outside the Go process: inspect server query plans alongside client profiles.
+Query assertions and profiler overhead remain included.
+The ingestion suite retains its scoped
 `-ingestion-profile-dir` flag for isolating capture/delivery/processing, documented
 in `collector/ingestion_profile_test.go`. Inspect profile boundaries before drawing
 bottleneck conclusions.

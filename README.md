@@ -75,6 +75,8 @@ never automatic.
 TUI loads its complete result in one consistent snapshot, using the same analytics
 as Web and retaining its 100,000-row limit. Date ranges narrow analytics work;
 startup collection checks the same sources for every range.
+SQLite and PostgreSQL count groups without repeating row aggregates; counts,
+totals and displayed rows retain the same snapshot and filtering rules.
 
 For distributed mode, run one authenticated [server container](docs/deployment.md)
 and configure the collector:

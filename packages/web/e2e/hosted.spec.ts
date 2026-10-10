@@ -75,8 +75,15 @@ test('real token revocation invalidates browser sessions and removes visible cac
   await page.getByLabel('Access token', { exact: true }).fill(token.token)
   await page.getByRole('button', { name: 'Sign in', exact: true }).click()
   await expect(page.getByLabel('Total tokens: 120', { exact: true })).toBeVisible()
+  // Observe the polling boundary before asserting UI recovery; the default
+  // assertion deadline is the same length as the status polling interval.
+  const rejectedStatus = page.waitForResponse(
+    (response) =>
+      new URL(response.url()).pathname === '/api/v2/status' && response.status() === 401,
+  )
   await adminRequest(socket, { operation: 'revoke-token', tokenId: token.tokenId }, z.object({}))
   // Revocation is observed through the same status polling used without Reload.
+  await rejectedStatus
   await expect(page.getByRole('heading', { name: 'Sign in to TokenInsights' })).toBeVisible()
   await expect(page.getByLabel('Total tokens: 120', { exact: true })).toHaveCount(0)
 })

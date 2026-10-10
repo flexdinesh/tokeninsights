@@ -102,40 +102,65 @@ func dimensionSummary(column string, postgres bool) string {
 	return "ti_dimensions(" + column + ")"
 }
 
+// grouping defines row identity once for counting and aggregate queries.
+type grouping struct{ key, name, columns string }
+
+func queryGrouping(q analytics.Query) grouping {
+	switch q.Tab {
+	case "providers":
+		return grouping{"provider", "provider", "provider"}
+	case "harnesses":
+		return grouping{"harness", "harness", "harness"}
+	case "sessions":
+		return grouping{"harness || ':' || session_native_id", "session_native_id", "harness,session_native_id"}
+	case "tokens":
+		return grouping{"bucket", "bucket", "bucket"}
+	case "context":
+		return grouping{"harness||':'||provider||':'||model", "model", "harness,provider,model"}
+	case "repo":
+		key, name := "repository_key", "repository_name"
+		if q.LocationGroup == querymodel.RepoGroupDirectory {
+			key, name = "directory_key", "directory_name"
+		}
+		key = "COALESCE(NULLIF(" + key + ",''),'unknown')"
+		name = "COALESCE(NULLIF(MIN(" + name + "),''),'unknown')"
+		return grouping{key, name, key}
+	default:
+		return grouping{"model", "model", "model"}
+	}
+}
+
+// Count group identities without computing token aggregates, distinct dimension
+// labels or session-peak rankings. Bucket parameters precede filter parameters,
+// just as they do in groupedSQL.
+func groupCountSQL(q analytics.Query, where, zone string, postgres bool) string {
+	selected := "1"
+	if q.Tab == "tokens" {
+		selected = bucketSQL(zone, q.Selection.Bucket, postgres) + " AS bucket"
+	}
+	return "SELECT COUNT(*) FROM(SELECT " + selected + " FROM " + dataTable(q) + where + " GROUP BY " + queryGrouping(q).columns + ") grouped"
+}
+
 // Only fixed SQL identifiers enter these statements. Filters, zone, limits and
 // offsets are bound parameters; aggregation and pagination stay in SQL.
 func groupedSQL(q analytics.Query, where, zone string, postgres bool) string {
-	key, name, group := "model", "model", "model"
+	g := queryGrouping(q)
 	switch q.Tab {
-	case "providers":
-		key, name, group = "provider", "provider", "provider"
-	case "harnesses":
-		key, name, group = "harness", "harness", "harness"
-	case "sessions":
-		key, name, group = "harness || ':' || session_native_id", "session_native_id", "harness,session_native_id"
 	case "tokens":
 		bucket := bucketSQL(zone, q.Selection.Bucket, postgres)
-		key, name, group = "bucket", "bucket", "bucket"
-		return "WITH filtered AS (SELECT *," + bucket + " AS bucket FROM " + dataTable(q) + where + ") " + groupedSelect(q, key, name, group, "filtered", postgres)
-	case "repo":
-		key = "COALESCE(NULLIF(repository_key,''),'unknown')"
-		name = "COALESCE(NULLIF(MIN(repository_name),''),'unknown')"
-		if q.LocationGroup == querymodel.RepoGroupDirectory {
-			key = "COALESCE(NULLIF(directory_key,''),'unknown')"
-			name = "COALESCE(NULLIF(MIN(directory_name),''),'unknown')"
-		}
-		group = key
+		return "WITH filtered AS (SELECT *," + bucket + " AS bucket FROM " + dataTable(q) + where + ") " + groupedSelect(q, g, "filtered", postgres)
 	case "context":
 		return `WITH peaks AS (SELECT harness,provider,model,session_id,MAX(input_tokens+cache_read_tokens+cache_write_tokens) AS peak,MAX(occurred_at_ms) AS latest FROM ` + dataTable(q) + where + ` GROUP BY harness,provider,model,session_id), ranked AS (SELECT *,ROW_NUMBER() OVER(PARTITION BY harness,provider,model ORDER BY peak) AS position,COUNT(*) OVER(PARTITION BY harness,provider,model) AS size FROM peaks)
- SELECT harness||':'||provider||':'||model AS key,model AS name,harness,provider,model,MAX(latest) AS date,COUNT(*) AS sessions,
+ SELECT ` + g.key + " AS key," + g.name + ` AS name,harness,provider,model,MAX(latest) AS date,COUNT(*) AS sessions,
  CAST(0 AS BIGINT) AS input,CAST(0 AS BIGINT) AS output,CAST(0 AS BIGINT) AS reasoning,CAST(0 AS BIGINT) AS cache_read,CAST(0 AS BIGINT) AS cache_write,CAST(0 AS BIGINT) AS total,CAST(0 AS BIGINT) AS context,
  CAST(FLOOR(SUM(peak)/COUNT(*)) AS BIGINT) AS average_context,CAST(FLOOR(SUM(CASE WHEN position IN((size+1)/2,(size+2)/2) THEN peak ELSE 0 END)/SUM(CASE WHEN position IN((size+1)/2,(size+2)/2) THEN 1 ELSE 0 END)) AS BIGINT) AS median_context,MAX(peak) AS max_context,
  '' AS location_key,'' AS location_name,'[]' AS directory_names,FALSE AS unknown_directory,'' AS repository_key,'' AS repository_name
- FROM ranked GROUP BY harness,provider,model`
+ FROM ranked GROUP BY ` + g.columns
 	}
-	return groupedSelect(q, key, name, group, dataTable(q)+where, postgres)
+	return groupedSelect(q, g, dataTable(q)+where, postgres)
 }
-func groupedSelect(q analytics.Query, key, name, group, from string, postgres bool) string {
+func groupedSelect(q analytics.Query, g grouping, from string, postgres bool) string {
+	key, name, group := g.key, g.name, g.columns
 	locationKey, locationName, dirs, unknown, repoKey, repoName := "''", "''", "'[]'", "FALSE", "''", "''"
 	if q.Tab == "repo" {
 		locationKey, locationName = key, name
@@ -228,7 +253,7 @@ func loadDashboard(ctx context.Context, store *datastore.Store, q analytics.Quer
 	if err != nil {
 		return result, err
 	}
-	if err := tx.QueryRowContext(ctx, sqlutil.Bind("SELECT "+sumSQL("total_tokens")+","+sumSQL("input_tokens")+","+sumSQL("output_tokens")+","+sumSQL("reasoning_tokens")+","+sumSQL("cache_read_tokens")+","+sumSQL("cache_write_tokens")+",COUNT(DISTINCT session_id) FROM "+dataTable(q)+where), args...).Scan(&result.Summary.TotalTokens, &result.Summary.InputTokens, &result.Summary.OutputTokens, &result.Summary.ReasoningTokens, &result.Summary.CacheReadTokens, &result.Summary.CacheWriteTokens, &result.Summary.SessionCount); err != nil {
+	if err := tx.QueryRowContext(ctx, sqlutil.Bind("SELECT "+sumSQL("total_tokens")+","+sumSQL("input_tokens")+","+sumSQL("output_tokens")+","+sumSQL("reasoning_tokens")+","+sumSQL("cache_read_tokens")+","+sumSQL("cache_write_tokens")+",COUNT(DISTINCT session_id),COUNT(*) FROM "+dataTable(q)+where), args...).Scan(&result.Summary.TotalTokens, &result.Summary.InputTokens, &result.Summary.OutputTokens, &result.Summary.ReasoningTokens, &result.Summary.CacheReadTokens, &result.Summary.CacheWriteTokens, &result.Summary.SessionCount, &result.FactCount); err != nil {
 		return result, err
 	}
 	if err := tx.QueryRowContext(ctx, sqlutil.Bind("SELECT COUNT(DISTINCT session_id) FROM "+dataTable(q)+" WHERE countable AND dataset_id=?"), store.DatasetID()).Scan(&result.Summary.SyncedSessions); err != nil {
@@ -237,15 +262,12 @@ func loadDashboard(ctx context.Context, store *datastore.Store, q analytics.Quer
 	if err := safeAggregate(result.Summary.TotalTokens, result.Summary.InputTokens, result.Summary.OutputTokens, result.Summary.ReasoningTokens, result.Summary.CacheReadTokens, result.Summary.CacheWriteTokens, result.Summary.SessionCount, result.Summary.SyncedSessions); err != nil {
 		return result, err
 	}
-	if err := tx.QueryRowContext(ctx, sqlutil.Bind("SELECT COUNT(*) FROM "+dataTable(q)+where), args...).Scan(&result.FactCount); err != nil {
-		return result, err
-	}
 	grouped := groupedSQL(q, where, reportingZone(now), store.PostgreSQL())
 	groupArgs := append([]interface{}{}, args...)
 	if q.Tab == "tokens" {
 		groupArgs = append([]interface{}{reportingZone(now)}, args...)
 	}
-	if err := tx.QueryRowContext(ctx, sqlutil.Bind("SELECT COUNT(*) FROM("+grouped+") grouped"), groupArgs...).Scan(&result.RowCount); err != nil {
+	if err := tx.QueryRowContext(ctx, sqlutil.Bind(groupCountSQL(q, where, reportingZone(now), store.PostgreSQL())), groupArgs...).Scan(&result.RowCount); err != nil {
 		return result, err
 	}
 	if maxRows > 0 && result.RowCount > maxRows {
