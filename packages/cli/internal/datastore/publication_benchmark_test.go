@@ -9,13 +9,16 @@ import (
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/evidence"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/persistence/sqlutil"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/processor"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/storagecontract"
 )
-
-const publicationBenchmarkFacts = 10000
 
 // BenchmarkPublication times complete production publication transactions. Opening,
 // acceptance, work selection, interpretation and result verification are untimed.
 func BenchmarkPublication(b *testing.B) {
+	facts := 10000
+	if storagecontract.BenchmarkSmoke() {
+		facts = 1000
+	}
 	for _, components := range []int{1, 50, 500} {
 		for _, replacement := range []bool{false, true} {
 			name := "Initial"
@@ -38,12 +41,12 @@ func BenchmarkPublication(b *testing.B) {
 						}
 						start = 1
 					}
-					acceptPublicationRecords(b, store, components, start, publicationBenchmarkFacts/components)
+					acceptPublicationRecords(b, store, components, start, facts/components)
 					before, err := store.Metadata(b.Context())
 					if err != nil {
 						b.Fatal(err)
 					}
-					expected := make(map[string]string, publicationBenchmarkFacts)
+					expected := make(map[string]string, facts)
 					for range components {
 						work, found, err := store.LoadWork(b.Context())
 						if err != nil || !found {
@@ -68,7 +71,7 @@ func BenchmarkPublication(b *testing.B) {
 							b.Fatal("publish", published, err)
 						}
 					}
-					verifyPublication(b, store, expected, components, before.Revision)
+					verifyPublication(b, store, expected, facts, components, before.Revision)
 					if err := store.Close(); err != nil {
 						b.Fatal(err)
 					}
@@ -110,9 +113,9 @@ func acceptPublicationRecords(b *testing.B, store *Store, components, first, end
 	flush()
 }
 
-func verifyPublication(b *testing.B, store *Store, expected map[string]string, components int, previousRevision int64) {
+func verifyPublication(b *testing.B, store *Store, expected map[string]string, wantFacts, components int, previousRevision int64) {
 	b.Helper()
-	if len(expected) != publicationBenchmarkFacts {
+	if len(expected) != wantFacts {
 		b.Fatal("fixture lost fact identities", len(expected))
 	}
 	rows, err := store.SQL().QueryContext(b.Context(), sqlutil.Bind(`SELECT f.fact_id,p.evidence_id,f.input_tokens,f.output_tokens,f.reasoning_tokens,f.cache_read_tokens,f.cache_write_tokens,f.total_tokens
@@ -147,7 +150,7 @@ func verifyPublication(b *testing.B, store *Store, expected map[string]string, c
 		(SELECT COUNT(*) FROM analytics_estimates),
 		(SELECT COUNT(*) FROM processing_scopes WHERE processed_revision<>revision OR generation<>1),
 		(SELECT COUNT(DISTINCT session_id) FROM analytics_confirmed)`)).Scan(&outcomes, &facts, &provenance, &estimates, &pending, &sessions)
-	if err != nil || outcomes != publicationBenchmarkFacts || facts != publicationBenchmarkFacts || provenance != publicationBenchmarkFacts || estimates != 0 || pending != 0 || sessions != components {
+	if err != nil || outcomes != wantFacts || facts != wantFacts || provenance != wantFacts || estimates != 0 || pending != 0 || sessions != components {
 		b.Fatal("incomplete publication", outcomes, facts, provenance, estimates, pending, sessions, err)
 	}
 	metadata, err := store.Metadata(b.Context())

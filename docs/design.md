@@ -487,6 +487,12 @@ and concrete storage out of accounts, analytics, HTTP and shared runtime.
 Reusable `storagecontract` suites run against real adapter fixtures, including
 durable reopen, acceptance replay/isolation, publication fences, query components
 and account revocation. SQL rollback/fault-injection tests stay beside each adapter.
+Shared storage benchmarks use these same real fixtures for growing history,
+independent datasets, retained generations, reopen, incremental acceptance and
+queries during processing. Fixture setup stays outside timing; every sample keeps
+accounting/receipt invariants. Benchmark smoke checks execute all families without
+performance thresholds. Physical size probes stay inside adapter fixtures, not
+production contracts.
 
 Built client/server deployment scenarios run against both hosted backends: native
 harness capture, copied/concurrent clients, collector rebuild, lost-response replay,

@@ -20,24 +20,39 @@ func openTest(t testing.TB, dsn string) *Storage {
 	return s
 }
 func TestTokenContract(t *testing.T) {
-	storagecontract.RunTokens(t, func(t *testing.T) storagecontract.Tokens {
-		dsn := testdb.New(t)
-		var reopen func() storagecontract.Tokens
-		reopen = func() storagecontract.Tokens {
-			s := openTest(t, dsn)
-			return storagecontract.Tokens{EnsureDataset: s.Tokens.EnsureDataset, Dataset: func(id string) storagecontract.Dataset {
-				d := s.Tokens.ForDataset(id)
-				return storagecontract.Dataset{Receiver: d, Queries: sqlanalytics.Queries{Store: d}, Processing: d, Reprocess: d.Reprocess}
-			}, Reopen: func() storagecontract.Tokens {
-				if err := s.Owner.Close(); err != nil {
-					t.Fatal(err)
-				}
-				return reopen()
-			}}
-		}
-		return reopen()
-	})
+	storagecontract.RunTokens(t, func(t *testing.T) storagecontract.Tokens { return postgresFixture(t).Tokens })
 }
+
+func postgresFixture(t testing.TB) storagecontract.BenchmarkFixture {
+	dsn := testdb.New(t)
+	var active *Storage
+	var reopen func() storagecontract.Tokens
+	reopen = func() storagecontract.Tokens {
+		s := openTest(t, dsn)
+		active = s
+		return storagecontract.Tokens{EnsureDataset: s.Tokens.EnsureDataset, Dataset: func(id string) storagecontract.Dataset {
+			d := s.Tokens.ForDataset(id)
+			return storagecontract.Dataset{Receiver: d, Queries: sqlanalytics.Queries{Store: d}, Processing: d, Reprocess: d.Reprocess}
+		}, Reopen: func() storagecontract.Tokens {
+			if err := s.Owner.Close(); err != nil {
+				t.Fatal(err)
+			}
+			return reopen()
+		}}
+	}
+	return storagecontract.BenchmarkFixture{Tokens: reopen(), SizeBytes: func() (int64, error) {
+		var size int64
+		err := active.Owner.Reader.QueryRowContext(t.Context(), `SELECT COALESCE(SUM(pg_total_relation_size(c.oid)),0)::bigint
+   FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+   WHERE n.nspname='tokeninsights_data' AND c.relkind='r'`).Scan(&size)
+		return size, err
+	}}
+}
+
+func BenchmarkStorage(b *testing.B) {
+	storagecontract.BenchmarkStorage(b, func(b *testing.B) storagecontract.BenchmarkFixture { return postgresFixture(b) })
+}
+
 func TestAccountContract(t *testing.T) {
 	storagecontract.RunAccounts(t, func(t *testing.T) storagecontract.Accounts {
 		dsn := testdb.New(t)
@@ -55,13 +70,4 @@ func TestAccountContract(t *testing.T) {
 		}
 		return reopen()
 	})
-}
-
-func BenchmarkQueries(b *testing.B) {
-	s := openTest(b, testdb.New(b))
-	if err := s.Tokens.EnsureDataset(b.Context(), "benchmark"); err != nil {
-		b.Fatal(err)
-	}
-	d := s.Tokens.ForDataset("benchmark")
-	storagecontract.BenchmarkQueries(b, storagecontract.Dataset{Receiver: d, Processing: d, Queries: sqlanalytics.Queries{Store: d}})
 }

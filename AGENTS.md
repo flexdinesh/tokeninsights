@@ -89,6 +89,7 @@ pnpm run format:check
 pnpm run lint
 
 pnpm run check-schema
+pnpm run bench:smoke
 pnpm run test
 pnpm run build
 ```

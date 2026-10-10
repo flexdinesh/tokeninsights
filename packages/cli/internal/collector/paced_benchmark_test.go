@@ -15,6 +15,7 @@ import (
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/dataengine"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/datastore"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/evidence"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/storagecontract"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/viewer"
 )
 
@@ -36,6 +37,10 @@ func (p *pacedBackend) PublishProjection(ctx context.Context, work dataengine.Wo
 // fixture creation and opening are untimed; acceptance and two real workers are
 // timed. The ordinary ingestion matrix separately covers authenticated HTTP.
 func BenchmarkPacedProcessing(b *testing.B) {
+	entries := evidence.MaxEntries
+	if storagecontract.BenchmarkSmoke() {
+		entries = 16
+	}
 	const batches = 40
 	const interval = 100 * time.Millisecond
 	const coldBatch = 10
@@ -58,12 +63,12 @@ func BenchmarkPacedProcessing(b *testing.B) {
 			bodies := make([][]byte, batches)
 			for index := range batches {
 				var batch evidence.Batch
-				if err := json.Unmarshal(acceptanceBody(b, hot, evidence.MaxEntries), &batch); err != nil {
+				if err := json.Unmarshal(acceptanceBody(b, hot, entries), &batch); err != nil {
 					b.Fatal(err)
 				}
 				batch.StreamID = fmt.Sprint(index)
 				for entry := range batch.Entries {
-					ordinal := index*evidence.MaxEntries + entry
+					ordinal := index*entries + entry
 					batch.Entries[entry].Record.Ordinal = int64(ordinal + 2)
 					batch.Entries[entry].Record.Data = json.RawMessage(fmt.Sprintf(`{"type":"message","id":"message-%d","message":{"role":"assistant","timestamp":1700000000000,"provider":"openai","model":"gpt-5","usage":{"input":100,"output":20}}}`, ordinal))
 				}
@@ -107,7 +112,7 @@ func BenchmarkPacedProcessing(b *testing.B) {
 						b.Fatal(ctx.Err())
 					}
 				}
-				send(hot, body, evidence.MaxEntries)
+				send(hot, body, int64(entries))
 				if index == coldBatch {
 					coldStart = time.Now()
 					send(cold, coldBody, 1)
@@ -124,13 +129,13 @@ func BenchmarkPacedProcessing(b *testing.B) {
 			dashboard, err := sqlanalytics.LoadDashboard(ctx, hot, query, time.Now())
 			b.StopTimer()
 			queried := time.Now()
-			if err != nil || dashboard.Summary.TotalTokens != batches*evidence.MaxEntries*120 || dashboard.Summary.SessionCount != 1 {
+			if err != nil || dashboard.Summary.TotalTokens != int64(batches*entries*120) || dashboard.Summary.SessionCount != 1 {
 				b.Fatal("dashboard totals", dashboard.Summary, err)
 			}
 			for _, dataset := range []*datastore.Store{hot, cold} {
 				messages := int64(1)
 				if dataset == hot {
-					messages = batches * evidence.MaxEntries
+					messages = int64(batches * entries)
 				}
 				var components [7]int64
 				err := store.SQL().QueryRowContext(ctx, `SELECT COUNT(*),CAST(SUM(input_tokens) AS BIGINT),CAST(SUM(output_tokens) AS BIGINT),CAST(SUM(reasoning_tokens) AS BIGINT),CAST(SUM(cache_read_tokens) AS BIGINT),CAST(SUM(cache_write_tokens) AS BIGINT),CAST(SUM(total_tokens) AS BIGINT) FROM analytics_confirmed WHERE countable AND dataset_id=?`, dataset.DatasetID()).Scan(&components[0], &components[1], &components[2], &components[3], &components[4], &components[5], &components[6])

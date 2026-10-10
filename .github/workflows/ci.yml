@@ -42,6 +42,9 @@ jobs:
         working-directory: packages/cli
         run: node ../../tools/build/src/test-go.ts -run "TestToken|TestAccount|TestOwnership|TestSchemaAndPair|TestWriteRollback|TestHosted|TestFutureProcessor|TestTimestampCredentials|TestConfigurationErrors|TestRemoteFailureRetains|TestRemoteCommitted|TestAllHarnesses|TestConcurrentCopied|TestConfigRemoteSync"
 
+      - name: Execute benchmark fixtures on both backends
+        run: pnpm run bench:smoke
+
   native:
     name: Native ${{ matrix.runner }}
     strategy:

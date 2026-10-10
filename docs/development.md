@@ -153,9 +153,22 @@ large-history latency claim. Writer benchmarks separate new observations from
 replay. Compare repeated samples on one machine/toolchain; optimize measured
 stages while preserving independent semantic fixtures.
 
-See the [ingestion performance baseline](ingestion-performance.md) for workload
-shape comparisons, authenticated HTTP, incremental sync, queries during ingestion,
-scoped profiling commands and the measured optimization priorities.
+From the repository root, execute all benchmark bodies once (including live
+PostgreSQL) before pushing:
+
+```sh
+pnpm run bench:smoke
+```
+
+Smoke uses small shared storage history but executes every benchmark family, so
+fixture SQL and semantic checks run even though normal tests do not run benchmarks.
+It runs in pre-push verification and the live PostgreSQL CI job. No latency
+threshold determines success. Separately, `pnpm run bench:storage` measures the full
+retained-history matrix with fixed iterations and sequential packages; it is not a
+CI timing gate. Use a disk-backed temporary directory as described below.
+
+See the [storage and ingestion baseline](ingestion-performance.md) for workload
+sizes, timing boundaries, engine-specific size accounting and profiling commands.
 
 ## Build Tooling
 

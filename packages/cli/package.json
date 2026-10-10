@@ -6,6 +6,8 @@
     "build": "go build -o bin/tokeninsights ./cmd/tokeninsights && go build -o bin/tokeninsights-server ./cmd/tokeninsights-server",
     "lint": "go tool -modfile=golangci-lint.mod golangci-lint run ./...",
     "test": "node ../../tools/build/src/test-go.ts",
+    "bench:smoke": "node ../../tools/build/src/test-go.ts --benchmark-smoke",
+    "bench:storage": "node ../../tools/build/src/test-go.ts -run ^$ -bench ^BenchmarkStorage$ -benchtime=3x -count=3 -p=1 -timeout=30m",
     "test:race": "node ../../tools/build/src/test-go.ts -race"
   }
 }
