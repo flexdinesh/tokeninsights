@@ -44,6 +44,7 @@ func RunTokens(t *testing.T, factory TokenFactory) {
 		"pending_reopen_cancellation":  recovery,
 		"revision_generation_fences":   fences,
 		"query_components_pagination":  queries,
+		"query_group_counts":           queryGroupCounts,
 		"concurrent_query_snapshot":    snapshots,
 		"query_tabs_and_session_peaks": queryTabsAndSessionPeaks,
 		"ordering_and_integer_bounds":  orderingAndBounds,

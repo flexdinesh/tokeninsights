@@ -80,6 +80,8 @@ func BenchmarkStorage(b *testing.B, factory func(*testing.B) BenchmarkFixture) {
 			current := initial
 			for _, tab := range []string{"sessions", "context", "tokens"} {
 				b.Run("Query-"+tab, func(b *testing.B) {
+					stopProfile := queryProfile(b)
+					defer stopProfile()
 					d := tokens.Dataset("tenant-0")
 					q := query()
 					q.Tab = tab

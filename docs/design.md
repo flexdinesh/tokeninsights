@@ -251,6 +251,10 @@ analytics scans. Read transaction covers metadata/summary/rows/facets. Responses
 identify instance/database/dataset/generation/published revision/input revision; browser guards
 snapshot identities. Values are bound; identifiers are fixed selections.
 Clamp page before offset arithmetic; reject unsafe JavaScript integer aggregates.
+Row counts group only visible identities, using the same grouping definition as
+row aggregates. Fact counts share the filtered summary scan; synced-session counts
+remain dataset-wide. Counts, page clamping, summaries and rows stay in the same
+read transaction on both engines.
 IANA/fixed local offsets apply to calendars. Pages 50 default/200 max, dimensions
 12 chart groups, time charts 1000 buckets, session facets 100.
 The direct query adapter offers bounded complete results for TUI through the same
