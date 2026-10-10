@@ -16,6 +16,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -23,14 +24,15 @@ import (
 	"testing"
 	"time"
 
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/accounts"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/db"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/evidence"
 	api "github.com/flexdinesh/tokeninsights/packages/cli/internal/server/api"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/storagecontract"
 )
 
 var clientBinary, serverBinary string
 var remoteTokens sync.Map
+var deploymentHTTP = &http.Client{Timeout: 5 * time.Second}
 
 func TestMain(m *testing.M) {
 	dir, err := os.MkdirTemp("", "ti-deployment-build-")
@@ -129,82 +131,11 @@ func (c client) sync(t *testing.T) {
 
 func startRemote(t *testing.T) (string, string) {
 	t.Helper()
-	root := t.TempDir()
-	path := filepath.Join(root, "server.sqlite")
-	command := exec.Command(serverBinary, "--public-url", "https://usage.example", "--listen", "0.0.0.0:0", "--server-db-path", path)
-	command.Env = isolatedEnvironment(root)
-	output, err := command.StdoutPipe()
-	if err != nil {
-		t.Fatal(err)
-	}
-	log, err := os.Create(filepath.Join(root, "server.log"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	command.Stderr = log
-	if err := command.Start(); err != nil {
-		t.Fatal(err)
-	}
-	done := make(chan error, 1)
-	go func() { done <- command.Wait() }()
-	t.Cleanup(func() {
-		_ = command.Process.Signal(syscall.SIGTERM)
-		select {
-		case err := <-done:
-			if err != nil {
-				t.Error(err)
-			}
-		case <-time.After(20 * time.Second):
-			_ = command.Process.Kill()
-			<-done
-			t.Error("server shutdown timeout")
-		}
-		_ = log.Close()
-	})
-	ready := make(chan string, 1)
-	go func() {
-		scanner := bufio.NewScanner(output)
-		if scanner.Scan() {
-			ready <- scanner.Text()
-		}
-	}()
-	var target string
-	select {
-	case target = <-ready:
-	case <-time.After(10 * time.Second):
-		body, _ := os.ReadFile(log.Name())
-		t.Fatalf("server readiness: %s", body)
-	}
-	if !strings.HasPrefix(target, "http://127.0.0.1:") {
-		t.Fatal("unusable wildcard URL", target)
-	}
-	if _, err := os.Stat(filepath.Join(root, "config")); !os.IsNotExist(err) {
-		t.Fatal("remote created client config", err)
-	}
-	if _, err := os.Stat(filepath.Join(root, "state")); !os.IsNotExist(err) {
-		t.Fatal("remote created local service state", err)
-	}
-	var outputUser, outputToken bytes.Buffer
-	if err := accounts.AdminCall(t.Context(), path+".admin.sock", accounts.AdminRequest{Operation: "create-user", DisplayName: "fixture"}, &outputUser); err != nil {
-		t.Fatal(err)
-	}
-	var user accounts.User
-	if err := json.Unmarshal(outputUser.Bytes(), &user); err != nil {
-		t.Fatal(err)
-	}
-	if err := accounts.AdminCall(t.Context(), path+".admin.sock", accounts.AdminRequest{Operation: "create-token", UserID: user.UserID, Permissions: []string{accounts.Read, accounts.Ingest}}, &outputToken); err != nil {
-		t.Fatal(err)
-	}
-	var token accounts.Token
-	if err := json.Unmarshal(outputToken.Bytes(), &token); err != nil {
-		t.Fatal(err)
-	}
-	remoteTokens.Store(target, token.Secret)
-	t.Cleanup(func() { remoteTokens.Delete(target) })
-	return target, path
+	r := newRemote(t, "sqlite")
+	return r.target, r.path
 }
 
-func assertUsage(t *testing.T, target, path string, facts, total int64) []string {
+func assertUsage(t *testing.T, target string, facts, total int64) []string {
 	t.Helper()
 	var fixture struct {
 		Facts      int64 `json:"facts"`
@@ -222,12 +153,25 @@ func assertUsage(t *testing.T, target, path string, facts, total int64) []string
 	if err := json.Unmarshal(body, &fixture); err != nil || fixture.Facts != 1 || fixture.Total*facts != total {
 		t.Fatal("invalid independent fixture oracle", fixture, err)
 	}
-	return assertComponents(t, target, path, [7]int64{facts, fixture.Input * facts, fixture.Output * facts, fixture.Reasoning * facts, fixture.CacheRead * facts, fixture.CacheWrite * facts, total})
+	return assertComponents(t, target, [7]int64{facts, fixture.Input * facts, fixture.Output * facts, fixture.Reasoning * facts, fixture.CacheRead * facts, fixture.CacheWrite * facts, total})
 }
-func assertComponents(t *testing.T, target, path string, want [7]int64) []string {
+func assertComponents(t *testing.T, target string, want [7]int64) []string {
 	t.Helper()
 
-	_ = path // HTTP owns the live data file; do not open a second storage owner.
+	data := readUsage(t, target)
+	if data.FactCount == nil || *data.FactCount != want[0] || data.Summary.Total != want[6] || data.Summary.Input != want[1] || data.Summary.Output != want[2] || data.Summary.Reasoning != want[3] || data.Summary.CacheRead != want[4] || data.Summary.CacheWrite != want[5] {
+		t.Fatal("REST component/count oracle", data)
+	}
+	ids := []string{}
+	for _, row := range data.Rows {
+		ids = append(ids, row.Key)
+	}
+
+	return ids
+}
+
+func readUsage(t *testing.T, target string) api.UsageResponseV2 {
+	t.Helper()
 	deadline := time.Now().Add(10 * time.Second)
 	var data api.UsageResponseV2
 	for {
@@ -238,7 +182,7 @@ func assertComponents(t *testing.T, target, path string, want [7]int64) []string
 		if token, ok := remoteTokens.Load(target); ok {
 			request.Header.Set("Authorization", "Bearer "+token.(string))
 		}
-		response, err := http.DefaultClient.Do(request)
+		response, err := deploymentHTTP.Do(request)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -255,15 +199,7 @@ func assertComponents(t *testing.T, target, path string, want [7]int64) []string
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
-	if data.FactCount == nil || *data.FactCount != want[0] || data.Summary.Total != want[6] || data.Summary.Input != want[1] || data.Summary.Output != want[2] || data.Summary.Reasoning != want[3] || data.Summary.CacheRead != want[4] || data.Summary.CacheWrite != want[5] {
-		t.Fatal("REST component/count oracle", data)
-	}
-	ids := []string{}
-	for _, row := range data.Rows {
-		ids = append(ids, row.Key)
-	}
-
-	return ids
+	return data
 }
 
 func assertAcknowledged(t *testing.T, c client) {
@@ -309,17 +245,21 @@ func (c client) deleteCollector(t *testing.T) {
 }
 
 func TestConfigRemoteSyncTracerAndCopiedClients(t *testing.T) {
-	target, path := startRemote(t)
+	runRemoteBackends(t, configRemoteSyncTracerAndCopiedClients)
+}
+
+func configRemoteSyncTracerAndCopiedClients(t *testing.T, remote *remoteServer) {
+	target := remote.target
 	a, b := newClient(t), newClient(t)
 	for _, c := range []client{a, b} {
 		c.must(t, "config", "set", "server-url", target)
 		c.sync(t)
-		assertUsage(t, target, path, 1, 120)
+		assertUsage(t, target, 1, 120)
 		assertAcknowledged(t, c)
 	}
-	before := assertUsage(t, target, path, 1, 120)
+	before := assertUsage(t, target, 1, 120)
 	a.sync(t)
-	after := assertUsage(t, target, path, 1, 120)
+	after := assertUsage(t, target, 1, 120)
 	if strings.Join(before, ",") != strings.Join(after, ",") {
 		t.Fatal("repeat changed stable identities")
 	}
@@ -328,14 +268,18 @@ func TestConfigRemoteSyncTracerAndCopiedClients(t *testing.T) {
 	}
 	a.deleteCollector(t)
 	a.sync(t)
-	after = assertUsage(t, target, path, 1, 120)
+	after = assertUsage(t, target, 1, 120)
 	if strings.Join(before, ",") != strings.Join(after, ",") {
 		t.Fatal("rebuild changed stable identities")
 	}
 }
 
-func TestRemoteFailureRetainsJournalAndNeverStartsLocal(t *testing.T) {
-	target, path := startRemote(t)
+func TestRemoteFailureRetainsJournalAndRestartResumesAcceptedWork(t *testing.T) {
+	runRemoteBackends(t, remoteFailureRetainsJournalAndRestartResumesAcceptedWork)
+}
+
+func remoteFailureRetainsJournalAndRestartResumesAcceptedWork(t *testing.T, remote *remoteServer) {
+	target := remote.target
 	upstream, err := url.Parse(target)
 	if err != nil {
 		t.Fatal(err)
@@ -406,11 +350,40 @@ func TestRemoteFailureRetainsJournalAndNeverStartsLocal(t *testing.T) {
 	if journal != 2 || cursor != 0 || receipts != 0 {
 		t.Fatal("work lost or prematurely acknowledged", journal, cursor, receipts)
 	}
-	assertUsage(t, target, path, 0, 0)
+	assertUsage(t, target, 0, 0)
+	// Commit the exact retained request with processing stopped, then let only
+	// the real server binary resume it. The client still lacks its receipt.
+	var committed evidence.Response
+	remote.offlineDataset(t, func(d storagecontract.Dataset) {
+		var err error
+		committed, err = d.Receiver.Accept(t.Context(), evidence.ProtocolVersion, saved)
+		if err != nil || committed.Processing.Pending == 0 {
+			t.Fatal("fixture must contain accepted, unprocessed work", committed, err)
+		}
+	})
+	remote.start(t)
+	before := assertUsage(t, target, 1, 120)
 	failFirst.Store(false)
 	c.must(t, "sync", "--publish-only")
-	assertUsage(t, target, path, 1, 120)
+	if after := assertUsage(t, target, 1, 120); !slices.Equal(before, after) {
+		t.Fatal("replay changed identities")
+	}
 	assertAcknowledged(t, c)
+	database, err = db.OpenWritable(c.collector)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var acknowledged []byte
+	err = database.QueryRow("SELECT receipt_bytes FROM evidence_batches").Scan(&acknowledged)
+	_ = database.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var response evidence.Response
+	if err := json.Unmarshal(acknowledged, &response); err != nil || response.Receipt != committed.Receipt {
+		t.Fatal("restart changed committed receipt", err)
+	}
+
 	mu.Lock()
 	defer mu.Unlock()
 	if len(requests) != 4 {
@@ -438,7 +411,11 @@ func TestUnreachableRemoteFailsPreflightWithoutCollectionOrLocalServer(t *testin
 }
 
 func TestRemoteCommittedResponseLostReplaysExactRequestAndReceipt(t *testing.T) {
-	target, path := startRemote(t)
+	runRemoteBackends(t, remoteCommittedResponseLostReplaysExactRequestAndReceipt)
+}
+
+func remoteCommittedResponseLostReplaysExactRequestAndReceipt(t *testing.T, remote *remoteServer) {
+	target := remote.target
 	upstream, err := url.Parse(target)
 	if err != nil {
 		t.Fatal(err)
@@ -499,7 +476,7 @@ func TestRemoteCommittedResponseLostReplaysExactRequestAndReceipt(t *testing.T) 
 	if output, err := c.run(t, "sync", "--harness", "pi", "--source-dir", c.source); err == nil {
 		t.Fatal("lost receipt acknowledged", output)
 	}
-	before := assertUsage(t, target, path, 1, 120)
+	before := assertUsage(t, target, 1, 120)
 	database, err := db.OpenWritable(c.collector)
 	if err != nil {
 		t.Fatal(err)
@@ -513,6 +490,8 @@ func TestRemoteCommittedResponseLostReplaysExactRequestAndReceipt(t *testing.T) 
 	if err := database.QueryRow("SELECT acknowledged_sequence FROM evidence_destinations").Scan(&cursor); err != nil || cursor != 0 {
 		t.Fatal("lost response advanced cursor", cursor, err)
 	}
+	remote.stop()
+	remote.start(t) // Same endpoint, persisted accounts, dataset and receipt.
 	loseFirst.Store(false)
 	c.must(t, "sync", "--publish-only")
 	if err := database.QueryRow("SELECT receipt_bytes FROM evidence_batches").Scan(&acknowledgedReceipt); err != nil {
@@ -528,7 +507,7 @@ func TestRemoteCommittedResponseLostReplaysExactRequestAndReceipt(t *testing.T) 
 			t.Fatal("retry changed request bytes")
 		}
 	}
-	after := assertUsage(t, target, path, 1, 120)
+	after := assertUsage(t, target, 1, 120)
 	if strings.Join(before, ",") != strings.Join(after, ",") {
 		t.Fatal("retry changed identities")
 	}
@@ -542,7 +521,7 @@ func TestLocalAndRemoteBinariesCannotOwnSameDatabase(t *testing.T) {
 		if output, err := c.run(t, "web", "--sync=false", "--open=false", "--server-db-path", path, "--port", "0"); err == nil {
 			t.Fatal("local replaced remote owner", output)
 		}
-		assertUsage(t, target, path, 0, 0)
+		assertUsage(t, target, 0, 0)
 	})
 	t.Run("local_then_remote", func(t *testing.T) {
 		c := newClient(t)
@@ -554,20 +533,20 @@ func TestLocalAndRemoteBinariesCannotOwnSameDatabase(t *testing.T) {
 		if output, err := command.CombinedOutput(); err == nil || !strings.Contains(string(output), "owns database") {
 			t.Fatal("remote replaced local owner", string(output), err)
 		}
-		assertUsage(t, localURL, path, 0, 0)
+		assertUsage(t, localURL, 0, 0)
 	})
 }
 
 func TestConfigDestinationSwitchingPreservesIndependentProgress(t *testing.T) {
-	a, aPath := startRemote(t)
-	b, bPath := startRemote(t)
+	a, _ := startRemote(t)
+	b, _ := startRemote(t)
 	c := newClient(t)
 	for _, target := range []string{a, b, a} {
 		c.must(t, "config", "set", "server-url", target)
 		c.sync(t)
 	}
-	assertUsage(t, a, aPath, 1, 120)
-	assertUsage(t, b, bPath, 1, 120)
+	assertUsage(t, a, 1, 120)
+	assertUsage(t, b, 1, 120)
 	database, err := db.OpenWritable(c.collector)
 	if err != nil {
 		t.Fatal(err)
@@ -586,7 +565,11 @@ func TestConfigDestinationSwitchingPreservesIndependentProgress(t *testing.T) {
 }
 
 func TestConcurrentCopiedAndDistinctClients(t *testing.T) {
-	target, path := startRemote(t)
+	runRemoteBackends(t, concurrentCopiedAndDistinctClients)
+}
+
+func concurrentCopiedAndDistinctClients(t *testing.T, remote *remoteServer) {
+	target := remote.target
 	clients := []client{newClient(t), newClient(t), newClient(t)}
 	// Third client has distinct native identities but exactly the same counters.
 	body, err := os.ReadFile(filepath.Join(clients[2].source, "session.jsonl"))
@@ -615,16 +598,16 @@ func TestConcurrentCopiedAndDistinctClients(t *testing.T) {
 	for err := range errors {
 		t.Fatal(err)
 	}
-	assertUsage(t, target, path, 2, 240)
+	assertUsage(t, target, 2, 240)
 	for _, c := range clients {
 		assertAcknowledged(t, c)
 		c.sync(t)
 	}
-	assertUsage(t, target, path, 2, 240)
+	assertUsage(t, target, 2, 240)
 }
 
 func TestConfiguredLocalDefaultAndExplicitEmptyRemoteOverride(t *testing.T) {
-	remote, path := startRemote(t)
+	remote, _ := startRemote(t)
 	c := newClient(t)
 	c.must(t, "config", "set", "port", "0")
 	c.must(t, "config", "set", "host", "0.0.0.0")
@@ -632,12 +615,12 @@ func TestConfiguredLocalDefaultAndExplicitEmptyRemoteOverride(t *testing.T) {
 	c.env = append(c.env, "TOKENINSIGHTS_ACCESS_TOKEN=")
 	c.must(t, "sync", "--harness", "pi", "--source-dir", c.source, "--server-url=")
 	localURL := startLocal(t, c)
-	assertUsage(t, localURL, "", 1, 120)
-	assertUsage(t, remote, path, 0, 0)
+	assertUsage(t, localURL, 1, 120)
+	assertUsage(t, remote, 0, 0)
 	c.env = append(c.env, "TOKENINSIGHTS_SERVER_URL=")
 	c.sync(t) // Active web owner consumes this request directly.
-	assertUsage(t, localURL, "", 1, 120)
-	assertUsage(t, remote, path, 0, 0)
+	assertUsage(t, localURL, 1, 120)
+	assertUsage(t, remote, 0, 0)
 }
 
 func startLocal(t *testing.T, c client) string {
@@ -684,7 +667,11 @@ func startLocal(t *testing.T, c client) string {
 }
 
 func TestAllHarnessesPublishThroughConfiguredRemoteBinaryAndRebuild(t *testing.T) {
-	target, path := startRemote(t)
+	runRemoteBackends(t, allHarnessesPublishThroughConfiguredRemoteBinaryAndRebuild)
+}
+
+func allHarnessesPublishThroughConfiguredRemoteBinaryAndRebuild(t *testing.T, remote *remoteServer) {
+	target := remote.target
 	a, b := newClient(t), newClient(t)
 	for _, c := range []client{a, b} {
 		if err := os.CopyFS(c.source, os.DirFS("../../testdata/conformance/collector-rebuild/source")); err != nil {
@@ -708,15 +695,119 @@ func TestAllHarnessesPublishThroughConfiguredRemoteBinaryAndRebuild(t *testing.T
 		// Remote routing must not inspect the configured local database, even aliases.
 		c.must(t, "config", "set", "server-db-path", c.collector)
 		c.must(t, "sync", "--all", "--source-dir", c.source)
-		assertComponents(t, target, path, [7]int64{12, 800, 148, 52, 96, 6, 1102})
+		assertComponents(t, target, [7]int64{12, 800, 148, 52, 96, 6, 1102})
 	}
-	before := assertComponents(t, target, path, [7]int64{12, 800, 148, 52, 96, 6, 1102})
+	before := assertComponents(t, target, [7]int64{12, 800, 148, 52, 96, 6, 1102})
+	receipts := append(collectorReceipts(t, a), collectorReceipts(t, b)...)
+	factsBefore := receiptFactIDs(t, target, receipts)
 	a.deleteCollector(t)
 	a.must(t, "sync", "--all", "--source-dir", a.source)
-	after := assertComponents(t, target, path, [7]int64{12, 800, 148, 52, 96, 6, 1102})
+	after := assertComponents(t, target, [7]int64{12, 800, 148, 52, 96, 6, 1102})
 	if strings.Join(before, ",") != strings.Join(after, ",") {
 		t.Fatal("all-harness rebuild changed identities")
 	}
+	receipts = append(receipts, collectorReceipts(t, a)...)
+	if after := receiptFactIDs(t, target, receipts); !slices.Equal(factsBefore, after) {
+		t.Fatal("collector rebuild changed native fact identities", factsBefore, after)
+	}
+	// Stage replacement with no worker, then recover all native harnesses using
+	// the server alone. Preserve every old receipt while projections are replaced.
+	var generation int64
+	remote.offlineDataset(t, func(d storagecontract.Dataset) {
+		var err error
+		generation, err = d.Reprocess(t.Context())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, found, err := d.Processing.LoadWork(t.Context()); err != nil || !found {
+			t.Fatal("fixture must contain pending replacement work", found, err)
+		}
+	})
+	remote.start(t)
+	after = assertComponents(t, target, [7]int64{12, 800, 148, 52, 96, 6, 1102})
+	if !slices.Equal(before, after) || !slices.Equal(factsBefore, receiptFactIDs(t, target, receipts)) {
+		t.Fatal("replacement changed session or native fact identities")
+	}
+	data := readUsage(t, target)
+	if data.Generation == nil || *data.Generation != generation {
+		t.Fatal("restart did not activate replacement generation", data)
+	}
+}
+
+func collectorReceipts(t *testing.T, c client) []evidence.Receipt {
+	t.Helper()
+	database, err := db.OpenWritable(c.collector)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = database.Close() }()
+	rows, err := database.Query("SELECT receipt_bytes FROM evidence_batches")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = rows.Close() }()
+	var receipts []evidence.Receipt
+	for rows.Next() {
+		var body []byte
+		if err := rows.Scan(&body); err != nil {
+			t.Fatal(err)
+		}
+		var saved evidence.Response
+		if err := json.Unmarshal(body, &saved); err != nil {
+			t.Fatal(err)
+		}
+		receipts = append(receipts, saved.Receipt)
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
+	}
+	if len(receipts) == 0 {
+		t.Fatal("collector has no acknowledged batches")
+	}
+	return receipts
+}
+
+func receiptFactIDs(t *testing.T, target string, receipts []evidence.Receipt) []string {
+	t.Helper()
+	// Copies may select a witness from any batch. Collect confirmed identities
+	// across all receipts; excluded candidates also carry IDs but are not facts.
+	ids := map[string]bool{}
+	for _, receipt := range receipts {
+		request, err := http.NewRequestWithContext(t.Context(), http.MethodGet,
+			target+"/api/v3/ingestion/batches/"+url.PathEscape(receipt.StreamID)+"/"+url.PathEscape(receipt.BatchID), nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		secret, ok := remoteTokens.Load(target)
+		if !ok {
+			t.Fatal("missing hosted credential")
+		}
+		request.Header.Set("Authorization", "Bearer "+secret.(string))
+		response, err := deploymentHTTP.Do(request)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var current evidence.Response
+		err = json.NewDecoder(response.Body).Decode(&current)
+		_ = response.Body.Close()
+		if err != nil || response.StatusCode != http.StatusOK || current.Receipt != receipt || current.Processing.Pending != 0 {
+			t.Fatal("receipt changed or processing incomplete", current, response.StatusCode, err)
+		}
+		for _, item := range current.Processing.Items {
+			if item.Disposition == "processed" && item.FactID != "" {
+				ids[item.FactID] = true
+			}
+		}
+	}
+	if len(ids) != 12 {
+		t.Fatal("all-harness confirmed receipt fact count", len(ids))
+	}
+	result := make([]string, 0, len(ids))
+	for id := range ids {
+		result = append(result, id)
+	}
+	slices.Sort(result)
+	return result
 }
 
 func sameRawReceipt(left, right []byte) bool {
