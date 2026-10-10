@@ -17,7 +17,7 @@ sources and real current stores.
 | Projection rollback, reopen and retry | `datastore.TestPublicationRollbackReopenAndRetryPreservesUsage` |
 | Atomic generation cutover, late evidence and restart | `datastore/generation_test.go` |
 | Structural contract rejection without mutation | `db.TestCollectorContractRejectsWithoutMutation`, `datastore.TestCurrentInspectionRejectsChangedContractsWithoutMutation` |
-| Query snapshots, dataset binding and pagination | `queryclient` and `analytics` tests |
+| Query snapshots, dataset binding and pagination | `storagecontract` and `adapters/sqlanalytics` tests |
 | Composition, process ownership and shutdown | `localruntime`, `remoteserver` and `deployment` tests |
 | Mode precedence and invalid destination rejection | `config.TestResolvedModeAndDestinationContract`, `cli.TestIngestionPreflightRejectsBeforeCapture` |
 | Dependency boundaries | `architecture.TestLayerDependencies` |
@@ -25,6 +25,31 @@ sources and real current stores.
 Paths are relative to `packages/cli/internal`. Pure `processor` and `publication`
 tests retain independent semantic oracles for accounting, native identity, ambiguity,
 token components and time bounds. They complement boundary tests.
+
+## Supported compositions
+
+| Scenario | In-process SQLite | Hosted SQLite and PostgreSQL |
+| --- | --- | --- |
+| Four native harnesses, copied sources, collector rebuild and reprocessing; all token components and stable identities | `collector.TestDirectCollectorGoldenReplayAndRebuild` | `deployment.TestAllHarnessesPublishThroughConfiguredRemoteBinaryAndRebuild` (built client/server, interrupted replacement generation, HTTP session and receipt fact IDs) |
+| Committed acceptance with lost response; exact request/receipt replay | `collector.TestDirectCollectorGoldenReplayAndRebuild` | `deployment.TestRemoteCommittedResponseLostReplaysExactRequestAndReceipt` (restart before retry) |
+| Failed delivery retains journal/cursor; accepted work resumes | Local queue/lifetime tests in `localruntime`; shared adapter recovery below | `deployment.TestRemoteFailureRetainsJournalAndRestartResumesAcceptedWork` |
+| Concurrent copied and distinct native identities | Collector direct replay and storage concurrency contracts | `deployment.TestConcurrentCopiedAndDistinctClients` |
+| Configured remote, repeat sync, copied clients and collector rebuild | Not a local routing scenario | `deployment.TestConfigRemoteSyncTracerAndCopiedClients` |
+| Account provisioning, tenant isolation, spoof rejection and restart | Local default-user contracts | `remoteserver.TestHostedSharedDatabaseIsolationAndProvisioning` |
+
+`storagecontract.RunTokens` and `RunAccounts` enforce shared semantics against real
+SQLite and PostgreSQL adapters: pending reopen, atomic rollback, generation fences,
+query snapshots/components/calendar boundaries, provisioning and revocation.
+Engine-specific schema, transaction, ownership and physical privacy checks stay
+beside adapters/collector storage. Application assertions use semantic interfaces
+or HTTP; inspecting the collector's SQLite journal verifies its own durable boundary.
+
+Deployment restart fixtures stop the server and commit through the real adapter
+without a worker before restarting the same binary/endpoint. This deterministically
+proves pending recovery; it is not a power-loss or database failover simulation.
+Root `pnpm test`, `pnpm test:race` and the live PostgreSQL CI job run both hosted
+backends. Direct `go test` skips PostgreSQL without `TOKENINSIGHTS_TEST_POSTGRES_DSN`;
+use the root scripts for complete verification.
 
 Deleted normalized-publication pipelines, legacy schemas, migration/import adapters
 and old routes have no retained tests. Harness source-format tests remain: their

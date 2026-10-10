@@ -38,9 +38,9 @@ jobs:
       - uses: actions/checkout@v4
       - uses: jdx/mise-action@v4
       - run: mise run setup
-      - name: Live storage and hosted contracts
+      - name: Live storage, hosted and deployment contracts
         working-directory: packages/cli
-        run: node ../../tools/build/src/test-go.ts -run "TestToken|TestAccount|TestOwnership|TestSchemaAndPair|TestWriteRollback|TestHosted|TestFutureProcessor|TestTimestampCredentials|TestConfigurationErrors"
+        run: node ../../tools/build/src/test-go.ts -run "TestToken|TestAccount|TestOwnership|TestSchemaAndPair|TestWriteRollback|TestHosted|TestFutureProcessor|TestTimestampCredentials|TestConfigurationErrors|TestRemoteFailureRetains|TestRemoteCommitted|TestAllHarnesses|TestConcurrentCopied|TestConfigRemoteSync"
 
   native:
     name: Native ${{ matrix.runner }}

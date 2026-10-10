@@ -488,6 +488,14 @@ Reusable `storagecontract` suites run against real adapter fixtures, including
 durable reopen, acceptance replay/isolation, publication fences, query components
 and account revocation. SQL rollback/fault-injection tests stay beside each adapter.
 
+Built client/server deployment scenarios run against both hosted backends: native
+harness capture, copied/concurrent clients, collector rebuild, lost-response replay,
+and server restart with accepted work or a staged replacement generation. They
+assert HTTP totals, session/fact identities, exact retry bytes and immutable
+receipts. Restart fixtures commit work through real adapters while the binary is
+stopped; they do not race the worker or add production test switches. In-process
+composition remains SQLite-only. See the [coverage map](collector-ingestion-tests.md).
+
 ### Runtime resource ownership
 
 Composition acquires storage, lifetime locks and listeners and cleans up every
