@@ -11,8 +11,8 @@ import (
 
 const defaultPageSize = 50
 const maxPageSize = 200
-const chartLimit = 12
-const sessionOptionLimit = 100
+const ChartLimit = 12
+const SessionOptionLimit = 100
 
 type Query struct {
 	Quality        string

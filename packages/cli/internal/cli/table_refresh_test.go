@@ -13,7 +13,7 @@ import (
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/analytics"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/collector"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/collectorprogress"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/datastore"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/dataengine"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/localruntime"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/querymodel"
 	"github.com/muesli/termenv"
@@ -33,7 +33,7 @@ func savedRefreshModel(t *testing.T) interactiveModel {
 }
 
 func refreshStatusMessage(pending int64, revision, inputRevision, generation, target int64) sharedSyncMsg {
-	status := analytics.ProcessingStatus{Pending: pending, Metadata: datastore.Metadata{
+	status := analytics.ProcessingStatus{Pending: pending, Metadata: dataengine.Metadata{
 		Revision: revision, InputRevision: inputRevision, Generation: generation, TargetGeneration: target,
 	}}
 	snapshot := collectorprogress.Snapshot{Attempts: []collectorprogress.Attempt{{

@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/adapters/duckdb"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/analytics"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/collector"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/dataengine"
@@ -120,7 +121,7 @@ func BenchmarkPacedProcessing(b *testing.B) {
 			}
 			visible := time.Now()
 			query := analytics.Query{Selection: viewer.Selection{Period: "all", Bucket: "day"}, Tab: "sessions", Quality: "confirmed", Sort: "total", Direction: "desc", Page: 1, PageSize: 200}
-			dashboard, err := analytics.LoadDashboard(ctx, hot, query, time.Now())
+			dashboard, err := duckdb.LoadDashboard(ctx, hot, query, time.Now())
 			b.StopTimer()
 			queried := time.Now()
 			if err != nil || dashboard.Summary.TotalTokens != batches*evidence.MaxEntries*120 || dashboard.Summary.SessionCount != 1 {

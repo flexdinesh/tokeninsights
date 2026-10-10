@@ -20,7 +20,6 @@ import (
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/collector"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/collectorprogress"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/config"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/datastore"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/evidence"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/localruntime"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/pipeline"
@@ -398,7 +397,7 @@ func TestLocalWebHTTPFailureCancelsAndJoinsCollection(t *testing.T) {
 		return collector.Result{}, ctx.Err()
 	}
 	expected := errors.New("listener unavailable")
-	serveLocalWeb = func(ctx context.Context, store *datastore.Store, bindings []serverruntime.Binding, ready func() error) error {
+	serveLocalWeb = func(ctx context.Context, store serverruntime.Readiness, bindings []serverruntime.Binding, ready func() error) error {
 		bindings[0].Listener = failedWebListener{Listener: bindings[0].Listener, err: expected}
 		return serverruntime.Serve(ctx, store, bindings, ready)
 	}

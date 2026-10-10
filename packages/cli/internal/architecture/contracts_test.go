@@ -43,6 +43,16 @@ func TestLayerDependencies(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	for name, dependencies := range imports {
+		if name == "storagecontract" {
+			continue
+		}
+		for _, dependency := range dependencies {
+			if dependency == prefix+"storagecontract" {
+				t.Errorf("production package %s imports test contracts", name)
+			}
+		}
+	}
 	rules := []struct {
 		name      string
 		forbidden []string
@@ -53,7 +63,10 @@ func TestLayerDependencies(t *testing.T) {
 		{"collectorprogress", []string{prefix + "pipeline", prefix + "collector", prefix + "localruntime", prefix + "datastore"}},
 		{"datastore", []string{"net/http", prefix + "ingestionhttp", prefix + "collector", prefix + "pipeline", prefix + "server"}},
 		{"querymodel", []string{"database/sql", "net/http", prefix + "db", prefix + "datastore", prefix + "server"}},
-		{"server", []string{prefix + "pipeline", prefix + "collector", prefix + "localruntime", prefix + "remoteserver"}},
+		{"analytics", []string{"database/sql", prefix + "datastore", prefix + "appstore", prefix + "db", prefix + "adapters"}},
+		{"accounts", []string{"database/sql", prefix + "datastore", prefix + "appstore", prefix + "db", prefix + "adapters"}},
+		{"server", []string{"database/sql", prefix + "datastore", prefix + "appstore", prefix + "adapters", prefix + "pipeline", prefix + "collector", prefix + "localruntime", prefix + "remoteserver"}},
+		{"serverruntime", []string{"database/sql", prefix + "datastore", prefix + "appstore", prefix + "db", prefix + "adapters"}},
 	}
 	for _, rule := range rules {
 		t.Run(rule.name, func(t *testing.T) {

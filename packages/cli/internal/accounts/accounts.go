@@ -14,8 +14,8 @@ const (
 	Ingest              = "ingest"
 	SessionCookieName   = "tokeninsights_session"
 	SessionLifetime     = 24 * time.Hour
-	credentialBytes     = 32
-	maxDisplayNameBytes = 200
+	CredentialBytes     = 32
+	MaxDisplayNameBytes = 200
 )
 
 var ErrUnauthenticated = errors.New("unauthenticated")
@@ -52,6 +52,11 @@ type Token struct {
 }
 
 // Repository owns credential transactions and recoverable user provisioning.
+// Active users have a durable dataset; failed provisioning retains a fixed pending
+// identity. Secrets persist only as digests. Authentication checks user enablement,
+// expiry and revocation on every call, including a session's source token. Sessions
+// grant read only; token rotation cannot change a user's dataset. Account and token
+// stores need no shared transaction even when one database implements both.
 type Repository interface {
 	CreateUser(ctx context.Context, name string) (User, error)
 	DisableUser(ctx context.Context, id string) error

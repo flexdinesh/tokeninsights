@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/adapters/duckdb"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/analytics"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/collector"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/localruntime"
@@ -69,7 +70,7 @@ func BenchmarkIngestionSavedQueries(b *testing.B) {
 			defer ticker.Stop()
 			for {
 				start := time.Now()
-				dashboard, err := analytics.LoadDashboard(ctx, runtime.Store, query, time.Now())
+				dashboard, err := duckdb.LoadDashboard(ctx, runtime.Store, query, time.Now())
 				elapsed := time.Since(start)
 				queryTime += elapsed
 				maxQuery = max(maxQuery, elapsed)
@@ -86,7 +87,7 @@ func BenchmarkIngestionSavedQueries(b *testing.B) {
 					if err != nil {
 						b.Fatal(err)
 					}
-					final, err := analytics.LoadDashboard(ctx, runtime.Store, query, time.Now())
+					final, err := duckdb.LoadDashboard(ctx, runtime.Store, query, time.Now())
 					if err != nil || final.Summary.TotalTokens != want || final.Pending != 0 {
 						b.Fatalf("final snapshot: %+v %v", final, err)
 					}

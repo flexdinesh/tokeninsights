@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/adapters/duckdb"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/collector"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/localruntime"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/pipeline"
@@ -48,7 +49,7 @@ func BenchmarkLocalSavedQueries(b *testing.B) {
 	if err := runtime.WaitVisible(b.Context()); err != nil {
 		b.Fatal(err)
 	}
-	httpServer := httptest.NewServer(server.NewDataHandler(b.Context(), runtime.Store, nil, "127.0.0.1", runtime.InstanceID, false))
+	httpServer := httptest.NewServer(server.NewDataHandler(b.Context(), duckdb.Source{Store: runtime.Store}, nil, "127.0.0.1", runtime.InstanceID, false))
 	b.Cleanup(httpServer.Close)
 	httpClient, err := queryclient.New(httpServer.URL, httpServer.Client())
 	if err != nil {

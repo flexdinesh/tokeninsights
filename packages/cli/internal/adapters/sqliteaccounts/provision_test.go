@@ -1,10 +1,11 @@
-package accounts
+package sqliteaccounts
 
 import (
 	"context"
 	"errors"
 	"testing"
 
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/accounts"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/datastore"
 )
 
@@ -25,13 +26,13 @@ func TestProvisioningResumesSameIdentityBeforeAndAfterDatasetCreation(t *testing
 	for _, after := range []bool{false, true} {
 		t.Run(map[bool]string{false: "before", true: "after"}[after], func(t *testing.T) {
 			s, store := testAccounts(t)
-			repository := s.repository.(*SQLite)
+			repository := store.repository
 			repository.datasets = interruptedDatasets{Store: store.data, after: after}
 			pending, err := s.CreateUser(t.Context(), "Alice")
 			if err == nil || pending.UserID == "" || pending.DatasetID == "" {
 				t.Fatal("lost pending identity", pending, err)
 			}
-			if _, err := s.CreateToken(t.Context(), pending.UserID, []string{Read}, nil); err == nil {
+			if _, err := s.CreateToken(t.Context(), pending.UserID, []string{accounts.Read}, nil); err == nil {
 				t.Fatal("pending user minted token")
 			}
 			repository.datasets = store.data
@@ -41,7 +42,7 @@ func TestProvisioningResumesSameIdentityBeforeAndAfterDatasetCreation(t *testing
 			if err := repository.Resume(t.Context()); err != nil {
 				t.Fatal("resume not idempotent", err)
 			}
-			token, err := s.CreateToken(t.Context(), pending.UserID, []string{Read}, nil)
+			token, err := s.CreateToken(t.Context(), pending.UserID, []string{accounts.Read}, nil)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -55,7 +56,7 @@ func TestProvisioningResumesSameIdentityBeforeAndAfterDatasetCreation(t *testing
 			if err := repository.Resume(t.Context()); err != nil {
 				t.Fatal(err)
 			}
-			if _, err := s.AuthenticateBearer(t.Context(), token.Secret); !errors.Is(err, ErrUnauthenticated) {
+			if _, err := s.AuthenticateBearer(t.Context(), token.Secret); !errors.Is(err, accounts.ErrUnauthenticated) {
 				t.Fatal("resume reenabled user", err)
 			}
 		})

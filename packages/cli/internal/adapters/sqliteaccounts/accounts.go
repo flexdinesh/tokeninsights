@@ -1,82 +1,51 @@
-package accounts
+package sqliteaccounts
 
 import (
 	"context"
-	"crypto/rand"
-	"crypto/sha256"
 	"database/sql"
 	"encoding/base64"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/appstore"
 	"strings"
 	"time"
+
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/accounts"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/appstore"
 )
 
-// Datasets is the account lifecycle's token-store contract.
-type Datasets interface {
-	EnsureDataset(context.Context, string) error
-	DatasetExists(context.Context, string) (bool, error)
-	ReprocessDataset(context.Context, string) (int64, error)
-}
+const cleanupBatch = 1000
+
 type SQLite struct {
 	store    *appstore.Store
-	datasets Datasets
+	datasets accounts.Datasets
 }
 
-func NewSQLite(store *appstore.Store, datasets Datasets) *SQLite {
+var _ accounts.Repository = (*SQLite)(nil)
+
+func NewSQLite(store *appstore.Store, datasets accounts.Datasets) *SQLite {
 	return &SQLite{store: store, datasets: datasets}
 }
-func opaque() (string, error) {
-	var data [credentialBytes]byte
-	if _, err := rand.Read(data[:]); err != nil {
-		return "", err
-	}
-	return base64.RawURLEncoding.EncodeToString(data[:]), nil
-}
-
-func digest(secret string) string {
-	sum := sha256.Sum256([]byte(secret))
-	return hex.EncodeToString(sum[:])
-}
-
-func encodePermissions(scopes []string) (string, error) {
-	if len(scopes) == 0 || len(scopes) > 2 {
-		return "", errors.New("invalid_permissions")
-	}
-	seen := make(map[string]bool)
-	for _, scope := range scopes {
-		if (scope != Read && scope != Ingest) || seen[scope] {
-			return "", errors.New("invalid_permissions")
-		}
-		seen[scope] = true
-	}
-	encoded, err := json.Marshal(scopes)
-	return string(encoded), err
-}
-
-func (s *SQLite) CreateUser(ctx context.Context, name string) (User, error) {
+func (s *SQLite) CreateUser(ctx context.Context, name string) (accounts.User, error) {
 	name = strings.TrimSpace(name)
-	if name == "" || len(name) > maxDisplayNameBytes {
-		return User{}, errors.New("invalid_display_name")
+	if name == "" || len(name) > accounts.MaxDisplayNameBytes {
+		return accounts.User{}, errors.New("invalid_display_name")
 	}
-	id, err := opaque()
+	id, err := accounts.NewCredential()
 	if err != nil {
-		return User{}, err
+		return accounts.User{}, err
 	}
-	dataset, err := opaque()
+	dataset, err := accounts.NewCredential()
 	if err != nil {
-		return User{}, err
+		return accounts.User{}, err
 	}
-	user := User{UserID: id, DatasetID: dataset, DisplayName: name}
+	user := accounts.User{UserID: id, DatasetID: dataset, DisplayName: name}
 	err = s.store.WriteTransaction(ctx, func(tx *sql.Tx) error {
 		_, err := tx.ExecContext(ctx, "INSERT INTO users VALUES(?,?,?,?,?,'pending')", id, dataset, name, false, time.Now().UTC().Format(time.RFC3339Nano))
 		return err
 	})
 	if err != nil {
-		return User{}, err
+		return accounts.User{}, err
 	}
 	if err := s.activate(ctx, user); err != nil {
 		return user, err
@@ -85,7 +54,7 @@ func (s *SQLite) CreateUser(ctx context.Context, name string) (User, error) {
 	return user, nil
 }
 
-func (s *SQLite) activate(ctx context.Context, user User) error {
+func (s *SQLite) activate(ctx context.Context, user accounts.User) error {
 	if err := s.datasets.EnsureDataset(ctx, user.DatasetID); err != nil {
 		return err
 	}
@@ -101,9 +70,9 @@ func (s *SQLite) Resume(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	var users []User
+	var users []accounts.User
 	for rows.Next() {
-		var u User
+		var u accounts.User
 		if err := rows.Scan(&u.UserID, &u.DatasetID, &u.DisplayName); err != nil {
 			_ = rows.Close()
 			return err
@@ -136,28 +105,31 @@ func (s *SQLite) DisableUser(ctx context.Context, userID string) error {
 			return err
 		}
 		if !exists {
-			return ErrNotFound
+			return accounts.ErrNotFound
 		}
 		_, err := tx.ExecContext(ctx, "UPDATE users SET enabled=false,provisioning='ready' WHERE user_id=?", userID)
 		return err
 	})
 }
 
-func (s *SQLite) CreateToken(ctx context.Context, userID string, scopes []string, expires *time.Time) (Token, error) {
-	encoded, err := encodePermissions(scopes)
+func (s *SQLite) CreateToken(ctx context.Context, userID string, scopes []string, expires *time.Time) (accounts.Token, error) {
+	if err := accounts.ValidatePermissions(scopes); err != nil {
+		return accounts.Token{}, err
+	}
+	encoded, err := json.Marshal(scopes)
 	if err != nil {
-		return Token{}, err
+		return accounts.Token{}, err
 	}
 	if expires != nil && !expires.After(time.Now()) {
-		return Token{}, errors.New("invalid_expiry")
+		return accounts.Token{}, errors.New("invalid_expiry")
 	}
-	id, err := opaque()
+	id, err := accounts.NewCredential()
 	if err != nil {
-		return Token{}, err
+		return accounts.Token{}, err
 	}
-	secret, err := opaque()
+	secret, err := accounts.NewCredential()
 	if err != nil {
-		return Token{}, err
+		return accounts.Token{}, err
 	}
 	var expiry interface{}
 	if expires != nil {
@@ -167,20 +139,20 @@ func (s *SQLite) CreateToken(ctx context.Context, userID string, scopes []string
 		var enabled bool
 		if err := tx.QueryRowContext(ctx, "SELECT enabled FROM users WHERE user_id=?", userID).Scan(&enabled); err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
-				return ErrNotFound
+				return accounts.ErrNotFound
 			}
 			return err
 		}
 		if !enabled {
 			return errors.New("user_disabled")
 		}
-		_, err := tx.ExecContext(ctx, "INSERT INTO tokens VALUES(?,?,?,?,?,?,NULL)", id, userID, digest(secret), encoded, time.Now().UTC().Format(time.RFC3339Nano), expiry)
+		_, err := tx.ExecContext(ctx, "INSERT INTO tokens VALUES(?,?,?,?,?,?,NULL)", id, userID, accounts.CredentialDigest(secret), string(encoded), time.Now().UTC().Format(time.RFC3339Nano), expiry)
 		return err
 	})
 	if err != nil {
-		return Token{}, err
+		return accounts.Token{}, err
 	}
-	return Token{TokenID: id, Secret: secret, Permissions: append([]string(nil), scopes...), ExpiresAt: expires}, nil
+	return accounts.Token{TokenID: id, Secret: secret, Permissions: append([]string(nil), scopes...), ExpiresAt: expires}, nil
 }
 
 func (s *SQLite) RevokeToken(ctx context.Context, id string) error {
@@ -190,7 +162,7 @@ func (s *SQLite) RevokeToken(ctx context.Context, id string) error {
 			return err
 		}
 		if !exists {
-			return ErrNotFound
+			return accounts.ErrNotFound
 		}
 		_, err := tx.ExecContext(ctx, "UPDATE tokens SET revoked_at=COALESCE(revoked_at,?) WHERE token_id=?", time.Now().UTC().Format(time.RFC3339Nano), id)
 		return err
@@ -209,81 +181,81 @@ type rowReader interface {
 	QueryRowContext(context.Context, string, ...interface{}) *sql.Row
 }
 
-func authenticateToken(ctx context.Context, reader rowReader, secret string) (Principal, string, error) {
-	if len(secret) != base64.RawURLEncoding.EncodedLen(credentialBytes) {
-		return Principal{}, "", ErrUnauthenticated
+func authenticateToken(ctx context.Context, reader rowReader, secret string) (accounts.Principal, string, error) {
+	if len(secret) != base64.RawURLEncoding.EncodedLen(accounts.CredentialBytes) {
+		return accounts.Principal{}, "", accounts.ErrUnauthenticated
 	}
-	var p Principal
+	var p accounts.Principal
 	var tokenID, encoded string
 	var enabled bool
 	var expiry, revoked sql.NullString
 	err := reader.QueryRowContext(ctx, `SELECT u.user_id,u.dataset_id,u.enabled,t.token_id,t.permissions,t.expires_at,t.revoked_at
-	FROM tokens t JOIN users u ON u.user_id=t.user_id WHERE t.digest=?`, digest(secret)).Scan(&p.UserID, &p.DatasetID, &enabled, &tokenID, &encoded, &expiry, &revoked)
+	FROM tokens t JOIN users u ON u.user_id=t.user_id WHERE t.digest=?`, accounts.CredentialDigest(secret)).Scan(&p.UserID, &p.DatasetID, &enabled, &tokenID, &encoded, &expiry, &revoked)
 	if errors.Is(err, sql.ErrNoRows) {
-		return Principal{}, "", ErrUnauthenticated
+		return accounts.Principal{}, "", accounts.ErrUnauthenticated
 	}
 	if err != nil {
-		return Principal{}, "", err
+		return accounts.Principal{}, "", err
 	}
 	if !enabled || revoked.Valid || !validExpiry(expiry, time.Now()) {
-		return Principal{}, "", ErrUnauthenticated
+		return accounts.Principal{}, "", accounts.ErrUnauthenticated
 	}
 	if err := json.Unmarshal([]byte(encoded), &p.Permissions); err != nil {
-		return Principal{}, "", fmt.Errorf("invalid_account_permissions: %w", err)
+		return accounts.Principal{}, "", fmt.Errorf("invalid_account_permissions: %w", err)
 	}
-	if _, err := encodePermissions(p.Permissions); err != nil {
-		return Principal{}, "", err
+	if err := accounts.ValidatePermissions(p.Permissions); err != nil {
+		return accounts.Principal{}, "", err
 	}
 	return p, tokenID, nil
 }
 
-func (s *SQLite) AuthenticateBearer(ctx context.Context, secret string) (Principal, error) {
+func (s *SQLite) AuthenticateBearer(ctx context.Context, secret string) (accounts.Principal, error) {
 	p, _, err := authenticateToken(ctx, s.store.SQL(), secret)
 	return p, err
 }
 
-func (s *SQLite) AuthenticateSession(ctx context.Context, secret string) (Principal, error) {
-	if len(secret) != base64.RawURLEncoding.EncodedLen(credentialBytes) {
-		return Principal{}, ErrUnauthenticated
+func (s *SQLite) AuthenticateSession(ctx context.Context, secret string) (accounts.Principal, error) {
+	if len(secret) != base64.RawURLEncoding.EncodedLen(accounts.CredentialBytes) {
+		return accounts.Principal{}, accounts.ErrUnauthenticated
 	}
-	var p Principal
+	var p accounts.Principal
 	var enabled bool
 	var expiry, revoked, tokenExpiry, tokenRevoked sql.NullString
 	err := s.store.SQL().QueryRowContext(ctx, `SELECT u.user_id,u.dataset_id,u.enabled,s.expires_at,s.revoked_at,t.expires_at,t.revoked_at
 	FROM sessions s JOIN users u ON u.user_id=s.user_id
-	JOIN tokens t ON t.token_id=s.source_token_id AND t.user_id=s.user_id WHERE s.digest=?`, digest(secret)).Scan(&p.UserID, &p.DatasetID, &enabled, &expiry, &revoked, &tokenExpiry, &tokenRevoked)
+	JOIN tokens t ON t.token_id=s.source_token_id AND t.user_id=s.user_id WHERE s.digest=?`, accounts.CredentialDigest(secret)).Scan(&p.UserID, &p.DatasetID, &enabled, &expiry, &revoked, &tokenExpiry, &tokenRevoked)
 	if errors.Is(err, sql.ErrNoRows) {
-		return Principal{}, ErrUnauthenticated
+		return accounts.Principal{}, accounts.ErrUnauthenticated
 	}
 	if err != nil {
-		return Principal{}, err
+		return accounts.Principal{}, err
 	}
 	if !enabled || revoked.Valid || tokenRevoked.Valid || !expiry.Valid || !validExpiry(expiry, time.Now()) || !validExpiry(tokenExpiry, time.Now()) {
-		return Principal{}, ErrUnauthenticated
+		return accounts.Principal{}, accounts.ErrUnauthenticated
 	}
-	p.Permissions = []string{Read}
+	p.Permissions = []string{accounts.Read}
 	return p, nil
 }
 
 func (s *SQLite) CreateSession(ctx context.Context, token string) (string, time.Time, error) {
-	secret, err := opaque()
+	secret, err := accounts.NewCredential()
 	if err != nil {
 		return "", time.Time{}, err
 	}
-	id, err := opaque()
+	id, err := accounts.NewCredential()
 	if err != nil {
 		return "", time.Time{}, err
 	}
-	expires := time.Now().UTC().Add(SessionLifetime)
+	expires := time.Now().UTC().Add(accounts.SessionLifetime)
 	err = s.store.WriteTransaction(ctx, func(tx *sql.Tx) error {
 		p, tokenID, err := authenticateToken(ctx, tx, token)
 		if err != nil {
 			return err
 		}
-		if !p.HasPermission(Read) {
-			return ErrUnauthenticated
+		if !p.HasPermission(accounts.Read) {
+			return accounts.ErrUnauthenticated
 		}
-		_, err = tx.ExecContext(ctx, "INSERT INTO sessions VALUES(?,?,?,?,?,?,NULL)", id, p.UserID, tokenID, digest(secret), time.Now().UTC().Format(time.RFC3339Nano), expires.Format(time.RFC3339Nano))
+		_, err = tx.ExecContext(ctx, "INSERT INTO sessions VALUES(?,?,?,?,?,?,NULL)", id, p.UserID, tokenID, accounts.CredentialDigest(secret), time.Now().UTC().Format(time.RFC3339Nano), expires.Format(time.RFC3339Nano))
 		return err
 	})
 	if err != nil {
@@ -294,7 +266,7 @@ func (s *SQLite) CreateSession(ctx context.Context, token string) (string, time.
 
 func (s *SQLite) Logout(ctx context.Context, secret string) error {
 	return s.store.WriteTransaction(ctx, func(tx *sql.Tx) error {
-		_, err := tx.ExecContext(ctx, "UPDATE sessions SET revoked_at=COALESCE(revoked_at,?) WHERE digest=?", time.Now().UTC().Format(time.RFC3339Nano), digest(secret))
+		_, err := tx.ExecContext(ctx, "UPDATE sessions SET revoked_at=COALESCE(revoked_at,?) WHERE digest=?", time.Now().UTC().Format(time.RFC3339Nano), accounts.CredentialDigest(secret))
 		return err
 	})
 }
@@ -304,7 +276,7 @@ func (s *SQLite) ReprocessUser(ctx context.Context, userID string) (int64, error
 	var dataset string
 	err := s.store.SQL().QueryRowContext(ctx, "SELECT dataset_id FROM users WHERE user_id=?", userID).Scan(&dataset)
 	if errors.Is(err, sql.ErrNoRows) {
-		return 0, ErrNotFound
+		return 0, accounts.ErrNotFound
 	}
 	if err != nil {
 		return 0, err
@@ -325,14 +297,14 @@ func (s *SQLite) Cleanup(ctx context.Context) error {
 		 OR t.token_id IS NULL OR t.revoked_at IS NOT NULL OR u.enabled=false
 		 OR julianday(t.expires_at)<=julianday(?)
 		 LIMIT ?
-		)`, now, now, credentialCleanupBatch)
+		)`, now, now, cleanupBatch)
 		if err != nil {
 			return err
 		}
 		_, err = tx.ExecContext(ctx, `DELETE FROM tokens WHERE token_id IN (
 		 SELECT token_id FROM tokens
 		 WHERE julianday(expires_at)<=julianday(?) LIMIT ?
-		)`, now, credentialCleanupBatch)
+		)`, now, cleanupBatch)
 		return err
 	})
 }

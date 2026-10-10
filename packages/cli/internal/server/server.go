@@ -17,7 +17,7 @@ import (
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/accounts"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/analytics"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/collectorprogress"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/datastore"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/evidence"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/networkprefs"
 	serverapi "github.com/flexdinesh/tokeninsights/packages/cli/internal/server/api"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/serverfeatures"
@@ -38,7 +38,8 @@ type Options struct {
 }
 
 type app struct {
-	data           *datastore.Store
+	source         DataSource
+	data           evidence.Receiver
 	queries        analytics.Repository
 	allowIngestion bool
 	policy         serverfeatures.Policy
@@ -99,7 +100,7 @@ func (a *app) queryError(w http.ResponseWriter, err error) {
 }
 
 // Local compositions expose writes only through their private control socket.
-func NewDataHandler(ctx context.Context, store *datastore.Store, log io.Writer, bindHost, instance string, allowIngestion bool) http.Handler {
+func NewDataHandler(ctx context.Context, store DataSource, log io.Writer, bindHost, instance string, allowIngestion bool) http.Handler {
 	policy, _ := serverfeatures.New(serverfeatures.Personal, false)
 	return NewDataHandlerWithOptions(ctx, store, log, DataHandlerOptions{Host: bindHost, InstanceID: instance, AllowIngestion: allowIngestion, Policy: policy})
 }

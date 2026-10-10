@@ -17,6 +17,8 @@ import (
 	"time"
 
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/accounts"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/adapters/duckdb"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/adapters/sqliteaccounts"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/appstore"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/collector"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/datastore"
@@ -105,7 +107,7 @@ func Run(ctx context.Context, settings Settings, log io.Writer, ready func(strin
 	}
 	defer func() { _ = listener.Close() }()
 	policy, _ := serverfeatures.New(serverfeatures.Hosted, false)
-	store, err := serverruntime.Open(ctx, path, datastore.Options{Kind: datastore.KindHosted})
+	store, err := duckdb.Open(ctx, path, datastore.Options{Kind: datastore.KindHosted})
 	if err != nil {
 		return err
 	}
@@ -119,7 +121,7 @@ func Run(ctx context.Context, settings Settings, log io.Writer, ready func(strin
 		return err
 	}
 	defer func() { _ = app.Close() }()
-	repository := accounts.NewSQLite(app, store)
+	repository := sqliteaccounts.NewSQLite(app, store)
 	if err := repository.Resume(ctx); err != nil {
 		return err
 	}
@@ -149,7 +151,7 @@ func Run(ctx context.Context, settings Settings, log io.Writer, ready func(strin
 		return err
 	}
 	defer closePrivate()
-	handler := server.NewDataHandlerWithOptions(runCtx, store, log, options)
+	handler := server.NewDataHandlerWithOptions(runCtx, duckdb.Source{Store: store}, log, options)
 	bindings := []serverruntime.Binding{{Listener: listener, Handler: handler, Health: true}}
 	bindings = append(bindings, serverruntime.Binding{Listener: private, Handler: options.Accounts.AdminHandler()})
 	release()

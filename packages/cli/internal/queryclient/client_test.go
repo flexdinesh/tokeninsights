@@ -15,6 +15,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/adapters/duckdb"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/datastore"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/server"
 	api "github.com/flexdinesh/tokeninsights/packages/cli/internal/server/api"
@@ -50,7 +51,7 @@ func TestRealServerPaginationAndComponents(t *testing.T) {
 		}
 
 	}
-	c := newClient(t, server.NewDataHandler(context.Background(), store, io.Discard, "127.0.0.1", "", false))
+	c := newClient(t, server.NewDataHandler(context.Background(), duckdb.Source{Store: store}, io.Discard, "127.0.0.1", "", false))
 	instance, err := c.Instance(t.Context())
 	if err != nil || instance.ApiVersion != api.V2 {
 		t.Fatalf("instance = %#v, %v", instance, err)

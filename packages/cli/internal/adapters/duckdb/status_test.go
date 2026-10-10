@@ -1,4 +1,4 @@
-package analytics
+package duckdb
 
 import (
 	"path/filepath"

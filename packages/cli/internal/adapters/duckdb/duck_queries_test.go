@@ -1,4 +1,4 @@
-package analytics
+package duckdb
 
 import (
 	"encoding/json"
@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/analytics"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/datastore"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/evidence"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/querymodel"
@@ -52,7 +53,7 @@ func TestDuckDashboardTabsFiltersPaginationAndSeparateEstimates(t *testing.T) {
 	store := duckDashboardStore(t)
 	for _, tab := range []string{"tokens", "models", "providers", "harnesses", "sessions", "context", "repo"} {
 		t.Run(tab, func(t *testing.T) {
-			q := Query{Selection: viewer.Selection{Period: "all", Bucket: "day"}, Tab: tab, Quality: "confirmed", Sort: "total", Direction: "desc", Page: 1, PageSize: 2, LocationGroup: querymodel.RepoGroupRepository}
+			q := analytics.Query{Selection: viewer.Selection{Period: "all", Bucket: "day"}, Tab: tab, Quality: "confirmed", Sort: "total", Direction: "desc", Page: 1, PageSize: 2, LocationGroup: querymodel.RepoGroupRepository}
 			if tab == "context" {
 				q.Sort = "averageContext"
 			}
@@ -80,7 +81,7 @@ func TestDuckDashboardTabsFiltersPaginationAndSeparateEstimates(t *testing.T) {
 			}
 		})
 	}
-	q := Query{Selection: viewer.Selection{Period: "all", Bucket: "day", Models: []string{"model-2"}}, Tab: "models", Quality: "confirmed", Sort: "name", Direction: "asc", Page: 999999999, PageSize: 2}
+	q := analytics.Query{Selection: viewer.Selection{Period: "all", Bucket: "day", Models: []string{"model-2"}}, Tab: "models", Quality: "confirmed", Sort: "name", Direction: "asc", Page: 999999999, PageSize: 2}
 	data, err := LoadDashboard(t.Context(), store, q, time.Now())
 	if err != nil || data.Summary.TotalTokens != 120 || data.Page != 1 || data.Rows[0].Name != "model-2" {
 		t.Fatalf("filter/page %+v %v", data, err)

@@ -16,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/adapters/duckdb"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/collector"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/datastore"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/evidence"
@@ -175,7 +176,7 @@ func newViewQueryServer(t *testing.T, withUsage bool) (*httptest.Server, *datast
 	if withUsage {
 		insertLoadRowsCanonicalTokenWithCounts(t, store.SQL(), 1767225600000, "pi", "fixture-view-session", "fixture-provider", "fixture-model", 80, 20, 0, 0, 0, 100)
 	}
-	handler := server.NewDataHandler(t.Context(), store, io.Discard, "127.0.0.1", "", true)
+	handler := server.NewDataHandler(t.Context(), duckdb.Source{Store: store}, io.Discard, "127.0.0.1", "", true)
 	requests := &viewRequestCounts{}
 	remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {

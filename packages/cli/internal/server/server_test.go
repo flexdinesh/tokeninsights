@@ -14,7 +14,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/analytics"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/adapters/duckdb"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/datastore"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/querymodel"
 	serverapi "github.com/flexdinesh/tokeninsights/packages/cli/internal/server/api"
@@ -310,7 +310,7 @@ func loadDashboard(ctx context.Context, path string, q query, now time.Time) (da
 		return dashboard{}, err
 	}
 	defer func() { _ = store.Close() }()
-	return analytics.LoadDashboard(ctx, store, q, now)
+	return duckdb.LoadDashboard(ctx, store, q, now)
 }
 func fixtureApp(t *testing.T, path string, options Options) *app {
 	t.Helper()
@@ -321,6 +321,6 @@ func fixtureApp(t *testing.T, path string, options Options) *app {
 	t.Cleanup(func() { _ = store.Close() })
 	a := newApp(t.Context(), options, io.Discard)
 	a.data = store
-	a.queries = analytics.DuckDB{Store: store}
+	a.queries = duckdb.Queries{Store: store}
 	return a
 }

@@ -3,37 +3,19 @@ package analytics
 import (
 	"context"
 	"time"
-
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/datastore"
 )
 
 // Repository reads one authorized dataset. Implementations must return rows,
 // totals and publication metadata from a consistent snapshot. No query can
 // select a different dataset through user-supplied filter values.
 type Repository interface {
+	// Dashboard clamps page after counting; rows, summary and revisions agree.
 	Dashboard(context.Context, Query, time.Time) (Dashboard, error)
+	// AllDashboard returns complete sorted rows or an error when the limit is
+	// exceeded, never a successful truncation or separately snapshotted pages.
 	AllDashboard(context.Context, Query, time.Time, int) (Dashboard, error)
+	// Each call owns its snapshot; separate calls may observe newer revisions.
 	Facets(context.Context, Query, string, time.Time) (Facets, error)
+	// Status distinguishes accepted inputs, published revision and rebuild target.
 	Status(context.Context) (ProcessingStatus, error)
-}
-
-// DuckDB is the embedded analytics adapter. Its store is scoped by composition
-// after authentication; consumers do not open paths or execute SQL.
-type DuckDB struct{ Store *datastore.Store }
-
-func (d DuckDB) Dashboard(ctx context.Context, q Query, now time.Time) (Dashboard, error) {
-	return LoadDashboard(ctx, d.Store, q, now)
-}
-
-// AllDashboard reads bounded complete results within one publication snapshot.
-func (d DuckDB) AllDashboard(ctx context.Context, q Query, now time.Time, maxRows int) (Dashboard, error) {
-	return LoadAllDashboard(ctx, d.Store, q, now, maxRows)
-}
-
-func (d DuckDB) Facets(ctx context.Context, q Query, search string, now time.Time) (Facets, error) {
-	return LoadFacets(ctx, d.Store, q, search, now)
-}
-
-func (d DuckDB) Status(ctx context.Context) (ProcessingStatus, error) {
-	return Status(ctx, d.Store)
 }

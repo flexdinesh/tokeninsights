@@ -10,7 +10,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/analytics"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/adapters/duckdb"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/datastore"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/evidence"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/queryclient"
@@ -50,9 +50,9 @@ func TestDirectCompleteQueryMatchesHTTPPagination(t *testing.T) {
 			break
 		}
 	}
-	direct := server.NewDirectQuery(analytics.DuckDB{Store: store}, "instance", "")
+	direct := server.NewDirectQuery(duckdb.Queries{Store: store}, "instance", "")
 	local := queryclient.NewDirect(direct)
-	httpServer := httptest.NewServer(server.NewDataHandler(t.Context(), store, nil, "127.0.0.1", "instance", false))
+	httpServer := httptest.NewServer(server.NewDataHandler(t.Context(), duckdb.Source{Store: store}, nil, "127.0.0.1", "instance", false))
 	t.Cleanup(httpServer.Close)
 	remote, err := queryclient.New(httpServer.URL, httpServer.Client())
 	if err != nil {
