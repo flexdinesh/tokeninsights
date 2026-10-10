@@ -7,6 +7,7 @@
     "prepare": "husky",
     "check:ci": "pnpm run format:check && pnpm run check-schema && pnpm --filter @tokeninsights/cli run build",
     "check:push": "pnpm run format:check && pnpm run lint && pnpm run check-schema && pnpm run check-api && pnpm run test && pnpm run test:race && pnpm run bench:smoke && pnpm run check-web && pnpm --filter @tokeninsights/cli run build && pnpm run test:web-e2e",
+    "test:container": "node tools/build/src/test-container.ts",
     "bench:smoke": "pnpm --filter @tokeninsights/cli run bench:smoke",
     "bench:storage": "pnpm --filter @tokeninsights/cli run bench:storage",
     "test:race": "pnpm --filter @tokeninsights/cli run test:race",

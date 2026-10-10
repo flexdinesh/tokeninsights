@@ -214,6 +214,9 @@ Then reinstall TokenInsights using your preferred installation method.
 
 Hosted persistence selects `--storage-backend=sqlite|postgres` (default SQLite).
 PostgreSQL 18 stores both tokens and accounts through separate interfaces; supply
-`TOKENINSIGHTS_POSTGRES_DSN` and an absolute `--admin-socket`, without SQLite paths.
+`TOKENINSIGHTS_POSTGRES_DSN` or `TOKENINSIGHTS_POSTGRES_DSN_FILE` and an absolute
+admin socket, without SQLite paths. The same server binary supports environment-only
+native and Docker startup. Compose examples provide private administration,
+readiness probes and host reverse-proxy deployment; proxy trust is explicit.
 In-process mode, collector/outbox and jobs use SQLite. No extensions, migrations or
 automatic fallback. See [deployment](docs/deployment.md) for configuration and backups.

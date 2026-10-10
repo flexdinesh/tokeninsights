@@ -1,9 +1,9 @@
 import { randomUUID } from 'node:crypto'
 import { spawn, spawnSync } from 'node:child_process'
+import { postgresImage as image } from './postgres-image.ts'
 
 // Root verification always exercises PostgreSQL. Each Go fixture creates and
 // drops its own random database; a supplied DSN needs CREATEDB privileges.
-const image = 'postgres:18@sha256:74935e72241653ca55e0414067e6d8763aceb8a810eb51b452253ec3dcfc4336'
 const smoke = process.argv.includes('--benchmark-smoke')
 const name = `tokeninsights-tests-${randomUUID()}`
 let owned = false

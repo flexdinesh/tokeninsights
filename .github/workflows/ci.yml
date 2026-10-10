@@ -45,6 +45,15 @@ jobs:
       - name: Execute benchmark fixtures on both backends
         run: pnpm run bench:smoke
 
+  container:
+    name: Server container contracts
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: jdx/mise-action@v4
+      - run: mise run setup
+      - run: pnpm run test:container
+
   native:
     name: Native ${{ matrix.runner }}
     strategy:

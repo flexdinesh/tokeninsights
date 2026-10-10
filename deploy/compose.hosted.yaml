@@ -1,22 +1,24 @@
-# A TLS reverse proxy on the host forwards to 127.0.0.1:8765.
+# Host TLS proxy forwards to this loopback-published port. Trust only its
+# observed peer CIDR; see docs/deployment.md for forwarded-header handling.
 services:
   tokeninsights:
     build:
       context: ..
     image: tokeninsights-server:local
-    command:
-      - --listen
-      - '0.0.0.0:8765'
-      - --server-db-path
-      - /data/server.sqlite
-      - --app-db-path
-      - /data/app.sqlite
-      - --public-url
-      - '${TOKENINSIGHTS_PUBLIC_URL:?Set the canonical HTTPS dashboard URL}'
-      - --admin-socket
-      - /run/tokeninsights/admin.sock
+    environment:
+      TOKENINSIGHTS_STORAGE_BACKEND: sqlite
+      TOKENINSIGHTS_LISTEN: 0.0.0.0:8765
+      TOKENINSIGHTS_PUBLIC_URL: '${TOKENINSIGHTS_PUBLIC_URL:?Set the canonical HTTPS dashboard URL}'
+      TOKENINSIGHTS_ADMIN_SOCKET: /run/tokeninsights/admin.sock
+      TOKENINSIGHTS_TRUSTED_PROXIES: '${TOKENINSIGHTS_TRUSTED_PROXIES:-}'
+      TOKENINSIGHTS_SERVER_DB_PATH: /data/server.sqlite
+      TOKENINSIGHTS_APP_DB_PATH: /data/app.sqlite
     ports:
       - '127.0.0.1:8765:8765'
+    read_only: true
+    tmpfs:
+      - /run/tokeninsights:uid=10001,gid=10001,mode=0700
+      - /tmp:uid=10001,gid=10001,mode=0700
     volumes:
       - hosted-data:/data
     stop_grace_period: 30s

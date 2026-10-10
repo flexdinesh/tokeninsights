@@ -66,7 +66,8 @@ type loginAdmission struct {
 
 func newLoginAdmission() *loginAdmission { return &loginAdmission{clients: make(map[string]*bucket)} }
 
-// AdmitLogin uses the actual peer address, never forwarded headers.
+// AdmitLogin consumes the client address resolved by the HTTP boundary.
+// Account policy never reads proxy headers or deployment configuration.
 func (s *Service) AdmitLogin(remoteAddr string) error {
 	address, _, err := net.SplitHostPort(remoteAddr)
 	if err != nil {

@@ -9,7 +9,7 @@ RUN go build -trimpath -buildvcs=false -o /out/tokeninsights-server ./cmd/tokeni
 
 FROM debian:trixie-20261005-slim@sha256:a29215f6a35e51e22adffa17f89e9d2ef06214e64a2bad10d765c46aea49f11f
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates curl tzdata \
+    && apt-get install -y --no-install-recommends ca-certificates tzdata \
     && rm -rf /var/lib/apt/lists/* \
     && groupadd --gid 10001 tokeninsights \
     && useradd --uid 10001 --gid 10001 --no-create-home --home-dir /data tokeninsights \
@@ -19,8 +19,7 @@ RUN /usr/local/bin/tokeninsights-server --version
 USER 10001:10001
 WORKDIR /data
 EXPOSE 8765
-VOLUME ["/data"]
+ENV TOKENINSIGHTS_ADMIN_SOCKET=/run/tokeninsights/admin.sock
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
-    CMD curl --fail --silent --show-error --max-time 3 http://127.0.0.1:8765/readyz || exit 1
+    CMD ["/usr/local/bin/tokeninsights-server", "healthcheck"]
 ENTRYPOINT ["/usr/local/bin/tokeninsights-server"]
-CMD ["--listen", "0.0.0.0:8765", "--server-db-path", "/data/server.sqlite", "--admin-socket", "/run/tokeninsights/admin.sock"]

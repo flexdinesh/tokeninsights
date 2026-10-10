@@ -47,6 +47,10 @@ Read `docs/design.md` and the relevant ADRs before non-trivial changes, especial
   and dependencies; they do not discover mode, read deployment configuration, or
   construct another layer's adapters. Keep capability, permission and dataset
   authorization distinct. A remote failure must never select a local fallback.
+- **Resolve deployment inputs once**: executable boundaries parse env/flags and
+  secret files into typed settings; domains never read them. Proxy trust belongs
+  at the hosted HTTP boundary and cannot override origin or authorization. Keep
+  native/image behavior aligned; deployment changes require `pnpm run test:container`.
 - **Keep policy and mechanism separate**: mode policy determines permitted behavior;
   adapters implement storage/transport. Changing the storage engine must not change
   accounting, tenant isolation, or the meaning of a successful operation.

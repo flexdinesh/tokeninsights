@@ -1,5 +1,5 @@
-# A TLS reverse proxy forwards to 127.0.0.1:8765. Supply an existing PostgreSQL 18
-# database through the environment; no password or DSN appears in argv.
+# Host TLS proxy forwards to this loopback-published port. Trust only its
+# observed peer CIDR; see docs/deployment.md for forwarded-header handling.
 services:
   tokeninsights:
     build:
@@ -7,15 +7,22 @@ services:
     image: tokeninsights-server:local
     environment:
       TOKENINSIGHTS_STORAGE_BACKEND: postgres
-      TOKENINSIGHTS_POSTGRES_DSN: '${TOKENINSIGHTS_POSTGRES_DSN:?Set the PostgreSQL DSN}'
-    command:
-      - --listen
-      - '0.0.0.0:8765'
-      - --public-url
-      - '${TOKENINSIGHTS_PUBLIC_URL:?Set the canonical HTTPS dashboard URL}'
-      - --admin-socket
-      - /run/tokeninsights/admin.sock
+      TOKENINSIGHTS_LISTEN: 0.0.0.0:8765
+      TOKENINSIGHTS_PUBLIC_URL: '${TOKENINSIGHTS_PUBLIC_URL:?Set the canonical HTTPS dashboard URL}'
+      TOKENINSIGHTS_ADMIN_SOCKET: /run/tokeninsights/admin.sock
+      TOKENINSIGHTS_TRUSTED_PROXIES: '${TOKENINSIGHTS_TRUSTED_PROXIES:-}'
+      TOKENINSIGHTS_POSTGRES_DSN_FILE: /run/secrets/postgres_dsn
     ports:
       - '127.0.0.1:8765:8765'
+    read_only: true
+    tmpfs:
+      - /run/tokeninsights:uid=10001,gid=10001,mode=0700
+      - /tmp:uid=10001,gid=10001,mode=0700
+    secrets:
+      - postgres_dsn
     stop_grace_period: 30s
     restart: unless-stopped
+
+secrets:
+  postgres_dsn:
+    file: '${TOKENINSIGHTS_POSTGRES_DSN_FILE:?Set path to a DSN file readable by UID 10001}'

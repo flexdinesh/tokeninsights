@@ -77,14 +77,18 @@ func (r *remoteServer) start(t *testing.T) {
 	if r.target != "" {
 		listen = strings.TrimPrefix(r.target, "http://")
 	}
-	args := []string{"--public-url", "https://usage.example", "--listen", listen, "--storage-backend", r.backend, "--admin-socket", r.socket}
+	command := exec.Command(serverBinary)
+	command.Env = append(isolatedEnvironment(r.root),
+		"TOKENINSIGHTS_PUBLIC_URL=https://usage.example", "TOKENINSIGHTS_LISTEN="+listen,
+		"TOKENINSIGHTS_STORAGE_BACKEND="+r.backend, "TOKENINSIGHTS_ADMIN_SOCKET="+r.socket)
 	if r.backend == "sqlite" {
-		args = append(args, "--server-db-path", r.path)
-	}
-	command := exec.Command(serverBinary, args...)
-	command.Env = isolatedEnvironment(r.root)
-	if r.backend == "postgres" {
-		command.Env = append(command.Env, "TOKENINSIGHTS_POSTGRES_DSN="+r.dsn)
+		command.Env = append(command.Env, "TOKENINSIGHTS_SERVER_DB_PATH="+r.path)
+	} else {
+		secret := filepath.Join(r.root, "postgres-dsn")
+		if err := os.WriteFile(secret, []byte(r.dsn), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		command.Env = append(command.Env, "TOKENINSIGHTS_POSTGRES_DSN_FILE="+secret)
 	}
 	output, err := command.StdoutPipe()
 	if err != nil {
