@@ -11,9 +11,6 @@ import (
 	"net/http"
 	"sync"
 	"time"
-
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/datastore"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/db"
 )
 
 const (
@@ -29,16 +26,18 @@ type Binding struct {
 	Health   bool
 }
 
-func Open(ctx context.Context, path string, options datastore.Options) (*datastore.Store, error) {
-	release, err := db.AcquireWriterLock(ctx, path)
-	if err != nil {
-		return nil, err
-	}
-	defer release()
-	return datastore.OpenWithOptions(ctx, path, options)
+// Readiness checks initialized storage, not processing-queue emptiness.
+type Readiness interface{ Ready(context.Context) error }
+
+// Worker.Run returns only after all child work has joined. Storage stays owned
+// by composition; implementations must stop on cancellation without discarding
+// accepted evidence or pending work.
+type Worker interface {
+	Readiness
+	Run(context.Context, func(error))
 }
 
-func health(store *datastore.Store, next http.Handler) http.Handler {
+func health(store Readiness, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/healthz" && r.URL.Path != "/readyz" {
 			next.ServeHTTP(w, r)
@@ -61,7 +60,7 @@ func health(store *datastore.Store, next http.Handler) http.Handler {
 	})
 }
 
-func validate(store *datastore.Store, bindings []Binding) error {
+func validate(store Readiness, bindings []Binding) error {
 	if len(bindings) == 0 || store == nil {
 		return errors.New("server requires listener")
 	}
@@ -76,7 +75,7 @@ func validate(store *datastore.Store, bindings []Binding) error {
 // Run joins processing and listener loops before returning, without closing the
 // caller's store. HTTP requests drain within ShutdownTimeout; on expiry their
 // connections close. Handlers must honor request cancellation.
-func Run(parent context.Context, store *datastore.Store, log io.Writer, bindings []Binding, ready func() error) error {
+func Run(parent context.Context, store Worker, log io.Writer, bindings []Binding, ready func() error) error {
 	if err := validate(store, bindings); err != nil {
 		return err
 	}
@@ -97,14 +96,14 @@ func Run(parent context.Context, store *datastore.Store, log io.Writer, bindings
 // Serve has Run's HTTP shutdown contract but starts no processing. Validation
 // leaves resources untouched; once serving starts, all listeners close on exit.
 // The composition owns storage, processing and cleanup on validation failure.
-func Serve(parent context.Context, store *datastore.Store, bindings []Binding, ready func() error) error {
+func Serve(parent context.Context, store Readiness, bindings []Binding, ready func() error) error {
 	if err := validate(store, bindings); err != nil {
 		return err
 	}
 	return serve(parent, store, bindings, ready, ShutdownTimeout)
 }
 
-func serve(parent context.Context, store *datastore.Store, bindings []Binding, ready func() error, shutdownTimeout time.Duration) error {
+func serve(parent context.Context, store Readiness, bindings []Binding, ready func() error, shutdownTimeout time.Duration) error {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
 	servers := make([]*http.Server, 0, len(bindings))

@@ -22,7 +22,7 @@ import (
 const SchemaVersion = 3
 const KindPersonal = "personal"
 const KindHosted = "hosted"
-const DatasetID = "default"
+const DatasetID = evidence.PersonalDatasetID
 
 //go:embed schema/data.sql
 var Schema string
@@ -39,11 +39,6 @@ type Store struct {
 	root        bool
 	nextDataset *string
 	selection   *sync.Mutex
-}
-type Metadata struct {
-	DatabaseID, DatasetID, Kind                                         string
-	Generation, InputRevision, Revision, LastIngestionAtMs, CreatedAtMs int64
-	TargetGeneration                                                    int64
 }
 
 func (s *Store) SQL() *sql.DB { return s.database }
@@ -66,11 +61,11 @@ type metadataReader interface {
 }
 
 // ReadMetadata retains the personal/default read contract.
-func ReadMetadata(ctx context.Context, reader metadataReader) (Metadata, error) {
+func ReadMetadata(ctx context.Context, reader metadataReader) (dataengine.Metadata, error) {
 	return ReadMetadataForDataset(ctx, reader, DatasetID)
 }
-func ReadMetadataForDataset(ctx context.Context, reader metadataReader, datasetID string) (Metadata, error) {
-	var m Metadata
+func ReadMetadataForDataset(ctx context.Context, reader metadataReader, datasetID string) (dataengine.Metadata, error) {
+	var m dataengine.Metadata
 	var role string
 	var version int
 	var activeState, targetState sql.NullString
@@ -120,10 +115,10 @@ func (s *Store) ForDataset(datasetID string) *Store {
 	scoped.root = false
 	return &scoped
 }
-func (s *Store) Metadata(ctx context.Context) (Metadata, error) {
+func (s *Store) Metadata(ctx context.Context) (dataengine.Metadata, error) {
 	tx, err := s.BeginRead(ctx)
 	if err != nil {
-		return Metadata{}, err
+		return dataengine.Metadata{}, err
 	}
 	defer func() { _ = tx.Rollback() }()
 	return ReadMetadataForDataset(ctx, tx, s.datasetID)
@@ -572,6 +567,9 @@ func (s *Store) Receipt(ctx context.Context, stream, batch string) (evidence.Res
 	defer func() { _ = tx.Rollback() }()
 	var body string
 	if err := tx.QueryRowContext(ctx, "SELECT receipt_json FROM ingestion.batches WHERE dataset_id=? AND stream_id=? AND batch_id=?", s.datasetID, stream, batch).Scan(&body); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return evidence.Response{}, evidence.ErrReceiptNotFound
+		}
 		return evidence.Response{}, err
 	}
 	var receipt evidence.Receipt

@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/adapters/duckdb"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/datastore"
 )
 
@@ -50,7 +51,7 @@ func await[T any](t *testing.T, ch <-chan T) T {
 
 func openStore(t *testing.T) *datastore.Store {
 	t.Helper()
-	s, err := Open(t.Context(), filepath.Join(t.TempDir(), "data.duckdb"), datastore.Options{})
+	s, err := duckdb.Open(t.Context(), filepath.Join(t.TempDir(), "data.duckdb"), datastore.Options{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -176,8 +177,16 @@ func TestRunFailureClosesAllListenersAndLeavesStoreToCaller(t *testing.T) {
 func TestInvalidBindingsRejectBeforeTakingResources(t *testing.T) {
 	s := openStore(t)
 	for _, run := range []func(context.Context, *datastore.Store, []Binding, func() error) error{
-		Serve,
 		func(ctx context.Context, s *datastore.Store, b []Binding, ready func() error) error {
+			if s == nil {
+				return Serve(ctx, nil, b, ready)
+			}
+			return Serve(ctx, s, b, ready)
+		},
+		func(ctx context.Context, s *datastore.Store, b []Binding, ready func() error) error {
+			if s == nil {
+				return Run(ctx, nil, nil, b, ready)
+			}
 			return Run(ctx, s, nil, b, ready)
 		},
 	} {
@@ -230,5 +239,40 @@ func TestShutdownDeadlineClosesActiveConnections(t *testing.T) {
 	}
 	if _, err := s.Metadata(t.Context()); err != nil {
 		t.Fatal("deadline closed caller's store", err)
+	}
+}
+
+type heldWorker struct {
+	started, cancelled, release chan struct{}
+}
+
+func (w heldWorker) Ready(context.Context) error { return nil }
+func (w heldWorker) Run(ctx context.Context, _ func(error)) {
+	close(w.started)
+	<-ctx.Done()
+	close(w.cancelled)
+	<-w.release
+}
+
+func TestRunJoinsInjectedWorkerAfterStartupFailure(t *testing.T) {
+	w := heldWorker{make(chan struct{}), make(chan struct{}), make(chan struct{})}
+	release := sync.OnceFunc(func() { close(w.release) })
+	l := listen(t)
+	want := errors.New("startup failed")
+	done, finished := make(chan error, 1), make(chan struct{})
+	go func() {
+		defer close(finished)
+		done <- Run(t.Context(), w, nil, []Binding{{Listener: l, Handler: http.NotFoundHandler()}}, func() error { <-w.started; return want })
+	}()
+	defer func() { release(); await(t, finished) }()
+	await(t, w.cancelled)
+	select {
+	case err := <-done:
+		t.Fatal("Run returned before worker joined", err)
+	default:
+	}
+	release()
+	if err := await(t, done); !errors.Is(err, want) {
+		t.Fatal("startup failure lost", err)
 	}
 }

@@ -25,6 +25,8 @@ type Work struct {
 }
 
 type Backend interface {
+	// One process owns scheduling. LoadWork is selection, not a durable claim
+	// for independent processes; multi-server leases require a separate contract.
 	// LoadWork returns no work only when no eligible component exists. On a
 	// failure it preserves dataset/root identity when already known for retry.
 	LoadWork(context.Context) (Work, bool, error)

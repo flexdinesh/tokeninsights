@@ -4,15 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/accounts"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/appstore"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/config"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/datastore"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/evidence"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/server"
-	api "github.com/flexdinesh/tokeninsights/packages/cli/internal/server/api"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/serverfeatures"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/syncjob"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -22,6 +13,18 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/accounts"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/adapters/duckdb"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/adapters/sqliteaccounts"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/appstore"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/config"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/datastore"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/evidence"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/server"
+	api "github.com/flexdinesh/tokeninsights/packages/cli/internal/server/api"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/serverfeatures"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/syncjob"
 )
 
 func TestBackgroundPrintReturnsBeforeRemoteAcceptanceAndActuallySubmits(t *testing.T) {
@@ -41,7 +44,7 @@ func TestBackgroundPrintReturnsBeforeRemoteAcceptanceAndActuallySubmits(t *testi
 		t.Fatal(err)
 	}
 	defer func() { _ = app.Close() }()
-	auth := accounts.New(accounts.NewSQLite(app, data))
+	auth := accounts.New(sqliteaccounts.NewSQLite(app, data))
 	user, err := auth.CreateUser(t.Context(), "Alice")
 	if err != nil {
 		t.Fatal(err)
@@ -54,7 +57,7 @@ func TestBackgroundPrintReturnsBeforeRemoteAcceptanceAndActuallySubmits(t *testi
 	if err != nil {
 		t.Fatal(err)
 	}
-	handler := server.NewDataHandlerWithOptions(t.Context(), data, io.Discard, server.DataHandlerOptions{Host: "127.0.0.1", AllowIngestion: true, Policy: policy, Accounts: auth, PublicURL: "https://usage.example"})
+	handler := server.NewDataHandlerWithOptions(t.Context(), duckdb.Source{Store: data}, io.Discard, server.DataHandlerOptions{Host: "127.0.0.1", AllowIngestion: true, Policy: policy, Accounts: auth, PublicURL: "https://usage.example"})
 	release := make(chan struct{})
 	var once sync.Once
 	unblock := func() { once.Do(func() { close(release) }) }

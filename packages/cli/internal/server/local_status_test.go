@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"testing"
 
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/adapters/duckdb"
 	api "github.com/flexdinesh/tokeninsights/packages/cli/internal/server/api"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/serverfeatures"
 )
@@ -14,7 +15,7 @@ func TestHostedIdentityNeverUsesRuntimeHostname(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	handler := NewDataHandlerWithOptions(t.Context(), fixture.store, nil, DataHandlerOptions{Host: "0.0.0.0", Hostname: "private-deployment-host", Policy: policy, Accounts: fixture.accounts, PublicURL: hostedTestOrigin})
+	handler := NewDataHandlerWithOptions(t.Context(), duckdb.Source{Store: fixture.store}, nil, DataHandlerOptions{Host: "0.0.0.0", Hostname: "private-deployment-host", Policy: policy, Accounts: fixture.accounts, PublicURL: hostedTestOrigin})
 	response := hostedRequest(t, handler, http.MethodGet, "/api/v2/instance", fixture.aliceToken.Secret, nil, nil)
 	requireHostedStatus(t, response, http.StatusOK)
 	instance := hostedDecode[api.InstanceResponseV2](t, response)

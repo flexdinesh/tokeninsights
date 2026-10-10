@@ -12,6 +12,8 @@ import (
 	"time"
 
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/accounts"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/adapters/duckdb"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/adapters/sqliteaccounts"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/analytics"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/appstore"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/collector"
@@ -87,7 +89,7 @@ func ingestionDestination(b *testing.B, store *datastore.Store, root, transport 
 		b.Fatal(err)
 	}
 	b.Cleanup(func() { _ = app.Close() })
-	service := accounts.New(accounts.NewSQLite(app, store))
+	service := accounts.New(sqliteaccounts.NewSQLite(app, store))
 	user, err := service.CreateUser(b.Context(), "benchmark")
 	if err != nil {
 		b.Fatal(err)
@@ -100,7 +102,7 @@ func ingestionDestination(b *testing.B, store *datastore.Store, root, transport 
 	if err != nil {
 		b.Fatal(err)
 	}
-	remote := httptest.NewServer(server.NewDataHandlerWithOptions(b.Context(), store, nil, server.DataHandlerOptions{
+	remote := httptest.NewServer(server.NewDataHandlerWithOptions(b.Context(), duckdb.Source{Store: store}, nil, server.DataHandlerOptions{
 		Host: "127.0.0.1", InstanceID: "benchmark", AllowIngestion: true,
 		Policy: policy, Accounts: service, PublicURL: "https://benchmark.example",
 	}))
@@ -131,7 +133,7 @@ func ingestionVisible(ctx context.Context, store *datastore.Store) error {
 	ticker := time.NewTicker(25 * time.Millisecond)
 	defer ticker.Stop()
 	for {
-		status, err := analytics.Status(ctx, store)
+		status, err := duckdb.Status(ctx, store)
 		if err != nil {
 			return err
 		}
@@ -255,7 +257,7 @@ func BenchmarkIngestion(b *testing.B) {
 						}
 						visible := time.Now()
 						query := analytics.Query{Selection: viewer.Selection{Period: "all", Bucket: "day"}, Tab: "sessions", Quality: "confirmed", Sort: "total", Direction: "desc", Page: 1, PageSize: 200}
-						dashboard, err := analytics.LoadDashboard(ctx, scoped, query, time.Now())
+						dashboard, err := duckdb.LoadDashboard(ctx, scoped, query, time.Now())
 						b.StopTimer()
 						queried := time.Now()
 						stopProfile()

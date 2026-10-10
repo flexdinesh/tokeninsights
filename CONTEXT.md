@@ -49,7 +49,7 @@ The host-side Go workflow that discovers Durable Sources, captures metadata-only
 _Avoid_: Client-side counter interpretation, private content ingestion
 
 **Canonical Server**:
-The shared Go server core that durably accepts immutable evidence/receipts, asynchronously publishes replaceable stable contributions, stores DuckDB status and serves REST analytics plus embedded web assets.
+The shared Go server core that durably accepts immutable evidence/receipts, asynchronously publishes replaceable stable contributions, stores durable processing status and serves REST analytics plus embedded web assets.
 _Avoid_: Collector service, client-side normalization
 
 **Personal Server**:
@@ -57,7 +57,7 @@ The wire/storage kind used by single-process local commands. One default dataset
 _Avoid_: Simple server, prod server, local-only server
 
 **Hosted Server**:
-The distributed server kind: authenticated datasets share one DuckDB in one container, while SQLite holds accounts/system state. Browser dashboard supported; analytics TUI unavailable. Collector sync uses finite jobs.
+The distributed server kind: authenticated datasets share token storage, with accounts behind a separate repository. Current adapters use DuckDB and SQLite; PostgreSQL is planned for both domains. Browser dashboard supported; analytics TUI unavailable. Collector sync uses finite jobs.
 _Avoid_: Prod server, database per tenant, authenticated personal server
 
 **Dataset**:

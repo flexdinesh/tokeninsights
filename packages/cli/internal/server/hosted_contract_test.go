@@ -12,6 +12,8 @@ import (
 	"testing"
 
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/accounts"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/adapters/duckdb"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/adapters/sqliteaccounts"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/appstore"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/datastore"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/evidence"
@@ -56,7 +58,7 @@ func newHostedContractFixture(t *testing.T) hostedContractFixture {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return hostedContractFixture{store: store, accounts: service, handler: NewDataHandlerWithOptions(t.Context(), store, &bytes.Buffer{}, DataHandlerOptions{Host: "0.0.0.0", InstanceID: "hosted-fixture", AllowIngestion: true, Policy: policy, Accounts: service, PublicURL: hostedTestOrigin}), alice: alice, bob: bob, aliceToken: token(alice, accounts.Read, accounts.Ingest), bobToken: token(bob, accounts.Read, accounts.Ingest), readToken: token(alice, accounts.Read), ingestToken: token(alice, accounts.Ingest)}
+	return hostedContractFixture{store: store, accounts: service, handler: NewDataHandlerWithOptions(t.Context(), duckdb.Source{Store: store}, &bytes.Buffer{}, DataHandlerOptions{Host: "0.0.0.0", InstanceID: "hosted-fixture", AllowIngestion: true, Policy: policy, Accounts: service, PublicURL: hostedTestOrigin}), alice: alice, bob: bob, aliceToken: token(alice, accounts.Read, accounts.Ingest), bobToken: token(bob, accounts.Read, accounts.Ingest), readToken: token(alice, accounts.Read), ingestToken: token(alice, accounts.Ingest)}
 }
 
 func hostedRequest(t *testing.T, handler http.Handler, method, path, token string, body []byte, cookie *http.Cookie) *httptest.ResponseRecorder {
@@ -321,7 +323,7 @@ func TestDisabledHTTPCapabilitiesFailClosed(t *testing.T) {
 				}
 				token = credential.Secret
 			}
-			handler := NewDataHandlerWithOptions(t.Context(), store, &bytes.Buffer{}, DataHandlerOptions{Host: "0.0.0.0", InstanceID: "disabled-fixture", AllowIngestion: true, Policy: policy, Accounts: service, PublicURL: hostedTestOrigin})
+			handler := NewDataHandlerWithOptions(t.Context(), duckdb.Source{Store: store}, &bytes.Buffer{}, DataHandlerOptions{Host: "0.0.0.0", InstanceID: "disabled-fixture", AllowIngestion: true, Policy: policy, Accounts: service, PublicURL: hostedTestOrigin})
 			for _, path := range []string{"/api/v2/usage", "/api/v2/usage/facets", "/api/v2/collector-progress", "/api/v3/ingestion/capabilities", "/api/v3/ingestion/batches", "/api/v2/processing/reprocess", "/tokens", "/"} {
 				requireHostedStatus(t, hostedRequest(t, handler, http.MethodGet, path, token, nil, nil), 404)
 			}
@@ -345,6 +347,6 @@ func newHostedAccounts(t *testing.T, store *datastore.Store) *accounts.Service {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = app.Close() })
-	repository := accounts.NewSQLite(app, store)
+	repository := sqliteaccounts.NewSQLite(app, store)
 	return accounts.New(repository)
 }

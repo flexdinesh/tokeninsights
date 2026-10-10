@@ -12,9 +12,7 @@ import (
 	"time"
 
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/accounts"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/analytics"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/collectorprogress"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/datastore"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/evidence"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/ingestionhttp"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/publication"
@@ -35,12 +33,12 @@ type DataHandlerOptions struct {
 
 const loginBodyMaxBytes = 4 << 10
 
-func NewPersonalDataHandler(ctx context.Context, store *datastore.Store, log io.Writer, host, instance string, progress *collectorprogress.Registry) http.Handler {
+func NewPersonalDataHandler(ctx context.Context, store DataSource, log io.Writer, host, instance string, progress *collectorprogress.Registry) http.Handler {
 	policy, _ := serverfeatures.New(serverfeatures.Personal, progress != nil)
 	return NewDataHandlerWithOptions(ctx, store, log, DataHandlerOptions{Host: host, InstanceID: instance, Policy: policy, Progress: progress})
 }
 
-func NewDataHandlerWithOptions(ctx context.Context, store *datastore.Store, log io.Writer, options DataHandlerOptions) http.Handler {
+func NewDataHandlerWithOptions(ctx context.Context, store DataSource, log io.Writer, options DataHandlerOptions) http.Handler {
 	if options.Policy.Kind == "" {
 		options.Policy, _ = serverfeatures.New(serverfeatures.Personal, options.Progress != nil)
 	}
@@ -56,8 +54,11 @@ func NewDataHandlerWithOptions(ctx context.Context, store *datastore.Store, log 
 		options.Hostname = ""
 	}
 	a := newApp(ctx, Options{InstanceID: options.InstanceID, Hostname: options.Hostname, Defaults: viewer.Selection{Period: "month", Bucket: "day"}}, log)
-	a.data = store
-	a.queries = analytics.DuckDB{Store: store}
+	a.source = store
+	if options.Policy.Kind == serverfeatures.Personal {
+		a.data = store.Receiver(evidence.PersonalDatasetID)
+		a.queries = store.Queries(evidence.PersonalDatasetID)
+	}
 	a.allowIngestion = options.AllowIngestion && options.Policy.Capabilities.Has(serverfeatures.RawIngestion)
 	a.policy, a.accounts, a.publicURL, a.progress = options.Policy, options.Accounts, options.PublicURL, options.Progress
 	handler := a.handler()
@@ -75,15 +76,15 @@ func NewDataHandlerWithOptions(ctx context.Context, store *datastore.Store, log 
 
 func (a *app) scoped(r *http.Request) (*app, accounts.Principal, error) {
 	if a.policy.Kind != serverfeatures.Hosted {
-		return a, accounts.Principal{DatasetID: datastore.DatasetID, Permissions: []string{accounts.Read, accounts.Ingest}}, nil
+		return a, accounts.Principal{DatasetID: evidence.PersonalDatasetID, Permissions: []string{accounts.Read, accounts.Ingest}}, nil
 	}
 	p, err := a.accounts.AuthenticateRequest(r.Context(), r)
 	if err != nil {
 		return nil, p, err
 	}
 	copy := *a
-	copy.data = a.data.ForDataset(p.DatasetID)
-	copy.queries = analytics.DuckDB{Store: copy.data}
+	copy.data = a.source.Receiver(p.DatasetID)
+	copy.queries = a.source.Queries(p.DatasetID)
 	copy.ctx = r.Context()
 	return &copy, p, nil
 }

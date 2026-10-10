@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/analytics"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/adapters/duckdb"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/datastore"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/localruntime"
 )
@@ -43,7 +43,7 @@ func TestVisibilityReportsDurableFailureAfterRestartAndRecovers(t *testing.T) {
 	if err := runtime.WaitVisible(ctx); !errors.Is(err, localruntime.ErrProcessingFailed) || errors.Is(err, context.DeadlineExceeded) {
 		t.Fatal("durable failure mislabeled or hidden until deadline", err)
 	}
-	status, err := analytics.Status(t.Context(), runtime.Store)
+	status, err := duckdb.Status(t.Context(), runtime.Store)
 	if err != nil || status.Pending != 1 || status.Failed != 1 {
 		t.Fatal("failed scope missing from status", status, err)
 	}
@@ -61,7 +61,7 @@ func TestVisibilityReportsDurableFailureAfterRestartAndRecovers(t *testing.T) {
 	if err := runtime.WaitVisible(ctx); err != nil {
 		t.Fatal("recovery retained obsolete processing failure", err)
 	}
-	status, err = analytics.Status(t.Context(), runtime.Store)
+	status, err = duckdb.Status(t.Context(), runtime.Store)
 	if err != nil || status.Pending != 0 || status.Failed != 0 || status.Metadata.Generation != status.Metadata.TargetGeneration {
 		t.Fatal("recovery did not become visible", status, err)
 	}
@@ -138,7 +138,7 @@ func TestVisibilityAllowsDueFailureRetryWithoutRebuilding(t *testing.T) {
 	if err := runtime.WaitVisible(ctx); err != nil {
 		t.Fatal("old failure prevented due retry", err)
 	}
-	status, err := analytics.Status(t.Context(), runtime.Store)
+	status, err := duckdb.Status(t.Context(), runtime.Store)
 	if err != nil || status.Pending != 0 || status.Failed != 0 || status.FailedRetryAtMs != 0 || status.Metadata.Generation != 1 {
 		t.Fatal("retry retained failure or rebuilt generation", status, err)
 	}

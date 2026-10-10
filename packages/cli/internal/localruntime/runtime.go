@@ -15,7 +15,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/accounts"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/adapters/duckdb"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/adapters/sqliteaccounts"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/analytics"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/appstore"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/collector"
@@ -26,7 +27,6 @@ import (
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/server"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/serverfeatures"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/serverownership"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/serverruntime"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/syncjob"
 )
 
@@ -121,7 +121,7 @@ func OpenWithAppOptions(ctx context.Context, collectorPath, dataPath, appPath st
 	if held {
 		return nil, ErrOwned
 	}
-	store, err := serverruntime.Open(ctx, path, datastore.Options{Kind: datastore.KindPersonal})
+	store, err := duckdb.Open(ctx, path, datastore.Options{Kind: datastore.KindPersonal})
 	if err != nil {
 		_ = owner.Close()
 		return nil, err
@@ -138,7 +138,7 @@ func OpenWithAppOptions(ctx context.Context, collectorPath, dataPath, appPath st
 		_ = owner.Close()
 		return nil, err
 	}
-	repository := accounts.NewSQLite(app, store)
+	repository := sqliteaccounts.NewSQLite(app, store)
 	if err := repository.EnsureDefault(ctx); err != nil {
 		_ = app.Close()
 		_ = store.Close()
@@ -181,7 +181,7 @@ func OpenWithAppOptions(ctx context.Context, collectorPath, dataPath, appPath st
 	}
 	hostname := resolveHostname(os.Hostname)
 	id := hex.EncodeToString(instance[:])
-	r := &Runtime{InstanceID: id, Hostname: hostname, Policy: policy, Progress: collectorprogress.New(id), Jobs: jobs, jobsDone: make(chan struct{}), Store: store, App: app, owner: owner, cancel: cancel, ctx: workerCtx, collectorPath: canonicalCollector, dataPath: path, done: make(chan struct{}), queries: analytics.DuckDB{Store: store}, captureDetails: options.CaptureDetails}
+	r := &Runtime{InstanceID: id, Hostname: hostname, Policy: policy, Progress: collectorprogress.New(id), Jobs: jobs, jobsDone: make(chan struct{}), Store: store, App: app, owner: owner, cancel: cancel, ctx: workerCtx, collectorPath: canonicalCollector, dataPath: path, done: make(chan struct{}), queries: duckdb.Queries{Store: store}, captureDetails: options.CaptureDetails}
 	r.Query = queryclient.NewDirect(server.NewDirectQuery(r.queries, id, hostname))
 	r.Destination = &collector.Destination{Identity: "http://local", DatabaseID: metadata.DatabaseID, DatasetID: metadata.DatasetID, Local: true, Transport: collector.DirectDelivery{Receiver: store}}
 	// WaitVisible reads durable failure state, including failures from a prior owner.

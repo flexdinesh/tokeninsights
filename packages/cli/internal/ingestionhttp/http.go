@@ -3,7 +3,6 @@ package ingestionhttp
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"errors"
 	"io"
@@ -17,18 +16,9 @@ import (
 const IngestionPrefix = "/api/v3/ingestion/"
 const ProcessingPrefix = "/api/v2/processing/"
 
-type Receiver interface {
-	RawCapabilities(context.Context) (evidence.Capabilities, error)
-	// Accept owns strict request decoding and requested-protocol validation.
-	Accept(context.Context, int, []byte) (evidence.Response, error)
-	Receipt(context.Context, string, string) (evidence.Response, error)
-	AcquireAdmission() (func(), bool)
-}
-
 type Reprocessor interface {
 	Reprocess(context.Context) (int64, error)
 }
-type rejection interface{ IngestionCode() string }
 
 func respond(w http.ResponseWriter, status int, value interface{}) {
 	w.Header().Set("Content-Type", "application/json")
@@ -56,7 +46,7 @@ func acceptanceError(w http.ResponseWriter, err error) {
 		fail(w, status, "validation", invalid.Code)
 		return
 	}
-	var refused rejection
+	var refused evidence.Rejection
 	status, code := http.StatusServiceUnavailable, "transaction_failed"
 	if errors.As(err, &refused) {
 		code = refused.IngestionCode()
@@ -70,7 +60,7 @@ func acceptanceError(w http.ResponseWriter, err error) {
 	}
 	fail(w, status, "admission", code)
 }
-func Handler(receiver Receiver, prefix string, protocol int) http.Handler {
+func Handler(receiver evidence.Receiver, prefix string, protocol int) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET "+prefix+"capabilities", func(w http.ResponseWriter, r *http.Request) {
 		caps, err := receiver.RawCapabilities(r.Context())
@@ -111,7 +101,7 @@ func Handler(receiver Receiver, prefix string, protocol int) http.Handler {
 	mux.HandleFunc("GET "+prefix+"batches/{stream}/{batch}", func(w http.ResponseWriter, r *http.Request) {
 		response, err := receiver.Receipt(r.Context(), r.PathValue("stream"), r.PathValue("batch"))
 		if err != nil {
-			if errors.Is(err, sql.ErrNoRows) {
+			if errors.Is(err, evidence.ErrReceiptNotFound) {
 				fail(w, 404, "receipt", "not_found")
 			} else {
 				fail(w, 503, "receipt", "unavailable")

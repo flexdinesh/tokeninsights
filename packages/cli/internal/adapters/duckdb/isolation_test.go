@@ -1,4 +1,4 @@
-package analytics
+package duckdb
 
 import (
 	"encoding/json"
@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/analytics"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/datastore"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/evidence"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/querymodel"
@@ -94,7 +95,7 @@ func TestDatasetAnalyticsIsolateCollidingIdentities(t *testing.T) {
 			if tab == "directory" {
 				queryTab, group = "repo", querymodel.RepoGroupDirectory
 			}
-			q := Query{Selection: viewer.Selection{Period: "all", Bucket: "day"}, Quality: "confirmed", Tab: queryTab, Sort: "total", Direction: "desc", Page: 999, PageSize: 1, LocationGroup: group}
+			q := analytics.Query{Selection: viewer.Selection{Period: "all", Bucket: "day"}, Quality: "confirmed", Tab: queryTab, Sort: "total", Direction: "desc", Page: 999, PageSize: 1, LocationGroup: group}
 			result, err := LoadDashboard(t.Context(), test.store, q, time.Now())
 			if err != nil {
 				t.Fatal(tab, err)
@@ -203,7 +204,7 @@ func TestDatasetAnalyticsIsolateCollidingIdentities(t *testing.T) {
 		store             *datastore.Store
 		generation, total int64
 	}{{alice, 1, 240}, {bob, 2, 1840}} {
-		q := Query{Selection: viewer.Selection{Period: "all", Bucket: "day"}, Quality: "confirmed", Tab: "sessions", Sort: "date", Direction: "desc", Page: 1, PageSize: 10}
+		q := analytics.Query{Selection: viewer.Selection{Period: "all", Bucket: "day"}, Quality: "confirmed", Tab: "sessions", Sort: "date", Direction: "desc", Page: 1, PageSize: 10}
 		result, err := LoadDashboard(t.Context(), test.store, q, time.Now())
 		if err != nil {
 			t.Fatal(err)

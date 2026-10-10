@@ -431,6 +431,11 @@ HTTP adapters; `analytics.Repository` shares direct/HTTP query semantics. `accou
 and its SQLite adapter isolate application persistence. Dataengine owns processing
 contracts; DuckDB is an adapter, not a required future backend.
 
+[ADR 0011](adr/0011-storage-adapter-contracts.md) makes PostgreSQL a planned remote
+backend for both tokens and accounts through separate contracts. Current production
+adapters remain embedded; PostgreSQL implementation follows. Account and token
+transactions stay separate even when they share one physical database.
+
 | Package | Behavior boundary |
 | --- | --- |
 | `evidence`, `publication` | Sanitized wire records and stable contribution contracts |
@@ -441,14 +446,16 @@ contracts; DuckDB is an adapter, not a required future backend.
 | `processor` | Pure evidence interpretation; no host reads, SQL, network or wall clock |
 | `dataengine` | Transport-independent work/processing orchestration and retry scheduling |
 | `datastore` | DuckDB adapter and dataset-scoped atomic persistence operations |
-| `analytics` | Typed query contracts/results and dataset-scoped SQL |
+| `analytics` | Backend-independent query contracts, results and query policy |
+| `adapters/duckdb` | Dataset-scoped DuckDB queries, receiver/query composition and embedded opening |
 | `server`, `ingestionhttp` | Authorized REST/asset and ingestion adapters |
 | `serverfeatures` | Typed kind/capability policy |
 | `collectorprogress` | Sanitized progress values, registry and HTTP reads; no capture dependencies |
-| `accounts`, `appstore` | Credential contract/SQLite adapter, provisioning and application pairing |
+| `accounts` | Credential contracts, shared policy and dataset provisioning contract |
+| `adapters/sqliteaccounts`, `appstore` | SQLite account transactions/provisioning and physical application pairing |
 | `syncjob` | Durable finite jobs, native detachment and delivery retries |
 | `localruntime` | Command ownership and background startup lifetime, direct ingestion/query, local requests and development fixtures |
-| `serverruntime` | Shared storage/worker/listener lifecycle |
+| `serverruntime` | Shared worker/readiness/listener lifecycle through interfaces |
 | `remoteserver` | Authenticated remote composition |
 
 `querymodel` owns storage-independent query values. Direct queries receive an
@@ -457,6 +464,19 @@ Storage supplies semantic receiver operations; `ingestionhttp` mounts HTTP route
 The collector requires an injected delivery adapter before capture. Single-process
 composition supplies direct delivery; distributed discovery supplies HTTP delivery.
 No core discovers a daemon or substitutes a transport.
+
+`server.DataSource` supplies dataset-bound `evidence.Receiver` and
+`analytics.Repository` ports. HTTP scopes both from the authenticated principal;
+it cannot construct adapters or choose another backend from request values.
+`dataengine.Metadata` carries storage-independent publication identity/revisions.
+Missing receipts use `evidence.ErrReceiptNotFound`, never a driver sentinel.
+The shared runtime consumes worker/readiness interfaces; embedded initialization
+and filesystem locks belong to adapter/composition code. Import rules keep SQL
+and concrete storage out of accounts, analytics, HTTP and shared runtime.
+
+Reusable `storagecontract` suites run against real adapter fixtures, including
+durable reopen, acceptance replay/isolation, publication fences, query components
+and account revocation. SQL rollback/fault-injection tests stay beside each adapter.
 
 ### Runtime resource ownership
 
@@ -498,7 +518,7 @@ socket. `/healthz` is liveness; `/readyz` checks initialized storage/auth/routes
 not absence of pending work. SIGTERM closes listeners, joins worker and closes
 storage. See [deployment](deployment.md) for TLS, provisioning and backup.
 
-Collector JSONL replacement, per-user DBs, organizations, external queue/backends,
+Collector JSONL replacement, per-user DBs, organizations, external queues,
 replicas and public signup/OIDC are out of scope.
 
 Go embeds committed web assets. CGO/C/C++ needed to build DuckDB; native CI/release

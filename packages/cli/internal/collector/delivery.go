@@ -59,17 +59,8 @@ func (d HTTPDelivery) Receipt(ctx context.Context, stream, batch string) (eviden
 	return result, err
 }
 
-// Receiver is an already authorized dataset. Its atomic operations are shared
-// by the direct and HTTP adapters; no listener or synthetic HTTP request is used.
-// Accept validates exact request bytes and their requested protocol before mutation.
-type Receiver interface {
-	RawCapabilities(context.Context) (evidence.Capabilities, error)
-	Accept(context.Context, int, []byte) (evidence.Response, error)
-	Receipt(context.Context, string, string) (evidence.Response, error)
-	AcquireAdmission() (func(), bool)
-}
-
-type DirectDelivery struct{ Receiver Receiver }
+// DirectDelivery uses an authorized receiver without HTTP or synthetic requests.
+type DirectDelivery struct{ Receiver evidence.Receiver }
 
 func (d DirectDelivery) Capabilities(ctx context.Context) (evidence.Capabilities, error) {
 	return d.Receiver.RawCapabilities(ctx)
@@ -100,7 +91,7 @@ func directFailure(err error) error {
 	if errors.As(err, &invalid) {
 		return failure("validation", invalid.Code, err)
 	}
-	var rejected interface{ IngestionCode() string }
+	var rejected evidence.Rejection
 	if errors.As(err, &rejected) {
 		return failure("admission", rejected.IngestionCode(), err)
 	}

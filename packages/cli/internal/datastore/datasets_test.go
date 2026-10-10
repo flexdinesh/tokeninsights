@@ -1,12 +1,12 @@
 package datastore
 
 import (
-	"database/sql"
 	"encoding/json"
 	"errors"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/evidence"
 	"path/filepath"
 	"testing"
+
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/evidence"
 )
 
 func TestStoredReceiptCannotRedirectScopedProcessingRead(t *testing.T) {
@@ -85,7 +85,7 @@ func TestDatasetsIsolateIdenticalNativeAndDeliveryIdentities(t *testing.T) {
 			t.Fatal(count, err)
 		}
 	}
-	if _, err := bob.Receipt(t.Context(), "other-stream", "batch"); !errors.Is(err, sql.ErrNoRows) {
+	if _, err := bob.Receipt(t.Context(), "other-stream", "batch"); !errors.Is(err, evidence.ErrReceiptNotFound) {
 		t.Fatal("foreign receipt exposed", err)
 	}
 	// A scoped handle rejects a different dataset binding before mutation.

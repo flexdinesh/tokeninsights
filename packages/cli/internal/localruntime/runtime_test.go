@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/adapters/duckdb"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/datastore"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/evidence"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/localruntime"
@@ -114,7 +115,7 @@ func TestDirectQueriesMatchHTTPWithoutNetworkDependency(t *testing.T) {
 	if hostname, err := os.Hostname(); err != nil || instance.Hostname != hostname || instance.InstanceId != runtime.InstanceID {
 		t.Fatal("direct local identity unavailable", instance, err)
 	}
-	remote := httptest.NewServer(server.NewDataHandlerWithOptions(ctx, runtime.Store, io.Discard, server.DataHandlerOptions{Host: "127.0.0.1", InstanceID: runtime.InstanceID, Hostname: runtime.Hostname, Policy: runtime.Policy, Progress: runtime.Progress}))
+	remote := httptest.NewServer(server.NewDataHandlerWithOptions(ctx, duckdb.Source{Store: runtime.Store}, io.Discard, server.DataHandlerOptions{Host: "127.0.0.1", InstanceID: runtime.InstanceID, Hostname: runtime.Hostname, Policy: runtime.Policy, Progress: runtime.Progress}))
 	network, err := queryclient.New(remote.URL, nil)
 	if err != nil {
 		t.Fatal(err)

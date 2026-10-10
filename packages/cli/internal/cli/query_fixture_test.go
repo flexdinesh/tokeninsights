@@ -9,6 +9,7 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/adapters/duckdb"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/datastore"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/server"
 )
@@ -44,7 +45,7 @@ func queryHandler(t *testing.T, path, instance string) http.Handler {
 	if !ok {
 		t.Fatal("invalid fixture store")
 	}
-	return server.NewDataHandler(context.Background(), store, io.Discard, "127.0.0.1", instance, false)
+	return server.NewDataHandler(context.Background(), duckdb.Source{Store: store}, io.Discard, "127.0.0.1", instance, false)
 }
 
 var queryStores sync.Map

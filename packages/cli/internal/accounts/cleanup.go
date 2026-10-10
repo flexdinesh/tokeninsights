@@ -7,7 +7,6 @@ import (
 
 const (
 	credentialCleanupInterval = time.Minute
-	credentialCleanupBatch    = 1000
 	credentialCleanupTimeout  = 10 * time.Second
 )
 

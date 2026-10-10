@@ -78,3 +78,7 @@ when a second real consumer/adapter exposes a shared behavior, not to anticipate
 hypothetical storage or deployment modes.
 
 Unresolved questions: none for this cleanup.
+
+PostgreSQL for remote token and account storage is now a concrete requirement.
+[ADR 0011](0011-storage-adapter-contracts.md) defines the separate interfaces,
+adapter conformance suites and implementation constraints.

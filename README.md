@@ -168,6 +168,7 @@ Server exposes processed metadata to reachable dashboard clients. Default localh
 - [System boundaries](docs/system.md) and [storage/processing contract](docs/design.md)
 - [Docker and hosted deployment](docs/deployment.md)
 - [Architecture principles](docs/adr/0010-current-contracts-and-boundaries.md) — ownership, composition, current contracts and verification.
+- [Storage adapter contracts](docs/adr/0011-storage-adapter-contracts.md) — backend interfaces, conformance tests and planned PostgreSQL support.
 - [Collector/ingestion failure tests](docs/collector-ingestion-tests.md) — guarantees, synthetic fixtures, executable coverage, and future acceptance gates.
 - [Completion plugins](docs/plugins.md) — thin completion hooks, install artifacts, and host verification scope.
 

@@ -1,4 +1,4 @@
-package analytics
+package duckdb
 
 import (
 	"context"
@@ -9,12 +9,13 @@ import (
 	"strings"
 	"time"
 
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/analytics"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/datastore"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/publication"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/querymodel"
 )
 
-func dataTable(q Query) string {
+func dataTable(q analytics.Query) string {
 	if q.Quality == "estimated" {
 		return "analytics.estimated"
 	}
@@ -53,7 +54,7 @@ func duckWhere(f querymodel.Filter, timezone, datasetID string) (string, []inter
 	return where, args
 }
 func duckTimezone(now time.Time) string {
-	name := ReportingTimezone(time.Local, now)
+	name := analytics.ReportingTimezone(time.Local, now)
 	if strings.HasPrefix(name, "UTC+") || strings.HasPrefix(name, "UTC-") {
 		_, offset := now.In(time.Local).Zone()
 		return "@" + strconv.Itoa(offset)
@@ -79,7 +80,7 @@ func safeAggregate(values ...int64) error {
 	}
 	return nil
 }
-func queryFilter(q Query, now time.Time) querymodel.Filter {
+func queryFilter(q analytics.Query, now time.Time) querymodel.Filter {
 	f := q.Selection.Filter(now)
 	if q.Tab == "repo" {
 		f.RepositoryKeys = q.RepositoryKeys
@@ -94,7 +95,7 @@ func dimensionSummary(column string) string {
 
 // Only fixed SQL identifiers enter these statements. Filters, zone, limits and
 // offsets are bound parameters; aggregation and pagination stay in DuckDB.
-func groupedSQL(q Query, where, zone string) string {
+func groupedSQL(q analytics.Query, where, zone string) string {
 	key, name, group := "model", "model", "model"
 	switch q.Tab {
 	case "providers":
@@ -134,7 +135,7 @@ func groupedSQL(q Query, where, zone string) string {
 	}
 	return groupedSelect(q, key, name, group, dataTable(q)+where)
 }
-func groupedSelect(q Query, key, name, group, from string) string {
+func groupedSelect(q analytics.Query, key, name, group, from string) string {
 	locationKey, locationName, dirs, unknown, repoKey, repoName := "''", "''", "'[]'", "FALSE", "''", "''"
 	if q.Tab == "repo" {
 		locationKey, locationName = key, name
@@ -148,7 +149,7 @@ func groupedSelect(q Query, key, name, group, from string) string {
 		duckSum("input_tokens") + " AS input," + duckSum("output_tokens") + " AS output," + duckSum("reasoning_tokens") + " AS reasoning," + duckSum("cache_read_tokens") + " AS cache_read," + duckSum("cache_write_tokens") + " AS cache_write," + duckSum("total_tokens") + " AS total,MAX(input_tokens+cache_read_tokens+cache_write_tokens) AS context," +
 		"CAST(0 AS BIGINT) AS average_context,CAST(0 AS BIGINT) AS median_context,CAST(0 AS BIGINT) AS max_context," + locationKey + " AS location_key," + locationName + " AS location_name," + dirs + " AS directory_names," + unknown + " AS unknown_directory," + repoKey + " AS repository_key," + repoName + " AS repository_name FROM " + from + " GROUP BY " + group
 }
-func duckOrder(q Query, sort, direction string) string {
+func duckOrder(q analytics.Query, sort, direction string) string {
 	columns := map[string]string{"name": "name", "date": "date", "total": "total", "input": "input", "output": "output", "reasoning": "reasoning", "cacheRead": "cache_read", "cacheWrite": "cache_write", "sessions": "sessions", "context": "context", "averageContext": "average_context", "medianContext": "median_context", "maxContext": "max_context", "harness": "harness", "provider": "provider", "model": "model"}
 	column := columns[sort]
 	if column == "" {
@@ -159,15 +160,15 @@ func duckOrder(q Query, sort, direction string) string {
 	}
 	return " ORDER BY " + column + " " + direction + ",key ASC"
 }
-func readDuckRows(ctx context.Context, tx *sql.Tx, statement string, args []interface{}) ([]Row, error) {
+func readDuckRows(ctx context.Context, tx *sql.Tx, statement string, args []interface{}) ([]analytics.Row, error) {
 	rows, err := tx.QueryContext(ctx, statement, args...)
 	if err != nil {
 		return nil, err
 	}
 	defer func() { _ = rows.Close() }()
-	result := []Row{}
+	result := []analytics.Row{}
 	for rows.Next() {
-		var row Row
+		var row analytics.Row
 		var dirs string
 		if err := rows.Scan(&row.Key, &row.Name, &row.Harness, &row.Provider, &row.Model, &row.Date, &row.Sessions, &row.Input, &row.Output, &row.Reasoning, &row.CacheRead, &row.CacheWrite, &row.Total, &row.Context, &row.AverageContext, &row.MedianContext, &row.MaxContext, &row.LocationKey, &row.LocationName, &dirs, &row.HasUnknownDirectory, &row.RepositoryKey, &row.RepositoryName); err != nil {
 			return nil, err
@@ -183,22 +184,22 @@ func readDuckRows(ctx context.Context, tx *sql.Tx, statement string, args []inte
 	return result, rows.Err()
 }
 
-func LoadDashboard(ctx context.Context, store *datastore.Store, q Query, now time.Time) (Dashboard, error) {
+func LoadDashboard(ctx context.Context, store *datastore.Store, q analytics.Query, now time.Time) (analytics.Dashboard, error) {
 	return loadDashboard(ctx, store, q, now, 0)
 }
 
 // LoadAllDashboard shares paginated analytics but reads all rows in one bounded
 // snapshot. The page metadata retains the first page's requested size.
-func LoadAllDashboard(ctx context.Context, store *datastore.Store, q Query, now time.Time, maxRows int) (Dashboard, error) {
+func LoadAllDashboard(ctx context.Context, store *datastore.Store, q analytics.Query, now time.Time, maxRows int) (analytics.Dashboard, error) {
 	if maxRows < 1 {
-		return Dashboard{}, fmt.Errorf("invalid analytics row limit")
+		return analytics.Dashboard{}, fmt.Errorf("invalid analytics row limit")
 	}
 	q.Page = 1
 	return loadDashboard(ctx, store, q, now, maxRows)
 }
 
-func loadDashboard(ctx context.Context, store *datastore.Store, q Query, now time.Time, maxRows int) (Dashboard, error) {
-	result := Dashboard{Page: q.Page, PageSize: q.PageSize, Quality: q.Quality}
+func loadDashboard(ctx context.Context, store *datastore.Store, q analytics.Query, now time.Time, maxRows int) (analytics.Dashboard, error) {
+	result := analytics.Dashboard{Page: q.Page, PageSize: q.PageSize, Quality: q.Quality}
 	tx, err := store.BeginRead(ctx)
 	if err != nil {
 		return result, err
@@ -242,7 +243,7 @@ func loadDashboard(ctx context.Context, store *datastore.Store, q Query, now tim
 		return result, err
 	}
 	if maxRows > 0 && result.RowCount > maxRows {
-		return Dashboard{}, fmt.Errorf("analytics row limit exceeded (%d)", maxRows)
+		return analytics.Dashboard{}, fmt.Errorf("analytics row limit exceeded (%d)", maxRows)
 	}
 	pages := max(1, (result.RowCount+q.PageSize-1)/q.PageSize)
 	result.Page = min(q.Page, pages)
@@ -259,7 +260,7 @@ func loadDashboard(ctx context.Context, store *datastore.Store, q Query, now tim
 	chartArgs := groupArgs
 	chartSQL := grouped
 	chartSort, chartDirection := "total", "desc"
-	limit = chartLimit
+	limit = analytics.ChartLimit
 	switch q.Tab {
 	case "tokens", "sessions":
 		chartQuery.Tab = "tokens"
@@ -284,8 +285,8 @@ func loadDashboard(ctx context.Context, store *datastore.Store, q Query, now tim
 	return result, tx.Commit()
 }
 
-func LoadFacets(ctx context.Context, store *datastore.Store, q Query, search string, now time.Time) (Facets, error) {
-	result := Facets{Providers: []string{}, Models: []string{}, Harnesses: []string{}, Sessions: []string{}, Repositories: []querymodel.LocationOption{}, Directories: []querymodel.LocationOption{}}
+func LoadFacets(ctx context.Context, store *datastore.Store, q analytics.Query, search string, now time.Time) (analytics.Facets, error) {
+	result := analytics.Facets{Providers: []string{}, Models: []string{}, Harnesses: []string{}, Sessions: []string{}, Repositories: []querymodel.LocationOption{}, Directories: []querymodel.LocationOption{}}
 	tx, err := store.BeginRead(ctx)
 	if err != nil {
 		return result, err
@@ -316,7 +317,7 @@ func LoadFacets(ctx context.Context, store *datastore.Store, q Query, search str
 		if field == "session_native_id" {
 			statement += " AND contains(lower(session_native_id),lower(?))"
 			args = append(args, search)
-			limit = sessionOptionLimit
+			limit = analytics.SessionOptionLimit
 		}
 		location := field == "repository_key" || field == "directory_key"
 		if location {
