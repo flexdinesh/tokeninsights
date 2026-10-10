@@ -32,7 +32,6 @@ Run commands from the repository root unless noted otherwise.
 | Purpose | Command |
 | --- | --- |
 | Full local pre-push verification | `mise run check:push` or `pnpm run check:push` |
-| Minimal CI verification | `mise run check:ci` or `pnpm run check:ci` |
 | Install workspace dependencies | `pnpm install` |
 | Run Go API and hot-reloading web app | `pnpm run dev` |
 | Recreate sanitized fixture data | `pnpm run dev:data` |
@@ -51,6 +50,7 @@ Run commands from the repository root unless noted otherwise.
 | Lint Go and TypeScript | `pnpm run lint` |
 | Run all tests | `pnpm run test` |
 | Run Go race-detector suite | `pnpm run test:race` |
+| Verify real server image on both backends | `pnpm run test:container` |
 | Validate SQLite/PostgreSQL schema copies | `pnpm run check-schema` |
 | Validate generated API files | `pnpm run check-api` |
 | Regenerate API files | `pnpm run generate:api` |
@@ -59,9 +59,9 @@ Run commands from the repository root unless noted otherwise.
 | Run browser end-to-end tests | `pnpm run test:web-e2e` |
 | Build production binary and validate contracts | `pnpm run build` |
 
-The pre-push hook clears Git-local environment variables before running `mise run check:push`, so fixture Git commands operate on their own repositories rather than the repository being pushed. Verification covers formatting, lint, SQLite/PostgreSQL/API contracts, unit/conformance tests, all Go race tests, a frontend rebuild with committed-asset comparison, native build, and browser E2E. Checks fail fast and never repair tracked files. Regenerate stale API/assets explicitly before committing and pushing. There is no pre-commit test suite.
+The pre-push hook clears Git-local environment variables before running `mise run check:push`, so fixture Git commands operate on their own repositories rather than the repository being pushed. Verification covers formatting, lint, SQLite/PostgreSQL/API contracts, unit/conformance tests, all Go race tests, a frontend rebuild with committed-asset comparison, native build, browser E2E, and real-container contracts on SQLite/PostgreSQL. Docker is required for container contracts even when an external PostgreSQL test DSN is supplied. Checks fail fast and never repair tracked files. Regenerate stale API/assets explicitly before committing and pushing. There is no pre-commit test suite.
 
-CI and release preparation run `mise run check:ci`: formatting, SQLite/PostgreSQL schema-copy consistency, and a native Go build against committed browser assets. CI installs no browser and runs no full lint/test suites, API generation, or frontend rebuild. Release additionally builds and publishes native archives. Native CI/release jobs also build both binaries and test the data stores on matching Linux/macOS amd64/arm64 runners. A separate CI job runs live PostgreSQL storage/hosted contracts. CI only verifies; development installs resolve `main` directly without publication or waiting for CI. Both workflows disable hook installation with `HUSKY=0`. Hooks run locally after dependency setup; GUI clients must have mise on PATH. Root pnpm scripts own commands; mise tasks delegate to those same scripts.
+Locally reproducible verification belongs in `check:push`, not CI or release preparation. New CI checks must document coverage unavailable on the developer host in both workflow and PR; rerunning local checks is not a reason. CI builds both binaries and tests storage on matching Linux/macOS amd64/arm64 runners, providing native platform coverage one host cannot supply. Release additionally packages, validates and publishes generated artifacts. CI only verifies; development installs resolve `main` directly without publication or waiting for CI. Both workflows disable hook installation with `HUSKY=0`. Hooks run locally after dependency setup; GUI clients must have mise on PATH. Root pnpm scripts own commands; mise tasks delegate to those same scripts.
 
 Install Chromium once before browser tests when using pnpm directly:
 
@@ -162,7 +162,7 @@ pnpm run bench:smoke
 
 Smoke uses small shared storage history but executes every benchmark family, so
 fixture SQL and semantic checks run even though normal tests do not run benchmarks.
-It runs in pre-push verification and the live PostgreSQL CI job. No latency
+It runs in pre-push verification. No latency
 threshold determines success. Separately, `pnpm run bench:storage` measures the full
 retained-history matrix with fixed iterations and sequential packages; it is not a
 CI timing gate. Use a disk-backed temporary directory as described below.

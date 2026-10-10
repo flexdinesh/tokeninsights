@@ -11,10 +11,6 @@ run = "pnpm install --frozen-lockfile"
 description = "Install Chromium for local browser tests"
 run = "pnpm --filter @tokeninsights/web exec playwright install chromium"
 
-[tasks."check:ci"]
-description = "Minimal CI: formatting, SQLite contract, native build"
-run = "pnpm run check:ci"
-
 [tasks."check:push"]
 description = "Full local verification before push"
 run = "pnpm run check:push"

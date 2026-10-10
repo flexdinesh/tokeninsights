@@ -7,7 +7,8 @@ packages/cli/node_modules/
 packages/cli/.impeccable/
 packages/cli/**/*.sqlite
 packages/cli/**/*.sqlite-*
-packages/cli/**/*db
-packages/cli/**/*db.*
+packages/cli/**/*.db
+packages/cli/**/*.db-*
+packages/cli/**/*.db.*
 packages/cli/.scratch/
 packages/cli/**/*.sock

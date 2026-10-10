@@ -47,6 +47,10 @@ Read `docs/design.md` and the relevant ADRs before non-trivial changes, especial
   and dependencies; they do not discover mode, read deployment configuration, or
   construct another layer's adapters. Keep capability, permission and dataset
   authorization distinct. A remote failure must never select a local fallback.
+- **Resolve deployment inputs once**: executable boundaries parse env/flags and
+  secret files into typed settings; domains never read them. Proxy trust belongs
+  at the hosted HTTP boundary and cannot override origin or authorization. Keep
+  native/image behavior aligned; deployment changes require `pnpm run test:container`.
 - **Keep policy and mechanism separate**: mode policy determines permitted behavior;
   adapters implement storage/transport. Changing the storage engine must not change
   accounting, tenant isolation, or the meaning of a successful operation.
@@ -79,11 +83,10 @@ Read `docs/design.md` and the relevant ADRs before non-trivial changes, especial
 
 ## Commands
 
-`mise.toml` pins development tools. `mise run setup` installs dependencies and Husky's pre-push hook; `mise run setup:browser` installs Chromium. Root pnpm scripts own tasks; mise delegates to them. Heavy verification runs locally before push. CI runs formatting, schema consistency, native builds, focused data-store tests and live PostgreSQL contracts. Root test/race scripts require Docker or `TOKENINSIGHTS_TEST_POSTGRES_DSN` with CREATEDB privileges.
+`mise.toml` pins development tools. `mise run setup` installs dependencies and Husky's pre-push hook; `mise run setup:browser` installs Chromium. Root pnpm scripts own tasks; mise delegates to them. All locally reproducible checks run in `check:push`, including live PostgreSQL and real-container contracts. CI covers native Linux/macOS amd64/arm64 builds and focused storage tests. Root test/race scripts require Docker or `TOKENINSIGHTS_TEST_POSTGRES_DSN` with CREATEDB privileges; container contracts always require Docker.
 
 ```sh
 mise run check:push
-mise run check:ci
 pnpm run format
 pnpm run format:check
 pnpm run lint
@@ -95,6 +98,9 @@ pnpm run build
 ```
 
 ## Verification
+
+- **Local checks belong in pre-push**. Add locally reproducible checks to the root `check:push` script, reached by `.husky/pre-push`; do not add or duplicate them in CI or release preparation.
+- **CI requires a concrete reason**. Before adding or expanding a CI check, identify the coverage unavailable locally and document it in the workflow and PR. Native OS/architecture coverage and validation of artifacts generated during release are valid reasons. Convenience or repeating a local check is not.
 
 - After changing code, run `pnpm run format`, `pnpm run lint`, the relevant focused tests, and `pnpm run test`.
 - Run `pnpm run build` after tests pass.

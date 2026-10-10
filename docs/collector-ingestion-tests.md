@@ -47,8 +47,8 @@ or HTTP; inspecting the collector's SQLite journal verifies its own durable boun
 Deployment restart fixtures stop the server and commit through the real adapter
 without a worker before restarting the same binary/endpoint. This deterministically
 proves pending recovery; it is not a power-loss or database failover simulation.
-Root `pnpm test`, `pnpm test:race` and the live PostgreSQL CI job run both hosted
-backends. Direct `go test` skips PostgreSQL without `TOKENINSIGHTS_TEST_POSTGRES_DSN`;
+Root `pnpm test` and `pnpm test:race` run both hosted backends in local pre-push
+verification. Direct `go test` skips PostgreSQL without `TOKENINSIGHTS_TEST_POSTGRES_DSN`;
 use the root scripts for complete verification.
 
 Deleted normalized-publication pipelines, legacy schemas, migration/import adapters

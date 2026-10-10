@@ -81,7 +81,8 @@ tests; do not replace them with mocks or assertions about internal call order.
 
 `pnpm test` and `pnpm test:race` require live PostgreSQL. The runner starts a pinned
 disposable container unless `TOKENINSIGHTS_TEST_POSTGRES_DSN` is provided. Fixtures
-create random databases and drop only those databases. CI runs the live contracts.
+create random databases and drop only those databases. Local pre-push runs the live
+contracts; CI covers native OS/architecture builds and focused storage tests.
 Production builds need no CGO or JavaScript runtime; race tests still require CGO.
 
 No migration/import support, automatic fallback, multi-server scheduling or

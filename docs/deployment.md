@@ -19,8 +19,39 @@ container composition is absent; use `tokeninsights web` for local foreground us
 
 The Dockerfile pins Go and Debian image digests. It builds with `CGO_ENABLED=0`
 and smoke-tests `--version`; runtime dependencies are CA certificates, timezone
-data and curl for health checks. There is no C/C++ database library or JavaScript
+data. The binary itself probes readiness; no curl is required. There is no C/C++ database library or JavaScript
 runtime. Builds consume committed Go source and embedded browser assets.
+
+## Server configuration
+
+Native and container deployments run the same foreground `tokeninsights-server`.
+Flags override nonempty environment values; empty environment values use defaults.
+Explicit empty flags clear environment defaults and still undergo validation.
+Configuration is read once at startup. Restart to apply changes or rotate the
+database secret. No config-file discovery or runtime reload is performed.
+
+| Environment variable | Flag | Default / requirement |
+| --- | --- | --- |
+| `TOKENINSIGHTS_STORAGE_BACKEND` | `--storage-backend` | `sqlite`; alternatively `postgres` |
+| `TOKENINSIGHTS_LISTEN` | `--listen` | `0.0.0.0:8765`, IPv4 address and port |
+| `TOKENINSIGHTS_PUBLIC_URL` | `--public-url` | Required canonical HTTPS origin |
+| `TOKENINSIGHTS_SERVER_DB_PATH` | `--server-db-path` | Required for SQLite; forbidden for PostgreSQL |
+| `TOKENINSIGHTS_APP_DB_PATH` | `--app-db-path` | SQLite: `app.sqlite` beside token database |
+| `TOKENINSIGHTS_ADMIN_SOCKET` | `--admin-socket` | SQLite: beside token database; PostgreSQL: required absolute path |
+| `TOKENINSIGHTS_TRUSTED_PROXIES` | `--trusted-proxies` | Empty: trust no forwarded client addresses; comma-separated CIDRs |
+| `TOKENINSIGHTS_POSTGRES_DSN` | None | PostgreSQL connection secret |
+| `TOKENINSIGHTS_POSTGRES_DSN_FILE` | None | Alternative: path to a readable secret file |
+
+The image sets the admin socket to `/run/tokeninsights/admin.sock`. The `admin`
+subcommand also honors `TOKENINSIGHTS_ADMIN_SOCKET`. Settings and proxy CIDRs
+validate before opening listeners or storage; storage validation then rejects
+incompatible databases. Startup failure exits nonzero without backend fallback.
+`--version`, `--help` and `healthcheck` do not require database credentials.
+
+Use exactly one nonempty PostgreSQL secret source. Secret files may end with a
+newline; whitespace is trimmed. Empty, unreadable or oversized files (over 64 KiB)
+reject. Neither secret contents nor the secret-file path appear in read errors.
+DSNs have no command-line flag and must never be logged.
 
 ## Select storage
 
@@ -47,8 +78,16 @@ tokeninsights-server --storage-backend postgres \
   --admin-socket /run/tokeninsights/admin.sock
 
 # Same server against an externally provisioned database:
+export TOKENINSIGHTS_POSTGRES_DSN_FILE=/secure/tokeninsights/postgres-dsn
 docker compose -f deploy/compose.postgres.yaml up -d --build
 ```
+
+For this Compose example, `TOKENINSIGHTS_POSTGRES_DSN_FILE` names a **host** file;
+Compose mounts it read-only at `/run/secrets/postgres_dsn` and supplies that
+**container** path to the binary. Provision the file with your secret manager,
+readable by UID 10001 (for example, owned by 10001 with mode 0400). Compose file
+secrets retain host file permissions. Do not commit the file or put its contents
+in `.env`. PostgreSQL credentials are not embedded in the image or Compose YAML.
 
 `TOKENINSIGHTS_STORAGE_BACKEND` supplies the backend default; the flag overrides
 it. PostgreSQL requires an explicit absolute admin socket and rejects SQLite path
@@ -63,6 +102,33 @@ that origin to `127.0.0.1:8765`; provision certificates and proxy separately.
 Forward the original `Host` header and preserve request path/body. No externally
 published admin endpoint is needed.
 
+Within an existing TLS proxy's virtual host, an Nginx location can forward requests
+as follows (certificate/server configuration remains deployment-owned):
+
+```nginx
+location / {
+    proxy_pass http://127.0.0.1:8765;
+    proxy_set_header Host $http_host;
+    proxy_set_header X-Forwarded-For $remote_addr;
+    client_max_body_size 1m;
+}
+```
+
+At the public edge, **overwrite** incoming `X-Forwarded-For`; do not allow callers
+to choose their client address. Set `TOKENINSIGHTS_TRUSTED_PROXIES` to only the
+actual proxy peer CIDR seen by the server. A native loopback proxy can use
+`127.0.0.1/32`; Docker forwarding may present the bridge gateway instead. Determine
+that address for your host/network; do not assume loopback or trust all private
+networks. Keep the published port bound to host loopback as in these examples.
+
+With no trusted proxies, login limits use the socket peer, so proxied users share
+that limit. With explicit trust, the server walks `X-Forwarded-For` right to left
+through trusted hops and uses the first untrusted address. Missing, malformed or
+overlong chains fall back to the socket peer. At most 32 hops are accepted.
+`Forwarded`, `X-Real-IP`, forwarded host and forwarded scheme do not select identity
+or browser origin. `TOKENINSIGHTS_PUBLIC_URL` remains the browser origin authority;
+proxy headers never grant account or dataset access.
+
 ```sh
 export TOKENINSIGHTS_PUBLIC_URL=https://usage.example.com
 docker compose -f deploy/compose.hosted.yaml up -d --build
@@ -76,7 +142,7 @@ to an account. Every hosted user has one dataset; all users share `/data/server.
 The equivalent native process is:
 
 ```sh
-tokeninsights-server --listen 0.0.0.0:8765 \
+tokeninsights-server --listen 127.0.0.1:8765 \
   --server-db-path /var/lib/tokeninsights/server.sqlite \
   --app-db-path /var/lib/tokeninsights/app.sqlite \
   --public-url https://usage.example.com \
@@ -88,14 +154,14 @@ Compose example:
 
 ```sh
 docker compose -f deploy/compose.hosted.yaml exec tokeninsights \
-  tokeninsights-server admin --admin-socket /run/tokeninsights/admin.sock user create Alice
+  tokeninsights-server admin user create Alice
 ```
 
 Copy the returned `userId`, then create a token:
 
 ```sh
 docker compose -f deploy/compose.hosted.yaml exec tokeninsights \
-  tokeninsights-server admin --admin-socket /run/tokeninsights/admin.sock \
+  tokeninsights-server admin \
   token create USER_ID --scopes read,ingest
 ```
 
@@ -133,13 +199,21 @@ including `--sync=false`.
 The image runs as UID/GID `10001:10001`. `/data` contains SQLite files when that backend is selected. Docker named volumes inherit the image's directory
 ownership; an existing bind mount must be writable by that UID. The private
 socket lives in `/run/tokeninsights`, which is recreated on container replacement.
+The Compose root filesystem is read-only; `/run/tokeninsights` and `/tmp` are
+ephemeral writable tmpfs mounts. Only the SQLite example mounts persistent `/data`;
+PostgreSQL persistence belongs to the external database deployment.
 SQLite foreground servers default to `DB_PATH.admin.sock`; `--admin-socket` overrides it. PostgreSQL requires the explicit socket path.
 No host socket mount is needed when administering with `docker compose exec`.
 
 `GET /healthz` reports process liveness. `GET /readyz` reports initialized server
 storage/auth/routes without user metadata. Pending asynchronous processing alone
-does not make the server unready. The image health check uses `/readyz` on internal
-port 8765. Override the health-check URL if changing that port.
+does not make the server unready. The image runs `tokeninsights-server healthcheck`,
+which probes `/readyz` using `TOKENINSIGHTS_LISTEN` (wildcard maps to loopback).
+It has a three-second timeout, bypasses HTTP proxy environment variables, rejects
+redirects and exits nonzero unless ready. It never opens storage or reads secrets.
+When overriding the server port with a flag, also set the probe to
+`tokeninsights-server healthcheck --listen 127.0.0.1:PORT`. Prefer the environment
+setting so both processes share it; update port publishing to match.
 
 SIGTERM shuts down HTTP, joins processing and closes storage. Compose allows
 30 seconds before forced termination. Observe shutdown before starting a new
@@ -163,6 +237,20 @@ accounts and receipts; use it only when intentionally discarding that deployment
 There is no published image, automatic deployment, external queue or horizontal
 scaling configuration in these examples.
 
+## Deployment verification
+
+Run `pnpm run test:container` after changing the image or deployment boundary.
+It builds the actual image and checks both SQLite and PostgreSQL: non-root startup,
+read-only root, an alternate listen port, readiness, private administration, real
+client ingestion, receipts/totals after container replacement, revocation and clean
+SIGTERM exit. It owns disposable networks, volumes and a pinned PostgreSQL container.
+The pre-push hook runs this target; Docker is required. Native deployment tests exercise environment-only startup and
+mounted secret files; HTTP boundary tests enforce trusted-proxy login isolation and
+unchanged origin protection.
+
+Future integrations should add typed settings at the executable boundary and
+inject explicit adapters through hosted composition. OAuth/OIDC, provider discovery,
+hot reload and generic integration registries are not implemented by this setup.
 
 SQLite application pairing persists `<canonical-token-path>.application.json`,
 containing only the application instance ID. Missing/replaced application storage

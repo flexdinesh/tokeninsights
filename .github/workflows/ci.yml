@@ -15,36 +15,7 @@ env:
   HUSKY: '0'
 
 jobs:
-  verify:
-    name: Verify
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set up project tools
-        uses: jdx/mise-action@v4
-
-      - name: Install dependencies
-        run: mise run setup
-
-      - name: Minimal checks
-        run: mise run check:ci
-
-  postgres:
-    name: PostgreSQL contracts
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@v4
-      - uses: jdx/mise-action@v4
-      - run: mise run setup
-      - name: Live storage, hosted and deployment contracts
-        working-directory: packages/cli
-        run: node ../../tools/build/src/test-go.ts -run "TestToken|TestAccount|TestOwnership|TestSchemaAndPair|TestWriteRollback|TestHosted|TestFutureProcessor|TestTimestampCredentials|TestConfigurationErrors|TestRemoteFailureRetains|TestRemoteCommitted|TestAllHarnesses|TestConcurrentCopied|TestConfigRemoteSync"
-
-      - name: Execute benchmark fixtures on both backends
-        run: pnpm run bench:smoke
-
+  # Native OS/architecture coverage cannot be reproduced by one developer host.
   native:
     name: Native ${{ matrix.runner }}
     strategy:

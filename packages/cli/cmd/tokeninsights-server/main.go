@@ -21,32 +21,16 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 	if len(args) > 0 && args[0] == "admin" {
 		return runAdmin(ctx, args[1:], stdout, stderr)
 	}
-	flags := flag.NewFlagSet("tokeninsights-server", flag.ContinueOnError)
-	flags.SetOutput(stderr)
-	settings := remoteserver.Settings{PostgresDSN: os.Getenv("TOKENINSIGHTS_POSTGRES_DSN")}
-	backend := os.Getenv("TOKENINSIGHTS_STORAGE_BACKEND")
-	if backend == "" {
-		backend = "sqlite"
+	if len(args) > 0 && args[0] == "healthcheck" {
+		return healthcheck(ctx, args[1:], stderr)
 	}
-	flags.StringVar(&settings.Backend, "storage-backend", backend, "sqlite or postgres")
-	flags.StringVar(&settings.Listen, "listen", "0.0.0.0:8765", "IPv4 listen address")
-	flags.StringVar(&settings.AppDBPath, "app-db-path", "", "application SQLite (default: beside token database)")
-	flags.StringVar(&settings.DBPath, "server-db-path", "", "required SQLite token database path for sqlite backend")
-	flags.StringVar(&settings.PublicURL, "public-url", os.Getenv("TOKENINSIGHTS_PUBLIC_URL"), "hosted canonical HTTPS public origin")
-	flags.StringVar(&settings.AdminSocket, "admin-socket", "", "private operator socket (default: database path + .admin.sock)")
-	showVersion := flags.Bool("version", false, "print version")
-	if err := flags.Parse(args); err != nil {
+	settings, showVersion, err := serverSettings(args, stderr)
+	if err != nil {
 		return err
 	}
-	if *showVersion {
+	if showVersion {
 		_, err := fmt.Fprintln(stdout, "tokeninsights-server "+version.Version)
 		return err
-	}
-	if flags.NArg() != 0 {
-		return fmt.Errorf("unexpected arguments")
-	}
-	if os.Getenv("TOKENINSIGHTS_SERVER_TOKEN") != "" {
-		return fmt.Errorf("TOKENINSIGHTS_SERVER_TOKEN removed; use hosted user tokens; unset it")
 	}
 	return remoteserver.Run(ctx, settings, stderr, func(url string) error { _, err := fmt.Fprintln(stdout, url); return err })
 }
@@ -54,7 +38,7 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 func runAdmin(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 	flags := flag.NewFlagSet("tokeninsights-server admin", flag.ContinueOnError)
 	flags.SetOutput(stderr)
-	socket := flags.String("admin-socket", "", "running server private socket")
+	socket := flags.String("admin-socket", os.Getenv("TOKENINSIGHTS_ADMIN_SOCKET"), "running server private socket")
 	if err := flags.Parse(args); err != nil {
 		return err
 	}

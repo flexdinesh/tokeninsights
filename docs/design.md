@@ -421,8 +421,9 @@ Dataset stays stable across rotation. `read`/`ingest` permissions enforce routes
 `POST /api/v2/auth/session` exchanges a read token for an opaque, 24-hour,
 HttpOnly/Secure/SameSite=Lax host-only cookie; DELETE logs out. Browser sessions
 cannot ingest/administer. User disable/source-token revocation blocks sessions.
-Validate canonical public origin on state changes; do not trust proxy identity
-headers. Fixed auth errors expose no credentials. Static login shell/health are
+Validate canonical public origin on state changes. Explicit proxy CIDR policy may
+resolve client addresses for login admission; headers never confer identity or
+select origin. Fixed auth errors expose no credentials. Static login shell/health are
 public; authenticated failures render login and clear account-specific/in-flight
 query caches, including placeholder data.
 
@@ -461,6 +462,7 @@ and its adapters isolate application persistence. Dataengine owns processing con
 | `analytics` | Backend-independent query contracts, results and query policy |
 | `adapters/sqlanalytics` | Dataset-scoped SQL queries and receiver/query composition |
 | `server`, `ingestionhttp` | Authorized REST/asset and ingestion adapters |
+| `clientaddress` | Explicit trusted-proxy client address resolution; no environment, account or storage dependencies |
 | `serverfeatures` | Typed kind/capability policy |
 | `collectorprogress` | Sanitized progress values, registry and HTTP reads; no capture dependencies |
 | `accounts` | Credential contracts, shared policy and dataset provisioning contract |
@@ -506,6 +508,11 @@ receipts. Restart fixtures commit work through real adapters while the binary is
 stopped; they do not race the worker or add production test switches. In-process
 composition remains SQLite-only. See the [coverage map](collector-ingestion-tests.md).
 
+The real Docker image has a separate `pnpm run test:container` contract on both
+backends: environment configuration, secret-file startup, non-root/read-only root,
+alternate-port readiness, private admin, ingestion, replacement durability,
+revocation and SIGTERM. Local pre-push runs this alongside native deployment contracts. CI is limited to native OS/architecture coverage unavailable on one developer host; new CI checks require a documented reason.
+
 ### Runtime resource ownership
 
 Composition acquires storage, lifetime locks and listeners and cleans up every
@@ -540,11 +547,27 @@ and storage/HTTP separation. Real-adapter contract tests enforce the behaviors t
 types and import rules cannot prove.
 
 One process owns the shared database; two bounded compute workers. Docker packages
-the foreground executable with committed assets, non-root glibc runtime, CA/timezone
-native dependencies, persistent `/data` and private `/run/tokeninsights` admin
+the foreground executable with committed assets, non-root Debian runtime, CA/timezone
+data, persistent SQLite `/data` and private `/run/tokeninsights` admin
 socket. `/healthz` is liveness; `/readyz` checks initialized storage/auth/routes,
 not absence of pending work. SIGTERM closes listeners, joins worker and closes
 storage. See [deployment](deployment.md) for TLS, provisioning and backup.
+
+The executable owns flag/environment precedence, secret-file resolution and
+validation. Composition receives typed settings; domains never inspect deployment
+environment. Flags override nonempty environment values, then defaults apply.
+Secrets have no argv representation; DSN and DSN_FILE are mutually exclusive.
+Settings are immutable for one process lifetime. The binary's `healthcheck`
+subcommand probes HTTP readiness without reopening storage or reading secrets.
+
+Hosted composition wraps only its public handler with `clientaddress.Policy`.
+The zero policy ignores forwarded addresses. Configured CIDRs permit walking
+X-Forwarded-For right to left through trusted hops; the first untrusted address is
+the client. Invalid/absent chains and more than 32 hops fall back to the socket
+peer. Account admission consumes the resolved RemoteAddr and knows nothing about
+proxy configuration. Forwarded host/proto never override the canonical HTTPS
+origin. Private admin and local HTTP retain their existing policy. See
+[ADR 0013](adr/0013-server-deployment-boundary.md).
 
 Collector JSONL replacement, per-user DBs, organizations, external queues,
 replicas and public signup/OIDC are out of scope.

@@ -33,14 +33,10 @@ jobs:
         id: source
         run: echo "commit=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
-      - name: Set up project tools
+      - name: Set up Go for release version selection
         uses: jdx/mise-action@v4
-
-      - name: Install dependencies
-        run: mise run setup
-
-      - name: Minimal checks
-        run: mise run check:ci
+        with:
+          install_args: go
 
       - name: Select release version
         id: tag

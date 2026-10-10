@@ -17,13 +17,17 @@ import (
 	"time"
 
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/accounts"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/clientaddress"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/server"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/serverfeatures"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/serverownership"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/serverruntime"
 )
 
-type Settings struct{ Listen, DBPath, AppDBPath, PublicURL, AdminSocket, Backend, PostgresDSN string }
+type Settings struct {
+	Listen, DBPath, AppDBPath, PublicURL, AdminSocket, Backend, PostgresDSN string
+	TrustedProxies                                                          clientaddress.Policy
+}
 
 func canonicalPublicURL(raw string) (string, error) {
 	u, err := url.Parse(raw)
@@ -125,7 +129,7 @@ func Run(ctx context.Context, settings Settings, log io.Writer, ready func(strin
 	}
 	defer closePrivate()
 	handler := server.NewDataHandlerWithOptions(runCtx, storage.source, log, options)
-	bindings := []serverruntime.Binding{{Listener: listener, Handler: handler, Health: true}}
+	bindings := []serverruntime.Binding{{Listener: listener, Handler: settings.TrustedProxies.Handler(handler), Health: true}}
 	bindings = append(bindings, serverruntime.Binding{Listener: private, Handler: options.Accounts.AdminHandler()})
 	address := listener.Addr().String()
 	if host == "0.0.0.0" {

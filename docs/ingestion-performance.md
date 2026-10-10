@@ -27,7 +27,7 @@ fairness assertions; the native four-harness fixture stays unchanged. The shared
 storage smoke case has two datasets, two sessions each, ten messages/session and
 three generations. The paced smoke stream retains forty spaced batches and its
 independent-dataset assertion, with sixteen messages/batch. Ordinary tests do not
-execute benchmark bodies. Pre-push and live PostgreSQL CI run smoke explicitly,
+execute benchmark bodies. Local pre-push runs smoke explicitly,
 without timing gates.
 
 `bench:storage` runs the full matrix below, with three iterations and three
