@@ -4,6 +4,7 @@ import { spawn, spawnSync } from 'node:child_process'
 // Root verification always exercises PostgreSQL. Each Go fixture creates and
 // drops its own random database; a supplied DSN needs CREATEDB privileges.
 const image = 'postgres:18@sha256:74935e72241653ca55e0414067e6d8763aceb8a810eb51b452253ec3dcfc4336'
+const smoke = process.argv.includes('--benchmark-smoke')
 const name = `tokeninsights-tests-${randomUUID()}`
 let owned = false
 
@@ -67,9 +68,16 @@ try {
     }
     dsn = `postgres://postgres:tokeninsights-contract@127.0.0.1:${port}/postgres?sslmode=disable`
   }
-  const child = spawn('go', ['test', ...process.argv.slice(2), './...'], {
+  const args = smoke
+    ? ['-run', '^$', '-bench', '.', '-benchtime=1x', '-count=1', '-p=1']
+    : process.argv.slice(2)
+  const child = spawn('go', ['test', ...args, './...'], {
     stdio: 'inherit',
-    env: { ...process.env, TOKENINSIGHTS_TEST_POSTGRES_DSN: dsn },
+    env: {
+      ...process.env,
+      TOKENINSIGHTS_TEST_POSTGRES_DSN: dsn,
+      TOKENINSIGHTS_BENCHMARK_SMOKE: smoke ? '1' : '',
+    },
   })
   process.exitCode = await new Promise<number>((resolve, reject) => {
     child.on('error', reject)

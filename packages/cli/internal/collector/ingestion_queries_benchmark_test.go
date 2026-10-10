@@ -13,13 +13,17 @@ import (
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/collector"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/localruntime"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/pipeline"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/storagecontract"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/viewer"
 )
 
 // Keep saved sessions queryable while adding 9,950 messages to them. This uses
 // the real local runtime; no timing thresholds or synthetic query adapters.
 func BenchmarkIngestionSavedQueries(b *testing.B) {
-	const sessions, messages = 50, 200
+	sessions, messages := 50, 200
+	if storagecontract.BenchmarkSmoke() {
+		sessions, messages = 5, 20
+	}
 	b.ReportAllocs()
 	b.StopTimer()
 	var queryTime, maxQuery time.Duration
@@ -36,7 +40,7 @@ func BenchmarkIngestionSavedQueries(b *testing.B) {
 			defer func() { _ = runtime.Close() }()
 			options := collector.Options{CollectorDBPath: collectorPath, ServerDBPath: dataPath, Destination: runtime.Destination,
 				SyncOptions: pipeline.SyncOptions{SourceDir: sources, Harnesses: []pipeline.Harness{pipeline.HarnessPi}}}
-			startupBenchmarkRun(b, runtime, options, sessions*startupBenchmarkTokens, sessions)
+			startupBenchmarkRun(b, runtime, options, int64(sessions*startupBenchmarkTokens), sessions)
 			for session := range sessions {
 				file, err := os.OpenFile(filepath.Join(sources, fmt.Sprintf("session-%d.jsonl", session)), os.O_APPEND|os.O_WRONLY, 0)
 				if err != nil {
@@ -64,7 +68,7 @@ func BenchmarkIngestionSavedQueries(b *testing.B) {
 				done <- err
 			}()
 			query := analytics.Query{Selection: viewer.Selection{Period: "all", Bucket: "day"}, Tab: "sessions", Quality: "confirmed", Sort: "total", Direction: "desc", Page: 1, PageSize: 200}
-			const want = sessions * messages * startupBenchmarkTokens
+			want := int64(sessions * messages * startupBenchmarkTokens)
 			previous := int64(sessions * startupBenchmarkTokens)
 			ticker := time.NewTicker(200 * time.Millisecond)
 			defer ticker.Stop()
@@ -75,7 +79,7 @@ func BenchmarkIngestionSavedQueries(b *testing.B) {
 				queryTime += elapsed
 				maxQuery = max(maxQuery, elapsed)
 				queryCount++
-				if err != nil || dashboard.Summary.SessionCount != sessions || dashboard.Summary.TotalTokens < previous || dashboard.Summary.TotalTokens > want {
+				if err != nil || dashboard.Summary.SessionCount != int64(sessions) || dashboard.Summary.TotalTokens < previous || dashboard.Summary.TotalTokens > want {
 					cancel()
 					<-done
 					b.Fatalf("saved snapshot: %+v %v", dashboard, err)

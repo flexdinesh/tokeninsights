@@ -23,6 +23,7 @@ import (
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/pipeline"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/server"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/serverfeatures"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/storagecontract"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/viewer"
 )
 
@@ -167,8 +168,14 @@ func BenchmarkIngestion(b *testing.B) {
 		{"Unchanged", 50, 200},
 		{"Append", 50, 200},
 	} {
+		name := shape.name
+		if storagecontract.BenchmarkSmoke() && shape.sessions > 0 {
+			shape.sessions = min(shape.sessions, 5)
+			shape.messages = min(shape.messages, 20)
+			name += "-Smoke"
+		}
 		for _, transport := range []string{"Direct", "HTTP"} {
-			b.Run(shape.name+"/"+transport, func(b *testing.B) {
+			b.Run(name+"/"+transport, func(b *testing.B) {
 				b.ReportAllocs()
 				b.StopTimer()
 				metrics := make(map[string]int64)

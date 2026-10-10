@@ -46,8 +46,14 @@ func BenchmarkMetadataRead(b *testing.B) {
 				b.Fatal(err)
 			}
 			b.Cleanup(func() { _ = store.Close() })
-			if _, err := store.SQL().ExecContext(b.Context(), sqlutil.Bind("INSERT INTO analytics_generations SELECT ?,range,?,'retained',1,0 FROM range(2,?)"), DatasetID, evidence.ProcessorVersion, generations+1); err != nil {
+			if _, err := store.SQL().ExecContext(b.Context(), `WITH RECURSIVE generations(value) AS (
+ SELECT 2 WHERE ? >= 2 UNION ALL SELECT value+1 FROM generations WHERE value < ?
+) INSERT INTO analytics_generations SELECT ?,value,?,'retained',1,0 FROM generations`, generations, generations, DatasetID, evidence.ProcessorVersion); err != nil {
 				b.Fatal(err)
+			}
+			var count int
+			if err := store.SQL().QueryRow("SELECT COUNT(*) FROM analytics_generations").Scan(&count); err != nil || count != generations {
+				b.Fatal("retained generation fixture", count, err)
 			}
 			b.ReportAllocs()
 			for b.Loop() {
