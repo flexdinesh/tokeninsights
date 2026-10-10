@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/adapters/duckdb"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/adapters/sqlanalytics"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/analytics"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/collector"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/localruntime"
@@ -39,7 +39,7 @@ func startupBenchmarkRun(b *testing.B, runtime *localruntime.Runtime, options co
 	}
 	visible := time.Now()
 	query := analytics.Query{Selection: viewer.Selection{Period: "all", Bucket: "day"}, Tab: "sessions", Quality: "confirmed", Sort: "total", Direction: "desc", Page: 1, PageSize: 200}
-	dashboard, err := duckdb.LoadDashboard(b.Context(), runtime.Store, query, time.Now())
+	dashboard, err := sqlanalytics.LoadDashboard(b.Context(), runtime.Store, query, time.Now())
 	if err != nil || dashboard.Summary.TotalTokens != wantTokens || dashboard.Summary.SessionCount != int64(wantSessions) || dashboard.Pending != 0 {
 		b.Fatalf("startup totals: %+v %v", dashboard, err)
 	}
@@ -76,7 +76,7 @@ func BenchmarkLocalStartup(b *testing.B) {
 						b.Fatal(err)
 					}
 				}
-				collectorPath, dataPath := filepath.Join(root, "collector.sqlite"), filepath.Join(root, "server.duckdb")
+				collectorPath, dataPath := filepath.Join(root, "collector.sqlite"), filepath.Join(root, "server.sqlite")
 				options := collector.Options{CollectorDBPath: collectorPath, ServerDBPath: dataPath, SyncOptions: pipeline.SyncOptions{SourceDir: sources, Harnesses: []pipeline.Harness{pipeline.HarnessPi}}}
 				wantTokens := int64(sourceCount * factCount * startupBenchmarkTokens)
 				if scenario != "FirstIngest" {

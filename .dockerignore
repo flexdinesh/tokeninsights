@@ -7,6 +7,7 @@ packages/cli/node_modules/
 packages/cli/.impeccable/
 packages/cli/**/*.sqlite
 packages/cli/**/*.sqlite-*
-packages/cli/**/*.duckdb
-packages/cli/**/*.duckdb.*
+packages/cli/**/*db
+packages/cli/**/*db.*
+packages/cli/.scratch/
 packages/cli/**/*.sock

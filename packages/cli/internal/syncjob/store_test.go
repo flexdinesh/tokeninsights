@@ -1,22 +1,51 @@
 package syncjob
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/config"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/pipeline"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/config"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/pipeline"
 )
+
+func TestChangedSchemaRejectsWithoutMutation(t *testing.T) {
+	collector := filepath.Join(t.TempDir(), "collector.sqlite")
+	store, err := Open(t.Context(), collector)
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := store.Path
+	if _, err := store.database.ExecContext(t.Context(), "ALTER TABLE jobs ADD COLUMN unexpected TEXT"); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Close(); err != nil {
+		t.Fatal(err)
+	}
+	before, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if other, err := Open(t.Context(), collector); err == nil {
+		_ = other.Close()
+		t.Fatal("changed schema accepted")
+	}
+	after, err := os.ReadFile(path)
+	if err != nil || !bytes.Equal(before, after) {
+		t.Fatal("rejection mutated jobs", err)
+	}
+}
 
 func TestQueueAdmissionDoesNotRequireCollectorLockAndRecoversAbandonedClaim(t *testing.T) {
 	root := t.TempDir()
 	settings := config.Defaults()
 	settings.CollectorDBPath = filepath.Join(root, "collector.sqlite")
-	settings.ServerDBPath = filepath.Join(root, "server.duckdb")
+	settings.ServerDBPath = filepath.Join(root, "server.sqlite")
 	spec, err := NewSpec(settings, []pipeline.Harness{pipeline.HarnessPi}, "", false, false)
 	if err != nil {
 		t.Fatal(err)

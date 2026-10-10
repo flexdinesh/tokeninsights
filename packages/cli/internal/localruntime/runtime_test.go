@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/adapters/duckdb"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/adapters/sqlanalytics"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/datastore"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/evidence"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/localruntime"
@@ -44,7 +44,7 @@ func pendingBatch(t *testing.T, store *datastore.Store) evidence.Receipt {
 
 func TestRuntimeOwnsDatabaseResumesProcessingAndReleases(t *testing.T) {
 	root := t.TempDir()
-	collectorPath, dataPath := filepath.Join(root, "collector.sqlite"), filepath.Join(root, "data.duckdb")
+	collectorPath, dataPath := filepath.Join(root, "collector.sqlite"), filepath.Join(root, "data.sqlite")
 	store, err := datastore.Open(t.Context(), dataPath)
 	if err != nil {
 		t.Fatal(err)
@@ -97,7 +97,7 @@ func TestRuntimeOwnsDatabaseResumesProcessingAndReleases(t *testing.T) {
 
 func TestDirectQueriesMatchHTTPWithoutNetworkDependency(t *testing.T) {
 	root := t.TempDir()
-	runtime, err := localruntime.Open(t.Context(), filepath.Join(root, "collector.sqlite"), filepath.Join(root, "data.duckdb"))
+	runtime, err := localruntime.Open(t.Context(), filepath.Join(root, "collector.sqlite"), filepath.Join(root, "data.sqlite"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -115,7 +115,7 @@ func TestDirectQueriesMatchHTTPWithoutNetworkDependency(t *testing.T) {
 	if hostname, err := os.Hostname(); err != nil || instance.Hostname != hostname || instance.InstanceId != runtime.InstanceID {
 		t.Fatal("direct local identity unavailable", instance, err)
 	}
-	remote := httptest.NewServer(server.NewDataHandlerWithOptions(ctx, duckdb.Source{Store: runtime.Store}, io.Discard, server.DataHandlerOptions{Host: "127.0.0.1", InstanceID: runtime.InstanceID, Hostname: runtime.Hostname, Policy: runtime.Policy, Progress: runtime.Progress}))
+	remote := httptest.NewServer(server.NewDataHandlerWithOptions(ctx, sqlanalytics.Source{Store: runtime.Store}, io.Discard, server.DataHandlerOptions{Host: "127.0.0.1", InstanceID: runtime.InstanceID, Hostname: runtime.Hostname, Policy: runtime.Policy, Progress: runtime.Progress}))
 	network, err := queryclient.New(remote.URL, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -157,7 +157,7 @@ func TestDirectQueriesMatchHTTPWithoutNetworkDependency(t *testing.T) {
 func TestDerivedRoleAliasesRejectBeforeCreatingStorage(t *testing.T) {
 	root := t.TempDir()
 	collectorPath := filepath.Join(root, "collector.sqlite")
-	for _, paths := range [][2]string{{collectorPath + ".jobs.sqlite", filepath.Join(root, "app.sqlite")}, {filepath.Join(root, "data.duckdb"), collectorPath + ".jobs.sqlite"}, {filepath.Join(root, "data.duckdb"), filepath.Join(root, "data.duckdb.application.json")}} {
+	for _, paths := range [][2]string{{collectorPath + ".jobs.sqlite", filepath.Join(root, "app.sqlite")}, {filepath.Join(root, "data.sqlite"), collectorPath + ".jobs.sqlite"}, {filepath.Join(root, "data.sqlite"), filepath.Join(root, "data.sqlite.application.json")}} {
 		runtime, err := localruntime.OpenWithApp(t.Context(), collectorPath, paths[0], paths[1])
 		if err == nil {
 			_ = runtime.Close()
@@ -170,9 +170,29 @@ func TestDerivedRoleAliasesRejectBeforeCreatingStorage(t *testing.T) {
 	}
 }
 
+func TestSQLiteSidecarRoleAliasesRejectBeforeCreatingStorage(t *testing.T) {
+	for _, suffix := range []string{"-wal", "-shm", "-journal"} {
+		t.Run(suffix, func(t *testing.T) {
+			root := t.TempDir()
+			collector := filepath.Join(root, "collector.sqlite")
+			data := filepath.Join(root, "server.sqlite")
+			for _, paths := range [][2]string{{collector + suffix, filepath.Join(root, "app.sqlite")}, {data, data + suffix}, {data, collector + suffix}} {
+				if runtime, err := localruntime.OpenWithApp(t.Context(), collector, paths[0], paths[1]); err == nil {
+					_ = runtime.Close()
+					t.Fatal("SQLite sidecar alias accepted")
+				}
+			}
+			entries, err := os.ReadDir(root)
+			if err != nil || len(entries) != 0 {
+				t.Fatal("sidecar alias mutated storage", entries, err)
+			}
+		})
+	}
+}
+
 func TestStartupFailureReleasesDatabaseOwnership(t *testing.T) {
 	root := t.TempDir()
-	collectorPath, dataPath, appPath := filepath.Join(root, "collector.sqlite"), filepath.Join(root, "data.duckdb"), filepath.Join(root, "app.sqlite")
+	collectorPath, dataPath, appPath := filepath.Join(root, "collector.sqlite"), filepath.Join(root, "data.sqlite"), filepath.Join(root, "app.sqlite")
 	occupied := []byte("unrelated file")
 	if err := os.WriteFile(appPath, occupied, 0o600); err != nil {
 		t.Fatal(err)

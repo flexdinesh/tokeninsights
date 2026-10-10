@@ -31,6 +31,17 @@ jobs:
       - name: Minimal checks
         run: mise run check:ci
 
+  postgres:
+    name: PostgreSQL contracts
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: jdx/mise-action@v4
+      - run: mise run setup
+      - name: Live storage and hosted contracts
+        working-directory: packages/cli
+        run: node ../../tools/build/src/test-go.ts -run "TestToken|TestAccount|TestOwnership|TestSchemaAndPair|TestWriteRollback|TestHosted|TestFutureProcessor|TestTimestampCredentials|TestConfigurationErrors"
+
   native:
     name: Native ${{ matrix.runner }}
     strategy:
@@ -46,7 +57,7 @@ jobs:
       - name: Build and verify storage
         working-directory: packages/cli
         env:
-          CGO_ENABLED: '1'
+          CGO_ENABLED: '0'
         run: |
           go build ./cmd/tokeninsights ./cmd/tokeninsights-server
           go test ./internal/datastore ./internal/rawcollectorstore

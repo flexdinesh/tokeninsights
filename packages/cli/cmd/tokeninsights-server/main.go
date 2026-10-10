@@ -23,10 +23,15 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 	}
 	flags := flag.NewFlagSet("tokeninsights-server", flag.ContinueOnError)
 	flags.SetOutput(stderr)
-	settings := remoteserver.Settings{}
+	settings := remoteserver.Settings{PostgresDSN: os.Getenv("TOKENINSIGHTS_POSTGRES_DSN")}
+	backend := os.Getenv("TOKENINSIGHTS_STORAGE_BACKEND")
+	if backend == "" {
+		backend = "sqlite"
+	}
+	flags.StringVar(&settings.Backend, "storage-backend", backend, "sqlite or postgres")
 	flags.StringVar(&settings.Listen, "listen", "0.0.0.0:8765", "IPv4 listen address")
 	flags.StringVar(&settings.AppDBPath, "app-db-path", "", "application SQLite (default: beside token database)")
-	flags.StringVar(&settings.DBPath, "server-db-path", "", "required server DuckDB database path")
+	flags.StringVar(&settings.DBPath, "server-db-path", "", "required SQLite token database path for sqlite backend")
 	flags.StringVar(&settings.PublicURL, "public-url", os.Getenv("TOKENINSIGHTS_PUBLIC_URL"), "hosted canonical HTTPS public origin")
 	flags.StringVar(&settings.AdminSocket, "admin-socket", "", "private operator socket (default: database path + .admin.sock)")
 	showVersion := flags.Bool("version", false, "print version")

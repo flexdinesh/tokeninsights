@@ -43,7 +43,7 @@ Required secret:
 
 To begin a new minor or major series, change `.release-version`. For example, changing it to `0.2` makes the next release `packages/cli/v0.2.0`; changing it to `1.0` makes the next release `packages/cli/v1.0.0`. Later releases automatically increment that series' patch number.
 
-React assets are committed under `packages/cli/internal/server/static` and embedded with `go:embed` in every binary, including stable and main Go installs. Local pre-push verification rebuilds the frontend and checks asset drift. CI/release preparation run `mise run check:ci`: formatting, SQLite/DuckDB contract consistency, and native build. Additional native jobs build both binaries and test the data stores on each supported architecture. Full tests and browser installation stay local. Frontend changes must include regenerated assets (`pnpm run build:web`). The private `@tokeninsights/build-tools` workspace package under `tools/build` owns generated-asset checks and Homebrew formula generation; it is build/release-time tooling only.
+React assets are committed under `packages/cli/internal/server/static` and embedded with `go:embed` in every binary, including stable and main Go installs. Local pre-push verification rebuilds the frontend and checks asset drift. CI/release preparation run `mise run check:ci`: formatting, SQLite/PostgreSQL contract consistency, and native build. Additional native jobs build both binaries and test the data stores on each supported architecture. Full tests and browser installation stay local; CI additionally runs live PostgreSQL contract and hosted tests. Frontend changes must include regenerated assets (`pnpm run build:web`). The private `@tokeninsights/build-tools` workspace package under `tools/build` owns generated-asset checks and Homebrew formula generation; it is build/release-time tooling only.
 
 Release artifacts contain only the two native Go binaries and documentation. Production hosts need no Node.js, npm, pnpm, `node_modules`, repository JavaScript tooling, or separate web files. Go serves the embedded browser JavaScript as bytes; it executes only in the browser, and the Go runtime never invokes a JavaScript runtime.
 
@@ -55,7 +55,7 @@ The tap repository owns Homebrew-native validation. Its CI should run style, aud
 
 ### Database Compatibility
 
-Collector SQLite 20, DuckDB 3, application SQLite 2 and jobs SQLite 1 have
+Collector SQLite 20, token SQLite 1, PostgreSQL token/account 1, application SQLite 2 and jobs SQLite 1 have
 distinct roles. Only current contracts are supported. Incompatible, newer or corrupt
 contracts reject without mutation. There are no migrations or legacy imports.
 
@@ -90,4 +90,11 @@ and `tokeninsights-server`. Go users install remote explicitly with
 Both embed committed assets and run without Node/npm/pnpm. Remote runs only when
 explicitly launched and requires `--server-db-path`; installing it starts nothing.
 
-CGO/C/C++ builds DuckDB. Native CI/release Linux/macOS amd64/arm64 jobs build/test on matching runners. See [design](design.md) for current acceptance/migration.
+Native CI/release Linux/macOS amd64/arm64 jobs build with `CGO_ENABLED=0` and test on matching runners. See [design](design.md) for current acceptance/migration.
+
+Live PostgreSQL verification: `pnpm test` and `pnpm test:race` start a pinned
+PostgreSQL 18 Docker container and remove it afterward. Alternatively set
+`TOKENINSIGHTS_TEST_POSTGRES_DSN` to a test server with CREATEDB privileges; tests
+create random databases and delete only those. Never use production credentials.
+Direct `go test` skips PostgreSQL cases without that variable; root verification
+always supplies a live database and fails if it cannot start one.

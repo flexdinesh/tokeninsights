@@ -19,7 +19,7 @@ func TestFreshRoleDefaultsPreserveLegacyDatabase(t *testing.T) {
 	if err := os.WriteFile(legacy, []byte("legacy-history"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	if defaultCollectorDBPath() != filepath.Join(root, "tokeninsights", "collector.sqlite") || defaultServerDBPath() != filepath.Join(root, "tokeninsights", "server.duckdb") {
+	if defaultCollectorDBPath() != filepath.Join(root, "tokeninsights", "collector.sqlite") || defaultServerDBPath() != filepath.Join(root, "tokeninsights", "server.sqlite") {
 		t.Fatal("role defaults used legacy storage")
 	}
 	value, err := os.ReadFile(legacy)

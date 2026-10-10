@@ -14,7 +14,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/adapters/duckdb"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/adapters/sqlanalytics"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/datastore"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/querymodel"
 	serverapi "github.com/flexdinesh/tokeninsights/packages/cli/internal/server/api"
@@ -25,7 +25,7 @@ import (
 
 func fixture(t *testing.T) string {
 	t.Helper()
-	path := filepath.Join(t.TempDir(), "usage.duckdb")
+	path := filepath.Join(t.TempDir(), "usage.sqlite")
 	store, err := datastore.Open(t.Context(), path)
 	database := store.SQL()
 	if err != nil {
@@ -50,7 +50,7 @@ func fixture(t *testing.T) string {
 		}
 		key := fmt.Sprintf("fact-%d", i)
 		sessionKey := f.harness + ":" + f.session
-		_, err = database.Exec("INSERT INTO analytics.facts VALUES ('default',?,'fixture',?,?,?,'','',?,?,'explicit',?,'message','exact',?,?,?,0,?,?,?,'','','','','','{}',1,0)", key, f.harness, sessionKey, f.session, day.UnixMilli(), f.provider, f.model, f.countable != 0, f.input, f.output, f.cacheRead, f.cacheWrite, f.total)
+		_, err = database.Exec("INSERT INTO analytics_facts VALUES ('default',?,'fixture',?,?,?,'','',?,?,'explicit',?,'message','exact',?,?,?,0,?,?,?,'','','','','','{}',1,0)", key, f.harness, sessionKey, f.session, day.UnixMilli(), f.provider, f.model, f.countable != 0, f.input, f.output, f.cacheRead, f.cacheWrite, f.total)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -185,7 +185,7 @@ func TestDashboardSessionCoverageAcrossBucketsAndDates(t *testing.T) {
 			})
 		}
 	}
-	path = filepath.Join(t.TempDir(), "empty.duckdb")
+	path = filepath.Join(t.TempDir(), "empty.sqlite")
 	store, err := datastore.Open(t.Context(), path)
 	database := store.SQL()
 	if err != nil {
@@ -310,7 +310,7 @@ func loadDashboard(ctx context.Context, path string, q query, now time.Time) (da
 		return dashboard{}, err
 	}
 	defer func() { _ = store.Close() }()
-	return duckdb.LoadDashboard(ctx, store, q, now)
+	return sqlanalytics.LoadDashboard(ctx, store, q, now)
 }
 func fixtureApp(t *testing.T, path string, options Options) *app {
 	t.Helper()
@@ -321,6 +321,6 @@ func fixtureApp(t *testing.T, path string, options Options) *app {
 	t.Cleanup(func() { _ = store.Close() })
 	a := newApp(t.Context(), options, io.Discard)
 	a.data = store
-	a.queries = duckdb.Queries{Store: store}
+	a.queries = sqlanalytics.Queries{Store: store}
 	return a
 }

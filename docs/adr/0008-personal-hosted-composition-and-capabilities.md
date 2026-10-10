@@ -1,5 +1,6 @@
 # Personal/hosted composition, capabilities and user datasets
 
+Engine details below are historical; [ADR 0012](0012-sqlite-and-postgres-persistence.md) supersedes them with SQLite/PostgreSQL.
 Composition and account-storage decisions superseded by [ADR 0009](0009-single-process-and-distributed-compositions.md); capability/authentication wire contracts remain.
 Status: **Accepted**. Date: 7 October 2026.
 Schema and wire contracts explicitly approved before implementation.

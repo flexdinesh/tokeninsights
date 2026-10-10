@@ -1,4 +1,4 @@
-package duckdb
+package sqlanalytics
 
 import (
 	"encoding/json"
@@ -10,12 +10,13 @@ import (
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/analytics"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/datastore"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/evidence"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/persistence/sqlutil"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/querymodel"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/viewer"
 )
 
 func TestDatasetAnalyticsIsolateCollidingIdentities(t *testing.T) {
-	root, err := datastore.OpenKind(t.Context(), filepath.Join(t.TempDir(), "hosted.duckdb"), datastore.KindHosted)
+	root, err := datastore.OpenKind(t.Context(), filepath.Join(t.TempDir(), "hosted.sqlite"), datastore.KindHosted)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -80,10 +81,10 @@ func TestDatasetAnalyticsIsolateCollidingIdentities(t *testing.T) {
 			break
 		}
 	}
-	if _, err := root.SQL().ExecContext(t.Context(), "INSERT INTO processing.outcomes VALUES('bob','unusable','ambiguous','unusable_usage','',1,1)"); err != nil {
+	if _, err := root.SQL().ExecContext(t.Context(), sqlutil.Bind("INSERT INTO processing_outcomes VALUES('bob','unusable','ambiguous','unusable_usage','',1,1)")); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := root.SQL().ExecContext(t.Context(), "INSERT INTO analytics.estimates SELECT *,fact_id,'fixture' FROM analytics.facts WHERE dataset_id='bob'"); err != nil {
+	if _, err := root.SQL().ExecContext(t.Context(), sqlutil.Bind("INSERT INTO analytics_estimates SELECT *,fact_id,'fixture' FROM analytics_facts WHERE dataset_id='bob'")); err != nil {
 		t.Fatal(err)
 	}
 	for _, test := range []struct {

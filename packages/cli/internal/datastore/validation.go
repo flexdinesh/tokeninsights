@@ -4,33 +4,41 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"maps"
+
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/persistence/sqlitecore"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/persistence/sqlutil"
 )
 
 func inspectCurrent(ctx context.Context, database *sql.DB, expectedKind string) error {
 	var role, id, kind string
 	var version int
-	if err := database.QueryRowContext(ctx, "SELECT role,schema_version,database_id,server_kind FROM ingestion.instance WHERE id=1").Scan(&role, &version, &id, &kind); err != nil {
+	if err := database.QueryRowContext(ctx, sqlutil.Bind("SELECT role,schema_version,database_id,server_kind FROM ingestion_instance WHERE id=1")).Scan(&role, &version, &id, &kind); err != nil {
 		return err
 	}
 	if role != "server-data" || version != SchemaVersion || id == "" || (kind != KindPersonal && kind != KindHosted) {
 		return errors.New("incompatible_server_data")
 	}
-	expected, err := currentSchemaContracts()
-	if err != nil {
+	var applicationID, versionID int
+	if err := database.QueryRowContext(ctx, sqlutil.Bind("PRAGMA application_id")).Scan(&applicationID); err != nil {
 		return err
 	}
-	actual, err := schemaContracts(ctx, database)
-	if err != nil {
+	if err := database.QueryRowContext(ctx, sqlutil.Bind("PRAGMA user_version")).Scan(&versionID); err != nil {
 		return err
 	}
-	if !maps.Equal(actual, expected) {
+	if applicationID != ApplicationID || versionID != SchemaVersion {
 		return errors.New("incompatible_server_data")
+	}
+	if err := sqlitecore.Validate(ctx, database, Schema); err != nil {
+		return err
 	}
 	if expectedKind != "" && kind != expectedKind {
 		return errors.New("server_kind_mismatch")
 	}
-	rows, err := database.QueryContext(ctx, "SELECT dataset_id FROM ingestion.metadata")
+	return inspectDatasets(ctx, database, id, kind)
+}
+
+func inspectDatasets(ctx context.Context, database *sql.DB, id, kind string) error {
+	rows, err := database.QueryContext(ctx, sqlutil.Bind("SELECT dataset_id FROM ingestion_metadata"))
 	if err != nil {
 		return err
 	}

@@ -1,5 +1,32 @@
 # Ingestion performance baseline
 
+Sections after the SQLite/PostgreSQL baseline contain historical DuckDB measurements; they do not describe current engine performance.
+
+## SQLite/PostgreSQL query baseline — 10 October 2026
+
+Shared `BenchmarkQueries` ingests and processes 600 sessions before timing the same
+first-page dashboard contracts. Linux amd64, Intel Core Ultra 7 155U, Go 1.26.8;
+PostgreSQL 18 in a local Docker container. Twenty warm iterations, not a production
+capacity result or a controlled comparison against the historical benchmarks.
+
+| Dashboard | SQLite ms/op | PostgreSQL ms/op |
+| --- | ---: | ---: |
+| Sessions | 20.25 | 11.64 |
+| Context | 24.82 | 15.69 |
+| Tokens | 13.73 | 16.76 |
+
+SQLite caches immutable reporting-zone rules so calendar SQL does not reload IANA
+files for every row. Every measured query checks fact count and exact token totals.
+Run from `packages/cli` with a live test DSN:
+
+```sh
+go test ./internal/adapters/postgres ./internal/adapters/sqlanalytics -run ^ -bench BenchmarkQueries -benchtime=20x
+```
+
+The existing capture, acceptance, publication, startup and concurrent-query
+benchmarks now exercise SQLite; they remain the workload-specific tools for future
+performance changes. Test Docker latency, remote-network latency and large retained
+history separately before choosing deployment capacity.
 Measured 9–10 October 2026 against production code at `53fee712` (PR #68).
 These synthetic measurements identify follow-up work; they are not production
 latency targets or evidence of a speedup over the earlier CLI measurement.

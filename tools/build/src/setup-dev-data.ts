@@ -50,7 +50,7 @@ export async function setupDevData({
   const fixtureDir = join(root, fixtureRelativePath)
   const sourceDir = join(outputDir, 'source')
   const collectorDBPath = join(outputDir, 'collector.sqlite')
-  const serverDBPath = join(outputDir, 'server.duckdb')
+  const serverDBPath = join(outputDir, 'server.sqlite')
 
   await prepare(
     join(root, 'packages', 'cli', 'bin', 'tokeninsights'),

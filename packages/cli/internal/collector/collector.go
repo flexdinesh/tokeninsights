@@ -98,6 +98,29 @@ func ValidatePaths(collectorPath, serverPath string) error {
 	if err != nil {
 		return err
 	}
+	for _, suffix := range []string{"", "-wal", "-shm", "-journal"} {
+		if err := distinctPaths(first+suffix, second); err != nil {
+			return err
+		}
+		if suffix != "" {
+			if err := distinctPaths(first, second+suffix); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func distinctPaths(first, second string) error {
+	var err error
+	first, err = dbpath.Canonical(first)
+	if err != nil {
+		return err
+	}
+	second, err = dbpath.Canonical(second)
+	if err != nil {
+		return err
+	}
 	if first == second {
 		return failure("configuration", "database_paths_alias", nil)
 	}

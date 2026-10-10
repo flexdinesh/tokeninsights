@@ -219,7 +219,26 @@ async function main() {
     ),
     readText(new URL('../../../packages/cli/internal/syncjob/store.go', import.meta.url).pathname),
   ])
+  const postgresCopies = await Promise.all(
+    ['data', 'app'].map(async (role) => {
+      const authoritative = await readText(
+        new URL(`../../../schema/${role}.postgres.sql`, import.meta.url).pathname,
+      )
+      const embedded = await readText(
+        new URL(
+          `../../../packages/cli/internal/persistence/postgres/schema/${role}.sql`,
+          import.meta.url,
+        ).pathname,
+      )
+      return authoritative === embedded ? [] : [`postgres ${role}: embedded schema differs`]
+    }),
+  )
   const mismatches = [
+    ...postgresCopies.flat(),
+    ...(extractGoConsts(dataGo).ints.get('ApplicationID') ===
+    extractSchemaSqlIdentifiers(dataSQL).applicationID
+      ? []
+      : ['data: ApplicationID mismatch']),
     ...(jobsSQL === embeddedJobsSQL ? [] : ['jobs: embedded schema differs']),
     ...(extractGoConsts(jobsGo).ints.get('SchemaVersion') ===
     extractSchemaSqlIdentifiers(jobsSQL).version
@@ -240,9 +259,9 @@ async function main() {
       ? []
       : ['application: ApplicationID mismatch']),
 
-    ...(dataSQL === embeddedDataSQL ? [] : ['data: embedded DuckDB schema differs']),
+    ...(dataSQL === embeddedDataSQL ? [] : ['data: embedded SQLite schema differs']),
     ...(extractGoConsts(dataGo).ints.get('SchemaVersion') ===
-    Number(dataSQL.match(/version (\d+)/)?.[1])
+    extractSchemaSqlIdentifiers(dataSQL).version
       ? []
       : ['data: SchemaVersion mismatch']),
     ...schemaContractMismatches(sql, embeddedSQL, go, 'CollectorApplicationID').map(

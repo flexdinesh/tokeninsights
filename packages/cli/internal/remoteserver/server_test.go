@@ -108,7 +108,7 @@ func TestStartupFailureReleasesHostedResources(t *testing.T) {
 	for _, failure := range []string{"admin socket", "ready callback"} {
 		t.Run(failure, func(t *testing.T) {
 			root := t.TempDir()
-			settings := Settings{PublicURL: "https://usage.example", Listen: "127.0.0.1:0", DBPath: filepath.Join(root, "data.duckdb"), AdminSocket: filepath.Join(root, "admin.sock")}
+			settings := Settings{PublicURL: "https://usage.example", Listen: "127.0.0.1:0", DBPath: filepath.Join(root, "data.sqlite"), AdminSocket: filepath.Join(root, "admin.sock")}
 			startupErr := errors.New("ready failed")
 			if failure == "admin socket" {
 				if err := os.WriteFile(settings.AdminSocket, []byte("occupied"), 0o600); err != nil {

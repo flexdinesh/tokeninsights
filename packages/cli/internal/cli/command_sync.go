@@ -41,7 +41,7 @@ func runSync(invocation commandInvocation, args []string) error {
 	flags.StringVar(&settings.Mode, "mode", settings.Mode, "single-process or distributed")
 	flags.StringVar(&settings.AppDBPath, "app-db-path", settings.AppDBPath, "application SQLite database")
 	flags.StringVar(&dbPath, "collector-db-path", settings.CollectorDBPath, "collector SQLite database")
-	flags.StringVar(&serverDBPath, "server-db-path", settings.ServerDBPath, "local server DuckDB database")
+	flags.StringVar(&serverDBPath, "server-db-path", settings.ServerDBPath, "local SQLite token database")
 	flags.StringVar(&serverURL, "server-url", settings.ServerURL, "ingestion server; empty selects local")
 	flags.BoolVar(&publishOnly, "publish-only", false, "submit retained raw evidence without collecting")
 	flags.Var(&harnesses, "harness", "harness to sync: opencode, pi, codex, or claude-code")

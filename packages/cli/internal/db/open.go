@@ -10,9 +10,8 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
-	"strings"
-	"sync"
 
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/persistence/sqlitecore"
 	_ "modernc.org/sqlite"
 )
 
@@ -45,36 +44,6 @@ func openSQLiteMode(ctx context.Context, path, mode string) (*sql.DB, error) {
 	return database, nil
 }
 
-var expectedContract = sync.OnceValues(func() (map[string]string, error) {
-	database, err := sql.Open("sqlite", ":memory:")
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = database.Close() }()
-	database.SetMaxOpenConns(1)
-	if _, err := database.Exec(schema); err != nil {
-		return nil, err
-	}
-	return schemaObjects(context.Background(), database)
-})
-
-func schemaObjects(ctx context.Context, database *sql.DB) (map[string]string, error) {
-	rows, err := database.QueryContext(ctx, "SELECT type,name,sql FROM sqlite_schema WHERE name NOT LIKE 'sqlite_%' AND sql IS NOT NULL")
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = rows.Close() }()
-	result := make(map[string]string)
-	for rows.Next() {
-		var kind, name, statement string
-		if err := rows.Scan(&kind, &name, &statement); err != nil {
-			return nil, err
-		}
-		result[kind+":"+name] = strings.Join(strings.Fields(statement), " ")
-	}
-	return result, rows.Err()
-}
-
 func validate(ctx context.Context, database *sql.DB) error {
 	var role, version int
 	if err := database.QueryRowContext(ctx, "PRAGMA application_id").Scan(&role); err != nil {
@@ -86,25 +55,7 @@ func validate(ctx context.Context, database *sql.DB) error {
 	if role != CollectorApplicationID || version != SupportedSchemaVersion {
 		return fmt.Errorf("incompatible collector database: role=%d schema=%d (expected %d)", role, version, SupportedSchemaVersion)
 	}
-	expected, err := expectedContract()
-	if err != nil {
-		return err
-	}
-	actual, err := schemaObjects(ctx, database)
-	if err != nil {
-		return err
-	}
-	for name, statement := range expected {
-		if actual[name] != statement {
-			return fmt.Errorf("incompatible collector contract: %s", name)
-		}
-	}
-	for name := range actual {
-		if _, ok := expected[name]; !ok {
-			return fmt.Errorf("unexpected collector object: %s", name)
-		}
-	}
-	return nil
+	return sqlitecore.Validate(ctx, database, schema)
 }
 
 func Open(path string) (*sql.DB, error) {

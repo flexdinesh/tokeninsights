@@ -8,12 +8,14 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/accounts"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/evidence"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/persistence/postgres/testdb"
 )
 
 func hostedRequest(t *testing.T, url, token, method string, body []byte) (int, []byte) {
@@ -87,9 +89,20 @@ func startHosted(t *testing.T, settings Settings) (string, func()) {
 }
 
 func TestHostedSharedDatabaseIsolationAndProvisioning(t *testing.T) {
+	for _, backend := range []string{"sqlite", "postgres"} {
+		t.Run(backend, func(t *testing.T) { hostedIsolationAndProvisioning(t, backend) })
+	}
+}
+
+func hostedIsolationAndProvisioning(t *testing.T, backend string) {
 	root := t.TempDir()
 	socket := filepath.Join(root, "admin.sock")
-	settings := Settings{Listen: "127.0.0.1:0", DBPath: filepath.Join(root, "server.duckdb"), PublicURL: "https://usage.example", AdminSocket: socket}
+	settings := Settings{Listen: "127.0.0.1:0", DBPath: filepath.Join(root, "server.sqlite"), PublicURL: "https://usage.example", AdminSocket: socket}
+	if backend == "postgres" {
+		settings.Backend = backend
+		settings.DBPath = ""
+		settings.PostgresDSN = testdb.New(t)
+	}
 	target, stop := startHosted(t, settings)
 	t.Cleanup(stop)
 	info, err := os.Stat(socket)
@@ -231,8 +244,14 @@ func TestHostedSharedDatabaseIsolationAndProvisioning(t *testing.T) {
 
 func TestHostedSettingsValidateBeforeMutation(t *testing.T) {
 	root := t.TempDir()
-	path := filepath.Join(root, "server.duckdb")
+	path := filepath.Join(root, "server.sqlite")
 	for _, settings := range []Settings{
+
+		{Listen: "127.0.0.1:0", Backend: "postgres", DBPath: path, PostgresDSN: "secret", PublicURL: "https://usage.example", AdminSocket: filepath.Join(root, "admin.sock")},
+		{Listen: "127.0.0.1:0", Backend: "postgres", PostgresDSN: "secret", PublicURL: "https://usage.example"},
+		{Listen: "127.0.0.1:0", Backend: "postgres", PublicURL: "https://usage.example", AdminSocket: filepath.Join(root, "admin.sock")},
+		{Listen: "127.0.0.1:0", Backend: "sqlite", DBPath: path, PostgresDSN: "secret", PublicURL: "https://usage.example"},
+		{Listen: "127.0.0.1:0", Backend: "invalid", DBPath: path, PublicURL: "https://usage.example"},
 		{Listen: "127.0.0.1:0", DBPath: path},
 		{Listen: "127.0.0.1:0", DBPath: path, PublicURL: "http://usage.example"},
 		{Listen: "127.0.0.1:0", DBPath: path, PublicURL: "https://usage.example/secret"},
@@ -247,4 +266,36 @@ func TestHostedSettingsValidateBeforeMutation(t *testing.T) {
 	if err != nil || len(entries) != 0 {
 		t.Fatal("invalid settings mutated storage", entries, err)
 	}
+}
+
+func TestHostedPostgresOwnershipLossStopsServer(t *testing.T) {
+	dsn := testdb.New(t)
+	settings := Settings{Listen: "127.0.0.1:0", Backend: "postgres", PostgresDSN: dsn, PublicURL: "https://usage.example", AdminSocket: filepath.Join(t.TempDir(), "admin.sock")}
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	ready := make(chan string, 1)
+	done := make(chan error, 1)
+	go func() { done <- Run(ctx, settings, io.Discard, func(url string) error { ready <- url; return nil }) }()
+	select {
+	case <-ready:
+	case err := <-done:
+		t.Fatal(err)
+	case <-time.After(10 * time.Second):
+		t.Fatal("startup timed out")
+	}
+	db := testdb.Open(t, dsn)
+	var terminated bool
+	if err := db.QueryRowContext(t.Context(), "SELECT pg_terminate_backend(pid) FROM pg_locks WHERE locktype='advisory' AND granted AND database=(SELECT oid FROM pg_database WHERE datname=current_database())").Scan(&terminated); err != nil || !terminated {
+		t.Fatal("terminate owner", terminated, err)
+	}
+	select {
+	case err := <-done:
+		if err == nil || !strings.Contains(err.Error(), "postgres_ownership_lost") {
+			t.Fatal("lost owner did not fail", err)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("lost owner kept serving")
+	}
+	_, stop := startHosted(t, settings)
+	stop()
 }

@@ -21,7 +21,7 @@ import (
 
 func newLoadRowsTestDB(t *testing.T) (*sql.DB, string) {
 	t.Helper()
-	path := filepath.Join(t.TempDir(), "server.duckdb")
+	path := filepath.Join(t.TempDir(), "server.sqlite")
 	store, err := datastore.Open(t.Context(), path)
 	if err != nil {
 		t.Fatal(err)
@@ -40,7 +40,7 @@ func insertLoadRowsCanonicalToken(t *testing.T, database *sql.DB, recordedAtMs i
 func insertLoadRowsCanonicalTokenWithCounts(t *testing.T, database *sql.DB, recordedAtMs int64, harness string, sessionID string, provider string, model string, input int64, output int64, reasoning int64, cacheRead int64, cacheWrite int64, total int64) {
 	t.Helper()
 	factKey := fmt.Sprintf("%s:%s:%d:%s:%s", harness, sessionID, recordedAtMs, provider, model)
-	_, err := database.Exec("INSERT INTO analytics.facts VALUES ('default',?,'fixture',?,?,?,'','',?,?,'explicit',?,'message','exact',true,?,?,?,?,?,?,'','','','','','{}',1,0)", factKey, harness, harness+":"+sessionID, sessionID, recordedAtMs, provider, model, input, output, reasoning, cacheRead, cacheWrite, total)
+	_, err := database.Exec("INSERT INTO analytics_facts VALUES ('default',?,'fixture',?,?,?,'','',?,?,'explicit',?,'message','exact',true,?,?,?,?,?,?,'','','','','','{}',1,0)", factKey, harness, harness+":"+sessionID, sessionID, recordedAtMs, provider, model, input, output, reasoning, cacheRead, cacheWrite, total)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -215,8 +215,8 @@ func TestDashboardReadsServerWithoutCollectorDatabase(t *testing.T) {
 	if result.err != nil || len(result.rows) != 1 || result.rows[0].totalValue != 136 {
 		t.Fatalf("saved API snapshot = %+v", result)
 	}
-	assertTableTestCount(t, database, "analytics.facts", 1)
-	assertTableTestCount(t, database, "ingestion.batches", 0)
+	assertTableTestCount(t, database, "analytics_facts", 1)
+	assertTableTestCount(t, database, "ingestion_batches", 0)
 }
 
 func TestDashboardCancellationPreservesSavedSnapshot(t *testing.T) {
@@ -1098,8 +1098,8 @@ func TestDashboardSessionCoverageAcrossDateFilters(t *testing.T) {
 			}
 		}
 	}
-	assertTableTestCount(t, database, "analytics.facts", syncedSessions)
-	assertTableTestCount(t, database, "ingestion.batches", 0)
+	assertTableTestCount(t, database, "analytics_facts", syncedSessions)
+	assertTableTestCount(t, database, "ingestion_batches", 0)
 }
 
 func TestSortPopupSpaceAppliesSelection(t *testing.T) {

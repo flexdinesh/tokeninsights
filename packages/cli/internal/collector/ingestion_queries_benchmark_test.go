@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/adapters/duckdb"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/adapters/sqlanalytics"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/analytics"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/collector"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/localruntime"
@@ -28,7 +28,7 @@ func BenchmarkIngestionSavedQueries(b *testing.B) {
 		func() {
 			root := b.TempDir()
 			sources := ingestionSources(b, sessions, 1)
-			collectorPath, dataPath := filepath.Join(root, "collector.sqlite"), filepath.Join(root, "server.duckdb")
+			collectorPath, dataPath := filepath.Join(root, "collector.sqlite"), filepath.Join(root, "server.sqlite")
 			runtime, err := localruntime.Open(b.Context(), collectorPath, dataPath)
 			if err != nil {
 				b.Fatal(err)
@@ -70,7 +70,7 @@ func BenchmarkIngestionSavedQueries(b *testing.B) {
 			defer ticker.Stop()
 			for {
 				start := time.Now()
-				dashboard, err := duckdb.LoadDashboard(ctx, runtime.Store, query, time.Now())
+				dashboard, err := sqlanalytics.LoadDashboard(ctx, runtime.Store, query, time.Now())
 				elapsed := time.Since(start)
 				queryTime += elapsed
 				maxQuery = max(maxQuery, elapsed)
@@ -87,7 +87,7 @@ func BenchmarkIngestionSavedQueries(b *testing.B) {
 					if err != nil {
 						b.Fatal(err)
 					}
-					final, err := duckdb.LoadDashboard(ctx, runtime.Store, query, time.Now())
+					final, err := sqlanalytics.LoadDashboard(ctx, runtime.Store, query, time.Now())
 					if err != nil || final.Summary.TotalTokens != want || final.Pending != 0 {
 						b.Fatalf("final snapshot: %+v %v", final, err)
 					}

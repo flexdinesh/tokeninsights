@@ -61,7 +61,7 @@ func TestIngestionPreflightRejectsBeforeCapture(t *testing.T) {
 				t.Cleanup(remote.Close)
 				settings := config.Defaults()
 				settings.Mode, settings.ServerURL, settings.ServerToken = config.Distributed, remote.URL, "fixture-token"
-				settings.CollectorDBPath, settings.ServerDBPath = filepath.Join(t.TempDir(), "collector.sqlite"), filepath.Join(t.TempDir(), "server.duckdb")
+				settings.CollectorDBPath, settings.ServerDBPath = filepath.Join(t.TempDir(), "collector.sqlite"), filepath.Join(t.TempDir(), "server.sqlite")
 				invocation := commandInvocation{context: t.Context(), stdout: io.Discard, stderr: io.Discard, settings: &settings}
 				spec, ok := commandByName(command)
 				if !ok {

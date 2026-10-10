@@ -2,22 +2,23 @@ package localruntime_test
 
 import (
 	"context"
+	"os"
+	"path/filepath"
+	"testing"
+	"time"
+
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/collectorprogress"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/config"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/localruntime"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/pipeline"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/syncjob"
-	"os"
-	"path/filepath"
-	"testing"
-	"time"
 )
 
 func TestViewerConsumesQueuedRequestsInProcessAndReplaysWithoutInflation(t *testing.T) {
 	root := t.TempDir()
 	settings := config.Defaults()
 	settings.CollectorDBPath = filepath.Join(root, "collector.sqlite")
-	settings.ServerDBPath = filepath.Join(root, "server.duckdb")
+	settings.ServerDBPath = filepath.Join(root, "server.sqlite")
 	runtime, err := localruntime.OpenWithAppOptions(t.Context(), settings.CollectorDBPath, settings.ServerDBPath, filepath.Join(root, "app.sqlite"), localruntime.Options{CaptureDetails: true})
 	if err != nil {
 		t.Fatal(err)
@@ -77,7 +78,7 @@ func TestViewerConsumesQueuedRequestsInProcessAndReplaysWithoutInflation(t *test
 		t.Fatal("queued acceptance not reported", progress)
 	}
 	var total int64
-	if err := runtime.Store.SQL().QueryRowContext(ctx, "SELECT COALESCE(SUM(total_tokens),0) FROM analytics.confirmed").Scan(&total); err != nil || total != 100 {
+	if err := runtime.Store.SQL().QueryRowContext(ctx, "SELECT COALESCE(SUM(total_tokens),0) FROM analytics_confirmed").Scan(&total); err != nil || total != 100 {
 		t.Fatal("queued replay inflated/lost usage", total, err)
 	}
 }

@@ -15,7 +15,7 @@ import (
 	"time"
 
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/accounts"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/adapters/duckdb"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/adapters/sqlanalytics"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/adapters/sqliteaccounts"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/appstore"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/config"
@@ -30,7 +30,7 @@ import (
 func TestBackgroundPrintReturnsBeforeRemoteAcceptanceAndActuallySubmits(t *testing.T) {
 	root := t.TempDir()
 	isolateViewSources(t, root)
-	data, err := datastore.OpenKind(t.Context(), filepath.Join(root, "remote.duckdb"), "hosted")
+	data, err := datastore.OpenKind(t.Context(), filepath.Join(root, "remote.sqlite"), "hosted")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -57,7 +57,7 @@ func TestBackgroundPrintReturnsBeforeRemoteAcceptanceAndActuallySubmits(t *testi
 	if err != nil {
 		t.Fatal(err)
 	}
-	handler := server.NewDataHandlerWithOptions(t.Context(), duckdb.Source{Store: data}, io.Discard, server.DataHandlerOptions{Host: "127.0.0.1", AllowIngestion: true, Policy: policy, Accounts: auth, PublicURL: "https://usage.example"})
+	handler := server.NewDataHandlerWithOptions(t.Context(), sqlanalytics.Source{Store: data}, io.Discard, server.DataHandlerOptions{Host: "127.0.0.1", AllowIngestion: true, Policy: policy, Accounts: auth, PublicURL: "https://usage.example"})
 	release := make(chan struct{})
 	var once sync.Once
 	unblock := func() { once.Do(func() { close(release) }) }
@@ -89,7 +89,7 @@ func TestBackgroundPrintReturnsBeforeRemoteAcceptanceAndActuallySubmits(t *testi
 	settings.ServerURL = remote.URL + "/"
 	settings.ServerToken = token.Secret
 	settings.CollectorDBPath = filepath.Join(root, "collector.sqlite")
-	settings.ServerDBPath = filepath.Join(root, "unused.duckdb")
+	settings.ServerDBPath = filepath.Join(root, "unused.sqlite")
 	var stdout, stderr bytes.Buffer
 	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 	err = runSync(commandInvocation{context: ctx, stdout: &stdout, stderr: &stderr, settings: &settings}, []string{"--print", "--harness", "pi", "--source-dir", filepath.Join(root, "sources")})
@@ -130,7 +130,7 @@ func TestBackgroundPrintReturnsBeforeRemoteAcceptanceAndActuallySubmits(t *testi
 			break
 		}
 	}
-	assertCLIQueryCount(t, data.SQL(), "SELECT SUM(total_tokens) FROM analytics.confirmed", 100)
+	assertCLIQueryCount(t, data.SQL(), "SELECT SUM(total_tokens) FROM analytics_confirmed", 100)
 	for _, path := range []string{queue.Path, queue.Path + "-wal"} {
 		saved, err := os.ReadFile(path)
 		if err == nil && bytes.Contains(saved, []byte(token.Secret)) {
@@ -146,7 +146,7 @@ func TestDebugRequiresReadBeforeCaptureAndPrintRejectsLocal(t *testing.T) {
 	root := t.TempDir()
 	settings := config.Defaults()
 	settings.CollectorDBPath = filepath.Join(root, "collector.sqlite")
-	settings.ServerDBPath = filepath.Join(root, "server.duckdb")
+	settings.ServerDBPath = filepath.Join(root, "server.sqlite")
 	if err := runSync(commandInvocation{context: t.Context(), stdout: io.Discard, stderr: io.Discard, settings: &settings}, []string{"--print"}); err == nil {
 		t.Fatal("local print accepted")
 	}

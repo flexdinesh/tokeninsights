@@ -21,7 +21,7 @@ import (
 
 func acceptanceStore(t testing.TB) *datastore.Store {
 	t.Helper()
-	store, err := datastore.Open(t.Context(), filepath.Join(t.TempDir(), "data.duckdb"))
+	store, err := datastore.Open(t.Context(), filepath.Join(t.TempDir(), "data.sqlite"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -99,7 +99,7 @@ func TestAcceptanceValidationPreservesRejectionBoundaries(t *testing.T) {
 			}
 			after, err := store.Metadata(t.Context())
 			var writes int
-			countErr := store.SQL().QueryRow(`SELECT (SELECT COUNT(*) FROM raw.evidence)+(SELECT COUNT(*) FROM ingestion.batches)+(SELECT COUNT(*) FROM ingestion.items)+(SELECT COUNT(*) FROM ingestion.batch_items)+(SELECT COUNT(*) FROM processing.scopes)+(SELECT COUNT(*) FROM processing.dependencies)`).Scan(&writes)
+			countErr := store.SQL().QueryRow(`SELECT (SELECT COUNT(*) FROM raw_evidence)+(SELECT COUNT(*) FROM ingestion_batches)+(SELECT COUNT(*) FROM ingestion_items)+(SELECT COUNT(*) FROM ingestion_batch_items)+(SELECT COUNT(*) FROM processing_scopes)+(SELECT COUNT(*) FROM processing_dependencies)`).Scan(&writes)
 			if err != nil || countErr != nil || writes != 0 || !reflect.DeepEqual(before, after) {
 				t.Fatal("rejection mutated storage", writes, err, countErr)
 			}
@@ -156,10 +156,10 @@ func TestAcceptancePreservesExactBytesAndLargeNativeNumbers(t *testing.T) {
 			}
 			var saved []byte
 			var record string
-			if err := store.SQL().QueryRow("SELECT request_bytes FROM ingestion.batches").Scan(&saved); err != nil || !bytes.Equal(saved, body) {
+			if err := store.SQL().QueryRow("SELECT request_bytes FROM ingestion_batches").Scan(&saved); err != nil || !bytes.Equal(saved, body) {
 				t.Fatal("request bytes changed", err)
 			}
-			if err := store.SQL().QueryRow("SELECT record_json FROM raw.evidence").Scan(&record); err != nil || !strings.Contains(record, "9007199254740993") {
+			if err := store.SQL().QueryRow("SELECT record_json FROM raw_evidence").Scan(&record); err != nil || !strings.Contains(record, "9007199254740993") {
 				t.Fatal("native numeric precision lost", err)
 			}
 			_, err := delivery.Submit(t.Context(), evidence.ProtocolVersion, append(bytes.Clone(body), ' '))

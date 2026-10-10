@@ -1,6 +1,6 @@
 # tokeninsights
 
-Single-process and distributed token analytics. Shared Go ingestion/processing uses DuckDB for token history and SQLite for accounts/system state. Local TUI collects before viewing; local Web opens while collection runs. Remote collectors submit over authenticated HTTP.
+Single-process and distributed token analytics. Shared Go ingestion/processing uses SQLite locally; hosted servers select SQLite or PostgreSQL for both token history and accounts. Local TUI opens saved usage while collection runs; local Web opens while collection runs. Remote collectors submit over authenticated HTTP.
 
 ## Install
 
@@ -113,7 +113,7 @@ Default role paths:
 | Role | Default file | Override |
 | --- | --- | --- |
 | Collector | `${XDG_DATA_HOME:-~/.local/share}/tokeninsights/collector.sqlite` | `--collector-db-path`, `TOKENINSIGHTS_COLLECTOR_DB_PATH` |
-| Token data | `${XDG_DATA_HOME:-~/.local/share}/tokeninsights/server.duckdb` | `--server-db-path`, `TOKENINSIGHTS_SERVER_DB_PATH` |
+| Token data | `${XDG_DATA_HOME:-~/.local/share}/tokeninsights/server.sqlite` | `--server-db-path`, `TOKENINSIGHTS_SERVER_DB_PATH` |
 
 Application SQLite defaults to `app.sqlite` beside the selected token database; override with `--app-db-path` or `TOKENINSIGHTS_APP_DB_PATH`. Finite jobs use `<canonical-collector-path>.jobs.sqlite`.
 
@@ -124,7 +124,7 @@ Use `--collector-db-path` for collection and maintenance, and `--server-db-path`
 Collector schema 20 stores raw outbox, continuity, exact delivery state,
 dataset/protocol bindings and local quarantine. Application schema 2 stores accounts
 and provisioning; jobs schema 1 stores finite invocations/status without tokens.
-DuckDB schema 3 stores dataset-scoped evidence, receipts, processing state, facts
+SQLite token schema 1 stores dataset-scoped evidence, receipts, processing state, facts
 and estimates. Only current schemas are supported. Incompatible role, structure,
 version or stored server kind rejects before mutation. No imports or migrations.
 Remote database identity stays pinned; deliberate local replacement permits replay.
@@ -235,7 +235,7 @@ Fresh collection rebuilds usage from retained harness sources.
 
 Reprocessing keeps the published generation until complete. Data wait is explicit
 bounded maintenance; sync does not wait for processing. TUI queries confirmed usage.
-CGO/C/C++ toolchain builds embedded DuckDB. Production native archives need no JS.
+Production builds support `CGO_ENABLED=0` and need no JavaScript runtime. Race tests require CGO.
 
 Application pairing also persists `<canonical-token-path>.application.json`, containing
 only the application instance ID. Keep this guard with both databases in stopped
@@ -243,3 +243,9 @@ backups. A missing/replaced app database fails closed to preserve credential rev
 
 For development, see [ingestion benchmarks and profiling](../../docs/ingestion-performance.md)
 for reproducible capture, acceptance, processing and query measurements.
+
+Hosted persistence selects `--storage-backend=sqlite|postgres` (default SQLite).
+PostgreSQL 18 stores both tokens and accounts through separate interfaces; supply
+`TOKENINSIGHTS_POSTGRES_DSN` and an absolute `--admin-socket`, without SQLite paths.
+In-process mode, collector/outbox and jobs use SQLite. No extensions, migrations or
+automatic fallback. See [deployment](../../docs/deployment.md) for configuration and backups.

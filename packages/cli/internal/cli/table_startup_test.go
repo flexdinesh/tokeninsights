@@ -131,7 +131,7 @@ func TestTUIBackgroundIngestionAndReplayPreserveUsageAndReloadOnlyQueries(t *tes
 	if err := os.WriteFile(piPath, []byte(source), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	collectorPath, serverPath := filepath.Join(root, "collector.sqlite"), filepath.Join(root, "server.duckdb")
+	collectorPath, serverPath := filepath.Join(root, "collector.sqlite"), filepath.Join(root, "server.sqlite")
 	restore := replaceInteractiveProgramRunnerForTest(t, func(model interactiveModel, _ io.Writer) (interactiveModel, error) {
 		model.width, model.height = 120, 35
 		model = finishCollectionForTest(t, model)
@@ -155,9 +155,9 @@ func TestTUIBackgroundIngestionAndReplayPreserveUsageAndReloadOnlyQueries(t *tes
 			t.Fatalf("published refresh missing: rows=%+v state=%s", model.rows, model.refreshLine())
 		}
 		store := model.options.local.Store
-		assertCLIQueryCount(t, store.SQL(), "SELECT SUM(total_tokens) FROM analytics.confirmed", 100)
+		assertCLIQueryCount(t, store.SQL(), "SELECT SUM(total_tokens) FROM analytics_confirmed", 100)
 		var before int
-		if err := store.SQL().QueryRowContext(t.Context(), "SELECT COUNT(*) FROM ingestion.batches").Scan(&before); err != nil {
+		if err := store.SQL().QueryRowContext(t.Context(), "SELECT COUNT(*) FROM ingestion_batches").Scan(&before); err != nil {
 			t.Fatal(err)
 		}
 		updated, cmd := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'r'}})
@@ -167,7 +167,7 @@ func TestTUIBackgroundIngestionAndReplayPreserveUsageAndReloadOnlyQueries(t *tes
 		model = updated.(interactiveModel)
 		updated, _ = model.Update(cmd())
 		model = updated.(interactiveModel)
-		assertCLIQueryCount(t, store.SQL(), "SELECT COUNT(*) FROM ingestion.batches", before)
+		assertCLIQueryCount(t, store.SQL(), "SELECT COUNT(*) FROM ingestion_batches", before)
 		repeated := newInteractiveModel(t.Context(), model.options, model.now, "unknown").startCollection()
 		defer repeated.cancelSync()
 		repeated.width, repeated.height = model.width, model.height
@@ -183,7 +183,7 @@ func TestTUIBackgroundIngestionAndReplayPreserveUsageAndReloadOnlyQueries(t *tes
 		if len(repeated.rows) != 1 || repeated.rows[0].totalValue != 100 || !strings.Contains(repeated.refreshLine(), "no new usage") {
 			t.Fatalf("replay changed usage or status: rows=%+v state=%s", repeated.rows, repeated.refreshLine())
 		}
-		assertCLIQueryCount(t, store.SQL(), "SELECT COUNT(*) FROM ingestion.batches", before)
+		assertCLIQueryCount(t, store.SQL(), "SELECT COUNT(*) FROM ingestion_batches", before)
 		return model, nil
 	})
 	defer restore()
@@ -234,10 +234,10 @@ func TestTUIRefreshFailureAndQuarantinePreserveSavedUsage(t *testing.T) {
 func TestTUIFailedProcessingPreservesPublishedUsageWithoutCollection(t *testing.T) {
 	options := localViewOptions(t, true)
 	if err := options.local.Store.WriteTransaction(t.Context(), func(tx *sql.Tx) error {
-		if _, err := tx.Exec("UPDATE ingestion.metadata SET input_revision=input_revision+1"); err != nil {
+		if _, err := tx.Exec("UPDATE ingestion_metadata SET input_revision=input_revision+1"); err != nil {
 			return err
 		}
-		_, err := tx.Exec("UPDATE processing.scopes SET revision=revision+1,error_code='processing_failed',attempts=1,retry_at_ms=?", time.Now().Add(time.Hour).UnixMilli())
+		_, err := tx.Exec("UPDATE processing_scopes SET revision=revision+1,error_code='processing_failed',attempts=1,retry_at_ms=?", time.Now().Add(time.Hour).UnixMilli())
 		return err
 	}); err != nil {
 		t.Fatal(err)

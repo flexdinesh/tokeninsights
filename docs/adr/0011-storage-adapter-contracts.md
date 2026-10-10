@@ -1,5 +1,6 @@
 # Storage adapter contracts
 
+Engine details below are historical; [ADR 0012](0012-sqlite-and-postgres-persistence.md) supersedes them with SQLite/PostgreSQL.
 Status: Accepted. Date: 10 October 2026.
 
 ## Decision

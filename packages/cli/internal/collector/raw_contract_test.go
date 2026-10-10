@@ -34,11 +34,11 @@ func rawDrain(t *testing.T, store *datastore.Store) {
 func rawGolden(t testing.TB, store *datastore.Store) []string {
 	t.Helper()
 	var components [7]int64
-	if err := store.SQL().QueryRow(`SELECT COUNT(*),CAST(SUM(input_tokens) AS BIGINT),CAST(SUM(output_tokens) AS BIGINT),CAST(SUM(reasoning_tokens) AS BIGINT),CAST(SUM(cache_read_tokens) AS BIGINT),CAST(SUM(cache_write_tokens) AS BIGINT),CAST(SUM(total_tokens) AS BIGINT) FROM analytics.confirmed WHERE countable`).Scan(&components[0], &components[1], &components[2], &components[3], &components[4], &components[5], &components[6]); err != nil {
+	if err := store.SQL().QueryRow(`SELECT COUNT(*),CAST(SUM(input_tokens) AS BIGINT),CAST(SUM(output_tokens) AS BIGINT),CAST(SUM(reasoning_tokens) AS BIGINT),CAST(SUM(cache_read_tokens) AS BIGINT),CAST(SUM(cache_write_tokens) AS BIGINT),CAST(SUM(total_tokens) AS BIGINT) FROM analytics_confirmed WHERE countable`).Scan(&components[0], &components[1], &components[2], &components[3], &components[4], &components[5], &components[6]); err != nil {
 		t.Fatal(err)
 	}
 	if components != [7]int64{12, 800, 148, 52, 96, 6, 1102} {
-		rows, _ := store.SQL().Query("SELECT harness,session_native_id,message_native_id,total_tokens FROM analytics.confirmed ORDER BY 1,2,3")
+		rows, _ := store.SQL().Query("SELECT harness,session_native_id,message_native_id,total_tokens FROM analytics_confirmed ORDER BY 1,2,3")
 		if rows != nil {
 			for rows.Next() {
 				var h, s, m string
@@ -50,7 +50,7 @@ func rawGolden(t testing.TB, store *datastore.Store) []string {
 		}
 		t.Fatalf("native component oracle changed: %v", components)
 	}
-	rows, err := store.SQL().Query("SELECT fact_id FROM analytics.confirmed ORDER BY fact_id")
+	rows, err := store.SQL().Query("SELECT fact_id FROM analytics_confirmed ORDER BY fact_id")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -71,7 +71,7 @@ func rawGolden(t testing.TB, store *datastore.Store) []string {
 
 func TestRawCollectorNativeGoldenRebuildAndLostAcknowledgement(t *testing.T) {
 	root := t.TempDir()
-	store, err := datastore.Open(t.Context(), filepath.Join(root, "server.duckdb"))
+	store, err := datastore.Open(t.Context(), filepath.Join(root, "server.sqlite"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -137,7 +137,7 @@ func TestRawCollectorNativeGoldenRebuildAndLostAcknowledgement(t *testing.T) {
 		t.Fatal("reprocessing changed facts")
 	}
 	var body string
-	if err := store.SQL().QueryRow("SELECT record_json FROM raw.evidence LIMIT 1").Scan(&body); err != nil {
+	if err := store.SQL().QueryRow("SELECT record_json FROM raw_evidence LIMIT 1").Scan(&body); err != nil {
 		t.Fatal(err)
 	}
 	var record evidence.Record
@@ -181,7 +181,7 @@ func TestRawCollectorKeepsPrivateContentOutOfTransportAndStorage(t *testing.T) {
 		}
 	}
 	root := t.TempDir()
-	path := filepath.Join(root, "server.duckdb")
+	path := filepath.Join(root, "server.sqlite")
 	store, err := datastore.Open(t.Context(), path)
 	if err != nil {
 		t.Fatal(err)
@@ -214,10 +214,10 @@ func TestRawCollectorKeepsPrivateContentOutOfTransportAndStorage(t *testing.T) {
 	}
 	rawDrain(t, store)
 	rawGolden(t, store)
-	if _, err := store.SQL().ExecContext(t.Context(), "CHECKPOINT"); err != nil {
+	if _, err := store.SQL().ExecContext(t.Context(), "PRAGMA wal_checkpoint(TRUNCATE)"); err != nil {
 		t.Fatal(err)
 	}
-	for _, file := range []string{collectorPath, collectorPath + "-wal", path, path + ".wal"} {
+	for _, file := range []string{collectorPath, collectorPath + "-wal", path, path + "-wal"} {
 		body, err := os.ReadFile(file)
 		if err != nil && !os.IsNotExist(err) {
 			t.Fatal(err)

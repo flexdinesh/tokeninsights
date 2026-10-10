@@ -10,7 +10,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/adapters/duckdb"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/adapters/sqlanalytics"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/datastore"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/evidence"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/queryclient"
@@ -19,7 +19,7 @@ import (
 )
 
 func TestDirectCompleteQueryMatchesHTTPPagination(t *testing.T) {
-	store, err := datastore.Open(t.Context(), filepath.Join(t.TempDir(), "server.duckdb"))
+	store, err := datastore.Open(t.Context(), filepath.Join(t.TempDir(), "server.sqlite"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -50,9 +50,9 @@ func TestDirectCompleteQueryMatchesHTTPPagination(t *testing.T) {
 			break
 		}
 	}
-	direct := server.NewDirectQuery(duckdb.Queries{Store: store}, "instance", "")
+	direct := server.NewDirectQuery(sqlanalytics.Queries{Store: store}, "instance", "")
 	local := queryclient.NewDirect(direct)
-	httpServer := httptest.NewServer(server.NewDataHandler(t.Context(), duckdb.Source{Store: store}, nil, "127.0.0.1", "instance", false))
+	httpServer := httptest.NewServer(server.NewDataHandler(t.Context(), sqlanalytics.Source{Store: store}, nil, "127.0.0.1", "instance", false))
 	t.Cleanup(httpServer.Close)
 	remote, err := queryclient.New(httpServer.URL, httpServer.Client())
 	if err != nil {

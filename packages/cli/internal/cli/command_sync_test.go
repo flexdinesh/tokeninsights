@@ -60,8 +60,8 @@ func TestSyncFullRefreshFlagForcesSourceRefresh(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = store.Close() }()
-	assertCLIQueryCount(t, store.SQL(), "SELECT COUNT(*) FROM analytics.confirmed", 1)
-	assertCLIQueryCount(t, store.SQL(), "SELECT SUM(total_tokens) FROM analytics.confirmed", 150)
+	assertCLIQueryCount(t, store.SQL(), "SELECT COUNT(*) FROM analytics_confirmed", 1)
+	assertCLIQueryCount(t, store.SQL(), "SELECT SUM(total_tokens) FROM analytics_confirmed", 150)
 	if !strings.Contains(stdout.String(), "delivery: status=accepted batches=0 accepted=0 pending=0 processing=async") {
 		t.Fatalf("unchanged sync grew publication: %q", stdout.String())
 	}

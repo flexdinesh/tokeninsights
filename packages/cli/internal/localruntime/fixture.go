@@ -30,7 +30,7 @@ func PrepareFixture(ctx context.Context, collectorPath, serverPath string) error
 		return err
 	}
 	root := filepath.Dir(collectorPath)
-	if filepath.Base(root) != ".tokeninsights-dev" || filepath.Base(collectorPath) != "collector.sqlite" || filepath.Base(serverPath) != "server.duckdb" || filepath.Dir(serverPath) != root {
+	if filepath.Base(root) != ".tokeninsights-dev" || filepath.Base(collectorPath) != "collector.sqlite" || filepath.Base(serverPath) != "server.sqlite" || filepath.Dir(serverPath) != root {
 		return fmt.Errorf("uncontrolled development databases")
 	}
 	release, err := db.AcquireWriterLock(ctx, serverPath+".service.op")
@@ -98,7 +98,7 @@ func PrepareFixture(ctx context.Context, collectorPath, serverPath string) error
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
-	for _, table := range []string{"analytics.facts", "analytics.estimates", "analytics.provenance", "processing.outcomes", "processing.dependencies", "processing.scopes", "ingestion.batch_items", "ingestion.items", "ingestion.batches", "raw.evidence", "analytics.generations"} {
+	for _, table := range []string{"analytics_facts", "analytics_estimates", "analytics_provenance", "processing_outcomes", "processing_dependencies", "processing_scopes", "ingestion_batch_items", "ingestion_items", "ingestion_batches", "raw_evidence", "analytics_generations"} {
 		if _, err := tx.ExecContext(ctx, "DELETE FROM "+table); err != nil {
 			return err
 		}
@@ -109,13 +109,13 @@ func PrepareFixture(ctx context.Context, collectorPath, serverPath string) error
 		return err
 	}
 	databaseID := hex.EncodeToString(identity[:])
-	if _, err := tx.ExecContext(ctx, `UPDATE ingestion.instance SET database_id=?,created_at_ms=? WHERE id=1`, databaseID, now); err != nil {
+	if _, err := tx.ExecContext(ctx, `UPDATE ingestion_instance SET database_id=?,created_at_ms=? WHERE id=1`, databaseID, now); err != nil {
 		return err
 	}
-	if _, err := tx.ExecContext(ctx, `UPDATE ingestion.metadata SET database_id=?,generation=1,target_generation=1,input_revision=0,revision=0,last_ingestion_at_ms=0,created_at_ms=? WHERE dataset_id=?`, databaseID, now, datastore.DatasetID); err != nil {
+	if _, err := tx.ExecContext(ctx, `UPDATE ingestion_metadata SET database_id=?,generation=1,target_generation=1,input_revision=0,revision=0,last_ingestion_at_ms=0,created_at_ms=? WHERE dataset_id=?`, databaseID, now, datastore.DatasetID); err != nil {
 		return err
 	}
-	if _, err := tx.ExecContext(ctx, `INSERT INTO analytics.generations(dataset_id,generation,processor_version,state,created_at_ms,activated_at_ms) VALUES(?,1,?,'active',?,?)`, datastore.DatasetID, evidence.ProcessorVersion, now, now); err != nil {
+	if _, err := tx.ExecContext(ctx, `INSERT INTO analytics_generations(dataset_id,generation,processor_version,state,created_at_ms,activated_at_ms) VALUES(?,1,?,'active',?,?)`, datastore.DatasetID, evidence.ProcessorVersion, now, now); err != nil {
 		return err
 	}
 	if err := tx.Commit(); err != nil {

@@ -2,10 +2,12 @@ package datastore
 
 import (
 	"encoding/json"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/evidence"
 	"path/filepath"
 	"sync"
 	"testing"
+
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/evidence"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/persistence/sqlutil"
 )
 
 func TestMetadataRemainsConsistentDuringGenerationActivation(t *testing.T) {
@@ -64,7 +66,7 @@ func TestReprocessKeepsPublishedGenerationUntilComplete(t *testing.T) {
 		t.Fatal(worked, err)
 	}
 	partial, err := store.Metadata(t.Context())
-	if err != nil || partial.Generation != 1 || partial.Revision != before.Revision || total(t, store, "analytics.confirmed") != 340 {
+	if err != nil || partial.Generation != 1 || partial.Revision != before.Revision || total(t, store, "analytics_confirmed") != 340 {
 		t.Fatalf("partial generation published: %+v %v", partial, err)
 	}
 	drain(t, store)
@@ -72,11 +74,11 @@ func TestReprocessKeepsPublishedGenerationUntilComplete(t *testing.T) {
 	if err != nil || after.Generation != 2 || after.TargetGeneration != 2 || after.Revision != before.Revision+1 {
 		t.Fatalf("activation %+v %v", after, err)
 	}
-	if got := total(t, store, "analytics.confirmed"); got != 340 {
+	if got := total(t, store, "analytics_confirmed"); got != 340 {
 		t.Fatalf("generation duplicated totals %d", got)
 	}
 	var retained int
-	if err := store.SQL().QueryRow("SELECT COUNT(*) FROM analytics.facts WHERE generation=1").Scan(&retained); err != nil || retained != 2 {
+	if err := store.SQL().QueryRow(sqlutil.Bind("SELECT COUNT(*) FROM analytics_facts WHERE generation=1")).Scan(&retained); err != nil || retained != 2 {
 		t.Fatalf("old generation lost: %d %v", retained, err)
 	}
 	status, err = store.Receipt(t.Context(), "stream", "batch")
@@ -86,7 +88,7 @@ func TestReprocessKeepsPublishedGenerationUntilComplete(t *testing.T) {
 }
 
 func TestReprocessRestartIncludesEvidenceAcceptedDuringBuild(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "server.duckdb")
+	path := filepath.Join(t.TempDir(), "server.sqlite")
 	store, err := Open(t.Context(), path)
 	if err != nil {
 		t.Fatal(err)
@@ -108,7 +110,7 @@ func TestReprocessRestartIncludesEvidenceAcceptedDuringBuild(t *testing.T) {
 	if _, err := store.Accept(t.Context(), evidence.ProtocolVersion, batchBody(t, store, "late", "batch", third)); err != nil {
 		t.Fatal(err)
 	}
-	if total(t, store, "analytics.confirmed") != 340 {
+	if total(t, store, "analytics_confirmed") != 340 {
 		t.Fatal("building generation leaked partial data")
 	}
 	if err := store.Close(); err != nil {
@@ -121,7 +123,7 @@ func TestReprocessRestartIncludesEvidenceAcceptedDuringBuild(t *testing.T) {
 	defer func() { _ = store.Close() }()
 	drain(t, store)
 	metadata, err := store.Metadata(t.Context())
-	if err != nil || metadata.Generation != 2 || total(t, store, "analytics.confirmed") != 660 {
+	if err != nil || metadata.Generation != 2 || total(t, store, "analytics_confirmed") != 660 {
 		t.Fatal("late input missing after restart", metadata, err)
 	}
 }
@@ -135,7 +137,7 @@ func TestProcessorUpgradeReplacesInterruptedOlderGeneration(t *testing.T) {
 	if _, err := store.Reprocess(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.SQL().Exec("UPDATE analytics.generations SET processor_version=? WHERE generation=2", evidence.ProcessorVersion-1); err != nil {
+	if _, err := store.SQL().Exec(sqlutil.Bind("UPDATE analytics_generations SET processor_version=? WHERE generation=2"), evidence.ProcessorVersion-1); err != nil {
 		t.Fatal(err)
 	}
 	if err := store.Close(); err != nil {
@@ -147,16 +149,16 @@ func TestProcessorUpgradeReplacesInterruptedOlderGeneration(t *testing.T) {
 	}
 	defer func() { _ = reopened.Close() }()
 	m, err := reopened.Metadata(t.Context())
-	if err != nil || m.Generation != 1 || m.TargetGeneration != 3 || total(t, reopened, "analytics.confirmed") != 120 {
+	if err != nil || m.Generation != 1 || m.TargetGeneration != 3 || total(t, reopened, "analytics_confirmed") != 120 {
 		t.Fatal("upgrade reused interrupted older rules", m, err)
 	}
 	var processor int
-	if err := reopened.SQL().QueryRow("SELECT processor_version FROM analytics.generations WHERE generation=?", m.TargetGeneration).Scan(&processor); err != nil || processor != evidence.ProcessorVersion {
+	if err := reopened.SQL().QueryRow(sqlutil.Bind("SELECT processor_version FROM analytics_generations WHERE generation=?"), m.TargetGeneration).Scan(&processor); err != nil || processor != evidence.ProcessorVersion {
 		t.Fatal("generation mislabels processor", processor, err)
 	}
 	drain(t, reopened)
 	m, err = reopened.Metadata(t.Context())
-	if err != nil || m.Generation != 3 || total(t, reopened, "analytics.confirmed") != 120 {
+	if err != nil || m.Generation != 3 || total(t, reopened, "analytics_confirmed") != 120 {
 		t.Fatal("upgrade lost or mixed published history", m, err)
 	}
 }

@@ -130,7 +130,7 @@ func (c client) sync(t *testing.T) {
 func startRemote(t *testing.T) (string, string) {
 	t.Helper()
 	root := t.TempDir()
-	path := filepath.Join(root, "server.duckdb")
+	path := filepath.Join(root, "server.sqlite")
 	command := exec.Command(serverBinary, "--public-url", "https://usage.example", "--listen", "0.0.0.0:0", "--server-db-path", path)
 	command.Env = isolatedEnvironment(root)
 	output, err := command.StdoutPipe()
@@ -227,7 +227,7 @@ func assertUsage(t *testing.T, target, path string, facts, total int64) []string
 func assertComponents(t *testing.T, target, path string, want [7]int64) []string {
 	t.Helper()
 
-	_ = path // HTTP owns the live data file; do not open a second DuckDB process.
+	_ = path // HTTP owns the live data file; do not open a second storage owner.
 	deadline := time.Now().Add(10 * time.Second)
 	var data api.UsageResponseV2
 	for {
@@ -286,7 +286,7 @@ func assertAcknowledged(t *testing.T, c client) {
 	if journal != 2 || cursor != 2 || receipts != 1 {
 		t.Fatal("publication", journal, cursor, receipts)
 	}
-	if _, err := os.Stat(filepath.Join(c.root, "data", "tokeninsights", "server.duckdb")); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(c.root, "data", "tokeninsights", "server.sqlite")); !os.IsNotExist(err) {
 		t.Fatal("remote sync created local server", err)
 	}
 	if _, err := os.Stat(filepath.Join(c.root, "state")); !os.IsNotExist(err) {
@@ -430,7 +430,7 @@ func TestUnreachableRemoteFailsPreflightWithoutCollectionOrLocalServer(t *testin
 	if output, err := c.run(t, "sync", "--harness", "pi", "--source-dir", c.source); err == nil {
 		t.Fatal("unreachable descriptor accepted", output)
 	}
-	for _, path := range []string{c.collector, filepath.Join(c.root, "data", "tokeninsights", "server.duckdb"), filepath.Join(c.root, "state")} {
+	for _, path := range []string{c.collector, filepath.Join(c.root, "data", "tokeninsights", "server.sqlite"), filepath.Join(c.root, "state")} {
 		if _, err := os.Stat(path); !os.IsNotExist(err) {
 			t.Fatal("preflight created collector/local state", path, err)
 		}
@@ -548,7 +548,7 @@ func TestLocalAndRemoteBinariesCannotOwnSameDatabase(t *testing.T) {
 		c := newClient(t)
 		c.must(t, "config", "set", "port", "0")
 		localURL := startLocal(t, c)
-		path := filepath.Join(c.root, "data", "tokeninsights", "server.duckdb")
+		path := filepath.Join(c.root, "data", "tokeninsights", "server.sqlite")
 		command := exec.CommandContext(t.Context(), serverBinary, "--public-url", "https://usage.example", "--listen", "127.0.0.1:0", "--server-db-path", path)
 		command.Env = c.env
 		if output, err := command.CombinedOutput(); err == nil || !strings.Contains(string(output), "owns database") {

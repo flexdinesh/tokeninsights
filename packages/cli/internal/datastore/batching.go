@@ -9,6 +9,7 @@ import (
 
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/dataengine"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/evidence"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/persistence/sqlutil"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/publication"
 )
 
@@ -25,7 +26,7 @@ func writeRows(ctx context.Context, tx *sql.Tx, prefix, suffix string, rows [][]
 			values = append(values, "("+sqlPlaceholders(len(row))+")")
 			args = append(args, row...)
 		}
-		if _, err := tx.ExecContext(ctx, prefix+strings.Join(values, ",")+suffix, args...); err != nil {
+		if _, err := tx.ExecContext(ctx, sqlutil.Bind(prefix+strings.Join(values, ",")+suffix), args...); err != nil {
 			return err
 		}
 	}
@@ -51,7 +52,7 @@ func prepareAcceptance(batch evidence.Batch) ([]acceptedRecord, error) {
 }
 func acceptRecords(ctx context.Context, tx *sql.Tx, datasetID string, batch evidence.Batch, records []acceptedRecord, revision, now int64) (bool, error) {
 	previous := map[int64]string{}
-	rows, err := tx.QueryContext(ctx, "SELECT sequence,evidence_id FROM ingestion.items WHERE dataset_id=? AND stream_id=? AND sequence BETWEEN ? AND ?", datasetID, batch.StreamID, batch.FromSequence, batch.ToSequence)
+	rows, err := tx.QueryContext(ctx, sqlutil.Bind("SELECT sequence,evidence_id FROM ingestion_items WHERE dataset_id=? AND stream_id=? AND sequence BETWEEN ? AND ?"), datasetID, batch.StreamID, batch.FromSequence, batch.ToSequence)
 	if err != nil {
 		return false, err
 	}
@@ -73,7 +74,7 @@ func acceptRecords(ctx context.Context, tx *sql.Tx, datasetID string, batch evid
 	for _, record := range records {
 		args = append(args, record.id)
 	}
-	rows, err = tx.QueryContext(ctx, "SELECT evidence_id FROM raw.evidence WHERE dataset_id=? AND evidence_id IN("+sqlPlaceholders(len(records))+")", args...)
+	rows, err = tx.QueryContext(ctx, sqlutil.Bind("SELECT evidence_id FROM raw_evidence WHERE dataset_id=? AND evidence_id IN("+sqlPlaceholders(len(records))+")"), args...)
 	if err != nil {
 		return false, err
 	}
@@ -117,19 +118,19 @@ func acceptRecords(ctx context.Context, tx *sql.Tx, datasetID string, batch evid
 			}
 		}
 	}
-	if err := writeRows(ctx, tx, "INSERT INTO raw.evidence VALUES", "", raw); err != nil {
+	if err := writeRows(ctx, tx, "INSERT INTO raw_evidence VALUES", "", raw); err != nil {
 		return false, err
 	}
-	if err := writeRows(ctx, tx, "INSERT INTO processing.scopes(dataset_id,scope,revision) VALUES", " ON CONFLICT(dataset_id,scope) DO UPDATE SET revision=excluded.revision,error_code='',attempts=0,retry_at_ms=0", scopes); err != nil {
+	if err := writeRows(ctx, tx, "INSERT INTO processing_scopes(dataset_id,scope,revision) VALUES", " ON CONFLICT(dataset_id,scope) DO UPDATE SET revision=excluded.revision,error_code='',attempts=0,retry_at_ms=0", scopes); err != nil {
 		return false, err
 	}
-	if err := writeRows(ctx, tx, "INSERT INTO processing.dependencies VALUES", " ON CONFLICT DO NOTHING", dependencies); err != nil {
+	if err := writeRows(ctx, tx, "INSERT INTO processing_dependencies VALUES", " ON CONFLICT DO NOTHING", dependencies); err != nil {
 		return false, err
 	}
-	if err := writeRows(ctx, tx, "INSERT INTO ingestion.items VALUES", " ON CONFLICT DO NOTHING", items); err != nil {
+	if err := writeRows(ctx, tx, "INSERT INTO ingestion_items VALUES", " ON CONFLICT DO NOTHING", items); err != nil {
 		return false, err
 	}
-	if err := writeRows(ctx, tx, "INSERT INTO ingestion.batch_items VALUES", "", mappings); err != nil {
+	if err := writeRows(ctx, tx, "INSERT INTO ingestion_batch_items VALUES", "", mappings); err != nil {
 		return false, err
 	}
 	return len(raw) > 0, nil
@@ -152,7 +153,7 @@ func factArguments(datasetID, table string, fact publication.Fact, generation, r
 		location = *fact.Location
 	}
 	args := []interface{}{datasetID, fact.ID, evidence.SessionScope(fact.Harness, fact.Session.NativeID), fact.Harness, fact.Session.ID, fact.Session.NativeID, message, fact.NativeRequestID, fact.OccurredAtMs, fact.Provider, fact.ProviderSource, fact.Model, fact.UsageScope, fact.Quality, fact.Countable, fact.InputTokens, fact.OutputTokens, fact.ReasoningTokens, fact.CacheReadTokens, fact.CacheWriteTokens, fact.TotalTokens, location.DirectoryKey, location.DirectoryName, location.RepositoryKey, location.RepositoryName, location.RepositorySource, string(body), generation, revision}
-	if table == "analytics.estimates" {
+	if table == "analytics_estimates" {
 		args = append(args, evidenceID, reason)
 	}
 	return args, nil
@@ -165,7 +166,7 @@ type projectionRows struct {
 func prepareProjection(work dataengine.Work, projection evidence.Projection) (projectionRows, error) {
 	rows := projectionRows{}
 	for _, contribution := range projection.Contributions {
-		args, err := factArguments(work.DatasetID, "analytics.facts", contribution.Fact, work.Generation, work.Revision, "", "")
+		args, err := factArguments(work.DatasetID, "analytics_facts", contribution.Fact, work.Generation, work.Revision, "", "")
 		if err != nil {
 			return rows, err
 		}
@@ -180,7 +181,7 @@ func prepareProjection(work dataengine.Work, projection evidence.Projection) (pr
 		}
 	}
 	for _, estimate := range projection.Estimates {
-		args, err := factArguments(work.DatasetID, "analytics.estimates", estimate.Fact, work.Generation, work.Revision, estimate.EvidenceID, estimate.Code)
+		args, err := factArguments(work.DatasetID, "analytics_estimates", estimate.Fact, work.Generation, work.Revision, estimate.EvidenceID, estimate.Code)
 		if err != nil {
 			return rows, err
 		}
@@ -206,27 +207,37 @@ func publishRows(ctx context.Context, tx *sql.Tx, work dataengine.Work, rows pro
 		filter := " WHERE dataset_id=? AND generation=? AND scope IN(" + sqlPlaceholders(end-start) + ")"
 		provenanceArgs := []interface{}{work.DatasetID, work.Generation}
 		provenanceArgs = append(provenanceArgs, args...)
-		if _, err := tx.ExecContext(ctx, "DELETE FROM analytics.provenance WHERE dataset_id=? AND generation=? AND fact_id IN(SELECT fact_id FROM analytics.facts"+filter+")", provenanceArgs...); err != nil {
+		if _, err := tx.ExecContext(ctx, sqlutil.Bind("DELETE FROM analytics_provenance WHERE dataset_id=? AND generation=? AND fact_id IN(SELECT fact_id FROM analytics_facts"+filter+")"), provenanceArgs...); err != nil {
 			return err
 		}
-		for _, table := range []string{"analytics.facts", "analytics.estimates"} {
-			if _, err := tx.ExecContext(ctx, "DELETE FROM "+table+filter, args...); err != nil {
+		for _, table := range []string{"analytics_facts", "analytics_estimates"} {
+			if _, err := tx.ExecContext(ctx, sqlutil.Bind("DELETE FROM "+table+filter), args...); err != nil {
 				return err
 			}
 		}
 	}
-	if err := writeRows(ctx, tx, "INSERT INTO analytics.facts VALUES", "", rows.facts); err != nil {
+	if err := writeRows(ctx, tx, "INSERT INTO analytics_facts VALUES", "", rows.facts); err != nil {
 		return fmt.Errorf("insert projected contribution: %w", err)
 	}
-	if err := writeRows(ctx, tx, "INSERT INTO analytics.estimates VALUES", "", rows.estimates); err != nil {
+	if err := writeRows(ctx, tx, "INSERT INTO analytics_estimates VALUES", "", rows.estimates); err != nil {
 		return fmt.Errorf("insert projected contribution: %w", err)
 	}
 	// Old edges were deleted above; preparation deduplicates each fact's new edges.
-	if err := writeRows(ctx, tx, "INSERT INTO analytics.provenance VALUES", "", rows.provenance); err != nil {
+	if err := writeRows(ctx, tx, "INSERT INTO analytics_provenance VALUES", "", rows.provenance); err != nil {
 		return err
 	}
-	if err := writeRows(ctx, tx, "INSERT INTO processing.outcomes VALUES", " ON CONFLICT(dataset_id,generation,evidence_id) DO UPDATE SET disposition=excluded.disposition,code=excluded.code,fact_id=excluded.fact_id,input_revision=excluded.input_revision", rows.outcomes); err != nil {
+	if err := writeRows(ctx, tx, "INSERT INTO processing_outcomes VALUES", " ON CONFLICT(dataset_id,generation,evidence_id) DO UPDATE SET disposition=excluded.disposition,code=excluded.code,fact_id=excluded.fact_id,input_revision=excluded.input_revision", rows.outcomes); err != nil {
 		return err
 	}
-	return writeRows(ctx, tx, "UPDATE processing.scopes AS s SET processed_revision=v.revision,generation=v.generation,error_code='',attempts=0,retry_at_ms=0 FROM (VALUES", ") AS v(dataset_id,scope,revision,generation) WHERE s.dataset_id=v.dataset_id AND s.scope=v.scope", rows.scopes)
+	statement, err := tx.PrepareContext(ctx, sqlutil.Bind("UPDATE processing_scopes SET processed_revision=?,generation=?,error_code='',attempts=0,retry_at_ms=0 WHERE dataset_id=? AND scope=?"))
+	if err != nil {
+		return err
+	}
+	defer func() { _ = statement.Close() }()
+	for _, scope := range rows.scopes {
+		if _, err := statement.ExecContext(ctx, scope[2], scope[3], scope[0], scope[1]); err != nil {
+			return err
+		}
+	}
+	return nil
 }

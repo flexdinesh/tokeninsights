@@ -54,7 +54,7 @@ func BenchmarkReceiverAcceptance(b *testing.B) {
 							b.Fatal("replay changed receipt")
 						}
 						var facts, batches int
-						if err := store.SQL().QueryRow("SELECT (SELECT COUNT(*) FROM raw.evidence),(SELECT COUNT(*) FROM ingestion.batches)").Scan(&facts, &batches); err != nil || facts != evidence.MaxEntries || batches != 1 {
+						if err := store.SQL().QueryRow("SELECT (SELECT COUNT(*) FROM raw_evidence),(SELECT COUNT(*) FROM ingestion_batches)").Scan(&facts, &batches); err != nil || facts != evidence.MaxEntries || batches != 1 {
 							b.Fatal("acceptance changed evidence or receipts", facts, batches, err)
 						}
 					}()

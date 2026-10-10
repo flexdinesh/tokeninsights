@@ -9,6 +9,7 @@ import (
 
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/dataengine"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/evidence"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/persistence/sqlutil"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/processor"
 )
 
@@ -70,7 +71,7 @@ func TestRunningWorkerPublishesIsolatedDatasetsAndJoins(t *testing.T) {
 		}
 	}
 	for _, store := range []*Store{alice, bob} {
-		if got := total(t, store, "analytics.confirmed"); got != 120 {
+		if got := total(t, store, "analytics_confirmed"); got != 120 {
 			t.Fatal("running publication lost isolation or usage", store.DatasetID(), got)
 		}
 	}
@@ -103,7 +104,7 @@ func TestClaimsSkipLateConnectedComponentAndFenceStalePublication(t *testing.T) 
 		t.Fatal("late connection did not fence stale publication", published, err)
 	}
 	drain(t, store)
-	if got := total(t, store, "analytics.confirmed"); got != 340 {
+	if got := total(t, store, "analytics_confirmed"); got != 340 {
 		t.Fatal("late parent or independent usage lost/inflated", got)
 	}
 }
@@ -170,7 +171,7 @@ func TestDelayedMembershipSkipsLateAncestorsWithoutBlockingOtherDatasets(t *test
 		t.Fatal("alternate root bypassed delayed membership", found, err)
 	}
 	var failures int
-	if err := root.SQL().QueryRow("SELECT COUNT(*) FROM processing.scopes WHERE error_code<>'' OR attempts<>0 OR retry_at_ms<>0").Scan(&failures); err != nil || failures != 0 {
+	if err := root.SQL().QueryRow(sqlutil.Bind("SELECT COUNT(*) FROM processing_scopes WHERE error_code<>'' OR attempts<>0 OR retry_at_ms<>0")).Scan(&failures); err != nil || failures != 0 {
 		t.Fatal("stale work changed durable backoff", failures, err)
 	}
 	// Removing only the ephemeral hint makes durable work immediately available.
@@ -180,7 +181,7 @@ func TestDelayedMembershipSkipsLateAncestorsWithoutBlockingOtherDatasets(t *test
 	}
 	drain(t, root)
 	for _, dataset := range []*Store{alice, bob} {
-		if total(t, dataset, "analytics.confirmed") != 120 {
+		if total(t, dataset, "analytics_confirmed") != 120 {
 			t.Fatal("delay changed native accounting", dataset.DatasetID())
 		}
 	}

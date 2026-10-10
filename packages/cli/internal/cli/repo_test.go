@@ -16,7 +16,7 @@ func TestRepoTabGroupsAndFiltersWithoutChangingOtherTabs(t *testing.T) {
 	defer func() { _ = database.Close() }()
 	now := time.Date(2026, 4, 20, 9, 0, 0, 0, time.Local)
 	insertLoadRowsCanonicalToken(t, database, now.UnixMilli(), "codex", "one", "openai", "gpt")
-	_, err := database.Exec("UPDATE analytics.facts SET directory_key='dir-one',directory_name='~/work/repo',repository_key='repo-one',repository_name='repo'")
+	_, err := database.Exec("UPDATE analytics_facts SET directory_key='dir-one',directory_name='~/work/repo',repository_key='repo-one',repository_name='repo'")
 	if err != nil {
 		t.Fatal(err)
 	}

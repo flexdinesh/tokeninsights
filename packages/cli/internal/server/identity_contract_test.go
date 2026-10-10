@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/adapters/duckdb"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/adapters/sqlanalytics"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/datastore"
 )
 
@@ -47,7 +47,7 @@ func TestQueryIdentityContractForEmptyAndUnavailableStorage(t *testing.T) {
 				}
 				defer func() { _ = store.Close() }()
 			}
-			handler := NewDataHandler(t.Context(), duckdb.Source{Store: store}, io.Discard, "0.0.0.0", "test-instance", false)
+			handler := NewDataHandler(t.Context(), sqlanalytics.Source{Store: store}, io.Discard, "0.0.0.0", "test-instance", false)
 			for _, route := range []string{"instance", "status", "usage", "usage/facets"} {
 				response := httptest.NewRecorder()
 				handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/v2/"+route, nil))

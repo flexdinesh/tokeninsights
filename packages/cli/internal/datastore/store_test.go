@@ -14,11 +14,12 @@ import (
 
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/evidence"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/ingestionhttp"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/persistence/sqlutil"
 )
 
 func testStore(t testing.TB) *Store {
 	t.Helper()
-	store, err := Open(t.Context(), filepath.Join(t.TempDir(), "server.duckdb"))
+	store, err := Open(t.Context(), filepath.Join(t.TempDir(), "server.sqlite"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -60,7 +61,7 @@ func drain(t *testing.T, store *Store) {
 func total(t *testing.T, store *Store, table string) int64 {
 	t.Helper()
 	var total int64
-	if err := store.SQL().QueryRowContext(t.Context(), "SELECT CAST(COALESCE(SUM(total_tokens),0) AS BIGINT) FROM "+table+" WHERE dataset_id=?", store.DatasetID()).Scan(&total); err != nil {
+	if err := store.SQL().QueryRowContext(t.Context(), sqlutil.Bind("SELECT CAST(COALESCE(SUM(total_tokens),0) AS BIGINT) FROM "+table+" WHERE dataset_id=?"), store.DatasetID()).Scan(&total); err != nil {
 		t.Fatal(err)
 	}
 	return total
@@ -77,7 +78,7 @@ func TestAcceptanceReplayAndConcurrentDuplicates(t *testing.T) {
 	if response.Processing.Pending != 2 || response.Receipt.Accepted != 2 {
 		t.Fatalf("missing item mappings: %+v", response)
 	}
-	if got := total(t, store, "analytics.confirmed"); got != 0 {
+	if got := total(t, store, "analytics_confirmed"); got != 0 {
 		t.Fatalf("acceptance performed processing: %d", got)
 	}
 	var group sync.WaitGroup
@@ -97,7 +98,7 @@ func TestAcceptanceReplayAndConcurrentDuplicates(t *testing.T) {
 		t.Fatal(err)
 	}
 	drain(t, store)
-	if got := total(t, store, "analytics.confirmed"); got != 120 {
+	if got := total(t, store, "analytics_confirmed"); got != 120 {
 		t.Fatalf("duplicates polluted totals: %d", got)
 	}
 	replay, err := store.Accept(t.Context(), evidence.ProtocolVersion, body)
@@ -130,13 +131,13 @@ func TestAcceptanceReplayAndConcurrentDuplicates(t *testing.T) {
 	if !errors.As(err, &admission) || admission.Code != "batch_conflict" {
 		t.Fatalf("changed retry accepted: %v", err)
 	}
-	if got := total(t, store, "analytics.confirmed"); got != 120 {
+	if got := total(t, store, "analytics_confirmed"); got != 120 {
 		t.Fatal(got)
 	}
 }
 
 func TestPendingAcceptanceSurvivesRestart(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "server.duckdb")
+	path := filepath.Join(t.TempDir(), "server.sqlite")
 	store, err := Open(t.Context(), path)
 	if err != nil {
 		t.Fatal(err)
@@ -159,7 +160,7 @@ func TestPendingAcceptanceSurvivesRestart(t *testing.T) {
 		t.Fatalf("lost acceptance: %+v %v", after, err)
 	}
 	drain(t, store)
-	if got := total(t, store, "analytics.confirmed"); got != 120 {
+	if got := total(t, store, "analytics_confirmed"); got != 120 {
 		t.Fatal(got)
 	}
 }
@@ -174,11 +175,11 @@ func TestNativeConflictWithdrawsConfirmedAndDeduplicatesEstimate(t *testing.T) {
 		t.Fatal(err)
 	}
 	drain(t, store)
-	if got := total(t, store, "analytics.confirmed"); got != 0 {
+	if got := total(t, store, "analytics_confirmed"); got != 0 {
 		t.Fatalf("conflict still confirmed: %d", got)
 	}
 	var count int
-	if err := store.SQL().QueryRow("SELECT COUNT(*) FROM analytics.estimates").Scan(&count); err != nil || count != 1 {
+	if err := store.SQL().QueryRow(sqlutil.Bind("SELECT COUNT(*) FROM analytics_estimates")).Scan(&count); err != nil || count != 1 {
 		t.Fatalf("estimates %d %v", count, err)
 	}
 	response, err := store.Receipt(t.Context(), "first", "batch")
@@ -209,11 +210,11 @@ func TestOverlappingBatchesBindSequenceAndKeepEveryMembership(t *testing.T) {
 		t.Fatal(response, err)
 	}
 	drain(t, store)
-	if got := total(t, store, "analytics.confirmed"); got != 340 {
+	if got := total(t, store, "analytics_confirmed"); got != 340 {
 		t.Fatal("overlap inflated or skipped facts", got)
 	}
 	var mappings int
-	if err := store.SQL().QueryRow("SELECT COUNT(*) FROM ingestion.batch_items").Scan(&mappings); err != nil || mappings != 4 {
+	if err := store.SQL().QueryRow(sqlutil.Bind("SELECT COUNT(*) FROM ingestion_batch_items")).Scan(&mappings); err != nil || mappings != 4 {
 		t.Fatal("overlap lost membership", mappings, err)
 	}
 	batch.BatchID = "changed-sequence"
@@ -227,10 +228,10 @@ func TestOverlappingBatchesBindSequenceAndKeepEveryMembership(t *testing.T) {
 	if !errors.As(err, &failure) || failure.Code != "sequence_conflict" {
 		t.Fatal("sequence rebound", err)
 	}
-	if got := total(t, store, "analytics.confirmed"); got != 340 {
+	if got := total(t, store, "analytics_confirmed"); got != 340 {
 		t.Fatal("conflict mutated facts", got)
 	}
-	if err := store.SQL().QueryRow("SELECT COUNT(*) FROM ingestion.batch_items").Scan(&mappings); err != nil || mappings != 4 {
+	if err := store.SQL().QueryRow(sqlutil.Bind("SELECT COUNT(*) FROM ingestion_batch_items")).Scan(&mappings); err != nil || mappings != 4 {
 		t.Fatal("failed overlap partly committed", mappings, err)
 	}
 }

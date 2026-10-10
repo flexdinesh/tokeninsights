@@ -194,7 +194,7 @@ func TestHostedWebShowsCaptureAndAcceptanceBeforeOpening(t *testing.T) {
 func TestLocalWebOwnsListenerUntilCancellationAndNeverAcceptsHTTPIngestion(t *testing.T) {
 	settings := config.Defaults()
 	root := t.TempDir()
-	settings.ServerDBPath, settings.CollectorDBPath = filepath.Join(root, "server.duckdb"), filepath.Join(root, "collector.sqlite")
+	settings.ServerDBPath, settings.CollectorDBPath = filepath.Join(root, "server.sqlite"), filepath.Join(root, "collector.sqlite")
 	settings.Host, settings.Port = "0.0.0.0", 0
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
@@ -355,7 +355,7 @@ func TestLocalWebCaptureFailureKeepsSavedDashboardAndShowsFailure(t *testing.T) 
 func TestLocalWebSavedOnlyHasNoStartupCollection(t *testing.T) {
 	settings := config.Defaults()
 	root := t.TempDir()
-	settings.CollectorDBPath, settings.ServerDBPath, settings.Port = filepath.Join(root, "collector.sqlite"), filepath.Join(root, "data.duckdb"), 0
+	settings.CollectorDBPath, settings.ServerDBPath, settings.Port = filepath.Join(root, "collector.sqlite"), filepath.Join(root, "data.sqlite"), 0
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 	previousOpen, previousCollector := openDashboard, runWebCollector
@@ -387,7 +387,7 @@ func (l failedWebListener) Accept() (net.Conn, error) { return nil, l.err }
 func TestLocalWebHTTPFailureCancelsAndJoinsCollection(t *testing.T) {
 	settings := config.Defaults()
 	root := t.TempDir()
-	settings.CollectorDBPath, settings.ServerDBPath, settings.Port = filepath.Join(root, "collector.sqlite"), filepath.Join(root, "data.duckdb"), 0
+	settings.CollectorDBPath, settings.ServerDBPath, settings.Port = filepath.Join(root, "collector.sqlite"), filepath.Join(root, "data.sqlite"), 0
 	previousCollector, previousServe := runWebCollector, serveLocalWeb
 	t.Cleanup(func() { runWebCollector, serveLocalWeb = previousCollector, previousServe })
 	finished := make(chan struct{})

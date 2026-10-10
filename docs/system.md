@@ -5,10 +5,10 @@
 
 | Composition | Lifetime | Transport | Storage |
 | --- | --- | --- | --- |
-| Single-process `tui` | Foreground command | Direct acceptance and queries | Collector SQLite, application SQLite, DuckDB |
+| Single-process `tui` | Foreground command | Direct acceptance and queries | Separate collector, token, application and job SQLite roles |
 | Single-process `web` | Foreground command | Direct ingestion; read-only HTTP dashboard | Same local files |
 | Distributed collector | Finite CLI/worker | Authenticated HTTP acceptance | Collector SQLite and operational jobs SQLite |
-| Distributed server | One Docker container | Bearer ingestion/query; browser session; private admin | Paired application SQLite and DuckDB |
+| Distributed server | One Docker container | Bearer ingestion/query; browser session; private admin | SQLite or PostgreSQL for paired token/account domains |
 
 ```mermaid
 flowchart LR
@@ -19,11 +19,11 @@ flowchart LR
   L --> Q[Durable processing queue]
   H --> Q
   Q --> P[Shared processor]
-  P --> T[DuckDB token adapter]
+  P --> T[SQLite/PostgreSQL token adapter]
   T --> R[Analytics contract]
   R --> U[Direct TUI]
   R --> W[HTTP web dashboard]
-  A[Account contract] --> AS[SQLite adapter]
+  A[Account contract] --> AS[SQLite/PostgreSQL account adapter]
 ```
 
 Local commands own one token database and join workers on exit. TUI never needs a

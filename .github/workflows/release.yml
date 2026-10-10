@@ -98,7 +98,7 @@ jobs:
       - name: Build and smoke test native binaries
         shell: bash
         env:
-          CGO_ENABLED: '1'
+          CGO_ENABLED: '0'
         run: |
           set -euo pipefail
           version="${{ needs.prepare.outputs.version }}"

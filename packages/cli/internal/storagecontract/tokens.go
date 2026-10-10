@@ -40,17 +40,66 @@ type TokenFactory func(*testing.T) Tokens
 func RunTokens(t *testing.T, factory TokenFactory) {
 	t.Helper()
 	for name, contract := range map[string]func(*testing.T, Tokens){
-		"acceptance_replay_isolation": acceptance,
-		"pending_reopen_cancellation": recovery,
-		"revision_generation_fences":  fences,
-		"query_components_pagination": queries,
-		"concurrent_query_snapshot":   snapshots,
+		"acceptance_replay_isolation":  acceptance,
+		"pending_reopen_cancellation":  recovery,
+		"revision_generation_fences":   fences,
+		"query_components_pagination":  queries,
+		"concurrent_query_snapshot":    snapshots,
+		"query_tabs_and_session_peaks": queryTabsAndSessionPeaks,
+		"ordering_and_integer_bounds":  orderingAndBounds,
+		"publication_rollback_reopen":  publicationRollback,
+		"calendar_boundaries":          calendarQueries,
 	} {
 		t.Run(name, func(t *testing.T) { contract(t, factory(t)) })
 	}
 }
 
-func dataset(t *testing.T, store Tokens, id string) Dataset {
+func publicationRollback(t *testing.T, store Tokens) {
+	const id = "publication-rollback"
+	d := dataset(t, store, id)
+	accept(t, d, batch(t, d, "baseline", record("baseline")))
+	drain(t, d)
+	// More than one insert chunk: a late duplicate key must roll back earlier
+	// inserts, deletions, provenance, outcomes and processing acknowledgements.
+	const additions = 130
+	records := make([]evidence.Record, 0, additions)
+	for i := range additions {
+		records = append(records, record(fmt.Sprintf("new-%d", i)))
+	}
+	body := batch(t, d, "replacement", records...)
+	receipt := accept(t, d, body)
+	before := dashboard(t, d)
+	work, found, err := d.Processing.LoadWork(t.Context())
+	if err != nil || !found {
+		t.Fatal(work, found, err)
+	}
+	projection, err := processor.Process(t.Context(), work.Records)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(projection.Contributions) != additions+1 {
+		t.Fatal("invalid rollback fixture")
+	}
+	projection.Contributions = append(projection.Contributions, projection.Contributions[0])
+	if published, err := d.Processing.PublishProjection(t.Context(), work, projection); err == nil || published {
+		t.Fatal("invalid projection committed", published, err)
+	}
+	if after := dashboard(t, d); !reflect.DeepEqual(before, after) {
+		t.Fatal("failed publication changed visible snapshot", before, after)
+	}
+	store = store.Reopen()
+	d = store.Dataset(id)
+	if got := accept(t, d, body); got != receipt {
+		t.Fatal("failed publication changed receipt", got, receipt)
+	}
+	drain(t, d)
+	after := dashboard(t, d)
+	if after.Pending != 0 || after.FactCount != additions+1 || after.Summary.TotalTokens != (additions+1)*24 {
+		t.Fatal("publication failed to recover exact totals", after)
+	}
+}
+
+func dataset(t testing.TB, store Tokens, id string) Dataset {
 	t.Helper()
 	if err := store.EnsureDataset(t.Context(), id); err != nil {
 		t.Fatal(err)
@@ -64,7 +113,7 @@ func record(id string) evidence.Record {
 		Context: []evidence.Context{{Ordinal: 1, Data: json.RawMessage(`{"type":"session","id":"session"}`)}}}
 }
 
-func batch(t *testing.T, d Dataset, stream string, records ...evidence.Record) []byte {
+func batch(t testing.TB, d Dataset, stream string, records ...evidence.Record) []byte {
 	t.Helper()
 	status, err := d.Queries.Status(t.Context())
 	if err != nil {
@@ -81,7 +130,7 @@ func batch(t *testing.T, d Dataset, stream string, records ...evidence.Record) [
 	return body
 }
 
-func accept(t *testing.T, d Dataset, body []byte) evidence.Receipt {
+func accept(t testing.TB, d Dataset, body []byte) evidence.Receipt {
 	t.Helper()
 	r, err := d.Receiver.Accept(t.Context(), evidence.ProtocolVersion, body)
 	if err != nil {
@@ -90,7 +139,7 @@ func accept(t *testing.T, d Dataset, body []byte) evidence.Receipt {
 	return r.Receipt
 }
 
-func drain(t *testing.T, d Dataset) {
+func drain(t testing.TB, d Dataset) {
 	t.Helper()
 	worker := dataengine.NewWorker()
 	for range 100 {

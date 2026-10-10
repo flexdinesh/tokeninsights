@@ -1,10 +1,11 @@
-package duckdb
+package sqlanalytics
 
 import (
 	"context"
 
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/analytics"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/datastore"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/persistence/sqlutil"
 )
 
 func Status(ctx context.Context, store *datastore.Store) (analytics.ProcessingStatus, error) {
@@ -18,7 +19,7 @@ func Status(ctx context.Context, store *datastore.Store) (analytics.ProcessingSt
 	if err != nil {
 		return result, err
 	}
-	err = tx.QueryRowContext(ctx, "SELECT COUNT(*), COUNT(*) FILTER (WHERE error_code<>''), COALESCE(MIN(retry_at_ms) FILTER (WHERE error_code<>''),0) FROM processing.scopes WHERE dataset_id=? AND (processed_revision<>revision OR generation<>?)", store.DatasetID(), result.Metadata.TargetGeneration).Scan(&result.Pending, &result.Failed, &result.FailedRetryAtMs)
+	err = tx.QueryRowContext(ctx, sqlutil.Bind("SELECT COUNT(*), COUNT(*) FILTER (WHERE error_code<>''), COALESCE(MIN(retry_at_ms) FILTER (WHERE error_code<>''),0) FROM processing_scopes WHERE dataset_id=? AND (processed_revision<>revision OR generation<>?)"), store.DatasetID(), result.Metadata.TargetGeneration).Scan(&result.Pending, &result.Failed, &result.FailedRetryAtMs)
 	if err != nil {
 		return result, err
 	}

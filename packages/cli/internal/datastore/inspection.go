@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"os"
+
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/persistence/sqlutil"
 )
 
 func (s *Store) checkFile() error {
@@ -22,11 +24,11 @@ func (s *Store) checkFile() error {
 	if s.fileInfo != nil && !os.SameFile(s.fileInfo, info) {
 		return errors.New("server_data_file_replaced")
 	}
-	var magic [4]byte
-	if _, err := file.ReadAt(magic[:], 8); err != nil {
+	var magic [16]byte
+	if _, err := file.ReadAt(magic[:], 0); err != nil {
 		return err
 	}
-	if string(magic[:]) != "DUCK" {
+	if string(magic[:]) != "SQLite format 3\x00" {
 		return errors.New("invalid_server_data_file")
 	}
 	return nil
@@ -42,7 +44,7 @@ func (s *Store) Ready(ctx context.Context) error {
 	defer func() { _ = tx.Rollback() }()
 	var role, databaseID, kind string
 	var version int
-	if err := tx.QueryRowContext(ctx, "SELECT role,schema_version,database_id,server_kind FROM ingestion.instance WHERE id=1").Scan(&role, &version, &databaseID, &kind); err != nil {
+	if err := tx.QueryRowContext(ctx, sqlutil.Bind("SELECT role,schema_version,database_id,server_kind FROM ingestion_instance WHERE id=1")).Scan(&role, &version, &databaseID, &kind); err != nil {
 		return err
 	}
 	if role != "server-data" || version != SchemaVersion || databaseID == "" || kind != s.kind {

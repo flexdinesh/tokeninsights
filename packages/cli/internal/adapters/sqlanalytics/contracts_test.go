@@ -1,4 +1,4 @@
-package duckdb
+package sqlanalytics
 
 import (
 	"path/filepath"
@@ -10,7 +10,7 @@ import (
 
 func TestTokenStorageContract(t *testing.T) {
 	storagecontract.RunTokens(t, func(t *testing.T) storagecontract.Tokens {
-		path := filepath.Join(t.TempDir(), "tokens.duckdb")
+		path := filepath.Join(t.TempDir(), "tokens.sqlite")
 		var open func() storagecontract.Tokens
 		open = func() storagecontract.Tokens {
 			store, err := datastore.OpenKind(t.Context(), path, datastore.KindHosted)
@@ -34,4 +34,13 @@ func TestTokenStorageContract(t *testing.T) {
 		}
 		return open()
 	})
+}
+
+func BenchmarkQueries(b *testing.B) {
+	d, err := datastore.Open(b.Context(), filepath.Join(b.TempDir(), "server.sqlite"))
+	if err != nil {
+		b.Fatal(err)
+	}
+	b.Cleanup(func() { _ = d.Close() })
+	storagecontract.BenchmarkQueries(b, storagecontract.Dataset{Receiver: d, Processing: d, Queries: Queries{Store: d}})
 }

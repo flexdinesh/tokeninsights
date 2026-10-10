@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/adapters/duckdb"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/adapters/sqlanalytics"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/browser"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/clientworkflow"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/collector"
@@ -137,7 +137,7 @@ func runLocalWeb(invocation commandInvocation, settings config.Settings, syncBef
 		host = "127.0.0.1"
 	}
 	url := "http://" + net.JoinHostPort(host, port)
-	handler := server.NewDataHandlerWithOptions(ctx, duckdb.Source{Store: runtime.Store}, invocation.stderr, server.DataHandlerOptions{
+	handler := server.NewDataHandlerWithOptions(ctx, sqlanalytics.Source{Store: runtime.Store}, invocation.stderr, server.DataHandlerOptions{
 		Host: settings.Host, InstanceID: runtime.InstanceID, Hostname: runtime.Hostname,
 		Policy: runtime.Policy, Progress: runtime.Progress,
 	})
