@@ -511,7 +511,7 @@ composition remains SQLite-only. See the [coverage map](collector-ingestion-test
 The real Docker image has a separate `pnpm run test:container` contract on both
 backends: environment configuration, secret-file startup, non-root/read-only root,
 alternate-port readiness, private admin, ingestion, replacement durability,
-revocation and SIGTERM. CI runs this alongside native deployment contracts.
+revocation and SIGTERM. Local pre-push runs this alongside native deployment contracts. CI is limited to native OS/architecture coverage unavailable on one developer host; new CI checks require a documented reason.
 
 ### Runtime resource ownership
 

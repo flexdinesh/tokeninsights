@@ -39,7 +39,10 @@ proxy address isolation, spoof resistance and unchanged origin policy. Native
 deployment fixtures use env-only startup. Real-image contracts repeat ingestion,
 receipts, totals, private admin, replacement durability, revocation, alternate-port
 readiness and SIGTERM on both backends. Dependency guards keep proxy handling out
-of account/storage code. No schema or wire contract changes are needed.
+of account/storage code. All locally reproducible checks, including real-image
+contracts, run in pre-push. CI additions require documented coverage unavailable
+locally; native OS/architecture verification is the current exception. No schema
+or wire contract changes are needed.
 
 OAuth/OIDC implementation, dynamic reload, image publishing, automatic deployments,
 replicas and server tuning remain separate product work. This milestone adds the

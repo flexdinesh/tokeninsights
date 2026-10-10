@@ -244,7 +244,7 @@ It builds the actual image and checks both SQLite and PostgreSQL: non-root start
 read-only root, an alternate listen port, readiness, private administration, real
 client ingestion, receipts/totals after container replacement, revocation and clean
 SIGTERM exit. It owns disposable networks, volumes and a pinned PostgreSQL container.
-CI runs this target. Native deployment tests exercise environment-only startup and
+The pre-push hook runs this target; Docker is required. Native deployment tests exercise environment-only startup and
 mounted secret files; HTTP boundary tests enforce trusted-proxy login isolation and
 unchanged origin protection.
 
