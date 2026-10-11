@@ -43,9 +43,8 @@ func TestChangedSchemaRejectsWithoutMutation(t *testing.T) {
 
 func TestQueueAdmissionDoesNotRequireCollectorLockAndRecoversAbandonedClaim(t *testing.T) {
 	root := t.TempDir()
-	settings := config.Defaults()
+	settings := config.SyncSettings{ServerURL: "https://remote.example", ServerToken: "fixture-token"}
 	settings.CollectorDBPath = filepath.Join(root, "collector.sqlite")
-	settings.ServerDBPath = filepath.Join(root, "server.sqlite")
 	spec, err := NewSpec(settings, []pipeline.Harness{pipeline.HarnessPi}, "", false, false)
 	if err != nil {
 		t.Fatal(err)
@@ -91,7 +90,7 @@ func TestQueueAdmissionDoesNotRequireCollectorLockAndRecoversAbandonedClaim(t *t
 	if err != nil || interrupted.State != "interrupted" {
 		t.Fatal(interrupted, err)
 	}
-	next, err := store.NextLocal(t.Context(), spec.DataPath, spec.AppPath)
+	next, err := store.NextRemote(t.Context(), second)
 	if err != nil || next.ID != second.ID {
 		t.Fatal("follow-up lost", next, err)
 	}
@@ -142,7 +141,7 @@ func TestTerminalRetentionNeverDeletesQueuedRequests(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = store.Close() }()
-	pending, err := store.Enqueue(t.Context(), Spec{})
+	pending, err := store.Enqueue(t.Context(), Spec{Mode: distributedMode})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -169,5 +168,33 @@ func TestTerminalRetentionNeverDeletesQueuedRequests(t *testing.T) {
 	var count int
 	if err := store.database.QueryRowContext(t.Context(), "SELECT COUNT(*) FROM jobs WHERE state='accepted'").Scan(&count); err != nil || count != terminalHistoryLimit {
 		t.Fatal("unbounded history", count, err)
+	}
+}
+
+func TestRemovedLocalJobsAreReportedWithoutMutationOrRemoteDispatch(t *testing.T) {
+	store, err := Open(t.Context(), filepath.Join(t.TempDir(), "collector.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = store.Close() }()
+	local, err := store.Enqueue(t.Context(), Spec{Mode: "single-process"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	reported, err := store.Latest(t.Context())
+	if err != nil || reported.State != "unsupported" || reported.Error != "local_sync_removed" {
+		t.Fatal(reported, err)
+	}
+	var state string
+	if err := store.database.QueryRow("SELECT state FROM jobs WHERE id=?", local.ID).Scan(&state); err != nil || state != "queued" {
+		t.Fatal("old job mutated", state, err)
+	}
+	remote, err := store.Enqueue(t.Context(), Spec{Mode: distributedMode, URL: "https://remote.example", Credential: "fingerprint"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	next, err := store.NextRemote(t.Context(), remote)
+	if err != nil || next.ID != remote.ID {
+		t.Fatal("local request routed remotely", next, err)
 	}
 }

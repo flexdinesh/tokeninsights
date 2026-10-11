@@ -5,7 +5,6 @@ import (
 	"flag"
 	"fmt"
 
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/config"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/localruntime"
 )
 
@@ -30,9 +29,6 @@ func runData(invocation commandInvocation, args []string) error {
 	}
 	if flags.NArg() != 0 {
 		return ErrUsage
-	}
-	if settings.EffectiveMode() != config.SingleProcess {
-		return fmt.Errorf("use tokeninsights-server admin for distributed maintenance")
 	}
 	runtime, err := localruntime.OpenWithApp(invocation.context, settings.CollectorDBPath, settings.ServerDBPath, settings.ApplicationPath())
 	if err != nil {

@@ -19,7 +19,7 @@ type Session struct {
 	Destination *collector.Destination
 }
 
-func Resolve(ctx context.Context, settings config.Settings) (Session, error) {
+func Resolve(ctx context.Context, settings config.SyncSettings) (Session, error) {
 	var result Session
 	if err := settings.ValidateDestination(); err != nil {
 		return result, err
@@ -39,7 +39,7 @@ func Resolve(ctx context.Context, settings config.Settings) (Session, error) {
 	if err != nil {
 		return result, err
 	}
-	if serverfeatures.Kind(result.Descriptor.ServerKind) != settings.ExpectedKind() {
+	if serverfeatures.Kind(result.Descriptor.ServerKind) != serverfeatures.Hosted {
 		return result, fmt.Errorf("server kind mismatch; distributed mode requires an authenticated remote server")
 	}
 	result.Query = client.WithDataset(result.Descriptor.DatasetId)

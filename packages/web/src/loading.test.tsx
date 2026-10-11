@@ -177,7 +177,9 @@ it('startup shares one progress request, names harness state and suppresses prem
   expect(region).toHaveTextContent('pi: complete')
   expect(within(screen.getByRole('banner')).getByText('Collecting usage')).toBeVisible()
   expect(screen.queryByText('Ready')).not.toBeInTheDocument()
-  expect(screen.queryByText('No usage saved yet. Run tokeninsights sync.')).not.toBeInTheDocument()
+  expect(
+    screen.queryByText('No usage saved yet. Restart tokeninsights web to collect usage.'),
+  ).not.toBeInTheDocument()
   expect(screen.queryByText('No matching usage')).not.toBeInTheDocument()
   expect(
     fetcher.mock.calls.filter(([input]) => requestPath(input).includes('collector-progress')),
@@ -205,14 +207,18 @@ it('acceptance refreshes status before declaring Ready and keeps processing visi
     client.setQueryData(['collector-progress', mockBootstrap.instanceId], progress('accepted')),
   )
   expect(await within(screen.getByRole('banner')).findByText('Loading…')).toBeVisible()
-  expect(screen.queryByText('No usage saved yet. Run tokeninsights sync.')).not.toBeInTheDocument()
+  expect(
+    screen.queryByText('No usage saved yet. Restart tokeninsights web to collect usage.'),
+  ).not.toBeInTheDocument()
   await waitFor(() => expect(resolveStatus).toBeDefined())
   state.status = { ...state.status, pending: 1 }
   await act(async () => {
     resolveStatus?.(new Response(JSON.stringify(state.status)))
   })
   expect(await within(screen.getByRole('banner')).findByText('Processing usage')).toBeVisible()
-  expect(screen.queryByText('No usage saved yet. Run tokeninsights sync.')).not.toBeInTheDocument()
+  expect(
+    screen.queryByText('No usage saved yet. Restart tokeninsights web to collect usage.'),
+  ).not.toBeInTheDocument()
   state.dashboard = { ...mockDashboard('tokens'), revision: 2 }
   state.status = { ...state.status, pending: 0, revision: 2 }
   await act(() => client.setQueryData(['sync', mockBootstrap.datasetId], state.status))
@@ -275,7 +281,9 @@ it('missing collection status shows recovery without Ready, premature empty text
     'Collection status couldn’t load. Saved usage remains available.',
   )
   expect(screen.queryByText('Ready')).not.toBeInTheDocument()
-  expect(screen.queryByText('No usage saved yet. Run tokeninsights sync.')).not.toBeInTheDocument()
+  expect(
+    screen.queryByText('No usage saved yet. Restart tokeninsights web to collect usage.'),
+  ).not.toBeInTheDocument()
   await waitFor(() =>
     expect(screen.queryByRole('status', { name: 'Loading dashboard' })).not.toBeInTheDocument(),
   )
@@ -315,7 +323,9 @@ it('collection failure shows saved data and names the recovery', async () => {
   expect(
     await within(screen.getByRole('banner')).findByText('Collection needs attention'),
   ).toBeVisible()
-  expect(screen.getByRole('alert')).toHaveTextContent('Run tokeninsights sync to retry collection.')
+  expect(screen.getByRole('alert')).toHaveTextContent(
+    'Restart tokeninsights web to retry collection.',
+  )
   await act(() =>
     client.setQueryData(['instance'], {
       ...state.bootstrap,

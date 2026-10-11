@@ -84,15 +84,13 @@ func TestBackgroundPrintReturnsBeforeRemoteAcceptanceAndActuallySubmits(t *testi
 	if err := os.WriteFile(source, []byte(body), 0600); err != nil {
 		t.Fatal(err)
 	}
-	settings := config.Defaults()
-	settings.Mode = config.Distributed
+	settings := config.SyncSettings{}
 	settings.ServerURL = remote.URL + "/"
 	settings.ServerToken = token.Secret
 	settings.CollectorDBPath = filepath.Join(root, "collector.sqlite")
-	settings.ServerDBPath = filepath.Join(root, "unused.sqlite")
 	var stdout, stderr bytes.Buffer
 	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
-	err = runSync(commandInvocation{context: ctx, stdout: &stdout, stderr: &stderr, settings: &settings}, []string{"--print", "--harness", "pi", "--source-dir", filepath.Join(root, "sources")})
+	err = runSync(commandInvocation{context: ctx, stdout: &stdout, stderr: &stderr, remote: &settings}, []string{"--print", "--harness", "pi", "--source-dir", filepath.Join(root, "sources")})
 	cancel()
 	if err != nil {
 		t.Fatal(err)
@@ -144,10 +142,9 @@ func TestBackgroundPrintReturnsBeforeRemoteAcceptanceAndActuallySubmits(t *testi
 
 func TestDebugRequiresReadBeforeCaptureAndPrintRejectsLocal(t *testing.T) {
 	root := t.TempDir()
-	settings := config.Defaults()
+	settings := config.SyncSettings{}
 	settings.CollectorDBPath = filepath.Join(root, "collector.sqlite")
-	settings.ServerDBPath = filepath.Join(root, "server.sqlite")
-	if err := runSync(commandInvocation{context: t.Context(), stdout: io.Discard, stderr: io.Discard, settings: &settings}, []string{"--print"}); err == nil {
+	if err := runSync(commandInvocation{context: t.Context(), stdout: io.Discard, stderr: io.Discard, remote: &settings}, []string{"--print"}); err == nil {
 		t.Fatal("local print accepted")
 	}
 	if _, err := os.Stat(settings.CollectorDBPath); !os.IsNotExist(err) {
@@ -166,10 +163,9 @@ func TestDebugRequiresReadBeforeCaptureAndPrintRejectsLocal(t *testing.T) {
 		t.Error("debug captured/submitted before read preflight", r.URL.Path)
 	}))
 	defer remote.Close()
-	settings.Mode = config.Distributed
 	settings.ServerURL = remote.URL
 	settings.ServerToken = "ingest-only"
-	err := runSync(commandInvocation{context: t.Context(), stdout: io.Discard, stderr: io.Discard, settings: &settings}, []string{"--debug"})
+	err := runSync(commandInvocation{context: t.Context(), stdout: io.Discard, stderr: io.Discard, remote: &settings}, []string{"--debug"})
 	if err == nil || !strings.Contains(err.Error(), "read permission") {
 		t.Fatal(err)
 	}

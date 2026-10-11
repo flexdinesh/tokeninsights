@@ -11,9 +11,11 @@ import (
 	"time"
 
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/appstore"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/collector"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/datastore"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/db"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/evidence"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/pipeline"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/rawcollectorstore"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/serverownership"
 )
@@ -154,4 +156,28 @@ func inspectFixtureRoles(collectorPath, serverPath string) error {
 		return err
 	}
 	return nil
+}
+
+const fixtureVisibilityTimeout = 30 * time.Second
+
+// CaptureFixture populates only the controlled development databases.
+func CaptureFixture(ctx context.Context, collectorPath, dataPath, source string) error {
+	root := filepath.Dir(collectorPath)
+	if filepath.Base(root) != ".tokeninsights-dev" || filepath.Base(collectorPath) != "collector.sqlite" ||
+		filepath.Base(dataPath) != "server.sqlite" || filepath.Dir(dataPath) != root || source != filepath.Join(root, "source") {
+		return fmt.Errorf("uncontrolled development capture")
+	}
+	local, err := Open(ctx, collectorPath, dataPath)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = local.Close() }()
+	_, err = collector.Run(ctx, collector.Options{CollectorDBPath: collectorPath, ServerDBPath: dataPath, Destination: local.Destination,
+		SyncOptions: pipeline.SyncOptions{Harnesses: pipeline.SupportedHarnesses, SourceDir: source, Now: time.Now()}})
+	if err != nil {
+		return err
+	}
+	visible, cancel := context.WithTimeout(ctx, fixtureVisibilityTimeout)
+	defer cancel()
+	return local.WaitVisible(visible)
 }

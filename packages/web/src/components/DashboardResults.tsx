@@ -17,6 +17,7 @@ export function DashboardResults({
   facets,
   controller,
   timezone,
+  localMachine,
   connectionError,
   retryConnection,
 }: {
@@ -25,6 +26,7 @@ export function DashboardResults({
   facets: ReturnType<typeof useFacets>
   controller: ReturnType<typeof useDashboardSync>
   timezone: string
+  localMachine: boolean
   connectionError: Error | null
   retryConnection: () => Promise<unknown>
 }) {
@@ -132,7 +134,9 @@ export function DashboardResults({
               ? 'No excluded usage saved.'
               : hasExcludedUsage || excludedUsage.error
                 ? 'No usage included in your total yet.'
-                : 'No usage saved yet. Run tokeninsights sync.'}
+                : localMachine
+                  ? 'No usage saved yet. Restart tokeninsights web to collect usage.'
+                  : 'No usage saved yet. Run tokeninsights sync.'}
           </p>
         )}
       {enabled && data && hasData && !waitingForFirstData && (

@@ -34,7 +34,7 @@ func TestViewBackgroundCollectionUsesDirectDestination(t *testing.T) {
 		case <-time.After(10 * time.Second):
 			t.Fatal("background collection missing")
 		}
-		if options.CollectorDBPath != collectorPath || options.ServerDBPath != serverPath {
+		if options.CollectorDBPath != collectorPath || options.ServerDBPath != serverPath || !options.SyncOptions.FullRefresh || options.SyncOptions.SourceDir != root {
 			t.Fatal("wrong role paths")
 		}
 		if options.Destination == nil || !options.Destination.Local || options.Destination.Transport == nil {
@@ -55,7 +55,7 @@ func TestViewBackgroundCollectionUsesDirectDestination(t *testing.T) {
 		return dashboard, nil
 	})
 	defer restore()
-	if err := Run(t.Context(), []string{"tui", "--collector-db-path", collectorPath, "--server-db-path", serverPath}, io.Discard, io.Discard, time.Now()); err != nil {
+	if err := Run(t.Context(), []string{"tui", "--collector-db-path", collectorPath, "--server-db-path", serverPath, "--full-refresh", "--source-dir", root}, io.Discard, io.Discard, time.Now()); err != nil {
 		t.Fatal(err)
 	}
 }

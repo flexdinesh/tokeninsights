@@ -9,7 +9,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/collector"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/datastore"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/localruntime"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/pipeline"
 )
 
 func TestSyncDefaultsAllHarnesses(t *testing.T) {
@@ -19,7 +22,7 @@ func TestSyncDefaultsAllHarnesses(t *testing.T) {
 	}
 }
 
-func TestSyncFullRefreshFlagForcesSourceRefresh(t *testing.T) {
+func TestLocalCaptureFullRefreshPreservesTotals(t *testing.T) {
 	ctx := context.Background()
 	dbPath := filepath.Join(t.TempDir(), "tokeninsights.sqlite")
 	serverPath := filepath.Join(t.TempDir(), "server.sqlite")
@@ -30,7 +33,7 @@ func TestSyncFullRefreshFlagForcesSourceRefresh(t *testing.T) {
 	setFileModTimeForCLI(t, sourcePath, now.Add(-72*time.Hour))
 
 	var stdout bytes.Buffer
-	err := Run(ctx, []string{"sync", "--collector-db-path", dbPath, "--server-db-path", serverPath, "--harness", "opencode", "--source-dir", sourceDir}, &stdout, io.Discard, now)
+	err := captureForTest(t, ctx, dbPath, serverPath, sourceDir, now, false, &stdout)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -39,7 +42,7 @@ func TestSyncFullRefreshFlagForcesSourceRefresh(t *testing.T) {
 	}
 
 	stdout.Reset()
-	err = Run(ctx, []string{"sync", "--collector-db-path", dbPath, "--server-db-path", serverPath, "--harness", "opencode", "--source-dir", sourceDir}, &stdout, io.Discard, now.Add(time.Hour))
+	err = captureForTest(t, ctx, dbPath, serverPath, sourceDir, now.Add(time.Hour), false, &stdout)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -48,7 +51,7 @@ func TestSyncFullRefreshFlagForcesSourceRefresh(t *testing.T) {
 	}
 
 	stdout.Reset()
-	err = Run(ctx, []string{"sync", "--collector-db-path", dbPath, "--server-db-path", serverPath, "--harness", "opencode", "--source-dir", sourceDir, "--full-refresh"}, &stdout, io.Discard, now.Add(2*time.Hour))
+	err = captureForTest(t, ctx, dbPath, serverPath, sourceDir, now.Add(2*time.Hour), true, &stdout)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -65,4 +68,21 @@ func TestSyncFullRefreshFlagForcesSourceRefresh(t *testing.T) {
 	if !strings.Contains(stdout.String(), "delivery: status=accepted batches=0 accepted=0 pending=0 processing=async") {
 		t.Fatalf("unchanged sync grew publication: %q", stdout.String())
 	}
+}
+
+func captureForTest(t *testing.T, ctx context.Context, collectorPath, dataPath, source string, now time.Time, full bool, stdout io.Writer) error {
+	t.Helper()
+	local, err := localruntime.Open(ctx, collectorPath, dataPath)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = local.Close() }()
+	result, err := collector.Run(ctx, collector.Options{CollectorDBPath: collectorPath, ServerDBPath: dataPath, Destination: local.Destination,
+		SyncOptions: pipeline.SyncOptions{Harnesses: []pipeline.Harness{pipeline.HarnessOpenCode}, SourceDir: source, Now: now, FullRefresh: full}})
+	printSummary(stdout, "sync", result.Collection, false)
+	printDeliverySummary(stdout, result)
+	if err != nil {
+		return err
+	}
+	return local.WaitVisible(ctx)
 }

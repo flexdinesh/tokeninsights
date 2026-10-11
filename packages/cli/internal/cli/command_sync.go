@@ -8,12 +8,11 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"os"
 	"strings"
-	"time"
 
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/collector"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/config"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/localruntime"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/pipeline"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/syncjob"
 )
@@ -32,17 +31,14 @@ func runSync(invocation commandInvocation, args []string) error {
 	var fullRefresh bool
 	var sourceDir string
 	var harnesses stringList
-	var serverDBPath, serverURL string
+	var serverURL string
 	var publishOnly, wait, debug, printURL bool
 	flags.BoolVar(&wait, "wait", false, "wait for remote acceptance")
 	flags.BoolVar(&debug, "debug", false, "show collection, acceptance and receipt processing")
 	flags.BoolVar(&printURL, "print", false, "submit and print only the remote URL")
-	settings := invocation.defaults()
-	flags.StringVar(&settings.Mode, "mode", settings.Mode, "single-process or distributed")
-	flags.StringVar(&settings.AppDBPath, "app-db-path", settings.AppDBPath, "application SQLite database")
+	settings := invocation.syncDefaults()
 	flags.StringVar(&dbPath, "collector-db-path", settings.CollectorDBPath, "collector SQLite database")
-	flags.StringVar(&serverDBPath, "server-db-path", settings.ServerDBPath, "local SQLite token database")
-	flags.StringVar(&serverURL, "server-url", settings.ServerURL, "ingestion server; empty selects local")
+	flags.StringVar(&serverURL, "server-url", settings.ServerURL, "authenticated hosted ingestion server")
 	flags.BoolVar(&publishOnly, "publish-only", false, "submit retained raw evidence without collecting")
 	flags.Var(&harnesses, "harness", "harness to sync: opencode, pi, codex, or claude-code")
 	flags.BoolVar(&all, "all", false, "sync all supported harnesses")
@@ -59,65 +55,22 @@ func runSync(invocation commandInvocation, args []string) error {
 	if err != nil {
 		return err
 	}
-	settings.ServerURL, settings.ServerDBPath, settings.CollectorDBPath = strings.TrimSpace(serverURL), strings.TrimSpace(serverDBPath), strings.TrimSpace(dbPath)
+	settings.ServerURL, settings.CollectorDBPath = strings.TrimSpace(serverURL), strings.TrimSpace(dbPath)
 	if dryRun && (wait || debug || printURL) {
 		return fmt.Errorf("--dry-run cannot combine with --wait/--debug/--print\n%w", ErrUsage)
 	}
 	if wait && debug {
 		return fmt.Errorf("choose --wait or --debug\n%w", ErrUsage)
 	}
-	if printURL && settings.EffectiveMode() != config.Distributed {
-		return fmt.Errorf("--print requires distributed mode\n%w", ErrUsage)
-	}
-	if !dryRun && settings.EffectiveMode() == config.Distributed {
+	if !dryRun {
 		return runDistributedSync(invocation, settings, selectedHarnesses, sourceDir, publishOnly, fullRefresh, wait, debug, printURL)
 	}
-	var destination *collector.Destination
-	var local *localruntime.Runtime
-	if !dryRun {
-		if err := settings.ValidateDestination(); err != nil {
-			return err
-		}
-		local, err = localruntime.OpenWithApp(invocation.context, settings.CollectorDBPath, settings.ServerDBPath, settings.ApplicationPath())
-		if errors.Is(err, localruntime.ErrOwned) {
-			return handoffLocalSync(invocation, settings, selectedHarnesses, sourceDir, publishOnly, fullRefresh)
-		}
-		if err != nil {
-			return err
-		}
-		defer func() { _ = local.Close() }()
-		destination = local.Destination
-	}
-	terminal := newTerminalSyncProgress(invocation.stderr)
 	result, err := collector.Run(invocation.context, collector.Options{
-		CollectorDBPath: strings.TrimSpace(dbPath), ServerDBPath: strings.TrimSpace(serverDBPath), PublishOnly: publishOnly,
-		Destination:      destination,
-		DeliveryProgress: terminal.Delivery,
-		SyncOptions: pipeline.SyncOptions{
-			Harnesses:   selectedHarnesses,
-			DryRun:      dryRun,
-			FullRefresh: fullRefresh,
-			SourceDir:   strings.TrimSpace(sourceDir),
-			Now:         invocation.now,
-			Progress:    terminal.Collection,
-		},
+		CollectorDBPath: settings.CollectorDBPath,
+		SyncOptions:     pipeline.SyncOptions{Harnesses: selectedHarnesses, DryRun: true, FullRefresh: fullRefresh, SourceDir: strings.TrimSpace(sourceDir), Now: invocation.now},
 	})
-	if !dryRun {
-		terminal.Finish(result)
-	}
-	printSummary(invocation.stdout, "sync", result.Collection, dryRun)
-	if !dryRun {
-		printDeliverySummary(invocation.stdout, result)
-	}
-	if err != nil {
-		return err
-	}
-	if local != nil {
-		ctx, cancel := context.WithTimeout(invocation.context, localVisibilityTimeout)
-		defer cancel()
-		return local.WaitVisible(ctx)
-	}
-	return nil
+	printSummary(invocation.stdout, "sync", result.Collection, true)
+	return err
 }
 
 func syncHarnesses(all bool, values stringList) ([]pipeline.Harness, error) {
@@ -135,8 +88,11 @@ func syncHarnesses(all bool, values stringList) ([]pipeline.Harness, error) {
 
 var spawnSyncWorker = syncjob.Spawn
 
-func runDistributedSync(invocation commandInvocation, settings config.Settings, harnesses []pipeline.Harness, source string, publishOnly, fullRefresh, wait, debug, printURL bool) error {
-	if err := settings.ValidateDestination(); err != nil {
+func runDistributedSync(invocation commandInvocation, settings config.SyncSettings, harnesses []pipeline.Harness, source string, publishOnly, fullRefresh, wait, debug, printURL bool) error {
+	if os.Getenv("TOKENINSIGHTS_SERVER_TOKEN") != "" {
+		return fmt.Errorf("TOKENINSIGHTS_SERVER_TOKEN removed; use TOKENINSIGHTS_ACCESS_TOKEN or config set distributed.server-token\n%w", ErrUsage)
+	}
+	if err := settings.Validate(); err != nil {
 		return err
 	}
 	canonical, err := collector.CanonicalEndpoint(settings.ServerURL)
@@ -187,37 +143,10 @@ func runDistributedSync(invocation commandInvocation, settings config.Settings, 
 	}
 	return err
 }
-func handoffLocalSync(invocation commandInvocation, settings config.Settings, harnesses []pipeline.Harness, source string, publishOnly, fullRefresh bool) error {
-	spec, err := syncjob.NewSpec(settings, harnesses, source, publishOnly, fullRefresh)
-	if err != nil {
-		return err
-	}
-	store, err := syncjob.Open(invocation.context, spec.CollectorPath)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = store.Close() }()
-	job, err := store.Enqueue(invocation.context, spec)
-	if err != nil {
-		return err
-	}
-	_, _ = fmt.Fprintln(invocation.stderr, "Waiting for local viewer: "+job.ID)
-	ctx, cancel := context.WithTimeout(invocation.context, syncjob.Timeout)
-	defer cancel()
-	result, err := waitLocalJob(ctx, store, job, settings)
-	if err != nil {
-		return err
-	}
-	if result.State != "accepted" {
-		return fmt.Errorf("sync: %s", result.Error)
-	}
-	_, _ = fmt.Fprintf(invocation.stdout, "sync: accepted=%d\n", result.Accepted)
-	return nil
-}
 func runSyncStatus(invocation commandInvocation, args []string) error {
 	flags := flag.NewFlagSet("tokeninsights sync status", flag.ContinueOnError)
 	flags.SetOutput(invocation.stderr)
-	path := flags.String("collector-db-path", invocation.defaults().CollectorDBPath, "collector database")
+	path := flags.String("collector-db-path", invocation.syncDefaults().CollectorDBPath, "collector database")
 	asJSON := flags.Bool("json", false, "machine-readable job status")
 	if err := flags.Parse(args); err != nil {
 		return err
@@ -246,28 +175,4 @@ func runSyncStatus(invocation commandInvocation, args []string) error {
 	}
 	_, err = fmt.Fprintf(invocation.stdout, "%s: %s accepted=%d %s\n", job.ID, job.State, job.Accepted, job.Error)
 	return err
-}
-
-func waitLocalJob(ctx context.Context, store *syncjob.Store, job syncjob.Job, settings config.Settings) (syncjob.Job, error) {
-	ticker := time.NewTicker(syncjob.PollInterval)
-	defer ticker.Stop()
-	for {
-		result, err := store.Get(ctx, job.ID)
-		if err != nil || result.Terminal() {
-			return result, err
-		}
-		runtime, err := localruntime.OpenWithApp(ctx, settings.CollectorDBPath, settings.ServerDBPath, settings.ApplicationPath())
-		if err == nil {
-			defer func() { _ = runtime.Close() }()
-			return store.Wait(ctx, job.ID)
-		}
-		if !errors.Is(err, localruntime.ErrOwned) {
-			return result, err
-		}
-		select {
-		case <-ctx.Done():
-			return result, ctx.Err()
-		case <-ticker.C:
-		}
-	}
 }

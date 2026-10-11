@@ -39,7 +39,7 @@ Run commands from the repository root unless noted otherwise.
 | Run Go API with fixture data | `pnpm run dev:server` |
 | Run hot-reloading web app against Go API | `pnpm run dev:web` |
 | Run web app with synthetic API responses | `pnpm run dev:web:mock` |
-| Build frontend into Go and run web sync/dashboard | `pnpm run start:web` |
+| Build frontend into Go and run local Web capture/dashboard | `pnpm run start:web` |
 
 ### Verification and generation
 
@@ -112,6 +112,8 @@ with links only to tracked documentation. Disposable `packages/web/previews/` ar
 
 ## Fixture Data
 
+Fixture capture uses the guarded internal local composition entrypoint, not distributed sync.
+
 The shared fixture is under `packages/cli/testdata/conformance/sync-first-basic/source/`. It contains compact, synthetic source data for all supported harnesses and excludes conversations, tool payloads, credentials, request data, user paths, and identifying values. Never commit raw local harness databases or transcripts.
 
 `dev:data` resets only the controlled `.tokeninsights-dev/collector.sqlite` and
@@ -121,7 +123,7 @@ prevents recreation. Existing DB and lock inodes, unrelated files, and the old
 `tokeninsights.sqlite` are preserved. Wrong-role databases are rejected before
 either role is reset.
 
-Fixture preparation runs production single-process sync against sanitized sources.
+Fixture preparation runs the shared local capture, direct ingestion and processing pipeline against sanitized sources.
 Direct delivery uses the same acceptance contract as authenticated HTTP, then waits
 for processing and releases ownership. The fixture application's database pairing
 follows its controlled reset. `dev:cli` queries the saved fixture directly;

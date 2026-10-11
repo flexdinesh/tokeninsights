@@ -25,7 +25,7 @@ func TestHelpAliases(t *testing.T) {
 
 func TestHelpListsCurrentCommands(t *testing.T) {
 	help := usageText()
-	for _, name := range []string{"tui", "web", "sync --debug", "sync --print", "sync status", "config set", "data reprocess|wait", "tokeninsights-server"} {
+	for _, name := range []string{"tui", "web", "browse", "sync --debug", "sync --print", "sync status", "config set", "data reprocess|wait", "tokeninsights-server"} {
 		if !strings.Contains(help, name) {
 			t.Fatalf("help missing %q", name)
 		}

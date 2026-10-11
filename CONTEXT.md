@@ -73,7 +73,7 @@ Bounded, sanitized capture/submission attempt state published by the command-own
 _Avoid_: Server collection, global queue progress, upload completion as query freshness
 
 **Read-only View**:
-Local `tui` and `web` open saved committed usage after storage initialization while command-owned capture/submission/processing continues in background. TUI queries directly and keeps a visible refresh strip; published revisions refresh both viewers automatically. Refresh completion requires processing visibility and a successful current dashboard read; failures preserve saved usage. Distributed `web` syncs before opening the remote dashboard. `--sync=false` skips startup collection, while durable processing resumes. The local-only dashboard Reload and TUI `r` request queries only; viewer filters remain display constraints.
+Local `tui` and `web` open saved committed usage after storage initialization while command-owned capture/submission/processing continues in background. TUI queries directly and keeps a visible refresh strip; published revisions refresh both viewers automatically. Refresh completion requires processing visibility and a successful current dashboard read; failures preserve saved usage. `browse` opens the configured hosted dashboard without collecting or submitting. `--sync=false` skips startup collection, while durable processing resumes. The local-only dashboard Reload and TUI `r` request queries only; viewer filters remain display constraints.
 _Avoid_: Implicit View Sync, dashboard source refresh
 
 **Durable Publication**:

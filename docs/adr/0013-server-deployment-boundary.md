@@ -1,5 +1,7 @@
 # Server deployment boundary
 
+Command selection/config and local handoff are superseded by [ADR 0014](0014-command-owned-client-compositions.md); retained domain/storage contracts still apply.
+
 Status: Accepted. Date: 10 October 2026.
 
 ## Decision

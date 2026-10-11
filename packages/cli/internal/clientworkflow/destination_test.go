@@ -20,7 +20,7 @@ func TestRemoteDestinationCanonicalizesTrailingSlash(t *testing.T) {
 	}))
 	defer server.Close()
 	for _, suffix := range []string{"/", ""} {
-		session, err := Resolve(t.Context(), config.Settings{Mode: config.Distributed, ServerToken: "fixture", ServerURL: server.URL + suffix})
+		session, err := Resolve(t.Context(), config.SyncSettings{ServerToken: "fixture", ServerURL: server.URL + suffix})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -31,7 +31,7 @@ func TestRemoteDestinationCanonicalizesTrailingSlash(t *testing.T) {
 }
 
 func TestRemoteDestinationRequiresConfiguredServer(t *testing.T) {
-	if _, err := Resolve(t.Context(), config.Defaults()); err == nil {
+	if _, err := Resolve(t.Context(), config.SyncSettings{}); err == nil {
 		t.Fatal("remote resolver accepted missing destination")
 	}
 }

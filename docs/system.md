@@ -29,10 +29,11 @@ flowchart LR
 Local commands own one token database and join workers on exit. TUI never needs a
 listener. Web reserves its requested listener and initializes storage, then opens
 before collecting. Its capability-gated progress endpoint shows command-owned
-startup and queued sync attempts; saved usage stays readable during processing.
+startup capture; saved usage stays readable during processing.
 Web remains foreground and joins capture/processing workers before storage closes.
-One viewer at a time; concurrent sync requests enter a separate durable queue, then
-the owner collects/ingests them directly. Reload only queries saved usage; the
+One viewer owns local storage at a time. Local viewers own no sync-jobs queue.
+Distributed sync may run concurrently through the shared collector writer lock;
+its destination acknowledgements are independent of personal ingestion. Reload only queries saved usage; the
 browser toolbar control is local-only. Local machine identity is shared by direct
 and HTTP descriptors; it does not attribute captured history to this machine.
 
@@ -55,8 +56,11 @@ must preserve atomic acceptance/projection, dataset isolation, stable identities
 all five token components, separate estimates, revision fences and consistent query
 snapshots. Equal counters do not establish identity. See [design](design.md).
 
-Configuration is private home-directory JSON with flags > environment > file >
-default precedence. Default mode is single-process; remote URL/token select an
-authenticated distributed destination. Remote failures never fall back local.
-Bare invocation prints help. Local maintenance uses `data reprocess/wait`.
-Legacy `service`, `server`, and `collector` commands are removed. Production remains Go-only.
+Configuration is private grouped home-directory JSON: shared `collector`,
+`in-process` local storage/bind and `distributed` URL/token. Flags > environment >
+file > defaults. Commands select composition: TUI/Web local, sync distributed,
+browse URL-only. Remote credentials never change local command behavior; failures
+never fall back local. Local Web defaults to 8765, hosted server to 8766.
+Personal/hosted token and account stores remain separate. Bare invocation prints
+help; `data reprocess/wait` remains local maintenance. Legacy service/server/
+collector commands and global mode selection are removed. Production remains Go-only.

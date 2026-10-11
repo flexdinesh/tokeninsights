@@ -1,6 +1,6 @@
 # Completion plugins
 
-Completion adapters invoke the finite `tokeninsights sync --wait --harness HARNESS` command. The Go collector discovers retained artifacts and submits sanitized evidence for shared processing, directly inside a local owner or over authenticated remote HTTP. Plugins contain no parser, database writer or HTTP client. Hook session fields never become fact identity or source-selection arguments.
+Completion adapters invoke the finite `tokeninsights sync --wait --harness HARNESS` command. The Go collector discovers retained artifacts and submits sanitized evidence for shared processing, over authenticated remote HTTP only. Plugins contain no parser, database writer or HTTP client. Hook session fields never become fact identity or source-selection arguments.
 
 Native manifests and packaged Pi/OpenCode entry points are included. Install manually using the native host mechanism; this repository never edits user harness registrations automatically. Real-host installation/trust, event delivery and durable-write timing remain deferred verification. Package/type/fake-executable checks do not establish those host behaviors.
 
@@ -21,6 +21,6 @@ Pi/OpenCode runners spawn an argument array with `shell: false`, wait for the fi
 
 Set `TOKENINSIGHTS_BINARY` to the executable path when the harness PATH lacks `tokeninsights`. Literal spaces/metacharacters stay in one executable argument. Collector configuration selects its fresh database files, source roots and destination; completion payloads do not override them. Committed standalone JavaScript artifacts use the harness runtime; the Go product still requires no host JavaScript runtime.
 
-A completion event is a collection opportunity, not proof that every harness write is flushed. Interrupted/truncated or delayed records remain collectible by later sync. Hooks may time out before all collection finishes; already committed collector journal and server receipts survive, and manual sync resumes delivery. Manual sync remains the primary workflow and troubleshooting command.
+A completion event is a collection opportunity, not proof that every harness write is flushed. Interrupted/truncated or delayed records remain collectible by later sync. Hooks may time out before all collection finishes; already committed collector journal and server receipts survive, and manual sync resumes delivery. Manual sync remains the primary distributed workflow and troubleshooting command. Configure the distributed URL/token before installing hooks. Plugins never refresh an in-process viewer; restart tui/web to recollect locally.
 
 Executable adapter and packaging checks live in `tools/build/test/plugin-adapters.test.ts` and `tools/build/test/plugin-build.test.ts`. The [development guide](development.md) defines full verification; real-host installation and event delivery remain deferred as described above.

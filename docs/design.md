@@ -93,7 +93,7 @@ SQLite evidence_state/sources/outbox/destinations/batches retain lineage/context
 immutable observations, monotonic sequences, bindings, exact saved requests and
 acceptance receipts. Capture/checkpoint commit together.
 
-Collector evidence_quarantine retains only source key/format, an opaque fingerprint of local device/inode/size/mtime, parser policy version, fixed error code, byte offset and capture time. It stores no source path or record contents. Deterministic record-limit failures preserve the previous evidence/checkpoint and remain incomplete on later syncs while their fingerprint/policy matches. File changes, parser policy changes and `sync --full-refresh` retry capture; successful capture clears quarantine. Cancellation, transient I/O failures and source changes during capture remain retryable without quarantine.
+Collector evidence_quarantine retains only source key/format, an opaque fingerprint of local device/inode/size/mtime, parser policy version, fixed error code, byte offset and capture time. It stores no source path or record contents. Deterministic record-limit failures preserve the previous evidence/checkpoint and remain incomplete on later syncs while their fingerprint/policy matches. File changes, parser policy changes and startup/sync `--full-refresh` retry capture; successful capture clears quarantine. Cancellation, transient I/O failures and source changes during capture remain retryable without quarantine.
 
 JSONL validates saved byte prefix, parses appended records, then verifies captured
 bytes and inode before commit. Rewrite/truncation rotates lineage without deleting
@@ -310,7 +310,7 @@ features/unknown kinds reject. Hosted cannot enable terminal-dashboard,
 collector-progress or dashboard-reload. Local composition explicitly grants Reload,
 including saved-only viewers; it is independent of collection progress. Progress
 requires an installed command-owned registry. The localruntime observer publishes directly
-to that registry for startup and queued sync jobs, retaining bounded leases and
+to that registry for startup capture, retaining bounded leases and
 heartbeats. Single-process TUI composition additionally enables opt-in capture
 measurements before background startup. Pipeline emits typed per-harness source
 snapshots; localruntime translates them into collectorprogress values. The registry
@@ -339,11 +339,28 @@ hostname resolved at ownership initialization. The hostname labels the local
 viewer machine; captured history can span machines. Hosted never substitutes its operating-system hostname for producer
 metadata. Connection/storage, usage and facet errors remain distinct in Web.
 
-CLI configuration uses `mode=single-process|distributed`, URL/token, bind preferences
-and three database paths. Defaults are single-process; a configured server URL selects
-distributed unless mode is explicit. Flags > environment > file > defaults. The config file is
-private/atomic; token entry uses prompt/stdin. Distributed requires bearer token and
-URL. Remote failures never select local fallback. Bare invocation prints help.
+Commands select composition: `tui` and `web` always own local capture/direct
+ingestion/processing/queries; `sync` always submits over authenticated hosted HTTP;
+`browse` opens the configured hosted URL without capture, authentication preflight
+or storage. Bare invocation prints help. No global mode, mode flag or environment
+selector exists. `data reprocess|wait` remains finite local maintenance.
+
+Client config has `collector.db-path`, `in-process` bind/token/account paths and
+`distributed` URL/token groups. Flags > environment > file > defaults. Read strict
+JSON structure, then resolve/validate only consumed settings into distinct local,
+sync and browse values at the executable boundary. Missing, invalid or unreachable
+distributed settings cannot redirect or disable local viewers. Browse needs only a
+valid URL; browser login owns authentication. Config writes remain private/atomic,
+tokens enter through prompt/stdin and are masked on reads. Flat config rejects
+without mutation; users regroup settings explicitly. Hosted server deployment
+continues resolving its independent flags/env/secret files.
+
+Local Web defaults to port 8765; hosted native/image/Compose defaults to 8766.
+Explicit binds remain authoritative and occupied ports fail. Personal and hosted
+token/account storage must be distinct, including on the same machine. One shared
+collector outbox may serve both compositions: existing capture/delivery locks
+serialize writers and each endpoint/database/dataset binding owns progress.
+Each invocation submits to one destination; no fan-out or relay is implied.
 
 Local TUI queries saved committed usage while displaying a persistent refresh
 strip below the machine header and above navigation. Collection, submission,
@@ -360,8 +377,8 @@ with no new evidence, ordinary failures and quarantined sources. Outcomes are
 mutually exclusive; failed/quarantined counts do not imply successful capture.
 Remaining is total minus checked, including unissued sources after cancellation.
 Counts measure sources, not sessions or evidence records. Source preparation alone
-does not advance checked counts. Startup and queued jobs use the same observer,
-with detail keyed to the selected attempt rather than combined across jobs.
+does not advance checked counts. Startup capture uses the command observer,
+with detail keyed to the selected attempt.
 Submission shows entries acknowledged after receipt validation and pending entries
 when known. Processing shows current dataset scopes pending, including earlier
 accepted work; it is not a per-attempt completion denominator. Harness rows describe
@@ -381,8 +398,7 @@ empty saved snapshot says usage will appear automatically during refresh; defini
 empty-state guidance follows refresh completion. `--sync=false` skips startup
 capture and visibility waiting, but existing durable processing resumes and can
 refresh the displayed revision. Reload is query-only. Viewer filters never restart
-capture or select processing work. Remote TUI is unavailable; remote web syncs before
-browser login.
+capture or select processing work. Remote TUI is unavailable. Browse opens hosted browser login without submitting.
 
 Local visibility reads count pending scopes and failed pending scopes in the same
 dataset/generation snapshot, using existing durable scope error codes. A recorded
@@ -403,7 +419,7 @@ cancellation after projection writes, rollback, owner reopen and retry. Failed
 transactions must preserve all fact IDs/components, provenance, outcomes, scope
 progress, metadata and immutable receipts; retry/replay must publish exactly once.
 
-`sync` defaults to a finite detached worker in distributed mode. Parent commits a
+`sync` starts a finite detached distributed worker. Parent commits a
 job to separate operational SQLite, passes credentials through inherited private
 pipes, and waits only for startup ACK. `--print` also submits and reserves stdout for
 the canonical URL. `--wait` waits for acceptance. `--debug` requires read+ingest and
@@ -413,13 +429,19 @@ An OS lock serializes workers without holding a jobs transaction during networki
 Later workers drain earlier queued requests with the same endpoint/credential.
 Abandoned running claims become interrupted; pending evidence stays in the outbox.
 
-Local sync runs directly when unowned; otherwise it queues a local request. The
-foreground owner's job loop captures/accepts it in-process. Enqueue does not need the
-collector writer lock. Each completion during another scan remains a follow-up job.
-If the viewer exits during handoff, the waiting sync may acquire ownership and finish
-it. Pending requests survive shutdown and are consumed by the next local owner.
-Plugin subprocesses use `--wait --harness`; TypeScript adapters coalesce overlaps
-while retaining a follow-up pass, and do not forward event payloads.
+Local viewers own no operational jobs store or handoff loop. Startup collection
+runs once; restart the viewer to recollect. `--sync=false` suppresses capture while
+durable processing resumes; `--full-refresh` and `--source-dir` affect startup
+capture only. Viewer filters and Reload remain query-only. Remote plugins invoke
+`sync --wait --harness`; TypeScript adapters coalesce overlaps and retain a follow-up
+pass without forwarding payloads. Existing jobs storage/remote job format stays
+unchanged. Removed nonterminal local requests remain stored and are reported as
+unsupported, never executed remotely. Collector evidence/batches/receipts remain
+untouched and available to viewer startup replay.
+
+Development fixture setup uses a guarded internal capture entrypoint restricted to
+`.tokeninsights-dev`, composed from the same local runtime and collector. No public
+headless local-sync command is introduced.
 
 Legacy `service`, `server`, and `collector` commands and the hidden daemon runner
 are removed. Local viewers use only command-owned foreground runtimes; finite

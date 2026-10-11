@@ -9,7 +9,6 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/collector"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/config"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/localruntime"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/serverfeatures"
 )
@@ -23,15 +22,8 @@ func runView(invocation commandInvocation, args []string) error {
 	if err != nil {
 		return err
 	}
-	if options.mode == config.Distributed || options.serverURL != "" {
-		return fmt.Errorf("tui requires single-process mode; use tokeninsights web\n%w", ErrUsage)
-	}
 	settings := invocation.defaults()
 	settings.ServerDBPath, settings.AppDBPath = options.dbPath, options.appDBPath
-	settings.Mode, settings.ServerURL = options.mode, options.serverURL
-	if err := settings.ValidateDestination(); err != nil {
-		return err
-	}
 	runtime, err := localruntime.OpenWithAppOptions(invocation.context, options.collectorDBPath, options.dbPath, settings.ApplicationPath(), localruntime.Options{CaptureDetails: true})
 	if err != nil {
 		return err

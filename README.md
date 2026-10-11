@@ -31,30 +31,28 @@ See [release channels and workflow](docs/release.md).
 
 ## Run
 
-Single-process mode is the default. No daemon or separate server setup:
+Commands select composition. Local viewers need no daemon or separate server setup:
 
 ```sh
 tokeninsights tui                    # show saved usage; refresh in background
 tokeninsights web                    # open dashboard; collect and ingest in background
 tokeninsights web --host 0.0.0.0      # expose read-only dashboard on all IPv4 interfaces
-tokeninsights sync                   # collect and ingest without a viewer
 tokeninsights tui --sync=false       # query saved usage
 tokeninsights web --sync=false
 ```
 
 `web` remains foreground until terminated; its server stops with it. Default bind is
 `127.0.0.1:8765`. With a wildcard bind, the local browser opens a loopback URL. Use
-`--open=false` to print the URL without opening a browser. One viewer owns a token
-database at a time. Sync requests arriving while a viewer runs are queued locally
-and collected/ingested inside that viewer's process. TUI queries and local ingestion
-never use HTTP. Browser Reload and TUI `r` only query saved data. Browser Reload
+`--open=false` to print the URL without opening a browser. One viewer owns a local token
+database at a time. TUI queries and local ingestion never use HTTP. Distributed
+sync can run alongside a local viewer, sharing collector continuity/outbox while
+retaining independent destination acknowledgements. Browser Reload and TUI `r` only query saved data. Browser Reload
 is available only in single-process mode, including `--sync=false`.
 
 Local TUI and Web open after storage initialization, before collection finishes. The
 dashboard shows collection, submission, and processing progress while saved usage
 remains readable; new published revisions refresh automatically. Collection errors
-remain visible without closing the dashboard. Run `tokeninsights sync` to retry
-collection through the owning viewer. Hosted dashboards expose no collector progress.
+remain visible without closing the dashboard. Restart `tui` or `web` to retry collection; add `--full-refresh` to reread unchanged quarantined sources. Hosted dashboards expose no collector progress.
 The local hostname identifies the machine running the viewer, not the producer of
 every historical fact. Imported history may include other machines.
 
@@ -81,19 +79,18 @@ startup collection checks the same sources for every range.
 SQLite and PostgreSQL count groups without repeating row aggregates; counts,
 totals and displayed rows retain the same snapshot and filtering rules.
 
-For distributed mode, run one authenticated [server container](docs/deployment.md)
+For distributed collection, run one authenticated [server container](docs/deployment.md)
 and configure the collector:
 
 ```sh
-tokeninsights config set mode distributed
-tokeninsights config set server-url https://usage.example.com
-tokeninsights config set server-token  # secure prompt/stdin; no token argument
+tokeninsights config set distributed.server-url https://usage.example.com
+tokeninsights config set distributed.server-token  # secure prompt/stdin; no token argument
 tokeninsights sync                     # finite background worker
 tokeninsights sync --print             # also submits; stdout is only remote URL
 tokeninsights sync --wait              # foreground acceptance for scripts
 tokeninsights sync --debug             # capture/acceptance/receipt progress UI
 tokeninsights sync status --json
-tokeninsights web                      # sync then open remote browser login
+tokeninsights browse                   # open remote browser login; no upload
 ```
 
 Background success means the job was saved and its worker started, not that upload
@@ -123,12 +120,28 @@ and interrupted uploads do not erase server history or inflate confirmed totals.
 Ambiguous usable counters remain separate estimates.
 
 Configuration lives in `${XDG_CONFIG_HOME:-~/.config}/tokeninsights/config.json`,
-private and atomically written. Keys: `mode`, `server-url`, `server-token`, `host`,
-`port`, `collector-db-path`, `server-db-path`, `app-db-path`. Flags override environment,
-then file, then defaults. `TOKENINSIGHTS_MODE`, `TOKENINSIGHTS_ACCESS_TOKEN` and the
-role-specific path environment variables are supported. `config get server-token`
-only reports whether configured. A configured remote URL selects distributed mode unless mode is explicit.
-To return local, remove remote URL/token and set mode `single-process`.
+private and atomically written:
+
+```json
+{
+  "collector": { "db-path": "/home/user/.local/share/tokeninsights/collector.sqlite" },
+  "in-process": { "host": "127.0.0.1", "port": 8765 },
+  "distributed": { "server-url": "https://usage.example.com" }
+}
+```
+
+Use dotted config keys, including `in-process.server-db-path` and
+`in-process.app-db-path`. Set `distributed.server-token` through the secure
+prompt/stdin; `get` reports only whether configured. Flags override environment,
+then file, then defaults. Existing role-specific environment names remain;
+`TOKENINSIGHTS_SERVER_URL` and `TOKENINSIGHTS_ACCESS_TOKEN` apply only to distributed
+commands. `browse` requires only URL. `sync status` and `sync --dry-run` need no
+credentials. Local viewers ignore remote settings, including unreachable servers.
+
+Flat configuration and mode selection are removed. Existing flat files reject
+without modification; manually regroup their settings or select a fresh file with
+`--config-file`. No automatic conversion, deletion, or credential copying occurs.
+Hosted server deployment configuration is independent of this client file.
 
 Storage: `collector.sqlite` for source continuity/outbox, `server.sqlite` for token
 history/receipts/processing, `app.sqlite` for users/credentials/system state. App and
@@ -142,7 +155,7 @@ Local maintenance uses `data reprocess|wait`. Legacy `service`, `server`, and
 
 ## Privacy
 
-Local mode keeps data on your machine. Selecting another server submits whitelisted native evidence, retained indefinitely initially for replay. It stores usage metadata such as token counts, timestamps, models, providers, session identifiers, hashed location keys, and display names. Directory paths use `~/` where a home directory can be identified; otherwise a full directory path may remain in collector storage. It does not store prompts, responses, tool arguments, tool output, source artifact paths, or full Git remote URLs.
+Local viewers keep data on your machine. Running sync submits whitelisted native evidence, retained indefinitely initially for replay. It stores usage metadata such as token counts, timestamps, models, providers, session identifiers, hashed location keys, and display names. Directory paths use `~/` where a home directory can be identified; otherwise a full directory path may remain in collector storage. It does not store prompts, responses, tool arguments, tool output, source artifact paths, or full Git remote URLs.
 
 Default files under `${XDG_DATA_HOME:-~/.local/share}/tokeninsights/`:
 

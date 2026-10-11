@@ -1,5 +1,7 @@
 # Single-process and distributed compositions
 
+Command selection/config and local handoff are superseded by [ADR 0014](0014-command-owned-client-compositions.md); retained domain/storage contracts still apply.
+
 Engine details below are historical; [ADR 0012](0012-sqlite-and-postgres-persistence.md) supersedes them with SQLite/PostgreSQL.
 Status: **Accepted; implemented and validated**. Date: 8 October 2026.
 User approved schema changes and implementation after architecture review.

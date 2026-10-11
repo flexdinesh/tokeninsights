@@ -32,7 +32,7 @@ token components and time bounds. They complement boundary tests.
 | --- | --- | --- |
 | Four native harnesses, copied sources, collector rebuild and reprocessing; all token components and stable identities | `collector.TestDirectCollectorGoldenReplayAndRebuild` | `deployment.TestAllHarnessesPublishThroughConfiguredRemoteBinaryAndRebuild` (built client/server, interrupted replacement generation, HTTP session and receipt fact IDs) |
 | Committed acceptance with lost response; exact request/receipt replay | `collector.TestDirectCollectorGoldenReplayAndRebuild` | `deployment.TestRemoteCommittedResponseLostReplaysExactRequestAndReceipt` (restart before retry) |
-| Failed delivery retains journal/cursor; accepted work resumes | Local queue/lifetime tests in `localruntime`; shared adapter recovery below | `deployment.TestRemoteFailureRetainsJournalAndRestartResumesAcceptedWork` |
+| Failed delivery retains journal/cursor; accepted work resumes | Local capture/lifetime tests in `localruntime`; shared adapter recovery below | `deployment.TestRemoteFailureRetainsJournalAndRestartResumesAcceptedWork` |
 | Concurrent copied and distinct native identities | Collector direct replay and storage concurrency contracts | `deployment.TestConcurrentCopiedAndDistinctClients` |
 | Configured remote, repeat sync, copied clients and collector rebuild | Not a local routing scenario | `deployment.TestConfigRemoteSyncTracerAndCopiedClients` |
 | Account provisioning, tenant isolation, spoof rejection and restart | Local default-user contracts | `remoteserver.TestHostedSharedDatabaseIsolationAndProvisioning` |

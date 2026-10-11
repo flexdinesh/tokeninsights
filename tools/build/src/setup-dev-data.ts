@@ -126,20 +126,13 @@ async function runSync({
   sourceDir,
 }: SyncPaths): Promise<void> {
   await runCommand(binaryPath, [
-    'sync',
-    '--mode',
-    'single-process',
-    '--all',
-    '--source-dir',
-    sourceDir,
+    '__capture-dev-data',
     '--collector-db-path',
     collectorDBPath,
     '--server-db-path',
     serverDBPath,
-    '--app-db-path',
-    join(dirname(serverDBPath), 'app.sqlite'),
-    '--server-url',
-    '',
+    '--source-dir',
+    sourceDir,
   ])
 }
 

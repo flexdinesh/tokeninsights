@@ -81,13 +81,14 @@ type filters struct {
 
 type tableOptions struct {
 	local           *localruntime.Runtime
-	mode            string
 	appDBPath       string
 	dbPath          string
 	serverURL       string
 	token           string
 	datasetID       string
 	collectorDBPath string
+	fullRefresh     bool
+	sourceDir       string
 	syncOnStart     bool
 	period          period
 	bucket          timeBucket
@@ -103,7 +104,7 @@ func parseTableOptions(args []string, stderr io.Writer, requirePeriod bool, defa
 func parseViewerOptions(args []string, stderr io.Writer, requirePeriod bool, defaultPeriod period, extra func(*flag.FlagSet)) (tableOptions, error) {
 	return parseViewerOptionsWithDefaults(args, stderr, requirePeriod, defaultPeriod, extra, (commandInvocation{}).defaults())
 }
-func parseViewerOptionsWithDefaults(args []string, stderr io.Writer, requirePeriod bool, defaultPeriod period, extra func(*flag.FlagSet), settings config.Settings) (tableOptions, error) {
+func parseViewerOptionsWithDefaults(args []string, stderr io.Writer, requirePeriod bool, defaultPeriod period, extra func(*flag.FlagSet), settings config.LocalSettings) (tableOptions, error) {
 	flags := flag.NewFlagSet("tokeninsights tui", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 
@@ -115,14 +116,15 @@ func parseViewerOptionsWithDefaults(args []string, stderr io.Writer, requirePeri
 	var year bool
 	var allTime bool
 	var syncOnStart bool
-	var serverURL, collectorDBPath string
+	var collectorDBPath, sourceDir string
+	var fullRefresh bool
 	var bucket string
 	var queryFilters filters
-	flags.StringVar(&settings.Mode, "mode", settings.Mode, "single-process or distributed")
 	flags.StringVar(&settings.AppDBPath, "app-db-path", settings.AppDBPath, "application SQLite database")
 	flags.StringVar(&dbPath, "server-db-path", settings.ServerDBPath, "local query server database path")
 	flags.StringVar(&collectorDBPath, "collector-db-path", settings.CollectorDBPath, "collector database used by startup sync")
-	flags.StringVar(&serverURL, "server-url", settings.ServerURL, "query server; empty selects local")
+	flags.BoolVar(&fullRefresh, "full-refresh", false, "reread sources and retry quarantine at startup")
+	flags.StringVar(&sourceDir, "source-dir", "", "override startup capture source directory")
 	flags.BoolVar(&syncOnStart, "sync", true, "refresh usage in the background; --sync=false reads saved data only")
 	flags.BoolVar(&today, "today", false, "show today")
 	flags.BoolVar(&yesterday, "yesterday", false, "show yesterday")
@@ -184,7 +186,10 @@ func parseViewerOptionsWithDefaults(args []string, stderr io.Writer, requirePeri
 		}
 	}
 
-	return tableOptions{mode: settings.EffectiveMode(), appDBPath: settings.AppDBPath, dbPath: selectedDBPath, serverURL: strings.TrimSpace(serverURL), token: settings.ServerToken, collectorDBPath: collectorDBPath, syncOnStart: syncOnStart, period: selected, bucket: selectedBucket, filters: queryFilters}, nil
+	if !syncOnStart && fullRefresh {
+		return tableOptions{}, fmt.Errorf("--full-refresh requires startup collection\n%w", ErrUsage)
+	}
+	return tableOptions{appDBPath: settings.AppDBPath, dbPath: selectedDBPath, collectorDBPath: collectorDBPath, syncOnStart: syncOnStart, fullRefresh: fullRefresh, sourceDir: sourceDir, period: selected, bucket: selectedBucket, filters: queryFilters}, nil
 }
 
 func selectedPeriod(today bool, yesterday bool, week bool, month bool, year bool, allTime bool, required bool, fallback period) (period, error) {

@@ -70,7 +70,7 @@ func WaitForOwner(ctx context.Context, s *Store) (func(), error) {
 // RunRemote is finite. It replays retained immutable batches on retry, without
 // recollecting or changing the authenticated destination binding.
 func RunRemote(ctx context.Context, store *Store, job Job, token string, debug bool, progress Progress) (collector.Result, error) {
-	if job.Spec.Mode != config.Distributed || job.Spec.Credential != Fingerprint(token) {
+	if job.Spec.Mode != distributedMode || job.Spec.Credential != Fingerprint(token) {
 		return collector.Result{}, errors.New("sync_configuration_changed")
 	}
 	release, err := WaitForOwner(ctx, store)
@@ -90,8 +90,7 @@ func RunRemote(ctx context.Context, store *Store, job Job, token string, debug b
 				return result, errors.New(current.Error)
 			}
 			if debug || job.Spec.Debug {
-				settings := config.Defaults()
-				settings.Mode = config.Distributed
+				settings := config.SyncSettings{CollectorDBPath: job.Spec.CollectorPath}
 				settings.ServerURL = job.Spec.URL
 				settings.ServerToken = token
 				session, err := clientworkflow.Resolve(ctx, settings)
@@ -123,8 +122,7 @@ func runRemoteClaim(ctx context.Context, store *Store, job Job, token string, de
 	if err := store.Start(ctx, job.ID); err != nil {
 		return collector.Result{}, err
 	}
-	settings := config.Defaults()
-	settings.Mode = config.Distributed
+	settings := config.SyncSettings{CollectorDBPath: job.Spec.CollectorPath}
 	settings.ServerURL = job.Spec.URL
 	settings.ServerToken = token
 	session, err := clientworkflow.Resolve(ctx, settings)
@@ -142,7 +140,7 @@ func runRemoteClaim(ctx context.Context, store *Store, job Job, token string, de
 		return collector.Result{}, err
 	}
 	var receipts []evidence.Receipt
-	options := collector.Options{CollectorDBPath: job.Spec.CollectorPath, ServerDBPath: job.Spec.DataPath, Destination: session.Destination, PublishOnly: job.Spec.PublishOnly,
+	options := collector.Options{CollectorDBPath: job.Spec.CollectorPath, Destination: session.Destination, PublishOnly: job.Spec.PublishOnly,
 		SyncOptions: pipeline.SyncOptions{Harnesses: job.Spec.Harnesses, SourceDir: job.Spec.SourceDir, FullRefresh: job.Spec.FullRefresh, Now: time.Now(), Progress: progress.Collection}, DeliveryProgress: progress.Delivery,
 		AcceptedReceipt: func(receipt evidence.Receipt) error {
 			receipts = append(receipts, receipt)

@@ -1,4 +1,4 @@
-// Package config owns typed client preferences, independent of service runtime state.
+// Package config resolves command-specific client preferences at the executable boundary.
 package config
 
 import (
@@ -17,35 +17,40 @@ import (
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/db"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/dbpath"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/networkprefs"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/serverfeatures"
 )
 
 const maxFileBytes = 256 * 1024
 
-const SingleProcess = "single-process"
-const Distributed = "distributed"
-
+type CollectorValues struct {
+	DBPath *string `json:"db-path,omitempty"`
+}
+type LocalValues struct {
+	AppDBPath    *string `json:"app-db-path,omitempty"`
+	ServerDBPath *string `json:"server-db-path,omitempty"`
+	Host         *string `json:"host,omitempty"`
+	Port         *int    `json:"port,omitempty"`
+}
+type DistributedValues struct {
+	ServerURL   *string `json:"server-url,omitempty"`
+	ServerToken *string `json:"server-token,omitempty"`
+}
 type Values struct {
-	Mode            *string `json:"mode,omitempty"`
-	AppDBPath       *string `json:"app-db-path,omitempty"`
-	ServerToken     *string `json:"server-token,omitempty"`
-	ServerURL       *string `json:"server-url,omitempty"`
-	Host            *string `json:"host,omitempty"`
-	Port            *int    `json:"port,omitempty"`
-	CollectorDBPath *string `json:"collector-db-path,omitempty"`
-	ServerDBPath    *string `json:"server-db-path,omitempty"`
+	Collector   CollectorValues   `json:"collector,omitempty"`
+	InProcess   LocalValues       `json:"in-process,omitempty"`
+	Distributed DistributedValues `json:"distributed,omitempty"`
 }
 
-type Settings struct {
-	Mode            string
-	AppDBPath       string
-	ServerToken     string
-	ServerURL       string
-	Host            string
-	Port            int
-	CollectorDBPath string
-	ServerDBPath    string
+// Overrides describes flags, never the persisted configuration.
+type Overrides struct {
+	AppDBPath, ServerDBPath, CollectorDBPath, Host, ServerURL, ServerToken *string
+	Port                                                                   *int
 }
+type LocalSettings struct {
+	AppDBPath, ServerDBPath, CollectorDBPath, Host string
+	Port                                           int
+}
+type SyncSettings struct{ CollectorDBPath, ServerURL, ServerToken string }
+type BrowseSettings struct{ ServerURL string }
 
 func Path(explicit string) (string, error) {
 	if explicit == "" {
@@ -64,13 +69,14 @@ func Path(explicit string) (string, error) {
 	}
 	return filepath.Abs(explicit)
 }
-
-func Defaults() Settings {
+func Defaults() LocalSettings {
 	base := os.Getenv("XDG_DATA_HOME")
 	if base == "" {
 		base = filepath.Join(os.Getenv("HOME"), ".local", "share")
 	}
-	return Settings{Host: networkprefs.DefaultHost, Port: networkprefs.DefaultPort, CollectorDBPath: filepath.Join(base, "tokeninsights", "collector.sqlite"), ServerDBPath: filepath.Join(base, "tokeninsights", "server.sqlite")}
+	return LocalSettings{Host: networkprefs.DefaultHost, Port: networkprefs.DefaultPort,
+		CollectorDBPath: filepath.Join(base, "tokeninsights", "collector.sqlite"),
+		ServerDBPath:    filepath.Join(base, "tokeninsights", "server.sqlite")}
 }
 
 func Read(path string) (Values, error) {
@@ -94,76 +100,57 @@ func Read(path string) (Values, error) {
 	if err != nil {
 		return values, err
 	}
-	// Reject duplicate keys/null as well as unknown keys and trailing documents.
 	decoder := json.NewDecoder(bytes.NewReader(body))
-	token, err := decoder.Token()
-	if err != nil || token != json.Delim('{') {
-		return values, fmt.Errorf("config must be a JSON object")
+	if err := objectKeys(decoder); err != nil {
+		return values, err
 	}
-	seen := make(map[string]bool)
-	for decoder.More() {
-		token, err := decoder.Token()
-		if err != nil {
-			return values, fmt.Errorf("invalid config JSON")
-		}
-		key, ok := token.(string)
-		if !ok || seen[key] {
-			return values, fmt.Errorf("duplicate config key")
-		}
-		seen[key] = true
-		var raw json.RawMessage
-		if err := decoder.Decode(&raw); err != nil || bytes.Equal(bytes.TrimSpace(raw), []byte("null")) {
-			return values, fmt.Errorf("invalid config value for %s", key)
-		}
-	}
-	if _, err := decoder.Token(); err != nil {
-		return values, fmt.Errorf("invalid config JSON")
+	if _, err := decoder.Token(); err != io.EOF {
+		return values, fmt.Errorf("expected one config document")
 	}
 	decoder = json.NewDecoder(bytes.NewReader(body))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&values); err != nil {
-		return Values{}, fmt.Errorf("invalid config: %w", err)
-	}
-	if err := decoder.Decode(new(json.RawMessage)); err != io.EOF {
-		return Values{}, fmt.Errorf("expected one config document")
-	}
-	if err := values.Validate(); err != nil {
-		return Values{}, err
+		return Values{}, fmt.Errorf("invalid grouped config; use collector, in-process and distributed groups (flat config and mode are removed)")
 	}
 	return values, nil
 }
 
-func (v Values) Validate() error {
-	if v.Mode != nil && *v.Mode != SingleProcess && *v.Mode != Distributed {
-		return fmt.Errorf("invalid mode; use single-process or distributed")
+// Validate every object, including nested groups, without echoing private values.
+func objectKeys(decoder *json.Decoder) error {
+	token, err := decoder.Token()
+	if err != nil || token != json.Delim('{') {
+		return fmt.Errorf("config must contain JSON objects")
 	}
-	if v.ServerToken != nil && (*v.ServerToken == "" || strings.TrimSpace(*v.ServerToken) != *v.ServerToken || strings.ContainsAny(*v.ServerToken, "\r\n\x00\t ")) {
-		return fmt.Errorf("invalid server-token")
-	}
-	if v.ServerURL != nil {
-		if err := ValidateURL(*v.ServerURL); err != nil {
-			return err
+	return objectBody(decoder)
+}
+func objectBody(decoder *json.Decoder) error {
+	seen := make(map[string]bool)
+	for decoder.More() {
+		token, err := decoder.Token()
+		key, ok := token.(string)
+		if err != nil || !ok || seen[key] {
+			return fmt.Errorf("duplicate or invalid config key")
+		}
+		seen[key] = true
+		value, err := decoder.Token()
+		if err != nil || value == nil {
+			return fmt.Errorf("invalid config value")
+		}
+		if delimiter, ok := value.(json.Delim); ok {
+			if delimiter != '{' {
+				return fmt.Errorf("config arrays are unsupported")
+			}
+			if err := objectBody(decoder); err != nil {
+				return err
+			}
 		}
 	}
-	if v.Host != nil {
-		if *v.Host == "" {
-			return fmt.Errorf("host must not be empty")
-		}
-		if err := networkprefs.ValidateHost(*v.Host); err != nil {
-			return err
-		}
-	}
-	if v.Port != nil && (*v.Port < 0 || *v.Port > 65535) {
-		return fmt.Errorf("port must be between 0 and 65535")
-	}
-	for _, p := range []*string{v.CollectorDBPath, v.ServerDBPath, v.AppDBPath} {
-		if p != nil && (strings.TrimSpace(*p) == "" || strings.ContainsRune(*p, 0)) {
-			return fmt.Errorf("database path must not be empty or contain NUL")
-		}
+	token, err := decoder.Token()
+	if err != nil || token != json.Delim('}') {
+		return fmt.Errorf("invalid config JSON")
 	}
 	return nil
 }
-
 func ValidateURL(value string) error {
 	if value == "" {
 		return nil
@@ -174,146 +161,36 @@ func ValidateURL(value string) error {
 	}
 	return nil
 }
-
-func Resolve(path string, environment bool) (Settings, error) {
-	return ResolveWithOverrides(path, environment, Values{})
+func validateToken(value string) error {
+	if value != "" && (strings.TrimSpace(value) != value || strings.ContainsAny(value, "\r\n\x00\t ")) {
+		return fmt.Errorf("invalid server-token")
+	}
+	return nil
 }
-
-func ResolveWithOverrides(path string, environment bool, overrides Values) (Settings, error) {
-	values, err := Read(path)
-	if err != nil {
-		return Settings{}, err
+func validatePath(value string) error {
+	if strings.TrimSpace(value) == "" || strings.ContainsRune(value, 0) {
+		return fmt.Errorf("database path must not be empty or contain NUL")
 	}
-	return resolveValues(values, filepath.Dir(path), environment, overrides)
+	return nil
 }
-
-func ResolveValues(v Values, base string, environment bool) (Settings, error) {
-	return resolveValues(v, base, environment, Values{})
+func (s LocalSettings) Validate() error {
+	if err := networkprefs.ValidateHost(s.Host); err != nil {
+		return err
+	}
+	if s.Host == "" || s.Port < 0 || s.Port > 65535 {
+		return fmt.Errorf("invalid local host/port")
+	}
+	for _, path := range []string{s.CollectorDBPath, s.ServerDBPath} {
+		if err := validatePath(path); err != nil {
+			return err
+		}
+	}
+	if s.AppDBPath != "" {
+		return validatePath(s.AppDBPath)
+	}
+	return nil
 }
-func resolveValues(v Values, base string, environment bool, overrides Values) (Settings, error) {
-	if err := v.Validate(); err != nil {
-		return Settings{}, err
-	}
-	s := Defaults()
-	if v.Mode != nil {
-		s.Mode = *v.Mode
-	}
-	if v.ServerToken != nil {
-		s.ServerToken = *v.ServerToken
-	}
-	if v.ServerURL != nil {
-		s.ServerURL = *v.ServerURL
-	}
-	if v.Host != nil {
-		s.Host = *v.Host
-	}
-	if v.Port != nil {
-		s.Port = *v.Port
-	}
-	resolvePath := func(value string) string {
-		if filepath.IsAbs(value) {
-			return value
-		}
-		return filepath.Join(base, value)
-	}
-	if v.AppDBPath != nil {
-		s.AppDBPath = resolvePath(*v.AppDBPath)
-	}
-	if v.CollectorDBPath != nil {
-		s.CollectorDBPath = resolvePath(*v.CollectorDBPath)
-	}
-	if v.ServerDBPath != nil {
-		s.ServerDBPath = resolvePath(*v.ServerDBPath)
-	}
-	if environment {
-		if value, ok := os.LookupEnv("TOKENINSIGHTS_MODE"); ok && overrides.Mode == nil {
-			s.Mode = value
-		}
-		if value, ok := os.LookupEnv("TOKENINSIGHTS_ACCESS_TOKEN"); ok && overrides.ServerToken == nil {
-			s.ServerToken = value
-		}
-		if value, ok := os.LookupEnv("TOKENINSIGHTS_SERVER_URL"); ok && overrides.ServerURL == nil {
-			s.ServerURL = value
-		}
-		if value, ok := os.LookupEnv("TOKENINSIGHTS_HOST"); ok && overrides.Host == nil {
-			s.Host = value
-		}
-		if value, ok := os.LookupEnv("TOKENINSIGHTS_PORT"); ok && overrides.Port == nil {
-			port, err := strconv.Atoi(value)
-			if err != nil {
-				return Settings{}, fmt.Errorf("invalid TOKENINSIGHTS_PORT")
-			}
-			s.Port = port
-		}
-		for key, target := range map[string]*string{"TOKENINSIGHTS_COLLECTOR_DB_PATH": &s.CollectorDBPath, "TOKENINSIGHTS_SERVER_DB_PATH": &s.ServerDBPath, "TOKENINSIGHTS_APP_DB_PATH": &s.AppDBPath} {
-			if value := os.Getenv(key); value != "" {
-				absolute, err := filepath.Abs(value)
-				if err != nil {
-					return Settings{}, err
-				}
-				*target = absolute
-			}
-		}
-	}
-	if overrides.Mode != nil {
-		s.Mode = *overrides.Mode
-	}
-	if overrides.AppDBPath != nil {
-		s.AppDBPath = *overrides.AppDBPath
-	}
-	if overrides.ServerURL != nil {
-		s.ServerURL = *overrides.ServerURL
-	}
-	if overrides.ServerToken != nil {
-		s.ServerToken = *overrides.ServerToken
-	}
-	if overrides.Host != nil {
-		s.Host = *overrides.Host
-	}
-	if overrides.Port != nil {
-		s.Port = *overrides.Port
-	}
-	if overrides.CollectorDBPath != nil {
-		s.CollectorDBPath = *overrides.CollectorDBPath
-	}
-	if overrides.ServerDBPath != nil {
-		s.ServerDBPath = *overrides.ServerDBPath
-	}
-	if err := (Values{Mode: pointerMode(s.EffectiveMode()), AppDBPath: optionalPath(s.AppDBPath), ServerURL: &s.ServerURL, Host: &s.Host, Port: &s.Port, CollectorDBPath: &s.CollectorDBPath, ServerDBPath: &s.ServerDBPath}).Validate(); err != nil {
-		return Settings{}, err
-	}
-	if s.ServerToken != "" {
-		if err := (Values{ServerToken: &s.ServerToken}).Validate(); err != nil {
-			return Settings{}, err
-		}
-	}
-	return s, nil
-}
-
-// ValidateDestination checks complete runtime preferences, allowing incremental config setup.
-func pointerMode(value string) *string { return &value }
-func optionalPath(value string) *string {
-	if value == "" {
-		return nil
-	}
-	return &value
-}
-func (s Settings) EffectiveMode() string {
-	if s.Mode != "" {
-		return s.Mode
-	}
-	if s.ServerURL != "" {
-		return Distributed
-	}
-	return SingleProcess
-}
-func (s Settings) ExpectedKind() serverfeatures.Kind {
-	if s.EffectiveMode() == Distributed {
-		return serverfeatures.Hosted
-	}
-	return serverfeatures.Personal
-}
-func (s Settings) ApplicationPath() string {
+func (s LocalSettings) ApplicationPath() string {
 	if s.AppDBPath != "" {
 		return s.AppDBPath
 	}
@@ -323,82 +200,148 @@ func (s Settings) ApplicationPath() string {
 	}
 	return filepath.Join(filepath.Dir(path), "app.sqlite")
 }
-func (s Settings) ValidateDestination() error {
-	if s.EffectiveMode() != SingleProcess && s.EffectiveMode() != Distributed {
-		return fmt.Errorf("invalid mode")
+func (s SyncSettings) ValidateDestination() error {
+	if s.ServerURL == "" || s.ServerToken == "" {
+		return fmt.Errorf("sync requires distributed.server-url and distributed.server-token")
 	}
-	if s.EffectiveMode() == Distributed {
-		if s.ServerURL == "" || s.ServerToken == "" {
-			return fmt.Errorf("distributed mode requires server-url and server-token")
-		}
-		if err := ValidateURL(s.ServerURL); err != nil {
-			return err
-		}
-	} else if s.ServerURL != "" || s.ServerToken != "" {
-		return fmt.Errorf("single-process mode cannot use remote credentials or server-url")
+	if err := ValidateURL(s.ServerURL); err != nil {
+		return err
+	}
+	if err := validateToken(s.ServerToken); err != nil {
+		return err
 	}
 	return nil
 }
-
-func (v Values) Get(key string, base string) (string, error) {
-	s, err := ResolveValues(v, base, false)
-	if err != nil {
-		return "", err
+func (s SyncSettings) Validate() error {
+	if err := s.ValidateDestination(); err != nil {
+		return err
 	}
+	return validatePath(s.CollectorDBPath)
+}
+func (s BrowseSettings) Validate() error {
+	if s.ServerURL == "" {
+		return fmt.Errorf("browse requires distributed.server-url")
+	}
+	return ValidateURL(s.ServerURL)
+}
+func resolveString(fallback string, saved *string, key string, override *string, environment bool) string {
+	if override != nil {
+		return *override
+	}
+	if environment {
+		if value, ok := os.LookupEnv(key); ok {
+			return value
+		}
+	}
+	if saved != nil {
+		return *saved
+	}
+	return fallback
+}
+func resolvePath(fallback string, saved *string, key string, override *string, base string, environment bool) string {
+	if override != nil {
+		return *override
+	}
+	if environment {
+		if value := os.Getenv(key); value != "" {
+			return value
+		}
+	}
+	if saved != nil {
+		if *saved == "" {
+			return ""
+		}
+		if filepath.IsAbs(*saved) {
+			return *saved
+		}
+		return filepath.Join(base, *saved)
+	}
+	return fallback
+}
+func (v Values) local(base string, environment bool, o Overrides) (LocalSettings, error) {
+	s := Defaults()
+	s.CollectorDBPath = resolvePath(s.CollectorDBPath, v.Collector.DBPath, "TOKENINSIGHTS_COLLECTOR_DB_PATH", o.CollectorDBPath, base, environment)
+	s.ServerDBPath = resolvePath(s.ServerDBPath, v.InProcess.ServerDBPath, "TOKENINSIGHTS_SERVER_DB_PATH", o.ServerDBPath, base, environment)
+	s.AppDBPath = resolvePath("", v.InProcess.AppDBPath, "TOKENINSIGHTS_APP_DB_PATH", o.AppDBPath, base, environment)
+	s.Host = resolveString(s.Host, v.InProcess.Host, "TOKENINSIGHTS_HOST", o.Host, environment)
+	if o.Port != nil {
+		s.Port = *o.Port
+	} else if environment && os.Getenv("TOKENINSIGHTS_PORT") != "" {
+		var err error
+		s.Port, err = strconv.Atoi(os.Getenv("TOKENINSIGHTS_PORT"))
+		if err != nil {
+			return s, fmt.Errorf("invalid TOKENINSIGHTS_PORT")
+		}
+	} else if v.InProcess.Port != nil {
+		s.Port = *v.InProcess.Port
+	}
+	return s, s.Validate()
+}
+func (v Values) remote(base string, environment bool, o Overrides) SyncSettings {
+	return SyncSettings{
+		CollectorDBPath: resolvePath(Defaults().CollectorDBPath, v.Collector.DBPath, "TOKENINSIGHTS_COLLECTOR_DB_PATH", o.CollectorDBPath, base, environment),
+		ServerURL:       resolveString("", v.Distributed.ServerURL, "TOKENINSIGHTS_SERVER_URL", o.ServerURL, environment),
+		ServerToken:     resolveString("", v.Distributed.ServerToken, "TOKENINSIGHTS_ACCESS_TOKEN", o.ServerToken, environment)}
+}
+func ResolveLocal(path string, environment bool, o Overrides) (LocalSettings, error) {
+	v, err := Read(path)
+	if err != nil {
+		return LocalSettings{}, err
+	}
+	return v.local(filepath.Dir(path), environment, o)
+}
+
+// Sync completeness is checked after flags: status and dry-run do not submit.
+func ResolveSync(path string, environment bool, o Overrides) (SyncSettings, error) {
+	v, err := Read(path)
+	if err != nil {
+		return SyncSettings{}, err
+	}
+	settings := v.remote(filepath.Dir(path), environment, o)
+	return settings, validatePath(settings.CollectorDBPath)
+}
+func ResolveBrowse(path string, environment bool, o Overrides) (BrowseSettings, error) {
+	v, err := Read(path)
+	if err != nil {
+		return BrowseSettings{}, err
+	}
+	return BrowseSettings{ServerURL: resolveString("", v.Distributed.ServerURL, "TOKENINSIGHTS_SERVER_URL", o.ServerURL, environment)}, nil
+}
+func (v Values) Get(key, base string) (string, error) {
+	local, err := v.local(base, false, Overrides{})
+	remote := v.remote(base, false, Overrides{})
 	switch key {
-	case "mode":
-		return s.EffectiveMode(), nil
-	case "app-db-path":
-		return s.ApplicationPath(), nil
-	case "server-token":
-		if s.ServerToken == "" {
+	case "collector.db-path":
+		return remote.CollectorDBPath, nil
+	case "in-process.app-db-path":
+		return local.ApplicationPath(), err
+	case "in-process.server-db-path":
+		return local.ServerDBPath, err
+	case "in-process.host":
+		return local.Host, err
+	case "in-process.port":
+		return strconv.Itoa(local.Port), err
+	case "distributed.server-url":
+		return remote.ServerURL, nil
+	case "distributed.server-token":
+		if remote.ServerToken == "" {
 			return "unset", nil
 		}
 		return "configured", nil
-	case "server-url":
-		return s.ServerURL, nil
-	case "host":
-		return s.Host, nil
-	case "port":
-		return strconv.Itoa(s.Port), nil
-	case "collector-db-path":
-		return s.CollectorDBPath, nil
-	case "server-db-path":
-		return s.ServerDBPath, nil
 	default:
 		return "", fmt.Errorf("unknown config key %q", key)
 	}
 }
-
 func (v *Values) Set(key, value string, remove bool) error {
-	stringValue := func() *string {
-		if remove {
-			return nil
-		}
-		return &value
+	var stringValue *string
+	if !remove {
+		stringValue = &value
 	}
 	switch key {
-	case "mode":
-		v.Mode = stringValue()
-	case "server-token":
-		v.ServerToken = stringValue()
-	case "server-url":
-		v.ServerURL = stringValue()
-	case "host":
-		v.Host = stringValue()
-	case "port":
-		v.Port = nil
+	case "collector.db-path", "in-process.server-db-path", "in-process.app-db-path":
 		if !remove {
-			port, err := strconv.Atoi(value)
-			if err != nil {
-				return fmt.Errorf("port must be an integer")
-			}
-			v.Port = &port
-		}
-	case "collector-db-path", "server-db-path", "app-db-path":
-		if !remove {
-			if strings.TrimSpace(value) == "" {
-				return fmt.Errorf("empty database path")
+			if err := validatePath(value); err != nil {
+				return err
 			}
 			absolute, err := filepath.Abs(value)
 			if err != nil {
@@ -407,19 +350,52 @@ func (v *Values) Set(key, value string, remove bool) error {
 			value = absolute
 		}
 		switch key {
-		case "collector-db-path":
-			v.CollectorDBPath = stringValue()
-		case "app-db-path":
-			v.AppDBPath = stringValue()
+		case "collector.db-path":
+			v.Collector.DBPath = stringValue
+		case "in-process.server-db-path":
+			v.InProcess.ServerDBPath = stringValue
 		default:
-			v.ServerDBPath = stringValue()
+			v.InProcess.AppDBPath = stringValue
 		}
+	case "in-process.host":
+		if !remove {
+			if value == "" {
+				return fmt.Errorf("empty host")
+			}
+			if err := networkprefs.ValidateHost(value); err != nil {
+				return err
+			}
+		}
+		v.InProcess.Host = stringValue
+	case "in-process.port":
+		v.InProcess.Port = nil
+		if !remove {
+			port, err := strconv.Atoi(value)
+			if err != nil || port < 0 || port > 65535 {
+				return fmt.Errorf("port must be between 0 and 65535")
+			}
+			v.InProcess.Port = &port
+		}
+	case "distributed.server-url":
+		if err := ValidateURL(value); err != nil {
+			return err
+		}
+		v.Distributed.ServerURL = stringValue
+	case "distributed.server-token":
+		if !remove {
+			if value == "" {
+				return fmt.Errorf("empty server-token")
+			}
+			if err := validateToken(value); err != nil {
+				return err
+			}
+		}
+		v.Distributed.ServerToken = stringValue
 	default:
 		return fmt.Errorf("unknown config key %q", key)
 	}
-	return v.Validate()
+	return nil
 }
-
 func Update(ctx context.Context, path string, change func(*Values) error) error {
 	// Validate against a read before creating any directories or lock files.
 	initial, err := Read(path)

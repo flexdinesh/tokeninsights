@@ -7,13 +7,13 @@ services:
     image: tokeninsights-server:local
     environment:
       TOKENINSIGHTS_STORAGE_BACKEND: postgres
-      TOKENINSIGHTS_LISTEN: 0.0.0.0:8765
+      TOKENINSIGHTS_LISTEN: 0.0.0.0:8766
       TOKENINSIGHTS_PUBLIC_URL: '${TOKENINSIGHTS_PUBLIC_URL:?Set the canonical HTTPS dashboard URL}'
       TOKENINSIGHTS_ADMIN_SOCKET: /run/tokeninsights/admin.sock
       TOKENINSIGHTS_TRUSTED_PROXIES: '${TOKENINSIGHTS_TRUSTED_PROXIES:-}'
       TOKENINSIGHTS_POSTGRES_DSN_FILE: /run/secrets/postgres_dsn
     ports:
-      - '127.0.0.1:8765:8765'
+      - '127.0.0.1:8766:8766'
     read_only: true
     tmpfs:
       - /run/tokeninsights:uid=10001,gid=10001,mode=0700

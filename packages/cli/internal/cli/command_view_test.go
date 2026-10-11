@@ -97,7 +97,7 @@ func TestTUIReadsSavedUsageDirectlyWithoutCollection(t *testing.T) {
 	assertViewMissingPath(t, options.collectorDBPath)
 }
 
-func TestViewRejectsRemoteBeforeOpeningLocalDatabase(t *testing.T) {
+func TestViewRejectsRemoteFlagsBeforeOpeningLocalDatabase(t *testing.T) {
 	invalidLocal := t.TempDir()
 	err := Run(t.Context(), []string{"tui", "--sync=false", "--server-url", "https://remote.test", "--server-db-path", invalidLocal}, io.Discard, io.Discard, time.Now())
 	if !errors.Is(err, ErrUsage) {
@@ -150,11 +150,11 @@ func TestTUIRejectsRemovedNoSyncFlagBeforeSideEffects(t *testing.T) {
 }
 
 func TestViewParsesIndependentServerCollectorAndFilterOptions(t *testing.T) {
-	options, err := parseTableOptions([]string{"--server-url", "https://example.test", "--server-db-path", "server.sqlite", "--collector-db-path", "collector.sqlite", "--all-time", "--provider", "fixture-provider", "--model", "fixture-model", "--harness", "pi", "--session-id", "fixture-session"}, io.Discard, false, periodMonth)
+	options, err := parseTableOptions([]string{"--server-db-path", "server.sqlite", "--collector-db-path", "collector.sqlite", "--all-time", "--provider", "fixture-provider", "--model", "fixture-model", "--harness", "pi", "--session-id", "fixture-session"}, io.Discard, false, periodMonth)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if options.serverURL != "https://example.test" || options.dbPath != "server.sqlite" || options.collectorDBPath != "collector.sqlite" || !options.syncOnStart {
+	if options.dbPath != "server.sqlite" || options.collectorDBPath != "collector.sqlite" || !options.syncOnStart {
 		t.Fatalf("wrong remote options: %+v", options)
 	}
 	expected := filters{providers: stringList{"fixture-provider"}, models: stringList{"fixture-model"}, harnesses: stringList{"pi"}, sessionIDs: stringList{"fixture-session"}}

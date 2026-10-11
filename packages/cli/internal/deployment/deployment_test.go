@@ -112,9 +112,9 @@ func (c client) must(t *testing.T, args ...string) string {
 	if err != nil {
 		t.Fatalf("%v: %s %v", args, body, err)
 	}
-	if len(args) == 4 && args[0] == "config" && args[1] == "set" && args[2] == "server-url" {
+	if len(args) == 4 && args[0] == "config" && args[1] == "set" && args[2] == "distributed.server-url" {
 		if token, ok := remoteTokens.Load(args[3]); ok {
-			command := exec.Command(clientBinary, "--config-file", c.config, "config", "set", "server-token")
+			command := exec.Command(clientBinary, "--config-file", c.config, "config", "set", "distributed.server-token")
 			command.Env = c.env
 			command.Stdin = strings.NewReader(token.(string) + "\n")
 			if output, err := command.CombinedOutput(); err != nil {
@@ -252,7 +252,7 @@ func configRemoteSyncTracerAndCopiedClients(t *testing.T, remote *remoteServer) 
 	target := remote.target
 	a, b := newClient(t), newClient(t)
 	for _, c := range []client{a, b} {
-		c.must(t, "config", "set", "server-url", target)
+		c.must(t, "config", "set", "distributed.server-url", target)
 		c.sync(t)
 		assertUsage(t, target, 1, 120)
 		assertAcknowledged(t, c)
@@ -324,7 +324,7 @@ func remoteFailureRetainsJournalAndRestartResumesAcceptedWork(t *testing.T, remo
 	remoteTokens.Store(forwarder.URL, secret)
 	defer remoteTokens.Delete(forwarder.URL)
 	c := newClient(t)
-	c.must(t, "config", "set", "server-url", forwarder.URL)
+	c.must(t, "config", "set", "distributed.server-url", forwarder.URL)
 	if output, err := c.run(t, "sync", "--harness", "pi", "--source-dir", c.source); err == nil || !strings.Contains(output, "transport_failed") {
 		t.Fatal(output, err)
 	}
@@ -398,7 +398,7 @@ func remoteFailureRetainsJournalAndRestartResumesAcceptedWork(t *testing.T, remo
 
 func TestUnreachableRemoteFailsPreflightWithoutCollectionOrLocalServer(t *testing.T) {
 	c := newClient(t)
-	c.must(t, "config", "set", "server-url", "http://127.0.0.1:1")
+	c.must(t, "config", "set", "distributed.server-url", "http://127.0.0.1:1")
 	c.env = append(c.env, "TOKENINSIGHTS_ACCESS_TOKEN=fixture-token")
 	if output, err := c.run(t, "sync", "--harness", "pi", "--source-dir", c.source); err == nil {
 		t.Fatal("unreachable descriptor accepted", output)
@@ -472,7 +472,7 @@ func remoteCommittedResponseLostReplaysExactRequestAndReceipt(t *testing.T, remo
 	remoteTokens.Store(forwarder.URL, secret)
 	defer remoteTokens.Delete(forwarder.URL)
 	c := newClient(t)
-	c.must(t, "config", "set", "server-url", forwarder.URL)
+	c.must(t, "config", "set", "distributed.server-url", forwarder.URL)
 	if output, err := c.run(t, "sync", "--harness", "pi", "--source-dir", c.source); err == nil {
 		t.Fatal("lost receipt acknowledged", output)
 	}
@@ -525,7 +525,7 @@ func TestLocalAndRemoteBinariesCannotOwnSameDatabase(t *testing.T) {
 	})
 	t.Run("local_then_remote", func(t *testing.T) {
 		c := newClient(t)
-		c.must(t, "config", "set", "port", "0")
+		c.must(t, "config", "set", "in-process.port", "0")
 		localURL := startLocal(t, c)
 		path := filepath.Join(c.root, "data", "tokeninsights", "server.sqlite")
 		command := exec.CommandContext(t.Context(), serverBinary, "--public-url", "https://usage.example", "--listen", "127.0.0.1:0", "--server-db-path", path)
@@ -542,7 +542,7 @@ func TestConfigDestinationSwitchingPreservesIndependentProgress(t *testing.T) {
 	b, _ := startRemote(t)
 	c := newClient(t)
 	for _, target := range []string{a, b, a} {
-		c.must(t, "config", "set", "server-url", target)
+		c.must(t, "config", "set", "distributed.server-url", target)
 		c.sync(t)
 	}
 	assertUsage(t, a, 1, 120)
@@ -581,7 +581,7 @@ func concurrentCopiedAndDistinctClients(t *testing.T, remote *remoteServer) {
 		t.Fatal(err)
 	}
 	for _, c := range clients {
-		c.must(t, "config", "set", "server-url", target)
+		c.must(t, "config", "set", "distributed.server-url", target)
 	}
 	errors := make(chan error, len(clients))
 	var workers sync.WaitGroup
@@ -606,26 +606,53 @@ func concurrentCopiedAndDistinctClients(t *testing.T, remote *remoteServer) {
 	assertUsage(t, target, 2, 240)
 }
 
-func TestConfiguredLocalDefaultAndExplicitEmptyRemoteOverride(t *testing.T) {
-	remote, _ := startRemote(t)
-	c := newClient(t)
-	c.must(t, "config", "set", "port", "0")
-	c.must(t, "config", "set", "host", "0.0.0.0")
-	c.must(t, "config", "set", "server-url", remote)
-	c.env = append(c.env, "TOKENINSIGHTS_ACCESS_TOKEN=")
-	c.must(t, "sync", "--harness", "pi", "--source-dir", c.source, "--server-url=")
-	localURL := startLocal(t, c)
-	assertUsage(t, localURL, 1, 120)
-	assertUsage(t, remote, 0, 0)
-	c.env = append(c.env, "TOKENINSIGHTS_SERVER_URL=")
-	c.sync(t) // Active web owner consumes this request directly.
-	assertUsage(t, localURL, 1, 120)
-	assertUsage(t, remote, 0, 0)
+func TestLocalViewerAndRemoteSyncShareCollectorWithoutSharingStorage(t *testing.T) {
+	runRemoteBackends(t, func(t *testing.T, remote *remoteServer) {
+		c := newClient(t)
+		c.must(t, "config", "set", "distributed.server-url", remote.target)
+		if err := os.Mkdir(filepath.Join(c.source, "pi"), 0700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Rename(filepath.Join(c.source, "session.jsonl"), filepath.Join(c.source, "pi", "session.jsonl")); err != nil {
+			t.Fatal(err)
+		}
+		localURL := startLocal(t, c, "--sync", "--source-dir", c.source)
+		deadline := time.Now().Add(10 * time.Second)
+		for readUsage(t, localURL).Summary.Total != 120 {
+			if time.Now().After(deadline) {
+				t.Fatal("local startup collection did not publish")
+			}
+			time.Sleep(20 * time.Millisecond)
+		}
+		assertUsage(t, localURL, 1, 120)
+		assertUsage(t, remote.target, 0, 0)
+		c.sync(t)
+		assertUsage(t, localURL, 1, 120)
+		assertUsage(t, remote.target, 1, 120)
+		// Later remote replay cannot consume the personal destination's progress.
+		c.sync(t)
+		assertUsage(t, localURL, 1, 120)
+		assertUsage(t, remote.target, 1, 120)
+		database, err := db.OpenWritable(c.collector)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer func() { _ = database.Close() }()
+		var destinations int
+		if err := database.QueryRow("SELECT COUNT(*) FROM evidence_destinations WHERE acknowledged_sequence=2").Scan(&destinations); err != nil || destinations != 2 {
+			t.Fatal("independent destinations", destinations, err)
+		}
+		output, err := c.run(t, "browse", "--open=false")
+		if err != nil || !strings.Contains(output, remote.target) {
+			t.Fatal(output, err)
+		}
+	})
 }
 
-func startLocal(t *testing.T, c client) string {
+func startLocal(t *testing.T, c client, extra ...string) string {
 	t.Helper()
-	command := exec.Command(clientBinary, "--config-file", c.config, "web", "--sync=false", "--open=false", "--port", "0", "--server-url=")
+	args := append([]string{"--config-file", c.config, "web", "--sync=false", "--open=false", "--port", "0"}, extra...)
+	command := exec.Command(clientBinary, args...)
 	command.Env = c.env
 	output, err := command.StdoutPipe()
 	if err != nil {
@@ -691,9 +718,9 @@ func allHarnessesPublishThroughConfiguredRemoteBinaryAndRebuild(t *testing.T, re
 		if err := sourceDB.Close(); err != nil {
 			t.Fatal(err)
 		}
-		c.must(t, "config", "set", "server-url", target)
+		c.must(t, "config", "set", "distributed.server-url", target)
 		// Remote routing must not inspect the configured local database, even aliases.
-		c.must(t, "config", "set", "server-db-path", c.collector)
+		c.must(t, "config", "set", "in-process.server-db-path", c.collector)
 		c.must(t, "sync", "--all", "--source-dir", c.source)
 		assertComponents(t, target, [7]int64{12, 800, 148, 52, 96, 6, 1102})
 	}

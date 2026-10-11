@@ -145,11 +145,15 @@ test('local startup shows capture and processing before fresh totals without an 
   )
   expect(progressRequests).toBe(1)
   await expect(page.getByText('Ready', { exact: true })).toHaveCount(0)
-  await expect(page.getByText('No usage saved yet. Run tokeninsights sync.')).toHaveCount(0)
+  await expect(
+    page.getByText('No usage saved yet. Restart tokeninsights web to collect usage.'),
+  ).toHaveCount(0)
   pending = 1
   stage = 'accepted'
   await expect(page.locator('.app-header')).toContainText('Processing usage')
-  await expect(page.getByText('No usage saved yet. Run tokeninsights sync.')).toHaveCount(0)
+  await expect(
+    page.getByText('No usage saved yet. Restart tokeninsights web to collect usage.'),
+  ).toHaveCount(0)
   pending = 0
   published = true
   await expect(page.getByLabel('Total tokens: 647,000', { exact: true })).toBeVisible({

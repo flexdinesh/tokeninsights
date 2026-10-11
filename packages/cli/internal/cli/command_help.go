@@ -12,12 +12,12 @@ func runHelp(invocation commandInvocation, _ []string) error {
 func usageText() string {
 	return `usage: tokeninsights <command> [options]
 
-Single-process (default):
+In-process:
   tui                         collect, ingest and open terminal dashboard
   web                         collect, ingest and serve browser dashboard until exit
   web --host 0.0.0.0          bind all IPv4 interfaces (read-only dashboard)
-  sync                        collect and ingest directly; hand off to an active viewer
-  tui|web --sync=false         show saved data
+  tui|web --sync=false         show saved data; resume pending processing
+  tui|web --full-refresh       reread sources/retry quarantine at startup
 
 Distributed:
   sync                        start finite background submission
@@ -25,24 +25,24 @@ Distributed:
   sync --wait                 wait for acceptance
   sync --debug                show capture, acceptance and receipt processing
   sync status [--json]         latest durable job status
-  web                         sync, then open remote browser login
+  browse                      open configured hosted dashboard; no upload
+  browse --open=false          print dashboard URL without launching browser
 
 Configuration:
   config set KEY VALUE|get KEY|remove KEY
-  config set mode single-process|distributed
-  config set server-url https://usage.example.com
-  config set server-token     read bearer token securely from terminal/stdin
+  config set distributed.server-url https://usage.example.com
+  config set distributed.server-token  read bearer token securely from terminal/stdin
 
 Maintenance:
   data reprocess|wait          finite local processing, no daemon
   tokeninsights-server         separate authenticated container/server executable
 
-Paths: --collector-db-path, --server-db-path, --app-db-path.
+Config groups: collector.db-path; in-process.host, port, server-db-path, app-db-path;
+distributed.server-url, server-token. No mode setting or flag.
 Config: --config-file PATH / TOKENINSIGHTS_CONFIG_PATH; default XDG config.json.
-Keys: mode, server-url, server-token, host, port, collector-db-path, server-db-path, app-db-path.
 Precedence: flags > environment > file > defaults. get reads saved preferences.
-Use TOKENINSIGHTS_MODE and TOKENINSIGHTS_ACCESS_TOKEN for environment overrides.
-Distributed mode requires URL and bearer token.
-Distributed has no analytics TUI. Local commands need no daemon or HTTP ingestion.
+Local web defaults to 127.0.0.1:8765; hosted server defaults to 0.0.0.0:8766.
+Commands select composition. Local viewers ignore distributed credentials.
+Sync requires URL and bearer token. Browse requires only URL.
 Bare invocation prints help. Reload queries saved data. Plugins pass --wait --harness.`
 }
