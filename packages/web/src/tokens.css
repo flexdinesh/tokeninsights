@@ -76,9 +76,9 @@
   --icon-size: 1rem;
   --content-width: 100rem;
   --reading-width: 42rem;
-  --page-gutter: var(--space-6);
+  --page-gutter: var(--space-4);
   --panel-padding: var(--space-4);
-  --header-height: 3.5rem;
+  --header-height: 3rem;
   --sidebar-width: 12rem;
   --popover-width: 22rem;
   --chart-height: 12rem;
@@ -252,7 +252,7 @@
 
 @media (max-width: 38rem) {
   :root {
-    --page-gutter: var(--space-4);
+    --page-gutter: var(--space-3);
   }
 }
 

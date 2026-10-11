@@ -56,6 +56,10 @@ for (const kind of ['personal', 'hosted']) {
       expect(progressRequests.length).toBeGreaterThan(0)
     } else {
       await expect(page.getByRole('button', { name: /Local status:/ })).toHaveCount(0)
+      await page.getByRole('button', { name: /Dashboard status:/ }).click()
+      const details = page.getByRole('dialog', { name: 'Dashboard status details' })
+      await expect(details).toContainText('Last ingestion')
+      await expect(details.getByRole('group', { name: 'Process resource usage' })).toHaveCount(0)
       await expect(page.getByRole('region', { name: 'Collector progress' })).toHaveCount(0)
       await expect(page.getByRole('button', { name: 'Reload', exact: true })).toHaveCount(0)
       expect(progressRequests).toHaveLength(0)

@@ -256,12 +256,12 @@ and complete timeline dates.
 
 A sticky desktop navigation sidebar (12rem) anchors the workspace. It holds the
 brand and all existing view links. The main column keeps a wrapping, sticky header
-(3.5rem minimum height) for the current-view heading, machine identity, a local-only fixed-size
-status indicator beside theme selection, followed by quick periods and horizontal
-wrapping filters.
+(3rem minimum height) for the current-view heading, machine identity, a fixed-size
+status indicator beside theme selection. Horizontal wrapping filters and quick
+periods share a toolbar immediately below the header.
 
-The spacing scale uses quarter-rem steps, with section gaps of 1rem and desktop
-page gutters of 1.5rem. Below 75rem, gutters reduce to 1rem. Content caps at 100rem;
+The spacing scale uses quarter-rem steps, with section gaps of 0.75rem and desktop
+page gutters of 1rem. Below 38rem, gutters reduce to 0.75rem. Content caps at 100rem;
 readouts, chart, and table align to shared gutters. Five static readouts form a
 single rule-separated strip. At 45rem of readout-container width they become two
 columns with the total spanning both. Readouts have no individual cards or
@@ -272,8 +272,8 @@ labels and automatic Y-axis width. The context legend sits outside the SVG and
 wraps. Chart geometry remains separate from global spacing tokens.
 
 Below 55rem viewport width, the sidebar becomes a relative, wrapping top navigation
-region. All views remain visible. At 38rem, the header becomes a relative flex
-column; status and actions stay visible and wrap. Quick periods span their row,
+region. All views remain visible. At 38rem, the header becomes relative; the
+heading, truncated machine identity, status and actions share a compact wrapping row. Quick periods span their row,
 date fields stack, and chart controls wrap.
 Mobile/coarse-pointer controls grow to 2.75rem. Widths and type follow the root
 font size; preserve reflow at 200% text.
@@ -281,7 +281,8 @@ font size; preserve reflow at 200% text.
 Tables scroll within their own region, capped at 35rem, with sticky headings.
 Rows use 0.5rem vertical padding, fine rules, neutral headings, and right-aligned numeric cells.
 The independent result summary describes all filtered results. Headings and cells
-keep shared horizontal gutters, including outer edges.
+keep shared horizontal gutters, including outer edges, with 0.75rem horizontal
+cell padding.
 
 Daily dates sit beside small status icons and wrap when text grows; complete
 labels and check times remain accessible and available on hover. Source coverage is a muted, collapsed
@@ -331,10 +332,12 @@ offset with 16px collision clearance. The header shows the local machine hostnam
 in single-process mode; its accessible label distinguishes viewer identity from
 historical producers. The page origin remains available in the footer. Local and
 hosted dashboards refresh saved usage automatically and retain request retries.
-A local-only fixed-size status icon sits beside theme selection: activity when
+A fixed-size status icon sits beside theme selection: activity when
 ready, spinner while loading, and alert when attention is needed. Hover, keyboard
 focus, or tap reveals a compact popup with process CPU/RAM, query/processing status,
-and capability-gated local harness details. Hosted headers omit this control.
+and capability-gated local harness details. Last ingestion appears inside the
+popup in the server timezone. Hosted popups show query status and last ingestion
+without local process or harness details.
 Completed collection details appear under **Latest collection** inside that popup.
 Harness states describe that run only; **No new usage** explains unchanged or missing sources,
 while previously saved usage remains included. Failures retain visible recovery.

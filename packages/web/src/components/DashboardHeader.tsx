@@ -1,6 +1,6 @@
 import { Monitor, Moon, Sun } from 'lucide-react'
 import { useDashboardPreferences, useDashboardQuery } from '../state'
-import { formatServerDateTime, labels, serverTimeZoneLabel } from '../format'
+import { labels } from '../format'
 import { Button } from './ui/button'
 import type { CollectorProgress, SyncStatus } from '../contracts'
 import { DashboardStatus } from './DashboardStatus'
@@ -39,19 +39,15 @@ export function DashboardHeader({
         >
           {hostname}
         </span>
-        {lastSynced ? (
-          <time
-            className="header-status"
-            dateTime={new Date(lastSynced).toISOString()}
-            title={serverTimeZoneLabel(timezone)}
-          >
-            Last ingestion {formatServerDateTime(lastSynced, timezone)}
-          </time>
-        ) : null}
         <span className="header-divider" />
-        {localMachine && (
-          <DashboardStatus status={status} progress={progress} processUsage={processUsage} />
-        )}
+        <DashboardStatus
+          status={status}
+          progress={progress}
+          processUsage={processUsage}
+          localMachine={localMachine}
+          lastSynced={lastSynced}
+          timezone={timezone}
+        />
         <Button
           variant="ghost"
           size="icon"

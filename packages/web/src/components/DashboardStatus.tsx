@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Activity, CircleAlert, LoaderCircle } from 'lucide-react'
 import type { CollectorProgress as Progress, SyncStatus } from '../contracts'
+import { formatServerDateTime, serverTimeZoneLabel } from '../format'
 import { CollectorProgress } from './CollectorProgress'
 import { Button } from './ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from './ui/popover'
@@ -16,10 +17,16 @@ export function DashboardStatus({
   status,
   progress,
   processUsage,
+  localMachine,
+  lastSynced,
+  timezone,
 }: {
   status: DashboardStatusValue
   progress: Progress | undefined
   processUsage: SyncStatus['processUsage']
+  localMachine: boolean
+  lastSynced?: number
+  timezone: string
 }) {
   const [open, setOpen] = useState(false)
   const closeTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
@@ -36,6 +43,7 @@ export function DashboardStatus({
     closeTimer.current = setTimeout(() => setOpen(false), hoverCloseDelayMs)
   }
 
+  const statusScope = localMachine ? 'Local' : 'Dashboard'
   return (
     <Popover
       open={open}
@@ -50,7 +58,7 @@ export function DashboardStatus({
           variant="ghost"
           size="icon"
           className={`loading-status loading-status-${status.state}`}
-          aria-label={`Local status: ${status.label}`}
+          aria-label={`${statusScope} status: ${status.label}`}
           onPointerEnter={(event) => {
             if (event.pointerType === 'mouse') reveal()
           }}
@@ -80,28 +88,40 @@ export function DashboardStatus({
       <PopoverContent
         align="end"
         className="loading-status-details"
-        aria-label="Local status details"
+        aria-label={`${statusScope} status details`}
         onPointerEnter={reveal}
         onPointerLeave={leave}
         onOpenAutoFocus={(event) => event.preventDefault()}
         onCloseAutoFocus={(event) => event.preventDefault()}
       >
-        <div className="local-resource-usage" role="group" aria-label="Process resource usage">
-          <span title="TokenInsights process CPU · 100% = one core">
-            CPU{' '}
-            {processUsage?.cpuPercent === undefined
-              ? '—'
-              : `${processUsage.cpuPercent.toFixed(1)}%`}
-          </span>
-          <span title="TokenInsights resident memory">
-            RAM{' '}
-            {processUsage?.residentMemoryBytes === undefined
-              ? '—'
-              : formatMemory(processUsage.residentMemoryBytes)}
-          </span>
-        </div>
+        {localMachine && (
+          <div className="local-resource-usage" role="group" aria-label="Process resource usage">
+            <span title="TokenInsights process CPU · 100% = one core">
+              CPU{' '}
+              {processUsage?.cpuPercent === undefined
+                ? '—'
+                : `${processUsage.cpuPercent.toFixed(1)}%`}
+            </span>
+            <span title="TokenInsights resident memory">
+              RAM{' '}
+              {processUsage?.residentMemoryBytes === undefined
+                ? '—'
+                : formatMemory(processUsage.residentMemoryBytes)}
+            </span>
+          </div>
+        )}
         <p>{status.label}</p>
-        <CollectorProgress progress={progress} />
+        {lastSynced ? (
+          <p>
+            <time
+              dateTime={new Date(lastSynced).toISOString()}
+              title={serverTimeZoneLabel(timezone)}
+            >
+              Last ingestion {formatServerDateTime(lastSynced, timezone)}
+            </time>
+          </p>
+        ) : null}
+        {localMachine && <CollectorProgress progress={progress} />}
       </PopoverContent>
     </Popover>
   )

@@ -236,15 +236,16 @@ The browser presentation uses the White First design system in root `DESIGN.md`:
 white light surfaces, neutral charcoal dark surfaces, blue actions and chart lines,
 and locally bundled DM Sans. Branding uses a text wordmark. A desktop sidebar owns view navigation; below 55rem,
 the same links wrap above the workspace. The header keeps machine identity,
-a local-only fixed-size status indicator beside the theme switcher, the current view heading
-(`/ Tokens`, for example), and theme selection. Quick periods, wrapping filters,
-static summary strip, chart, and padded result table follow. Controls preserve keyboard access, mobile touch targets, and 200%
+a fixed-size status indicator beside the theme switcher, the current view heading
+(`/ Tokens`, for example), and theme selection. Wrapping filters and quick periods
+share a compact toolbar directly below the header; the static summary strip, chart, and padded result table follow. Controls preserve keyboard access, mobile touch targets, and 200%
 text reflow. Presentation components use existing query state and callbacks;
 URL/history, dataset snapshots, authentication, and request lifecycle remain owned
 by their existing browser modules. Fonts and browser assets are committed and
 embedded by Go, with no remote font or host JavaScript runtime dependency.
 
-Compact spacing, a 12rem plot and reduced row padding keep more results visible
+Compact header/navigation padding, section gaps and gutters, a 12rem plot and
+reduced row padding keep more results visible
 without reducing type or control targets. The redundant dashboard introduction is
 omitted. Hover, keyboard focus, or tap on the loading indicator reveals query and
 processing status plus capability-gated local collection details. Its compact
@@ -253,7 +254,9 @@ system time over the sampling interval (100% is one core); unavailable/initial
 measurements stay unknown. The Web command constructs a synchronized, cached
 process sampler and injects it into its HTTP adapter. Local `/api/v2/status` adds
 optional `processUsage`; hosted handlers neither sample nor expose it, even if
-a sampler is supplied. No measurements are stored. Hosted headers omit this control.
+a sampler is supplied. No measurements are stored. Both local and hosted status
+popups show the last ingestion time in the server timezone; hosted popups omit
+local process resources and collection details.
 The icon keeps the same width for ready, loading, and attention states; accessible status labels
 announce changes, and rotation respects reduced motion. The popup shows active
 runs and the latest completed collection. Failures retain visible recovery beside

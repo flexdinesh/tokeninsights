@@ -210,7 +210,15 @@ function DashboardShell({
           lastSynced={analytics.data?.dashboard.lastSynced}
         />
         <main id="dashboard" className="dashboard">
-          <div className="dashboard-periods">
+          <div className="dashboard-toolbar">
+            {hasCapability(bootstrap, 'facets') && (
+              <FilterToolbar
+                facets={facets.data}
+                revision={revision}
+                enabled={enabled}
+                identity={controller.identity}
+              />
+            )}
             <QuickPeriods />
           </div>
           {query.tab === 'repo' && (
@@ -239,14 +247,6 @@ function DashboardShell({
             </div>
           )}
           <div className="studio-layout">
-            {hasCapability(bootstrap, 'facets') && (
-              <FilterToolbar
-                facets={facets.data}
-                revision={revision}
-                enabled={enabled}
-                identity={controller.identity}
-              />
-            )}
             <DashboardResults
               localMachine={bootstrap.serverKind === 'personal'}
               analytics={analytics}
