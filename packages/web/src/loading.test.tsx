@@ -113,10 +113,10 @@ function mountDashboard(
   return { client, fetcher, state }
 }
 
-it('local query Reload remains available without collection and disabled capability keeps machine context', async () => {
+it('local dashboard omits manual Reload and preserves machine context with either capability setting', async () => {
   const { client, state, fetcher } = mountDashboard()
   expect(await screen.findByLabelText('Total tokens: 647,000')).toBeVisible()
-  expect(screen.getByRole('button', { name: 'Reload' })).toBeEnabled()
+  expect(screen.queryByRole('button', { name: 'Reload' })).not.toBeInTheDocument()
   expect(
     fetcher.mock.calls.some(([input]) => requestPath(input).includes('collector-progress')),
   ).toBe(false)
@@ -173,8 +173,8 @@ it('startup shares one progress request, names harness state and suppresses prem
   })
   const region = await screen.findByRole('region', { name: 'Collector progress' })
   expect(region).toHaveTextContent('Collecting usage')
-  expect(region).toHaveTextContent('codex: running')
-  expect(region).toHaveTextContent('pi: complete')
+  expect(region).toHaveTextContent('codex: Collecting')
+  expect(region).toHaveTextContent('pi: Collected')
   expect(within(screen.getByRole('banner')).getByText('Collecting usage')).toBeVisible()
   expect(screen.queryByText('Ready')).not.toBeInTheDocument()
   expect(
@@ -248,6 +248,20 @@ it('rebuild and processing backoff retain saved totals; due retries return to pr
   expect(await within(screen.getByRole('banner')).findByText('Processing usage')).toBeVisible()
   expect(screen.getByText(/Retrying usage processing/)).toBeVisible()
   expect(screen.getByLabelText('Total tokens: 647,000')).toBeVisible()
+})
+
+it('usage failure retries its saved query without manual Reload or collection', async () => {
+  const { state, fetcher } = mountDashboard({ failure: '/usage?' })
+  const header = await screen.findByRole('banner')
+  expect(await within(header).findByText('Usage couldn’t load')).toBeVisible()
+  expect(screen.queryByRole('button', { name: 'Reload' })).not.toBeInTheDocument()
+  state.failure = ''
+  fetcher.mockClear()
+  await userEvent.click(
+    within(screen.getByRole('alert')).getByRole('button', { name: 'Retry Request' }),
+  )
+  expect(await screen.findByLabelText('Total tokens: 647,000')).toBeVisible()
+  expect(fetcher.mock.calls.every(([input]) => requestPath(input).includes('/usage?'))).toBe(true)
 })
 
 it('filter failure reports its own status and retries without hiding saved usage or machine identity', async () => {
@@ -363,8 +377,34 @@ it('retained completion history stays compact while every running attempt remain
   const region = await screen.findByRole('region', { name: 'Collector progress' })
   expect(within(region).getAllByText(/Usage accepted/)).toHaveLength(1)
   expect(within(region).getAllByText(/Collecting usage/)).toHaveLength(2)
-  expect(within(region).getAllByRole('list', { name: 'Harness collection' })).toHaveLength(3)
-  expect(within(region).getByText('Harness collection').closest('details')).not.toHaveAttribute(
+  expect(
+    within(region).getAllByRole('list', { name: 'Collection by harness', hidden: true }),
+  ).toHaveLength(3)
+  expect(within(region).getByText('Latest collection').closest('details')).not.toHaveAttribute(
     'open',
   )
+  expect(within(region).getByText(/Usage accepted/)).not.toBeVisible()
+})
+
+it('a run with no new harness usage preserves saved totals and explains its scope', async () => {
+  const attempt = progress('accepted').attempts[0]
+  if (!attempt) throw new Error('Missing progress fixture')
+  mountDashboard({
+    bootstrap: {
+      ...mockBootstrap,
+      capabilities: [...mockBootstrap.capabilities, 'collector-progress'],
+    },
+    progress: {
+      instanceId: mockBootstrap.instanceId,
+      attempts: [{ ...attempt, harnesses: { codex: 'skipped' } }],
+    },
+  })
+  expect(await screen.findByLabelText('Total tokens: 647,000')).toBeVisible()
+  await userEvent.click(await screen.findByText('Latest collection'))
+  expect(screen.getByText('codex: No new usage')).toBeVisible()
+  expect(screen.getByText('Status for this run only; saved usage remains included.')).toBeVisible()
+  expect(
+    screen.getByText('No new usage means sources were unchanged or none were found.'),
+  ).toBeVisible()
+  expect(screen.getByLabelText('Total tokens: 647,000')).toBeVisible()
 })

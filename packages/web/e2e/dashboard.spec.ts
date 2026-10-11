@@ -76,8 +76,7 @@ test('empty server explains manual collection without a browser mutation', async
   await expect(
     page.getByText('No usage saved yet. Restart tokeninsights web to collect usage.'),
   ).toBeVisible()
-  await page.getByRole('button', { name: 'Reload', exact: true }).click()
-  await expect(page.getByRole('button', { name: 'Reload', exact: true })).toBeEnabled()
+  await expect(page.getByRole('button', { name: 'Reload', exact: true })).toHaveCount(0)
   expect(mutations).toEqual([])
 })
 
@@ -250,7 +249,7 @@ test('table columns resize by drag and keyboard without sorting', async ({ page 
   await expect(resize).toHaveAttribute('aria-valuenow', '144')
 })
 
-test('saved usage, seven views, filtering, history, pagination, and read-only Reload', async ({
+test('saved usage, seven views, filtering, history, pagination, and automatic refresh', async ({
   page,
 }) => {
   const errors: string[] = []
@@ -356,8 +355,7 @@ test('saved usage, seven views, filtering, history, pagination, and read-only Re
   await expect(page.locator('.session-coverage')).toHaveText('Sessions 60 shown / 80 synced')
   await expect(page.locator('.results-summary')).toContainText('258K')
   expect(syncRequests).toBe(0)
-  await page.getByRole('button', { name: 'Reload', exact: true }).click()
-  await expect(page.getByRole('button', { name: 'Reload', exact: true })).toBeEnabled()
+  await expect(page.getByRole('button', { name: 'Reload', exact: true })).toHaveCount(0)
   await expect(page.getByLabel('Total tokens: 258,000', { exact: true })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Reload Data', exact: true })).toHaveCount(0)
   await page.reload()
@@ -620,7 +618,7 @@ test('themes, keyboard filters, mobile layout, and scalable typography', async (
   await page.keyboard.press('Escape')
   await expect(page.getByRole('button', { name: 'Harness', exact: true })).toBeFocused()
   await page.setViewportSize({ width: 390, height: 844 })
-  await expect(page.getByRole('button', { name: 'Reload', exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Reload', exact: true })).toHaveCount(0)
   await expectNavigationReachable()
   await expect
     .poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth))
@@ -646,7 +644,7 @@ test('themes, keyboard filters, mobile layout, and scalable typography', async (
   await expect
     .poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth))
     .toBe(true)
-  await expect(page.getByRole('button', { name: 'Reload', exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Reload', exact: true })).toHaveCount(0)
   await expectNavigationReachable()
   await page.evaluate(() => {
     document.documentElement.style.fontSize = ''
@@ -678,9 +676,8 @@ for (const address of ['127.0.0.1', 'localhost']) {
     const sync = page.waitForRequest(
       (request) => request.url() === `${origin}/api/v2/status` && request.method() === 'GET',
     )
-    await page.getByRole('button', { name: 'Reload', exact: true }).click()
     await sync
-    await expect(page.getByRole('button', { name: 'Reload', exact: true })).toBeEnabled()
+    await expect(page.getByRole('button', { name: 'Reload', exact: true })).toHaveCount(0)
     await page.reload()
     await expect(page.getByLabel('Total tokens: 258,000', { exact: true })).toBeVisible()
     expect(requests.every((url) => new URL(url).origin === origin)).toBe(true)
@@ -708,7 +705,8 @@ test('custom dates, session search, and saved usage after status failure', async
   await page.route('**/api/v2/status', (route) =>
     route.fulfill({ status: 503, json: { code: 'unavailable', message: 'Status unavailable' } }),
   )
-  await page.getByRole('button', { name: 'Reload', exact: true }).click()
-  await expect(page.getByRole('button', { name: 'Retry Request', exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Retry Request', exact: true })).toBeVisible({
+    timeout: 10000,
+  })
   await expect(page.getByLabel('Total tokens: 4,300', { exact: true })).toBeVisible()
 })

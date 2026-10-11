@@ -12,6 +12,8 @@ import { apiQueryParams } from './state'
 import type { Bootstrap } from './contracts'
 import type { QueryState } from './state'
 
+const dashboardPollIntervalMs = 5_000
+
 export async function request<T>(
   path: string,
   schema: z.ZodType<T>,
@@ -52,7 +54,7 @@ export const useSyncStatus = (enabled = true, datasetId?: string) =>
     queryKey: datasetId === undefined ? ['sync'] : ['sync', datasetId],
     queryFn: ({ signal }) => request('/api/v2/status', statusSchema, signal),
     enabled,
-    refetchInterval: 5000,
+    refetchInterval: dashboardPollIntervalMs,
   })
 
 export function snapshotIdentity(value: {
@@ -155,6 +157,6 @@ export const useCollectorProgress = (enabled: boolean, instanceId: string) =>
       return progress
     },
     enabled,
-    refetchInterval: 1000,
+    refetchInterval: dashboardPollIntervalMs,
     refetchOnWindowFocus: false,
   })

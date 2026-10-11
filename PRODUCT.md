@@ -40,8 +40,8 @@ require a separate authenticated harness export or realtime hooks.
 - Viewers read committed usage through shared direct/HTTP query adapters. TUI
   startup collects and publishes within a progress screen; `tui --sync=false`
   skips collection. Local Web opens after storage initialization and shows
-  collection/processing progress alongside saved data. Dashboard `r` and the
-  local-only browser **Reload** only reload queries. TUI startup errors offer
+  collection/processing progress alongside saved data. Dashboard `r` reloads
+  terminal queries; the browser refreshes saved usage automatically. TUI startup errors offer
   Retry, View saved data, and Quit; Web collection errors preserve saved-data access.
 - Local hostname labels identify the machine running the viewer, including before
   ingestion. They do not attribute imported history to that machine. Loading,

@@ -33,23 +33,6 @@ function setup(initial: SyncStatus | null = ready) {
   return { client, ...renderHook(useDashboardSync, { wrapper: Wrapper }) }
 }
 
-it('Reload reads status and invalidates saved queries without submitting collection', async () => {
-  const fetcher = vi.fn<typeof fetch>(() => Promise.resolve(new Response(JSON.stringify(ready))))
-  vi.stubGlobal('fetch', fetcher)
-  const { result, client, unmount } = setup()
-  client.setQueryData(['usage', 'saved'], { total: 10 })
-  client.setQueryData(['facets', 'saved'], { models: ['model'] })
-  expect(result.current.analyticsEnabled).toBe(true)
-  expect(fetcher).not.toHaveBeenCalled()
-  await act(() => result.current.reload())
-  expect(fetcher).toHaveBeenCalled()
-  expect(fetcher.mock.calls.every(([, init]) => init?.method === 'GET')).toBe(true)
-  expect(client.getQueryState(['usage', 'saved'])?.isInvalidated).toBe(true)
-  expect(client.getQueryState(['facets', 'saved'])?.isInvalidated).toBe(true)
-  unmount()
-  client.clear()
-})
-
 it('database identity changes remove old analytics and facets', async () => {
   vi.stubGlobal(
     'fetch',
@@ -91,7 +74,7 @@ for (const readiness of ['metadata', 'recovery', 'rebuild', 'unavailable']) {
     const { result, client, unmount } = setup()
     client.setQueryData(['usage', 'old'], { saved: true })
     client.setQueryData(['facets', 'old'], { saved: true })
-    await act(() => result.current.reload())
+    await act(() => result.current.statusQuery.refetch())
     await waitFor(() => expect(result.current.analyticsEnabled).toBe(false))
     expect(result.current.identity).toBe('instance//default/1')
     expect(client.getQueryData(['usage', 'old'])).toBeUndefined()

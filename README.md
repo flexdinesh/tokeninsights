@@ -46,12 +46,19 @@ tokeninsights web --sync=false
 `--open=false` to print the URL without opening a browser. One viewer owns a local token
 database at a time. TUI queries and local ingestion never use HTTP. Distributed
 sync can run alongside a local viewer, sharing collector continuity/outbox while
-retaining independent destination acknowledgements. Browser Reload and TUI `r` only query saved data. Browser Reload
-is available only in single-process mode, including `--sync=false`.
+retaining independent destination acknowledgements. TUI `r` only queries saved data.
+The browser checks saved-data status every five seconds and refreshes published
+usage automatically, including with `--sync=false`. It has no manual Reload button;
+failed requests retain Retry controls.
+In-process collector progress also polls every five seconds, during collection
+and while idle. Hosted dashboards never poll collector progress.
 
 Local TUI and Web open after storage initialization, before collection finishes. The
 dashboard shows collection, submission, and processing progress while saved usage
-remains readable; new published revisions refresh automatically. Collection errors
+remains readable; new published revisions refresh automatically.
+Completed browser collection details collapse under **Latest collection**. Harness
+states describe that run only: **No new usage** means unchanged sources or no sources
+found; saved usage from earlier runs remains included. Collection errors
 remain visible without closing the dashboard. Restart `tui` or `web` to retry collection; add `--full-refresh` to reread unchanged quarantined sources. Hosted dashboards expose no collector progress.
 The local hostname identifies the machine running the viewer, not the producer of
 every historical fact. Imported history may include other machines.

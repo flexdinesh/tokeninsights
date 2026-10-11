@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { statusSchema } from '../src/contracts'
+import { dashboardSchema, facetsSchema, statusSchema } from '../src/contracts'
 
 test('chart load failure preserves dashboard controls and results, and reload recovers', async ({
   page,
@@ -16,35 +16,44 @@ test('chart load failure preserves dashboard controls and results, and reload re
   await expect(page.getByRole('region', { name: 'Usage over time', exact: true })).toBeVisible()
 })
 
-test('Reload cancels an older status read and never submits collection', async ({ page }) => {
-  let hold = false
-  let captured = false
-  let release: (() => void) | undefined
+test('published usage refreshes automatically without submitting collection', async ({ page }) => {
+  let updated = false
   const methods: string[] = []
+  page.on('request', (request) => {
+    if (new URL(request.url()).pathname.startsWith('/api/')) methods.push(request.method())
+  })
   await page.route('**/api/v2/status', async (route) => {
-    methods.push(route.request().method())
     const upstream = await route.fetch()
-    const snapshot = statusSchema.parse(await upstream.json())
-    if (hold && !captured) {
-      expect(snapshot.revision).toBeGreaterThan(0)
-      snapshot.revision -= 1
-      captured = true
-      await new Promise<void>((resolve) => {
-        release = resolve
-      })
-    }
-    await route.fulfill({ json: snapshot })
+    const status = statusSchema.parse(await upstream.json())
+    await route.fulfill({ json: { ...status, revision: status.revision + Number(updated) } })
+  })
+  await page.route('**/api/v2/usage?*', async (route) => {
+    const upstream = await route.fetch()
+    const usage = dashboardSchema.parse(await upstream.json())
+    await route.fulfill({
+      json: {
+        ...usage,
+        revision: usage.revision + Number(updated),
+        summary: {
+          ...usage.summary,
+          input: usage.summary.input + Number(updated),
+          total: usage.summary.total + Number(updated),
+        },
+      },
+    })
+  })
+  await page.route('**/api/v2/usage/facets?*', async (route) => {
+    const upstream = await route.fetch()
+    const facets = facetsSchema.parse(await upstream.json())
+    await route.fulfill({ json: { ...facets, revision: facets.revision + Number(updated) } })
   })
   await page.goto('/tokens')
   await expect(page.getByLabel('Total tokens: 258,000', { exact: true })).toBeVisible()
-  hold = true
-  await expect.poll(() => captured, { timeout: 10000 }).toBe(true)
-  // Status polling does not disable Reload; it can supersede an older read.
-  await page.getByRole('button', { name: 'Reload', exact: true }).click()
-  if (!release) throw new Error('Expected a held status request')
-  release()
-  await expect(page.getByRole('button', { name: 'Reload', exact: true })).toBeEnabled()
-  await expect(page.getByLabel('Total tokens: 258,000', { exact: true })).toBeVisible()
+  updated = true
+  await expect(page.getByLabel('Total tokens: 258,001', { exact: true })).toBeVisible({
+    timeout: 10000,
+  })
+  await expect(page.getByRole('button', { name: 'Reload', exact: true })).toHaveCount(0)
   expect(methods.every((method) => method === 'GET')).toBe(true)
 })
 
@@ -75,14 +84,15 @@ test('session search failure keeps its draft and selection and supports retry', 
   await expect(page).toHaveURL(/session=web-session-000/)
 })
 
-test('Reload and sorting preserve expanded Repo directories and focus', async ({ page }) => {
+test('automatic polling and sorting preserve expanded Repo directories and focus', async ({
+  page,
+}) => {
   await page.goto('/repo')
   await page.getByRole('button', { name: 'Show directories', exact: true }).click()
   const expanded = page.getByRole('button', { name: 'Hide directories', exact: true })
   await expect(expanded).toBeVisible()
-  await page.getByRole('button', { name: 'Reload', exact: true }).click()
   await expanded.focus()
-  await expect(page.getByRole('button', { name: 'Reload', exact: true })).toBeEnabled()
+  await page.waitForResponse((response) => new URL(response.url()).pathname === '/api/v2/status')
   await expect(expanded).toBeFocused()
   await expect(page.getByRole('list', { name: 'Recorded directories' })).toBeVisible()
   await page
