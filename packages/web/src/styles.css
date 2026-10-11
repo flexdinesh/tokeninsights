@@ -261,8 +261,17 @@ textarea[aria-invalid='true'] {
   color: var(--color-error);
 }
 .loading-status-details {
+  width: min(18rem, var(--radix-popover-content-available-width));
+  padding: var(--space-3);
   font-size: var(--text-xs);
   overflow-wrap: anywhere;
+}
+.local-resource-usage {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  font-variant-numeric: tabular-nums;
+  color: var(--foreground);
 }
 .loading-status-details > p {
   margin-top: var(--space-2);
@@ -1194,11 +1203,7 @@ textarea {
 a {
   text-underline-offset: 0.2em;
 }
-.brand-mark {
-  width: var(--space-6);
-  height: var(--space-6);
-  object-fit: contain;
-}
+
 .studio-layout {
   display: grid;
   grid-template-columns: minmax(0, 1fr);

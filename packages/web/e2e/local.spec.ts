@@ -209,3 +209,15 @@ test('local web with sync disabled omits manual Reload and never captures source
     await rm(home, { recursive: true, force: true })
   }
 })
+
+test('in-process status reports real resident memory and eventually sampled CPU', async ({
+  page,
+}) => {
+  await page.goto('/tokens')
+  const status = page.getByRole('button', { name: 'Local status: Ready' })
+  await expect(status).toBeVisible()
+  await status.click()
+  const resources = page.getByLabel('Process resource usage')
+  await expect(resources).toContainText(/RAM [\d.,]+ MiB/)
+  await expect(resources).toContainText(/CPU [\d.,]+%/, { timeout: 10_000 })
+})

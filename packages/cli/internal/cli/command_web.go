@@ -13,6 +13,7 @@ import (
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/config"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/localruntime"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/pipeline"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/processusage"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/server"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/serverruntime"
 )
@@ -80,7 +81,7 @@ func runLocalWeb(invocation commandInvocation, settings config.LocalSettings, sy
 	url := "http://" + net.JoinHostPort(host, port)
 	handler := server.NewDataHandlerWithOptions(ctx, sqlanalytics.Source{Store: runtime.Store}, invocation.stderr, server.DataHandlerOptions{
 		Host: settings.Host, InstanceID: runtime.InstanceID, Hostname: runtime.Hostname,
-		Policy: runtime.Policy, Progress: runtime.Progress,
+		Policy: runtime.Policy, Progress: runtime.Progress, ProcessUsage: processusage.New(),
 	})
 	return serveLocalWeb(ctx, runtime.Store, []serverruntime.Binding{{Listener: listener, Handler: handler}}, func() error {
 		_, _ = fmt.Fprintln(invocation.stdout, "Dashboard: "+url)

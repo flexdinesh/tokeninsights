@@ -203,6 +203,9 @@ function DashboardShell({
           timezone={bootstrap.timezone}
           status={status}
           progress={showProgress ? controller.progressQuery.data : undefined}
+          processUsage={
+            controller.statusQuery.error ? undefined : controller.statusQuery.data?.processUsage
+          }
           localMachine={bootstrap.serverKind === 'personal'}
           lastSynced={analytics.data?.dashboard.lastSynced}
         />

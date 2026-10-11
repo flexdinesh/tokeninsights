@@ -100,7 +100,7 @@ it('personal progress is fetched only when the server advertises it', async () =
   vi.stubGlobal('fetch', fetcher)
   const client = renderApp()
   await userEvent.click(
-    await screen.findByRole('button', { name: 'Loading status: Submitting usage' }),
+    await screen.findByRole('button', { name: 'Local status: Submitting usage' }),
   )
   expect(await screen.findByLabelText('Collector progress')).toHaveTextContent('Submitting usage')
   await waitFor(() =>

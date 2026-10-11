@@ -500,6 +500,8 @@ test('themes, keyboard filters, mobile layout, and scalable typography', async (
   expect(bodySize).toBeGreaterThanOrEqual(14)
   const heading = page.getByRole('heading', { name: '/ Tokens', exact: true })
   await expect(heading).toBeVisible()
+  await expect(page.locator('link[rel="icon"]')).toHaveCount(0)
+  await expect(page.locator('.brand img')).toHaveCount(0)
   const sidebar = await page.locator('.dashboard-sidebar').boundingBox()
   const content = await page.locator('.dashboard-main').boundingBox()
   if (!sidebar || !content) throw new Error('Desktop navigation and dashboard must be visible')

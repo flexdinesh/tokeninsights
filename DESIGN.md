@@ -189,7 +189,7 @@ supporting regions, precise typography, and restrained blue actions. Its dark
 theme uses neutral charcoal and soft white ink with the same hierarchy.
 
 Locally bundled DM Sans, tabular numerals, and compact section spacing support
-repeated inspection. Preserve the TokenInsights logo, offline assets, explicit
+repeated inspection. Preserve the TokenInsights text wordmark, offline assets, explicit
 states, and existing analytical behavior.
 
 This browser contract derives from [tokens.css](packages/web/src/tokens.css),
@@ -256,8 +256,8 @@ and complete timeline dates.
 
 A sticky desktop navigation sidebar (12rem) anchors the workspace. It holds the
 brand and all existing view links. The main column keeps a wrapping, sticky header
-(3.5rem minimum height) for the current-view heading, machine identity, a fixed-size
-status indicator, and theme selection, followed by quick periods and horizontal
+(3.5rem minimum height) for the current-view heading, machine identity, a local-only fixed-size
+status indicator beside theme selection, followed by quick periods and horizontal
 wrapping filters.
 
 The spacing scale uses quarter-rem steps, with section gaps of 1rem and desktop
@@ -331,9 +331,10 @@ offset with 16px collision clearance. The header shows the local machine hostnam
 in single-process mode; its accessible label distinguishes viewer identity from
 historical producers. The page origin remains available in the footer. Local and
 hosted dashboards refresh saved usage automatically and retain request retries.
-A fixed-size status icon sits beside the hostname: check when ready, spinner while
-loading, and alert when attention is needed. Hover, keyboard focus, or tap reveals
-query/processing status and capability-gated local harness details in a popup.
+A local-only fixed-size status icon sits beside theme selection: activity when
+ready, spinner while loading, and alert when attention is needed. Hover, keyboard
+focus, or tap reveals a compact popup with process CPU/RAM, query/processing status,
+and capability-gated local harness details. Hosted headers omit this control.
 Completed collection details appear under **Latest collection** inside that popup.
 Harness states describe that run only; **No new usage** explains unchanged or missing sources,
 while previously saved usage remains included. Failures retain visible recovery.

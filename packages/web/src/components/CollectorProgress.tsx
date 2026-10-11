@@ -50,9 +50,9 @@ function AttemptStatus({ attempt }: { attempt: Progress['attempts'][number] }) {
       {attempt.errorCode === 'submission_failed'
         ? 'Submission failed'
         : collectorStages[attempt.stage]}{' '}
-      · {attempt.acknowledgedEntries.toLocaleString()} observations accepted
+      · {attempt.acknowledgedEntries.toLocaleString()} accepted
       {attempt.pendingKnown && attempt.pending > 0
-        ? ` · ${attempt.pending.toLocaleString()} observations remaining`
+        ? ` · ${attempt.pending.toLocaleString()} remaining`
         : ''}
     </p>
   )
@@ -61,17 +61,20 @@ function AttemptStatus({ attempt }: { attempt: Progress['attempts'][number] }) {
 function HarnessStates({ harnesses }: { harnesses: Progress['attempts'][number]['harnesses'] }) {
   return (
     <>
-      <p>Status for this run only; saved usage remains included.</p>
-      <ul aria-label="Collection by harness">
+      <ul aria-label="Collection by harness" title="This run only; saved usage remains included.">
         {Object.entries(harnesses).map(([harness, state]) => (
-          <li key={harness}>
+          <li
+            key={harness}
+            title={
+              state === 'skipped'
+                ? 'Sources unchanged or none found; saved usage included.'
+                : undefined
+            }
+          >
             {harness}: {harnessStates[state]}
           </li>
         ))}
       </ul>
-      {Object.values(harnesses).includes('skipped') && (
-        <p>No new usage means sources were unchanged or none were found.</p>
-      )}
     </>
   )
 }

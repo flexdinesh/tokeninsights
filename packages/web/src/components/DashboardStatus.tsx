@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
-import { Check, CircleAlert, LoaderCircle } from 'lucide-react'
-import type { CollectorProgress as Progress } from '../contracts'
+import { Activity, CircleAlert, LoaderCircle } from 'lucide-react'
+import type { CollectorProgress as Progress, SyncStatus } from '../contracts'
 import { CollectorProgress } from './CollectorProgress'
 import { Button } from './ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from './ui/popover'
@@ -15,9 +15,11 @@ const hoverCloseDelayMs = 150
 export function DashboardStatus({
   status,
   progress,
+  processUsage,
 }: {
   status: DashboardStatusValue
   progress: Progress | undefined
+  processUsage: SyncStatus['processUsage']
 }) {
   const [open, setOpen] = useState(false)
   const closeTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
@@ -48,7 +50,7 @@ export function DashboardStatus({
           variant="ghost"
           size="icon"
           className={`loading-status loading-status-${status.state}`}
-          aria-label={`Loading status: ${status.label}`}
+          aria-label={`Local status: ${status.label}`}
           onPointerEnter={(event) => {
             if (event.pointerType === 'mouse') reveal()
           }}
@@ -68,7 +70,7 @@ export function DashboardStatus({
           ) : status.state === 'attention' ? (
             <CircleAlert aria-hidden="true" />
           ) : (
-            <Check aria-hidden="true" />
+            <Activity aria-hidden="true" />
           )}
           <span className="sr-only" role="status" aria-label={status.label}>
             {status.label}
@@ -78,16 +80,34 @@ export function DashboardStatus({
       <PopoverContent
         align="end"
         className="loading-status-details"
-        aria-label="Loading status details"
+        aria-label="Local status details"
         onPointerEnter={reveal}
         onPointerLeave={leave}
         onOpenAutoFocus={(event) => event.preventDefault()}
         onCloseAutoFocus={(event) => event.preventDefault()}
       >
-        <h2>Loading status</h2>
+        <div className="local-resource-usage" role="group" aria-label="Process resource usage">
+          <span title="TokenInsights process CPU · 100% = one core">
+            CPU{' '}
+            {processUsage?.cpuPercent === undefined
+              ? '—'
+              : `${processUsage.cpuPercent.toFixed(1)}%`}
+          </span>
+          <span title="TokenInsights resident memory">
+            RAM{' '}
+            {processUsage?.residentMemoryBytes === undefined
+              ? '—'
+              : formatMemory(processUsage.residentMemoryBytes)}
+          </span>
+        </div>
         <p>{status.label}</p>
         <CollectorProgress progress={progress} />
       </PopoverContent>
     </Popover>
   )
+}
+
+const bytesPerMiB = 1024 * 1024
+function formatMemory(bytes: number): string {
+  return `${(bytes / bytesPerMiB).toLocaleString(undefined, { maximumFractionDigits: 1 })} MiB`
 }
