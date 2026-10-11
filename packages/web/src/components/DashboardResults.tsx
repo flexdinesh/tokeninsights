@@ -39,7 +39,7 @@ export function DashboardResults({
     previousQuality.current = query.quality
     resultsRef.current?.focus({ preventScroll: true })
   }, [query.quality])
-  const { statusQuery, reload, analyticsEnabled: enabled } = controller
+  const { statusQuery, analyticsEnabled: enabled } = controller
   const received = analytics.data?.dashboard
   const data = (received?.quality ?? 'confirmed') === query.quality ? received : undefined
   const hasData = Boolean(data)
@@ -108,7 +108,7 @@ export function DashboardResults({
         />
       )}
       {enabled && analytics.error && (
-        <ErrorBanner message={analytics.error.message} onRetry={reload} />
+        <ErrorBanner message={analytics.error.message} onRetry={() => void analytics.refetch()} />
       )}
       {enabled && facets.error && (
         <ErrorBanner message="Filter values couldn’t load." onRetry={() => void facets.refetch()} />

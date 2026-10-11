@@ -1,4 +1,4 @@
-import { RefreshCw, LoaderCircle, Monitor, Moon, Sun } from 'lucide-react'
+import { Monitor, Moon, Sun } from 'lucide-react'
 import { useDashboardPreferences, useDashboardQuery } from '../state'
 import { formatServerDateTime, labels, serverTimeZoneLabel } from '../format'
 import { Button } from './ui/button'
@@ -6,21 +6,15 @@ import { Button } from './ui/button'
 export function DashboardHeader({
   hostname,
   timezone,
-  reloading,
   statusLabel,
   localMachine,
-  allowReload,
   lastSynced,
-  onReload,
 }: {
   hostname: string
   timezone: string
-  reloading: boolean
   statusLabel: string
   localMachine: boolean
-  allowReload: boolean
   lastSynced?: number
-  onReload: () => void
 }) {
   const { theme, setTheme } = useDashboardPreferences()
   const { query } = useDashboardQuery()
@@ -69,18 +63,6 @@ export function DashboardHeader({
             <Monitor size="1.1em" />
           )}
         </Button>
-        {allowReload && (
-          <Button
-            variant="outline"
-            className="sync-button"
-            size="sm"
-            disabled={reloading}
-            onClick={onReload}
-          >
-            {reloading ? <LoaderCircle size="1em" className="spin" /> : <RefreshCw size="1em" />}
-            <span>Reload</span>
-          </Button>
-        )}
       </div>
     </header>
   )

@@ -188,7 +188,7 @@ White First is a mature measurement workspace: white surfaces, neutral gray
 supporting regions, precise typography, and restrained blue actions. Its dark
 theme uses neutral charcoal and soft white ink with the same hierarchy.
 
-Locally bundled DM Sans, tabular numerals, and generous section spacing support
+Locally bundled DM Sans, tabular numerals, and compact section spacing support
 repeated inspection. Preserve the TokenInsights logo, offline assets, explicit
 states, and existing analytical behavior.
 
@@ -256,18 +256,18 @@ and complete timeline dates.
 
 A sticky desktop navigation sidebar (12rem) anchors the workspace. It holds the
 brand and all existing view links. The main column keeps a wrapping, sticky header
-(4rem minimum height) for machine identity, progress, theme selection, and local
-Reload, followed by a visible
+(3.5rem minimum height) for machine identity, progress, and theme selection,
+followed by a visible
 dashboard title, quick periods, and horizontal wrapping filters.
 
-The spacing scale uses quarter-rem steps, with section gaps of 1.5rem and desktop
-page gutters of 2rem. Below 75rem, gutters reduce to 1rem. Content caps at 100rem;
+The spacing scale uses quarter-rem steps, with section gaps of 1rem and desktop
+page gutters of 1.5rem. Below 75rem, gutters reduce to 1rem. Content caps at 100rem;
 readouts, chart, and table align to shared gutters. Five static readouts form a
 single rule-separated strip. At 45rem of readout-container width they become two
 columns with the total spanning both. Readouts have no individual cards or
 interactive selection treatment.
 
-The plot is 15rem tall. Controls wrap; axes reserve room for complete date/category
+The plot is 12rem tall. Controls wrap; axes reserve room for complete date/category
 labels and automatic Y-axis width. The context legend sits outside the SVG and
 wraps. Chart geometry remains separate from global spacing tokens.
 
@@ -279,7 +279,7 @@ Mobile/coarse-pointer controls grow to 2.75rem. Widths and type follow the root
 font size; preserve reflow at 200% text.
 
 Tables scroll within their own region, capped at 35rem, with sticky headings.
-Padded rows use fine rules, neutral headings, and right-aligned numeric cells.
+Rows use 0.5rem vertical padding, fine rules, neutral headings, and right-aligned numeric cells.
 The independent result summary describes all filtered results. Headings and cells
 keep shared horizontal gutters, including outer edges.
 
@@ -329,10 +329,13 @@ outline, with no nested input shadow; multiselect rows retain checkbox labels an
 Popovers target 22rem width, scroll within available height, and use 8px anchor
 offset with 16px collision clearance. The header shows the local machine hostname
 in single-process mode; its accessible label distinguishes viewer identity from
-historical producers. The page origin remains available in the footer. Local-only
-Reload refreshes reads; hosted retains automatic refresh and request retry.
+historical producers. The page origin remains available in the footer. Local and
+hosted dashboards refresh saved usage automatically and retain request retries.
 Collection/submission and processing progress use compact status text beside saved
-data. Connection failures retain retry controls; usage/filter errors identify the
+data. Successful collection details collapse under **Latest collection**. Harness
+states describe that run only; **No new usage** explains unchanged or missing sources,
+while previously saved usage remains included. Failures retain visible recovery.
+Connection failures retain retry controls; usage/filter errors identify the
 failed request without marking the entire server unavailable.
 
 ### Navigation and chips

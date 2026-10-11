@@ -163,7 +163,7 @@ Collector validates acceptance independently of mutable processing status.
 Sync finishes at acceptance, not query visibility. Local TUI and Web read published
 history while command-owned capture, submission and processing continue. TUI refresh
 completion requires processing visibility and a successful read of the current
-published revision. Reload queries only. Collection progress retains acknowledged evidence counts; TUI
+published revision. TUI reload queries only. Collection progress retains acknowledged evidence counts; TUI
 phase text separates submission from processing. Load failures distinguish storage,
 collection and processing problems without exposing private error causes. Browser reports lag/separate estimates. No viewer
 waits for global hosted queue emptiness.
@@ -236,13 +236,25 @@ The browser presentation uses the White First design system in root `DESIGN.md`:
 white light surfaces, neutral charcoal dark surfaces, blue actions and chart lines,
 and locally bundled DM Sans. A desktop sidebar owns view navigation; below 55rem,
 the same links wrap above the workspace. The header keeps machine identity,
-capability-gated progress, theme selection, and local Reload. A visible title,
+capability-gated progress and theme selection. A visible title,
 quick periods, wrapping filters, static summary strip, chart, and padded result
 table follow. Controls preserve keyboard access, mobile touch targets, and 200%
 text reflow. Presentation components use existing query state and callbacks;
 URL/history, dataset snapshots, authentication, and request lifecycle remain owned
 by their existing browser modules. Fonts and browser assets are committed and
 embedded by Go, with no remote font or host JavaScript runtime dependency.
+
+Compact spacing, a 12rem plot and reduced row padding keep more results visible
+without reducing type or control targets. Successful browser collection collapses
+under **Latest collection**; active and failed runs retain visible status/recovery.
+Harness labels describe the collection run, independently of saved analytics.
+The wire state `skipped` displays as **No new usage**: unchanged sources or no
+sources found, without implying that previously saved usage is excluded. Both local
+and hosted browsers poll saved-data status every five seconds and refresh published
+revisions automatically; there is no manual dashboard Reload button. Request failures
+retain Retry controls. Browser reads never trigger collection.
+In-process collector progress uses the same five-second polling interval,
+including after a run finishes. Hosted browsers do not poll collector progress.
 
 ## Generations and preserved history
 
@@ -307,8 +319,9 @@ permissions separately. `usage`, `facets`, `web-dashboard`, `raw-ingestion`,
 `terminal-dashboard`, `collector-progress`, `dashboard-reload`, `reprocess` determine mounted routes
 and command/browser preflight. Unknown feature names are ignored; absent required
 features/unknown kinds reject. Hosted cannot enable terminal-dashboard,
-collector-progress or dashboard-reload. Local composition explicitly grants Reload,
-including saved-only viewers; it is independent of collection progress. Progress
+collector-progress or dashboard-reload. Local composition still advertises the
+dashboard-reload capability, including saved-only viewers; the browser uses
+automatic refresh rather than a manual Reload control. Progress
 requires an installed command-owned registry. The localruntime observer publishes directly
 to that registry for startup capture, retaining bounded leases and
 heartbeats. Single-process TUI composition additionally enables opt-in capture
@@ -397,7 +410,7 @@ sort, focused row identity, scroll position where possible, and drawer drafts. A
 empty saved snapshot says usage will appear automatically during refresh; definitive
 empty-state guidance follows refresh completion. `--sync=false` skips startup
 capture and visibility waiting, but existing durable processing resumes and can
-refresh the displayed revision. Reload is query-only. Viewer filters never restart
+refresh the displayed revision. TUI reload is query-only. Viewer filters never restart
 capture or select processing work. Remote TUI is unavailable. Browse opens hosted browser login without submitting.
 
 Local visibility reads count pending scopes and failed pending scopes in the same
@@ -432,7 +445,7 @@ Abandoned running claims become interrupted; pending evidence stays in the outbo
 Local viewers own no operational jobs store or handoff loop. Startup collection
 runs once; restart the viewer to recollect. `--sync=false` suppresses capture while
 durable processing resumes; `--full-refresh` and `--source-dir` affect startup
-capture only. Viewer filters and Reload remain query-only. Remote plugins invoke
+capture only. Viewer filters and TUI reload remain query-only. Remote plugins invoke
 `sync --wait --harness`; TypeScript adapters coalesce overlaps and retain a follow-up
 pass without forwarding payloads. Existing jobs storage/remote job format stays
 unchanged. Removed nonterminal local requests remain stored and are reported as

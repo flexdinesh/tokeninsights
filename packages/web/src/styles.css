@@ -144,11 +144,11 @@ textarea[aria-invalid='true'] {
   align-self: start;
   display: flex;
   flex-direction: column;
-  gap: var(--space-8);
+  gap: var(--space-6);
   height: 100svh;
   overflow-y: auto;
   min-width: 0;
-  padding: var(--space-8) var(--space-4);
+  padding: var(--space-6) var(--space-4);
   background: var(--rail-surface);
   border-right: var(--border-width) solid var(--border);
 }
@@ -171,10 +171,10 @@ textarea[aria-invalid='true'] {
   align-items: center;
   flex-wrap: wrap;
   gap: var(--space-4);
-  margin-bottom: var(--space-6);
+  margin-bottom: var(--space-4);
 }
 .dashboard-heading p {
-  margin-top: var(--space-2);
+  margin-top: var(--space-1);
   color: var(--muted-foreground);
 }
 .app-header {
@@ -182,7 +182,7 @@ textarea[aria-invalid='true'] {
   top: 0;
   z-index: var(--layer-header);
   min-height: var(--header-height);
-  padding: var(--space-3) var(--page-gutter);
+  padding: var(--space-2) var(--page-gutter);
   background: var(--color-surface);
   border-bottom: var(--border-width) solid var(--color-border);
   display: flex;
@@ -268,12 +268,12 @@ textarea[aria-invalid='true'] {
   container-type: inline-size;
   container-name: dashboard;
   max-width: var(--content-width);
-  padding: var(--space-8) var(--page-gutter);
+  padding: var(--space-4) var(--page-gutter);
   margin: 0 auto;
 }
 .filters {
   min-width: 0;
-  padding: 0 0 var(--space-6);
+  padding: 0 0 var(--space-3);
 }
 .filter-toolbar {
   display: flex;
@@ -428,8 +428,8 @@ textarea[aria-invalid='true'] {
   display: grid;
   grid-template-columns: 1.25fr repeat(4, minmax(0, 1fr));
   gap: var(--space-4);
-  padding: var(--space-6) 0;
-  margin: 0 0 var(--space-6);
+  padding: var(--space-3) 0;
+  margin: 0 0 var(--space-4);
   border-bottom: var(--border-width) solid var(--color-border);
 }
 .summary-card {
@@ -437,7 +437,7 @@ textarea[aria-invalid='true'] {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: var(--space-2);
+  gap: var(--space-1);
   text-align: left;
 }
 .summary-card .metric-label {
@@ -461,7 +461,7 @@ textarea[aria-invalid='true'] {
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-3);
-  padding-bottom: var(--space-6);
+  padding-bottom: var(--space-3);
 }
 .view-tabs {
   display: grid;
@@ -537,7 +537,7 @@ textarea[aria-invalid='true'] {
   align-items: center;
   justify-content: space-between;
   gap: var(--space-4);
-  padding: var(--space-6) 0 var(--space-4);
+  padding: var(--space-4) 0 var(--space-3);
 }
 .panel-heading > div {
   min-width: 0;
@@ -551,10 +551,10 @@ textarea[aria-invalid='true'] {
   border: 0;
   border-radius: 0;
   background: transparent;
-  margin: var(--space-6) 0;
+  margin: var(--space-4) 0;
 }
 .chart-panel .panel-heading {
-  padding-block: 0 var(--space-4);
+  padding-block: 0 var(--space-2);
   flex-wrap: wrap;
 }
 .chart-controls {
@@ -704,7 +704,7 @@ th {
   font-weight: var(--weight-medium);
   font-size: var(--text-xs);
   color: var(--color-text-secondary);
-  padding: var(--space-2) var(--space-4);
+  padding: var(--space-1) var(--space-4);
   white-space: nowrap;
 }
 th button {
@@ -756,7 +756,7 @@ th[aria-sort='descending'] {
 }
 td {
   border-bottom: var(--border-width) solid var(--color-border);
-  padding: var(--space-3) var(--space-4);
+  padding: var(--space-2) var(--space-4);
   vertical-align: middle;
 }
 tbody tr:last-child td {
@@ -851,7 +851,7 @@ tbody tr:hover {
   display: inline-flex;
   align-items: center;
   gap: var(--space-1);
-  min-block-size: 2.75rem;
+  min-block-size: var(--control-height-compact);
   padding: 0;
   border: 0;
   border-radius: var(--radius-sm);
@@ -1437,8 +1437,22 @@ a {
   color: var(--color-error);
 }
 .collector-progress {
-  padding-block: var(--space-3);
+  padding-block: 0 var(--space-3);
   color: var(--color-text-muted);
+  font-size: var(--text-xs);
+}
+.collector-progress summary {
+  width: fit-content;
+  min-height: var(--control-height-compact);
+  align-content: center;
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+}
+.collector-progress summary:hover {
+  color: var(--color-text-primary);
+}
+.collector-progress summary:focus-visible {
+  outline: var(--focus-width) solid var(--ring);
 }
 .collector-progress p {
   margin-block: var(--space-1);
@@ -1473,8 +1487,8 @@ a {
     position: relative;
     height: auto;
     overflow: visible;
-    padding: var(--space-6) var(--page-gutter);
-    gap: var(--space-4);
+    padding: var(--space-3) var(--page-gutter);
+    gap: var(--space-2);
     border-right: 0;
     border-bottom: var(--border-width) solid var(--border);
   }

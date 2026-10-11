@@ -10,8 +10,6 @@ export function useDashboardSync(
   const statusQuery = useSyncStatus(true, datasetId)
   const progressEnabled = progress?.enabled ?? false
   const progressQuery = useCollectorProgress(progressEnabled, progress?.instanceId ?? '')
-  const [reloading, setReloading] = useState(false)
-  const reloadPending = useRef(false)
   const status = statusQuery.data
   const revision = status?.revision ?? 0
   const identity = status ? snapshotIdentity(status) : ''
@@ -69,23 +67,6 @@ export function useDashboardSync(
     }
   }, [client, revision, identity])
 
-  async function reload() {
-    if (reloadPending.current) return
-    reloadPending.current = true
-    setReloading(true)
-    try {
-      // Cancel older reads before obtaining the current database identity/revision.
-      await client.cancelQueries({ queryKey: ['sync'] })
-      await client.invalidateQueries({ queryKey: ['sync'] })
-      await client.invalidateQueries({ queryKey: ['instance'] })
-      await Promise.all(
-        ['usage', 'facets'].map((key) => client.invalidateQueries({ queryKey: [key] })),
-      )
-    } finally {
-      reloadPending.current = false
-      setReloading(false)
-    }
-  }
   return {
     statusQuery,
     progressQuery,
@@ -97,8 +78,6 @@ export function useDashboardSync(
     processingBackoff:
       (status?.failed ?? 0) > 0 && (status?.failedRetryAtMs ?? 0) > statusQuery.dataUpdatedAt,
     loading: collectionPending || processingPending || !status,
-    reload,
-    reloading,
     revision,
     identity,
     analyticsEnabled:

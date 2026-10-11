@@ -10,7 +10,7 @@ import {
   useFacets,
 } from './api'
 import { clearAccountQueries } from './session'
-import { allowsDashboardReload, hasCapability, showsCollectorProgress } from './capabilities'
+import { hasCapability, showsCollectorProgress } from './capabilities'
 import { TokenLogin } from './components/TokenLogin'
 import { CollectorProgress, collectorStages } from './components/CollectorProgress'
 import type { Bootstrap } from './contracts'
@@ -206,12 +206,9 @@ function DashboardShell({
         <DashboardHeader
           hostname={bootstrap.hostname}
           timezone={bootstrap.timezone}
-          reloading={controller.reloading}
           statusLabel={statusLabel}
           localMachine={bootstrap.serverKind === 'personal'}
-          allowReload={allowsDashboardReload(bootstrap)}
           lastSynced={analytics.data?.dashboard.lastSynced}
-          onReload={() => void controller.reload()}
         />
         <main id="dashboard" className="dashboard">
           <div className="dashboard-heading">
@@ -297,7 +294,7 @@ function dashboardStatusLabel(
   if (controller.collectionStage) return collectorStages[controller.collectionStage]
   if (controller.processingPending)
     return controller.processingBackoff ? 'Processing retry pending' : 'Processing usage'
-  if (controller.loading || controller.reloading) return 'Loading…'
+  if (controller.loading) return 'Loading…'
   if (
     controller.analyticsEnabled &&
     hasCapability(bootstrap, 'usage') &&

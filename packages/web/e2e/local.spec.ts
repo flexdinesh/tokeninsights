@@ -71,7 +71,7 @@ async function localEnvironment(home: string) {
   }
 }
 
-test('foreground web collects directly, keeps Reload read-only and stops with its command', async ({
+test('foreground web collects directly, keeps polling read-only and stops with its command', async ({
   page,
 }) => {
   const home = await mkdtemp(join(tmpdir(), 'ti-managed-web-'))
@@ -117,7 +117,7 @@ test('foreground web collects directly, keeps Reload read-only and stops with it
     await page.goto(origin + '/tokens')
     await expect(page.getByLabel('Total tokens: 120', { exact: true })).toBeVisible()
     await expect(page.getByTitle(/Local machine running this dashboard/)).toHaveText(hostname())
-    // A later source must remain uncollected when Reload refreshes queries.
+    // A later source must remain uncollected while the dashboard polls saved queries.
     await writeFile(
       join(sessions, 'later.jsonl'),
       [
@@ -137,8 +137,8 @@ test('foreground web collects directly, keeps Reload read-only and stops with it
         .map((record) => JSON.stringify(record))
         .join('\n'),
     )
-    await page.getByRole('button', { name: 'Reload', exact: true }).click()
-    await expect(page.getByRole('button', { name: 'Reload', exact: true })).toBeEnabled()
+    await expect(page.getByRole('button', { name: 'Reload', exact: true })).toHaveCount(0)
+    await page.waitForResponse((response) => new URL(response.url()).pathname === '/api/v2/status')
     await expect(page.getByLabel('Total tokens: 120', { exact: true })).toBeVisible()
     expect(methods.every((method) => method === 'GET')).toBe(true)
   } finally {
@@ -157,7 +157,7 @@ test('foreground web collects directly, keeps Reload read-only and stops with it
     .toBe(true)
 })
 
-test('local web with sync disabled still advertises query Reload and never captures source usage', async ({
+test('local web with sync disabled omits manual Reload and never captures source usage', async ({
   page,
 }) => {
   const home = await mkdtemp(join(tmpdir(), 'ti-saved-web-'))
@@ -198,8 +198,8 @@ test('local web with sync disabled still advertises query Reload and never captu
       page.getByText('No usage saved yet. Restart tokeninsights web to collect usage.'),
     ).toBeVisible()
     await expect(page.getByRole('region', { name: 'Collector progress' })).toHaveCount(0)
-    await page.getByRole('button', { name: 'Reload', exact: true }).click()
-    await expect(page.getByRole('button', { name: 'Reload', exact: true })).toBeEnabled()
+    await expect(page.getByRole('button', { name: 'Reload', exact: true })).toHaveCount(0)
+    await page.waitForResponse((response) => new URL(response.url()).pathname === '/api/v2/status')
     await expect(
       page.getByText('No usage saved yet. Restart tokeninsights web to collect usage.'),
     ).toBeVisible()

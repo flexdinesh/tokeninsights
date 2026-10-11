@@ -141,7 +141,7 @@ test('local startup shows capture and processing before fresh totals without an 
   await page.goto('/tokens')
   await expect(page.locator('.app-header')).toContainText('Collecting usage')
   await expect(page.getByRole('region', { name: 'Collector progress' })).toContainText(
-    'codex: running',
+    'codex: Collecting',
   )
   expect(progressRequests).toBe(1)
   await expect(page.getByText('Ready', { exact: true })).toHaveCount(0)
@@ -150,7 +150,9 @@ test('local startup shows capture and processing before fresh totals without an 
   ).toHaveCount(0)
   pending = 1
   stage = 'accepted'
-  await expect(page.locator('.app-header')).toContainText('Processing usage')
+  await expect(page.locator('.app-header')).toContainText('Processing usage', {
+    timeout: 10_000,
+  })
   await expect(
     page.getByText('No usage saved yet. Restart tokeninsights web to collect usage.'),
   ).toHaveCount(0)

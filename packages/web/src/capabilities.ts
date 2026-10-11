@@ -21,11 +21,3 @@ export function showsCollectorProgress(server: Bootstrap): boolean {
     hasCapability(server, 'collector-progress')
   )
 }
-
-export function allowsDashboardReload(server: Bootstrap): boolean {
-  return (
-    server.serverKind === 'personal' &&
-    server.permissions.includes('read') &&
-    hasCapability(server, 'dashboard-reload')
-  )
-}
