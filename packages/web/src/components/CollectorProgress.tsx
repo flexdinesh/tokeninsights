@@ -44,7 +44,7 @@ export function CollectorProgress({ progress }: { progress: Progress | undefined
           )}
           {(attempt.stage === 'failed' || attempt.stage === 'interrupted') && (
             <p role="alert">
-              Saved usage remains available. Run tokeninsights sync to retry collection.
+              Saved usage remains available. Restart tokeninsights web to retry collection.
             </p>
           )}
         </div>

@@ -16,7 +16,7 @@ var configCommand = commandSpec{name: "config", run: runConfig}
 
 func runConfig(invocation commandInvocation, args []string) error {
 	if len(args) == 1 && (args[0] == "--help" || args[0] == "-h") {
-		_, err := fmt.Fprintln(invocation.stdout, "usage: tokeninsights config set KEY VALUE | get KEY | remove KEY\nKeys: mode, server-url, server-token, host, port, collector-db-path, server-db-path, app-db-path\nSet server-token without VALUE to read securely from terminal/stdin. get never prints tokens.\nRuntime precedence: flags > environment > file > defaults.")
+		_, err := fmt.Fprintln(invocation.stdout, "usage: tokeninsights config set KEY VALUE | get KEY | remove KEY\nKeys: collector.db-path, in-process.server-db-path, in-process.app-db-path, in-process.host, in-process.port, distributed.server-url, distributed.server-token\nSet distributed.server-token without VALUE to read securely from terminal/stdin. get never prints tokens.\nRuntime precedence: flags > environment > file > defaults.")
 		return err
 	}
 	if len(args) < 2 {
@@ -43,7 +43,7 @@ func runConfig(invocation commandInvocation, args []string) error {
 		_, err = fmt.Fprintln(invocation.stdout, value)
 		return err
 	}
-	secret := action == "set" && key == "server-token" && len(args) == 2
+	secret := action == "set" && key == "distributed.server-token" && len(args) == 2
 	if action != "set" && action != "remove" || action == "set" && len(args) != 3 && !secret || action == "remove" && len(args) != 2 {
 		return fmt.Errorf("usage: tokeninsights config set KEY VALUE | get KEY | remove KEY\n%w", ErrUsage)
 	}
@@ -55,8 +55,8 @@ func runConfig(invocation commandInvocation, args []string) error {
 			return err
 		}
 	} else if action == "set" {
-		if key == "server-token" {
-			return fmt.Errorf("set server-token without VALUE; token is read from terminal/stdin\n%w", ErrUsage)
+		if key == "distributed.server-token" {
+			return fmt.Errorf("set distributed.server-token without VALUE; token is read from terminal/stdin\n%w", ErrUsage)
 		}
 		value = args[2]
 	}

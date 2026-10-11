@@ -58,7 +58,6 @@ async function localEnvironment(home: string) {
   return {
     ...process.env,
     HOME: home,
-    TOKENINSIGHTS_MODE: 'single-process',
     TOKENINSIGHTS_SERVER_URL: '',
     TOKENINSIGHTS_ACCESS_TOKEN: '',
     XDG_RUNTIME_DIR: runtime,
@@ -195,11 +194,15 @@ test('local web with sync disabled still advertises query Reload and never captu
     expect(descriptor.capabilities).toContain('dashboard-reload')
     expect(descriptor.hostname).toBe(hostname())
     await page.goto(running.origin + '/tokens')
-    await expect(page.getByText('No usage saved yet. Run tokeninsights sync.')).toBeVisible()
+    await expect(
+      page.getByText('No usage saved yet. Restart tokeninsights web to collect usage.'),
+    ).toBeVisible()
     await expect(page.getByRole('region', { name: 'Collector progress' })).toHaveCount(0)
     await page.getByRole('button', { name: 'Reload', exact: true }).click()
     await expect(page.getByRole('button', { name: 'Reload', exact: true })).toBeEnabled()
-    await expect(page.getByText('No usage saved yet. Run tokeninsights sync.')).toBeVisible()
+    await expect(
+      page.getByText('No usage saved yet. Restart tokeninsights web to collect usage.'),
+    ).toBeVisible()
     await expect(page.getByLabel('Total tokens: 120', { exact: true })).toHaveCount(0)
   } finally {
     await running.stop()

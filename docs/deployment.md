@@ -33,7 +33,7 @@ database secret. No config-file discovery or runtime reload is performed.
 | Environment variable | Flag | Default / requirement |
 | --- | --- | --- |
 | `TOKENINSIGHTS_STORAGE_BACKEND` | `--storage-backend` | `sqlite`; alternatively `postgres` |
-| `TOKENINSIGHTS_LISTEN` | `--listen` | `0.0.0.0:8765`, IPv4 address and port |
+| `TOKENINSIGHTS_LISTEN` | `--listen` | `0.0.0.0:8766`, IPv4 address and port |
 | `TOKENINSIGHTS_PUBLIC_URL` | `--public-url` | Required canonical HTTPS origin |
 | `TOKENINSIGHTS_SERVER_DB_PATH` | `--server-db-path` | Required for SQLite; forbidden for PostgreSQL |
 | `TOKENINSIGHTS_APP_DB_PATH` | `--app-db-path` | SQLite: `app.sqlite` beside token database |
@@ -74,7 +74,7 @@ does not print the DSN. Do not put credentials in tracked Compose files.
 ```sh
 # Set TOKENINSIGHTS_POSTGRES_DSN using your secret provider.
 tokeninsights-server --storage-backend postgres \
-  --listen 0.0.0.0:8765 --public-url https://usage.example.com \
+  --listen 0.0.0.0:8766 --public-url https://usage.example.com \
   --admin-socket /run/tokeninsights/admin.sock
 
 # Same server against an externally provisioned database:
@@ -98,7 +98,7 @@ engine, through separate interfaces and transaction boundaries.
 ## Hosted server
 
 Provide a canonical HTTPS dashboard URL. A TLS reverse proxy on the host forwards
-that origin to `127.0.0.1:8765`; provision certificates and proxy separately.
+that origin to `127.0.0.1:8766`; provision certificates and proxy separately.
 Forward the original `Host` header and preserve request path/body. No externally
 published admin endpoint is needed.
 
@@ -107,7 +107,7 @@ as follows (certificate/server configuration remains deployment-owned):
 
 ```nginx
 location / {
-    proxy_pass http://127.0.0.1:8765;
+    proxy_pass http://127.0.0.1:8766;
     proxy_set_header Host $http_host;
     proxy_set_header X-Forwarded-For $remote_addr;
     client_max_body_size 1m;
@@ -142,7 +142,7 @@ to an account. Every hosted user has one dataset; all users share `/data/server.
 The equivalent native process is:
 
 ```sh
-tokeninsights-server --listen 127.0.0.1:8765 \
+tokeninsights-server --listen 127.0.0.1:8766 \
   --server-db-path /var/lib/tokeninsights/server.sqlite \
   --app-db-path /var/lib/tokeninsights/app.sqlite \
   --public-url https://usage.example.com \
@@ -174,19 +174,18 @@ can rotate without resetting dataset history or collector delivery progress.
 On each collector machine:
 
 ```sh
-tokeninsights config set mode distributed
-tokeninsights config set server-url https://usage.example.com
-tokeninsights config set server-token
+tokeninsights config set distributed.server-url https://usage.example.com
+tokeninsights config set distributed.server-token
 tokeninsights sync
-tokeninsights web
+tokeninsights browse
 ```
 
-`config set server-token` reads stdin or prompts securely. Passing a token value
-as an argument is rejected; `config get server-token` never prints it. The private
+`config set distributed.server-token` reads stdin or prompts securely. Passing a token value
+as an argument is rejected; `config get distributed.server-token` never prints it. The private
 home config file stores credentials. `TOKENINSIGHTS_ACCESS_TOKEN` provides an
 environment override. Endpoint/configuration errors never trigger local fallback.
 
-Hosted `web` syncs with terminal progress and opens the browser. Browser token
+`browse` opens the configured URL without syncing or requiring a token. `sync` uploads independently; local `web` always serves in-process usage on port 8765. Browser token
 login requires read permission and exchanges the token for an opaque 24-hour,
 HttpOnly/Secure/SameSite=Lax cookie. Sessions are read-only; logout revokes the
 session. User disable/source-token revocation invalidate access. Bearer tokens are

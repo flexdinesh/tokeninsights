@@ -38,7 +38,7 @@ func (m interactiveModel) startCollection() interactiveModel {
 	m.refresh.requested, m.refresh.collectionPending = true, true
 	m.refreshAnimating = true
 	m.collectionDone = m.options.local.StartCollection(m.ctx, pipeline.SyncOptions{
-		Harnesses: pipeline.SupportedHarnesses, Now: m.now,
+		Harnesses: pipeline.SupportedHarnesses, Now: m.now, FullRefresh: m.options.fullRefresh, SourceDir: m.options.sourceDir,
 	}, runViewCollector)
 	if attempt := currentCollection(m.options.local.Progress.Snapshot()); attempt != nil {
 		m.refresh.startupAttemptID = attempt.AttemptID
@@ -156,7 +156,7 @@ func (m interactiveModel) refreshLine() string {
 		if attempt := m.refresh.attempt; attempt != nil {
 			switch attempt.Stage {
 			case "waiting":
-				stage = "waiting for another sync"
+				stage = "waiting for another collector"
 			case "submitting":
 				stage = "submitting collected data"
 			}
@@ -170,9 +170,9 @@ func (m interactiveModel) refreshLine() string {
 			compact = fmt.Sprintf("Submitting · %d accepted · %d pending", attempt.AcknowledgedEntries, attempt.Pending)
 		}
 	case m.collectionFailed():
-		text, compact, failed = "Refresh incomplete · showing saved usage · run tokeninsights sync", "Refresh incomplete · saved usage", true
+		text, compact, failed = "Refresh incomplete · showing saved usage · restart tokeninsights tui", "Refresh incomplete · saved usage", true
 		if m.refresh.result != nil && m.refresh.result.Result.Collection.Quarantined > 0 {
-			text = "Refresh incomplete · retry: tokeninsights sync --full-refresh"
+			text = "Refresh incomplete · restart: tokeninsights tui --full-refresh"
 		}
 	case m.pendingRefresh || m.sharedSync.Running:
 		text, compact, busy = "Refreshing usage · processing collected data · updates automatically", "Processing · auto-updating", true

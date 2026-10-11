@@ -3,6 +3,7 @@ import type { Server } from 'node:http'
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
+import { CollectorProgressResponse, StatusResponseV2 } from '../src/generated/api.ts'
 import {
   adminRequest,
   hostedBackend,
@@ -85,7 +86,6 @@ function localEnvironment(home: string): NodeJS.ProcessEnv {
   return {
     ...process.env,
     HOME: home,
-    TOKENINSIGHTS_MODE: 'single-process',
     TOKENINSIGHTS_SERVER_URL: '',
     TOKENINSIGHTS_ACCESS_TOKEN: '',
     XDG_DATA_HOME: join(home, '.local/share'),
@@ -101,7 +101,6 @@ function startServer(home: string, port: string) {
     resolve('../cli/bin/tokeninsights'),
     [
       'web',
-      '--sync=false',
       '--open=false',
       '--host',
       '0.0.0.0',
@@ -116,26 +115,6 @@ function startServer(home: string, port: string) {
   )
 }
 
-// Production single-process capture, direct acceptance and visibility waiting.
-await new Promise<void>((resolveRun, rejectRun) => {
-  const child = spawn(
-    resolve('../cli/bin/tokeninsights'),
-    [
-      'sync',
-      '--all',
-      '--collector-db-path',
-      join(localHome, 'collector.sqlite'),
-      '--server-db-path',
-      join(localHome, 'server.sqlite'),
-    ],
-    { stdio: 'inherit', env: localEnvironment(localHome) },
-  )
-  child.once('error', rejectRun)
-  child.once('exit', (code) => {
-    if (code === 0) resolveRun()
-    else rejectRun(new Error('local fixture sync failed'))
-  })
-})
 const hostedHome = join(localHome, 'hosted')
 await mkdir(hostedHome)
 const hostedSocket = join(hostedHome, 'admin.sock')
@@ -203,6 +182,34 @@ for (const child of children) {
 }
 
 try {
+  // The foreground local command owns fixture capture and processing.
+  const localDeadline = Date.now() + 30000
+  for (;;) {
+    const local = children[0]
+    if (!local || local.exitCode !== null || local.signalCode !== null)
+      throw new Error('Local fixture exited before capture completed')
+    let accepted = false
+    try {
+      const response = await fetch('http://127.0.0.1:18765/api/v2/collector-progress')
+      if (response.ok) {
+        const progress = CollectorProgressResponse.parse(await response.json())
+        if (progress.attempts.some((attempt) => ['failed', 'interrupted'].includes(attempt.stage)))
+          throw new Error('Local fixture capture failed')
+        accepted = progress.attempts.some((attempt) => attempt.stage === 'accepted')
+      }
+    } catch (error) {
+      if (!(error instanceof TypeError)) throw error
+    }
+    if (accepted) {
+      const response = await fetch('http://127.0.0.1:18765/api/v2/status')
+      if (response.ok) {
+        const status = StatusResponseV2.parse(await response.json())
+        if (status.pending === 0 && status.generation === status.targetGeneration) break
+      }
+    }
+    if (Date.now() >= localDeadline) throw new Error('Local fixture capture timed out')
+    await new Promise<void>((resolveWait) => setTimeout(resolveWait, 50))
+  }
   const hostedDeadline = Date.now() + 10000
   for (;;) {
     if (hostedServer.exitCode !== null || hostedServer.signalCode !== null)

@@ -73,7 +73,9 @@ test('empty server explains manual collection without a browser mutation', async
     }
   })
   await page.goto('/tokens')
-  await expect(page.getByText('No usage saved yet. Run tokeninsights sync.')).toBeVisible()
+  await expect(
+    page.getByText('No usage saved yet. Restart tokeninsights web to collect usage.'),
+  ).toBeVisible()
   await page.getByRole('button', { name: 'Reload', exact: true }).click()
   await expect(page.getByRole('button', { name: 'Reload', exact: true })).toBeEnabled()
   expect(mutations).toEqual([])

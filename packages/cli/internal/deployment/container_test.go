@@ -55,7 +55,7 @@ func TestContainerDeployment(t *testing.T) {
 			args := []string{"run", "--detach", "--name", name, "--network", network, "--read-only",
 				"--health-interval", "1s", "--health-start-period", "0s",
 				"--tmpfs", "/run/tokeninsights:uid=10001,gid=10001,mode=0700", "--tmpfs", "/tmp:uid=10001,gid=10001,mode=0700",
-				"--publish", "127.0.0.1::8766", "--env", "TOKENINSIGHTS_LISTEN=0.0.0.0:8766",
+				"--publish", "127.0.0.1::8767", "--env", "TOKENINSIGHTS_LISTEN=0.0.0.0:8767",
 				"--env", "TOKENINSIGHTS_PUBLIC_URL=https://usage.example", "--env", "TOKENINSIGHTS_STORAGE_BACKEND=" + backend}
 			if backend == "sqlite" {
 				args = append(args, "--mount", "type=volume,source="+volume+",target=/data", "--env", "TOKENINSIGHTS_SERVER_DB_PATH=/data/server.sqlite")
@@ -81,7 +81,7 @@ func TestContainerDeployment(t *testing.T) {
 			dockerCleanup(t, "rm", "-f", "-v", name)
 			start := func() string {
 				dockerOutput(t, args...)
-				address := dockerOutput(t, "port", name, "8766/tcp")
+				address := dockerOutput(t, "port", name, "8767/tcp")
 				target := "http://" + address
 				deadline := time.Now().Add(30 * time.Second)
 				for {
@@ -126,7 +126,7 @@ func TestContainerDeployment(t *testing.T) {
 			}
 			remoteTokens.Store(target, token.Secret)
 			c := newClient(t)
-			c.must(t, "config", "set", "server-url", target)
+			c.must(t, "config", "set", "distributed.server-url", target)
 			c.sync(t)
 			ids := assertUsage(t, target, 1, 120)
 			assertAcknowledged(t, c)

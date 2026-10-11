@@ -67,10 +67,11 @@ func TestLayerDependencies(t *testing.T) {
 		{"clientaddress", []string{"os", "database/sql", prefix + "accounts", prefix + "datastore", prefix + "server"}},
 		{"accounts", []string{"database/sql", prefix + "datastore", prefix + "appstore", prefix + "db", prefix + "adapters", prefix + "clientaddress"}},
 		{"server", []string{"database/sql", prefix + "datastore", prefix + "appstore", prefix + "adapters", prefix + "pipeline", prefix + "collector", prefix + "localruntime", prefix + "remoteserver"}},
+		{"localruntime", []string{prefix + "syncjob", prefix + "clientworkflow"}},
 		{"serverruntime", []string{"database/sql", prefix + "datastore", prefix + "appstore", prefix + "db", prefix + "adapters"}},
 	}
 	for _, rule := range rules {
-		if rule.name != "datastore" && rule.name != "pipeline" {
+		if rule.name != "datastore" && rule.name != "pipeline" && rule.name != "localruntime" {
 			rule.forbidden = append(rule.forbidden, prefix+"persistence", prefix+"adapters")
 		}
 		t.Run(rule.name, func(t *testing.T) {

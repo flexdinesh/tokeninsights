@@ -124,7 +124,9 @@ test('saved excluded evidence does not incorrectly suggest there is no saved usa
   })
   await page.goto('/models?period=all')
   await expect(page.getByText('No usage included in your total yet.')).toBeVisible()
-  await expect(page.getByText('No usage saved yet. Run tokeninsights sync.')).toHaveCount(0)
+  await expect(
+    page.getByText('No usage saved yet. Restart tokeninsights web to collect usage.'),
+  ).toHaveCount(0)
   await page.getByRole('button', { name: 'Review excluded usage' }).first().click()
   await expect(page.getByLabel('Excluded tokens: 120', { exact: true })).toBeVisible()
 })

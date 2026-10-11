@@ -235,11 +235,11 @@ func (m interactiveModel) renderDesk() string {
 	case len(m.rows) == 0:
 		message, recovery := "No rows match the current scope.", "d Change date range · f Adjust filters"
 		if m.sessionCounts.Synced == 0 {
-			message, recovery = "No ingested usage yet.", "Run tokeninsights sync, then press r to reload."
+			message, recovery = "No ingested usage yet.", "Restart tokeninsights tui to collect usage."
 			if m.refreshBusy() {
 				message, recovery = "Refreshing local usage…", "Usage appears automatically as refresh completes."
 			} else if m.collectionFailed() {
-				message, recovery = "Refresh incomplete.", "Run tokeninsights sync to retry; saved usage remains available."
+				message, recovery = "Refresh incomplete.", "Restart tokeninsights tui to retry; saved usage remains available."
 			}
 		}
 		table = m.deskMessage(message, "", recovery, visible+1)

@@ -22,7 +22,9 @@ type commandInvocation struct {
 	stdout     io.Writer
 	stderr     io.Writer
 	now        time.Time
-	settings   *config.Settings
+	settings   *config.LocalSettings
+	remote     *config.SyncSettings
+	browse     *config.BrowseSettings
 	configPath string
 }
 
@@ -39,6 +41,7 @@ var commands = []commandSpec{
 	versionCommand,
 	tuiCommand,
 	webCommand,
+	browseCommand,
 	syncCommand,
 	dataCommand,
 	configCommand,
@@ -48,6 +51,9 @@ func Run(ctx context.Context, args []string, stdout io.Writer, stderr io.Writer,
 	invocation := commandInvocation{context: ctx, stdin: os.Stdin, stdout: stdout, stderr: stderr, now: now}
 	if len(args) == 5 && args[0] == "__prepare-dev-data" && args[1] == "--collector-db-path" && args[3] == "--server-db-path" {
 		return localruntime.PrepareFixture(ctx, args[2], args[4])
+	}
+	if len(args) == 7 && args[0] == "__capture-dev-data" && args[1] == "--collector-db-path" && args[3] == "--server-db-path" && args[5] == "--source-dir" {
+		return localruntime.CaptureFixture(ctx, args[2], args[4], args[6])
 	}
 	if len(args) == 1 && args[0] == "__sync-run" {
 		return syncjob.Child(ctx)
@@ -62,8 +68,11 @@ func Run(ctx context.Context, args []string, stdout io.Writer, stderr io.Writer,
 	if err != nil {
 		return err
 	}
-	if len(args) > 0 && !strings.HasPrefix(args[0], "-") {
+	if len(args) > 0 {
 		if _, ok := commandByName(args[0]); !ok {
+			if strings.HasPrefix(args[0], "-") {
+				return fmt.Errorf("choose tokeninsights tui or tokeninsights web\n%w", ErrUsage)
+			}
 			return fmt.Errorf("unknown command %q\n%w", args[0], ErrUsage)
 		}
 	}
@@ -81,13 +90,25 @@ func Run(ctx context.Context, args []string, stdout io.Writer, stderr io.Writer,
 		if err != nil {
 			return fmt.Errorf("%w\n%w", err, ErrUsage)
 		}
-		settings, err := config.ResolveWithOverrides(invocation.configPath, true, overrides)
-		if err != nil {
-			return fmt.Errorf("configuration: %w", err)
-		}
-		invocation.settings = &settings
-		if os.Getenv("TOKENINSIGHTS_SERVER_TOKEN") != "" {
-			return fmt.Errorf("TOKENINSIGHTS_SERVER_TOKEN removed; use TOKENINSIGHTS_ACCESS_TOKEN or config set server-token\n%w", ErrUsage)
+		switch args[0] {
+		case "sync":
+			settings, err := config.ResolveSync(invocation.configPath, true, overrides)
+			if err != nil {
+				return fmt.Errorf("configuration: %w", err)
+			}
+			invocation.remote = &settings
+		case "browse":
+			settings, err := config.ResolveBrowse(invocation.configPath, true, overrides)
+			if err != nil {
+				return fmt.Errorf("configuration: %w", err)
+			}
+			invocation.browse = &settings
+		default:
+			settings, err := config.ResolveLocal(invocation.configPath, true, overrides)
+			if err != nil {
+				return fmt.Errorf("configuration: %w", err)
+			}
+			invocation.settings = &settings
 		}
 	}
 	if len(args) == 0 {
@@ -121,7 +142,7 @@ func commandByName(name string) (commandSpec, bool) {
 	return commandSpec{}, false
 }
 
-var ErrUsage = errors.New("usage: tokeninsights <sync|tui|web|data|config> [options]")
+var ErrUsage = errors.New("usage: tokeninsights <sync|browse|tui|web|data|config> [options]")
 
 func configFileArgument(args []string) ([]string, string, error) {
 	result := make([]string, 0, len(args))
@@ -157,25 +178,25 @@ func configFileArgument(args []string) ([]string, string, error) {
 	return result, path, nil
 }
 
-func (invocation commandInvocation) defaults() config.Settings {
+func (invocation commandInvocation) defaults() config.LocalSettings {
 	if invocation.settings != nil {
 		settings := *invocation.settings
 		return settings
 	}
 	settings := config.Defaults()
-	settings.CollectorDBPath, settings.ServerDBPath, settings.ServerURL = defaultCollectorDBPath(), defaultServerDBPath(), defaultServerURL()
+	settings.CollectorDBPath, settings.ServerDBPath = defaultCollectorDBPath(), defaultServerDBPath()
 	return settings
 }
 
-func configurationOverrides(args []string) (config.Values, error) {
-	var values config.Values
+func configurationOverrides(args []string) (config.Overrides, error) {
+	var values config.Overrides
 	for i := 0; i < len(args); i++ {
 		if args[i] == "--" {
 			break
 		}
 		key, value, equals := strings.Cut(args[i], "=")
 		switch key {
-		case "--mode", "--app-db-path", "--server-url", "--host", "--port", "--collector-db-path", "--server-db-path":
+		case "--app-db-path", "--server-url", "--host", "--port", "--collector-db-path", "--server-db-path":
 			if !equals {
 				i++
 				if i >= len(args) {
@@ -184,8 +205,6 @@ func configurationOverrides(args []string) (config.Values, error) {
 				value = args[i]
 			}
 			switch key {
-			case "--mode":
-				values.Mode = &value
 			case "--app-db-path":
 				values.AppDBPath = &value
 			case "--server-url":
@@ -209,4 +228,11 @@ func configurationOverrides(args []string) (config.Values, error) {
 		}
 	}
 	return values, nil
+}
+
+func (invocation commandInvocation) syncDefaults() config.SyncSettings {
+	if invocation.remote != nil {
+		return *invocation.remote
+	}
+	return config.SyncSettings{CollectorDBPath: config.Defaults().CollectorDBPath}
 }
