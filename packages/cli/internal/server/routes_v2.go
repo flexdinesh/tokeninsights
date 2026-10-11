@@ -197,7 +197,7 @@ func (a *app) handler() http.Handler {
 func (a *app) instanceV2(w http.ResponseWriter, r *http.Request, p accounts.Principal) {
 	status, err := a.queries.Status(r.Context())
 	if err != nil {
-		a.queryError(w, err)
+		a.queryError(w, r, err)
 		return
 	}
 	caps := make([]string, 0, len(a.policy.Capabilities))
@@ -214,7 +214,7 @@ func (a *app) instanceV2(w http.ResponseWriter, r *http.Request, p accounts.Prin
 func (a *app) statusV2(w http.ResponseWriter, r *http.Request) {
 	status, err := a.queries.Status(r.Context())
 	if err != nil {
-		a.queryError(w, err)
+		a.queryError(w, r, err)
 		return
 	}
 	m := status.Metadata
@@ -231,7 +231,7 @@ func (a *app) usageV2(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 	data, err := a.queries.Dashboard(ctx, q, time.Now())
 	if err != nil {
-		a.queryError(w, err)
+		a.queryError(w, r, err)
 		return
 	}
 	v := apiDashboard(data)
@@ -249,7 +249,7 @@ func (a *app) facetsV2(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 	data, err := a.queries.Facets(ctx, q, r.URL.Query().Get("search"), time.Now())
 	if err != nil {
-		a.queryError(w, err)
+		a.queryError(w, r, err)
 		return
 	}
 	v := apiFacets(data)

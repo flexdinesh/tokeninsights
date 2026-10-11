@@ -7,6 +7,7 @@ import (
 	"embed"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -94,7 +95,10 @@ func (a *app) instanceHostname(source string) string {
 	return source
 }
 
-func (a *app) queryError(w http.ResponseWriter, err error) {
+func (a *app) queryError(w http.ResponseWriter, r *http.Request, err error) {
+	if errors.Is(err, context.Canceled) && errors.Is(r.Context().Err(), context.Canceled) {
+		return
+	}
 	_, _ = fmt.Fprintf(a.log, "%sdashboard query failed: %v\n", logIndent, err)
 	apiError(w, http.StatusServiceUnavailable, serverapi.ErrorCodeUnavailable, "Cannot read saved usage. Check server storage and reload.")
 }
