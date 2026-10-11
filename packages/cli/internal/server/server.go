@@ -47,6 +47,7 @@ type app struct {
 	accounts       *accounts.Service
 	publicURL      string
 	progress       *collectorprogress.Registry
+	processUsage   ProcessUsage
 	options        Options
 	ctx            context.Context
 	log            io.Writer

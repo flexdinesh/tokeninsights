@@ -30,24 +30,14 @@ export function CollectorProgress({ progress }: { progress: Progress | undefined
   const visible = terminal ? [...active, terminal] : active
   if (visible.length === 0) return null
   return (
-    <section className="collector-progress" aria-label="Collector progress" aria-live="polite">
+    <section className="collector-progress" aria-label="Collector progress">
       {visible.map((attempt) => (
         <div key={attempt.attemptId}>
-          {attempt.stage !== 'accepted' && <AttemptStatus attempt={attempt} />}
-          {['waiting', 'capturing', 'submitting'].includes(attempt.stage) ? (
-            <HarnessStates harnesses={attempt.harnesses} />
-          ) : (
-            <details>
-              <summary>Latest collection</summary>
-              {attempt.stage === 'accepted' && <AttemptStatus attempt={attempt} />}
-              <HarnessStates harnesses={attempt.harnesses} />
-            </details>
+          {!['waiting', 'capturing', 'submitting'].includes(attempt.stage) && (
+            <h3>Latest collection</h3>
           )}
-          {(attempt.stage === 'failed' || attempt.stage === 'interrupted') && (
-            <p role="alert">
-              Saved usage remains available. Restart tokeninsights web to retry collection.
-            </p>
-          )}
+          <AttemptStatus attempt={attempt} />
+          <HarnessStates harnesses={attempt.harnesses} />
         </div>
       ))}
     </section>
@@ -56,13 +46,13 @@ export function CollectorProgress({ progress }: { progress: Progress | undefined
 
 function AttemptStatus({ attempt }: { attempt: Progress['attempts'][number] }) {
   return (
-    <p role="status">
+    <p>
       {attempt.errorCode === 'submission_failed'
         ? 'Submission failed'
         : collectorStages[attempt.stage]}{' '}
-      · {attempt.acknowledgedEntries.toLocaleString()} observations accepted
+      · {attempt.acknowledgedEntries.toLocaleString()} accepted
       {attempt.pendingKnown && attempt.pending > 0
-        ? ` · ${attempt.pending.toLocaleString()} observations remaining`
+        ? ` · ${attempt.pending.toLocaleString()} remaining`
         : ''}
     </p>
   )
@@ -71,17 +61,20 @@ function AttemptStatus({ attempt }: { attempt: Progress['attempts'][number] }) {
 function HarnessStates({ harnesses }: { harnesses: Progress['attempts'][number]['harnesses'] }) {
   return (
     <>
-      <p>Status for this run only; saved usage remains included.</p>
-      <ul aria-label="Collection by harness">
+      <ul aria-label="Collection by harness" title="This run only; saved usage remains included.">
         {Object.entries(harnesses).map(([harness, state]) => (
-          <li key={harness}>
+          <li
+            key={harness}
+            title={
+              state === 'skipped'
+                ? 'Sources unchanged or none found; saved usage included.'
+                : undefined
+            }
+          >
             {harness}: {harnessStates[state]}
           </li>
         ))}
       </ul>
-      {Object.values(harnesses).includes('skipped') && (
-        <p>No new usage means sources were unchanged or none were found.</p>
-      )}
     </>
   )
 }

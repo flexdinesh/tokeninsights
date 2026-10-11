@@ -1410,6 +1410,20 @@ components:
           minimum: 0
           maximum: 253402214399999
           description: Earliest retry time for failed pending scopes, as Unix milliseconds; zero when none exist.
+        processUsage:
+          $ref: '#/components/schemas/ProcessUsage'
+    ProcessUsage:
+      type: object
+      additionalProperties: false
+      description: Current TokenInsights process resources, sampled only by in-process Web. Hosted responses omit this object. Unavailable measurements are omitted.
+      properties:
+        cpuPercent:
+          type: number
+          format: double
+          minimum: 0
+          description: Process user plus system CPU time over the sampling interval; 100 percent is one fully utilized core. Absent until a sampling interval is available.
+        residentMemoryBytes:
+          $ref: '#/components/schemas/Count'
     UsageResponseV2:
       type: object
       additionalProperties: false

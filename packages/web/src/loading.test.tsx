@@ -171,6 +171,7 @@ it('startup shares one progress request, names harness state and suppresses prem
     progress: progress('capturing'),
     dashboard: emptyDashboard(),
   })
+  await userEvent.click(await screen.findByRole('button', { name: /Local status:/ }))
   const region = await screen.findByRole('region', { name: 'Collector progress' })
   expect(region).toHaveTextContent('Collecting usage')
   expect(region).toHaveTextContent('codex: Collecting')
@@ -202,7 +203,7 @@ it('acceptance refreshes status before declaring Ready and keeps processing visi
           })
         : undefined,
   })
-  await screen.findByRole('region', { name: 'Collector progress' })
+  await screen.findByRole('button', { name: 'Local status: Collecting usage' })
   await act(() =>
     client.setQueryData(['collector-progress', mockBootstrap.instanceId], progress('accepted')),
   )
@@ -374,16 +375,15 @@ it('retained completion history stays compact while every running attempt remain
       ],
     },
   })
+  await userEvent.click(await screen.findByRole('button', { name: /Local status:/ }))
   const region = await screen.findByRole('region', { name: 'Collector progress' })
   expect(within(region).getAllByText(/Usage accepted/)).toHaveLength(1)
   expect(within(region).getAllByText(/Collecting usage/)).toHaveLength(2)
   expect(
     within(region).getAllByRole('list', { name: 'Collection by harness', hidden: true }),
   ).toHaveLength(3)
-  expect(within(region).getByText('Latest collection').closest('details')).not.toHaveAttribute(
-    'open',
-  )
-  expect(within(region).getByText(/Usage accepted/)).not.toBeVisible()
+  expect(within(region).getByText('Latest collection')).toBeVisible()
+  expect(within(region).getByText(/Usage accepted/)).toBeVisible()
 })
 
 it('a run with no new harness usage preserves saved totals and explains its scope', async () => {
@@ -400,11 +400,73 @@ it('a run with no new harness usage preserves saved totals and explains its scop
     },
   })
   expect(await screen.findByLabelText('Total tokens: 647,000')).toBeVisible()
-  await userEvent.click(await screen.findByText('Latest collection'))
+  expect(screen.queryByText('codex: No new usage')).not.toBeInTheDocument()
+  await userEvent.click(await screen.findByRole('button', { name: 'Local status: Ready' }))
   expect(screen.getByText('codex: No new usage')).toBeVisible()
-  expect(screen.getByText('Status for this run only; saved usage remains included.')).toBeVisible()
-  expect(
-    screen.getByText('No new usage means sources were unchanged or none were found.'),
-  ).toBeVisible()
+  expect(screen.getByRole('list', { name: 'Collection by harness' })).toHaveAttribute(
+    'title',
+    'This run only; saved usage remains included.',
+  )
+  expect(screen.getByText('codex: No new usage')).toHaveAttribute(
+    'title',
+    'Sources unchanged or none found; saved usage included.',
+  )
   expect(screen.getByLabelText('Total tokens: 647,000')).toBeVisible()
+})
+
+it('keeps collection details out of the dashboard until the status indicator is focused', async () => {
+  mountDashboard({
+    bootstrap: {
+      ...mockBootstrap,
+      capabilities: [...mockBootstrap.capabilities, 'collector-progress'],
+    },
+    progress: progress('capturing'),
+  })
+  const indicator = await screen.findByRole('button', { name: 'Local status: Collecting usage' })
+  expect(screen.queryByRole('heading', { name: 'Token usage' })).not.toBeInTheDocument()
+  expect(
+    screen.queryByText('Understand your coding activity across harnesses.'),
+  ).not.toBeInTheDocument()
+  expect(screen.getByRole('banner')).toHaveTextContent('/ Tokens')
+  expect(screen.getByRole('banner')).not.toHaveTextContent('Analytics /')
+  expect(screen.queryByRole('region', { name: 'Collector progress' })).not.toBeInTheDocument()
+  act(() => indicator.focus())
+  expect(await screen.findByText('codex: Collecting')).toBeVisible()
+  await userEvent.keyboard('{Escape}')
+  expect(screen.queryByRole('region', { name: 'Collector progress' })).not.toBeInTheDocument()
+  expect(indicator).toHaveFocus()
+})
+
+it('local status shows process resources and preserves unknown measurements', async () => {
+  const { client, state } = mountDashboard({
+    status: {
+      ...mockSyncStatus(1),
+      processUsage: { cpuPercent: 125.5, residentMemoryBytes: 64 * 1024 * 1024 },
+    },
+  })
+  await userEvent.click(await screen.findByRole('button', { name: 'Local status: Ready' }))
+  expect(screen.getByLabelText('Process resource usage')).toHaveTextContent('CPU 125.5%RAM 64 MiB')
+  await act(() =>
+    client.setQueryData(['sync', mockBootstrap.datasetId], {
+      ...state.status,
+      processUsage: {},
+    }),
+  )
+  await waitFor(() =>
+    expect(screen.getByLabelText('Process resource usage')).toHaveTextContent('CPU —RAM —'),
+  )
+})
+
+it('hosted dashboards omit local loading and resource controls even if resources are supplied', async () => {
+  mountDashboard({
+    bootstrap: {
+      ...mockBootstrap,
+      serverKind: 'hosted',
+      capabilities: [...mockBootstrap.capabilities, 'collector-progress'],
+    },
+    status: { ...mockSyncStatus(1), processUsage: { cpuPercent: 0, residentMemoryBytes: 1024 } },
+  })
+  expect(await screen.findByLabelText('Total tokens: 647,000')).toBeVisible()
+  expect(screen.queryByRole('button', { name: /Local status:/ })).not.toBeInTheDocument()
+  expect(screen.queryByLabelText('Process resource usage')).not.toBeInTheDocument()
 })

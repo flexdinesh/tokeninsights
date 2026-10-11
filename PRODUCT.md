@@ -78,7 +78,7 @@ require a separate authenticated harness export or realtime hooks.
 ## Brand Commitments
 
 The product name is **TokenInsights**; the public command is `tokeninsights`.
-Use the established domain terminology and existing logo. The incumbent browser
+Use the established domain terminology and text wordmark. The incumbent browser
 identity is recorded separately in `DESIGN.md`.
 
 ## Evidence on Hand
@@ -86,7 +86,6 @@ identity is recorded separately in `DESIGN.md`.
 - [README.md](README.md): current product description, commands, and screenshots.
 - `assets/tokeninsights-web.png` and `assets/tokeninsights-tui.png`:
   committed browser and terminal captures; verify freshness before visual work.
-- `packages/web/public/tokeninsights-logo.png`: existing logo asset.
 - `packages/cli/testdata/conformance/sync-first-basic/` and `packages/web/src/mocks/`:
   synthetic development/demo data, not customer evidence or usage benchmarks.
 

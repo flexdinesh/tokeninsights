@@ -119,6 +119,11 @@ export function DashboardResults({
           onRetry={() => void controller.progressQuery.refetch()}
         />
       )}
+      {controller.collectionFailed && (
+        <p role="alert">
+          Saved usage remains available. Restart tokeninsights web to retry collection.
+        </p>
+      )}
       {enabled && (!hasData || waitingForFirstData) && !analytics.error && <DashboardSkeleton />}
       {enabled &&
         data &&

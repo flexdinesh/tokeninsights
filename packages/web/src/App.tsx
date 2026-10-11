@@ -12,7 +12,8 @@ import {
 import { clearAccountQueries } from './session'
 import { hasCapability, showsCollectorProgress } from './capabilities'
 import { TokenLogin } from './components/TokenLogin'
-import { CollectorProgress, collectorStages } from './components/CollectorProgress'
+import { collectorStages } from './components/CollectorProgress'
+import type { DashboardStatusValue } from './components/DashboardStatus'
 import type { Bootstrap } from './contracts'
 import { locationGroupSchema } from './contracts'
 import { DashboardProvider, parseDashboardSearch, useDashboardQuery } from './state'
@@ -186,13 +187,7 @@ function DashboardShell({
     enabled && hasCapability(bootstrap, 'facets'),
     controller.identity,
   )
-  const statusLabel = dashboardStatusLabel(
-    controller,
-    analytics,
-    facets,
-    bootstrap,
-    connectionError,
-  )
+  const status = dashboardStatus(controller, analytics, facets, bootstrap, connectionError)
   return (
     <div className="app-shell dashboard-shell">
       <a href="#dashboard" className="skip-link">
@@ -206,19 +201,18 @@ function DashboardShell({
         <DashboardHeader
           hostname={bootstrap.hostname}
           timezone={bootstrap.timezone}
-          statusLabel={statusLabel}
+          status={status}
+          progress={showProgress ? controller.progressQuery.data : undefined}
+          processUsage={
+            controller.statusQuery.error ? undefined : controller.statusQuery.data?.processUsage
+          }
           localMachine={bootstrap.serverKind === 'personal'}
           lastSynced={analytics.data?.dashboard.lastSynced}
         />
         <main id="dashboard" className="dashboard">
-          <div className="dashboard-heading">
-            <div>
-              <h1>Token usage</h1>
-              <p>Understand your coding activity across harnesses.</p>
-            </div>
+          <div className="dashboard-periods">
             <QuickPeriods />
           </div>
-          {showProgress && <CollectorProgress progress={controller.progressQuery.data} />}
           {query.tab === 'repo' && (
             <div className="repo-controls" aria-label="Repo view options">
               <div className="bucket-control">
@@ -278,30 +272,36 @@ function DashboardShell({
   )
 }
 
-function dashboardStatusLabel(
+function dashboardStatus(
   controller: ReturnType<typeof useDashboardSync>,
   analytics: ReturnType<typeof useAnalytics>,
   facets: ReturnType<typeof useFacets>,
   bootstrap: Bootstrap,
   connectionError: Error | null,
-): string {
-  if (connectionError || controller.statusQuery.error) return 'Connection unavailable'
-  if (analytics.error) return 'Usage couldn’t load'
-  if (facets.error) return 'Filters couldn’t load'
+): DashboardStatusValue {
+  if (connectionError || controller.statusQuery.error)
+    return { label: 'Connection unavailable', state: 'attention' }
+  if (analytics.error) return { label: 'Usage couldn’t load', state: 'attention' }
+  if (facets.error) return { label: 'Filters couldn’t load', state: 'attention' }
   if (showsCollectorProgress(bootstrap) && controller.progressQuery.error)
-    return 'Collection status unavailable'
-  if (controller.collectionFailed) return 'Collection needs attention'
-  if (controller.collectionStage) return collectorStages[controller.collectionStage]
+    return { label: 'Collection status unavailable', state: 'attention' }
+  if (controller.collectionFailed)
+    return { label: 'Collection needs attention', state: 'attention' }
+  if (controller.collectionStage)
+    return { label: collectorStages[controller.collectionStage], state: 'loading' }
   if (controller.processingPending)
-    return controller.processingBackoff ? 'Processing retry pending' : 'Processing usage'
-  if (controller.loading) return 'Loading…'
+    return {
+      label: controller.processingBackoff ? 'Processing retry pending' : 'Processing usage',
+      state: controller.processingBackoff ? 'attention' : 'loading',
+    }
+  if (controller.loading) return { label: 'Loading…', state: 'loading' }
   if (
     controller.analyticsEnabled &&
     hasCapability(bootstrap, 'usage') &&
     (analytics.isPending || analytics.isFetching)
   )
-    return analytics.data ? 'Refreshing usage…' : 'Loading…'
+    return { label: analytics.data ? 'Refreshing usage…' : 'Loading…', state: 'loading' }
   if (controller.analyticsEnabled && hasCapability(bootstrap, 'facets') && facets.isPending)
-    return 'Loading filters…'
-  return 'Ready'
+    return { label: 'Loading filters…', state: 'loading' }
+  return { label: 'Ready', state: 'ready' }
 }

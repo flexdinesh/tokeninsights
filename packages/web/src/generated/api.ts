@@ -678,6 +678,26 @@ export const InstanceResponseV2 = zod.strictObject({
 export type InstanceResponseV2 = zod.input<typeof InstanceResponseV2>
 export type InstanceResponseV2Output = zod.output<typeof InstanceResponseV2>
 
+export const processUsageCpuPercentMin = 0
+
+export const ProcessUsage = zod
+  .strictObject({
+    cpuPercent: zod
+      .number()
+      .min(processUsageCpuPercentMin)
+      .optional()
+      .describe(
+        'Process user plus system CPU time over the sampling interval; 100 percent is one fully utilized core. Absent until a sampling interval is available.',
+      ),
+    residentMemoryBytes: Count.optional(),
+  })
+  .describe(
+    'Current TokenInsights process resources, sampled only by in-process Web. Hosted responses omit this object. Unavailable measurements are omitted.',
+  )
+
+export type ProcessUsage = zod.input<typeof ProcessUsage>
+export type ProcessUsageOutput = zod.output<typeof ProcessUsage>
+
 export const statusResponseV2DatasetIdMax = 256
 
 export const statusResponseV2FailedMin = 0
@@ -714,6 +734,7 @@ export const StatusResponseV2 = zod.strictObject({
     .describe(
       'Earliest retry time for failed pending scopes, as Unix milliseconds; zero when none exist.',
     ),
+  processUsage: ProcessUsage.optional(),
 })
 
 export type StatusResponseV2 = zod.input<typeof StatusResponseV2>

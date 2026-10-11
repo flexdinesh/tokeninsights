@@ -794,6 +794,13 @@ type NativeScalar2 = bool
 // Period defines model for Period.
 type Period string
 
+// ProcessUsage Current TokenInsights process resources, sampled only by in-process Web. Hosted responses omit this object. Unavailable measurements are omitted.
+type ProcessUsage struct {
+	// CpuPercent Process user plus system CPU time over the sampling interval; 100 percent is one fully utilized core. Absent until a sampling interval is available.
+	CpuPercent          *float64 `json:"cpuPercent,omitempty"`
+	ResidentMemoryBytes *Count   `json:"residentMemoryBytes,omitempty"`
+}
+
 // ProcessingStatus defines model for ProcessingStatus.
 type ProcessingStatus struct {
 	Generation    Count             `json:"generation"`
@@ -1167,13 +1174,16 @@ type StatusResponseV2 struct {
 	Failed *int64 `json:"failed,omitempty"`
 
 	// FailedRetryAtMs Earliest retry time for failed pending scopes, as Unix milliseconds; zero when none exist.
-	FailedRetryAtMs  *int64 `json:"failedRetryAtMs,omitempty"`
-	Generation       Count  `json:"generation"`
-	InputRevision    Count  `json:"inputRevision"`
-	InstanceId       string `json:"instanceId"`
-	Pending          Count  `json:"pending"`
-	Revision         Count  `json:"revision"`
-	TargetGeneration Count  `json:"targetGeneration"`
+	FailedRetryAtMs *int64 `json:"failedRetryAtMs,omitempty"`
+	Generation      Count  `json:"generation"`
+	InputRevision   Count  `json:"inputRevision"`
+	InstanceId      string `json:"instanceId"`
+	Pending         Count  `json:"pending"`
+
+	// ProcessUsage Current TokenInsights process resources, sampled only by in-process Web. Hosted responses omit this object. Unavailable measurements are omitted.
+	ProcessUsage     *ProcessUsage `json:"processUsage,omitempty"`
+	Revision         Count         `json:"revision"`
+	TargetGeneration Count         `json:"targetGeneration"`
 }
 
 // StatusResponseV2DataReadiness defines model for StatusResponseV2.DataReadiness.

@@ -15,6 +15,7 @@ import (
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/collectorprogress"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/evidence"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/ingestionhttp"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/processusage"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/publication"
 	api "github.com/flexdinesh/tokeninsights/packages/cli/internal/server/api"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/serverfeatures"
@@ -29,6 +30,12 @@ type DataHandlerOptions struct {
 	Accounts                   *accounts.Service
 	PublicURL                  string
 	Progress                   *collectorprogress.Registry
+	ProcessUsage               ProcessUsage
+}
+
+// ProcessUsage samples the command-owned process; missing measurements remain unknown.
+type ProcessUsage interface {
+	Snapshot(context.Context) processusage.Sample
 }
 
 const loginBodyMaxBytes = 4 << 10
@@ -58,6 +65,7 @@ func NewDataHandlerWithOptions(ctx context.Context, store DataSource, log io.Wri
 	if options.Policy.Kind == serverfeatures.Personal {
 		a.data = store.Receiver(evidence.PersonalDatasetID)
 		a.queries = store.Queries(evidence.PersonalDatasetID)
+		a.processUsage = options.ProcessUsage
 	}
 	a.allowIngestion = options.AllowIngestion && options.Policy.Capabilities.Has(serverfeatures.RawIngestion)
 	a.policy, a.accounts, a.publicURL, a.progress = options.Policy, options.Accounts, options.PublicURL, options.Progress
@@ -218,7 +226,12 @@ func (a *app) statusV2(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	m := status.Metadata
-	writeJSON(w, 200, api.StatusResponseV2{InstanceId: a.options.InstanceID, DataEpoch: m.DatabaseID, DatasetId: m.DatasetID, DataReadiness: "ready", Generation: m.Generation, TargetGeneration: m.TargetGeneration, InputRevision: m.InputRevision, Revision: m.Revision, Pending: status.Pending, Failed: &status.Failed, FailedRetryAtMs: &status.FailedRetryAtMs})
+	response := api.StatusResponseV2{InstanceId: a.options.InstanceID, DataEpoch: m.DatabaseID, DatasetId: m.DatasetID, DataReadiness: "ready", Generation: m.Generation, TargetGeneration: m.TargetGeneration, InputRevision: m.InputRevision, Revision: m.Revision, Pending: status.Pending, Failed: &status.Failed, FailedRetryAtMs: &status.FailedRetryAtMs}
+	if a.policy.Kind == serverfeatures.Personal && a.processUsage != nil {
+		usage := a.processUsage.Snapshot(r.Context())
+		response.ProcessUsage = &api.ProcessUsage{CpuPercent: usage.CPUPercent, ResidentMemoryBytes: usage.ResidentMemoryBytes}
+	}
+	writeJSON(w, 200, response)
 }
 
 func (a *app) usageV2(w http.ResponseWriter, r *http.Request) {

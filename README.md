@@ -4,6 +4,9 @@ TokenInsights is a token usage dashboard for OpenCode, Pi, Codex, and Claude Cod
 
 The browser dashboard uses white and neutral charcoal themes, restrained blue accents,
 and locally bundled DM Sans. Navigation and filters wrap on smaller screens.
+In-process Web has a compact status icon beside theme selection: hover or press
+for loading/harness details and TokenInsights process CPU/resident RAM. Hosted
+dashboards omit this local status control.
 
 The Repo view groups token, model, and provider usage by repository or directory. Location filters apply only there. Missing location data appears as **unknown**; the web view lets you expand an unknown row to see recorded contributing directories when available.
 
