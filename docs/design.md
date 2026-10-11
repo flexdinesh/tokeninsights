@@ -232,6 +232,18 @@ and revision; failure offers a separate retry without hiding normal usage. Exclu
 usage and unusable-evidence diagnostics remain distinct. No totals combine the two
 datasets, and no evidence classification or storage contract changes.
 
+The browser presentation uses the White First design system in root `DESIGN.md`:
+white light surfaces, neutral charcoal dark surfaces, blue actions and chart lines,
+and locally bundled DM Sans. A desktop sidebar owns view navigation; below 55rem,
+the same links wrap above the workspace. The header keeps machine identity,
+capability-gated progress, theme selection, and local Reload. A visible title,
+quick periods, wrapping filters, static summary strip, chart, and padded result
+table follow. Controls preserve keyboard access, mobile touch targets, and 200%
+text reflow. Presentation components use existing query state and callbacks;
+URL/history, dataset snapshots, authentication, and request lifecycle remain owned
+by their existing browser modules. Fonts and browser assets are committed and
+embedded by Go, with no remote font or host JavaScript runtime dependency.
+
 ## Generations and preserved history
 
 Private administration or `data reprocess` queues a new generation per dataset;

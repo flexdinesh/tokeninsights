@@ -2,6 +2,9 @@
 
 TokenInsights is a token usage dashboard for OpenCode, Pi, Codex, and Claude Code. A Go collector captures sanitized evidence in SQLite. Shared ingestion and processing store token data in SQLite inside local commands, or SQLite/PostgreSQL in an authenticated remote server.
 
+The browser dashboard uses white and neutral charcoal themes, restrained blue accents,
+and locally bundled DM Sans. Navigation and filters wrap on smaller screens.
+
 The Repo view groups token, model, and provider usage by repository or directory. Location filters apply only there. Missing location data appears as **unknown**; the web view lets you expand an unknown row to see recorded contributing directories when available.
 
 | Web                                                                                  | TUI                                                                       |

@@ -1,51 +1,51 @@
 ---
-name: "TokenInsights — Graphite & Lime"
-description: "Compact measurement workspace with graphite, electric lime feedback, and pure white light surfaces."
+name: "TokenInsights — Quiet Blue / White First"
+description: "White and neutral charcoal measurement workspace with DM Sans, restrained blue feedback, and clear navigation."
 colors:
   background: "#ffffff"
-  dark-background: "#17191b"
-  foreground: "#242824"
-  dark-foreground: "#edf0ee"
+  dark-background: "#181818"
+  foreground: "#22252b"
+  dark-foreground: "#efefef"
   card: "#ffffff"
-  dark-card: "#202326"
+  dark-card: "#181818"
   popover: "#ffffff"
-  dark-popover: "#282c2e"
-  primary: "#b8f500"
-  dark-primary: "#c5ee62"
-  primary-foreground: "#243000"
-  dark-primary-foreground: "#1c260e"
-  secondary: "#f5f6f4"
-  dark-secondary: "#292e2a"
-  secondary-foreground: "#626862"
-  dark-secondary-foreground: "#c2c9be"
-  muted: "#f5f6f4"
-  dark-muted: "#292e2a"
-  muted-foreground: "#626862"
-  dark-muted-foreground: "#afb6ad"
-  accent: "#efffcc"
-  dark-accent: "#303b21"
-  accent-foreground: "#426300"
-  dark-accent-foreground: "#c5ee62"
+  dark-popover: "#222222"
+  primary: "#285bd4"
+  dark-primary: "#82aaff"
+  primary-foreground: "#ffffff"
+  dark-primary-foreground: "#181818"
+  secondary: "#f7f7f7"
+  dark-secondary: "#222222"
+  secondary-foreground: "#64666d"
+  dark-secondary-foreground: "#b7b7b7"
+  muted: "#f7f7f7"
+  dark-muted: "#222222"
+  muted-foreground: "#64666d"
+  dark-muted-foreground: "#aaaaaa"
+  accent: "#f1f1f2"
+  dark-accent: "#292929"
+  accent-foreground: "#285bd4"
+  dark-accent-foreground: "#82aaff"
   destructive: "oklch(0.56 0.22 27)"
   dark-destructive: "oklch(0.68 0.19 23)"
   destructive-foreground: "oklch(0.985 0 0)"
   dark-destructive-foreground: "oklch(0.985 0 0)"
-  border: "#e1e4e0"
-  dark-border: "#393e39"
-  input: "#858c82"
-  dark-input: "#69745f"
-  ring: "#426300"
-  dark-ring: "#c5ee62"
+  border: "#e3e3e5"
+  dark-border: "#343434"
+  input: "#929299"
+  dark-input: "#666666"
+  ring: "#285bd4"
+  dark-ring: "#82aaff"
   success: "oklch(0.49 0.14 155)"
   dark-success: "oklch(0.72 0.16 155)"
   warning: "oklch(0.55 0.14 75)"
   dark-warning: "oklch(0.78 0.15 80)"
   error-surface: "oklch(0.96 0.025 25)"
   dark-error-surface: "oklch(0.2 0.04 25)"
-  chart-1: "#577b00"
-  dark-chart-1: "#c5ee62"
-  chart-2: "#748068"
-  dark-chart-2: "#9da991"
+  chart-1: "#285bd4"
+  dark-chart-1: "#82aaff"
+  chart-2: "#b45c7f"
+  dark-chart-2: "#e59aba"
   chart-3: "oklch(0.67 0.16 65)"
   dark-chart-3: "oklch(0.76 0.15 70)"
   chart-4: "oklch(0.58 0.16 165)"
@@ -66,44 +66,50 @@ colors:
   dark-chart-11: "oklch(0.73 0.14 355)"
   chart-12: "oklch(0.54 0.11 45)"
   dark-chart-12: "oklch(0.7 0.1 45)"
+  rail-surface: "#ffffff"
+  dark-rail-surface: "#1b1b1b"
+  field-surface: "#ffffff"
+  dark-field-surface: "#222222"
+  table-heading: "#fafafa"
+  dark-table-heading: "#222222"
 typography:
   readout:
-    fontFamily: "ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
+    fontFamily: "'DM Sans', ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
     fontSize: "1.5rem"
     fontWeight: 600
     lineHeight: 1.15
     letterSpacing: "-0.035em"
   headline:
-    fontFamily: "ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
-    fontSize: "2.25rem"
+    fontFamily: "'DM Sans', ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
+    fontSize: "1.75rem"
     fontWeight: 600
     lineHeight: 1.15
     letterSpacing: "-0.035em"
   title:
-    fontFamily: "ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
-    fontSize: "1.0625rem"
+    fontFamily: "'DM Sans', ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
+    fontSize: "1rem"
     fontWeight: 600
     lineHeight: 1.5
     letterSpacing: "-0.015em"
   body:
-    fontFamily: "ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
+    fontFamily: "'DM Sans', ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
     fontSize: "0.875rem"
     fontWeight: 400
     lineHeight: 1.5
   label:
-    fontFamily: "ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
+    fontFamily: "'DM Sans', ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
     fontSize: "0.8125rem"
     fontWeight: 500
     lineHeight: 1.5
   numeric:
-    fontFamily: "ui-monospace, 'SFMono-Regular', Consolas, monospace"
+    fontFamily: "'DM Sans', ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
     fontSize: "0.875rem"
     fontWeight: 400
     lineHeight: 1.5
 rounded:
   sm: "0.25rem"
   md: "0.375rem"
-  lg: "0.5rem"
+  lg: "0.75rem"
 spacing:
   "1": "0.25rem"
   "2": "0.5rem"
@@ -119,48 +125,48 @@ components:
     textColor: "{colors.primary-foreground}"
     rounded: "{rounded.md}"
     padding: "0.375rem 0.75rem"
-    height: "2rem"
+    height: "2.25rem"
   button-outline:
     backgroundColor: "{colors.background}"
     textColor: "{colors.foreground}"
     rounded: "{rounded.md}"
     padding: "0.375rem 0.75rem"
-    height: "2rem"
+    height: "2.25rem"
   button-secondary:
     backgroundColor: "{colors.secondary}"
     textColor: "{colors.secondary-foreground}"
     rounded: "{rounded.md}"
     padding: "0.375rem 0.75rem"
-    height: "2rem"
+    height: "2.25rem"
   button-ghost:
     backgroundColor: "transparent"
     textColor: "{colors.foreground}"
     rounded: "{rounded.md}"
     padding: "0.375rem 0.75rem"
-    height: "2rem"
+    height: "2.25rem"
   button-destructive:
     backgroundColor: "{colors.destructive}"
     textColor: "#ffffff"
     rounded: "{rounded.md}"
     padding: "0.375rem 0.75rem"
-    height: "2rem"
+    height: "2.25rem"
   input-text:
-    backgroundColor: "{colors.card}"
+    backgroundColor: "{colors.field-surface}"
     textColor: "{colors.foreground}"
     rounded: "{rounded.md}"
     padding: "0.25rem 0.75rem"
-    height: "2rem"
+    height: "2.25rem"
   navigation-selected:
-    backgroundColor: "transparent"
+    backgroundColor: "{colors.accent}"
     textColor: "{colors.accent-foreground}"
-    rounded: "0"
+    rounded: "{rounded.md}"
     padding: "0.5rem 0.75rem"
   filter-chip:
     backgroundColor: "{colors.accent}"
     textColor: "{colors.accent-foreground}"
     rounded: "{rounded.sm}"
     padding: "0.25rem 0.5rem"
-    height: "1.875rem"
+    height: "2.25rem"
   card:
     backgroundColor: "{colors.card}"
     textColor: "{colors.foreground}"
@@ -176,39 +182,42 @@ components:
 
 ## Overview
 
-**Creative North Star: "Graphite & Lime"**
+**Creative North Star: "Quiet Blue — White First"**
 
-Graphite & Lime is a compact measurement workspace: neutral graphite in dark mode, pure white in light mode, and crisp lime feedback. Fine rules, static readouts, and dense rows keep measurements close together.
+White First is a mature measurement workspace: white surfaces, neutral gray
+supporting regions, precise typography, and restrained blue actions. Its dark
+theme uses neutral charcoal and soft white ink with the same hierarchy.
 
-System typography, tabular numerals, restrained motion, and explicit states support repeated inspection. Preserve the TokenInsights logo and offline assets; no remote fonts are needed.
+Locally bundled DM Sans, tabular numerals, and generous section spacing support
+repeated inspection. Preserve the TokenInsights logo, offline assets, explicit
+states, and existing analytical behavior.
 
 This browser contract derives from [tokens.css](packages/web/src/tokens.css),
 shared styles, and UI primitives. Frontmatter records light roles and dark
-counterparts; explicit and system themes use the same roles.
-Architecture remains in [docs/design.md](docs/design.md); terminal styling in
+counterparts; explicit and system themes use the same roles. Architecture remains
+in [docs/design.md](docs/design.md); terminal styling in
 [packages/cli/DESIGN.md](packages/cli/DESIGN.md).
 
 **Key Characteristics:**
 
-- Graphite dark surfaces and pure white light surfaces.
-- Lime actions and selection; neutral readout values.
-- Flat, rule-separated analytics with compact controls.
+- White light surfaces and neutral charcoal dark surfaces.
+- Blue actions, selection, focus, and principal chart series.
+- Sidebar navigation, a visible dashboard title, and rule-separated analytics.
 - Wrapping filters, scalable type, and visible keyboard focus.
 
 ## Colors
 
-Pure white surfaces and neutral gray supporting roles contrast with graphite and Electric Lime actions in light mode.
-
 ### Primary
 
-- **Action lime**: Electric Lime (`#b8f500`) with dark text in light mode; the existing bright lime in dark mode.
-- **Lime ink**: deep lime (`#426300`) for light-theme selection and focus, with `#577b00` for the principal chart line;
-  crisp lime in dark mode.
-- **Lime tint**: `#efffcc` for selected quick dates, chart metrics, and filters in light mode.
+Blue provides action and selection feedback. Primary controls use a filled blue
+surface with contrasting text; selected navigation, quick periods, chart metrics,
+and filter chips use blue ink on a neutral gray surface. Focus and the principal
+chart line share the blue ink role.
 
 ### Secondary
 
-- **Sage chart neutral**: the second chart series, distinct from action feedback.
+Neutral gray distinguishes supporting regions, hover states, controls, and table
+headings. The secondary chart series remains distinct from the principal blue line.
 
 ### Tertiary
 
@@ -218,68 +227,76 @@ pair them with text or icons.
 
 ### Neutral
 
-- **Pure white workspace / Graphite workspace**: page backgrounds.
-- **Pure white / Graphite surface**: header, fields, and ordinary containers.
-- **Raised surface**: hover regions and overlays.
+- **White workspace / Charcoal workspace**: page backgrounds and analytics.
+- **Navigation surface**: white in light mode, slightly raised charcoal in dark mode.
+- **Supporting surface**: neutral gray for controls, headings, and selected regions.
 - **Main, supporting, and muted ink**: values, labels, and metadata.
 - **Fine rule / Field edge**: region separation and stronger control boundaries.
 
-**The Lime Roles Rule.** Use lime for actions, selection, focus, and the principal plotted series. Readout values remain neutral; category colors follow their corresponding labels.
+**The Neutral Surface Rule.** Keep large surfaces white or neutral gray in light
+mode and neutral charcoal in dark mode. Blue belongs to feedback and plotted
+data; readout values remain neutral.
 
 ## Typography
 
-**Interface Font:** local system sans stack.
-**Numeric Font:** local system monospace stack for dense numeric cells.
+**Interface Font:** locally bundled variable DM Sans with system sans fallbacks.
+**Numeric Font:** the same sans family with tabular numerals; monospace is reserved
+for code and paths.
 
 Readouts share one scale (24px at the default root size). Body and chart headings
 use the body role (14px); labels and axes use label type (13px). Section headings
-use the title role (17px). Large headlines belong to connection/error screens;
-the dashboard heading remains accessible but visually hidden.
-The brand combines weight 650 with a lighter second word at 500.
+use the title role (16px). The visible dashboard title uses the headline role
+(28px). The brand uses one weight (650) across the full TokenInsights name.
 
-**The Readable Measurement Rule.** Use tabular numerals and right-aligned numeric columns. Reflow controls before reducing type; retain the user's root font size and complete timeline dates.
+**The Readable Measurement Rule.** Use tabular numerals and right-aligned numeric
+columns. Reflow controls before reducing type; retain the user's root font size
+and complete timeline dates.
 
 ## Layout
 
-The dashboard caps at 100rem with 1rem gutters and shared header alignment.
-The desktop header has a 3rem minimum height and sticks to the top while remaining
-in flow. View tabs and quick dates share a wrapping row; horizontal filters wrap
-below. Readouts, plot, and exact rows follow without a side rail or tall title.
+A sticky desktop navigation sidebar (12rem) anchors the workspace. It holds the
+brand and all existing view links. The main column keeps a wrapping, sticky header
+(4rem minimum height) for machine identity, progress, theme selection, and local
+Reload, followed by a visible
+dashboard title, quick periods, and horizontal wrapping filters.
 
-Five readouts use a 1.25fr total and four equal columns, with 1rem gaps and
-0.75rem vertical padding. At 45rem of readout-container width, they become two
-columns with total spanning both. This reflow responds to enlarged root text.
-Readouts have no individual surface or padding.
+The spacing scale uses quarter-rem steps, with section gaps of 1.5rem and desktop
+page gutters of 2rem. Below 75rem, gutters reduce to 1rem. Content caps at 100rem;
+readouts, chart, and table align to shared gutters. Five static readouts form a
+single rule-separated strip. At 45rem of readout-container width they become two
+columns with the total spanning both. Readouts have no individual cards or
+interactive selection treatment.
 
-The plot is 10rem tall. Controls wrap; axes reserve 48px for date/category
-labels, use automatic Y-axis width, and keep timeline endpoints complete.
-The context legend sits outside the SVG and wraps. These are chart geometry,
-not global spacing tokens.
+The plot is 15rem tall. Controls wrap; axes reserve room for complete date/category
+labels and automatic Y-axis width. The context legend sits outside the SVG and
+wraps. Chart geometry remains separate from global spacing tokens.
 
-At 55rem viewport width, tabs take the full row and sync progress uses two
-columns. At 38rem, the header becomes a relative two-row grid: brand/theme
-above source/sync. Source name and URL stack, retaining width for the name.
-Quick dates span the row, tabs scroll horizontally, date fields stack, and
-chart controls wrap. Mobile/coarse-pointer controls grow to 2.75rem.
-Widths and type follow the root font size; preserve reflow at 200% text.
+Below 55rem viewport width, the sidebar becomes a relative, wrapping top navigation
+region. All views remain visible. At 38rem, the header becomes a relative flex
+column; status and actions stay visible and wrap. Quick periods span their row,
+date fields stack, and chart controls wrap.
+Mobile/coarse-pointer controls grow to 2.75rem. Widths and type follow the root
+font size; preserve reflow at 200% text.
 
 Tables scroll within their own region, capped at 35rem, with sticky headings.
-Dense rows use 0.25rem vertical padding and fine rules. Numeric cells align
-right; the independent result summary describes all filtered results.
-All headings and cells keep 1rem horizontal gutters, including outer edges.
-Daily dates share one line with small status icons; labels and check times remain
-accessible and available on hover. Source coverage is a muted, collapsed
+Padded rows use fine rules, neutral headings, and right-aligned numeric cells.
+The independent result summary describes all filtered results. Headings and cells
+keep shared horizontal gutters, including outer edges.
+
+Daily dates sit beside small status icons and wrap when text grows; complete
+labels and check times remain accessible and available on hover. Source coverage is a muted, collapsed
 disclosure below results; diagnostic counts and dates appear only when expanded.
 Completion icons stay blank while awaiting a check or when their saved check time
 predates the current sync. Actual pending, updating, and failure states remain visible.
 
 ## Elevation & Depth
 
-Surface tone and fine rules provide hierarchy. The readout bank, chart, and table
+Surface tone and fine rules provide hierarchy. The readout strip, chart, and table
 are flat workspace regions; ordinary sync containers retain subtle borders.
 Overlays and chart tooltips share the theme-specific shadow in the sidecar.
 
-**The Flat Workspace Rule.** Use fine rules and surface tone at rest. Reserve the shared shadow for overlays and chart tooltips.
+**The Flat Workspace Rule.** Use fine rules and surface tone at rest. Reserve the
+shared shadow for overlays and chart tooltips.
 
 State colors transition over 150ms; loading/sync indicators rotate over 1.2s.
 Overlays use the existing fade/scale treatment. Charts do not animate data.
@@ -289,25 +306,26 @@ Reduced-motion preferences disable transitions and animation.
 
 Small corners belong to compact controls, chips, badges, and checkbox shapes;
 medium corners to fields and regular controls; large corners to ordinary cards
-and overlays. Analytics regions and underline navigation remain square and flat.
-Status dots are circular. Rules use 0.0625rem; focus strokes and offsets use
-0.125rem, inset inside clipped navigation/table regions.
+and overlays. Analytics regions remain square and flat. Status dots are circular.
+Rules use 0.0625rem; focus strokes and offsets use 0.125rem, inset inside clipped
+navigation/table regions.
 
 ## Components
 
 ### Buttons
 
 Primary, outline, secondary, ghost, and destructive variants share visible focus.
-Regular minimum height is 2rem; compact is 1.875rem; large is 2.25rem.
-Frontmatter heights describe minima. Compact controls use small corners.
+Regular and compact controls have a 2.25rem minimum height; large controls use
+2.75rem. Frontmatter heights describe minima. Compact controls use small corners.
 Primary/destructive hover reduces fill to 90%; secondary to 80%; outline and ghost
-use the accent tint. Disabled controls use 50% opacity. No hover movement.
+use the neutral accent surface. Disabled controls use 50% opacity. No hover movement.
 
 ### Inputs and overlays
 
 Keep visible labels, field edges, native dates, and associated validation.
 Date ranges wrap to preserve their full label. Search wrappers own their focus
-outline; multiselect rows retain checkbox labels and search.
+outline, with no nested input shadow; multiselect rows retain checkbox labels and search.
+
 Popovers target 22rem width, scroll within available height, and use 8px anchor
 offset with 16px collision clearance. The header shows the local machine hostname
 in single-process mode; its accessible label distinguishes viewer identity from
@@ -319,18 +337,17 @@ failed request without marking the entire server unavailable.
 
 ### Navigation and chips
 
-View links use muted text and a lime underline plus stronger weight when active.
-Hover uses a raised surface; focus remains visible in the scrolling row.
-Quick dates and chart metrics expose pressed state with a lime tint.
-Active filter chips include dimension, value, and remove action; long values
-truncate within the chip while retaining their accessible name.
+View links use muted text, with blue ink and a neutral supporting surface when
+active. Hover uses a supporting surface; focus remains visible. Quick periods and
+chart metrics expose pressed state. Active filter chips include dimension, value,
+and remove action; long values truncate while retaining their accessible name.
 
 ### Readouts and charts
 
 Five static text groups share the same informational treatment. All values use
-the readout role; captions and details use label type. Optional total detail is hidden
-on narrow layouts while its accessible quantity remains. The exclusion qualification
-stays visible in the excluded-usage review.
+the readout role; captions and details use label type. Usage qualifications remain
+visible on narrow layouts. The excluded-usage review keeps its exclusion
+qualification explicit.
 
 Ordinary usage is the primary analytical surface. Matching excluded usage gets a
 muted, wrapping disclosure below the readouts with a **Review excluded usage** action.
@@ -339,10 +356,11 @@ its total, chart, table and session coverage retain explicit exclusion labels. B
 views preserve filters, URL state and browser history. Empty results explain their
 scope and offer filter recovery. Review transitions announce the scope and move
 keyboard focus to the result region without scrolling.
-The timeline uses a fine lime line and tinted area. Category charts share their
-colors with labeled drill-down actions; context comparisons include an HTML legend.
-Model/provider/harness/repo shares appear above bars and in tooltips; dimension
-drill-down labels also show shares. Long drill-down names wrap while their
+
+The timeline uses a fine blue line without an area fill. Category charts share
+their colors with labeled drill-down actions; context comparisons include an HTML
+legend. Model/provider/harness/repo shares appear above bars and in tooltips;
+dimension drill-down labels also show shares. Long drill-down names wrap while
 percentages remain visible at enlarged text sizes.
 
 ### Containers and tables
@@ -356,14 +374,15 @@ and a wrapping full-result summary. Do not style static readouts as controls.
 
 ### Do:
 
-- **Do** preserve lime feedback in both themes, using the deeper light-theme ink for readable text and chart lines.
+- **Do** use blue for actions, selection, focus, and the principal plotted series.
+- **Do** keep both themes neutral, with readable supporting ink.
 - **Do** use shared control sizes, visible focus, and enlarged touch targets.
-- **Do** wrap filters and chart controls; keep every view reachable on narrow screens.
-- **Do** keep source identity, complete timeline dates, and full-result summaries readable at enlarged text sizes.
+- **Do** wrap filters, navigation, and chart controls; keep every view reachable.
+- **Do** keep source identity, complete dates, and result summaries readable at enlarged text sizes.
 
 ### Don't:
 
+- **Don't** tint large workspace surfaces blue.
 - **Don't** add separate metric cards or selection borders to static readouts.
-- **Don't** introduce a tall dashboard title block or side filter rail into this compact surface.
 - **Don't** rely on color alone for selection, categories, or status.
-- **Don't** add decorative chart animation, remote fonts, or arbitrary overlay shadows.
+- **Don't** add decorative chart animation, remote font dependencies, or arbitrary overlay shadows.

@@ -219,11 +219,7 @@ export function UsageChart({
                 margin={{ top: 12, right: 12, left: 0, bottom: 0 }}
                 accessibilityLayer
               >
-                <CartesianGrid
-                  vertical={false}
-                  stroke="var(--color-border)"
-                  strokeDasharray="3 5"
-                />
+                <CartesianGrid vertical={false} stroke="var(--color-border)" />
                 <XAxis
                   dataKey="label"
                   tickLine={false}
@@ -256,7 +252,7 @@ export function UsageChart({
                   name={metrics.find((m) => m.key === metric)?.label}
                   stroke="var(--chart-1)"
                   strokeWidth={2}
-                  fill="var(--accent)"
+                  fill="none"
                   isAnimationActive={false}
                   dot={rows.length === 1}
                 />
@@ -268,11 +264,7 @@ export function UsageChart({
                 margin={{ top: showTokenShares ? 28 : 12, right: 12, left: 0, bottom: 0 }}
                 accessibilityLayer
               >
-                <CartesianGrid
-                  vertical={false}
-                  stroke="var(--color-border)"
-                  strokeDasharray="3 5"
-                />
+                <CartesianGrid vertical={false} stroke="var(--color-border)" />
                 <XAxis
                   dataKey="label"
                   height={categoryAxisHeight}

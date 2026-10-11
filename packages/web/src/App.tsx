@@ -1,16 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
-import { Link, useNavigate } from '@tanstack/react-router'
-import {
-  Activity,
-  Box,
-  ChartNoAxesCombined,
-  CircleAlert,
-  Command,
-  Layers3,
-  LoaderCircle,
-  GitBranch,
-} from 'lucide-react'
+import { useNavigate } from '@tanstack/react-router'
+import { CircleAlert, LoaderCircle } from 'lucide-react'
 import {
   AuthenticationRequired,
   changeBrowserSession,
@@ -22,19 +13,15 @@ import { clearAccountQueries } from './session'
 import { allowsDashboardReload, hasCapability, showsCollectorProgress } from './capabilities'
 import { TokenLogin } from './components/TokenLogin'
 import { CollectorProgress, collectorStages } from './components/CollectorProgress'
-import type { Bootstrap, Tab } from './contracts'
+import type { Bootstrap } from './contracts'
 import { locationGroupSchema } from './contracts'
-import {
-  DashboardProvider,
-  parseDashboardSearch,
-  reduceQuery,
-  searchFromQuery,
-  useDashboardQuery,
-} from './state'
+import { DashboardProvider, parseDashboardSearch, useDashboardQuery } from './state'
 import { useDashboardSync } from './useDashboardSync'
-import { labels, serverTimeZoneLabel } from './format'
+import { serverTimeZoneLabel } from './format'
 import { FilterToolbar, QuickPeriods } from './components/Filters'
 import { DashboardHeader } from './components/DashboardHeader'
+import { DashboardSidebar } from './components/DashboardSidebar'
+import { Brand } from './components/Brand'
 import { DashboardResults } from './components/DashboardResults'
 import { Button } from './components/ui/button'
 import {
@@ -44,16 +31,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from './components/ui/select'
-
-const tabs: { id: Tab; icon: typeof Activity }[] = [
-  { id: 'tokens', icon: Activity },
-  { id: 'models', icon: Box },
-  { id: 'providers', icon: Layers3 },
-  { id: 'harnesses', icon: Command },
-  { id: 'sessions', icon: ChartNoAxesCombined },
-  { id: 'context', icon: Layers3 },
-  { id: 'repo', icon: GitBranch },
-]
 
 export function App() {
   const client = useQueryClient()
@@ -143,12 +120,7 @@ function ConnectionScreen({
   return (
     <div className="app-shell">
       <header className="app-header">
-        <div className="brand">
-          <img src="/tokeninsights-logo.png" alt="" className="brand-mark" />
-          <span>
-            Token<span className="brand-light">Insights</span>
-          </span>
-        </div>
+        <Brand />
       </header>
       <main className="startup-state">
         {error ? (
@@ -222,99 +194,88 @@ function DashboardShell({
     connectionError,
   )
   return (
-    <div className="app-shell">
+    <div className="app-shell dashboard-shell">
       <a href="#dashboard" className="skip-link">
         Skip to dashboard
       </a>
-      <DashboardHeader
-        hostname={bootstrap.hostname}
-        timezone={bootstrap.timezone}
-        reloading={controller.reloading}
-        statusLabel={statusLabel}
+      <DashboardSidebar
         localMachine={bootstrap.serverKind === 'personal'}
-        allowReload={allowsDashboardReload(bootstrap)}
-        lastSynced={analytics.data?.dashboard.lastSynced}
-        onReload={() => void controller.reload()}
+        onSignOut={bootstrap.serverKind === 'hosted' ? onSignOut : undefined}
       />
-      <main id="dashboard" className="dashboard">
-        <h1 className="sr-only">Token usage</h1>
-        {bootstrap.serverKind === 'hosted' && (
-          <Button variant="ghost" onClick={() => void onSignOut()}>
-            Sign out
-          </Button>
-        )}
-        {showProgress && <CollectorProgress progress={controller.progressQuery.data} />}
-        <div className="view-controls">
-          <nav className="view-tabs" aria-label="Analytics views">
-            {tabs.map(({ id, icon: Icon }) => (
-              <Button key={id} variant="ghost" asChild>
-                <Link
-                  to="/$tab"
-                  params={{ tab: id }}
-                  search={searchFromQuery(reduceQuery(query, { type: 'tab', value: id }))}
-                  activeOptions={{ exact: true, includeSearch: false }}
-                >
-                  <Icon size="1em" />
-                  {labels[id]}
-                </Link>
-              </Button>
-            ))}
-          </nav>
-          <QuickPeriods />
-        </div>
-        {query.tab === 'repo' && (
-          <div className="repo-controls" aria-label="Repo view options">
-            <div className="bucket-control">
-              <span>Group by</span>
-              <Select
-                value={query.locationGroup}
-                onValueChange={(value) => {
-                  const parsed = locationGroupSchema.safeParse(value)
-                  if (parsed.success) setLocationGroup(parsed.data)
-                }}
-              >
-                <SelectTrigger aria-label="Group by location">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {locationGroupSchema.options.map((value) => (
-                    <SelectItem key={value} value={value}>
-                      {value[0]?.toUpperCase() + value.slice(1)}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+      <div className="dashboard-main">
+        <DashboardHeader
+          hostname={bootstrap.hostname}
+          timezone={bootstrap.timezone}
+          reloading={controller.reloading}
+          statusLabel={statusLabel}
+          localMachine={bootstrap.serverKind === 'personal'}
+          allowReload={allowsDashboardReload(bootstrap)}
+          lastSynced={analytics.data?.dashboard.lastSynced}
+          onReload={() => void controller.reload()}
+        />
+        <main id="dashboard" className="dashboard">
+          <div className="dashboard-heading">
+            <div>
+              <h1>Token usage</h1>
+              <p>Understand your coding activity across harnesses.</p>
             </div>
+            <QuickPeriods />
           </div>
-        )}
-        <div className="studio-layout">
-          {hasCapability(bootstrap, 'facets') && (
-            <FilterToolbar
-              facets={facets.data}
-              revision={revision}
-              enabled={enabled}
-              identity={controller.identity}
-            />
+          {showProgress && <CollectorProgress progress={controller.progressQuery.data} />}
+          {query.tab === 'repo' && (
+            <div className="repo-controls" aria-label="Repo view options">
+              <div className="bucket-control">
+                <span>Group by</span>
+                <Select
+                  value={query.locationGroup}
+                  onValueChange={(value) => {
+                    const parsed = locationGroupSchema.safeParse(value)
+                    if (parsed.success) setLocationGroup(parsed.data)
+                  }}
+                >
+                  <SelectTrigger aria-label="Group by location">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {locationGroupSchema.options.map((value) => (
+                      <SelectItem key={value} value={value}>
+                        {value[0]?.toUpperCase() + value.slice(1)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
           )}
-          <DashboardResults
-            analytics={analytics}
-            excludedUsage={excludedUsage}
-            facets={facets}
-            controller={controller}
-            timezone={bootstrap.timezone}
-            connectionError={connectionError}
-            retryConnection={retryConnection}
-          />
-        </div>
-        <footer className="app-footer">
-          <span>
-            <span className="status-dot" />
-            {bootstrap.hostname} · {window.location.origin} ·{' '}
-            {serverTimeZoneLabel(bootstrap.timezone)}
-          </span>
-          <span>OpenCode · Pi · Codex · Claude Code</span>
-        </footer>
-      </main>
+          <div className="studio-layout">
+            {hasCapability(bootstrap, 'facets') && (
+              <FilterToolbar
+                facets={facets.data}
+                revision={revision}
+                enabled={enabled}
+                identity={controller.identity}
+              />
+            )}
+            <DashboardResults
+              analytics={analytics}
+              excludedUsage={excludedUsage}
+              facets={facets}
+              controller={controller}
+              timezone={bootstrap.timezone}
+              connectionError={connectionError}
+              retryConnection={retryConnection}
+            />
+          </div>
+          <footer className="app-footer">
+            <span>
+              <span className="status-dot" />
+              {bootstrap.hostname} · {window.location.origin} ·{' '}
+              {serverTimeZoneLabel(bootstrap.timezone)}
+            </span>
+            <span>OpenCode · Pi · Codex · Claude Code</span>
+          </footer>
+        </main>
+      </div>
     </div>
   )
 }

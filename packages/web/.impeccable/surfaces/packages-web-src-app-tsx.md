@@ -2,33 +2,35 @@
 version: 1
 slug: "packages-web-src-app-tsx"
 primary_target: "packages/web/src/App.tsx"
-related_targets: ["packages/web/src/styles.css","packages/web/src/tokens.css","packages/web/src/components/SummaryCards.tsx","packages/web/src/components/Filters.tsx","packages/web/src/components/UsageChart.tsx"]
+related_targets: ["packages/web/src/styles.css","packages/web/src/tokens.css","packages/web/src/components/DashboardSidebar.tsx","packages/web/src/components/SummaryCards.tsx","packages/web/src/components/Filters.tsx","packages/web/src/components/UsageChart.tsx"]
 ---
 
-# Browser dashboard — Graphite & Lime
+# Browser dashboard — Quiet Blue / White First
 
-Mode: Operate. Individual developers scan local token usage, compare dimensions, then inspect exact rows. User approved the paired dark/light previews and implementation. Preserve canonical semantics, source identity, filters, sync recovery, offline Go embedding, and keyboard access.
+Mode: Operate. Developers scan token usage, compare dimensions, narrow filters, and inspect exact rows. User chose White First and approved its neutral charcoal dark counterpart. Preserve existing canonical semantics, authenticated dataset isolation, URL state, recovery, server identity, keyboard access, and Go embedding.
 
 ## Direction contract
 
-THESIS: A compact measurement workspace puts the chart and table together in the first viewport.
+THESIS: A calm, mature analytics workspace gives navigation a stable home and lets usage data lead.
 
-OWN-WORLD: Neutral graphite with crisp lime in dark mode; warm white with deep lime text and chart ink in light mode. Bright lime action fills use dark text in both themes. System typography, tabular numerals, small corners, and fine rules.
+OWN-WORLD: White-first light surfaces, subtle neutral-gray fields and rules; neutral charcoal dark surfaces. Quiet blue belongs to interaction and chart ink. Locally bundled DM Sans, tabular sans numerals, restrained corners, generous spacing.
 
-STORY: Scan the shared readouts, read the timeline, narrow horizontal filters, then compare exact table rows.
+STORY: Choose an analytics view in the sidebar, scan the page heading and dates, narrow horizontal filters, read shared totals, then compare the chart and exact table rows.
 
-FIRST VIEWPORT: A roughly 48px source/status/action header; route tabs and quick dates on one row; wrapping horizontal filters; five compact static readouts; a 160px plot and compact toolbar; dense table rows. No tall title block or filter rail. Mobile wraps controls with accessible touch targets. Signature interaction: existing immediate filter/metric selection uses lime feedback; sync alone rotates, with reduced-motion support.
+FIRST VIEWPORT: A 192px desktop sidebar with existing logo and seven views; 64px source/status/action header; visible Token usage heading; quick dates; wrapping filters; five readouts; 240px plot above the table. Small screens place wrapping navigation above content. Existing immediate filters and metric controls remain the signature interaction; focus is blue, sync rotation respects reduced motion.
 
-FORM: User-selected Graphite & Mint, refined and approved as Graphite & Lime with matching light mode. Direction seed d483b2c9; explicit user choice overrides the assignment. Code-led; approved conversation previews are critique references.
+FORM: User-selected Quiet Blue, refined and approved as White First in light and neutral charcoal in dark. Direction seed 09bee032; explicit user choice overrides assignment. Code-led implementation; approved conversation previews are critique references, not raster assets.
 
-FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, DESIGN.md, and every shipping raster carrying its provenance
+FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, DESIGN.md, and every shipping raster carrying its provenance.
 
 ## Implementation evidence
 
-Desktop header 48px; plot 160px; Tokens table begins near 448px at 1440px width. Both themes, all seven routes, 320px mobile, tablet, filter popover, and 200% text captured under `.impeccable/review/graphite-lime/`.
+Desktop light/dark (1440×1100), mobile light/dark (390px), 200% text, model filter popover, Models and Repo captured from the production Go web command under `.impeccable/review/white-first/`. All captures opened and verified from document top, with reduced motion and complete loading. Data is synthetic conformance metadata from `packages/cli/testdata/conformance/sync-first-basic/source`, materialized by `pnpm dev:data`; no real user usage.
 
-Reviewer disposition: ship; source-label overlap and enlarged endpoint dates both resolved. Verdict scope is those two fixes; earlier fidelity assessment stands. Format, lint, full tests, build, and eight browser tests passed. Direct Go build serves byte-identical embedded assets and API with Node/npm/pnpm absent from PATH; project TUI verified in PTY. Updated README screenshot uses synthetic data and embeds its origin; shipping raster scan reports zero missing provenance.
+Initial independent review disposition: fix. Period labels now wrap without truncation at enlarged text sizes. Search fields keep the wrapper focus outline and suppress the nested input shadow. DESIGN.md and its sidecar match the single-weight brand and current primitives. Recaptures replace the same evidence paths. Final verdict disposition: ship; reviewer scored all three listed fixes resolved, with remaining clear. This verdict covers those fixes; the initial fidelity assessment stands.
 
-Root DESIGN.md and `.impeccable/design.json` now document the implemented palette, compact scales, responsive behavior, and existing primitives. Documentation validation passed.
+Format, pinned-tool lint, 71 web unit tests, full Go/SQLite/PostgreSQL tests, production build, and 35 browser tests passed. Corrected build, lint, web unit tests, and all 35 browser tests pass. Pre-push verification is required before publication. Direct Go build and the real dashboard run with Node/npm/pnpm absent from PATH; the served font matches the committed WOFF2 bytes. Web shipping raster provenance scan reports zero missing; README screenshot embeds its synthetic source origin.
+
+No schema, API, storage, accounting, authorization, or state ownership changes. New Brand and DashboardSidebar components own presentation only.
 
 Unresolved questions: none.

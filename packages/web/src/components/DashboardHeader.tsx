@@ -1,6 +1,6 @@
 import { RefreshCw, LoaderCircle, Monitor, Moon, Sun } from 'lucide-react'
-import { useDashboardPreferences } from '../state'
-import { formatServerDateTime, serverTimeZoneLabel } from '../format'
+import { useDashboardPreferences, useDashboardQuery } from '../state'
+import { formatServerDateTime, labels, serverTimeZoneLabel } from '../format'
 import { Button } from './ui/button'
 
 export function DashboardHeader({
@@ -23,14 +23,10 @@ export function DashboardHeader({
   onReload: () => void
 }) {
   const { theme, setTheme } = useDashboardPreferences()
+  const { query } = useDashboardQuery()
   return (
     <header className="app-header">
-      <div className="brand">
-        <img src="/tokeninsights-logo.png" alt="" className="brand-mark" />
-        <span>
-          Token<span className="brand-light">Insights</span>
-        </span>
-      </div>
+      <span className="header-view">Analytics / {labels[query.tab]}</span>
       <div className="header-actions">
         <span
           className="server-identity"
@@ -74,7 +70,13 @@ export function DashboardHeader({
           )}
         </Button>
         {allowReload && (
-          <Button className="sync-button" size="sm" disabled={reloading} onClick={onReload}>
+          <Button
+            variant="outline"
+            className="sync-button"
+            size="sm"
+            disabled={reloading}
+            onClick={onReload}
+          >
             {reloading ? <LoaderCircle size="1em" className="spin" /> : <RefreshCw size="1em" />}
             <span>Reload</span>
           </Button>
