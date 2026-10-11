@@ -474,6 +474,9 @@ select origin. Fixed auth errors expose no credentials. Static login shell/healt
 public; authenticated failures render login and clear account-specific/in-flight
 query caches, including placeholder data.
 
+Dashboard reads honor request cancellation. Canceled requests produce no query
+failure log or error response; query timeouts and storage failures remain visible.
+
 Bound admission before body decoding: four global acceptance slots, one active
 acceptance per hosted user, per-user 10 batches/second with burst 20, login five
 attempts/minute per client address. Rate limits return 429/Retry-After; global busy
