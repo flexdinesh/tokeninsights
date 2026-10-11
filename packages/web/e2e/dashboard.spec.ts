@@ -374,7 +374,8 @@ test('path routes keep shared dashboard stable while view data loads', async ({ 
   const tokensLink = page.getByRole('link', { name: 'Tokens', exact: true })
   await expect(tokensLink).toHaveAttribute('aria-current', 'page')
 
-  await page.locator('.view-controls').evaluate((element) => {
+  const navigation = page.getByRole('navigation', { name: 'Analytics views' })
+  await navigation.evaluate((element) => {
     element.dataset.mounted = 'routes'
   })
   await page.getByRole('region', { name: 'Filtered usage summary' }).evaluate((element) => {
@@ -390,7 +391,8 @@ test('path routes keep shared dashboard stable while view data loads', async ({ 
   await page.getByRole('link', { name: 'Models', exact: true }).click()
   await expect(page).toHaveURL(/\/models\?/)
   await expect(page.getByRole('status', { name: 'Updating view results' })).toBeVisible()
-  await expect(page.locator('.view-controls[data-mounted="routes"]')).toBeVisible()
+  await expect(navigation).toHaveAttribute('data-mounted', 'routes')
+  await expect(navigation).toBeVisible()
   await expect(
     page.locator('[aria-label="Filtered usage summary"][data-mounted="summary"]'),
   ).toBeVisible()
@@ -483,6 +485,11 @@ test('sorting preserves page scroll position', async ({ page }) => {
 test('themes, keyboard filters, mobile layout, and scalable typography', async ({
   page,
 }, testInfo) => {
+  const fontRequests: string[] = []
+  page.on('request', (request) => {
+    if (request.resourceType() === 'font') fontRequests.push(request.url())
+  })
+  await page.emulateMedia({ colorScheme: 'light' })
   await page.goto('/')
   await expect(page.getByRole('region', { name: 'Filtered usage summary' })).toBeVisible()
   await expect(page.getByRole('region', { name: 'Usage over time', exact: true })).toBeVisible()
@@ -491,7 +498,95 @@ test('themes, keyboard filters, mobile layout, and scalable typography', async (
     .locator('body')
     .evaluate((element) => Number.parseFloat(getComputedStyle(element).fontSize))
   expect(bodySize).toBeGreaterThanOrEqual(14)
-  await expect(page.getByRole('heading', { name: 'Token usage', exact: true })).toBeAttached()
+  const heading = page.getByRole('heading', { name: 'Token usage', exact: true })
+  await expect(heading).toBeVisible()
+  const sidebar = await page.locator('.dashboard-sidebar').boundingBox()
+  const content = await page.locator('.dashboard-main').boundingBox()
+  if (!sidebar || !content) throw new Error('Desktop navigation and dashboard must be visible')
+  expect(sidebar.x + sidebar.width).toBeLessThanOrEqual(content.x)
+  expect(
+    await page.locator('body').evaluate(async (element) => {
+      await document.fonts.ready
+      return {
+        family: getComputedStyle(element).fontFamily,
+        loaded: [...document.fonts].some(
+          (font) => font.family.includes('DM Sans') && font.status === 'loaded',
+        ),
+      }
+    }),
+  ).toMatchObject({ family: expect.stringContaining('DM Sans'), loaded: true })
+  expect(fontRequests.length).toBeGreaterThan(0)
+  expect(fontRequests.every((url) => new URL(url).origin === new URL(page.url()).origin)).toBe(true)
+
+  async function expectReadableTheme(theme: 'light' | 'dark') {
+    const colors = await page.locator('body').evaluate((element) => {
+      const style = getComputedStyle(element)
+      const canvas = document.createElement('canvas')
+      canvas.width = 1
+      canvas.height = 1
+      const context = canvas.getContext('2d')
+      if (!context) throw new Error('Color contrast measurement needs a canvas')
+      function measure(color: string) {
+        if (!context) throw new Error('Color contrast measurement needs a canvas')
+        context.fillStyle = color
+        context.fillRect(0, 0, 1, 1)
+        const [red, green, blue] = context.getImageData(0, 0, 1, 1).data
+        if (red === undefined || green === undefined || blue === undefined)
+          throw new Error('Expected opaque theme colors')
+        const channels = [red, green, blue]
+        const [r, g, b] = channels.map((value) => {
+          const channel = value / 255
+          return channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4
+        })
+        if (r === undefined || g === undefined || b === undefined)
+          throw new Error('Expected three color channels')
+        return {
+          luminance: 0.2126 * r + 0.7152 * g + 0.0722 * b,
+          channelSpread: Math.max(...channels) - Math.min(...channels),
+        }
+      }
+      return { background: measure(style.backgroundColor), text: measure(style.color) }
+    })
+    const lighter = Math.max(colors.background.luminance, colors.text.luminance)
+    const darker = Math.min(colors.background.luminance, colors.text.luminance)
+    const minimumTextContrast = 4.5
+    const neutralChannelTolerance = 12
+    expect((lighter + 0.05) / (darker + 0.05)).toBeGreaterThanOrEqual(minimumTextContrast)
+    expect(colors.background.channelSpread).toBeLessThanOrEqual(neutralChannelTolerance)
+    if (theme === 'light')
+      expect(colors.background.luminance).toBeGreaterThan(colors.text.luminance)
+    else expect(colors.background.luminance).toBeLessThan(colors.text.luminance)
+  }
+
+  async function expectNavigationReachable() {
+    const navigation = page.getByRole('navigation', { name: 'Analytics views' })
+    for (const name of [
+      'Tokens',
+      'Models',
+      'Providers',
+      'Harnesses',
+      'Sessions',
+      'Context',
+      'Repo',
+    ]) {
+      const link = navigation.getByRole('link', { name, exact: true })
+      await link.scrollIntoViewIfNeeded()
+      await expect(link).toBeVisible()
+      await link.focus()
+      await expect(link).toBeFocused()
+      const bounds = await link.boundingBox()
+      if (!bounds) throw new Error(`${name} navigation must remain reachable`)
+      expect(bounds.x).toBeGreaterThanOrEqual(0)
+      expect(bounds.x + bounds.width).toBeLessThanOrEqual(
+        await page.evaluate(() => window.innerWidth),
+      )
+    }
+  }
+
+  await expectReadableTheme('light')
+  await page.emulateMedia({ colorScheme: 'dark' })
+  await expectReadableTheme('dark')
+  await page.emulateMedia({ colorScheme: 'light' })
   expect(
     await page
       .getByLabel('Total tokens: 258,000', { exact: true })
@@ -510,8 +605,10 @@ test('themes, keyboard filters, mobile layout, and scalable typography', async (
   )
   for (const height of controlHeights) expect(height).toBeGreaterThanOrEqual(24)
   await page.getByRole('button', { name: 'Theme: system. Change theme' }).click()
+  await expectReadableTheme('light')
   await page.getByRole('button', { name: 'Theme: light. Change theme' }).click()
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark')
+  await expectReadableTheme('dark')
   await page.reload()
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark')
   await expect(page.locator('.recharts-surface')).toBeVisible()
@@ -522,6 +619,7 @@ test('themes, keyboard filters, mobile layout, and scalable typography', async (
   await expect(page.getByRole('button', { name: 'Harness', exact: true })).toBeFocused()
   await page.setViewportSize({ width: 390, height: 844 })
   await expect(page.getByRole('button', { name: 'Reload', exact: true })).toBeVisible()
+  await expectNavigationReachable()
   await expect
     .poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth))
     .toBe(true)
@@ -537,16 +635,24 @@ test('themes, keyboard filters, mobile layout, and scalable typography', async (
     expect(value.x).toBeGreaterThanOrEqual(container.x)
     expect(value.x + value.width).toBeLessThanOrEqual(container.x + container.width)
   }
+  for (const period of await page.locator('tbody .identity-name').all()) {
+    await expect(period).toBeVisible()
+    expect(await period.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(
+      true,
+    )
+  }
   await expect
     .poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth))
     .toBe(true)
   await expect(page.getByRole('button', { name: 'Reload', exact: true })).toBeVisible()
+  await expectNavigationReachable()
   await page.evaluate(() => {
     document.documentElement.style.fontSize = ''
   })
   await page.screenshot({ path: testInfo.outputPath('desktop-dark.png'), fullPage: true })
   await page.getByRole('button', { name: 'Theme: dark. Change theme' }).click()
   await page.getByRole('button', { name: 'Theme: system. Change theme' }).click()
+  await expectReadableTheme('light')
   await page.screenshot({ path: testInfo.outputPath('desktop-light.png'), fullPage: true })
 })
 

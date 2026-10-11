@@ -210,7 +210,10 @@ function ResultsCell({
     return (
       <div className="identity-cell">
         <div className="identity-line">
-          <span className="identity-name" title={String(value)}>
+          <span
+            className={tab === 'tokens' ? 'identity-name period-name' : 'identity-name'}
+            title={String(value)}
+          >
             {String(value)}
           </span>
         </div>
