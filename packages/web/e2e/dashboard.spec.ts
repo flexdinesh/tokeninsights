@@ -23,7 +23,11 @@ test.describe('server reporting timezone', () => {
     })
     await page.goto('/sessions?period=all')
     await expect(page.locator('.table-panel time')).toHaveText('Jan 1, 2026')
-    await expect(page.locator('.app-header time')).toHaveText('Last ingestion Jan 1, 2026, 00:30')
+    await expect(page.locator('.app-header time')).toHaveCount(0)
+    await page.getByRole('button', { name: 'Local status: Ready' }).click()
+    await expect(
+      page.getByRole('dialog', { name: 'Local status details' }).locator('time'),
+    ).toHaveText('Last ingestion Jan 1, 2026, 00:30')
     await expect(page.locator('.app-footer')).toContainText('UTC')
     expect(await page.evaluate(() => Intl.DateTimeFormat().resolvedOptions().timeZone)).toBe(
       'America/Los_Angeles',
@@ -39,7 +43,11 @@ test('saved ingestion shows available rows without source completeness markers',
   await expect(page.locator('.coverage-indicator')).toHaveCount(0)
   await expect(page.getByText('Source coverage', { exact: true })).toHaveCount(0)
   await expect(page.getByLabel('Sources checked')).toHaveCount(0)
-  await expect(page.getByText('Last ingestion', { exact: false })).toBeVisible()
+  await expect(page.locator('.app-header time')).toHaveCount(0)
+  await page.getByRole('button', { name: 'Local status: Ready' }).click()
+  await expect(page.getByRole('dialog', { name: 'Local status details' })).toContainText(
+    'Last ingestion',
+  )
 })
 
 test('empty server explains manual collection without a browser mutation', async ({ page }) => {
@@ -77,6 +85,10 @@ test('empty server explains manual collection without a browser mutation', async
     page.getByText('No usage saved yet. Restart tokeninsights web to collect usage.'),
   ).toBeVisible()
   await expect(page.getByRole('button', { name: 'Reload', exact: true })).toHaveCount(0)
+  await page.getByRole('button', { name: 'Local status: Ready' }).click()
+  await expect(
+    page.getByRole('dialog', { name: 'Local status details' }).locator('time'),
+  ).toHaveCount(0)
   expect(mutations).toEqual([])
 })
 
