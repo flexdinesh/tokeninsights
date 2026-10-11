@@ -30,24 +30,14 @@ export function CollectorProgress({ progress }: { progress: Progress | undefined
   const visible = terminal ? [...active, terminal] : active
   if (visible.length === 0) return null
   return (
-    <section className="collector-progress" aria-label="Collector progress" aria-live="polite">
+    <section className="collector-progress" aria-label="Collector progress">
       {visible.map((attempt) => (
         <div key={attempt.attemptId}>
-          {attempt.stage !== 'accepted' && <AttemptStatus attempt={attempt} />}
-          {['waiting', 'capturing', 'submitting'].includes(attempt.stage) ? (
-            <HarnessStates harnesses={attempt.harnesses} />
-          ) : (
-            <details>
-              <summary>Latest collection</summary>
-              {attempt.stage === 'accepted' && <AttemptStatus attempt={attempt} />}
-              <HarnessStates harnesses={attempt.harnesses} />
-            </details>
+          {!['waiting', 'capturing', 'submitting'].includes(attempt.stage) && (
+            <h3>Latest collection</h3>
           )}
-          {(attempt.stage === 'failed' || attempt.stage === 'interrupted') && (
-            <p role="alert">
-              Saved usage remains available. Restart tokeninsights web to retry collection.
-            </p>
-          )}
+          <AttemptStatus attempt={attempt} />
+          <HarnessStates harnesses={attempt.harnesses} />
         </div>
       ))}
     </section>
@@ -56,7 +46,7 @@ export function CollectorProgress({ progress }: { progress: Progress | undefined
 
 function AttemptStatus({ attempt }: { attempt: Progress['attempts'][number] }) {
   return (
-    <p role="status">
+    <p>
       {attempt.errorCode === 'submission_failed'
         ? 'Submission failed'
         : collectorStages[attempt.stage]}{' '}

@@ -171,6 +171,7 @@ it('startup shares one progress request, names harness state and suppresses prem
     progress: progress('capturing'),
     dashboard: emptyDashboard(),
   })
+  await userEvent.click(await screen.findByRole('button', { name: /Loading status:/ }))
   const region = await screen.findByRole('region', { name: 'Collector progress' })
   expect(region).toHaveTextContent('Collecting usage')
   expect(region).toHaveTextContent('codex: Collecting')
@@ -202,7 +203,7 @@ it('acceptance refreshes status before declaring Ready and keeps processing visi
           })
         : undefined,
   })
-  await screen.findByRole('region', { name: 'Collector progress' })
+  await screen.findByRole('button', { name: 'Loading status: Collecting usage' })
   await act(() =>
     client.setQueryData(['collector-progress', mockBootstrap.instanceId], progress('accepted')),
   )
@@ -374,16 +375,15 @@ it('retained completion history stays compact while every running attempt remain
       ],
     },
   })
+  await userEvent.click(await screen.findByRole('button', { name: /Loading status:/ }))
   const region = await screen.findByRole('region', { name: 'Collector progress' })
   expect(within(region).getAllByText(/Usage accepted/)).toHaveLength(1)
   expect(within(region).getAllByText(/Collecting usage/)).toHaveLength(2)
   expect(
     within(region).getAllByRole('list', { name: 'Collection by harness', hidden: true }),
   ).toHaveLength(3)
-  expect(within(region).getByText('Latest collection').closest('details')).not.toHaveAttribute(
-    'open',
-  )
-  expect(within(region).getByText(/Usage accepted/)).not.toBeVisible()
+  expect(within(region).getByText('Latest collection')).toBeVisible()
+  expect(within(region).getByText(/Usage accepted/)).toBeVisible()
 })
 
 it('a run with no new harness usage preserves saved totals and explains its scope', async () => {
@@ -400,11 +400,35 @@ it('a run with no new harness usage preserves saved totals and explains its scop
     },
   })
   expect(await screen.findByLabelText('Total tokens: 647,000')).toBeVisible()
-  await userEvent.click(await screen.findByText('Latest collection'))
+  expect(screen.queryByText('codex: No new usage')).not.toBeInTheDocument()
+  await userEvent.click(await screen.findByRole('button', { name: 'Loading status: Ready' }))
   expect(screen.getByText('codex: No new usage')).toBeVisible()
   expect(screen.getByText('Status for this run only; saved usage remains included.')).toBeVisible()
   expect(
     screen.getByText('No new usage means sources were unchanged or none were found.'),
   ).toBeVisible()
   expect(screen.getByLabelText('Total tokens: 647,000')).toBeVisible()
+})
+
+it('keeps collection details out of the dashboard until the status indicator is focused', async () => {
+  mountDashboard({
+    bootstrap: {
+      ...mockBootstrap,
+      capabilities: [...mockBootstrap.capabilities, 'collector-progress'],
+    },
+    progress: progress('capturing'),
+  })
+  const indicator = await screen.findByRole('button', { name: 'Loading status: Collecting usage' })
+  expect(screen.queryByRole('heading', { name: 'Token usage' })).not.toBeInTheDocument()
+  expect(
+    screen.queryByText('Understand your coding activity across harnesses.'),
+  ).not.toBeInTheDocument()
+  expect(screen.getByRole('banner')).toHaveTextContent('/ Tokens')
+  expect(screen.getByRole('banner')).not.toHaveTextContent('Analytics /')
+  expect(screen.queryByRole('region', { name: 'Collector progress' })).not.toBeInTheDocument()
+  act(() => indicator.focus())
+  expect(await screen.findByText('codex: Collecting')).toBeVisible()
+  await userEvent.keyboard('{Escape}')
+  expect(screen.queryByRole('region', { name: 'Collector progress' })).not.toBeInTheDocument()
+  expect(indicator).toHaveFocus()
 })

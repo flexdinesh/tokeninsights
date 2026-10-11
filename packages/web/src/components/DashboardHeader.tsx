@@ -2,17 +2,22 @@ import { Monitor, Moon, Sun } from 'lucide-react'
 import { useDashboardPreferences, useDashboardQuery } from '../state'
 import { formatServerDateTime, labels, serverTimeZoneLabel } from '../format'
 import { Button } from './ui/button'
+import type { CollectorProgress } from '../contracts'
+import { DashboardStatus } from './DashboardStatus'
+import type { DashboardStatusValue } from './DashboardStatus'
 
 export function DashboardHeader({
   hostname,
   timezone,
-  statusLabel,
+  status,
+  progress,
   localMachine,
   lastSynced,
 }: {
   hostname: string
   timezone: string
-  statusLabel: string
+  status: DashboardStatusValue
+  progress: CollectorProgress | undefined
   localMachine: boolean
   lastSynced?: number
 }) {
@@ -20,7 +25,7 @@ export function DashboardHeader({
   const { query } = useDashboardQuery()
   return (
     <header className="app-header">
-      <span className="header-view">Analytics / {labels[query.tab]}</span>
+      <h1 className="header-view">/ {labels[query.tab]}</h1>
       <div className="header-actions">
         <span
           className="server-identity"
@@ -32,9 +37,7 @@ export function DashboardHeader({
         >
           {hostname}
         </span>
-        <span className="header-status" role="status">
-          {statusLabel}
-        </span>
+        <DashboardStatus status={status} progress={progress} />
         {lastSynced ? (
           <time
             className="header-status"

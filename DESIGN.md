@@ -202,7 +202,7 @@ in [docs/design.md](docs/design.md); terminal styling in
 
 - White light surfaces and neutral charcoal dark surfaces.
 - Blue actions, selection, focus, and principal chart series.
-- Sidebar navigation, a visible dashboard title, and rule-separated analytics.
+- Sidebar navigation, a compact current-view heading, and rule-separated analytics.
 - Wrapping filters, scalable type, and visible keyboard focus.
 
 ## Colors
@@ -245,8 +245,8 @@ for code and paths.
 
 Readouts share one scale (24px at the default root size). Body and chart headings
 use the body role (14px); labels and axes use label type (13px). Section headings
-use the title role (16px). The visible dashboard title uses the headline role
-(28px). The brand uses one weight (650) across the full TokenInsights name.
+use the title role (16px). The current-view heading uses the label role (13px).
+The brand uses one weight (650) across the full TokenInsights name.
 
 **The Readable Measurement Rule.** Use tabular numerals and right-aligned numeric
 columns. Reflow controls before reducing type; retain the user's root font size
@@ -256,9 +256,9 @@ and complete timeline dates.
 
 A sticky desktop navigation sidebar (12rem) anchors the workspace. It holds the
 brand and all existing view links. The main column keeps a wrapping, sticky header
-(3.5rem minimum height) for machine identity, progress, and theme selection,
-followed by a visible
-dashboard title, quick periods, and horizontal wrapping filters.
+(3.5rem minimum height) for the current-view heading, machine identity, a fixed-size
+status indicator, and theme selection, followed by quick periods and horizontal
+wrapping filters.
 
 The spacing scale uses quarter-rem steps, with section gaps of 1rem and desktop
 page gutters of 1.5rem. Below 75rem, gutters reduce to 1rem. Content caps at 100rem;
@@ -331,9 +331,11 @@ offset with 16px collision clearance. The header shows the local machine hostnam
 in single-process mode; its accessible label distinguishes viewer identity from
 historical producers. The page origin remains available in the footer. Local and
 hosted dashboards refresh saved usage automatically and retain request retries.
-Collection/submission and processing progress use compact status text beside saved
-data. Successful collection details collapse under **Latest collection**. Harness
-states describe that run only; **No new usage** explains unchanged or missing sources,
+A fixed-size status icon sits beside the hostname: check when ready, spinner while
+loading, and alert when attention is needed. Hover, keyboard focus, or tap reveals
+query/processing status and capability-gated local harness details in a popup.
+Completed collection details appear under **Latest collection** inside that popup.
+Harness states describe that run only; **No new usage** explains unchanged or missing sources,
 while previously saved usage remains included. Failures retain visible recovery.
 Connection failures retain retry controls; usage/filter errors identify the
 failed request without marking the entire server unavailable.

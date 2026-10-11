@@ -165,17 +165,10 @@ textarea[aria-invalid='true'] {
   color: var(--muted-foreground);
   font-size: var(--text-xs);
 }
-.dashboard-heading {
+.dashboard-periods {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: var(--space-4);
+  justify-content: flex-end;
   margin-bottom: var(--space-4);
-}
-.dashboard-heading p {
-  margin-top: var(--space-1);
-  color: var(--muted-foreground);
 }
 .app-header {
   position: sticky;
@@ -257,6 +250,23 @@ textarea[aria-invalid='true'] {
 .header-status {
   color: var(--muted-foreground);
   font-size: var(--text-xs);
+}
+.loading-status {
+  color: var(--muted-foreground);
+}
+.loading-status-loading {
+  color: var(--color-accent-text);
+}
+.loading-status-attention {
+  color: var(--color-error);
+}
+.loading-status-details {
+  font-size: var(--text-xs);
+  overflow-wrap: anywhere;
+}
+.loading-status-details > p {
+  margin-top: var(--space-2);
+  color: var(--muted-foreground);
 }
 .header-divider {
   height: var(--space-4);
@@ -1437,22 +1447,12 @@ a {
   color: var(--color-error);
 }
 .collector-progress {
-  padding-block: 0 var(--space-3);
+  margin-top: var(--space-3);
   color: var(--color-text-muted);
   font-size: var(--text-xs);
 }
-.collector-progress summary {
-  width: fit-content;
-  min-height: var(--control-height-compact);
-  align-content: center;
-  cursor: pointer;
-  border-radius: var(--radius-sm);
-}
-.collector-progress summary:hover {
-  color: var(--color-text-primary);
-}
-.collector-progress summary:focus-visible {
-  outline: var(--focus-width) solid var(--ring);
+.collector-progress > div + div {
+  margin-top: var(--space-3);
 }
 .collector-progress p {
   margin-block: var(--space-1);
@@ -1464,9 +1464,6 @@ a {
   margin-block: var(--space-1);
   padding: 0;
   list-style: none;
-}
-.collector-progress [role='alert'] {
-  color: var(--color-error);
 }
 
 .summary-card + .summary-card {

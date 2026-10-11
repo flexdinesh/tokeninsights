@@ -236,18 +236,23 @@ The browser presentation uses the White First design system in root `DESIGN.md`:
 white light surfaces, neutral charcoal dark surfaces, blue actions and chart lines,
 and locally bundled DM Sans. A desktop sidebar owns view navigation; below 55rem,
 the same links wrap above the workspace. The header keeps machine identity,
-capability-gated progress and theme selection. A visible title,
-quick periods, wrapping filters, static summary strip, chart, and padded result
-table follow. Controls preserve keyboard access, mobile touch targets, and 200%
+a fixed-size loading indicator beside the hostname, the current view heading
+(`/ Tokens`, for example), and theme selection. Quick periods, wrapping filters,
+static summary strip, chart, and padded result table follow. Controls preserve keyboard access, mobile touch targets, and 200%
 text reflow. Presentation components use existing query state and callbacks;
 URL/history, dataset snapshots, authentication, and request lifecycle remain owned
 by their existing browser modules. Fonts and browser assets are committed and
 embedded by Go, with no remote font or host JavaScript runtime dependency.
 
 Compact spacing, a 12rem plot and reduced row padding keep more results visible
-without reducing type or control targets. Successful browser collection collapses
-under **Latest collection**; active and failed runs retain visible status/recovery.
-Harness labels describe the collection run, independently of saved analytics.
+without reducing type or control targets. The redundant dashboard introduction is
+omitted. Hover, keyboard focus, or tap on the loading indicator reveals query and
+processing status plus capability-gated local collection details. The icon keeps
+the same width for ready, loading, and attention states; accessible status labels
+announce changes, and rotation respects reduced motion. The popup shows active
+runs and the latest completed collection. Failures retain visible recovery beside
+saved usage. Harness labels describe the collection run, independently of saved
+analytics.
 The wire state `skipped` displays as **No new usage**: unchanged sources or no
 sources found, without implying that previously saved usage is excluded. Both local
 and hosted browsers poll saved-data status every five seconds and refresh published

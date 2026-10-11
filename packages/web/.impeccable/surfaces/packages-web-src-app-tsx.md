@@ -15,9 +15,9 @@ THESIS: A calm, mature analytics workspace gives navigation a stable home and le
 
 OWN-WORLD: White-first light surfaces, subtle neutral-gray fields and rules; neutral charcoal dark surfaces. Quiet blue belongs to interaction and chart ink. Locally bundled DM Sans, tabular sans numerals, restrained corners, generous spacing.
 
-STORY: Choose an analytics view in the sidebar, scan the page heading and dates, narrow horizontal filters, read shared totals, then compare the chart and exact table rows.
+STORY: Choose an analytics view in the sidebar, scan the current-view header and dates, narrow horizontal filters, read shared totals, then compare the chart and exact table rows.
 
-FIRST VIEWPORT: A 192px desktop sidebar with existing logo and seven views; 64px source/status/action header; visible Token usage heading; quick dates; wrapping filters; five readouts; 240px plot above the table. Small screens place wrapping navigation above content. Existing immediate filters and metric controls remain the signature interaction; focus is blue, sync rotation respects reduced motion.
+FIRST VIEWPORT: A 192px desktop sidebar with existing logo and seven views; compact current-view/source/action header with a fixed-size loading icon beside hostname; status and local harness details on hover, focus, or tap; quick dates; wrapping filters; five readouts; 240px plot above the table. Small screens place wrapping navigation above content. Existing immediate filters and metric controls remain the signature interaction; focus is blue, sync rotation respects reduced motion.
 
 FORM: User-selected Quiet Blue, refined and approved as White First in light and neutral charcoal in dark. Direction seed 09bee032; explicit user choice overrides assignment. Code-led implementation; approved conversation previews are critique references, not raster assets.
 
@@ -30,6 +30,8 @@ Desktop light/dark (1440×1100), mobile light/dark (390px), 200% text, model fil
 Initial independent review disposition: fix. Period labels now wrap without truncation at enlarged text sizes. Search fields keep the wrapper focus outline and suppress the nested input shadow. DESIGN.md and its sidecar match the single-weight brand and current primitives. Recaptures replace the same evidence paths. Final verdict disposition: ship; reviewer scored all three listed fixes resolved, with remaining clear. This verdict covers those fixes; the initial fidelity assessment stands.
 
 Format, pinned-tool lint, 71 web unit tests, full Go/SQLite/PostgreSQL tests, production build, and 35 browser tests passed. Corrected build, lint, web unit tests, and all 35 browser tests pass. Pre-push verification is required before publication. Direct Go build and the real dashboard run with Node/npm/pnpm absent from PATH; the served font matches the committed WOFF2 bytes. Web shipping raster provenance scan reports zero missing; README screenshot embeds its synthetic source origin.
+
+Header refinement: intro removed; current-view heading replaces the breadcrumb; fixed-size loading icon opens query/processing and local harness details on hover, focus, or tap. Failure recovery stays beside saved usage. Production Go dashboard inspected at 1440px and 390px in light/dark with reduced motion; header accessibility audit found no violations. Local/hosted browser checks verify stable refresh geometry and keyboard/tap disclosure.
 
 No schema, API, storage, accounting, authorization, or state ownership changes. New Brand and DashboardSidebar components own presentation only.
 

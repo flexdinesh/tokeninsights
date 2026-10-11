@@ -498,7 +498,7 @@ test('themes, keyboard filters, mobile layout, and scalable typography', async (
     .locator('body')
     .evaluate((element) => Number.parseFloat(getComputedStyle(element).fontSize))
   expect(bodySize).toBeGreaterThanOrEqual(14)
-  const heading = page.getByRole('heading', { name: 'Token usage', exact: true })
+  const heading = page.getByRole('heading', { name: '/ Tokens', exact: true })
   await expect(heading).toBeVisible()
   const sidebar = await page.locator('.dashboard-sidebar').boundingBox()
   const content = await page.locator('.dashboard-main').boundingBox()
