@@ -1,5 +1,7 @@
 # Current contracts and composition boundaries
 
+Command selection/config and local handoff are superseded by [ADR 0014](0014-command-owned-client-compositions.md); retained domain/storage contracts still apply.
+
 Engine details below are historical; [ADR 0012](0012-sqlite-and-postgres-persistence.md) supersedes them with SQLite/PostgreSQL.
 Status: Accepted. Date: 9 October 2026.
 User explicitly approved schema/API removal and breaking changes before launch.

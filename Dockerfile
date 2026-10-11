@@ -18,7 +18,7 @@ COPY --from=build /out/tokeninsights-server /usr/local/bin/tokeninsights-server
 RUN /usr/local/bin/tokeninsights-server --version
 USER 10001:10001
 WORKDIR /data
-EXPOSE 8765
+EXPOSE 8766
 ENV TOKENINSIGHTS_ADMIN_SOCKET=/run/tokeninsights/admin.sock
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
     CMD ["/usr/local/bin/tokeninsights-server", "healthcheck"]

@@ -24,6 +24,8 @@ import (
 	_ "modernc.org/sqlite"
 )
 
+const distributedMode = "distributed"
+
 const ApplicationID = 1414091594
 const SchemaVersion = 1
 const PollInterval = 100 * time.Millisecond
@@ -34,17 +36,18 @@ const terminalHistoryLimit = 1000
 var Schema string
 
 type Spec struct {
-	Debug         bool               `json:"debug,omitempty"`
-	Mode          string             `json:"mode"`
-	CollectorPath string             `json:"collectorPath"`
-	DataPath      string             `json:"dataPath"`
-	AppPath       string             `json:"appPath"`
-	URL           string             `json:"url,omitempty"`
-	Credential    string             `json:"credential,omitempty"`
-	Harnesses     []pipeline.Harness `json:"harnesses"`
-	SourceDir     string             `json:"sourceDir,omitempty"`
-	PublishOnly   bool               `json:"publishOnly,omitempty"`
-	FullRefresh   bool               `json:"fullRefresh,omitempty"`
+	Debug         bool   `json:"debug,omitempty"`
+	Mode          string `json:"mode"`
+	CollectorPath string `json:"collectorPath"`
+	// DataPath and AppPath retain the persisted request shape; remote workers ignore them.
+	DataPath    string             `json:"dataPath"`
+	AppPath     string             `json:"appPath"`
+	URL         string             `json:"url,omitempty"`
+	Credential  string             `json:"credential,omitempty"`
+	Harnesses   []pipeline.Harness `json:"harnesses"`
+	SourceDir   string             `json:"sourceDir,omitempty"`
+	PublishOnly bool               `json:"publishOnly,omitempty"`
+	FullRefresh bool               `json:"fullRefresh,omitempty"`
 }
 
 func Fingerprint(secret string) string {
@@ -54,16 +57,8 @@ func Fingerprint(secret string) string {
 	sum := sha256.Sum256([]byte(secret))
 	return hex.EncodeToString(sum[:])
 }
-func NewSpec(settings config.Settings, harnesses []pipeline.Harness, source string, publishOnly, fullRefresh bool) (Spec, error) {
+func NewSpec(settings config.SyncSettings, harnesses []pipeline.Harness, source string, publishOnly, fullRefresh bool) (Spec, error) {
 	collector, _, err := serverownership.Identify(settings.CollectorDBPath)
-	if err != nil {
-		return Spec{}, err
-	}
-	data, _, err := serverownership.Identify(settings.ServerDBPath)
-	if err != nil {
-		return Spec{}, err
-	}
-	app, _, err := serverownership.Identify(settings.ApplicationPath())
 	if err != nil {
 		return Spec{}, err
 	}
@@ -73,7 +68,7 @@ func NewSpec(settings config.Settings, harnesses []pipeline.Harness, source stri
 			return Spec{}, err
 		}
 	}
-	return Spec{Mode: settings.EffectiveMode(), CollectorPath: collector, DataPath: data, AppPath: app, URL: settings.ServerURL, Credential: Fingerprint(settings.ServerToken), Harnesses: harnesses, SourceDir: source, PublishOnly: publishOnly, FullRefresh: fullRefresh}, nil
+	return Spec{Mode: distributedMode, CollectorPath: collector, URL: settings.ServerURL, Credential: Fingerprint(settings.ServerToken), Harnesses: harnesses, SourceDir: source, PublishOnly: publishOnly, FullRefresh: fullRefresh}, nil
 }
 
 type Job struct {
@@ -91,7 +86,7 @@ type Job struct {
 }
 
 func (j Job) Terminal() bool {
-	return j.State == "accepted" || j.State == "failed" || j.State == "interrupted"
+	return j.State == "accepted" || j.State == "failed" || j.State == "interrupted" || j.State == "unsupported"
 }
 
 type Store struct {
@@ -233,6 +228,9 @@ func scan(row *sql.Row) (Job, error) {
 			err = json.Unmarshal([]byte(receipts), &job.Receipts)
 		}
 	}
+	if err == nil && job.Spec.Mode != distributedMode && !job.Terminal() {
+		job.State, job.Error = "unsupported", "local_sync_removed"
+	}
 	return job, err
 }
 func (s *Store) Get(ctx context.Context, id string) (Job, error) {
@@ -248,7 +246,7 @@ func (s *Store) Acquire() (*os.File, bool, error) {
 }
 func (s *Store) Start(ctx context.Context, id string) error {
 	// The caller holds Acquire. Every previous running claim therefore lost its owner.
-	if _, err := s.database.ExecContext(ctx, "UPDATE jobs SET state='interrupted',error_code='worker_interrupted',updated_ms=? WHERE state='running'", time.Now().UnixMilli()); err != nil {
+	if _, err := s.database.ExecContext(ctx, "UPDATE jobs SET state='interrupted',error_code='worker_interrupted',updated_ms=? WHERE state='running' AND json_extract(spec,'$.mode')=?", time.Now().UnixMilli(), distributedMode); err != nil {
 		return err
 	}
 	_, err := s.database.ExecContext(ctx, "UPDATE jobs SET state='running',attempts=attempts+1,error_code='',updated_ms=? WHERE id=? AND state='queued'", time.Now().UnixMilli(), id)
@@ -282,9 +280,6 @@ func (s *Store) Finish(ctx context.Context, id, state, code string, accepted int
 	}
 	return tx.Commit()
 }
-func (s *Store) NextLocal(ctx context.Context, dataPath, appPath string) (Job, error) {
-	return scan(s.database.QueryRowContext(ctx, "SELECT "+columns+" FROM jobs WHERE state='queued' AND json_extract(spec,'$.mode')=? AND json_extract(spec,'$.dataPath')=? AND json_extract(spec,'$.appPath')=? ORDER BY created_ms,rowid LIMIT 1", config.SingleProcess, dataPath, appPath))
-}
 func (s *Store) Wait(ctx context.Context, id string) (Job, error) {
 	ticker := time.NewTicker(PollInterval)
 	defer ticker.Stop()
@@ -314,7 +309,7 @@ func (s *Store) RefreshAbandoned(ctx context.Context) error {
 		return nil
 	}
 	defer func() { _ = owner.Close() }()
-	_, err = s.database.ExecContext(ctx, "UPDATE jobs SET state='interrupted',error_code='worker_interrupted',updated_ms=? WHERE state='running'", time.Now().UnixMilli())
+	_, err = s.database.ExecContext(ctx, "UPDATE jobs SET state='interrupted',error_code='worker_interrupted',updated_ms=? WHERE state='running' AND json_extract(spec,'$.mode')=?", time.Now().UnixMilli(), distributedMode)
 	return err
 }
 
@@ -327,5 +322,5 @@ func (s *Store) SaveReceipt(ctx context.Context, id string, receipt evidence.Rec
 	return err
 }
 func (s *Store) NextRemote(ctx context.Context, job Job) (Job, error) {
-	return scan(s.database.QueryRowContext(ctx, "SELECT "+columns+" FROM jobs WHERE state='queued' AND json_extract(spec,'$.mode')=? AND json_extract(spec,'$.url')=? AND json_extract(spec,'$.credential')=? AND rowid<=(SELECT rowid FROM jobs WHERE id=?) ORDER BY rowid LIMIT 1", config.Distributed, job.Spec.URL, job.Spec.Credential, job.ID))
+	return scan(s.database.QueryRowContext(ctx, "SELECT "+columns+" FROM jobs WHERE state='queued' AND json_extract(spec,'$.mode')=? AND json_extract(spec,'$.url')=? AND json_extract(spec,'$.credential')=? AND rowid<=(SELECT rowid FROM jobs WHERE id=?) ORDER BY rowid LIMIT 1", distributedMode, job.Spec.URL, job.Spec.Credential, job.ID))
 }

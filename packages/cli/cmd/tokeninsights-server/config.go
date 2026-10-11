@@ -11,7 +11,7 @@ import (
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/remoteserver"
 )
 
-const defaultListen = "0.0.0.0:8765"
+const defaultListen = "0.0.0.0:8766"
 
 func envDefault(key, fallback string) string {
 	if value := os.Getenv(key); value != "" {

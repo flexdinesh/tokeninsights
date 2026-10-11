@@ -2,11 +2,11 @@
 
 Track local token usage for OpenCode, Pi, Codex, and Claude Code.
 
-TokenInsights is a Go CLI composed as single-process or distributed. Bare invocation prints help. Local `tui` shows saved usage while background capture directly ingests/processes, then refreshes direct queries; `web` adds a foreground read-only HTTP dashboard with the same background startup. Both support `--sync=false`. Reload only queries. One viewer owns storage; concurrent sync requests enter a durable local queue and execute within that owner.
+TokenInsights is a Go CLI composed as single-process or distributed. Bare invocation prints help. Local `tui` shows saved usage while background capture directly ingests/processes, then refreshes direct queries; `web` adds a foreground read-only HTTP dashboard with the same background startup. Both support `--sync=false`. Reload only queries. One viewer owns local storage. Distributed sync may run alongside it, sharing collector outbox with independent destination progress.
 
 Distributed `sync` starts a finite detached authenticated HTTP submission; `--print` also submits, `--wait` waits for acceptance, and `--debug` shows receipt processing. `sync status` reports durable jobs. Plugins pass `--wait --harness`. Remote servers run as one authenticated Docker/native process and never collect. No remote analytics TUI. In-process mode uses SQLite. Hosted mode selects SQLite or PostgreSQL for both token and account storage, through separate contracts. Wire/storage kinds are personal/hosted.
 
-Everyday commands are `sync`, `tui`, `web`, and `config`; finite local maintenance uses `data reprocess|wait`. Legacy `service`, `server`, and `collector` commands are removed. Remote admin uses the private owner socket. Default paths: collector.sqlite, server.sqlite and paired app.sqlite; operational requests use `<canonical-collector-path>.jobs.sqlite`.
+Everyday commands are `sync`, `browse`, `tui`, `web`, and `config`; finite local maintenance uses `data reprocess|wait`. Legacy `service`, `server`, and `collector` commands are removed. Remote admin uses the private owner socket. Default paths: collector.sqlite, server.sqlite and paired app.sqlite; operational requests use `<canonical-collector-path>.jobs.sqlite`.
 
 Full architecture, schema contract, pipelines, and invariants are in [`docs/design.md`](docs/design.md). Read it before any non-trivial change.
 

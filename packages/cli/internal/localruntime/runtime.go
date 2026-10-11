@@ -28,7 +28,6 @@ import (
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/server"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/serverfeatures"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/serverownership"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/syncjob"
 )
 
 var ErrOwned = errors.New("database already owned; close the process using this database")
@@ -43,8 +42,6 @@ type Runtime struct {
 	Hostname       string
 	Policy         serverfeatures.Policy
 	Progress       *collectorprogress.Registry
-	Jobs           *syncjob.Store
-	jobsDone       chan struct{}
 	Store          *datastore.Store
 	App            *appstore.Store
 	Query          *queryclient.Client
@@ -146,26 +143,10 @@ func OpenWithAppOptions(ctx context.Context, collectorPath, dataPath, appPath st
 		_ = owner.Close()
 		return nil, err
 	}
-	jobs, err := syncjob.Open(ctx, collectorPath)
-	if err != nil {
-		_ = app.Close()
-		_ = store.Close()
-		_ = owner.Close()
-		return nil, err
-	}
-	appPath, _, err = serverownership.Identify(appPath)
-	if err != nil {
-		_ = jobs.Close()
-		_ = app.Close()
-		_ = store.Close()
-		_ = owner.Close()
-		return nil, err
-	}
 	workerCtx, cancel := context.WithCancel(ctx)
 	policy, err := serverfeatures.NewLocalViewer(true)
 	if err != nil {
 		cancel()
-		_ = jobs.Close()
 		_ = app.Close()
 		_ = store.Close()
 		_ = owner.Close()
@@ -174,7 +155,6 @@ func OpenWithAppOptions(ctx context.Context, collectorPath, dataPath, appPath st
 	var instance [16]byte
 	if _, err := rand.Read(instance[:]); err != nil {
 		cancel()
-		_ = jobs.Close()
 		_ = app.Close()
 		_ = store.Close()
 		_ = owner.Close()
@@ -182,12 +162,11 @@ func OpenWithAppOptions(ctx context.Context, collectorPath, dataPath, appPath st
 	}
 	hostname := resolveHostname(os.Hostname)
 	id := hex.EncodeToString(instance[:])
-	r := &Runtime{InstanceID: id, Hostname: hostname, Policy: policy, Progress: collectorprogress.New(id), Jobs: jobs, jobsDone: make(chan struct{}), Store: store, App: app, owner: owner, cancel: cancel, ctx: workerCtx, collectorPath: canonicalCollector, dataPath: path, done: make(chan struct{}), queries: sqlanalytics.Queries{Store: store}, captureDetails: options.CaptureDetails}
+	r := &Runtime{InstanceID: id, Hostname: hostname, Policy: policy, Progress: collectorprogress.New(id), Store: store, App: app, owner: owner, cancel: cancel, ctx: workerCtx, collectorPath: canonicalCollector, dataPath: path, done: make(chan struct{}), queries: sqlanalytics.Queries{Store: store}, captureDetails: options.CaptureDetails}
 	r.Query = queryclient.NewDirect(server.NewDirectQuery(r.queries, id, hostname))
 	r.Destination = &collector.Destination{Identity: "http://local", DatabaseID: metadata.DatabaseID, DatasetID: metadata.DatasetID, Local: true, Transport: collector.DirectDelivery{Receiver: store}}
 	// WaitVisible reads durable failure state, including failures from a prior owner.
 	go func() { defer close(r.done); store.Run(workerCtx, nil) }()
-	go r.runJobs(workerCtx, path, appPath)
 	return r, nil
 }
 
@@ -212,8 +191,7 @@ func resolveHostname(lookup func() (string, error)) string {
 	return strings.TrimSpace(hostname)
 }
 
-// WaitVisible includes interrupted generation recovery. Local ownership excludes
-// competing collectors while the command's initial capture is being displayed.
+// WaitVisible reads durable publication readiness, including interrupted generation recovery.
 func (r *Runtime) WaitVisible(ctx context.Context) error {
 	ticker := time.NewTicker(visibilityPoll)
 	defer ticker.Stop()
@@ -263,9 +241,8 @@ func (r *Runtime) Close() error {
 		r.lifecycleMu.Unlock()
 		r.collections.Wait()
 		<-r.done
-		<-r.jobsDone
 		r.Progress.InterruptAll()
-		err = errors.Join(r.Store.Close(), r.Jobs.Close(), r.App.Close(), r.owner.Close())
+		err = errors.Join(r.Store.Close(), r.App.Close(), r.owner.Close())
 	})
 	return err
 }

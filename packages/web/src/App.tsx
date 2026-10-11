@@ -257,6 +257,7 @@ function DashboardShell({
               />
             )}
             <DashboardResults
+              localMachine={bootstrap.serverKind === 'personal'}
               analytics={analytics}
               excludedUsage={excludedUsage}
               facets={facets}

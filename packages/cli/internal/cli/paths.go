@@ -20,8 +20,6 @@ func defaultServerDBPath() string {
 	return filepath.Join(defaultDataPath(), "server.sqlite")
 }
 
-func defaultServerURL() string { return strings.TrimSpace(os.Getenv("TOKENINSIGHTS_SERVER_URL")) }
-
 func defaultDataPath() string {
 	xdgDataHome := strings.TrimSpace(os.Getenv("XDG_DATA_HOME"))
 	if xdgDataHome != "" {

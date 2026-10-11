@@ -7,8 +7,6 @@ const child = spawn(
   join(workspaceRoot, 'packages/cli/bin/tokeninsights'),
   [
     'web',
-    '--mode',
-    'single-process',
     '--sync=false',
     '--open=false',
     '--host',
@@ -21,8 +19,6 @@ const child = spawn(
     join(root, 'server.sqlite'),
     '--app-db-path',
     join(root, 'app.sqlite'),
-    '--server-url',
-    '',
   ],
   {
     stdio: 'inherit',

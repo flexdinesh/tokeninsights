@@ -17,7 +17,7 @@ import (
 )
 
 func TestIngestionPreflightRejectsBeforeCapture(t *testing.T) {
-	for _, command := range []string{"sync", "web"} {
+	for _, command := range []string{"sync"} {
 		for _, incompatible := range []string{"protocol", "extractor", "database", "dataset", "completion", "body-limit", "entry-limit"} {
 			t.Run(command+"/"+incompatible, func(t *testing.T) {
 				kind := serverfeatures.Hosted
@@ -59,10 +59,10 @@ func TestIngestionPreflightRejectsBeforeCapture(t *testing.T) {
 					}
 				}))
 				t.Cleanup(remote.Close)
-				settings := config.Defaults()
-				settings.Mode, settings.ServerURL, settings.ServerToken = config.Distributed, remote.URL, "fixture-token"
-				settings.CollectorDBPath, settings.ServerDBPath = filepath.Join(t.TempDir(), "collector.sqlite"), filepath.Join(t.TempDir(), "server.sqlite")
-				invocation := commandInvocation{context: t.Context(), stdout: io.Discard, stderr: io.Discard, settings: &settings}
+				settings := config.SyncSettings{}
+				settings.ServerURL, settings.ServerToken = remote.URL, "fixture-token"
+				settings.CollectorDBPath = filepath.Join(t.TempDir(), "collector.sqlite")
+				invocation := commandInvocation{context: t.Context(), stdout: io.Discard, stderr: io.Discard, remote: &settings}
 				spec, ok := commandByName(command)
 				if !ok {
 					t.Fatal("missing command")
@@ -78,27 +78,7 @@ func TestIngestionPreflightRejectsBeforeCapture(t *testing.T) {
 					t.Fatal("unexpected preflight work", requests.Load())
 				}
 				assertViewMissingPath(t, settings.CollectorDBPath)
-				assertViewMissingPath(t, settings.ServerDBPath)
 			})
 		}
-	}
-}
-
-func TestHostedQueryOnlyWebNeedsNoIngestionNegotiation(t *testing.T) {
-	remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/api/v2/instance" {
-			t.Error("read-only web negotiated ingestion", r.URL.Path)
-		}
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(api.InstanceResponseV2{ApiVersion: "v2", InstanceId: "instance", DataEpoch: "database", DataReadiness: "ready", DatasetId: "dataset", ServerKind: "hosted", Capabilities: []string{"usage", "facets", "web-dashboard"}, Permissions: []api.InstanceResponseV2Permissions{"read"}})
-	}))
-	defer remote.Close()
-	settings := config.Defaults()
-	settings.Mode, settings.ServerURL, settings.ServerToken = config.Distributed, remote.URL, "read-only-token"
-	previous := openDashboard
-	openDashboard = func(string) error { return nil }
-	defer func() { openDashboard = previous }()
-	if err := runWeb(commandInvocation{context: t.Context(), stdout: io.Discard, stderr: io.Discard, settings: &settings}, []string{"--sync=false"}); err != nil {
-		t.Fatal(err)
 	}
 }
