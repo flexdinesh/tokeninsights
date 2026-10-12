@@ -46,6 +46,7 @@ func TestHostedProxyLoginBoundary(t *testing.T) {
 				t.Fatal("startup timeout")
 			}
 			client := &http.Client{Timeout: time.Second}
+			defer client.CloseIdleConnections()
 			login := func(address, origin string) int {
 				t.Helper()
 				r, err := http.NewRequestWithContext(t.Context(), "POST", target+"/api/v2/auth/session", strings.NewReader(`{"token":"invalid"}`))
@@ -61,7 +62,10 @@ func TestHostedProxyLoginBoundary(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				_ = response.Body.Close()
+				defer func() { _ = response.Body.Close() }()
+				if _, err := io.Copy(io.Discard, response.Body); err != nil {
+					t.Fatal(err)
+				}
 				return response.StatusCode
 			}
 			for range accounts.LoginRequestsPerMinute {
