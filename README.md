@@ -71,7 +71,8 @@ during collection, submission, and processing. Four persistent harness rows show
 discovery, reading, saving and finalized source counts with remaining work;
 unknown discovery totals stay unknown. Counts measure source files/databases,
 not sessions or tokens. Failed and quarantined sources remain explicit.
-Submission shows acknowledged entries and pending entries; processing shows the
+Local delivery is labeled “Processing” and shows acknowledged entries and pending
+entries; subsequent processing shows the
 current local dataset backlog, which may include earlier work. No overall
 percentage or ETA is estimated. This detail is single-process TUI only;
 browser and distributed collector/server progress contracts are unchanged.
@@ -229,6 +230,14 @@ only the application instance ID. Keep this guard with both databases in stopped
 backups. A missing/replaced app database fails closed to preserve credential revocations. Restore the matched set; do not delete the guard to bypass recovery.
 
 ## Incompatible data
+
+For `incompatible_application_database` in local `tui`, `web`, or `data` commands,
+the error prints the resolved config and application database paths. The database
+has an unsupported schema version or role; automatic migrations are unavailable.
+Close processes using it, delete that application database and its `-wal`/`-shm`
+files if present, then rerun the command. This resets local accounts and credentials,
+preserving the separate token database and config. Pairing/backup errors instead
+require restoring the matched backup described above.
 
 If you encounter incompatible data, delete the old local data:
 

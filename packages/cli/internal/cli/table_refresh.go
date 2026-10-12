@@ -158,7 +158,7 @@ func (m interactiveModel) refreshLine() string {
 			case "waiting":
 				stage = "waiting for another collector"
 			case "submitting":
-				stage = "submitting collected data"
+				stage = "processing collected data"
 			}
 		}
 		text, compact, busy = "Refreshing usage · "+stage+" · updates automatically", "Refreshing · auto-updating", true
@@ -166,8 +166,8 @@ func (m interactiveModel) refreshLine() string {
 			compact = "Refreshing sources · auto-updating"
 		}
 		if attempt := m.refresh.attempt; m.options.local != nil && attempt != nil && attempt.Stage == "submitting" && attempt.PendingKnown {
-			text = fmt.Sprintf("Submitting · %d entries accepted · %d pending", attempt.AcknowledgedEntries, attempt.Pending)
-			compact = fmt.Sprintf("Submitting · %d accepted · %d pending", attempt.AcknowledgedEntries, attempt.Pending)
+			text = fmt.Sprintf("Processing · %d entries accepted · %d pending", attempt.AcknowledgedEntries, attempt.Pending)
+			compact = fmt.Sprintf("Processing · %d accepted · %d pending", attempt.AcknowledgedEntries, attempt.Pending)
 		}
 	case m.collectionFailed():
 		text, compact, failed = "Refresh incomplete · showing saved usage · restart tokeninsights tui", "Refresh incomplete · saved usage", true
