@@ -19,6 +19,8 @@ import (
 const ApplicationID = 1414091585
 const SchemaVersion = 2
 
+var ErrIncompatibleDatabase = errors.New("incompatible_application_database")
+
 //go:embed schema/app.sql
 var Schema string
 
@@ -125,7 +127,7 @@ func validate(ctx context.Context, database *sql.DB, id, kind string) error {
 		return err
 	}
 	if role != ApplicationID || version != SchemaVersion {
-		return errors.New("incompatible_application_database")
+		return ErrIncompatibleDatabase
 	}
 	if err := sqlitecore.Validate(ctx, database, Schema); err != nil {
 		return err

@@ -11,7 +11,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/appstore"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/config"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/dbpath"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/localruntime"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/syncjob"
 )
@@ -119,6 +121,18 @@ func Run(ctx context.Context, args []string, stdout io.Writer, stderr io.Writer,
 		err := command.run(invocation, args[1:])
 		if errors.Is(err, flag.ErrHelp) {
 			return nil
+		}
+		if errors.Is(err, appstore.ErrIncompatibleDatabase) && invocation.settings != nil {
+			path, pathErr := dbpath.Canonical(invocation.settings.ApplicationPath())
+			if pathErr != nil {
+				return err
+			}
+			return fmt.Errorf("%w: the local application database has an unsupported schema version or database role. "+
+				"This binary supports application schema version %d; automatic migrations are unavailable.\n"+
+				"Config: %s\nApplication database: %s\n"+
+				"Close TokenInsights processes using this database, then delete the application database above and its -wal and -shm files if present. "+
+				"Rerun the command to recreate it. This resets local accounts and credentials; token usage remains in the separate server database. "+
+				"Do not delete the config file", err, appstore.SchemaVersion, invocation.configPath, path)
 		}
 		return err
 	}

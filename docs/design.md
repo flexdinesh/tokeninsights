@@ -43,6 +43,10 @@ processing, generations, receipts and analytics.
 Defaults use XDG_DATA_HOME or ~/.local/share/tokeninsights. Role-specific flags/
 environment/config override them. Reject aliased paths, wrong roles, incompatible
 versions and corrupt contracts. Former tokeninsights.sqlite stays untouched.
+Local CLI application role/version errors include resolved config/application paths
+and manual deletion/recreation guidance, including account/credential loss. They
+preserve the error identity and do not delete files. Pairing errors retain backup
+recovery requirements; this guidance does not bypass the application pair guard.
 SQLite startup validates role/version and actual schema objects read-only before writable opening. Expected objects are derived from embedded SQL and cached; actual storage is inspected on every open. PostgreSQL validates both fixed namespaces against the committed catalog contract, paired identity and role versions. Missing halves and incompatible contracts reject without repair. New PostgreSQL namespaces initialize together in one transaction.
 
 Local composition always uses SQLite. Remote `--storage-backend=sqlite|postgres` (or `TOKENINSIGHTS_STORAGE_BACKEND`) selects both token/account adapters. PostgreSQL requires `TOKENINSIGHTS_POSTGRES_DSN` and an absolute `--admin-socket`; SQLite paths cannot be mixed with PostgreSQL settings. Credentials stay out of argv, client config and descriptors. PostgreSQL 18 is supported; no extensions are required.
@@ -406,8 +410,10 @@ Remaining is total minus checked, including unissued sources after cancellation.
 Counts measure sources, not sessions or evidence records. Source preparation alone
 does not advance checked counts. Startup capture uses the command observer,
 with detail keyed to the selected attempt.
-Submission shows entries acknowledged after receipt validation and pending entries
-when known. Processing shows current dataset scopes pending, including earlier
+Local retained-evidence delivery is labeled Processing and shows entries
+acknowledged after receipt validation and pending entries when known, so local
+work does not imply upstream submission. Subsequent processing shows current
+dataset scopes pending, including earlier
 accepted work; it is not a per-attempt completion denominator. Harness rows describe
 capture only, independently of submission and processing. With startup collection
 off they show disabled until a queued attempt supplies progress.

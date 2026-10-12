@@ -176,8 +176,19 @@ func TestLocalDeliveryAndProcessingExposeDifferentUnits(t *testing.T) {
 	m.refresh.attempt.PendingKnown = true
 	m.refresh.attempt.AcknowledgedEntries, m.refresh.attempt.Pending = 8000, 2000
 	line := ansi.Strip(m.refreshLine())
-	if !strings.Contains(line, "8000 entries accepted") || !strings.Contains(line, "2000 pending") || strings.Contains(line, "Usage refreshed") {
+	if !strings.Contains(line, "Processing · 8000 entries accepted") || !strings.Contains(line, "2000 pending") || strings.Contains(line, "Usage refreshed") {
 		t.Fatal("submission did not preserve acceptance semantics", line)
+	}
+	m.width = 45
+	line = ansi.Strip(m.refreshLine())
+	if !strings.Contains(line, "Processing · 8000 accepted · 2000 pending") {
+		t.Fatal("compact progress omitted local processing", line)
+	}
+	m.refresh.attempt.PendingKnown = false
+	m.width = 180
+	line = ansi.Strip(m.refreshLine())
+	if !strings.Contains(line, "processing collected data") || strings.Contains(line, "submitting") {
+		t.Fatal("unknown backlog implied remote submission", line)
 	}
 	m.refresh.attempt.Stage = "accepted"
 	m.sharedSync.Running = true
