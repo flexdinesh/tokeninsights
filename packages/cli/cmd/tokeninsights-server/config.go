@@ -20,6 +20,10 @@ func envDefault(key, fallback string) string {
 	return fallback
 }
 
+func listenDefault() string {
+	return envDefault("TOKENINSIGHTS_LISTEN", "0.0.0.0:"+envDefault("TOKENINSIGHTS_SERVER_PORT", strings.TrimPrefix(defaultListen, "0.0.0.0:")))
+}
+
 // Deployment input is resolved only at the executable boundary. Explicit flags
 // override environment defaults. Secret values never enter argv or diagnostics.
 func serverSettings(args []string, stderr io.Writer) (remoteserver.Settings, bool, error) {
@@ -27,10 +31,10 @@ func serverSettings(args []string, stderr io.Writer) (remoteserver.Settings, boo
 	flags.SetOutput(stderr)
 	var s remoteserver.Settings
 	flags.StringVar(&s.Backend, "storage-backend", envDefault("TOKENINSIGHTS_STORAGE_BACKEND", "sqlite"), "sqlite or postgres (TOKENINSIGHTS_STORAGE_BACKEND)")
-	flags.StringVar(&s.Listen, "listen", envDefault("TOKENINSIGHTS_LISTEN", defaultListen), "IPv4 listen address (TOKENINSIGHTS_LISTEN)")
+	flags.StringVar(&s.Listen, "listen", listenDefault(), "IPv4 listen address (TOKENINSIGHTS_LISTEN)")
 	flags.StringVar(&s.DBPath, "server-db-path", os.Getenv("TOKENINSIGHTS_SERVER_DB_PATH"), "SQLite token path (TOKENINSIGHTS_SERVER_DB_PATH)")
 	flags.StringVar(&s.AppDBPath, "app-db-path", os.Getenv("TOKENINSIGHTS_APP_DB_PATH"), "SQLite account path (TOKENINSIGHTS_APP_DB_PATH; default beside token database)")
-	flags.StringVar(&s.PublicURL, "public-url", os.Getenv("TOKENINSIGHTS_PUBLIC_URL"), "canonical HTTPS origin (TOKENINSIGHTS_PUBLIC_URL)")
+	flags.StringVar(&s.PublicURL, "public-url", os.Getenv("TOKENINSIGHTS_PUBLIC_URL"), "optional browser origin (TOKENINSIGHTS_PUBLIC_URL)")
 	flags.StringVar(&s.AdminSocket, "admin-socket", os.Getenv("TOKENINSIGHTS_ADMIN_SOCKET"), "private absolute socket path (TOKENINSIGHTS_ADMIN_SOCKET)")
 	trusted := flags.String("trusted-proxies", os.Getenv("TOKENINSIGHTS_TRUSTED_PROXIES"), "trusted proxy CIDRs, comma-separated (TOKENINSIGHTS_TRUSTED_PROXIES)")
 	version := flags.Bool("version", false, "print version")
@@ -45,6 +49,10 @@ func serverSettings(args []string, stderr io.Writer) (remoteserver.Settings, boo
 	}
 	if os.Getenv("TOKENINSIGHTS_SERVER_TOKEN") != "" {
 		return s, false, fmt.Errorf("TOKENINSIGHTS_SERVER_TOKEN removed; use hosted user tokens; unset it")
+	}
+	s.AdminToken = os.Getenv("ADMIN_TOKEN")
+	if s.AdminToken != "" || os.Getenv("ADMIN_ACCOUNT") != "" {
+		s.AdminAccount = envDefault("ADMIN_ACCOUNT", "admin")
 	}
 	var err error
 	s.PostgresDSN, err = postgresSecret()

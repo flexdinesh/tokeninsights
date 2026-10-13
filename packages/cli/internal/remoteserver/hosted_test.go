@@ -252,8 +252,6 @@ func TestHostedSettingsValidateBeforeMutation(t *testing.T) {
 		{Listen: "127.0.0.1:0", Backend: "postgres", PublicURL: "https://usage.example", AdminSocket: filepath.Join(root, "admin.sock")},
 		{Listen: "127.0.0.1:0", Backend: "sqlite", DBPath: path, PostgresDSN: "secret", PublicURL: "https://usage.example"},
 		{Listen: "127.0.0.1:0", Backend: "invalid", DBPath: path, PublicURL: "https://usage.example"},
-		{Listen: "127.0.0.1:0", DBPath: path},
-		{Listen: "127.0.0.1:0", DBPath: path, PublicURL: "http://usage.example"},
 		{Listen: "127.0.0.1:0", DBPath: path, PublicURL: "https://usage.example/secret"},
 		{Listen: "127.0.0.1:0", DBPath: path, PublicURL: "https://token@usage.example"},
 		{Listen: "127.0.0.1:0", DBPath: path, PublicURL: "https://usage.example", AdminSocket: "relative.sock"},

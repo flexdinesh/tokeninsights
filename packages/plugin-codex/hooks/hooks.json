@@ -5,8 +5,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "if \"${TOKENINSIGHTS_BINARY:-tokeninsights}\" sync --wait --harness codex </dev/null >/dev/null 2>&1; then printf '%s\\n' '{}'; else printf '%s\\n' 'TokenInsights sync failed; run tokeninsights sync for details.' >&2; printf '%s\\n' '{}'; fi",
-            "timeout": 60
+            "command": "\"${TOKENINSIGHTS_BINARY:-tokeninsights}\" sync --harness codex </dev/null >/dev/null 2>&1 & printf '%s\\n' '{}'",
+            "timeout": 10
           }
         ]
       }

@@ -31,7 +31,7 @@ async function commandHook(harness: string): Promise<string> {
   const hooks: unknown = stops[0].hooks
   assert.ok(Array.isArray(hooks) && hooks.length === 1 && record(hooks[0]))
   assert.equal(hooks[0].type, 'command')
-  assert.equal(hooks[0].timeout, 60)
+  assert.equal(hooks[0].timeout, 10)
   assert.equal(hooks[0].async, undefined)
   assert.ok(typeof hooks[0].command === 'string')
   return hooks[0].command
@@ -82,18 +82,22 @@ process.exit(Number(process.env.HOOK_EXIT || 0));
       delete env.TOKENINSIGHTS_BINARY
       const result = await invoke(command, env)
       assert.deepEqual(result, { stdout: '{}\n', stderr: '' })
+      await waitForCall(capture)
       const actual: unknown = JSON.parse(await readFile(capture, 'utf8'))
       assert.deepEqual(actual, {
-        args: ['sync', '--wait', '--harness', harness === 'claude' ? 'claude-code' : 'codex'],
+        args: ['sync', '--harness', harness === 'claude' ? 'claude-code' : 'codex'],
         input: '',
       })
+      await rm(capture)
       const overridden = await invoke(command, { ...env, TOKENINSIGHTS_BINARY: binary })
       assert.deepEqual(overridden, { stdout: '{}\n', stderr: '' })
+      await waitForCall(capture)
       const overrideCapture: unknown = JSON.parse(await readFile(capture, 'utf8'))
       assert.deepEqual(overrideCapture, {
-        args: ['sync', '--wait', '--harness', harness === 'claude' ? 'claude-code' : 'codex'],
+        args: ['sync', '--harness', harness === 'claude' ? 'claude-code' : 'codex'],
         input: '',
       })
+      await rm(capture)
       const failed = await invoke(command, {
         ...env,
         TOKENINSIGHTS_BINARY: binary,
@@ -101,8 +105,9 @@ process.exit(Number(process.env.HOOK_EXIT || 0));
       })
       assert.deepEqual(failed, {
         stdout: '{}\n',
-        stderr: 'TokenInsights sync failed; run tokeninsights sync for details.\n',
+        stderr: '',
       })
+      await waitForCall(capture)
       const missing = await invoke(command, {
         ...env,
         TOKENINSIGHTS_BINARY: '/missing/tokeninsights',
@@ -114,7 +119,7 @@ process.exit(Number(process.env.HOOK_EXIT || 0));
   })
 }
 
-void test('Pi routing waits for settled sync and consumes no event content', async () => {
+void test('Pi settled notification returns while sync remains in background', async () => {
   let handler: ((event: unknown) => Promise<void>) | undefined
   let started = false
   let completed = false
@@ -139,8 +144,10 @@ void test('Pi routing waits for settled sync and consumes no event content', asy
   const pending = handler({ assistant: 'synthetic-private-marker' })
   assert.equal(started, true)
   assert.equal(completed, false)
-  finish()
   await pending
+  assert.equal(completed, false)
+  finish()
+  await completion
   assert.equal(completed, true)
 })
 
@@ -257,10 +264,10 @@ void test('finite runner coalesces completions and forwards only sync with empty
     const actual = await calls(capture)
     assert.equal(actual.length, 2)
     assert.ok(record(actual[0]))
-    assert.deepEqual(actual[0].args, ['sync', '--wait', '--harness', 'pi'])
+    assert.deepEqual(actual[0].args, ['sync', '--harness', 'pi'])
     assert.equal(actual[0].input, '')
     assert.ok(record(actual[1]))
-    assert.deepEqual(actual[1].args, ['sync', '--wait', '--harness', 'pi'])
+    assert.deepEqual(actual[1].args, ['sync', '--harness', 'pi'])
     await runner.close()
   })
 })
@@ -392,7 +399,7 @@ void test('Pi native registration stays inert until settled and isolates generic
     const actual = await calls(capture)
     assert.equal(actual.length, 1)
     assert.ok(record(actual[0]))
-    assert.deepEqual(actual[0].args, ['sync', '--wait', '--harness', 'pi'])
+    assert.deepEqual(actual[0].args, ['sync', '--harness', 'pi'])
     assert.equal(actual[0].input, '')
     await shutdown({}, context)
   })
@@ -434,7 +441,7 @@ void test('OpenCode native lifecycle coalesces idle triggers and kills active wo
     const actual = await calls(capture)
     assert.equal(actual.length, 1)
     assert.ok(record(actual[0]) && typeof actual[0].pid === 'number')
-    assert.deepEqual(actual[0].args, ['sync', '--wait', '--harness', 'opencode'])
+    assert.deepEqual(actual[0].args, ['sync', '--harness', 'opencode'])
     assert.equal(actual[0].input, '')
     const pid = actual[0].pid
     assert.throws(() => process.kill(pid, 0))
@@ -472,3 +479,39 @@ void test('ready-built native artifacts load outside workspace without SDK or bu
     await rm(temp, { recursive: true, force: true })
   }
 })
+
+for (const harness of ['codex', 'claude']) {
+  void test(`${harness} hook returns while background enqueue is blocked`, async () => {
+    const temp = await mkdtemp(join(tmpdir(), 'tokeninsights-hook-background-'))
+    const binary = join(temp, 'collector')
+    const capture = join(temp, 'started')
+    const release = join(temp, 'release')
+    const finished = join(temp, 'finished')
+    await writeFile(
+      binary,
+      `#!${process.execPath}
+import { writeFileSync, existsSync } from 'node:fs';
+writeFileSync(process.env.HOOK_CAPTURE, '{}');
+while (!existsSync(process.env.HOOK_RELEASE)) await new Promise(resolve => setTimeout(resolve, 10));
+writeFileSync(process.env.HOOK_FINISHED, '{}');
+`,
+    )
+    await chmod(binary, 0o700)
+    try {
+      const result = await invoke(await commandHook(harness), {
+        ...process.env,
+        TOKENINSIGHTS_BINARY: binary,
+        HOOK_CAPTURE: capture,
+        HOOK_RELEASE: release,
+        HOOK_FINISHED: finished,
+      })
+      assert.deepEqual(result, { stdout: '{}\n', stderr: '' })
+      await waitForCall(capture)
+      await assert.rejects(readFile(finished))
+    } finally {
+      await writeFile(release, '')
+      await waitForCall(finished)
+      await rm(temp, { recursive: true, force: true })
+    }
+  })
+}

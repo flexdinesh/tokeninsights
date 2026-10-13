@@ -187,7 +187,7 @@ type rowReader interface {
 }
 
 func authenticateToken(ctx context.Context, reader rowReader, secret string) (accounts.Principal, string, error) {
-	if len(secret) != base64.RawURLEncoding.EncodedLen(accounts.CredentialBytes) {
+	if len(secret) == 0 || len(secret) > accounts.MaxTokenBytes {
 		return accounts.Principal{}, "", accounts.ErrUnauthenticated
 	}
 	var p accounts.Principal
@@ -310,6 +310,34 @@ func (s *Repository) Cleanup(ctx context.Context) error {
 		 SELECT token_id FROM tokens
 		 WHERE `+s.expired("expires_at")+` LIMIT ?
 		)`), now, cleanupBatch)
+		return err
+	})
+}
+
+// BootstrapAdmin reuses fixed identities and preserves disable/revocation state.
+// A supplied token replaces the bootstrap credential on restart.
+func (s *Repository) BootstrapAdmin(ctx context.Context, name, token string) error {
+	if err := accounts.ValidateBootstrap(name, token); err != nil {
+		return err
+	}
+	permissions, err := json.Marshal([]string{accounts.Read, accounts.Ingest})
+	if err != nil {
+		return err
+	}
+	const id = "bootstrap-admin"
+	user := accounts.User{UserID: id, DatasetID: id, DisplayName: strings.TrimSpace(name)}
+	if err := s.store.WriteTransaction(ctx, func(tx *sql.Tx) error {
+		_, err := tx.ExecContext(ctx, sqlutil.Bind("INSERT INTO users VALUES(?,?,?,?,?,'pending') ON CONFLICT(user_id) DO NOTHING"), id, id, user.DisplayName, false, time.Now().UTC().Format(time.RFC3339Nano))
+		return err
+	}); err != nil {
+		return err
+	}
+	if err := s.activate(ctx, user); err != nil {
+		return err
+	}
+	return s.store.WriteTransaction(ctx, func(tx *sql.Tx) error {
+		_, err := tx.ExecContext(ctx, sqlutil.Bind(`INSERT INTO tokens VALUES(?,?,?,?,?,NULL,NULL)
+   ON CONFLICT(token_id) DO UPDATE SET digest=excluded.digest`), id, id, accounts.CredentialDigest(token), string(permissions), time.Now().UTC().Format(time.RFC3339Nano))
 		return err
 	})
 }

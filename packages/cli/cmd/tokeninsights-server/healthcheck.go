@@ -14,7 +14,7 @@ import (
 func healthcheck(ctx context.Context, args []string, stderr io.Writer) error {
 	flags := flag.NewFlagSet("healthcheck", flag.ContinueOnError)
 	flags.SetOutput(stderr)
-	listen := flags.String("listen", envDefault("TOKENINSIGHTS_LISTEN", defaultListen), "server listen address (TOKENINSIGHTS_LISTEN)")
+	listen := flags.String("listen", listenDefault(), "server listen address (TOKENINSIGHTS_LISTEN)")
 	if err := flags.Parse(args); err != nil {
 		return err
 	}

@@ -9,13 +9,16 @@ on client machines; the server has no harness mounts, collector daemon or analyt
 
 ```sh
 docker build -t tokeninsights-server:local .
-export TOKENINSIGHTS_PUBLIC_URL=https://usage.example.com
-docker compose -f deploy/compose.hosted.yaml up -d --build
+# Supply ADMIN_TOKEN through the environment; ADMIN_ACCOUNT defaults to admin.
+docker compose up -d --build
 ```
 
 Remote startup defaults to hosted authentication. The unauthenticated personal
 container composition is absent; use `tokeninsights web` for local foreground usage.
-`TOKENINSIGHTS_PUBLIC_URL` or `--public-url` supplies the canonical HTTPS browser origin.
+The server runs HTTP on the configured port without requiring a domain or TLS.
+Ingress and TLS are deployment-owned. `TOKENINSIGHTS_PUBLIC_URL` or `--public-url`
+optionally pins the browser origin; otherwise browser authentication matches the
+request Host and supports HTTP or HTTPS origins.
 
 The Dockerfile pins Go and Debian image digests. It builds with `CGO_ENABLED=0`
 and smoke-tests `--version`; runtime dependencies are CA certificates, timezone
@@ -33,8 +36,11 @@ database secret. No config-file discovery or runtime reload is performed.
 | Environment variable | Flag | Default / requirement |
 | --- | --- | --- |
 | `TOKENINSIGHTS_STORAGE_BACKEND` | `--storage-backend` | `sqlite`; alternatively `postgres` |
-| `TOKENINSIGHTS_LISTEN` | `--listen` | `0.0.0.0:8766`, IPv4 address and port |
-| `TOKENINSIGHTS_PUBLIC_URL` | `--public-url` | Required canonical HTTPS origin |
+| `TOKENINSIGHTS_LISTEN` | `--listen` | `0.0.0.0:8766`, IPv4 address and port; overrides `TOKENINSIGHTS_SERVER_PORT` |
+| `TOKENINSIGHTS_SERVER_PORT` | None | `8766`; also controls Compose port publishing |
+| `TOKENINSIGHTS_PUBLIC_URL` | `--public-url` | Optional HTTP/HTTPS browser origin pin |
+| `ADMIN_ACCOUNT` | None | `admin` when `ADMIN_TOKEN` is supplied |
+| `ADMIN_TOKEN` | None | Bootstrap read+ingest credential; required by Compose |
 | `TOKENINSIGHTS_SERVER_DB_PATH` | `--server-db-path` | Required for SQLite; forbidden for PostgreSQL |
 | `TOKENINSIGHTS_APP_DB_PATH` | `--app-db-path` | SQLite: `app.sqlite` beside token database |
 | `TOKENINSIGHTS_ADMIN_SOCKET` | `--admin-socket` | SQLite: beside token database; PostgreSQL: required absolute path |
@@ -95,12 +101,40 @@ options. SQLite rejects a supplied PostgreSQL DSN. Configuration/connection erro
 never select another backend. Both token and account domains use the selected
 engine, through separate interfaces and transaction boundaries.
 
-## Hosted server
+## Same-machine SQLite server
 
-Provide a canonical HTTPS dashboard URL. A TLS reverse proxy on the host forwards
-that origin to `127.0.0.1:8766`; provision certificates and proxy separately.
-Forward the original `Host` header and preserve request path/body. No externally
-published admin endpoint is needed.
+Root `compose.yaml` includes the SQLite deployment with a stable `tokeninsights`
+project name. Set `ADMIN_TOKEN` in your process environment, then:
+
+```sh
+docker compose up -d --build
+tokeninsights config set distributed.server-url http://127.0.0.1:8766
+tokeninsights config set distributed.server-token  # enter the same ADMIN_TOKEN
+tokeninsights sync --wait
+tokeninsights browse
+```
+
+Sign in with the token. No Basic auth, domain, public URL, reverse proxy or TLS
+configuration is required. Compose publishes only on host loopback. To change
+ports, supply `TOKENINSIGHTS_SERVER_PORT=9000` to Compose and configure the client URL as
+`http://127.0.0.1:9000`. The native binary also honors `TOKENINSIGHTS_SERVER_PORT`;
+`--listen` and `TOKENINSIGHTS_LISTEN` override it. Healthcheck uses the same resolution.
+Local `tui/web` remain in-process; remote `sync` shares collector continuity but
+keeps independent delivery progress and never opens local token/account storage.
+
+Startup bootstraps one fixed admin user/dataset and read+ingest token using existing
+account tables. `ADMIN_ACCOUNT` sets its initial display name; it is not a login
+username. Supplied credentials persist only as digests. Repeated startup preserves
+identity and data; changing `ADMIN_TOKEN` replaces that bootstrap token's digest.
+Existing sessions keep their lifetime. Disabled users and revoked tokens remain
+blocked. Native deployments may omit both variables for private-socket provisioning.
+No public administration permissions or user-management UI are added.
+
+## Optional ingress
+
+A deployment may place a TLS reverse proxy in front of `127.0.0.1:8766`.
+Provision certificates and proxy separately. Forward the original `Host` header
+and preserve request path/body. No externally published admin endpoint is needed.
 
 Within an existing TLS proxy's virtual host, an Nginx location can forward requests
 as follows (certificate/server configuration remains deployment-owned):
@@ -126,16 +160,20 @@ that limit. With explicit trust, the server walks `X-Forwarded-For` right to lef
 through trusted hops and uses the first untrusted address. Missing, malformed or
 overlong chains fall back to the socket peer. At most 32 hops are accepted.
 `Forwarded`, `X-Real-IP`, forwarded host and forwarded scheme do not select identity
-or browser origin. `TOKENINSIGHTS_PUBLIC_URL` remains the browser origin authority;
+or browser origin. An optional `TOKENINSIGHTS_PUBLIC_URL` pins the browser origin; otherwise the
+request Host supplies same-origin matching;
 proxy headers never grant account or dataset access.
 
 ```sh
+# Optional origin pin for this TLS deployment:
 export TOKENINSIGHTS_PUBLIC_URL=https://usage.example.com
-docker compose -f deploy/compose.hosted.yaml up -d --build
+docker compose up -d --build
 ```
 
-The URL configures expected browser origin and secure session behavior, not the
-internal bind address. The hosted database starts fresh. Do not reuse a personal
+The optional URL pins the browser origin, not the internal bind address.
+Session cookies are Secure for HTTPS browser origins and support plain HTTP
+origins; cookies remain HttpOnly/SameSite=Lax. Forwarded host/proto do not select
+the origin. Cross-origin login/logout reject. The hosted database starts fresh. Do not reuse a personal
 volume: stored server-kind mismatch rejects rather than assigning personal history
 to an account. Every hosted user has one dataset; all users share `/data/server.sqlite`; accounts/credentials live in `/data/app.sqlite`.
 
@@ -153,14 +191,14 @@ Provision through the running owner process's private mode-0600 socket. With the
 Compose example:
 
 ```sh
-docker compose -f deploy/compose.hosted.yaml exec tokeninsights \
+docker compose exec tokeninsights \
   tokeninsights-server admin user create Alice
 ```
 
 Copy the returned `userId`, then create a token:
 
 ```sh
-docker compose -f deploy/compose.hosted.yaml exec tokeninsights \
+docker compose exec tokeninsights \
   tokeninsights-server admin \
   token create USER_ID --scopes read,ingest
 ```
@@ -187,7 +225,7 @@ environment override. Endpoint/configuration errors never trigger local fallback
 
 `browse` opens the configured URL without syncing or requiring a token. `sync` uploads independently; local `web` always serves in-process usage on port 8765. Browser token
 login requires read permission and exchanges the token for an opaque 24-hour,
-HttpOnly/Secure/SameSite=Lax cookie. Sessions are read-only; logout revokes the
+HttpOnly/SameSite=Lax cookie (Secure for HTTPS). Sessions are read-only; logout revokes the
 session. User disable/source-token revocation invalidate access. Bearer tokens are
 not passed in URLs or retained in browser localStorage. Hosted browsers query
 processing lag but expose no collector-progress feature. Hosted TUI is rejected,
@@ -245,7 +283,7 @@ client ingestion, receipts/totals after container replacement, revocation and cl
 SIGTERM exit. It owns disposable networks, volumes and a pinned PostgreSQL container.
 The pre-push hook runs this target; Docker is required. Native deployment tests exercise environment-only startup and
 mounted secret files; HTTP boundary tests enforce trusted-proxy login isolation and
-unchanged origin protection.
+request-host origin protection, HTTP bootstrap login and HTTPS cookie policy.
 
 Future integrations should add typed settings at the executable boundary and
 inject explicit adapters through hosted composition. OAuth/OIDC, provider discovery,

@@ -1,5 +1,4 @@
-# Host TLS proxy forwards to this loopback-published port. Trust only its
-# observed peer CIDR; see docs/deployment.md for forwarded-header handling.
+# Publish on loopback; ingress/TLS is deployment-owned.
 services:
   tokeninsights:
     build:
@@ -7,14 +6,16 @@ services:
     image: tokeninsights-server:local
     environment:
       TOKENINSIGHTS_STORAGE_BACKEND: sqlite
-      TOKENINSIGHTS_LISTEN: 0.0.0.0:8766
-      TOKENINSIGHTS_PUBLIC_URL: '${TOKENINSIGHTS_PUBLIC_URL:?Set the canonical HTTPS dashboard URL}'
+      TOKENINSIGHTS_LISTEN: '0.0.0.0:${TOKENINSIGHTS_SERVER_PORT:-8766}'
+      TOKENINSIGHTS_PUBLIC_URL: '${TOKENINSIGHTS_PUBLIC_URL:-}'
+      ADMIN_ACCOUNT: '${ADMIN_ACCOUNT:-admin}'
+      ADMIN_TOKEN: '${ADMIN_TOKEN:?Set ADMIN_TOKEN}'
       TOKENINSIGHTS_ADMIN_SOCKET: /run/tokeninsights/admin.sock
       TOKENINSIGHTS_TRUSTED_PROXIES: '${TOKENINSIGHTS_TRUSTED_PROXIES:-}'
       TOKENINSIGHTS_SERVER_DB_PATH: /data/server.sqlite
       TOKENINSIGHTS_APP_DB_PATH: /data/app.sqlite
     ports:
-      - '127.0.0.1:8766:8766'
+      - '127.0.0.1:${TOKENINSIGHTS_SERVER_PORT:-8766}:${TOKENINSIGHTS_SERVER_PORT:-8766}'
     read_only: true
     tmpfs:
       - /run/tokeninsights:uid=10001,gid=10001,mode=0700

@@ -1,5 +1,7 @@
 # Command-owned client compositions
 
+Collector lock scope and plugin completion behavior are superseded by [ADR 0015](0015-server-bootstrap-and-background-plugins.md).
+
 Status: Accepted. Date: 11 October 2026. User approved implementation.
 
 ## Decision

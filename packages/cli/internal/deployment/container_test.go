@@ -55,8 +55,8 @@ func TestContainerDeployment(t *testing.T) {
 			args := []string{"run", "--detach", "--name", name, "--network", network, "--read-only",
 				"--health-interval", "1s", "--health-start-period", "0s",
 				"--tmpfs", "/run/tokeninsights:uid=10001,gid=10001,mode=0700", "--tmpfs", "/tmp:uid=10001,gid=10001,mode=0700",
-				"--publish", "127.0.0.1::8767", "--env", "TOKENINSIGHTS_LISTEN=0.0.0.0:8767",
-				"--env", "TOKENINSIGHTS_PUBLIC_URL=https://usage.example", "--env", "TOKENINSIGHTS_STORAGE_BACKEND=" + backend}
+				"--publish", "127.0.0.1::8767", "--env", "TOKENINSIGHTS_SERVER_PORT=8767",
+				"--env", "ADMIN_ACCOUNT=admin", "--env", "ADMIN_TOKEN=container-bootstrap-token", "--env", "TOKENINSIGHTS_STORAGE_BACKEND=" + backend}
 			if backend == "sqlite" {
 				args = append(args, "--mount", "type=volume,source="+volume+",target=/data", "--env", "TOKENINSIGHTS_SERVER_DB_PATH=/data/server.sqlite")
 			} else {
@@ -116,6 +116,7 @@ func TestContainerDeployment(t *testing.T) {
 				dockerOutput(t, "rm", "-v", name)
 			}
 			target := start()
+			verifyBootstrapBrowser(t, target)
 			var user accounts.User
 			if err := json.Unmarshal([]byte(dockerOutput(t, "exec", name, "tokeninsights-server", "admin", "user", "create", "Container user")), &user); err != nil {
 				t.Fatal(err)
@@ -133,6 +134,7 @@ func TestContainerDeployment(t *testing.T) {
 			stop()
 			remoteTokens.Delete(target)
 			target = start()
+			verifyBootstrapBrowser(t, target)
 			remoteTokens.Store(target, token.Secret)
 			defer remoteTokens.Delete(target)
 			if after := assertUsage(t, target, 1, 120); strings.Join(ids, ",") != strings.Join(after, ",") {
@@ -154,5 +156,54 @@ func TestContainerDeployment(t *testing.T) {
 			}
 			stop()
 		})
+	}
+}
+
+// Real browser flow uses the request host; no public origin or TLS configuration.
+func verifyBootstrapBrowser(t *testing.T, target string) {
+	t.Helper()
+	request, err := http.NewRequestWithContext(t.Context(), http.MethodPost, target+"/api/v2/auth/session", strings.NewReader(`{"token":"container-bootstrap-token"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("Origin", target)
+	response, err := deploymentHTTP.Do(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = response.Body.Close()
+	if response.StatusCode != http.StatusNoContent || len(response.Cookies()) != 1 {
+		t.Fatal("HTTP bootstrap login", response.StatusCode)
+	}
+	cookie := response.Cookies()[0]
+	if cookie.Secure || !cookie.HttpOnly || cookie.SameSite != http.SameSiteLaxMode {
+		t.Fatal("HTTP cookie policy", cookie)
+	}
+	request, err = http.NewRequestWithContext(t.Context(), http.MethodGet, target+"/api/v2/instance", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request.AddCookie(cookie)
+	response, err = deploymentHTTP.Do(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		t.Fatal("HTTP bootstrap session", response.StatusCode)
+	}
+	request, err = http.NewRequestWithContext(t.Context(), http.MethodGet, target+"/api/v3/ingestion/capabilities", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request.Header.Set("Authorization", "Bearer container-bootstrap-token")
+	response, err = deploymentHTTP.Do(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		t.Fatal("bootstrap ingestion permission", response.StatusCode)
 	}
 }

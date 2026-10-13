@@ -22,6 +22,7 @@ import (
 type accountLifecycle interface {
 	accounts.Repository
 	Resume(context.Context) error
+	BootstrapAdmin(context.Context, string, string) error
 }
 type hostedStorage struct {
 	ctx      context.Context

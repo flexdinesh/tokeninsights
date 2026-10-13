@@ -91,7 +91,12 @@ SQLite and PostgreSQL count groups without repeating row aggregates; counts,
 totals and displayed rows retain the same snapshot and filtering rules.
 
 For distributed collection, run one authenticated [server container](docs/deployment.md)
-and configure the collector:
+and configure the collector. For a same-machine SQLite deployment, set
+`ADMIN_TOKEN` in the environment, run `docker compose up -d --build`,
+and use `http://127.0.0.1:8766` below. `ADMIN_ACCOUNT` defaults to `admin`;
+the same token signs into the dashboard and authenticates ingestion. Configure
+another container port with `TOKENINSIGHTS_SERVER_PORT`; TLS/ingress is deployment-owned.
+Local Web stays on 8765 with independent token/account storage.
 
 ```sh
 tokeninsights config set distributed.server-url https://usage.example.com
@@ -114,7 +119,7 @@ an ingest-only token; debug also needs read permission and waits on its own rece
 Distributed mode has no analytics TUI. Remote failure never starts a local fallback.
 
 Both modes use the same identity, normalization, ambiguity, estimates and deduplication
-rules. All four harnesses are collected by default. Plugins invoke `sync --wait`
+rules. All four harnesses are collected by default. Plugins trigger background `sync`
 with their own `--harness`; richer event payloads are not accepted. Useful options:
 
 ```sh

@@ -17,7 +17,8 @@ const WriterLockTimeout = 30 * time.Second
 const writerLockPollInterval = 25 * time.Millisecond
 
 // AcquireWriterLock serializes writers across processes. Callers must not nest
-// acquisitions. The persistent sidecar must never be removed: flock locks its
+// acquisitions of the same path; independent locks require consistent ordering.
+// The persistent sidecar must never be removed: flock locks its
 // inode, and the kernel releases it when the owning process exits.
 func AcquireWriterLock(ctx context.Context, path string) (func(), error) {
 	ctx, cancel := context.WithTimeout(ctx, WriterLockTimeout)

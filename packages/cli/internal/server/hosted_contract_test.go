@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -349,4 +350,48 @@ func newHostedAccounts(t *testing.T, store *datastore.Store) *accounts.Service {
 	t.Cleanup(func() { _ = app.Close() })
 	repository := sqliteaccounts.NewSQLite(app, store)
 	return accounts.New(repository)
+}
+
+func TestHostedRequestOriginWithoutPublicURL(t *testing.T) {
+	fixture := newHostedContractFixture(t)
+	policy, _ := serverfeatures.New(serverfeatures.Hosted, false)
+	handler := NewDataHandlerWithOptions(t.Context(), sqlanalytics.Source{Store: fixture.store}, io.Discard, DataHandlerOptions{Policy: policy, Accounts: fixture.accounts})
+	body, err := json.Marshal(serverapi.BrowserSessionRequest{Token: fixture.aliceToken.Secret})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, scenario := range []struct {
+		origin string
+		status int
+		secure bool
+	}{
+		{"http://arbitrary.example:9876", 204, false},
+		{"https://arbitrary.example:9876", 204, true},
+		{"https://evil.example", 403, false},
+		{"http://arbitrary.example:9876/private", 403, false},
+		{"", 403, false},
+	} {
+		t.Run(scenario.origin, func(t *testing.T) {
+			request := httptest.NewRequest(http.MethodPost, "http://arbitrary.example:9876/api/v2/auth/session", bytes.NewReader(body))
+			request.Header.Set("Content-Type", "application/json")
+			request.Header.Set("Origin", scenario.origin)
+			request.Header.Set("X-Forwarded-Host", "evil.example")
+			request.Header.Set("X-Forwarded-Proto", "https")
+			response := httptest.NewRecorder()
+			handler.ServeHTTP(response, request)
+			requireHostedStatus(t, response, scenario.status)
+			if scenario.status != http.StatusNoContent {
+				return
+			}
+			cookies := response.Result().Cookies()
+			if len(cookies) != 1 || cookies[0].Secure != scenario.secure || !cookies[0].HttpOnly {
+				t.Fatal("request cookie policy", cookies)
+			}
+			request = httptest.NewRequest(http.MethodGet, "http://arbitrary.example:9876/api/v2/instance", nil)
+			request.AddCookie(cookies[0])
+			response = httptest.NewRecorder()
+			handler.ServeHTTP(response, request)
+			requireHostedStatus(t, response, 200)
+		})
+	}
 }
