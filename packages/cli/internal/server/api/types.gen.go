@@ -5,9 +5,61 @@ package api
 
 import (
 	"encoding/json"
+	"time"
 
 	"github.com/oapi-codegen/runtime"
 )
+
+// Defines values for APIKeyPermission.
+const (
+	APIKeyPermissionIngest APIKeyPermission = "ingest"
+	APIKeyPermissionRead   APIKeyPermission = "read"
+)
+
+// Valid indicates whether the value is a known member of the APIKeyPermission enum.
+func (e APIKeyPermission) Valid() bool {
+	switch e {
+	case APIKeyPermissionIngest:
+		return true
+	case APIKeyPermissionRead:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AuthInfoLoginMethods.
+const (
+	Password AuthInfoLoginMethods = "password"
+)
+
+// Valid indicates whether the value is a known member of the AuthInfoLoginMethods enum.
+func (e AuthInfoLoginMethods) Valid() bool {
+	switch e {
+	case Password:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AuthInfoServerKind.
+const (
+	AuthInfoServerKindHosted   AuthInfoServerKind = "hosted"
+	AuthInfoServerKindPersonal AuthInfoServerKind = "personal"
+)
+
+// Valid indicates whether the value is a known member of the AuthInfoServerKind enum.
+func (e AuthInfoServerKind) Valid() bool {
+	switch e {
+	case AuthInfoServerKindHosted:
+		return true
+	case AuthInfoServerKindPersonal:
+		return true
+	default:
+		return false
+	}
+}
 
 // Defines values for Bucket.
 const (
@@ -263,16 +315,16 @@ func (e InstanceResponseV2DataReadiness) Valid() bool {
 
 // Defines values for InstanceResponseV2Permissions.
 const (
-	Ingest InstanceResponseV2Permissions = "ingest"
-	Read   InstanceResponseV2Permissions = "read"
+	InstanceResponseV2PermissionsIngest InstanceResponseV2Permissions = "ingest"
+	InstanceResponseV2PermissionsRead   InstanceResponseV2Permissions = "read"
 )
 
 // Valid indicates whether the value is a known member of the InstanceResponseV2Permissions enum.
 func (e InstanceResponseV2Permissions) Valid() bool {
 	switch e {
-	case Ingest:
+	case InstanceResponseV2PermissionsIngest:
 		return true
-	case Read:
+	case InstanceResponseV2PermissionsRead:
 		return true
 	default:
 		return false
@@ -281,16 +333,16 @@ func (e InstanceResponseV2Permissions) Valid() bool {
 
 // Defines values for InstanceResponseV2ServerKind.
 const (
-	Hosted   InstanceResponseV2ServerKind = "hosted"
-	Personal InstanceResponseV2ServerKind = "personal"
+	InstanceResponseV2ServerKindHosted   InstanceResponseV2ServerKind = "hosted"
+	InstanceResponseV2ServerKindPersonal InstanceResponseV2ServerKind = "personal"
 )
 
 // Valid indicates whether the value is a known member of the InstanceResponseV2ServerKind enum.
 func (e InstanceResponseV2ServerKind) Valid() bool {
 	switch e {
-	case Hosted:
+	case InstanceResponseV2ServerKindHosted:
 		return true
-	case Personal:
+	case InstanceResponseV2ServerKindPersonal:
 		return true
 	default:
 		return false
@@ -639,13 +691,71 @@ func (e UsageTab) Valid() bool {
 	}
 }
 
+// APIKeyCreated defines model for APIKeyCreated.
+type APIKeyCreated struct {
+	ExpiresAt   *time.Time         `json:"expiresAt,omitempty"`
+	Permissions []APIKeyPermission `json:"permissions"`
+	Token       string             `json:"token"`
+	TokenId     string             `json:"tokenId"`
+}
+
+// APIKeyInfo defines model for APIKeyInfo.
+type APIKeyInfo struct {
+	CreatedAt   time.Time          `json:"createdAt"`
+	ExpiresAt   *time.Time         `json:"expiresAt,omitempty"`
+	Label       string             `json:"label"`
+	Permissions []APIKeyPermission `json:"permissions"`
+	RevokedAt   *time.Time         `json:"revokedAt,omitempty"`
+	TokenId     string             `json:"tokenId"`
+}
+
+// APIKeyList defines model for APIKeyList.
+type APIKeyList struct {
+	Keys []APIKeyInfo `json:"keys"`
+}
+
+// APIKeyPermission defines model for APIKeyPermission.
+type APIKeyPermission string
+
+// AccountUser defines model for AccountUser.
+type AccountUser struct {
+	DatasetId   string `json:"datasetId"`
+	DisplayName string `json:"displayName"`
+	Enabled     bool   `json:"enabled"`
+	UserId      string `json:"userId"`
+	Username    string `json:"username"`
+}
+
+// AuthInfo defines model for AuthInfo.
+type AuthInfo struct {
+	LoginMethods  []AuthInfoLoginMethods `json:"loginMethods"`
+	ServerKind    AuthInfoServerKind     `json:"serverKind"`
+	SignupEnabled bool                   `json:"signupEnabled"`
+}
+
+// AuthInfoLoginMethods defines model for AuthInfo.LoginMethods.
+type AuthInfoLoginMethods string
+
+// AuthInfoServerKind defines model for AuthInfo.ServerKind.
+type AuthInfoServerKind string
+
 // BrowserSessionRequest defines model for BrowserSessionRequest.
 type BrowserSessionRequest struct {
-	Token string `json:"token"`
+	// Password Preserved exactly; 15–128 Unicode characters. Never trimmed or normalized.
+	Password string `json:"password"`
+
+	// Username Trimmed and ASCII case-folded on the server; canonical usernames contain 3–32 ASCII letters, digits, underscores or hyphens, starting with a letter or digit.
+	Username string `json:"username"`
 }
 
 // Bucket defines model for Bucket.
 type Bucket string
+
+// ChangePasswordRequest defines model for ChangePasswordRequest.
+type ChangePasswordRequest struct {
+	CurrentPassword string `json:"currentPassword"`
+	Password        string `json:"password"`
+}
 
 // CollectorAttempt defines model for CollectorAttempt.
 type CollectorAttempt struct {
@@ -688,6 +798,13 @@ type CollectorProgressResponse struct {
 
 // Count defines model for Count.
 type Count = int64
+
+// CreateAPIKeyRequest defines model for CreateAPIKeyRequest.
+type CreateAPIKeyRequest struct {
+	ExpiresAt   *time.Time         `json:"expiresAt,omitempty"`
+	Label       string             `json:"label"`
+	Permissions []APIKeyPermission `json:"permissions"`
+}
 
 // ErrorCode defines model for ErrorCode.
 type ErrorCode string
@@ -1292,6 +1409,9 @@ type BucketFilter = Bucket
 // DirectoryFilter defines model for DirectoryFilter.
 type DirectoryFilter = []string
 
+// ExpectedAccountDataset defines model for ExpectedAccountDataset.
+type ExpectedAccountDataset = string
+
 // FromFilter defines model for FromFilter.
 type FromFilter = string
 
@@ -1327,6 +1447,36 @@ type InvalidRequest = ErrorResponse
 
 // Unavailable defines model for Unavailable.
 type Unavailable = ErrorResponse
+
+// GetAccountParams defines parameters for GetAccount.
+type GetAccountParams struct {
+	// XTokenInsightsDatasetID Expected dataset from the authenticated instance descriptor. Browser settings send this on every account request. A mismatch returns 409 without mutation and requires signing in again; this header never selects or authorizes a dataset.
+	XTokenInsightsDatasetID *ExpectedAccountDataset `json:"X-TokenInsights-Dataset-ID,omitempty"`
+}
+
+// ListAPIKeysParams defines parameters for ListAPIKeys.
+type ListAPIKeysParams struct {
+	// XTokenInsightsDatasetID Expected dataset from the authenticated instance descriptor. Browser settings send this on every account request. A mismatch returns 409 without mutation and requires signing in again; this header never selects or authorizes a dataset.
+	XTokenInsightsDatasetID *ExpectedAccountDataset `json:"X-TokenInsights-Dataset-ID,omitempty"`
+}
+
+// CreateAPIKeyParams defines parameters for CreateAPIKey.
+type CreateAPIKeyParams struct {
+	// XTokenInsightsDatasetID Expected dataset from the authenticated instance descriptor. Browser settings send this on every account request. A mismatch returns 409 without mutation and requires signing in again; this header never selects or authorizes a dataset.
+	XTokenInsightsDatasetID *ExpectedAccountDataset `json:"X-TokenInsights-Dataset-ID,omitempty"`
+}
+
+// RevokeAPIKeyParams defines parameters for RevokeAPIKey.
+type RevokeAPIKeyParams struct {
+	// XTokenInsightsDatasetID Expected dataset from the authenticated instance descriptor. Browser settings send this on every account request. A mismatch returns 409 without mutation and requires signing in again; this header never selects or authorizes a dataset.
+	XTokenInsightsDatasetID *ExpectedAccountDataset `json:"X-TokenInsights-Dataset-ID,omitempty"`
+}
+
+// ChangePasswordParams defines parameters for ChangePassword.
+type ChangePasswordParams struct {
+	// XTokenInsightsDatasetID Expected dataset from the authenticated instance descriptor. Browser settings send this on every account request. A mismatch returns 409 without mutation and requires signing in again; this header never selects or authorizes a dataset.
+	XTokenInsightsDatasetID *ExpectedAccountDataset `json:"X-TokenInsights-Dataset-ID,omitempty"`
+}
 
 // GetUsageParams defines parameters for GetUsage.
 type GetUsageParams struct {
@@ -1408,8 +1558,17 @@ type GetUsageFacetsParams struct {
 	Quality *QualityFilter `form:"quality,omitempty" json:"quality,omitempty"`
 }
 
+// CreateAPIKeyJSONRequestBody defines body for CreateAPIKey for application/json ContentType.
+type CreateAPIKeyJSONRequestBody = CreateAPIKeyRequest
+
+// ChangePasswordJSONRequestBody defines body for ChangePassword for application/json ContentType.
+type ChangePasswordJSONRequestBody = ChangePasswordRequest
+
 // CreateBrowserSessionJSONRequestBody defines body for CreateBrowserSession for application/json ContentType.
 type CreateBrowserSessionJSONRequestBody = BrowserSessionRequest
+
+// SignupJSONRequestBody defines body for Signup for application/json ContentType.
+type SignupJSONRequestBody = BrowserSessionRequest
 
 // IngestRawBatchV3JSONRequestBody defines body for IngestRawBatchV3 for application/json ContentType.
 type IngestRawBatchV3JSONRequestBody = RawBatchV3

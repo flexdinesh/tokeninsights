@@ -6,6 +6,7 @@ require (
 	github.com/jackc/pgx/v5 v5.11.0
 	github.com/oapi-codegen/runtime v1.7.0
 	github.com/shirou/gopsutil/v4 v4.26.9
+	golang.org/x/crypto v0.53.0
 	modernc.org/sqlite v1.49.1
 )
 

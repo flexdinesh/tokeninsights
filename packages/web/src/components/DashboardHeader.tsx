@@ -1,4 +1,5 @@
-import { Monitor, Moon, Sun } from 'lucide-react'
+import { Monitor, Moon, Sun, UserRound } from 'lucide-react'
+import { Link } from '@tanstack/react-router'
 import { useDashboardPreferences, useDashboardQuery } from '../state'
 import { labels } from '../format'
 import { Button } from './ui/button'
@@ -66,6 +67,25 @@ export function DashboardHeader({
             <Monitor size="1.1em" />
           )}
         </Button>
+        {!localMachine && (
+          <Button variant="ghost" size="icon" asChild>
+            <Link
+              to="/settings"
+              search={{
+                providers: [],
+                models: [],
+                harnesses: [],
+                sessions: [],
+                repositories: [],
+                directories: [],
+              }}
+              aria-label="Account settings"
+              title="Account settings"
+            >
+              <UserRound size="1.1em" />
+            </Link>
+          </Button>
+        )}
       </div>
     </header>
   )

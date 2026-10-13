@@ -33,3 +33,12 @@ export type Dimension = 'providers' | 'models' | 'harnesses' | 'sessions'
 
 export const collectorProgressSchema = generated.CollectorProgressResponse
 export type CollectorProgress = generated.CollectorProgressResponseOutput
+
+export const authInfoSchema = generated.AuthInfo
+export const accountUserSchema = generated.AccountUser
+export const apiKeyListSchema = generated.APIKeyList
+export const apiKeyCreatedSchema = generated.APIKeyCreated
+export type AccountUser = generated.AccountUserOutput
+export type APIKeyInfo = generated.APIKeyInfoOutput
+export type APIKeyCreated = generated.APIKeyCreatedOutput
+export const apiKeyLabelMaxCharacters = generated.createAPIKeyRequestLabelMax

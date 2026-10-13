@@ -80,3 +80,19 @@ func TestReloadPolicyDependencies(t *testing.T) {
 		t.Fatalf("disabling Reload and web dashboard failed: %v", err)
 	}
 }
+
+func TestSignupPolicyRequiresHostedMode(t *testing.T) {
+	personal, _ := New(Personal, false)
+	personal.SignupEnabled = true
+	if personal.Validate() == nil {
+		t.Fatal("personal signup accepted")
+	}
+	hosted, _ := New(Hosted, false)
+	if hosted.SignupEnabled {
+		t.Fatal("signup enabled by default")
+	}
+	hosted.SignupEnabled = true
+	if err := hosted.Validate(); err != nil {
+		t.Fatal(err)
+	}
+}

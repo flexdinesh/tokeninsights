@@ -1,19 +1,15 @@
 import {
-  Outlet,
   createRootRoute,
   createRoute,
   createMemoryHistory,
   createRouter,
   redirect,
 } from '@tanstack/react-router'
-import { App } from './App'
+import { App, DashboardView } from './App'
+import { SettingsPage } from './components/SettingsPage'
 import { tabSchema } from './contracts'
 import { parseDashboardSearch, parseDashboardSearchParams, stringifyDashboardSearch } from './state'
 import { Button } from './components/ui/button'
-
-function Root() {
-  return <Outlet />
-}
 
 function NotFound() {
   return <main className="startup-state">Dashboard route not found.</main>
@@ -29,7 +25,7 @@ function DashboardError() {
 }
 
 const rootRoute = createRootRoute({
-  component: Root,
+  component: App,
   errorComponent: DashboardError,
   notFoundComponent: NotFound,
   validateSearch: parseDashboardSearch,
@@ -58,10 +54,15 @@ export const dashboardRoute = createRoute({
     },
     stringify: ({ tab }) => ({ tab }),
   },
-  component: App,
+  component: DashboardView,
 })
 
-const routeTree = rootRoute.addChildren([indexRoute, dashboardRoute])
+const settingsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: 'settings',
+  component: SettingsPage,
+})
+const routeTree = rootRoute.addChildren([indexRoute, dashboardRoute, settingsRoute])
 
 export function createAppRouter(history?: ReturnType<typeof createMemoryHistory>) {
   return createRouter({

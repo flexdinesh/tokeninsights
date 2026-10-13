@@ -212,6 +212,17 @@ async function main() {
     ),
     readText(new URL('../../../packages/cli/internal/appstore/store.go', import.meta.url).pathname),
   ])
+  const [hostedAppSQL, embeddedHostedAppSQL, postgresGo] = await Promise.all([
+    readText(new URL('../../../schema/app.hosted.sql', import.meta.url).pathname),
+    readText(
+      new URL('../../../packages/cli/internal/appstore/schema/app.hosted.sql', import.meta.url)
+        .pathname,
+    ),
+    readText(
+      new URL('../../../packages/cli/internal/persistence/postgres/store.go', import.meta.url)
+        .pathname,
+    ),
+  ])
   const [jobsSQL, embeddedJobsSQL, jobsGo] = await Promise.all([
     readText(new URL('../../../schema/jobs.sql', import.meta.url).pathname),
     readText(
@@ -230,7 +241,15 @@ async function main() {
           import.meta.url,
         ).pathname,
       )
-      return authoritative === embedded ? [] : [`postgres ${role}: embedded schema differs`]
+      const versionMatch = authoritative.match(/CHECK\(schema_version=(\d+)\)/)
+      const version = versionMatch ? Number(versionMatch[1]) : undefined
+      const constant = role === 'app' ? 'AccountSchemaVersion' : 'SchemaVersion'
+      const mismatches: string[] = []
+      if (authoritative !== embedded) mismatches.push(`postgres ${role}: embedded schema differs`)
+      if (version === undefined || extractGoConsts(postgresGo).ints.get(constant) !== version) {
+        mismatches.push(`postgres ${role}: ${constant} mismatch`)
+      }
+      return mismatches
     }),
   )
   const mismatches = [
@@ -258,6 +277,18 @@ async function main() {
     extractSchemaSqlIdentifiers(appSQL).applicationID
       ? []
       : ['application: ApplicationID mismatch']),
+
+    ...(hostedAppSQL === embeddedHostedAppSQL
+      ? []
+      : ['hosted application: embedded schema differs']),
+    ...(extractGoConsts(appGo).ints.get('HostedSchemaVersion') ===
+    extractSchemaSqlIdentifiers(hostedAppSQL).version
+      ? []
+      : ['hosted application: HostedSchemaVersion mismatch']),
+    ...(extractGoConsts(appGo).ints.get('ApplicationID') ===
+    extractSchemaSqlIdentifiers(hostedAppSQL).applicationID
+      ? []
+      : ['hosted application: ApplicationID mismatch']),
 
     ...(dataSQL === embeddedDataSQL ? [] : ['data: embedded SQLite schema differs']),
     ...(extractGoConsts(dataGo).ints.get('SchemaVersion') ===

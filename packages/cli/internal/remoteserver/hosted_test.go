@@ -247,6 +247,9 @@ func TestHostedSettingsValidateBeforeMutation(t *testing.T) {
 	path := filepath.Join(root, "server.sqlite")
 	for _, settings := range []Settings{
 
+		{Listen: "127.0.0.1:0", DBPath: path, BootstrapUsername: "operator"},
+		{Listen: "127.0.0.1:0", DBPath: path, BootstrapPassword: "long private password"},
+		{Listen: "127.0.0.1:0", DBPath: path, BootstrapUsername: "operator", BootstrapPassword: "short"},
 		{Listen: "127.0.0.1:0", Backend: "postgres", DBPath: path, PostgresDSN: "secret", PublicURL: "https://usage.example", AdminSocket: filepath.Join(root, "admin.sock")},
 		{Listen: "127.0.0.1:0", Backend: "postgres", PostgresDSN: "secret", PublicURL: "https://usage.example"},
 		{Listen: "127.0.0.1:0", Backend: "postgres", PublicURL: "https://usage.example", AdminSocket: filepath.Join(root, "admin.sock")},
@@ -296,4 +299,93 @@ func TestHostedPostgresOwnershipLossStopsServer(t *testing.T) {
 	}
 	_, stop := startHosted(t, settings)
 	stop()
+}
+
+func TestHostedBootstrapInitializesOnceBeforeReady(t *testing.T) {
+	for _, backend := range []string{"sqlite", "postgres"} {
+		t.Run(backend, func(t *testing.T) {
+			root := t.TempDir()
+			settings := Settings{Listen: "127.0.0.1:0", DBPath: filepath.Join(root, "server.sqlite"), AdminSocket: filepath.Join(root, "admin.sock"), BootstrapUsername: "operator", BootstrapPassword: "initial operator password", SignupEnabled: true}
+			if backend == "postgres" {
+				settings.Backend = backend
+				settings.DBPath = ""
+				settings.PostgresDSN = testdb.New(t)
+			}
+			target, stop := startHosted(t, settings)
+			t.Cleanup(stop)
+			call := func(method, path string, cookie *http.Cookie, body interface{}, status int, result interface{}) []*http.Cookie {
+				t.Helper()
+				var data []byte
+				if body != nil {
+					var err error
+					data, err = json.Marshal(body)
+					if err != nil {
+						t.Fatal(err)
+					}
+				}
+				request, err := http.NewRequestWithContext(t.Context(), method, target+path, bytes.NewReader(data))
+				if err != nil {
+					t.Fatal(err)
+				}
+				request.Header.Set("Origin", target)
+				request.Header.Set("Content-Type", "application/json")
+				if cookie != nil {
+					request.AddCookie(cookie)
+				}
+				response, err := http.DefaultClient.Do(request)
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer func() { _ = response.Body.Close() }()
+				if response.StatusCode != status {
+					data, _ := io.ReadAll(response.Body)
+					t.Fatal(path, response.StatusCode, string(data))
+				}
+				if result != nil {
+					if err := json.NewDecoder(response.Body).Decode(result); err != nil {
+						t.Fatal(err)
+					}
+				}
+				return response.Cookies()
+			}
+			login := func(password string, status int) []*http.Cookie {
+				return call(http.MethodPost, "/api/v2/auth/session", nil, map[string]string{"username": "operator", "password": password}, status, nil)
+			}
+			var auth struct {
+				ServerKind    string `json:"serverKind"`
+				SignupEnabled bool   `json:"signupEnabled"`
+			}
+			call(http.MethodGet, "/api/v2/auth", nil, nil, http.StatusOK, &auth)
+			if auth.ServerKind != "hosted" || !auth.SignupEnabled {
+				t.Fatal("hosted signup policy missing", auth)
+			}
+			cookies := login(settings.BootstrapPassword, http.StatusNoContent)
+			if len(cookies) != 1 {
+				t.Fatal("bootstrap did not create cookie")
+			}
+			var user accounts.User
+			call(http.MethodGet, "/api/v2/account", cookies[0], nil, http.StatusOK, &user)
+			if user.UserID == "" || user.DatasetID == "" || user.Username != "operator" {
+				t.Fatal("bootstrap identity", user)
+			}
+			const reset = "replacement operator password"
+			hostedAdmin(t, settings.AdminSocket, accounts.AdminRequest{Operation: "reset-password", UserID: user.UserID, Password: reset}, nil)
+			stop()
+			target, stop = startHosted(t, settings)
+			t.Cleanup(stop)
+			login(settings.BootstrapPassword, http.StatusUnauthorized)
+			cookies = login(reset, http.StatusNoContent)
+			var after accounts.User
+			call(http.MethodGet, "/api/v2/account", cookies[0], nil, http.StatusOK, &after)
+			if user.UserID != after.UserID || user.DatasetID != after.DatasetID {
+				t.Fatal("bootstrap changed durable identity", user, after)
+			}
+			hostedAdmin(t, settings.AdminSocket, accounts.AdminRequest{Operation: "disable-user", UserID: user.UserID}, nil)
+			stop()
+			target, stop = startHosted(t, settings)
+			t.Cleanup(stop)
+			login(reset, http.StatusUnauthorized)
+			login(settings.BootstrapPassword, http.StatusUnauthorized)
+		})
+	}
 }

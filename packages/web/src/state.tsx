@@ -455,7 +455,7 @@ function DashboardQueryProvider({
   return <QueryContext.Provider value={contextValue}>{children}</QueryContext.Provider>
 }
 
-function DashboardPreferencesProvider({ children }: { children: ReactNode }) {
+export function DashboardPreferencesProvider({ children }: { children: ReactNode }) {
   const [theme, setTheme] = useState(savedTheme)
   const [hiddenColumns, setHiddenColumns] = useState<string[]>([])
   const [chartMetric, setChartMetric] = useState<Sort>('total')

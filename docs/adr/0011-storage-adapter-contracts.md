@@ -1,6 +1,7 @@
 # Storage adapter contracts
 
 Engine details below are historical; [ADR 0012](0012-sqlite-and-postgres-persistence.md) supersedes them with SQLite/PostgreSQL.
+Source-token-bound browser sessions are superseded by [ADR 0016](0016-hosted-user-management.md); the remaining adapter boundaries are retained.
 Status: Accepted. Date: 10 October 2026.
 
 ## Decision

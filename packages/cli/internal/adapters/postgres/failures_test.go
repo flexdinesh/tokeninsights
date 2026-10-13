@@ -41,7 +41,7 @@ func TestFutureProcessorRejectsBeforeAnyGenerationChanges(t *testing.T) {
 
 func TestTimestampCredentialsAndCleanup(t *testing.T) {
 	s := openTest(t, testdb.New(t))
-	user, err := s.Accounts.CreateUser(t.Context(), "Alice")
+	user, err := s.Accounts.Signup(t.Context(), "Alice", "synthetic-password-one")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -50,7 +50,7 @@ func TestTimestampCredentialsAndCleanup(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	session, _, err := s.Accounts.CreateSession(t.Context(), token.Secret)
+	session, _, err := s.Accounts.CreateSession(t.Context(), "alice", "synthetic-password-one")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -63,15 +63,24 @@ func TestTimestampCredentialsAndCleanup(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.Accounts.AuthenticateSession(t.Context(), session); !errors.Is(err, accounts.ErrUnauthenticated) {
-		t.Fatal("expired source token authorized session", err)
+	if _, err := s.Accounts.AuthenticateSession(t.Context(), session); err != nil {
+		t.Fatal("expired key invalidated password session", err)
+	}
+	if _, err := s.Accounts.AuthenticateBearer(t.Context(), token.Secret); !errors.Is(err, accounts.ErrUnauthenticated) {
+		t.Fatal("expired key authorized", err)
+	}
+	if err := s.Owner.WriteTransaction(t.Context(), func(tx *sql.Tx) error {
+		_, err := tx.ExecContext(t.Context(), "UPDATE sessions SET expires_at=now()-interval '1 second'")
+		return err
+	}); err != nil {
+		t.Fatal(err)
 	}
 	if err := s.Accounts.Cleanup(t.Context()); err != nil {
 		t.Fatal(err)
 	}
 	var count int
-	if err := s.Owner.Reader.QueryRowContext(t.Context(), "SELECT (SELECT COUNT(*) FROM tokens)+(SELECT COUNT(*) FROM sessions)").Scan(&count); err != nil || count != 0 {
-		t.Fatal("expired credentials retained", count, err)
+	if err := s.Owner.Reader.QueryRowContext(t.Context(), "SELECT (SELECT COUNT(*) FROM tokens)+(SELECT COUNT(*) FROM sessions)").Scan(&count); err != nil || count != 1 {
+		t.Fatal("expired key metadata/session cleanup contract", count, err)
 	}
 	if exists, err := s.Tokens.DatasetExists(t.Context(), user.DatasetID); err != nil || !exists {
 		t.Fatal("cleanup removed dataset", err)

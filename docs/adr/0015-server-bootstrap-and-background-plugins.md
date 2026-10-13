@@ -2,6 +2,8 @@
 
 Status: Accepted. Date: 13 October 2026. User requested implementation.
 
+Account/token bootstrap and token-login decisions are superseded by [ADR 0016](0016-hosted-user-management.md). Deployment and background-plugin decisions remain current.
+
 ## Decision
 
 Server startup requires only storage and HTTP listen configuration, not a domain,

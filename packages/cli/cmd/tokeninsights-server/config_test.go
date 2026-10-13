@@ -16,7 +16,7 @@ func cleanServerEnv(t *testing.T) {
 	t.Helper()
 	t.Setenv("ADMIN_ACCOUNT", "")
 	t.Setenv("ADMIN_TOKEN", "")
-	for _, key := range []string{"STORAGE_BACKEND", "LISTEN", "SERVER_PORT", "SERVER_DB_PATH", "APP_DB_PATH", "PUBLIC_URL", "ADMIN_SOCKET", "TRUSTED_PROXIES", "POSTGRES_DSN", "POSTGRES_DSN_FILE", "SERVER_TOKEN"} {
+	for _, key := range []string{"STORAGE_BACKEND", "LISTEN", "SERVER_PORT", "SERVER_DB_PATH", "APP_DB_PATH", "PUBLIC_URL", "ADMIN_SOCKET", "TRUSTED_PROXIES", "POSTGRES_DSN", "POSTGRES_DSN_FILE", "SERVER_TOKEN", "BOOTSTRAP_USERNAME", "BOOTSTRAP_PASSWORD", "BOOTSTRAP_PASSWORD_FILE", "SIGNUP_ENABLED"} {
 		t.Setenv("TOKENINSIGHTS_"+key, "")
 	}
 }
@@ -133,9 +133,10 @@ func TestServerWithoutIngressConfiguration(t *testing.T) {
 	cleanServerEnv(t)
 	t.Setenv("TOKENINSIGHTS_SERVER_DB_PATH", filepath.Join(t.TempDir(), "server.sqlite"))
 	t.Setenv("TOKENINSIGHTS_SERVER_PORT", "9876")
-	t.Setenv("ADMIN_TOKEN", "test-bootstrap-token")
+	t.Setenv("TOKENINSIGHTS_BOOTSTRAP_USERNAME", "admin")
+	t.Setenv("TOKENINSIGHTS_BOOTSTRAP_PASSWORD", "test-bootstrap-password")
 	s, _, err := serverSettings(nil, io.Discard)
-	if err != nil || s.Listen != "0.0.0.0:9876" || s.PublicURL != "" || s.AdminAccount != "admin" || s.AdminToken != "test-bootstrap-token" {
+	if err != nil || s.Listen != "0.0.0.0:9876" || s.PublicURL != "" || s.BootstrapUsername != "admin" || s.BootstrapPassword != "test-bootstrap-password" || s.SignupEnabled {
 		t.Fatal("environment startup", err)
 	}
 	t.Setenv("TOKENINSIGHTS_LISTEN", "127.0.0.1:8767")
@@ -143,9 +144,87 @@ func TestServerWithoutIngressConfiguration(t *testing.T) {
 	if err != nil || s.Listen != "127.0.0.1:8767" {
 		t.Fatal("listen precedence", err)
 	}
-	t.Setenv("ADMIN_TOKEN", "")
-	t.Setenv("ADMIN_ACCOUNT", "admin")
+	t.Setenv("TOKENINSIGHTS_BOOTSTRAP_PASSWORD", "")
 	if _, _, err := serverSettings(nil, io.Discard); err == nil {
-		t.Fatal("missing bootstrap token accepted")
+		t.Fatal("missing bootstrap password accepted")
+	}
+}
+
+func TestSignupConfiguration(t *testing.T) {
+	cleanServerEnv(t)
+	t.Setenv("TOKENINSIGHTS_SERVER_DB_PATH", filepath.Join(t.TempDir(), "server.sqlite"))
+	for _, tc := range []struct {
+		env     string
+		args    []string
+		want    bool
+		invalid bool
+	}{
+		{"", nil, false, false}, {"true", nil, true, false}, {"true", []string{"--signup=false"}, false, false},
+		{"false", []string{"--signup"}, true, false}, {"private-invalid", nil, false, true}, {"private-invalid", []string{"--signup=false"}, false, false},
+	} {
+		t.Setenv("TOKENINSIGHTS_SIGNUP_ENABLED", tc.env)
+		settings, _, err := serverSettings(tc.args, io.Discard)
+		if tc.invalid {
+			if err == nil || strings.Contains(err.Error(), tc.env) {
+				t.Fatal("invalid signup environment accepted or leaked", err)
+			}
+			continue
+		}
+		if err != nil || settings.SignupEnabled != tc.want {
+			t.Fatal("signup policy", tc, settings.SignupEnabled, err)
+		}
+	}
+}
+
+func TestBootstrapPasswordSecretResolution(t *testing.T) {
+	cleanServerEnv(t)
+	root := t.TempDir()
+	t.Setenv("TOKENINSIGHTS_SERVER_DB_PATH", filepath.Join(root, "server.sqlite"))
+	t.Setenv("TOKENINSIGHTS_BOOTSTRAP_USERNAME", "operator")
+	path := filepath.Join(root, "password")
+	const password = "  long private password  "
+	if err := os.WriteFile(path, []byte(password+"\r\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("TOKENINSIGHTS_BOOTSTRAP_PASSWORD_FILE", path)
+	settings, _, err := serverSettings(nil, io.Discard)
+	if err != nil || settings.BootstrapPassword != password {
+		t.Fatal("password file changed significant spaces", err)
+	}
+	t.Setenv("TOKENINSIGHTS_BOOTSTRAP_PASSWORD", password)
+	if _, _, err := serverSettings(nil, io.Discard); err == nil || strings.Contains(err.Error(), password) {
+		t.Fatal("password conflict accepted or leaked", err)
+	}
+	t.Setenv("TOKENINSIGHTS_BOOTSTRAP_PASSWORD", "")
+	t.Setenv("TOKENINSIGHTS_BOOTSTRAP_PASSWORD_FILE", filepath.Join(root, "missing-private-secret"))
+	if _, _, err := serverSettings(nil, io.Discard); err == nil || strings.Contains(err.Error(), "private-secret") {
+		t.Fatal("password read failure accepted or leaked", err)
+	}
+	t.Setenv("TOKENINSIGHTS_BOOTSTRAP_PASSWORD_FILE", path)
+	for _, contents := range []string{"", strings.Repeat("x", (64<<10)+1)} {
+		if err := os.WriteFile(path, []byte(contents), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if _, _, err := serverSettings(nil, io.Discard); err == nil {
+			t.Fatal("invalid password file accepted")
+		}
+	}
+}
+
+func TestRemovedBootstrapVariablesRejectWithoutSecrets(t *testing.T) {
+	for _, key := range []string{"ADMIN_ACCOUNT", "ADMIN_TOKEN"} {
+		t.Run(key, func(t *testing.T) {
+			cleanServerEnv(t)
+			root := t.TempDir()
+			t.Setenv("TOKENINSIGHTS_SERVER_DB_PATH", filepath.Join(root, "server.sqlite"))
+			t.Setenv(key, "private-secret")
+			if _, _, err := serverSettings(nil, io.Discard); err == nil || strings.Contains(err.Error(), "private-secret") {
+				t.Fatal("removed variable accepted or leaked", err)
+			}
+			entries, err := os.ReadDir(root)
+			if err != nil || len(entries) != 0 {
+				t.Fatal("removed bootstrap configuration mutated files", err)
+			}
+		})
 	}
 }

@@ -71,15 +71,15 @@ it('never uses another dataset as placeholder data while switching accounts', as
   client.clear()
 })
 
-it('exchanges tokens in request body without persisting them', async () => {
+it('exchanges password credentials in request body without persisting them', async () => {
   const fetcher = vi.fn<typeof fetch>(() => Promise.resolve(new Response(null, { status: 204 })))
   vi.stubGlobal('fetch', fetcher)
-  await changeBrowserSession('secret-token')
+  await changeBrowserSession({ username: 'alice', password: 'secret-password' })
   expect(fetcher).toHaveBeenCalledWith(
     '/api/v2/auth/session',
     expect.objectContaining({
       method: 'POST',
-      body: JSON.stringify({ token: 'secret-token' }),
+      body: JSON.stringify({ username: 'alice', password: 'secret-password' }),
       credentials: 'same-origin',
     }),
   )

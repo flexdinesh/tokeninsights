@@ -26,7 +26,8 @@ import (
 
 type Settings struct {
 	Listen, DBPath, AppDBPath, PublicURL, AdminSocket, Backend, PostgresDSN string
-	AdminAccount, AdminToken                                                string
+	BootstrapUsername, BootstrapPassword                                    string
+	SignupEnabled                                                           bool
 	TrustedProxies                                                          clientaddress.Policy
 }
 
@@ -87,8 +88,8 @@ func (settings Settings) Validate() (string, int, error) {
 	if settings.AdminSocket != "" && !filepath.IsAbs(settings.AdminSocket) {
 		return "", 0, fmt.Errorf("--admin-socket requires absolute path")
 	}
-	if settings.AdminToken != "" || settings.AdminAccount != "" {
-		if err := accounts.ValidateBootstrap(settings.AdminAccount, settings.AdminToken); err != nil {
+	if settings.BootstrapPassword != "" || settings.BootstrapUsername != "" {
+		if err := accounts.ValidateBootstrap(settings.BootstrapUsername, settings.BootstrapPassword); err != nil {
 			return "", 0, err
 		}
 	}
@@ -116,12 +117,13 @@ func Run(ctx context.Context, settings Settings, log io.Writer, ready func(strin
 	if err := storage.accounts.Resume(storage.ctx); err != nil {
 		return err
 	}
-	if settings.AdminToken != "" {
-		if err := storage.accounts.BootstrapAdmin(storage.ctx, settings.AdminAccount, settings.AdminToken); err != nil {
+	if settings.BootstrapPassword != "" {
+		if err := storage.accounts.BootstrapUser(storage.ctx, settings.BootstrapUsername, settings.BootstrapPassword); err != nil {
 			return err
 		}
 	}
 	policy, _ := serverfeatures.New(serverfeatures.Hosted, false)
+	policy.SignupEnabled = settings.SignupEnabled
 	options := server.DataHandlerOptions{Host: host, AllowIngestion: true, Policy: policy}
 	if log == nil {
 		log = io.Discard

@@ -2,7 +2,7 @@
 version: 1
 slug: "packages-web-src-app-tsx"
 primary_target: "packages/web/src/App.tsx"
-related_targets: ["packages/web/src/styles.css","packages/web/src/tokens.css","packages/web/src/components/DashboardSidebar.tsx","packages/web/src/components/SummaryCards.tsx","packages/web/src/components/Filters.tsx","packages/web/src/components/UsageChart.tsx"]
+related_targets: ["packages/web/src/styles.css","packages/web/src/tokens.css","packages/web/src/components/DashboardSidebar.tsx","packages/web/src/components/SummaryCards.tsx","packages/web/src/components/Filters.tsx","packages/web/src/components/UsageChart.tsx","packages/web/src/components/DashboardHeader.tsx","packages/web/src/components/PasswordLogin.tsx","packages/web/src/components/SettingsPage.tsx","packages/web/src/identity.tsx","packages/web/src/account.ts","packages/web/src/session.ts"]
 ---
 
 # Browser dashboard — Quiet Blue / White First
@@ -34,5 +34,19 @@ Format, pinned-tool lint, 71 web unit tests, full Go/SQLite/PostgreSQL tests, pr
 Header refinement: intro removed; current-view heading replaces the breadcrumb; fixed-size local icon opens compact process CPU/RAM, query/processing and harness details on hover, focus, or tap. Failure recovery stays beside saved usage. Production Go dashboard inspected at 1440px and 390px in light/dark with reduced motion; header accessibility audit found no violations. Browser checks verify stable local refresh geometry, keyboard/tap disclosure, and omission of local status in hosted mode.
 
 Approved read API addition: optional local processUsage on status; hosted responses omit it. No storage, accounting, or authorization changes. Web composition owns the sampler; existing browser controller owns polling. New Brand and DashboardSidebar components own presentation only.
+
+## Hosted identity extension
+
+Scope: approved narrow extension of the existing Operate surface. Preserve White First, neutral charcoal, DM Sans, shared Button/Input primitives, fine section rules, and wrapping navigation. No new visual world or surface concept.
+
+The hosted dashboard header adds a top-right profile icon labeled **Account settings**. It opens `/settings`, reusing the sidebar and compact header with **Return to usage**. Account, Password, and API keys form a single column of rule-separated sections. Forms have visible labels and bounded widths; key rows and actions wrap on small screens. Personal mode keeps automatic identity, omits account controls, and explains unavailability if `/settings` is opened directly.
+
+The root App owns authentication recovery and the identity provider shared by usage and settings. Public authentication discovery supplies hosted password login and conditional signup. Login reuses the brand header and startup layout; signup adds username/password guidance. Submission disables fields and shows pending action text; failures retain entered username and offer retry. Session changes cancel and clear cached queries before another account's usage is shown. Account reads and mutations carry the expected dataset header; expired or changed sessions return to login.
+
+Settings shows the username and sign-out action. Password change asks for current, new, and confirmed passwords, explains that all browser sessions end while API keys remain active, and returns to login with confirmation. Account/key loading failures expose retry actions; an empty key list explains the next action.
+
+Key creation collects a name, sync or read-only access, and optional expiry. The successful form becomes a one-time secret view with **Copy key** and **Done**. Focus moves to the readonly secret; copy feedback is announced, with manual-copy recovery if clipboard access fails. **Done** removes the secret and returns focus to the key-name field. The list retains labels, access, creation/expiry dates, and explicit revoked/expired states; revoke actions show progress and disable revoked rows. These transitions reuse existing focus and status primitives rather than adding a modal or new card treatment.
+
+Implementation evidence: source in the related identity targets; hosted login and settings captures at desktop/mobile widths, including the one-time-key view in dark mode, under ignored `.scratch/identity-preview/`. Captures are development evidence, not shipping assets. Final build recaptures, browser focus checks, and semantic assertions confirm focus on the revealed secret after creation and Key name after Done. Independent verdict: ship; the reviewer scored the listed focus fix resolved, with no visible regression. All 84 web unit tests and 40 real browser tests pass; mobile settings accessibility audit found no violations.
 
 Unresolved questions: none.

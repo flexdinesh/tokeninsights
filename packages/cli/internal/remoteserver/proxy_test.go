@@ -49,7 +49,7 @@ func TestHostedProxyLoginBoundary(t *testing.T) {
 			defer client.CloseIdleConnections()
 			login := func(address, origin string) int {
 				t.Helper()
-				r, err := http.NewRequestWithContext(t.Context(), "POST", target+"/api/v2/auth/session", strings.NewReader(`{"token":"invalid"}`))
+				r, err := http.NewRequestWithContext(t.Context(), "POST", target+"/api/v2/auth/session", strings.NewReader(`{"username":"invalid","password":"invalid-password"}`))
 				if err != nil {
 					t.Fatal(err)
 				}

@@ -2,7 +2,8 @@ import { Link } from '@tanstack/react-router'
 import { Activity, Box, ChartNoAxesCombined, Command, GitBranch, Layers3 } from 'lucide-react'
 import type { Tab } from '../contracts'
 import { labels } from '../format'
-import { reduceQuery, searchFromQuery, useDashboardQuery } from '../state'
+import { reduceQuery, searchFromQuery } from '../state'
+import type { QueryState } from '../state'
 import { Brand } from './Brand'
 import { Button } from './ui/button'
 
@@ -19,11 +20,12 @@ const tabs: { id: Tab; icon: typeof Activity }[] = [
 export function DashboardSidebar({
   localMachine,
   onSignOut,
+  query,
 }: {
   localMachine: boolean
   onSignOut?: () => Promise<void>
+  query: QueryState
 }) {
-  const { query } = useDashboardQuery()
   return (
     <aside className="dashboard-sidebar" aria-label="Dashboard navigation">
       <Brand />

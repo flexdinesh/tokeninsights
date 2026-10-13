@@ -82,7 +82,7 @@ func apiNotFound(w http.ResponseWriter) {
 
 func isDashboardRoute(path string) bool {
 	switch path {
-	case "/tokens", "/models", "/providers", "/harnesses", "/sessions", "/context", "/repo":
+	case "/tokens", "/models", "/providers", "/harnesses", "/sessions", "/context", "/repo", "/settings":
 		return true
 	default:
 		return false

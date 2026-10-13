@@ -4,7 +4,7 @@ info:
   version: 2.0.0
   description:
     Query dataset-scoped usage and ingest sanitized collector evidence. Personal servers are
-    unauthenticated; hosted servers authenticate bearer tokens or read-only browser sessions.
+    unauthenticated; hosted servers authenticate scoped API keys or password browser sessions.
     Servers interpret evidence and never scan host artifacts.
 tags:
   - name: Instance
@@ -397,11 +397,45 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/IngestionError'
+  /api/v2/auth:
+    get:
+      operationId: getAuthInfo
+      summary: Discover authentication policy before signing in
+      description: Public mode and login policy only; contains no account or dataset information.
+      tags:
+        - Instance
+      responses:
+        '200':
+          description: Resolved server authentication policy.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthInfo'
+        default:
+          $ref: '#/components/responses/Error'
+  /api/v2/auth/signup:
+    post:
+      operationId: signup
+      summary: Create a hosted account and browser session
+      description: Available only when hosted signup is enabled. Reserves a unique username and stable dataset before activation. Requires same-origin browser access.
+      tags:
+        - Instance
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BrowserSessionRequest'
+      responses:
+        '204':
+          description: Account activated and independent browser session established.
+        default:
+          $ref: '#/components/responses/Error'
   /api/v2/auth/session:
     post:
       operationId: createBrowserSession
-      summary: Exchange bearer token for a read-only browser cookie
-      description: Hosted-only, canonical same-origin exchange. Sets a host-only Secure HttpOnly SameSite=Lax cookie for 24 hours. The bearer token is never returned or persisted by the browser.
+      summary: Sign in with username and password
+      description: Hosted-only same-origin login. Sets an independent host-only HttpOnly SameSite=Lax cookie for 24 hours, Secure for HTTPS browser origins. Passwords are never returned or persisted by the browser. API keys cannot sign in.
       tags:
         - Instance
       requestBody:
@@ -425,6 +459,115 @@ paths:
       responses:
         '204':
           description: Browser session cleared.
+        default:
+          $ref: '#/components/responses/Error'
+  /api/v2/account:
+    get:
+      operationId: getAccount
+      parameters:
+        - $ref: '#/components/parameters/ExpectedAccountDataset'
+      summary: Read your hosted account
+      description: Browser session only. Authorization headers are rejected, including mixed cookie/bearer credentials.
+      security:
+        - browserSession: []
+      tags:
+        - Instance
+      responses:
+        '200':
+          description: Current authenticated account.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccountUser'
+        default:
+          $ref: '#/components/responses/Error'
+  /api/v2/account/password:
+    put:
+      operationId: changePassword
+      parameters:
+        - $ref: '#/components/parameters/ExpectedAccountDataset'
+      summary: Change your password
+      description: Hosted browser session and current password required. Revokes all browser sessions, including the caller; API keys remain valid. Requires same-origin browser access.
+      security:
+        - browserSession: []
+      tags:
+        - Instance
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChangePasswordRequest'
+      responses:
+        '204':
+          description: Password changed and browser sessions revoked; sign in again.
+        default:
+          $ref: '#/components/responses/Error'
+  /api/v2/account/keys:
+    get:
+      operationId: listAPIKeys
+      parameters:
+        - $ref: '#/components/parameters/ExpectedAccountDataset'
+      summary: List your API keys
+      description: Hosted browser session only. No key secrets or digests are returned.
+      security:
+        - browserSession: []
+      tags:
+        - Instance
+      responses:
+        '200':
+          description: Your active, expired, and revoked key metadata.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIKeyList'
+        default:
+          $ref: '#/components/responses/Error'
+    post:
+      operationId: createAPIKey
+      parameters:
+        - $ref: '#/components/parameters/ExpectedAccountDataset'
+      summary: Create a named API key for your account
+      description: Hosted browser session and same-origin access required. The random secret is returned once and persisted only as a digest. Granted permissions are limited to read and ingest, never account management.
+      security:
+        - browserSession: []
+      tags:
+        - Instance
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateAPIKeyRequest'
+      responses:
+        '201':
+          description: API key created; save the secret now.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIKeyCreated'
+        default:
+          $ref: '#/components/responses/Error'
+  /api/v2/account/keys/{keyId}:
+    delete:
+      operationId: revokeAPIKey
+      summary: Revoke one of your API keys
+      description: Hosted browser session and same-origin access required. Key ownership is resolved from the authenticated user. Revocation does not end browser sessions or delete usage.
+      security:
+        - browserSession: []
+      tags:
+        - Instance
+      parameters:
+        - name: keyId
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+        - $ref: '#/components/parameters/ExpectedAccountDataset'
+      responses:
+        '204':
+          description: Your API key is revoked.
         default:
           $ref: '#/components/responses/Error'
   /api/v2/processing/reprocess:
@@ -460,8 +603,16 @@ components:
       type: apiKey
       in: cookie
       name: tokeninsights_session
-      description: Read-only, HttpOnly browser session established by POST /api/v2/auth/session.
+      description: HttpOnly password browser session. Reads usage and manages its own account; cannot ingest or administer other users.
   parameters:
+    ExpectedAccountDataset:
+      name: X-TokenInsights-Dataset-ID
+      in: header
+      required: false
+      description: Expected dataset from the authenticated instance descriptor. Browser settings send this on every account request. A mismatch returns 409 without mutation and requires signing in again; this header never selects or authorizes a dataset.
+      schema:
+        type: string
+
     PeriodFilter:
       name: period
       in: query
@@ -1695,11 +1846,130 @@ components:
       type: object
       additionalProperties: false
       required:
-        - token
+        - username
+        - password
       properties:
-        token:
+        username:
+          type: string
+          description: Trimmed and ASCII case-folded on the server; canonical usernames contain 3–32 ASCII letters, digits, underscores or hyphens, starting with a letter or digit.
+          maxLength: 200
+        password:
+          type: string
+          description: Preserved exactly; 15–128 Unicode characters. Never trimmed or normalized.
+          minLength: 15
+          maxLength: 128
+    AuthInfo:
+      type: object
+      additionalProperties: false
+      required: [serverKind, loginMethods, signupEnabled]
+      properties:
+        serverKind:
+          type: string
+          enum: [personal, hosted]
+        loginMethods:
+          type: array
+          items:
+            type: string
+            enum: [password]
+        signupEnabled:
+          type: boolean
+    AccountUser:
+      type: object
+      additionalProperties: false
+      required: [userId, datasetId, username, displayName, enabled]
+      properties:
+        userId:
+          type: string
+        datasetId:
+          type: string
+        username:
+          type: string
+        displayName:
+          type: string
+        enabled:
+          type: boolean
+    ChangePasswordRequest:
+      type: object
+      additionalProperties: false
+      required: [currentPassword, password]
+      properties:
+        currentPassword:
+          type: string
+          minLength: 15
+          maxLength: 128
+        password:
+          type: string
+          minLength: 15
+          maxLength: 128
+    APIKeyPermission:
+      type: string
+      enum: [read, ingest]
+    CreateAPIKeyRequest:
+      type: object
+      additionalProperties: false
+      required: [label, permissions]
+      properties:
+        label:
           type: string
           minLength: 1
+          maxLength: 200
+        permissions:
+          type: array
+          minItems: 1
+          maxItems: 2
+          uniqueItems: true
+          items:
+            $ref: '#/components/schemas/APIKeyPermission'
+        expiresAt:
+          type: string
+          format: date-time
+    APIKeyInfo:
+      type: object
+      additionalProperties: false
+      required: [tokenId, label, permissions, createdAt]
+      properties:
+        tokenId:
+          type: string
+        label:
+          type: string
+        permissions:
+          type: array
+          items:
+            $ref: '#/components/schemas/APIKeyPermission'
+        createdAt:
+          type: string
+          format: date-time
+        expiresAt:
+          type: string
+          format: date-time
+        revokedAt:
+          type: string
+          format: date-time
+    APIKeyList:
+      type: object
+      additionalProperties: false
+      required: [keys]
+      properties:
+        keys:
+          type: array
+          items:
+            $ref: '#/components/schemas/APIKeyInfo'
+    APIKeyCreated:
+      type: object
+      additionalProperties: false
+      required: [tokenId, token, permissions]
+      properties:
+        tokenId:
+          type: string
+        token:
+          type: string
+        permissions:
+          type: array
+          items:
+            $ref: '#/components/schemas/APIKeyPermission'
+        expiresAt:
+          type: string
+          format: date-time
     CollectorAttempt:
       type: object
       additionalProperties: false

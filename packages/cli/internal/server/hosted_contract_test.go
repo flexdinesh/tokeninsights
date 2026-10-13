@@ -23,6 +23,7 @@ import (
 )
 
 const hostedTestOrigin = "https://usage.example"
+const hostedTestPassword = "a-long-test-password"
 
 type hostedContractFixture struct {
 	store                                        *datastore.Store
@@ -40,11 +41,11 @@ func newHostedContractFixture(t *testing.T) hostedContractFixture {
 	}
 	t.Cleanup(func() { _ = store.Close() })
 	service := newHostedAccounts(t, store)
-	alice, err := service.CreateUser(t.Context(), "Alice")
+	alice, err := service.Signup(t.Context(), "alice", hostedTestPassword)
 	if err != nil {
 		t.Fatal(err)
 	}
-	bob, err := service.CreateUser(t.Context(), "Bob")
+	bob, err := service.Signup(t.Context(), "bob", hostedTestPassword)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -265,7 +266,7 @@ func TestHostedHTTPDatasetIsolationAndCapabilities(t *testing.T) {
 
 func TestHostedHTTPBrowserSessionReadOnlyAndLogout(t *testing.T) {
 	fixture := newHostedContractFixture(t)
-	body, err := json.Marshal(serverapi.BrowserSessionRequest{Token: fixture.aliceToken.Secret})
+	body, err := json.Marshal(serverapi.BrowserSessionRequest{Username: "alice", Password: hostedTestPassword})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -291,7 +292,7 @@ func TestHostedHTTPBrowserSessionReadOnlyAndLogout(t *testing.T) {
 	logout := hostedRequest(t, fixture.handler, http.MethodDelete, "/api/v2/auth/session", "", nil, cookie)
 	requireHostedStatus(t, logout, 204)
 	requireHostedStatus(t, hostedRequest(t, fixture.handler, http.MethodGet, "/api/v2/usage", "", nil, cookie), 401)
-	ingestLoginBody, err := json.Marshal(serverapi.BrowserSessionRequest{Token: fixture.ingestToken.Secret})
+	ingestLoginBody, err := json.Marshal(serverapi.BrowserSessionRequest{Username: "alice", Password: fixture.ingestToken.Secret})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -356,7 +357,7 @@ func TestHostedRequestOriginWithoutPublicURL(t *testing.T) {
 	fixture := newHostedContractFixture(t)
 	policy, _ := serverfeatures.New(serverfeatures.Hosted, false)
 	handler := NewDataHandlerWithOptions(t.Context(), sqlanalytics.Source{Store: fixture.store}, io.Discard, DataHandlerOptions{Policy: policy, Accounts: fixture.accounts})
-	body, err := json.Marshal(serverapi.BrowserSessionRequest{Token: fixture.aliceToken.Secret})
+	body, err := json.Marshal(serverapi.BrowserSessionRequest{Username: "alice", Password: hostedTestPassword})
 	if err != nil {
 		t.Fatal(err)
 	}

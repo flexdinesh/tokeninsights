@@ -61,8 +61,9 @@ func (cs Capabilities) Known() Capabilities {
 }
 
 type Policy struct {
-	Kind         Kind
-	Capabilities Capabilities
+	SignupEnabled bool
+	Kind          Kind
+	Capabilities  Capabilities
 }
 
 func New(kind Kind, collectorProgress bool, disabled ...Capability) (Policy, error) {
@@ -104,6 +105,9 @@ func newPolicy(kind Kind, collectorProgress, dashboardReload bool, disabled ...C
 func (p Policy) Validate() error {
 	if err := p.Kind.Validate(); err != nil {
 		return err
+	}
+	if p.Kind == Personal && p.SignupEnabled {
+		return fmt.Errorf("personal server cannot enable signup")
 	}
 	if p.Kind == Hosted && (p.Capabilities.Has(TerminalDashboard) || p.Capabilities.Has(CollectorProgress) || p.Capabilities.Has(DashboardReload)) {
 		return fmt.Errorf("hosted server cannot support terminal-dashboard, collector-progress or dashboard-reload")

@@ -1445,14 +1445,110 @@ a {
   white-space: nowrap;
 }
 
-.token-login form {
+.password-login form {
   display: grid;
   gap: var(--space-3);
   width: min(100%, 24rem);
   text-align: start;
 }
-.token-login form p {
+.password-login form p[role='alert'] {
   color: var(--color-error);
+}
+.field-help {
+  color: var(--color-text-muted);
+  font-size: var(--text-xs);
+  margin: 0;
+}
+.account-settings {
+  max-width: 62rem;
+}
+.settings-section {
+  padding-block: var(--space-6);
+  border-bottom: var(--border-width) solid var(--color-border);
+}
+.settings-section h2 {
+  font-size: var(--text-lg);
+  font-weight: 600;
+  margin: 0 0 var(--space-2);
+}
+.settings-section > p,
+.key-details p {
+  color: var(--color-text-muted);
+  margin-bottom: var(--space-4);
+}
+.settings-heading,
+.settings-actions {
+  display: flex;
+  gap: var(--space-3);
+  align-items: center;
+  flex-wrap: wrap;
+}
+.settings-heading h2 {
+  margin: 0;
+}
+.account-details {
+  margin-block: var(--space-4);
+}
+.account-details dt {
+  color: var(--color-text-muted);
+}
+.account-details dd {
+  margin: var(--space-1) 0;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.settings-form,
+.created-key {
+  display: grid;
+  gap: var(--space-3);
+  max-width: 28rem;
+}
+.settings-form > button {
+  justify-self: start;
+  margin-top: var(--space-1);
+}
+.settings-form [role='alert'],
+.settings-section > [role='alert'] {
+  color: var(--color-error);
+}
+.api-key-list {
+  list-style: none;
+  padding: 0;
+  margin-top: var(--space-6);
+}
+.api-key-list li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  padding-block: var(--space-4);
+  border-top: var(--border-width) solid var(--color-border);
+}
+.api-key-list li > div {
+  min-width: 0;
+}
+.api-key-list strong {
+  overflow-wrap: anywhere;
+}
+.api-key-list p {
+  color: var(--color-text-muted);
+  font-size: var(--text-xs);
+  margin-top: var(--space-1);
+}
+.settings-state {
+  padding-block: var(--space-4);
+  color: var(--color-text-muted);
+}
+.created-key {
+  padding-block: var(--space-4);
+}
+.created-key h3 {
+  font-weight: 600;
+  font-size: var(--text-base);
+}
+.created-key p {
+  color: var(--color-text-muted);
 }
 .collector-progress {
   margin-top: var(--space-3);

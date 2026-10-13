@@ -5,8 +5,6 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
-	"errors"
-	"strings"
 )
 
 func NewCredential() (string, error) {
@@ -24,25 +22,14 @@ func CredentialDigest(secret string) string {
 
 func ValidatePermissions(scopes []string) error {
 	if len(scopes) == 0 || len(scopes) > 2 {
-		return errors.New("invalid_permissions")
+		return ErrInvalidPermissions
 	}
 	seen := make(map[string]bool)
 	for _, scope := range scopes {
 		if (scope != Read && scope != Ingest) || seen[scope] {
-			return errors.New("invalid_permissions")
+			return ErrInvalidPermissions
 		}
 		seen[scope] = true
-	}
-	return nil
-}
-
-// ValidateBootstrap checks deployment input without exposing credentials.
-func ValidateBootstrap(name, token string) error {
-	if strings.TrimSpace(name) == "" || len(name) > MaxDisplayNameBytes {
-		return errors.New("invalid ADMIN_ACCOUNT")
-	}
-	if token == "" || len(token) > MaxTokenBytes || strings.ContainsAny(token, " \t\r\n\x00") {
-		return errors.New("invalid ADMIN_TOKEN")
 	}
 	return nil
 }
