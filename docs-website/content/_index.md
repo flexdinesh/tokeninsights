@@ -1,0 +1,25 @@
+---
+title: TokenInsights
+type: docs
+layout: docs
+cascade:
+  type: docs
+---
+
+Track token usage across OpenCode, Pi, Codex, and Claude Code from one dashboard.
+TokenInsights reads usage metadata from your local coding harnesses and lets you
+explore it in a terminal or browser.
+
+## Start here
+
+1. [Install TokenInsights](getting-started/) with Homebrew or Go.
+2. [Open a local dashboard](local-usage/) to inspect your usage.
+3. [Understand what is collected](privacy/) and how your data stays local.
+
+## What you can explore
+
+Compare usage by model, provider, harness, and session. Use date ranges to focus
+on a period, and inspect session context load alongside token totals.
+
+Local dashboards collect and process usage in the background while displaying
+saved data. You do not need to start a separate server or daemon.

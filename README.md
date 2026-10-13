@@ -198,6 +198,8 @@ Server exposes processed metadata to reachable dashboard clients. Default localh
 
 ## Documentation
 
+Public user docs live in [`docs-website/`](docs-website/README.md), an independent Hugo/Hextra site. Run `mise run dev:docs` to serve them locally at `http://localhost:1313/`, or `mise run build:docs` to output static files. Internal engineering docs remain in `docs/`.
+
 [ADR 0009](docs/adr/0009-single-process-and-distributed-compositions.md) records the approved runtime composition; the [development guide](docs/development.md) defines verification gates.
 
 - [CLI reference](packages/cli/README.md)
