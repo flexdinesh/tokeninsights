@@ -91,11 +91,15 @@ SQLite and PostgreSQL count groups without repeating row aggregates; counts,
 totals and displayed rows retain the same snapshot and filtering rules.
 
 For distributed collection, run one authenticated [server container](docs/deployment.md)
-and configure the collector. For a same-machine SQLite deployment, set
-`ADMIN_TOKEN` in the environment, run `docker compose up -d --build`,
-and use `http://127.0.0.1:8766` below. `ADMIN_ACCOUNT` defaults to `admin`;
-the same token signs into the dashboard and authenticates ingestion. Configure
-another container port with `TOKENINSIGHTS_SERVER_PORT`; TLS/ingress is deployment-owned.
+and configure the collector. For a same-machine SQLite deployment, optionally set
+`TOKENINSIGHTS_BOOTSTRAP_USERNAME` and `TOKENINSIGHTS_BOOTSTRAP_PASSWORD`, run
+`docker compose up -d --build`, and open `http://127.0.0.1:8766`. Sign in with
+username/password, then use the profile icon to open settings and create an API key
+with read and ingest scopes. Configure that key as `distributed.server-token` below.
+Signup defaults off; operators enable it with `TOKENINSIGHTS_SIGNUP_ENABLED=true`.
+Local viewers automatically use their default identity and expose no account flows.
+Configure another container port with `TOKENINSIGHTS_SERVER_PORT`; TLS/ingress is
+deployment-owned.
 Local Web stays on 8765 with independent token/account storage.
 
 ```sh
@@ -184,9 +188,9 @@ Default files under `${XDG_DATA_HOME:-~/.local/share}/tokeninsights/`:
 
 Each role uses its own database. Fresh databases collect retained sources and ingest sanitized evidence. Paths cannot alias; wrong storage roles reject without mutation. Existing unrelated files stay untouched.
 
-Storage uses collector schema **20**, token SQLite schema **1** (PostgreSQL token/account schemas **1**), application SQLite schema **2** and job SQLite schema **1**. Only current schemas are supported; incompatible contracts reject without mutation. No imports or migrations. Fresh collection rebuilds usage from retained sources. Reprocessing within a current SQLite/PostgreSQL preserves the published generation until its replacement is complete.
+Storage uses collector schema **20**, token SQLite schema **1**, PostgreSQL token/account schemas **1/2**, personal application SQLite schema **2**, hosted application SQLite schema **3** and job SQLite schema **1**. Local application storage retains its existing contract. Only current schemas are supported; incompatible contracts reject without mutation. No imports or migrations. Fresh collection rebuilds usage from retained sources. Reprocessing within a current SQLite/PostgreSQL preserves the published generation until its replacement is complete.
 
-Rebuild earlier PR databases from retained sources into fresh files. Normalized source times must be valid Unix milliseconds; invalid observations remain server evidence with diagnostics. Filename-derived Pi/Claude sessions remain raw-only until native session evidence exists. Local ingestion runs directly within the owning command; its web listener exposes no ingestion route. Hosted access uses per-user tokens; it does not restore the removed shared-server-token mode.
+Rebuild earlier PR databases from retained sources into fresh files. Normalized source times must be valid Unix milliseconds; invalid observations remain server evidence with diagnostics. Filename-derived Pi/Claude sessions remain raw-only until native session evidence exists. Local ingestion runs directly within the owning command; its web listener exposes no ingestion route. Hosted browser access uses username/password; collector API keys resolve the same user's stable dataset. Changing a password ends browser sessions without revoking API keys; key revocation takes effect immediately and leaves browser sessions intact. Bootstrap credentials initialize once and never reset changed passwords or reenable disabled users.
 
 Raw provider and model values retain the harness names. Stored canonical values used by filters and dashboards map Pi `openai-codex` to `openai`, map `fireworks-ai` to `fireworks`, and shorten Fireworks model names by removing `accounts/fireworks/models/`. Server processing canonicalizes names in each projection.
 
@@ -204,6 +208,7 @@ Server exposes processed metadata to reachable dashboard clients. Default localh
 - [Architecture principles](docs/adr/0010-current-contracts-and-boundaries.md) — ownership, composition, current contracts and verification.
 - [Storage adapter contracts](docs/adr/0011-storage-adapter-contracts.md) — backend interfaces and conformance tests.
 - [SQLite/PostgreSQL persistence](docs/adr/0012-sqlite-and-postgres-persistence.md) — supported engines, ownership and schema contracts.
+- [Hosted user management](docs/adr/0016-hosted-user-management.md) — password login, optional signup, browser sessions and API keys.
 - [Collector/ingestion failure tests](docs/collector-ingestion-tests.md) — guarantees, synthetic fixtures, executable coverage, and future acceptance gates.
 - [Completion plugins](docs/plugins.md) — thin completion hooks, install artifacts, and host verification scope.
 

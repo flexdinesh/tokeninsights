@@ -3,12 +3,14 @@ import type { Server } from 'node:http'
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
+import { z } from 'zod'
 import { CollectorProgressResponse, StatusResponseV2 } from '../src/generated/api.ts'
 import {
   adminRequest,
   hostedBackend,
   hostedFixturePointer,
   hostedOrigin,
+  hostedPassword,
   seedHostedUser,
   startHostedProxy,
   tokenSchema,
@@ -129,6 +131,9 @@ const hostedServer = spawn(
     hostedOrigin,
     '--admin-socket',
     hostedSocket,
+    '--signup',
+    '--trusted-proxies',
+    '127.0.0.1/32',
   ],
   {
     stdio: 'inherit',
@@ -235,6 +240,11 @@ try {
       hostedSocket,
       { operation: 'create-token', userId: user.userId, permissions: ['read', 'ingest'] },
       tokenSchema,
+    )
+    await adminRequest(
+      hostedSocket,
+      { operation: 'reset-password', userId: user.userId, password: hostedPassword },
+      z.object({}),
     )
     await seedHostedUser(token.token, input)
     await writeFile(join(hostedHome, name + '.json'), JSON.stringify({ ...user, ...token }))

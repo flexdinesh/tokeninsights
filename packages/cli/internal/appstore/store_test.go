@@ -2,6 +2,7 @@ package appstore
 
 import (
 	"bytes"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -149,4 +150,73 @@ func TestAttachmentRejectsMissingOrReplacedApplicationWithoutCreatingFile(t *tes
 		t.Fatal("matching restore rejected", err)
 	}
 	_ = restored.Close()
+}
+
+func TestPersonalV2RetainsExistingAccounts(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "app.sqlite")
+	store, err := Open(t.Context(), path, "database", "personal")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.SQL().ExecContext(t.Context(), `
+ INSERT INTO users VALUES('user','dataset','Saved user',1,'2026-01-01T00:00:00Z','ready');
+ INSERT INTO tokens VALUES('token','user','token-digest','read','2026-01-01T00:00:00Z',NULL,NULL);
+ INSERT INTO sessions VALUES('session','user','token','session-digest','2026-01-01T00:00:00Z','2026-01-02T00:00:00Z',NULL);
+ `); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Close(); err != nil {
+		t.Fatal(err)
+	}
+	reopened, err := Open(t.Context(), path, "database", "personal")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = reopened.Close() }()
+	var version int
+	if err := reopened.SQL().QueryRowContext(t.Context(), "PRAGMA user_version").Scan(&version); err != nil || version != 2 {
+		t.Fatal("personal version changed", version, err)
+	}
+	var dataset, sourceToken string
+	if err := reopened.SQL().QueryRowContext(t.Context(), "SELECT u.dataset_id,s.source_token_id FROM users u JOIN sessions s ON s.user_id=u.user_id WHERE u.user_id='user'").Scan(&dataset, &sourceToken); err != nil || dataset != "dataset" || sourceToken != "token" {
+		t.Fatal("saved local identity lost", dataset, sourceToken, err)
+	}
+}
+
+func TestOldHostedV2RejectsWithoutMutation(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "app.sqlite")
+	if err := os.WriteFile(path, nil, 0600); err != nil {
+		t.Fatal(err)
+	}
+	database, err := connect(path, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.ExecContext(t.Context(), Schema); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.ExecContext(t.Context(), "INSERT INTO application_metadata VALUES(1,'application','database','instance','hosted')"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.ExecContext(t.Context(), "INSERT INTO users VALUES('user','dataset','Saved hosted user',1,'2026-01-01T00:00:00Z','ready')"); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.Close(); err != nil {
+		t.Fatal(err)
+	}
+	before, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	other, err := Open(t.Context(), path, "database", "hosted")
+	if other != nil {
+		_ = other.Close()
+	}
+	if !errors.Is(err, ErrIncompatibleDatabase) {
+		t.Fatal("old hosted contract accepted", err)
+	}
+	after, err := os.ReadFile(path)
+	if err != nil || !bytes.Equal(before, after) {
+		t.Fatal("rejection changed old hosted accounts", err)
+	}
 }

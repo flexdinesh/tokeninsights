@@ -36,7 +36,7 @@ func testAccounts(t *testing.T) (*accounts.Service, *accountTestStore) {
 
 func TestCredentialsPersistOnlyDigests(t *testing.T) {
 	s, store := testAccounts(t)
-	user, err := s.CreateUser(t.Context(), "user")
+	user, err := s.Signup(t.Context(), "user", "synthetic-password-one")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -44,9 +44,16 @@ func TestCredentialsPersistOnlyDigests(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	session, _, err := s.CreateSession(t.Context(), token.Secret)
+	session, _, err := s.CreateSession(t.Context(), "user", "synthetic-password-one")
 	if err != nil {
 		t.Fatal(err)
+	}
+	var passwordHash string
+	if err := store.SQL().QueryRowContext(t.Context(), "SELECT password_hash FROM users WHERE user_id=?", user.UserID).Scan(&passwordHash); err != nil {
+		t.Fatal(err)
+	}
+	if passwordHash == "synthetic-password-one" || !accounts.VerifyPassword("synthetic-password-one", passwordHash) {
+		t.Fatal("password persisted without valid salted hash")
 	}
 	for table, secret := range map[string]string{"tokens": token.Secret, "sessions": session} {
 		var persisted string
@@ -61,15 +68,11 @@ func TestCredentialsPersistOnlyDigests(t *testing.T) {
 
 func TestSessionCookieAndRequestAuthentication(t *testing.T) {
 	s, _ := testAccounts(t)
-	u, err := s.CreateUser(t.Context(), "user")
+	u, err := s.Signup(t.Context(), "user", "synthetic-password-one")
 	if err != nil {
 		t.Fatal(err)
 	}
-	read, err := s.CreateToken(t.Context(), u.UserID, []string{accounts.Read}, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	session, expiry, err := s.CreateSession(t.Context(), read.Secret)
+	session, expiry, err := s.CreateSession(t.Context(), "user", "synthetic-password-one")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -91,7 +94,7 @@ func TestSessionCookieAndRequestAuthentication(t *testing.T) {
 
 func TestExpiredCredentialsFailClosed(t *testing.T) {
 	s, store := testAccounts(t)
-	u, err := s.CreateUser(t.Context(), "user")
+	u, err := s.Signup(t.Context(), "user", "synthetic-password-one")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -122,62 +125,69 @@ func TestExpiredCredentialsFailClosed(t *testing.T) {
 	}
 }
 
-func TestCleanupRemovesExpiredCredentialsWithoutRemovingDatasets(t *testing.T) {
+func TestCleanupPreservesKeyMetadataAndIndependentSessions(t *testing.T) {
 	s, store := testAccounts(t)
-	u, err := s.CreateUser(t.Context(), "user")
+	user, err := s.Signup(t.Context(), "user", "synthetic-password-one")
 	if err != nil {
 		t.Fatal(err)
 	}
-	active, err := s.CreateToken(t.Context(), u.UserID, []string{accounts.Read, accounts.Ingest}, nil)
+	expired, err := s.CreateToken(t.Context(), user.UserID, []string{accounts.Read}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	expired, err := s.CreateToken(t.Context(), u.UserID, []string{accounts.Read}, nil)
+	revoked, err := s.CreateToken(t.Context(), user.UserID, []string{accounts.Read}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	revoked, err := s.CreateToken(t.Context(), u.UserID, []string{accounts.Read}, nil)
+	activeSession, _, err := s.CreateSession(t.Context(), "user", "synthetic-password-one")
 	if err != nil {
 		t.Fatal(err)
 	}
-	activeSession, _, err := s.CreateSession(t.Context(), active.Secret)
+	expiredSession, _, err := s.CreateSession(t.Context(), "user", "synthetic-password-one")
 	if err != nil {
 		t.Fatal(err)
 	}
-	expiredTokenSession, _, err := s.CreateSession(t.Context(), expired.Secret)
-	if err != nil {
-		t.Fatal(err)
-	}
-	revokedSession, _, err := s.CreateSession(t.Context(), revoked.Secret)
+	revokedSession, _, err := s.CreateSession(t.Context(), "user", "synthetic-password-one")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err := s.RevokeToken(t.Context(), revoked.TokenID); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.SQL().ExecContext(t.Context(), "UPDATE tokens SET expires_at=? WHERE token_id=?", time.Now().Add(-time.Minute).UTC().Format(time.RFC3339Nano), expired.TokenID); err != nil {
+	if err := s.Logout(t.Context(), revokedSession); err != nil {
 		t.Fatal(err)
+	}
+	for _, update := range []struct{ query, id string }{
+		{"UPDATE tokens SET expires_at=? WHERE token_id=?", expired.TokenID},
+		{"UPDATE sessions SET expires_at=? WHERE digest=?", accounts.CredentialDigest(expiredSession)},
+	} {
+		if _, err := store.SQL().ExecContext(t.Context(), update.query, time.Now().Add(-time.Minute).UTC().Format(time.RFC3339Nano), update.id); err != nil {
+			t.Fatal(err)
+		}
 	}
 	if err := s.Cleanup(t.Context()); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := s.AuthenticateSession(t.Context(), activeSession); err != nil {
-		t.Fatal("active session removed", err)
+		t.Fatal("key expiry/revocation removed session", err)
 	}
-	for _, secret := range []string{expiredTokenSession, revokedSession} {
+	for _, secret := range []string{expiredSession, revokedSession} {
 		if _, err := s.AuthenticateSession(t.Context(), secret); !errors.Is(err, accounts.ErrUnauthenticated) {
-			t.Fatal("invalidated session", err)
+			t.Fatal("invalid session accepted", err)
 		}
 		var count int
 		if err := store.SQL().QueryRowContext(t.Context(), "SELECT COUNT(*) FROM sessions WHERE digest=?", accounts.CredentialDigest(secret)).Scan(&count); err != nil || count != 0 {
-			t.Fatal("invalidated session retained", count, err)
+			t.Fatal("expired/revoked session retained", count, err)
 		}
 	}
-	var count int
-	if err := store.SQL().QueryRowContext(t.Context(), "SELECT COUNT(*) FROM tokens WHERE token_id=?", expired.TokenID).Scan(&count); err != nil || count != 0 {
-		t.Fatal("expired token retained", count, err)
+	keys, err := store.repository.ListTokens(t.Context(), user.UserID)
+	if err != nil || len(keys) != 2 {
+		t.Fatal("key metadata lost", keys, err)
 	}
-	if _, err := store.ForDataset(u.DatasetID).Metadata(t.Context()); err != nil {
+	if _, err := s.AuthenticateBearer(t.Context(), expired.Secret); !errors.Is(err, accounts.ErrUnauthenticated) {
+		t.Fatal("expired key authenticated", err)
+	}
+	if _, err := store.ForDataset(user.DatasetID).Metadata(t.Context()); err != nil {
 		t.Fatal("cleanup removed dataset", err)
 	}
 }

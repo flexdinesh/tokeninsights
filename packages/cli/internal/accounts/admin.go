@@ -18,6 +18,7 @@ const maxAdminBody = 4096
 
 type AdminRequest struct {
 	Operation   string     `json:"operation"`
+	Password    string     `json:"password,omitempty"`
 	DisplayName string     `json:"displayName,omitempty"`
 	UserID      string     `json:"userId,omitempty"`
 	TokenID     string     `json:"tokenId,omitempty"`
@@ -45,6 +46,8 @@ func (s *Service) AdminHandler() http.Handler {
 		switch request.Operation {
 		case "create-user":
 			result, err = s.CreateUser(r.Context(), request.DisplayName)
+		case "reset-password":
+			err = s.SetPassword(r.Context(), request.UserID, request.Password)
 		case "disable-user":
 			err = s.DisableUser(r.Context(), request.UserID)
 		case "create-token":

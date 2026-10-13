@@ -57,12 +57,24 @@ The wire/storage kind used by single-process local commands. One default dataset
 _Avoid_: Simple server, prod server, local-only server
 
 **Hosted Server**:
-The distributed server kind: authenticated datasets share token storage, with accounts behind a separate repository. Hosted composition selects SQLite or PostgreSQL for both domains; local composition always uses SQLite. Browser dashboard supported; analytics TUI unavailable. Collector sync uses finite jobs.
+The distributed server kind: authenticated datasets share token storage, with accounts behind a separate repository. Hosted composition selects SQLite or PostgreSQL for both domains; local composition always uses SQLite. Browser password login, optional operator-enabled signup and self-service settings are hosted only. Browser dashboard supported; analytics TUI unavailable. Collector sync uses finite jobs.
 _Avoid_: Prod server, database per tenant, authenticated personal server
 
 **Dataset**:
-The isolation boundary for evidence, deduplication, receipts, ancestry, processing generations and analytics. Personal uses `default`; each hosted user owns one server-assigned dataset, stable across token rotation.
+The isolation boundary for evidence, deduplication, receipts, ancestry, processing generations and analytics. Personal uses `default`; each hosted user owns one server-assigned dataset, stable across password changes, API key rotation and future login methods.
 _Avoid_: Collector installation, token identity, source session
+
+**User**:
+A stable internal identity that owns one dataset. Personal composition creates its default user automatically; hosted usernames/passwords authenticate users without choosing their dataset. Future provider identities attach to the same user through explicit verified linking.
+_Avoid_: Username as dataset ID, API key as user identity, public administrator role
+
+**API Key**:
+A named, revocable hosted credential with read/ingest scopes. Its random secret is shown once and stored only as a digest. Collectors configure it as `distributed.server-token`; it never authorizes account management.
+_Avoid_: Login password, browser session, shared server token
+
+**Browser Session**:
+A 24-hour opaque cookie credential created by hosted password login, independent of API keys. It authorizes dataset reads and the current user's account settings. Password changes/reset invalidate all user sessions; key revocation leaves sessions intact.
+_Avoid_: Source-token-bound session, API key in localStorage, account administration
 
 **Capability**:
 A typed, server-owned feature declaration exposed by the instance REST endpoint. Routes, commands and browser UI share its policy. Caller permissions separately authorize supported operations.

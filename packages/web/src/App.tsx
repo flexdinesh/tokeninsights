@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
-import { useNavigate } from '@tanstack/react-router'
+import { Outlet, useNavigate } from '@tanstack/react-router'
 import { CircleAlert, LoaderCircle } from 'lucide-react'
 import {
   AuthenticationRequired,
@@ -11,7 +11,9 @@ import {
 } from './api'
 import { clearAccountQueries } from './session'
 import { hasCapability, showsCollectorProgress } from './capabilities'
-import { TokenLogin } from './components/TokenLogin'
+import { PasswordLogin } from './components/PasswordLogin'
+import { useAuthInfo } from './account'
+import { IdentityContext, useIdentity } from './identity'
 import { collectorStages } from './components/CollectorProgress'
 import type { DashboardStatusValue } from './components/DashboardStatus'
 import type { Bootstrap } from './contracts'
@@ -35,11 +37,14 @@ import {
 
 export function App() {
   const client = useQueryClient()
-  const navigate = useNavigate({ from: '/$tab' })
+  const navigate = useNavigate()
   const [authenticationRequired, setAuthenticationRequired] = useState(false)
   const [sessionChanging, setSessionChanging] = useState(false)
   const [sessionError, setSessionError] = useState('')
   const bootstrap = useBootstrap(!authenticationRequired)
+  const needsAuthentication =
+    authenticationRequired || bootstrap.error instanceof AuthenticationRequired
+  const authInfo = useAuthInfo(needsAuthentication && !sessionChanging)
   useEffect(
     () =>
       client.getQueryCache().subscribe((event) => {
@@ -49,7 +54,8 @@ export function App() {
         )
           return
         setAuthenticationRequired(true)
-        void clearAccountQueries(client)
+        setSessionChanging(true)
+        void clearAccountQueries(client).finally(() => setSessionChanging(false))
       }),
     [client],
   )
@@ -66,7 +72,7 @@ export function App() {
     setAuthenticationRequired(false)
   }
 
-  async function signOut() {
+  const signOut = useCallback(async () => {
     setAuthenticationRequired(true)
     setSessionChanging(true)
     setSessionError('')
@@ -84,10 +90,50 @@ export function App() {
     } finally {
       setSessionChanging(false)
     }
-  }
+  }, [client, navigate])
 
-  if (authenticationRequired || bootstrap.error instanceof AuthenticationRequired) {
-    return <TokenLogin onSignIn={signIn} disabled={sessionChanging} sessionError={sessionError} />
+  const sessionEnded = useCallback(
+    async (message = '') => {
+      setAuthenticationRequired(true)
+      setSessionChanging(true)
+      await clearAccountQueries(client)
+      setSessionError(message)
+      setSessionChanging(false)
+    },
+    [client],
+  )
+
+  const identity = useMemo(
+    () =>
+      bootstrap.data
+        ? {
+            bootstrap: bootstrap.data,
+            connectionError: bootstrap.error,
+            retryConnection: bootstrap.refetch,
+            onSignOut: signOut,
+            onSessionEnded: sessionEnded,
+          }
+        : undefined,
+    [bootstrap.data, bootstrap.error, bootstrap.refetch, signOut, sessionEnded],
+  )
+
+  if (needsAuthentication) {
+    if (!authInfo.data) return <ConnectionScreen error={authInfo.error} retry={authInfo.refetch} />
+    if (authInfo.data.serverKind !== 'hosted' || !authInfo.data.loginMethods.includes('password'))
+      return (
+        <ConnectionScreen
+          error={new Error('This server does not support password sign in.')}
+          retry={authInfo.refetch}
+        />
+      )
+    return (
+      <PasswordLogin
+        onSignIn={signIn}
+        signupEnabled={authInfo.data.signupEnabled}
+        disabled={sessionChanging}
+        sessionError={sessionError}
+      />
+    )
   }
   const data = bootstrap.data
   if (!data) return <ConnectionScreen error={bootstrap.error} retry={bootstrap.refetch} />
@@ -100,13 +146,20 @@ export function App() {
     )
   }
   return (
-    <DashboardProvider key={`${data.instanceId}/${data.datasetId}`} defaults={data.defaults}>
-      <DashboardShell
-        bootstrap={data}
-        connectionError={bootstrap.error}
-        retryConnection={bootstrap.refetch}
-        onSignOut={signOut}
-      />
+    <IdentityContext.Provider value={identity}>
+      <Outlet />
+    </IdentityContext.Provider>
+  )
+}
+
+export function DashboardView() {
+  const identity = useIdentity()
+  return (
+    <DashboardProvider
+      key={`${identity.bootstrap.instanceId}/${identity.bootstrap.datasetId}`}
+      defaults={identity.bootstrap.defaults}
+    >
+      <DashboardShell {...identity} />
     </DashboardProvider>
   )
 }
@@ -194,6 +247,7 @@ function DashboardShell({
         Skip to dashboard
       </a>
       <DashboardSidebar
+        query={query}
         localMachine={bootstrap.serverKind === 'personal'}
         onSignOut={bootstrap.serverKind === 'hosted' ? onSignOut : undefined}
       />

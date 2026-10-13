@@ -17,7 +17,7 @@ import (
 )
 
 const SchemaVersion = 1
-const AccountSchemaVersion = 1
+const AccountSchemaVersion = 2
 const ownerLock = int64(1414091604)
 const connectionLimit = 8
 const ownershipCheckInterval = time.Second
@@ -219,7 +219,7 @@ func (s *Store) Ready(ctx context.Context) error {
 		return err
 	}
 	var paired bool
-	err := s.Reader.QueryRowContext(ctx, `SELECT d.role='server-data' AND d.schema_version=1 AND a.role='application' AND a.schema_version=1 AND d.server_kind='hosted' AND a.server_kind='hosted' AND d.database_id=a.database_id AND d.application_instance_id=a.instance_id AND d.database_id<>'' AND a.instance_id<>'' FROM tokeninsights_data.ingestion_instance d CROSS JOIN tokeninsights_accounts.application_metadata a WHERE d.id=1 AND a.id=1`).Scan(&paired)
+	err := s.Reader.QueryRowContext(ctx, `SELECT d.role='server-data' AND d.schema_version=$1 AND a.role='application' AND a.schema_version=$2 AND d.server_kind='hosted' AND a.server_kind='hosted' AND d.database_id=a.database_id AND d.application_instance_id=a.instance_id AND d.database_id<>'' AND a.instance_id<>'' FROM tokeninsights_data.ingestion_instance d CROSS JOIN tokeninsights_accounts.application_metadata a WHERE d.id=1 AND a.id=1`, SchemaVersion, AccountSchemaVersion).Scan(&paired)
 	if err != nil || !paired {
 		return errors.New("postgres_pair_mismatch")
 	}

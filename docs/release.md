@@ -55,7 +55,8 @@ The tap repository owns Homebrew-native validation. Its CI should run style, aud
 
 ### Database Compatibility
 
-Collector SQLite 20, token SQLite 1, PostgreSQL token/account 1, application SQLite 2 and jobs SQLite 1 have
+Collector SQLite 20, token SQLite 1, PostgreSQL token/account 1/2, personal application
+SQLite 2, hosted application SQLite 3 and jobs SQLite 1 have
 distinct roles. Only current contracts are supported. Incompatible, newer or corrupt
 contracts reject without mutation. There are no migrations or legacy imports.
 

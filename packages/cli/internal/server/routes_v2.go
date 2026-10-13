@@ -6,7 +6,6 @@ import (
 	"io"
 	"io/fs"
 	"net/http"
-	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -37,9 +36,6 @@ type DataHandlerOptions struct {
 type ProcessUsage interface {
 	Snapshot(context.Context) processusage.Sample
 }
-
-// Allow JSON escaping overhead for the bounded bootstrap token.
-const loginBodyMaxBytes = 16 << 10
 
 func NewPersonalDataHandler(ctx context.Context, store DataSource, log io.Writer, host, instance string, progress *collectorprogress.Registry) http.Handler {
 	policy, _ := serverfeatures.New(serverfeatures.Personal, progress != nil)
@@ -87,7 +83,7 @@ func NewDataHandlerWithOptions(ctx context.Context, store DataSource, log io.Wri
 
 func (a *app) scoped(r *http.Request) (*app, accounts.Principal, error) {
 	if a.policy.Kind != serverfeatures.Hosted {
-		return a, accounts.Principal{DatasetID: evidence.PersonalDatasetID, Permissions: []string{accounts.Read, accounts.Ingest}}, nil
+		return a, accounts.Principal{UserID: evidence.PersonalDatasetID, DatasetID: evidence.PersonalDatasetID, CredentialKind: accounts.LocalCredential, Permissions: []string{accounts.Read, accounts.Ingest}}, nil
 	}
 	p, err := a.accounts.AuthenticateRequest(r.Context(), r)
 	if err != nil {
@@ -136,6 +132,7 @@ func (a *app) access(capability serverfeatures.Capability, permission string, ha
 
 func (a *app) handler() http.Handler {
 	mux := http.NewServeMux()
+	mux.HandleFunc("GET /api/v2/auth", a.authInfo)
 	mux.HandleFunc("GET /api/v2/instance", a.access("", "", func(scoped *app, p accounts.Principal, w http.ResponseWriter, r *http.Request) {
 		scoped.instanceV2(w, r, p)
 	}))
@@ -176,6 +173,14 @@ func (a *app) handler() http.Handler {
 	} else {
 		mux.HandleFunc("POST /api/v2/auth/session", a.login)
 		mux.HandleFunc("DELETE /api/v2/auth/session", a.logout)
+		if a.policy.SignupEnabled {
+			mux.HandleFunc("POST /api/v2/auth/signup", a.signup)
+		}
+		mux.HandleFunc("GET /api/v2/account", a.accountAccess(a.currentUser))
+		mux.HandleFunc("PUT /api/v2/account/password", a.accountAccess(a.changePassword))
+		mux.HandleFunc("GET /api/v2/account/keys", a.accountAccess(a.listKeys))
+		mux.HandleFunc("POST /api/v2/account/keys", a.accountAccess(a.createKey))
+		mux.HandleFunc("DELETE /api/v2/account/keys/{keyId}", a.accountAccess(a.revokeKey))
 	}
 	mux.HandleFunc("/api", func(w http.ResponseWriter, r *http.Request) { apiNotFound(w) })
 	mux.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) { apiNotFound(w) })
@@ -271,65 +276,4 @@ func (a *app) facetsV2(w http.ResponseWriter, r *http.Request) {
 	v := apiFacets(data)
 	v.InstanceId = a.options.InstanceID
 	writeJSON(w, 200, v)
-}
-
-func (a *app) sameOrigin(r *http.Request) bool {
-	origin := r.Header.Get("Origin")
-	if a.publicURL != "" {
-		return origin == a.publicURL
-	}
-	u, err := url.Parse(origin)
-	return err == nil && u != nil && (u.Scheme == "http" || u.Scheme == "https") && u.Host == r.Host && u.User == nil && u.Path == "" && u.RawQuery == "" && !u.ForceQuery && u.Fragment == ""
-}
-
-func (a *app) login(w http.ResponseWriter, r *http.Request) {
-	if !a.sameOrigin(r) {
-		apiError(w, 403, api.ErrorCodeInvalidRequest, "Invalid origin.")
-		return
-	}
-	if err := a.accounts.AdmitLogin(r.RemoteAddr); err != nil {
-		w.Header().Set("Retry-After", "60")
-		apiError(w, 429, api.ErrorCodeUnavailable, "Login temporarily limited.")
-		return
-	}
-	var input struct {
-		Token string `json:"token"`
-	}
-	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, loginBodyMaxBytes))
-	if err != nil || r.Header.Get("Content-Type") != "application/json" || evidence.StrictDecode(body, &input) != nil || input.Token == "" {
-		apiError(w, 400, api.ErrorCodeInvalidRequest, "Invalid login request.")
-		return
-	}
-	secret, expires, err := a.accounts.CreateSession(r.Context(), input.Token)
-	if err != nil {
-		if errors.Is(err, accounts.ErrUnauthenticated) {
-			apiError(w, 401, api.ErrorCodeInvalidRequest, "Token cannot sign in.")
-		} else {
-			apiError(w, 503, api.ErrorCodeUnavailable, "Login unavailable.")
-		}
-		return
-	}
-	cookie := accounts.SessionCookie(secret, expires)
-	cookie.Secure = strings.HasPrefix(r.Header.Get("Origin"), "https://")
-	http.SetCookie(w, cookie)
-	w.Header().Set("Cache-Control", "no-store")
-	w.WriteHeader(http.StatusNoContent)
-}
-
-func (a *app) logout(w http.ResponseWriter, r *http.Request) {
-	if !a.sameOrigin(r) {
-		apiError(w, 403, api.ErrorCodeInvalidRequest, "Invalid origin.")
-		return
-	}
-	if cookie, err := r.Cookie(accounts.SessionCookieName); err == nil {
-		if err := a.accounts.Logout(r.Context(), cookie.Value); err != nil {
-			apiError(w, 503, api.ErrorCodeUnavailable, "Logout unavailable.")
-			return
-		}
-	}
-	cookie := accounts.ClearSessionCookie()
-	cookie.Secure = strings.HasPrefix(r.Header.Get("Origin"), "https://")
-	http.SetCookie(w, cookie)
-	w.Header().Set("Cache-Control", "no-store")
-	w.WriteHeader(http.StatusNoContent)
 }

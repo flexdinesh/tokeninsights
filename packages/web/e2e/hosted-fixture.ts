@@ -9,6 +9,7 @@ import { RawCapabilitiesV3, UsageResponseV2 } from '../src/generated/api.ts'
 export const hostedFixturePointer = join(tmpdir(), 'tokeninsights-web-hosted-18769.txt')
 export const hostedBackend = 'http://127.0.0.1:18768'
 export const hostedOrigin = 'https://127.0.0.1:18769'
+export const hostedPassword = 'hosted fixture password'
 export const userSchema = z.object({ userId: z.string(), datasetId: z.string() })
 export const tokenSchema = z.object({ tokenId: z.string(), token: z.string() })
 

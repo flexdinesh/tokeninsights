@@ -36,8 +36,9 @@ processing, generations, receipts and analytics.
 | Collector | collector.sqlite | schema/schema.sql | 20 |
 | Token data (SQLite) | server.sqlite | schema/data.sql | 1 |
 | Token data (PostgreSQL 18) | tokeninsights_data namespace | schema/data.postgres.sql | 1 |
-| Accounts (PostgreSQL 18) | tokeninsights_accounts namespace | schema/app.postgres.sql | 1 |
-| Application | app.sqlite | schema/app.sql | 2 |
+| Accounts (PostgreSQL 18) | tokeninsights_accounts namespace | schema/app.postgres.sql | 2 |
+| Application (personal SQLite) | app.sqlite | schema/app.sql | 2 |
+| Application (hosted SQLite) | app.sqlite | schema/app.hosted.sql | 3 |
 | Sync jobs | collector.sqlite.jobs.sqlite | schema/jobs.sql | 1 |
 
 Defaults use XDG_DATA_HOME or ~/.local/share/tokeninsights. Role-specific flags/
@@ -57,7 +58,11 @@ Frequent dataset metadata reads retrieve metadata, active/target generation stat
 the active-generation count and newest processor version in one SQL statement
 within the caller's snapshot. All generation checks remain dataset-scoped and run
 on every read, including newer processor versions in retained generations.
-The account adapter holds users, token/session digests and provisioning state. SQLite uses a separate application file. It is
+The account adapter holds users, credential/session digests and provisioning state. Hosted
+accounts additionally hold unique usernames, Argon2id password hashes and named API keys.
+Personal SQLite application schema 2 remains unchanged; hosted SQLite uses application
+schema 3 and PostgreSQL account schema 2. Older hosted account schemas reject without
+mutation or migration. SQLite uses a separate application file. It is
 paired to the token database identity and kind. Local setup creates one default user.
 App initialization publishes a fully initialized file atomically; wrong roles/pairs
 reject before app mutation. PostgreSQL stores the same account contract in its separate namespace, paired by database and application instance IDs.
@@ -486,14 +491,55 @@ fixtures use the shared database ownership locks. Public local
 web has no ingestion/admin/progress-write routes; remote admin remains private.
 
 Hosted administrator creates/disables users and creates/revokes scoped tokens
-through the private owner socket. Random tokens have 256-bit entropy; store digests.
-Dataset stays stable across rotation. `read`/`ingest` permissions enforce routes.
-`POST /api/v2/auth/session` exchanges a read token for an opaque, 24-hour,
-HttpOnly/SameSite=Lax host-only cookie (Secure for HTTPS browser origins); DELETE logs out. Browser sessions
-cannot ingest/administer. User disable/source-token revocation blocks sessions.
+through the private owner socket. Hosted users sign in with username/password, then
+manage their own password and API keys through browser settings. Signup defaults off;
+hosted composition resolves `--signup` / `TOKENINSIGHTS_SIGNUP_ENABLED`. Personal
+composition automatically creates one default user/dataset and mounts no login,
+signup or account-management routes; its UI has no account controls.
+
+`GET /api/v2/auth` is public and advertises only server kind, login methods and signup
+availability. It exposes no user or dataset; authenticated `/api/v2/instance` retains
+its existing capability/permission contract. The UI resolves this policy and the
+current account at its application boundary. Route mounting and server-side
+authorization enforce policy independently of hidden UI controls.
+
+Hosted usernames are trimmed, lowercase ASCII, 3–32 characters: first character
+alphanumeric, remaining characters alphanumeric, underscore or hyphen. Passwords
+are 15–128 Unicode characters and retain whitespace. `accounts` owns validation and
+Argon2id hashing with unique salts, 19 MiB memory, two iterations and one lane.
+Storage and HTTP adapters do not invent credential policy. Signup uses recoverable
+inactive-user/dataset provisioning; successful activation binds one stable user ID
+to one stable dataset ID. Credentials never select or replace that dataset.
+
+`POST /api/v2/auth/session` exchanges username/password for an opaque, 24-hour,
+HttpOnly/SameSite=Lax host-only cookie (Secure for HTTPS browser origins); DELETE logs
+out. Browser sessions are independent of API keys and permit reads and the current
+user's account settings, but cannot ingest or administer other users. Self-service
+password changes require the current password. Changing or privately resetting a
+password invalidates all browser sessions while leaving API keys active. Disabling
+a user blocks every credential. Password recovery remains private-socket only;
+there are no public administrator roles or administration UI.
+
+Named API keys have labels of at most 200 Unicode characters and 256-bit random
+secrets stored only as digests. Creation reveals
+the secret once; settings list metadata and support revocation. `read`/`ingest`
+scopes authorize data routes; the sync preset includes both for receipt inspection.
+Keys have no default expiry. Key revocation takes effect immediately without ending
+browser sessions. API keys cannot change passwords or manage keys. All self-service
+operations derive ownership from the authenticated session, never client-supplied
+user or dataset IDs. Browser settings bind account reads and mutations to the
+resolved dataset using optional `X-TokenInsights-Dataset-ID`. The server authenticates
+first, then compares this expectation without using it to select a dataset. A
+mismatch rejects with 409 before the operation; the UI clears account caches and
+requires login. This prevents another tab's shared-cookie identity change from
+applying settings to a different account. Future federated login may attach verified provider identities
+to existing user IDs; email matching alone must not link accounts. No OAuth code or
+generic provider framework is introduced.
+
 Validate same-origin browser state changes against the request Host, or an
 explicit optional public origin. HTTP and HTTPS browser origins are supported;
-TLS/ingress remains deployment-owned. Explicit proxy CIDR policy may
+TLS/ingress remains deployment-owned; external deployments should use HTTPS.
+Explicit proxy CIDR policy may
 resolve client addresses for login admission; headers never confer identity or
 select origin. Fixed auth errors expose no credentials. Static login shell/health are
 public; authenticated failures render login and clear account-specific/in-flight
@@ -503,8 +549,9 @@ Dashboard reads honor request cancellation. Canceled requests produce no query
 failure log or error response; query timeouts and storage failures remain visible.
 
 Bound admission before body decoding: four global acceptance slots, one active
-acceptance per hosted user, per-user 10 batches/second with burst 20, login five
-attempts/minute per client address. Rate limits return 429/Retry-After; global busy
+acceptance per hosted user, per-user 10 batches/second with burst 20, password
+authentication/signup five attempts/minute per client address and four global
+password-work slots. Rate limits return 429/Retry-After; global busy
 returns 503. Saved requests remain unacknowledged for manual retry.
 
 ## Package and deployment boundaries
@@ -645,7 +692,8 @@ proxy configuration. Forwarded host/proto never override the request Host or opt
 [ADR 0013](adr/0013-server-deployment-boundary.md).
 
 Collector JSONL replacement, per-user DBs, organizations, external queues,
-replicas and public signup/OIDC are out of scope.
+replicas and OAuth/OIDC are out of scope. Hosted username/password signup is
+operator-controlled and defaults off.
 
 Go embeds committed web assets. Production builds use pure Go (`CGO_ENABLED=0`); native CI/release
 Linux/macOS amd64/arm64 runners. Production needs no JavaScript runtime.
@@ -664,13 +712,17 @@ HTTP on any configured IPv4 port; flags override TOKENINSIGHTS_LISTEN, then
 TOKENINSIGHTS_SERVER_PORT, then 8766. Healthcheck shares this resolution. Compose defaults
 to SQLite with separate persistent token/account files and host-loopback publishing.
 
-The executable resolves ADMIN_ACCOUNT (default admin when a token is supplied) and
-ADMIN_TOKEN into typed hosted settings. Before readiness, the account adapter
-idempotently provisions a fixed bootstrap-admin user/dataset and read+ingest token.
-Only the digest persists; changing the env token replaces that digest on restart.
-Existing browser sessions retain their lifetime. Existing disabled users/revoked
-tokens stay blocked. No schema changes, Basic auth or public administration routes.
-Native startup can omit both variables and provision through the private socket.
+[ADR 0016](adr/0016-hosted-user-management.md) supersedes ADR 0015's token bootstrap
+and browser-login rules. The executable resolves optional
+`TOKENINSIGHTS_BOOTSTRAP_USERNAME` and `TOKENINSIGHTS_BOOTSTRAP_PASSWORD` (or
+`TOKENINSIGHTS_BOOTSTRAP_PASSWORD_FILE`) into typed hosted settings. Both username
+and password are required when either is supplied. Before readiness, accounts
+idempotently provisions a fixed ordinary bootstrap user/dataset. The initial
+password is hashed; later env changes never replace it or reactivate disabled users.
+An incompatible username conflicts rather than silently renaming or reassigning
+the account. Bootstrap creates no API key; users create keys in settings. Legacy
+`ADMIN_ACCOUNT`/`ADMIN_TOKEN` reject. Deployments may omit bootstrap and provision
+through the private socket, including password reset through stdin.
 
 Plugins trigger background sync without --wait. Codex/Claude return empty decision
 JSON immediately after shell-background launch; Pi/OpenCode callbacks return while

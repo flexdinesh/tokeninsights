@@ -18,11 +18,22 @@ import (
 
 const ApplicationID = 1414091585
 const SchemaVersion = 2
+const HostedSchemaVersion = 3
 
 var ErrIncompatibleDatabase = errors.New("incompatible_application_database")
 
 //go:embed schema/app.sql
 var Schema string
+
+//go:embed schema/app.hosted.sql
+var HostedSchema string
+
+func schemaFor(kind string) (string, int) {
+	if kind == "hosted" {
+		return HostedSchema, HostedSchemaVersion
+	}
+	return Schema, SchemaVersion
+}
 
 type Store struct{ database *sql.DB }
 
@@ -126,10 +137,11 @@ func validate(ctx context.Context, database *sql.DB, id, kind string) error {
 	if err := database.QueryRowContext(ctx, "PRAGMA user_version").Scan(&version); err != nil {
 		return err
 	}
-	if role != ApplicationID || version != SchemaVersion {
+	schema, expectedVersion := schemaFor(kind)
+	if role != ApplicationID || version != expectedVersion {
 		return ErrIncompatibleDatabase
 	}
-	if err := sqlitecore.Validate(ctx, database, Schema); err != nil {
+	if err := sqlitecore.Validate(ctx, database, schema); err != nil {
 		return err
 	}
 	var savedID, savedKind string
@@ -168,7 +180,8 @@ func initialize(ctx context.Context, path, id, kind string) error {
 	}
 	instance := hex.EncodeToString(random[:])
 	err = store.WriteTransaction(ctx, func(tx *sql.Tx) error {
-		if _, err := tx.ExecContext(ctx, Schema); err != nil {
+		schema, _ := schemaFor(kind)
+		if _, err := tx.ExecContext(ctx, schema); err != nil {
 			return err
 		}
 		_, err := tx.ExecContext(ctx, "INSERT INTO application_metadata(id,role,database_id,server_kind,instance_id) VALUES(1,'application',?,?,?)", id, kind, instance)

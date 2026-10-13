@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/accounts"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/persistence/sqlutil"
@@ -32,9 +33,44 @@ func New(store Storage, datasets accounts.Datasets, expired func(string) string)
 	return &Repository{store: store, datasets: datasets, expired: expired}
 }
 func (s *Repository) CreateUser(ctx context.Context, name string) (accounts.User, error) {
-	name = strings.TrimSpace(name)
-	if name == "" || len(name) > accounts.MaxDisplayNameBytes {
-		return accounts.User{}, errors.New("invalid_display_name")
+	return s.createUser(ctx, name, "")
+}
+func (s *Repository) Signup(ctx context.Context, username, password string) (accounts.User, error) {
+	normalized, err := accounts.NormalizeUsername(username)
+	if err != nil {
+		return accounts.User{}, err
+	}
+	if err := accounts.ValidatePassword(password); err != nil {
+		return accounts.User{}, err
+	}
+	// Recover a previous interrupted signup only after proving the same password.
+	// A ready account, including a disabled one, can never be claimed by signup.
+	var pending accounts.User
+	var encoded string
+	err = s.store.SQL().QueryRowContext(ctx, sqlutil.Bind("SELECT user_id,dataset_id,display_name,username,password_hash FROM users WHERE username=? AND provisioning='pending' AND password_hash IS NOT NULL"), normalized).Scan(&pending.UserID, &pending.DatasetID, &pending.DisplayName, &pending.Username, &encoded)
+	if err == nil {
+		if !accounts.VerifyPassword(password, encoded) {
+			return accounts.User{}, accounts.ErrUsernameTaken
+		}
+		if err := s.activate(ctx, pending); err != nil {
+			return pending, err
+		}
+		return s.User(ctx, pending.UserID)
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		return accounts.User{}, err
+	}
+	hash, err := accounts.HashPassword(password)
+	if err != nil {
+		return accounts.User{}, err
+	}
+	return s.createUser(ctx, username, hash)
+}
+
+func (s *Repository) createUser(ctx context.Context, name, passwordHash string) (accounts.User, error) {
+	username, err := accounts.NormalizeUsername(name)
+	if err != nil {
+		return accounts.User{}, err
 	}
 	id, err := accounts.NewCredential()
 	if err != nil {
@@ -44,10 +80,24 @@ func (s *Repository) CreateUser(ctx context.Context, name string) (accounts.User
 	if err != nil {
 		return accounts.User{}, err
 	}
-	user := accounts.User{UserID: id, DatasetID: dataset, DisplayName: name}
+	user := accounts.User{UserID: id, DatasetID: dataset, DisplayName: strings.TrimSpace(name), Username: username}
+	var hash interface{}
+	if passwordHash != "" {
+		hash = passwordHash
+	}
 	err = s.store.WriteTransaction(ctx, func(tx *sql.Tx) error {
-		_, err := tx.ExecContext(ctx, sqlutil.Bind("INSERT INTO users VALUES(?,?,?,?,?,'pending')"), id, dataset, name, false, time.Now().UTC().Format(time.RFC3339Nano))
-		return err
+		result, err := tx.ExecContext(ctx, sqlutil.Bind("INSERT INTO users(user_id,dataset_id,display_name,enabled,created_at,provisioning,username,password_hash) VALUES(?,?,?,?,?,'pending',?,?) ON CONFLICT(username) DO NOTHING"), id, dataset, user.DisplayName, false, time.Now().UTC().Format(time.RFC3339Nano), username, hash)
+		if err != nil {
+			return err
+		}
+		count, err := result.RowsAffected()
+		if err != nil {
+			return err
+		}
+		if count == 0 {
+			return accounts.ErrUsernameTaken
+		}
+		return nil
 	})
 	if err != nil {
 		return accounts.User{}, err
@@ -98,7 +148,7 @@ func (s *Repository) Resume(ctx context.Context) error {
 }
 func (s *Repository) EnsureDefault(ctx context.Context) error {
 	return s.store.WriteTransaction(ctx, func(tx *sql.Tx) error {
-		_, err := tx.ExecContext(ctx, sqlutil.Bind("INSERT INTO users VALUES('default','default','Local user',true,?,'ready') ON CONFLICT(user_id) DO NOTHING"), time.Now().UTC().Format(time.RFC3339Nano))
+		_, err := tx.ExecContext(ctx, sqlutil.Bind("INSERT INTO users(user_id,dataset_id,display_name,enabled,created_at,provisioning) VALUES('default','default','Local user',true,?,'ready') ON CONFLICT(user_id) DO NOTHING"), time.Now().UTC().Format(time.RFC3339Nano))
 		return err
 	})
 }
@@ -118,6 +168,13 @@ func (s *Repository) DisableUser(ctx context.Context, userID string) error {
 }
 
 func (s *Repository) CreateToken(ctx context.Context, userID string, scopes []string, expires *time.Time) (accounts.Token, error) {
+	return s.CreateNamedToken(ctx, userID, "API key", scopes, expires)
+}
+func (s *Repository) CreateNamedToken(ctx context.Context, userID, label string, scopes []string, expires *time.Time) (accounts.Token, error) {
+	label = strings.TrimSpace(label)
+	if label == "" || utf8.RuneCountInString(label) > accounts.MaxKeyLabelCharacters || !utf8.ValidString(label) {
+		return accounts.Token{}, accounts.ErrInvalidLabel
+	}
 	if err := accounts.ValidatePermissions(scopes); err != nil {
 		return accounts.Token{}, err
 	}
@@ -126,7 +183,7 @@ func (s *Repository) CreateToken(ctx context.Context, userID string, scopes []st
 		return accounts.Token{}, err
 	}
 	if expires != nil && !expires.After(time.Now()) {
-		return accounts.Token{}, errors.New("invalid_expiry")
+		return accounts.Token{}, accounts.ErrInvalidExpiry
 	}
 	id, err := accounts.NewCredential()
 	if err != nil {
@@ -142,7 +199,7 @@ func (s *Repository) CreateToken(ctx context.Context, userID string, scopes []st
 	}
 	err = s.store.WriteTransaction(ctx, func(tx *sql.Tx) error {
 		var enabled bool
-		if err := tx.QueryRowContext(ctx, sqlutil.Bind("SELECT enabled FROM users WHERE user_id=?"), userID).Scan(&enabled); err != nil {
+		if err := tx.QueryRowContext(ctx, sqlutil.Bind("SELECT enabled AND provisioning='ready' FROM users WHERE user_id=?"), userID).Scan(&enabled); err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
 				return accounts.ErrNotFound
 			}
@@ -151,7 +208,7 @@ func (s *Repository) CreateToken(ctx context.Context, userID string, scopes []st
 		if !enabled {
 			return errors.New("user_disabled")
 		}
-		_, err := tx.ExecContext(ctx, sqlutil.Bind("INSERT INTO tokens VALUES(?,?,?,?,?,?,NULL)"), id, userID, accounts.CredentialDigest(secret), string(encoded), time.Now().UTC().Format(time.RFC3339Nano), expiry)
+		_, err := tx.ExecContext(ctx, sqlutil.Bind("INSERT INTO tokens(token_id,user_id,digest,permissions,created_at,expires_at,revoked_at,label) VALUES(?,?,?,?,?,?,NULL,?)"), id, userID, accounts.CredentialDigest(secret), string(encoded), time.Now().UTC().Format(time.RFC3339Nano), expiry, label)
 		return err
 	})
 	if err != nil {
@@ -190,11 +247,11 @@ func authenticateToken(ctx context.Context, reader rowReader, secret string) (ac
 	if len(secret) == 0 || len(secret) > accounts.MaxTokenBytes {
 		return accounts.Principal{}, "", accounts.ErrUnauthenticated
 	}
-	var p accounts.Principal
+	p := accounts.Principal{CredentialKind: accounts.BearerCredential}
 	var tokenID, encoded string
 	var enabled bool
 	var expiry, revoked sql.NullString
-	err := reader.QueryRowContext(ctx, sqlutil.Bind(`SELECT u.user_id,u.dataset_id,u.enabled,t.token_id,t.permissions,t.expires_at,t.revoked_at
+	err := reader.QueryRowContext(ctx, sqlutil.Bind(`SELECT u.user_id,u.dataset_id,u.enabled AND u.provisioning='ready',t.token_id,t.permissions,t.expires_at,t.revoked_at
 	FROM tokens t JOIN users u ON u.user_id=t.user_id WHERE t.digest=?`), accounts.CredentialDigest(secret)).Scan(&p.UserID, &p.DatasetID, &enabled, &tokenID, &encoded, &expiry, &revoked)
 	if errors.Is(err, sql.ErrNoRows) {
 		return accounts.Principal{}, "", accounts.ErrUnauthenticated
@@ -223,26 +280,42 @@ func (s *Repository) AuthenticateSession(ctx context.Context, secret string) (ac
 	if len(secret) != base64.RawURLEncoding.EncodedLen(accounts.CredentialBytes) {
 		return accounts.Principal{}, accounts.ErrUnauthenticated
 	}
-	var p accounts.Principal
+	p := accounts.Principal{CredentialKind: accounts.SessionCredential}
 	var enabled bool
-	var expiry, revoked, tokenExpiry, tokenRevoked sql.NullString
-	err := s.store.SQL().QueryRowContext(ctx, sqlutil.Bind(`SELECT u.user_id,u.dataset_id,u.enabled,s.expires_at,s.revoked_at,t.expires_at,t.revoked_at
-	FROM sessions s JOIN users u ON u.user_id=s.user_id
-	JOIN tokens t ON t.token_id=s.source_token_id AND t.user_id=s.user_id WHERE s.digest=?`), accounts.CredentialDigest(secret)).Scan(&p.UserID, &p.DatasetID, &enabled, &expiry, &revoked, &tokenExpiry, &tokenRevoked)
+	var expiry, revoked sql.NullString
+	err := s.store.SQL().QueryRowContext(ctx, sqlutil.Bind(`SELECT u.user_id,u.dataset_id,u.enabled AND u.provisioning='ready',s.expires_at,s.revoked_at FROM sessions s JOIN users u ON u.user_id=s.user_id WHERE s.digest=?`), accounts.CredentialDigest(secret)).Scan(&p.UserID, &p.DatasetID, &enabled, &expiry, &revoked)
 	if errors.Is(err, sql.ErrNoRows) {
 		return accounts.Principal{}, accounts.ErrUnauthenticated
 	}
 	if err != nil {
 		return accounts.Principal{}, err
 	}
-	if !enabled || revoked.Valid || tokenRevoked.Valid || !expiry.Valid || !validExpiry(expiry, time.Now()) || !validExpiry(tokenExpiry, time.Now()) {
+	if !enabled || revoked.Valid || !expiry.Valid || !validExpiry(expiry, time.Now()) {
 		return accounts.Principal{}, accounts.ErrUnauthenticated
 	}
 	p.Permissions = []string{accounts.Read}
 	return p, nil
 }
-
-func (s *Repository) CreateSession(ctx context.Context, token string) (string, time.Time, error) {
+func (s *Repository) CreateSession(ctx context.Context, username, password string) (string, time.Time, error) {
+	normalized, err := accounts.NormalizeUsername(username)
+	if err != nil || accounts.ValidatePassword(password) != nil {
+		return "", time.Time{}, accounts.ErrUnauthenticated
+	}
+	var userID string
+	var enabled bool
+	var hash sql.NullString
+	err = s.store.SQL().QueryRowContext(ctx, sqlutil.Bind("SELECT user_id,enabled AND provisioning='ready',password_hash FROM users WHERE username=?"), normalized).Scan(&userID, &enabled, &hash)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return "", time.Time{}, err
+	}
+	storedHash := accounts.DummyPasswordHash
+	if hash.Valid {
+		storedHash = hash.String
+	}
+	verified := accounts.VerifyPassword(password, storedHash)
+	if !verified || !enabled || !hash.Valid {
+		return "", time.Time{}, accounts.ErrUnauthenticated
+	}
 	secret, err := accounts.NewCredential()
 	if err != nil {
 		return "", time.Time{}, err
@@ -253,15 +326,19 @@ func (s *Repository) CreateSession(ctx context.Context, token string) (string, t
 	}
 	expires := time.Now().UTC().Add(accounts.SessionLifetime)
 	err = s.store.WriteTransaction(ctx, func(tx *sql.Tx) error {
-		p, tokenID, err := authenticateToken(ctx, tx, token)
+		result, err := tx.ExecContext(ctx, sqlutil.Bind(`INSERT INTO sessions(session_id,user_id,digest,created_at,expires_at,revoked_at)
+   SELECT ?,user_id,?,?,?,NULL FROM users WHERE user_id=? AND enabled=true AND provisioning='ready' AND password_hash=?`), id, accounts.CredentialDigest(secret), time.Now().UTC().Format(time.RFC3339Nano), expires.Format(time.RFC3339Nano), userID, hash.String)
 		if err != nil {
 			return err
 		}
-		if !p.HasPermission(accounts.Read) {
+		count, err := result.RowsAffected()
+		if err != nil {
+			return err
+		}
+		if count == 0 {
 			return accounts.ErrUnauthenticated
 		}
-		_, err = tx.ExecContext(ctx, sqlutil.Bind("INSERT INTO sessions VALUES(?,?,?,?,?,?,NULL)"), id, p.UserID, tokenID, accounts.CredentialDigest(secret), time.Now().UTC().Format(time.RFC3339Nano), expires.Format(time.RFC3339Nano))
-		return err
+		return nil
 	})
 	if err != nil {
 		return "", time.Time{}, err
@@ -289,55 +366,65 @@ func (s *Repository) ReprocessUser(ctx context.Context, userID string) (int64, e
 	return s.datasets.ReprocessDataset(ctx, dataset)
 }
 
-// Cleanup removes expired credentials in bounded transactions. Revoked token
-// IDs remain available to operators; evidence and datasets are never touched.
+// Cleanup removes expired/revoked sessions in bounded transactions. API keys
+// retain their lifecycle metadata for settings and never control session lifetime.
 func (s *Repository) Cleanup(ctx context.Context) error {
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	return s.store.WriteTransaction(ctx, func(tx *sql.Tx) error {
 		_, err := tx.ExecContext(ctx, sqlutil.Bind(`DELETE FROM sessions WHERE session_id IN (
-		 SELECT s.session_id FROM sessions s
-		 LEFT JOIN tokens t ON t.token_id=s.source_token_id AND t.user_id=s.user_id
-		 JOIN users u ON u.user_id=s.user_id
-		 WHERE s.revoked_at IS NOT NULL OR `+s.expired("s.expires_at")+`
-		 OR t.token_id IS NULL OR t.revoked_at IS NOT NULL OR u.enabled=false
-		 OR `+s.expired("t.expires_at")+`
-		 LIMIT ?
-		)`), now, now, cleanupBatch)
-		if err != nil {
-			return err
-		}
-		_, err = tx.ExecContext(ctx, sqlutil.Bind(`DELETE FROM tokens WHERE token_id IN (
-		 SELECT token_id FROM tokens
-		 WHERE `+s.expired("expires_at")+` LIMIT ?
-		)`), now, cleanupBatch)
+   SELECT s.session_id FROM sessions s JOIN users u ON u.user_id=s.user_id
+   WHERE s.revoked_at IS NOT NULL OR `+s.expired("s.expires_at")+` OR u.enabled=false LIMIT ?)`), now, cleanupBatch)
 		return err
 	})
 }
 
-// BootstrapAdmin reuses fixed identities and preserves disable/revocation state.
-// A supplied token replaces the bootstrap credential on restart.
-func (s *Repository) BootstrapAdmin(ctx context.Context, name, token string) error {
-	if err := accounts.ValidateBootstrap(name, token); err != nil {
+// BootstrapUser initializes an ordinary account once. Later starts never replace
+// its password or enablement; changing the configured username fails explicitly.
+func (s *Repository) BootstrapUser(ctx context.Context, username, password string) error {
+	if err := accounts.ValidateBootstrap(username, password); err != nil {
 		return err
 	}
-	permissions, err := json.Marshal([]string{accounts.Read, accounts.Ingest})
+	normalized, _ := accounts.NormalizeUsername(username)
+	const id = "bootstrap-user"
+	var existingUsername string
+	err := s.store.SQL().QueryRowContext(ctx, sqlutil.Bind("SELECT username FROM users WHERE user_id=?"), id).Scan(&existingUsername)
+	if err == nil {
+		if existingUsername != normalized {
+			return errors.New("bootstrap_username_conflict")
+		}
+		return s.activate(ctx, accounts.User{UserID: id, DatasetID: id})
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		return err
+	}
+	hash, err := accounts.HashPassword(password)
 	if err != nil {
 		return err
 	}
-	const id = "bootstrap-admin"
-	user := accounts.User{UserID: id, DatasetID: id, DisplayName: strings.TrimSpace(name)}
-	if err := s.store.WriteTransaction(ctx, func(tx *sql.Tx) error {
-		_, err := tx.ExecContext(ctx, sqlutil.Bind("INSERT INTO users VALUES(?,?,?,?,?,'pending') ON CONFLICT(user_id) DO NOTHING"), id, id, user.DisplayName, false, time.Now().UTC().Format(time.RFC3339Nano))
-		return err
-	}); err != nil {
-		return err
-	}
-	if err := s.activate(ctx, user); err != nil {
-		return err
-	}
-	return s.store.WriteTransaction(ctx, func(tx *sql.Tx) error {
-		_, err := tx.ExecContext(ctx, sqlutil.Bind(`INSERT INTO tokens VALUES(?,?,?,?,?,NULL,NULL)
-   ON CONFLICT(token_id) DO UPDATE SET digest=excluded.digest`), id, id, accounts.CredentialDigest(token), string(permissions), time.Now().UTC().Format(time.RFC3339Nano))
+	err = s.store.WriteTransaction(ctx, func(tx *sql.Tx) error {
+		var existingUsername string
+		err := tx.QueryRowContext(ctx, sqlutil.Bind("SELECT username FROM users WHERE user_id=?"), id).Scan(&existingUsername)
+		if err == nil {
+			if existingUsername != normalized {
+				return errors.New("bootstrap_username_conflict")
+			}
+			return nil
+		}
+		if !errors.Is(err, sql.ErrNoRows) {
+			return err
+		}
+		var taken bool
+		if err := tx.QueryRowContext(ctx, sqlutil.Bind("SELECT EXISTS(SELECT 1 FROM users WHERE username=?)"), normalized).Scan(&taken); err != nil {
+			return err
+		}
+		if taken {
+			return accounts.ErrUsernameTaken
+		}
+		_, err = tx.ExecContext(ctx, sqlutil.Bind("INSERT INTO users(user_id,dataset_id,display_name,enabled,created_at,provisioning,username,password_hash) VALUES(?,?,?,false,?,'pending',?,?)"), id, id, normalized, time.Now().UTC().Format(time.RFC3339Nano), normalized, hash)
 		return err
 	})
+	if err != nil {
+		return err
+	}
+	return s.activate(ctx, accounts.User{UserID: id, DatasetID: id})
 }

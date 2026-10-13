@@ -18,9 +18,19 @@ export async function request<T>(
   path: string,
   schema: z.ZodType<T>,
   signal?: AbortSignal,
+  expectedDatasetId?: string,
 ): Promise<T> {
-  const response = await fetch(path, { signal, method: 'GET', credentials: 'same-origin' })
-  if (response.status === 401) throw new AuthenticationRequired()
+  const response = await fetch(path, {
+    signal,
+    method: 'GET',
+    credentials: 'same-origin',
+    headers:
+      expectedDatasetId === undefined
+        ? undefined
+        : { 'X-TokenInsights-Dataset-ID': expectedDatasetId },
+  })
+  if (response.status === 401 || (expectedDatasetId !== undefined && response.status === 409))
+    throw new AuthenticationRequired()
   let body: unknown
   try {
     body = await response.json()
@@ -136,12 +146,15 @@ export class AuthenticationRequired extends Error {
   }
 }
 
-export async function changeBrowserSession(token?: string): Promise<void> {
+export async function changeBrowserSession(credentials?: {
+  username: string
+  password: string
+}): Promise<void> {
   const response = await fetch('/api/v2/auth/session', {
-    method: token === undefined ? 'DELETE' : 'POST',
+    method: credentials === undefined ? 'DELETE' : 'POST',
     credentials: 'same-origin',
-    headers: token === undefined ? undefined : { 'Content-Type': 'application/json' },
-    body: token === undefined ? undefined : JSON.stringify({ token }),
+    headers: credentials === undefined ? undefined : { 'Content-Type': 'application/json' },
+    body: credentials === undefined ? undefined : JSON.stringify(credentials),
   })
   if (response.status === 401) throw new AuthenticationRequired()
   if (!response.ok) throw new Error(`Sign in failed (${response.status})`)

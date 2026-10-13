@@ -98,3 +98,19 @@ func (s *Service) AdmitLogin(remoteAddr string) error {
 	b.tokens--
 	return nil
 }
+
+const MaxConcurrentPasswords = 4
+
+// AdmitPassword bounds expensive password operations before request decoding.
+func (s *Service) AdmitPassword(remoteAddr string) (func(), error) {
+	if err := s.AdmitLogin(remoteAddr); err != nil {
+		return nil, err
+	}
+	select {
+	case s.passwordSlots <- struct{}{}:
+		var once sync.Once
+		return func() { once.Do(func() { <-s.passwordSlots }) }, nil
+	default:
+		return nil, &AdmissionError{Code: "password_busy", RetryAfter: 1}
+	}
+}

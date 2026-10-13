@@ -176,22 +176,26 @@ test('local startup shows capture and processing before fresh totals without an 
   expect(methods.every((method) => method === 'GET')).toBe(true)
 })
 
-test('token login and sign-out clear hosted usage', async ({ page }) => {
+test('password login and sign-out clear hosted usage', async ({ page }) => {
   let authenticated = false
-  const tokens: string[] = []
+  const passwords: string[] = []
   await page.route('**/api/v2/**', async (route) => {
     const request = route.request()
     const path = new URL(request.url()).pathname
+    if (path.endsWith('/auth'))
+      return route.fulfill({
+        json: { serverKind: 'hosted', loginMethods: ['password'], signupEnabled: false },
+      })
     if (path.endsWith('/auth/session')) {
       if (request.method() === 'POST') {
         const body: unknown = request.postDataJSON()
         if (
           typeof body === 'object' &&
           body !== null &&
-          'token' in body &&
-          typeof body.token === 'string'
+          'password' in body &&
+          typeof body.password === 'string'
         )
-          tokens.push(body.token)
+          passwords.push(body.password)
         authenticated = true
       } else authenticated = false
       return route.fulfill({ status: 204 })
@@ -207,15 +211,18 @@ test('token login and sign-out clear hosted usage', async ({ page }) => {
     return route.fulfill({ json: body })
   })
   await page.goto('/tokens')
-  await page.getByLabel('Access token', { exact: true }).fill('user-secret')
+  await page.getByLabel('Username', { exact: true }).fill('alice')
+  await page.getByLabel('Password', { exact: true }).fill('user-secret-password')
   await page.getByRole('button', { name: 'Sign in', exact: true }).click()
   await expect(page.getByLabel('Total tokens: 647,000', { exact: true })).toBeVisible()
   await page.getByRole('button', { name: 'Sign out', exact: true }).click()
   await expect(page.getByRole('heading', { name: 'Sign in to TokenInsights' })).toBeVisible()
   await expect(page.getByLabel('Total tokens: 647,000', { exact: true })).toHaveCount(0)
-  expect(tokens).toEqual(['user-secret'])
-  expect(await page.evaluate(() => Object.values(localStorage))).not.toContain('user-secret')
-  expect(page.url()).not.toContain('user-secret')
+  expect(passwords).toEqual(['user-secret-password'])
+  expect(await page.evaluate(() => Object.values(localStorage))).not.toContain(
+    'user-secret-password',
+  )
+  expect(page.url()).not.toContain('user-secret-password')
 })
 
 for (const kind of ['personal']) {

@@ -9,14 +9,15 @@ on client machines; the server has no harness mounts, collector daemon or analyt
 
 ```sh
 docker build -t tokeninsights-server:local .
-# Supply ADMIN_TOKEN through the environment; ADMIN_ACCOUNT defaults to admin.
+# Optionally supply TOKENINSIGHTS_BOOTSTRAP_USERNAME and TOKENINSIGHTS_BOOTSTRAP_PASSWORD.
 docker compose up -d --build
 ```
 
 Remote startup defaults to hosted authentication. The unauthenticated personal
 container composition is absent; use `tokeninsights web` for local foreground usage.
 The server runs HTTP on the configured port without requiring a domain or TLS.
-Ingress and TLS are deployment-owned. `TOKENINSIGHTS_PUBLIC_URL` or `--public-url`
+Ingress and TLS are deployment-owned; use HTTPS for external deployments.
+`TOKENINSIGHTS_PUBLIC_URL` or `--public-url`
 optionally pins the browser origin; otherwise browser authentication matches the
 request Host and supports HTTP or HTTPS origins.
 
@@ -39,8 +40,10 @@ database secret. No config-file discovery or runtime reload is performed.
 | `TOKENINSIGHTS_LISTEN` | `--listen` | `0.0.0.0:8766`, IPv4 address and port; overrides `TOKENINSIGHTS_SERVER_PORT` |
 | `TOKENINSIGHTS_SERVER_PORT` | None | `8766`; also controls Compose port publishing |
 | `TOKENINSIGHTS_PUBLIC_URL` | `--public-url` | Optional HTTP/HTTPS browser origin pin |
-| `ADMIN_ACCOUNT` | None | `admin` when `ADMIN_TOKEN` is supplied |
-| `ADMIN_TOKEN` | None | Bootstrap read+ingest credential; required by Compose |
+| `TOKENINSIGHTS_SIGNUP_ENABLED` | `--signup` | `false`; enable hosted username/password registration |
+| `TOKENINSIGHTS_BOOTSTRAP_USERNAME` | None | Optional initial ordinary user; requires bootstrap password |
+| `TOKENINSIGHTS_BOOTSTRAP_PASSWORD` | None | Initial password; mutually exclusive with password file |
+| `TOKENINSIGHTS_BOOTSTRAP_PASSWORD_FILE` | None | Alternative readable password secret file |
 | `TOKENINSIGHTS_SERVER_DB_PATH` | `--server-db-path` | Required for SQLite; forbidden for PostgreSQL |
 | `TOKENINSIGHTS_APP_DB_PATH` | `--app-db-path` | SQLite: `app.sqlite` beside token database |
 | `TOKENINSIGHTS_ADMIN_SOCKET` | `--admin-socket` | SQLite: beside token database; PostgreSQL: required absolute path |
@@ -58,6 +61,14 @@ Use exactly one nonempty PostgreSQL secret source. Secret files may end with a
 newline; whitespace is trimmed. Empty, unreadable or oversized files (over 64 KiB)
 reject. Neither secret contents nor the secret-file path appear in read errors.
 DSNs have no command-line flag and must never be logged.
+
+Bootstrap password secret files are bounded to 64 KiB; a trailing LF or CRLF is
+removed while password spaces are preserved. Passwords have no argv representation.
+Supply username with exactly one password source, or omit all bootstrap settings.
+Legacy `ADMIN_ACCOUNT`/`ADMIN_TOKEN` reject; they are no longer login or bootstrap
+credentials. Compose exposes optional username/password and signup environment
+settings; secret-file deployments must also mount the file read-only and provide its
+container path.
 
 ## Select storage
 
@@ -104,17 +115,25 @@ engine, through separate interfaces and transaction boundaries.
 ## Same-machine SQLite server
 
 Root `compose.yaml` includes the SQLite deployment with a stable `tokeninsights`
-project name. Set `ADMIN_TOKEN` in your process environment, then:
+project name. Supply `TOKENINSIGHTS_BOOTSTRAP_USERNAME` and
+`TOKENINSIGHTS_BOOTSTRAP_PASSWORD` through your process environment or secret manager,
+then:
 
 ```sh
 docker compose up -d --build
 tokeninsights config set distributed.server-url http://127.0.0.1:8766
-tokeninsights config set distributed.server-token  # enter the same ADMIN_TOKEN
-tokeninsights sync --wait
 tokeninsights browse
 ```
 
-Sign in with the token. No Basic auth, domain, public URL, reverse proxy or TLS
+Sign in with username/password. Open the profile icon in the top right, then create
+a named API key in settings with read and ingest scopes. Copy its secret when shown:
+
+```sh
+tokeninsights config set distributed.server-token  # enter the API key
+tokeninsights sync --wait
+```
+
+No Basic auth, domain, public URL, reverse proxy or TLS
 configuration is required. Compose publishes only on host loopback. To change
 ports, supply `TOKENINSIGHTS_SERVER_PORT=9000` to Compose and configure the client URL as
 `http://127.0.0.1:9000`. The native binary also honors `TOKENINSIGHTS_SERVER_PORT`;
@@ -122,13 +141,20 @@ ports, supply `TOKENINSIGHTS_SERVER_PORT=9000` to Compose and configure the clie
 Local `tui/web` remain in-process; remote `sync` shares collector continuity but
 keeps independent delivery progress and never opens local token/account storage.
 
-Startup bootstraps one fixed admin user/dataset and read+ingest token using existing
-account tables. `ADMIN_ACCOUNT` sets its initial display name; it is not a login
-username. Supplied credentials persist only as digests. Repeated startup preserves
-identity and data; changing `ADMIN_TOKEN` replaces that bootstrap token's digest.
-Existing sessions keep their lifetime. Disabled users and revoked tokens remain
-blocked. Native deployments may omit both variables for private-socket provisioning.
-No public administration permissions or user-management UI are added.
+Startup optionally bootstraps one fixed ordinary user/dataset before readiness.
+Usernames are trimmed, lowercase ASCII, 3–32 characters, beginning with an
+alphanumeric character and continuing with alphanumerics, underscores or hyphens.
+Passwords are 15–128 Unicode characters, including preserved whitespace, and stored
+as salted Argon2id hashes. Repeated startup preserves identity, data and changed
+passwords. Changing the environment password does not reset an existing password;
+changing the bootstrap username conflicts. Disabled users remain disabled. Bootstrap
+creates no key and grants no public administrator privileges. Deployments may omit
+bootstrap and provision through the private socket.
+
+Signup defaults off. Set `TOKENINSIGHTS_SIGNUP_ENABLED=true` or pass `--signup` to
+allow registration. Settings are self-service only; there is no public admin UI.
+Personal `tui/web` automatically use a default identity, hide account controls and
+do not mount signup/login/settings routes.
 
 ## Optional ingress
 
@@ -173,7 +199,7 @@ docker compose up -d --build
 The optional URL pins the browser origin, not the internal bind address.
 Session cookies are Secure for HTTPS browser origins and support plain HTTP
 origins; cookies remain HttpOnly/SameSite=Lax. Forwarded host/proto do not select
-the origin. Cross-origin login/logout reject. The hosted database starts fresh. Do not reuse a personal
+the origin. Cross-origin login/logout/signup and account mutations reject. The hosted database starts fresh. Do not reuse a personal
 volume: stored server-kind mismatch rejects rather than assigning personal history
 to an account. Every hosted user has one dataset; all users share `/data/server.sqlite`; accounts/credentials live in `/data/app.sqlite`.
 
@@ -192,10 +218,24 @@ Compose example:
 
 ```sh
 docker compose exec tokeninsights \
-  tokeninsights-server admin user create Alice
+  tokeninsights-server admin user create alice
 ```
 
-Copy the returned `userId`, then create a token:
+Private user creation treats its name argument as a username and leaves password
+login unavailable until a password is set. Copy the returned `userId`, then use
+private recovery to set/reset its password. Supply the new password over stdin;
+do not include it in command arguments:
+
+```sh
+docker compose exec -T tokeninsights \
+  tokeninsights-server admin user reset-password USER_ID < /secure/new-password
+```
+
+Password reset invalidates every browser session for that user while leaving their
+API keys active. Revoke keys separately if needed. The same command provides
+operator-only recovery; email/password-reset links are not implemented.
+
+Alternatively create an API key through the socket:
 
 ```sh
 docker compose exec tokeninsights \
@@ -223,13 +263,27 @@ as an argument is rejected; `config get distributed.server-token` never prints i
 home config file stores credentials. `TOKENINSIGHTS_ACCESS_TOKEN` provides an
 environment override. Endpoint/configuration errors never trigger local fallback.
 
-`browse` opens the configured URL without syncing or requiring a token. `sync` uploads independently; local `web` always serves in-process usage on port 8765. Browser token
-login requires read permission and exchanges the token for an opaque 24-hour,
-HttpOnly/SameSite=Lax cookie (Secure for HTTPS). Sessions are read-only; logout revokes the
-session. User disable/source-token revocation invalidate access. Bearer tokens are
-not passed in URLs or retained in browser localStorage. Hosted browsers query
+`browse` opens the configured URL without syncing or requiring a token. `sync` uploads
+independently; local `web` always serves in-process usage on port 8765. Browser password
+login creates an opaque 24-hour HttpOnly/SameSite=Lax cookie (Secure for HTTPS).
+Sessions authorize reads and the current user's password/key settings, but cannot
+ingest or administer users. API keys authorize only their read/ingest scopes and
+cannot manage accounts. A key's revocation blocks it immediately without ending
+browser sessions. Password changes require the current password and invalidate all
+browser sessions without revoking API keys. Logout revokes the current session;
+user disable blocks all credentials. Key creation reveals a 256-bit secret once;
+persistence holds only its digest. Settings list named-key metadata and allow
+revocation; keys have no default expiry. Bearer tokens are not passed in URLs or
+retained in browser localStorage. Hosted browsers query
 processing lag but expose no collector-progress feature. Hosted TUI is rejected,
 including `--sync=false`.
+
+Public `GET /api/v2/auth` exposes server kind, login methods and signup availability
+without user or dataset information. Authenticated `/api/v2/instance` still exposes
+caller capabilities and permissions. Login/signup admission permits five attempts
+per minute per client address and four concurrent password operations globally;
+trusted-proxy policy determines that address as described above. Authentication
+failures expose no credentials.
 
 ## Storage, health and shutdown
 
@@ -269,6 +323,10 @@ Keep personal and hosted storage separate. Incompatible schemas reject; there ar
 no migrations, old-engine imports, automatic resets or downgrade readers. Existing
 obsolete database files are never deleted by startup.
 
+Hosted SQLite account schema is 3 and PostgreSQL account schema is 2; token schemas
+remain 1. Older hosted account storage rejects without mutation or migration.
+Personal SQLite account schema 2 remains compatible with existing local viewers.
+
 Compose `down` retains named volumes. `down --volumes` deletes persistent history,
 accounts and receipts; use it only when intentionally discarding that deployment.
 There is no published image, automatic deployment, external queue or horizontal
@@ -283,7 +341,8 @@ client ingestion, receipts/totals after container replacement, revocation and cl
 SIGTERM exit. It owns disposable networks, volumes and a pinned PostgreSQL container.
 The pre-push hook runs this target; Docker is required. Native deployment tests exercise environment-only startup and
 mounted secret files; HTTP boundary tests enforce trusted-proxy login isolation and
-request-host origin protection, HTTP bootstrap login and HTTPS cookie policy.
+request-host origin protection, password bootstrap/login, signup policy, independent
+sessions and keys, HTTP login and HTTPS cookie policy.
 
 Future integrations should add typed settings at the executable boundary and
 inject explicit adapters through hosted composition. OAuth/OIDC, provider discovery,

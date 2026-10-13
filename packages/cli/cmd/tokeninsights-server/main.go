@@ -11,6 +11,7 @@ import (
 	"strings"
 	"syscall"
 	"time"
+	"unicode/utf8"
 
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/accounts"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/remoteserver"
@@ -19,7 +20,7 @@ import (
 
 func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 	if len(args) > 0 && args[0] == "admin" {
-		return runAdmin(ctx, args[1:], stdout, stderr)
+		return runAdmin(ctx, args[1:], os.Stdin, stdout, stderr)
 	}
 	if len(args) > 0 && args[0] == "healthcheck" {
 		return healthcheck(ctx, args[1:], stderr)
@@ -35,7 +36,7 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 	return remoteserver.Run(ctx, settings, stderr, func(url string) error { _, err := fmt.Fprintln(stdout, url); return err })
 }
 
-func runAdmin(ctx context.Context, args []string, stdout, stderr io.Writer) error {
+func runAdmin(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 	flags := flag.NewFlagSet("tokeninsights-server admin", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	socket := flags.String("admin-socket", os.Getenv("TOKENINSIGHTS_ADMIN_SOCKET"), "running server private socket")
@@ -47,16 +48,31 @@ func runAdmin(ctx context.Context, args []string, stdout, stderr io.Writer) erro
 		return accounts.AdminCall(ctx, *socket, accounts.AdminRequest{Operation: "reprocess"}, stdout)
 	}
 	if len(command) < 3 {
-		return fmt.Errorf("use admin --admin-socket PATH reprocess, user create|disable|reprocess VALUE or token create|revoke ID")
+		return fmt.Errorf("use admin --admin-socket PATH reprocess, user create|disable|reprocess|reset-password VALUE or token create|revoke ID")
 	}
 	request := accounts.AdminRequest{}
 	switch command[0] + " " + command[1] {
 	case "user create":
 		if len(command) != 3 {
-			return fmt.Errorf("user create requires display name")
+			return fmt.Errorf("user create requires username")
 		}
 		request.Operation = "create-user"
 		request.DisplayName = command[2]
+	case "user reset-password":
+		if len(command) != 3 {
+			return fmt.Errorf("user reset-password requires user ID; password on stdin")
+		}
+		request.Operation = "reset-password"
+		request.UserID = command[2]
+		const maxPasswordBytes = accounts.MaxPasswordCharacters * utf8.UTFMax
+		data, err := io.ReadAll(io.LimitReader(stdin, maxPasswordBytes+3))
+		if err != nil {
+			return fmt.Errorf("cannot read password from stdin")
+		}
+		request.Password = strings.TrimSuffix(strings.TrimSuffix(string(data), "\n"), "\r")
+		if request.Password == "" || len(request.Password) > maxPasswordBytes {
+			return fmt.Errorf("invalid password input on stdin")
+		}
 	case "user disable":
 		if len(command) != 3 {
 			return fmt.Errorf("user disable requires user ID")

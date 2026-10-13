@@ -3,7 +3,9 @@ package postgres
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"maps"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -68,13 +70,14 @@ func TestConfigurationErrorsRedactSecrets(t *testing.T) {
 
 func TestSchemaAndPairRejectionNeverRepairs(t *testing.T) {
 	for name, mutation := range map[string]string{
-		"column":     "ALTER TABLE tokeninsights_data.raw_evidence ADD COLUMN unexpected TEXT",
-		"constraint": "ALTER TABLE tokeninsights_accounts.tokens DROP CONSTRAINT tokens_user_id_fkey",
-		"index":      "DROP INDEX tokeninsights_data.pending_scopes",
-		"view":       "CREATE OR REPLACE VIEW tokeninsights_data.analytics_confirmed AS SELECT f.* FROM tokeninsights_data.analytics_facts f WHERE false",
-		"pair":       "UPDATE tokeninsights_accounts.application_metadata SET instance_id='wrong'",
-		"version":    "ALTER TABLE tokeninsights_data.ingestion_instance DROP CONSTRAINT ingestion_instance_schema_version_check; UPDATE tokeninsights_data.ingestion_instance SET schema_version=999",
-		"partial":    "DROP SCHEMA tokeninsights_accounts CASCADE",
+		"column":          "ALTER TABLE tokeninsights_data.raw_evidence ADD COLUMN unexpected TEXT",
+		"constraint":      "ALTER TABLE tokeninsights_accounts.tokens DROP CONSTRAINT tokens_user_id_fkey",
+		"index":           "DROP INDEX tokeninsights_data.pending_scopes",
+		"view":            "CREATE OR REPLACE VIEW tokeninsights_data.analytics_confirmed AS SELECT f.* FROM tokeninsights_data.analytics_facts f WHERE false",
+		"pair":            "UPDATE tokeninsights_accounts.application_metadata SET instance_id='wrong'",
+		"version":         "ALTER TABLE tokeninsights_data.ingestion_instance DROP CONSTRAINT ingestion_instance_schema_version_check; UPDATE tokeninsights_data.ingestion_instance SET schema_version=999",
+		"account-version": "ALTER TABLE tokeninsights_accounts.application_metadata DROP CONSTRAINT application_metadata_schema_version_check; UPDATE tokeninsights_accounts.application_metadata SET schema_version=1",
+		"partial":         "DROP SCHEMA tokeninsights_accounts CASCADE",
 	} {
 		t.Run(name, func(t *testing.T) {
 			dsn := testdb.New(t)
@@ -98,13 +101,17 @@ func TestSchemaAndPairRejectionNeverRepairs(t *testing.T) {
 			if err != nil || !maps.Equal(before, after) {
 				t.Fatal("rejection changed schema", err)
 			}
-			if name == "pair" || name == "version" {
+			if name == "pair" || name == "version" || name == "account-version" {
 				var value string
 				query := "SELECT instance_id FROM tokeninsights_accounts.application_metadata"
 				want := "wrong"
 				if name == "version" {
 					query = "SELECT schema_version::text FROM tokeninsights_data.ingestion_instance"
 					want = "999"
+				}
+				if name == "account-version" {
+					query = "SELECT schema_version::text FROM tokeninsights_accounts.application_metadata"
+					want = "1"
 				}
 				if err := db.QueryRowContext(t.Context(), query).Scan(&value); err != nil || value != want {
 					t.Fatal("rejection repaired metadata", value, err)
@@ -146,5 +153,43 @@ func TestWriteRollbackAndReadSnapshot(t *testing.T) {
 	}
 	if err := snapshot.QueryRowContext(t.Context(), "SELECT database_id FROM ingestion_instance").Scan(&current); err != nil || current != original {
 		t.Fatal("read snapshot changed", current, err)
+	}
+}
+
+func TestAuthoritativeSchemasMatchCatalog(t *testing.T) {
+	db, err := Connect(testdb.New(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+	data, err := os.ReadFile("../../../../../schema/data.postgres.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	accounts, err := os.ReadFile("../../../../../schema/app.postgres.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	tx, err := db.BeginTx(t.Context(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	if _, err := tx.ExecContext(t.Context(), string(data)+string(accounts)); err != nil {
+		t.Fatal(err)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
+	actual, err := Inspect(t.Context(), db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var expected map[string]string
+	if err := json.Unmarshal(expectedContract, &expected); err != nil {
+		t.Fatal(err)
+	}
+	if !maps.Equal(actual, expected) {
+		t.Fatal("authoritative PostgreSQL schemas differ from catalog contract")
 	}
 }

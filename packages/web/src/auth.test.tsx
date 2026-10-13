@@ -27,10 +27,20 @@ function renderApp() {
   return client
 }
 
-it('hosted token login opens usage without ever requesting collector progress', async () => {
+it('hosted password login opens usage without ever requesting collector progress', async () => {
   let authenticated = false
   const fetcher = vi.fn<typeof fetch>((input) => {
     const path = requestPath(input)
+    if (path.endsWith('/auth'))
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({
+            serverKind: 'hosted',
+            loginMethods: ['password'],
+            signupEnabled: false,
+          }),
+        ),
+      )
     if (path.endsWith('/auth/session')) {
       authenticated = true
       return Promise.resolve(new Response(null, { status: 204 }))
@@ -51,14 +61,16 @@ it('hosted token login opens usage without ever requesting collector progress', 
   })
   vi.stubGlobal('fetch', fetcher)
   const client = renderApp()
-  fireEvent.change(await screen.findByLabelText('Access token'), {
-    target: { value: 'account-token' },
-  })
+  fireEvent.change(await screen.findByLabelText('Username'), { target: { value: 'alice' } })
+  fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'account-password' } })
   await userEvent.click(screen.getByRole('button', { name: 'Sign in' }))
   expect(await screen.findByLabelText('Total tokens: 647,000')).toBeVisible()
   expect(fetcher).toHaveBeenCalledWith(
     '/api/v2/auth/session',
-    expect.objectContaining({ method: 'POST', body: JSON.stringify({ token: 'account-token' }) }),
+    expect.objectContaining({
+      method: 'POST',
+      body: JSON.stringify({ username: 'alice', password: 'account-password' }),
+    }),
   )
   expect(screen.queryByLabelText('Collector progress')).not.toBeInTheDocument()
   expect(
@@ -115,6 +127,16 @@ it('revoked browser sessions hide and clear cached usage immediately', async () 
   let revoked = false
   const fetcher = vi.fn<typeof fetch>((input) => {
     const path = requestPath(input)
+    if (path.endsWith('/auth'))
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({
+            serverKind: 'hosted',
+            loginMethods: ['password'],
+            signupEnabled: false,
+          }),
+        ),
+      )
     if (revoked) return Promise.resolve(new Response(null, { status: 401 }))
     const body = path.endsWith('/instance')
       ? { ...mockBootstrap, serverKind: 'hosted' }
@@ -141,6 +163,7 @@ it('revoked browser sessions hide and clear cached usage immediately', async () 
       client
         .getQueryCache()
         .getAll()
+        .filter((query) => query.queryKey[0] !== 'auth-info')
         .every((query) => query.state.data === undefined),
     ).toBe(true),
   )
