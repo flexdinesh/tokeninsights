@@ -64,7 +64,7 @@ func isolatedEnvironment(root string) []string {
 	env := []string{}
 	for _, item := range os.Environ() {
 		key, _, _ := strings.Cut(item, "=")
-		if key == "HOME" || key == "PATH" || strings.HasPrefix(key, "TOKENINSIGHTS_") || strings.HasPrefix(key, "XDG_") {
+		if key == "HOME" || key == "PATH" || key == "ADMIN_ACCOUNT" || key == "ADMIN_TOKEN" || strings.HasPrefix(key, "TOKENINSIGHTS_") || strings.HasPrefix(key, "XDG_") {
 			continue
 		}
 		env = append(env, item)

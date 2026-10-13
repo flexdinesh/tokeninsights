@@ -26,18 +26,25 @@ import (
 
 type Settings struct {
 	Listen, DBPath, AppDBPath, PublicURL, AdminSocket, Backend, PostgresDSN string
+	AdminAccount, AdminToken                                                string
 	TrustedProxies                                                          clientaddress.Policy
 }
 
 func canonicalPublicURL(raw string) (string, error) {
+	if raw == "" {
+		return "", nil
+	}
 	u, err := url.Parse(raw)
-	if err != nil || u.Scheme != "https" || u.Host == "" || u.User != nil || u.RawQuery != "" || u.ForceQuery || u.Fragment != "" || (u.Path != "" && u.Path != "/") || u.Opaque != "" || u.RawPath != "" {
-		return "", fmt.Errorf("hosted --public-url requires canonical HTTPS origin")
+	if err != nil || (u.Scheme != "https" && u.Scheme != "http") || u.Host == "" || u.User != nil || u.RawQuery != "" || u.ForceQuery || u.Fragment != "" || (u.Path != "" && u.Path != "/") || u.Opaque != "" || u.RawPath != "" {
+		return "", fmt.Errorf("hosted --public-url requires HTTP/HTTPS origin")
 	}
 	if u.Hostname() == "" {
-		return "", fmt.Errorf("hosted --public-url requires canonical HTTPS origin")
+		return "", fmt.Errorf("hosted --public-url requires HTTP/HTTPS origin")
 	}
-	u.Host = strings.TrimSuffix(strings.ToLower(u.Host), ":443")
+	u.Host = strings.ToLower(u.Host)
+	if u.Scheme == "https" {
+		u.Host = strings.TrimSuffix(u.Host, ":443")
+	}
 	return strings.TrimSuffix(u.String(), "/"), nil
 }
 
@@ -80,6 +87,11 @@ func (settings Settings) Validate() (string, int, error) {
 	if settings.AdminSocket != "" && !filepath.IsAbs(settings.AdminSocket) {
 		return "", 0, fmt.Errorf("--admin-socket requires absolute path")
 	}
+	if settings.AdminToken != "" || settings.AdminAccount != "" {
+		if err := accounts.ValidateBootstrap(settings.AdminAccount, settings.AdminToken); err != nil {
+			return "", 0, err
+		}
+	}
 	if _, err := canonicalPublicURL(settings.PublicURL); err != nil {
 		return "", 0, err
 	}
@@ -103,6 +115,11 @@ func Run(ctx context.Context, settings Settings, log io.Writer, ready func(strin
 	defer func() { _ = storage.close() }()
 	if err := storage.accounts.Resume(storage.ctx); err != nil {
 		return err
+	}
+	if settings.AdminToken != "" {
+		if err := storage.accounts.BootstrapAdmin(storage.ctx, settings.AdminAccount, settings.AdminToken); err != nil {
+			return err
+		}
 	}
 	policy, _ := serverfeatures.New(serverfeatures.Hosted, false)
 	options := server.DataHandlerOptions{Host: host, AllowIngestion: true, Policy: policy}

@@ -15,6 +15,7 @@ const (
 	SessionCookieName   = "tokeninsights_session"
 	SessionLifetime     = 24 * time.Hour
 	CredentialBytes     = 32
+	MaxTokenBytes       = 4096
 	MaxDisplayNameBytes = 200
 )
 
@@ -58,6 +59,7 @@ type Token struct {
 // grant read only; token rotation cannot change a user's dataset. Account and token
 // stores need no shared transaction even when one database implements both.
 type Repository interface {
+	BootstrapAdmin(ctx context.Context, name, token string) error
 	CreateUser(ctx context.Context, name string) (User, error)
 	DisableUser(ctx context.Context, id string) error
 	CreateToken(ctx context.Context, id string, scopes []string, expires *time.Time) (Token, error)

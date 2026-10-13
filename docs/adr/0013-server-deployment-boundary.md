@@ -2,6 +2,8 @@
 
 Command selection/config and local handoff are superseded by [ADR 0014](0014-command-owned-client-compositions.md); retained domain/storage contracts still apply.
 
+Mandatory HTTPS/public-origin deployment is superseded by [ADR 0015](0015-server-bootstrap-and-background-plugins.md).
+
 Status: Accepted. Date: 10 October 2026.
 
 ## Decision

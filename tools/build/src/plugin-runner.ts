@@ -54,7 +54,7 @@ export class CollectorRunner {
       let escalation: ReturnType<typeof setTimeout> | undefined
       const child = spawn(
         process.env.TOKENINSIGHTS_BINARY ?? 'tokeninsights',
-        ['sync', '--wait', '--harness', this.options.harness],
+        ['sync', '--harness', this.options.harness],
         {
           detached: process.platform !== 'win32',
           stdio: 'ignore',

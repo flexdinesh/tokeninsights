@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/db"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/dbpath"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/evidence"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/pipeline"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/rawcollectorstore"
@@ -63,31 +64,54 @@ func publishRaw(ctx context.Context, options Options, result *Result) error {
 	identity := d.Identity
 	local := d.Local
 	capabilities := evidence.Capabilities{DatabaseID: d.DatabaseID, DatasetID: d.DatasetID}
-	release, err := db.AcquireWriterLock(ctx, options.CollectorDBPath)
+	// Serialize one destination, without holding the capture lock over transport.
+	path, err := dbpath.Canonical(options.CollectorDBPath)
+	if err != nil {
+		return failure("publication", "collector_database", err)
+	}
+	lockIdentity := identity
+	if local {
+		lockIdentity = "local"
+	}
+	releaseDelivery, err := db.AcquireWriterLock(ctx, path+".delivery-"+evidence.Hash([]byte(lockIdentity+"\x00"+d.DatabaseID+"\x00"+d.DatasetID)))
 	if err != nil {
 		return failure("publication", "collector_busy", err)
 	}
-	defer release()
-	store, err := rawcollectorstore.Open(ctx, options.CollectorDBPath)
+	defer releaseDelivery()
+	release, err := db.AcquireWriterLock(ctx, path)
+	if err != nil {
+		return failure("publication", "collector_busy", err)
+	}
+	store, err := rawcollectorstore.Open(ctx, path)
+	release()
 	if err != nil {
 		return failure("publication", "collector_database", err)
 	}
 	defer func() { _ = store.Close() }()
-	destination, err := store.ResolveDestination(ctx, identity, capabilities.DatabaseID, capabilities.DatasetID, local)
-	if err != nil {
-		return failure("binding", "server_database_changed", err)
-	}
-	result.Pending, err = store.Pending(ctx, destination)
-	if err != nil {
-		return failure("publication", "pending_read", err)
-	}
-	result.PendingKnown = true
-	reportDeliveryProgress(options, result)
+	var destination string
 	for {
-		saved, err := store.Prepare(ctx, destination)
+		var saved *rawcollectorstore.SavedBatch
+		err := withPublicationLock(ctx, path, func() error {
+			var err error
+			destination, err = store.ResolveDestination(ctx, identity, capabilities.DatabaseID, capabilities.DatasetID, local)
+			if err != nil {
+				return failure("binding", "server_database_changed", err)
+			}
+			result.Pending, err = store.Pending(ctx, destination)
+			if err != nil {
+				return failure("publication", "pending_read", err)
+			}
+			result.PendingKnown = true
+			saved, err = store.Prepare(ctx, destination)
+			if err != nil {
+				return failure("publication", "prepare_batch", err)
+			}
+			return nil
+		})
 		if err != nil {
-			return failure("publication", "prepare_batch", err)
+			return err
 		}
+		reportDeliveryProgress(options, result)
 		if saved == nil {
 			return nil
 		}
@@ -100,7 +124,9 @@ func publishRaw(ctx context.Context, options Options, result *Result) error {
 			}
 			return &StageError{Stage: "delivery", Code: "acceptance_failed", BatchID: saved.Batch.BatchID, Cause: err}
 		}
-		if err := store.Ack(ctx, destination, response); err != nil {
+		if err := withPublicationLock(ctx, path, func() error {
+			return store.Ack(ctx, destination, response)
+		}); err != nil {
 			return &StageError{Stage: "receipt", Code: "acknowledgement_rejected", BatchID: saved.Batch.BatchID, Cause: err}
 		}
 		if options.AcceptedReceipt != nil {
@@ -114,14 +140,15 @@ func publishRaw(ctx context.Context, options Options, result *Result) error {
 		}
 		result.Batches++
 		result.Accepted += int64(len(saved.Batch.Entries))
-		destination, err = store.ResolveDestination(ctx, identity, capabilities.DatabaseID, capabilities.DatasetID, local)
-		if err != nil {
-			return failure("binding", "server_database_changed", err)
-		}
-		result.Pending, err = store.Pending(ctx, destination)
-		if err != nil {
-			return failure("publication", "pending_read", err)
-		}
-		reportDeliveryProgress(options, result)
 	}
+}
+
+// Each journal operation holds a short capture lock, never across transport.
+func withPublicationLock(ctx context.Context, path string, operation func() error) error {
+	release, err := db.AcquireWriterLock(ctx, path)
+	if err != nil {
+		return failure("publication", "collector_busy", err)
+	}
+	defer release()
+	return operation()
 }

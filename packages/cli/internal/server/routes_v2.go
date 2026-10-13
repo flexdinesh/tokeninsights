@@ -38,7 +38,8 @@ type ProcessUsage interface {
 	Snapshot(context.Context) processusage.Sample
 }
 
-const loginBodyMaxBytes = 4 << 10
+// Allow JSON escaping overhead for the bounded bootstrap token.
+const loginBodyMaxBytes = 16 << 10
 
 func NewPersonalDataHandler(ctx context.Context, store DataSource, log io.Writer, host, instance string, progress *collectorprogress.Registry) http.Handler {
 	policy, _ := serverfeatures.New(serverfeatures.Personal, progress != nil)
@@ -72,10 +73,12 @@ func NewDataHandlerWithOptions(ctx context.Context, store DataSource, log io.Wri
 	handler := a.handler()
 	if a.policy.Kind == serverfeatures.Hosted {
 		protection := http.NewCrossOriginProtection()
-		if err := protection.AddTrustedOrigin(options.PublicURL); err != nil {
-			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				apiError(w, 503, api.ErrorCodeUnavailable, "Invalid server origin.")
-			})
+		if options.PublicURL != "" {
+			if err := protection.AddTrustedOrigin(options.PublicURL); err != nil {
+				return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					apiError(w, 503, api.ErrorCodeUnavailable, "Invalid server origin.")
+				})
+			}
 		}
 		return protection.Handler(handler)
 	}
@@ -271,8 +274,12 @@ func (a *app) facetsV2(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *app) sameOrigin(r *http.Request) bool {
-	u, err := url.Parse(a.publicURL)
-	return err == nil && u != nil && u.Host != "" && r.Header.Get("Origin") == u.Scheme+"://"+u.Host
+	origin := r.Header.Get("Origin")
+	if a.publicURL != "" {
+		return origin == a.publicURL
+	}
+	u, err := url.Parse(origin)
+	return err == nil && u != nil && (u.Scheme == "http" || u.Scheme == "https") && u.Host == r.Host && u.User == nil && u.Path == "" && u.RawQuery == "" && !u.ForceQuery && u.Fragment == ""
 }
 
 func (a *app) login(w http.ResponseWriter, r *http.Request) {
@@ -302,7 +309,9 @@ func (a *app) login(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
-	http.SetCookie(w, accounts.SessionCookie(secret, expires))
+	cookie := accounts.SessionCookie(secret, expires)
+	cookie.Secure = strings.HasPrefix(r.Header.Get("Origin"), "https://")
+	http.SetCookie(w, cookie)
 	w.Header().Set("Cache-Control", "no-store")
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -318,7 +327,9 @@ func (a *app) logout(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	http.SetCookie(w, accounts.ClearSessionCookie())
+	cookie := accounts.ClearSessionCookie()
+	cookie.Secure = strings.HasPrefix(r.Header.Get("Origin"), "https://")
+	http.SetCookie(w, cookie)
 	w.Header().Set("Cache-Control", "no-store")
 	w.WriteHeader(http.StatusNoContent)
 }

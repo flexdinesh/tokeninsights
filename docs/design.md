@@ -125,7 +125,9 @@ become server diagnostics rather than client repairs.
 
 Unknown/private fields never cross ingestion. Source paths/cursors/Git URLs stay
 local; enrichment contains stable hashes, basenames, repository names/provenance.
-Collector writer lock serializes capture/delivery state. Persist request before
+Collector writer lock serializes capture and journal mutations. Per-destination
+locks serialize delivery; transport never holds the capture lock, so independent
+local/remote delivery and capture can proceed during a stalled request. Persist request before
 sending; matching acceptance advances destination cursor transactionally.
 Finite background sync retries submission at most three times within ten minutes,
 respecting Retry-After. Manual sync/publish-only also replays retained work.
@@ -328,8 +330,9 @@ refresh. A database lifetime lock excludes a second viewer.
 
 Distributed collectors submit to an authenticated remote hosted server in one
 container. Bearer auth selects the dataset; the server starts no collector. A
-canonical HTTPS public origin governs browser login/session security. The existing
-SQLite/PostgreSQL processing queue remains behind dataengine's backend contract.
+configured HTTP listen address does not require a domain or TLS. Browser login
+uses the request Host for same-origin matching; an optional public origin can pin it. The
+existing SQLite/PostgreSQL processing queue remains behind dataengine's backend contract.
 
 `serverfeatures` owns typed kind/capabilities and validates dependent features.
 `GET /api/v2/instance` returns serverKind, datasetId, bounded capabilities and caller
@@ -466,7 +469,7 @@ Local viewers own no operational jobs store or handoff loop. Startup collection
 runs once; restart the viewer to recollect. `--sync=false` suppresses capture while
 durable processing resumes; `--full-refresh` and `--source-dir` affect startup
 capture only. Viewer filters and TUI reload remain query-only. Remote plugins invoke
-`sync --wait --harness`; TypeScript adapters coalesce overlaps and retain a follow-up
+`sync --harness`; TypeScript adapters coalesce overlaps and retain a follow-up
 pass without forwarding payloads. Existing jobs storage/remote job format stays
 unchanged. Removed nonterminal local requests remain stored and are reported as
 unsupported, never executed remotely. Collector evidence/batches/receipts remain
@@ -486,9 +489,11 @@ Hosted administrator creates/disables users and creates/revokes scoped tokens
 through the private owner socket. Random tokens have 256-bit entropy; store digests.
 Dataset stays stable across rotation. `read`/`ingest` permissions enforce routes.
 `POST /api/v2/auth/session` exchanges a read token for an opaque, 24-hour,
-HttpOnly/Secure/SameSite=Lax host-only cookie; DELETE logs out. Browser sessions
+HttpOnly/SameSite=Lax host-only cookie (Secure for HTTPS browser origins); DELETE logs out. Browser sessions
 cannot ingest/administer. User disable/source-token revocation blocks sessions.
-Validate canonical public origin on state changes. Explicit proxy CIDR policy may
+Validate same-origin browser state changes against the request Host, or an
+explicit optional public origin. HTTP and HTTPS browser origins are supported;
+TLS/ingress remains deployment-owned. Explicit proxy CIDR policy may
 resolve client addresses for login admission; headers never confer identity or
 select origin. Fixed auth errors expose no credentials. Static login shell/health are
 public; authenticated failures render login and clear account-specific/in-flight
@@ -636,8 +641,7 @@ The zero policy ignores forwarded addresses. Configured CIDRs permit walking
 X-Forwarded-For right to left through trusted hops; the first untrusted address is
 the client. Invalid/absent chains and more than 32 hops fall back to the socket
 peer. Account admission consumes the resolved RemoteAddr and knows nothing about
-proxy configuration. Forwarded host/proto never override the canonical HTTPS
-origin. Private admin and local HTTP retain their existing policy. See
+proxy configuration. Forwarded host/proto never override the request Host or optional origin pin. Private admin and local HTTP retain their existing policy. See
 [ADR 0013](adr/0013-server-deployment-boundary.md).
 
 Collector JSONL replacement, per-user DBs, organizations, external queues,
@@ -651,3 +655,28 @@ native build/JS-absent smoke and browser E2E.
 Application pairing also persists `<canonical-token-path>.application.json`, containing
 only the application instance ID. Keep this guard with both databases in stopped
 backups. A missing/replaced app database fails closed to preserve credential revocations. Restore the matched set; do not delete the guard to bypass recovery.
+
+## Initial server bootstrap and background plugins
+
+[ADR 0015](adr/0015-server-bootstrap-and-background-plugins.md) supersedes mandatory
+HTTPS/public-origin deployment and synchronous completion hooks. The server accepts
+HTTP on any configured IPv4 port; flags override TOKENINSIGHTS_LISTEN, then
+TOKENINSIGHTS_SERVER_PORT, then 8766. Healthcheck shares this resolution. Compose defaults
+to SQLite with separate persistent token/account files and host-loopback publishing.
+
+The executable resolves ADMIN_ACCOUNT (default admin when a token is supplied) and
+ADMIN_TOKEN into typed hosted settings. Before readiness, the account adapter
+idempotently provisions a fixed bootstrap-admin user/dataset and read+ingest token.
+Only the digest persists; changing the env token replaces that digest on restart.
+Existing browser sessions retain their lifetime. Existing disabled users/revoked
+tokens stay blocked. No schema changes, Basic auth or public administration routes.
+Native startup can omit both variables and provision through the private socket.
+
+Plugins trigger background sync without --wait. Codex/Claude return empty decision
+JSON immediately after shell-background launch; Pi/OpenCode callbacks return while
+the enqueue subprocess runs. The CLI persists jobs, starts an independently
+detached finite worker and owns retry/delivery state. Successful startup does not
+imply ingestion or processing completion. Plugin cleanup stops unfinished enqueue
+children, not workers already detached. Contract tests use fake host APIs, blocked
+executables and synthetic CLI/container fixtures; no installed harness or user
+registration is used. Real event delivery and artifact flush timing remain assumed.

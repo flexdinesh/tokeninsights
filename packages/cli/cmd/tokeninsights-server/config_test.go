@@ -14,7 +14,9 @@ import (
 
 func cleanServerEnv(t *testing.T) {
 	t.Helper()
-	for _, key := range []string{"STORAGE_BACKEND", "LISTEN", "SERVER_DB_PATH", "APP_DB_PATH", "PUBLIC_URL", "ADMIN_SOCKET", "TRUSTED_PROXIES", "POSTGRES_DSN", "POSTGRES_DSN_FILE", "SERVER_TOKEN"} {
+	t.Setenv("ADMIN_ACCOUNT", "")
+	t.Setenv("ADMIN_TOKEN", "")
+	for _, key := range []string{"STORAGE_BACKEND", "LISTEN", "SERVER_PORT", "SERVER_DB_PATH", "APP_DB_PATH", "PUBLIC_URL", "ADMIN_SOCKET", "TRUSTED_PROXIES", "POSTGRES_DSN", "POSTGRES_DSN_FILE", "SERVER_TOKEN"} {
 		t.Setenv("TOKENINSIGHTS_"+key, "")
 	}
 }
@@ -106,6 +108,13 @@ func TestHealthcheckUsesOnlyHTTPConfiguration(t *testing.T) {
 	if err := healthcheck(t.Context(), nil, io.Discard); err == nil {
 		t.Fatal("unready server accepted")
 	}
+	t.Setenv("TOKENINSIGHTS_LISTEN", "")
+	t.Setenv("TOKENINSIGHTS_SERVER_PORT", strings.TrimPrefix(srv.URL, "http://127.0.0.1:"))
+	status.Store(http.StatusOK)
+	if err := healthcheck(t.Context(), nil, io.Discard); err != nil {
+		t.Fatal("port-only healthcheck", err)
+	}
+	t.Setenv("TOKENINSIGHTS_LISTEN", strings.TrimPrefix(srv.URL, "http://"))
 	redirect := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, srv.URL+"/readyz", http.StatusFound)
 	}))
@@ -117,5 +126,26 @@ func TestHealthcheckUsesOnlyHTTPConfiguration(t *testing.T) {
 	srv.Close()
 	if err := healthcheck(t.Context(), nil, io.Discard); err == nil {
 		t.Fatal("stopped server accepted")
+	}
+}
+
+func TestServerWithoutIngressConfiguration(t *testing.T) {
+	cleanServerEnv(t)
+	t.Setenv("TOKENINSIGHTS_SERVER_DB_PATH", filepath.Join(t.TempDir(), "server.sqlite"))
+	t.Setenv("TOKENINSIGHTS_SERVER_PORT", "9876")
+	t.Setenv("ADMIN_TOKEN", "test-bootstrap-token")
+	s, _, err := serverSettings(nil, io.Discard)
+	if err != nil || s.Listen != "0.0.0.0:9876" || s.PublicURL != "" || s.AdminAccount != "admin" || s.AdminToken != "test-bootstrap-token" {
+		t.Fatal("environment startup", err)
+	}
+	t.Setenv("TOKENINSIGHTS_LISTEN", "127.0.0.1:8767")
+	s, _, err = serverSettings(nil, io.Discard)
+	if err != nil || s.Listen != "127.0.0.1:8767" {
+		t.Fatal("listen precedence", err)
+	}
+	t.Setenv("ADMIN_TOKEN", "")
+	t.Setenv("ADMIN_ACCOUNT", "admin")
+	if _, _, err := serverSettings(nil, io.Discard); err == nil {
+		t.Fatal("missing bootstrap token accepted")
 	}
 }

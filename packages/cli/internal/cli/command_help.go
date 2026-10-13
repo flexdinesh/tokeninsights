@@ -44,5 +44,5 @@ Precedence: flags > environment > file > defaults. get reads saved preferences.
 Local web defaults to 127.0.0.1:8765; hosted server defaults to 0.0.0.0:8766.
 Commands select composition. Local viewers ignore distributed credentials.
 Sync requires URL and bearer token. Browse requires only URL.
-Bare invocation prints help. Reload queries saved data. Plugins pass --wait --harness.`
+Bare invocation prints help. Reload queries saved data. Plugins enqueue background sync with --harness.`
 }

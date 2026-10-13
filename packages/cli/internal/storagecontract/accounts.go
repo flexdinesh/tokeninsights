@@ -21,7 +21,70 @@ type Accounts struct {
 // account and token repositories remain separate even on a shared database.
 func RunAccounts(t *testing.T, factory func(*testing.T) Accounts) {
 	t.Helper()
+	t.Run("bootstrap_restart_and_revocation", func(t *testing.T) {
+		store := factory(t)
+		const token = "synthetic-bootstrap-token"
+		if err := store.Repository.BootstrapAdmin(t.Context(), "admin", token); err != nil {
+			t.Fatal(err)
+		}
+		principal, err := store.Repository.AuthenticateBearer(t.Context(), token)
+		if err != nil || !principal.HasPermission(accounts.Read) || !principal.HasPermission(accounts.Ingest) {
+			t.Fatal(principal, err)
+		}
+		session, _, err := store.Repository.CreateSession(t.Context(), token)
+		if err != nil {
+			t.Fatal(err)
+		}
+		store = store.Reopen()
+		if err := store.Repository.BootstrapAdmin(t.Context(), "admin", token); err != nil {
+			t.Fatal(err)
+		}
+		again, err := store.Repository.AuthenticateBearer(t.Context(), token)
+		if err != nil || again.UserID != principal.UserID || again.DatasetID != principal.DatasetID {
+			t.Fatal("restart changed identity", again, err)
+		}
+		if _, err := store.Repository.AuthenticateSession(t.Context(), session); err != nil {
+			t.Fatal("restart lost session", err)
+		}
+		if err := store.Repository.RevokeToken(t.Context(), "bootstrap-admin"); err != nil {
+			t.Fatal(err)
+		}
+		if err := store.Repository.BootstrapAdmin(t.Context(), "admin", token); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := store.Repository.AuthenticateBearer(t.Context(), token); !errors.Is(err, accounts.ErrUnauthenticated) {
+			t.Fatal("bootstrap undid revocation", err)
+		}
+		if err := store.Repository.DisableUser(t.Context(), principal.UserID); err != nil {
+			t.Fatal(err)
+		}
+		if err := store.Repository.BootstrapAdmin(t.Context(), "admin", token); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := store.Repository.CreateToken(t.Context(), principal.UserID, []string{accounts.Read}, nil); err == nil {
+			t.Fatal("bootstrap reenabled user")
+		}
+	})
 	for _, after := range []bool{false, true} {
+		t.Run(map[bool]string{false: "bootstrap_interrupted_before_dataset", true: "bootstrap_interrupted_after_dataset"}[after], func(t *testing.T) {
+			store := factory(t)
+			interrupted := store.WithDatasets(interruptedDatasets{Datasets: store.Datasets, after: after})
+			const token = "synthetic-bootstrap-token"
+			if err := interrupted.BootstrapAdmin(t.Context(), "admin", token); err == nil {
+				t.Fatal("bootstrap interruption not exposed")
+			}
+			store = store.Reopen()
+			if err := store.Resume(t.Context()); err != nil {
+				t.Fatal(err)
+			}
+			if err := store.Repository.BootstrapAdmin(t.Context(), "admin", token); err != nil {
+				t.Fatal(err)
+			}
+			principal, err := store.Repository.AuthenticateBearer(t.Context(), token)
+			if err != nil || principal.UserID != "bootstrap-admin" || principal.DatasetID != "bootstrap-admin" {
+				t.Fatal("bootstrap recovery changed identity", principal, err)
+			}
+		})
 		t.Run(map[bool]string{false: "provision_interrupted_before_dataset", true: "provision_interrupted_after_dataset"}[after], func(t *testing.T) {
 			store := factory(t)
 			r := store.WithDatasets(interruptedDatasets{Datasets: store.Datasets, after: after})

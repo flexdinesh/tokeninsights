@@ -1,0 +1,4 @@
+name: tokeninsights
+
+include:
+  - path: ./deploy/compose.hosted.yaml
