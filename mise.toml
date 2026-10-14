@@ -2,6 +2,7 @@
 go = "1"
 node = "26.4.0"
 pnpm = "11.6.0"
+"github:gohugoio/hugo" = { version = "0.167.0", matching_regex = "^hugo_extended_[0-9]" }
 
 [tasks.setup]
 description = "Install dependencies and local Git hooks"
@@ -32,3 +33,13 @@ run = "pnpm run build"
 
 [tasks.dev]
 run = "pnpm run dev"
+
+[tasks."dev:docs"]
+description = "Serve public documentation with live reload"
+dir = "{{config_root}}/docs-website"
+run = "hugo server --buildDrafts --disableFastRender"
+
+[tasks."build:docs"]
+description = "Build public documentation as static files"
+dir = "{{config_root}}/docs-website"
+run = "hugo --minify --cleanDestinationDir --panicOnWarning"
