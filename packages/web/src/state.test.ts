@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { Selection } from './contracts'
 import {
+  apiQueryParams,
   initialQuery,
   parseDashboardSearch,
   parseDashboardSearchParams,
@@ -23,6 +24,64 @@ const defaults: Selection = {
 }
 
 describe('dashboard navigation', () => {
+  it('preserves calendar navigation through URL, view, and filter changes without changing the API', () => {
+    const selected = reduceQuery(initialQuery(defaults), {
+      type: 'selection',
+      value: { period: 'month', from: '2026-09-01', to: '2026-09-30', dateMode: 'calendar' },
+    })
+    const filtered = reduceQuery(selected, { type: 'selection', value: { models: ['model-a'] } })
+    const models = reduceQuery(filtered, { type: 'tab', value: 'models' })
+    const restored = queryFromSearch(
+      parseDashboardSearchParams(stringifyDashboardSearch(searchFromQuery(models))),
+      'models',
+      defaults,
+    )
+    expect(restored).toMatchObject({
+      dateMode: 'calendar',
+      from: '2026-09-01',
+      to: '2026-09-30',
+      models: ['model-a'],
+      page: 1,
+    })
+    expect(apiQueryParams(restored).get('from')).toBe('2026-09-01')
+    expect(apiQueryParams(restored).has('dateMode')).toBe(false)
+    expect(reduceQuery(restored, { type: 'clearFilters' })).toMatchObject({
+      from: '',
+      to: '',
+      dateMode: undefined,
+    })
+  })
+
+  it('keeps existing explicit-bound links custom and drops calendar mode without both bounds', () => {
+    expect(
+      queryFromSearch(
+        parseDashboardSearchParams('?period=week&from=2026-10-01'),
+        'tokens',
+        defaults,
+      ).dateMode,
+    ).toBeUndefined()
+    expect(
+      queryFromSearch(
+        parseDashboardSearchParams('?period=week&dateMode=calendar&from=2026-10-01'),
+        'tokens',
+        defaults,
+      ).dateMode,
+    ).toBeUndefined()
+  })
+
+  it.each([
+    ['2026-13-01', '2026-13-07'],
+    ['2026-10-18', '2026-10-12'],
+    ['2026-10-12', '2026-10-15'],
+  ])('treats invalid or partial calendar bounds as custom (%s to %s)', (from, to) => {
+    const query = queryFromSearch(
+      parseDashboardSearch({ period: 'week', dateMode: 'calendar', from, to }),
+      'tokens',
+      defaults,
+    )
+    expect(query.dateMode).toBeUndefined()
+    expect(query).toMatchObject({ from, to })
+  })
   it('restores CLI defaults only for an unconfigured route', () => {
     expect(queryFromSearch(parseDashboardSearch({}), 'tokens', defaults).providers).toEqual([
       'openai',

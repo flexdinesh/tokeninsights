@@ -21,7 +21,8 @@ import { locationGroupSchema } from './contracts'
 import { DashboardProvider, parseDashboardSearch, useDashboardQuery } from './state'
 import { useDashboardSync } from './useDashboardSync'
 import { serverTimeZoneLabel } from './format'
-import { FilterToolbar, QuickPeriods } from './components/Filters'
+import { FilterToolbar } from './components/Filters'
+import { DateNavigation } from './components/DateNavigation'
 import { DashboardHeader } from './components/DashboardHeader'
 import { DashboardSidebar } from './components/DashboardSidebar'
 import { Brand } from './components/Brand'
@@ -273,7 +274,7 @@ function DashboardShell({
                 identity={controller.identity}
               />
             )}
-            <QuickPeriods />
+            <DateNavigation timezone={bootstrap.timezone} />
           </div>
           {query.tab === 'repo' && (
             <div className="repo-controls" aria-label="Repo view options">

@@ -248,8 +248,18 @@ white light surfaces, neutral charcoal dark surfaces, blue actions and chart lin
 and locally bundled DM Sans. Branding uses a text wordmark. A desktop sidebar owns view navigation; below 55rem,
 the same links wrap above the workspace. The header keeps machine identity,
 a fixed-size status indicator beside the theme switcher, the current view heading
-(`/ Tokens`, for example), and theme selection. Wrapping filters and quick periods
-share a compact toolbar directly below the header; the static summary strip, chart, and padded result table follow. Controls preserve keyboard access, mobile touch targets, and 200%
+(`/ Tokens`, for example), and theme selection. Wrapping filters and period navigation
+share a compact toolbar directly below the header. One date filter offers Daily,
+Weekly, Monthly, Yearly, All time and Custom. Only Custom reveals inclusive,
+optionally open date bounds and Apply. Previous/next controls step whole calendar
+periods in the server timezone, with Monday-start weeks; Next is disabled in the
+current period. All time and Custom have no step controls. Browser-only
+`dateMode=calendar` distinguishes stepped explicit bounds from custom ranges in
+URLs/history; API requests retain existing period/from/to semantics. Selecting a
+period returns to its current calendar range. Date changes reset pagination while
+preserving dimension filters and the selected view; returning to the current period
+clears explicit bounds so refresh continues to follow the current period.
+The static summary strip, chart, and padded result table follow. Controls preserve keyboard access, mobile touch targets, and 200%
 text reflow. Presentation components use existing query state and callbacks;
 URL/history, dataset snapshots, authentication, and request lifecycle remain owned
 by their existing browser modules. Fonts and browser assets are committed and

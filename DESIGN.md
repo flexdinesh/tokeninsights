@@ -257,8 +257,11 @@ and complete timeline dates.
 A sticky desktop navigation sidebar (12rem) anchors the workspace. It holds the
 brand and all existing view links. The main column keeps a wrapping, sticky header
 (3rem minimum height) for the current-view heading, machine identity, a fixed-size
-status indicator beside theme selection. Horizontal wrapping filters and quick
-periods share a toolbar immediately below the header.
+status indicator beside theme selection. Horizontal wrapping filters and period
+navigation share a toolbar immediately below the header. The date filter selects
+Daily, Weekly, Monthly, Yearly, All time, or Custom. Previous/next arrows surround
+a full date label; Next is disabled at the current period. All time and Custom
+omit arrows. Only Custom reveals date inputs and Apply.
 
 The spacing scale uses quarter-rem steps, with section gaps of 0.75rem and desktop
 page gutters of 1rem. Below 38rem, gutters reduce to 0.75rem. Content caps at 100rem;
@@ -273,7 +276,7 @@ wraps. Chart geometry remains separate from global spacing tokens.
 
 Below 55rem viewport width, the sidebar becomes a relative, wrapping top navigation
 region. All views remain visible. At 38rem, the header becomes relative; the
-heading, truncated machine identity, status and actions share a compact wrapping row. Quick periods span their row,
+heading, truncated machine identity, status and actions share a compact wrapping row. Period navigation spans its row,
 date fields stack, and chart controls wrap.
 Mobile/coarse-pointer controls grow to 2.75rem. Widths and type follow the root
 font size; preserve reflow at 200% text.
@@ -347,7 +350,7 @@ failed request without marking the entire server unavailable.
 ### Navigation and chips
 
 View links use muted text, with blue ink and a neutral supporting surface when
-active. Hover uses a supporting surface; focus remains visible. Quick periods and
+active. Hover uses a supporting surface; focus remains visible. Date presets and
 chart metrics expose pressed state. Active filter chips include dimension, value,
 and remove action; long values truncate while retaining their accessible name.
 

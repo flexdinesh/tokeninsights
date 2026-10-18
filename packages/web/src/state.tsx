@@ -4,8 +4,10 @@ import { useNavigate, useParams, useSearch } from '@tanstack/react-router'
 import { z } from 'zod'
 import { bucketSchema, locationGroupSchema, periodSchema, sortSchema } from './contracts'
 import type { LocationGroup, Selection, Sort, Tab } from './contracts'
+import { isCalendarRange } from './dateRange'
 
 export interface QueryState extends Selection {
+  dateMode?: 'calendar'
   quality: 'confirmed' | 'estimated'
   tab: Tab
   locationGroup: LocationGroup
@@ -18,6 +20,7 @@ export interface QueryState extends Selection {
 }
 
 export interface DashboardSearch {
+  dateMode?: 'calendar'
   quality?: 'confirmed' | 'estimated'
   v?: 1
   period?: Selection['period']
@@ -41,7 +44,7 @@ const themeSchema = z.enum(['system', 'light', 'dark'])
 export type Theme = z.infer<typeof themeSchema>
 export type QueryAction =
   | { type: 'quality'; value: 'confirmed' | 'estimated' }
-  | { type: 'selection'; value: Partial<Selection> }
+  | { type: 'selection'; value: DateSelection }
   | { type: 'reset'; value: Selection }
   | { type: 'clearFilters' }
   | { type: 'tab'; value: Tab }
@@ -53,6 +56,8 @@ export type QueryAction =
   | { type: 'sort'; value: Sort }
   | { type: 'page'; value: number }
   | { type: 'pageSize'; value: number }
+
+type DateSelection = Partial<Selection> & Pick<QueryState, 'dateMode'>
 
 export function defaultSort(tab: Tab): Sort {
   return tab === 'context'
@@ -87,6 +92,7 @@ export function reduceQuery(query: QueryState, action: QueryAction): QueryState 
       return {
         ...query,
         ...action.value,
+        dateMode: undefined,
         repositories: [],
         directories: [],
         page: 1,
@@ -102,6 +108,7 @@ export function reduceQuery(query: QueryState, action: QueryAction): QueryState 
         directories: [],
         from: '',
         to: '',
+        dateMode: undefined,
         page: 1,
       }
     case 'tab':
@@ -163,6 +170,7 @@ export function parseDashboardSearch(input: Record<string, unknown>): DashboardS
   const locationGroup = locationGroupSchema.safeParse(input.locationGroup)
   const harnesses = strings(input.harnesses ?? input.harness)
   return {
+    dateMode: input.dateMode === 'calendar' ? 'calendar' : undefined,
     quality: input.quality === 'estimated' ? 'estimated' : undefined,
     v: input.v === 1 || input.v === '1' ? 1 : undefined,
     period: period.success ? period.data : undefined,
@@ -189,6 +197,7 @@ export function parseDashboardSearch(input: Record<string, unknown>): DashboardS
 export function parseDashboardSearchParams(value: string): DashboardSearch {
   const params = new URLSearchParams(value.startsWith('?') ? value.slice(1) : value)
   return parseDashboardSearch({
+    dateMode: params.get('dateMode'),
     quality: params.get('quality'),
     v: params.get('v'),
     period: params.get('period'),
@@ -218,6 +227,7 @@ export function stringifyDashboardSearch(
     if (typeof value === 'string' || typeof value === 'number') params.set(key, String(value))
   }
   scalar('v', search.v)
+  scalar('dateMode', search.dateMode)
   scalar('quality', search.quality)
   scalar('period', search.period)
   scalar('bucket', search.bucket)
@@ -245,6 +255,7 @@ export function stringifyDashboardSearch(
 
 export function searchFromQuery(query: QueryState): DashboardSearch {
   return {
+    dateMode: query.from && query.to ? query.dateMode : undefined,
     quality: query.quality === 'estimated' ? 'estimated' : undefined,
     v: 1,
     period: query.period,
@@ -312,6 +323,12 @@ export function queryFromSearch(
   }
   return {
     period: search.period ?? defaults.period,
+    dateMode:
+      search.from &&
+      search.to &&
+      isCalendarRange(search.period ?? defaults.period, search.from, search.to)
+        ? search.dateMode
+        : undefined,
     quality: search.quality ?? 'confirmed',
     bucket: search.bucket ?? defaults.bucket,
     from: search.from ?? '',
@@ -360,7 +377,7 @@ const QueryContext = createContext<{
   query: QueryState
   setQuality: (value: QueryState['quality']) => void
   defaults: Selection
-  updateSelection: (value: Partial<Selection>) => void
+  updateSelection: (value: DateSelection) => void
   resetSelection: () => void
   clearFilters: () => void
   setLocationGroup: (value: LocationGroup) => void
@@ -440,7 +457,7 @@ function DashboardQueryProvider({
       query,
       setQuality: (value: QueryState['quality']) => navigateQuery({ type: 'quality', value }),
       defaults,
-      updateSelection: (value: Partial<Selection>) => navigateQuery({ type: 'selection', value }),
+      updateSelection: (value: DateSelection) => navigateQuery({ type: 'selection', value }),
       resetSelection: () => navigateQuery({ type: 'reset', value: defaults }),
       clearFilters: () => navigateQuery({ type: 'clearFilters' }),
       setLocationGroup: (value: LocationGroup) => navigateQuery({ type: 'locationGroup', value }),
