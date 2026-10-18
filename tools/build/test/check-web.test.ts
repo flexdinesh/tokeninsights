@@ -19,12 +19,14 @@ void test('web asset comparison reports content and file-set drift', async () =>
       writeFile(join(actual, 'changed.txt'), 'actual'),
       writeFile(join(expected, 'missing.txt'), 'missing'),
       writeFile(join(expected, 'mockServiceWorker.js'), 'development only'),
+      writeFile(join(actual, 'mockServiceWorker.js'), 'must not ship'),
       writeFile(join(actual, 'unexpected.txt'), 'unexpected'),
     ])
 
     assert.deepEqual(await webAssetDifferences(expected, actual), [
       'changed changed.txt',
       'missing missing.txt',
+      'unexpected mockServiceWorker.js',
       'unexpected unexpected.txt',
     ])
   } finally {

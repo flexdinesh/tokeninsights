@@ -14,10 +14,31 @@ permissions:
 env:
   HUSKY: '0'
 
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
+  # Generate shared build inputs once; native runners need only Go.
+  assets:
+    name: Build dashboard assets
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: jdx/mise-action@v4
+        with:
+          install_args: node pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run build:web
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dashboard-assets
+          path: packages/cli/internal/server/static
+
   # Native OS/architecture coverage cannot be reproduced by one developer host.
   native:
     name: Native ${{ matrix.runner }}
+    needs: assets
     strategy:
       fail-fast: false
       matrix:
@@ -28,6 +49,10 @@ jobs:
       - uses: jdx/mise-action@v4
         with:
           install_args: go
+      - uses: actions/download-artifact@v4
+        with:
+          name: dashboard-assets
+          path: packages/cli/internal/server/static
       - name: Build and verify storage
         working-directory: packages/cli
         env:
@@ -35,3 +60,26 @@ jobs:
         run: |
           go build ./cmd/tokeninsights ./cmd/tokeninsights-server
           go test ./internal/datastore ./internal/rawcollectorstore
+
+  edge:
+    name: Publish edge source
+    needs: native
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+      - uses: jdx/mise-action@v4
+        with:
+          install_args: node
+      - uses: actions/download-artifact@v4
+        with:
+          name: dashboard-assets
+          path: packages/cli/internal/server/static
+      # Publication is CI-owned. Its Git/install contracts run locally in check:push.
+      - name: Publish tested source with assets
+        run: node tools/build/src/install-refs.ts edge

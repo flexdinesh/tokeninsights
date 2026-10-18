@@ -30,7 +30,7 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 		return err
 	}
 	if showVersion {
-		_, err := fmt.Fprintln(stdout, "tokeninsights-server "+version.Version)
+		_, err := fmt.Fprintln(stdout, version.StringFor("tokeninsights-server"))
 		return err
 	}
 	return remoteserver.Run(ctx, settings, stderr, func(url string) error { _, err := fmt.Fprintln(stdout, url); return err })
