@@ -35,11 +35,11 @@ func main() {
 	if err != nil {
 		fail(err)
 	}
-	headTags, err := gitTags(root, "--points-at", "HEAD", "--list")
+	sourceTags, err := gitSourceTags(root, tags)
 	if err != nil {
 		fail(err)
 	}
-	tag, err := selectTag(series, tags, headTags)
+	tag, err := selectTag(series, tags, sourceTags)
 	if err != nil {
 		fail(err)
 	}
@@ -69,8 +69,8 @@ func validNumber(value string) bool {
 	return true
 }
 
-func selectTag(series releaseSeries, tags, headTags []string) (string, error) {
-	if patch, ok := highestPatch(series, headTags); ok {
+func selectTag(series releaseSeries, tags, sourceTags []string) (string, error) {
+	if patch, ok := highestPatch(series, sourceTags); ok {
 		return formatTag(series, patch), nil
 	}
 	patch, ok := highestPatch(series, tags)
@@ -128,6 +128,37 @@ func gitTags(root string, arguments ...string) ([]string, error) {
 		return nil, nil
 	}
 	return strings.Split(value, "\n"), nil
+}
+
+func gitSourceTags(root string, tags []string) ([]string, error) {
+	output, err := exec.Command("git", "-C", root, "rev-parse", "HEAD").Output()
+	if err != nil {
+		return nil, fmt.Errorf("resolve release source: %w", err)
+	}
+	source := strings.TrimSpace(string(output))
+	var matches []string
+	for _, tag := range tags {
+		if !validStableTag(tag) {
+			continue
+		}
+		output, err := exec.Command("git", "-C", root, "rev-list", "--parents", "--max-count=1", "refs/tags/"+tag).Output()
+		if err != nil {
+			return nil, fmt.Errorf("resolve release tag %s: %w", tag, err)
+		}
+		commits := strings.Fields(string(output))
+		if len(commits) > 0 && (commits[0] == source || len(commits) > 1 && commits[1] == source) {
+			matches = append(matches, tag)
+		}
+	}
+	return matches, nil
+}
+
+func validStableTag(tag string) bool {
+	if !strings.HasPrefix(tag, tagPrefix) {
+		return false
+	}
+	parts := strings.Split(strings.TrimPrefix(tag, tagPrefix), ".")
+	return len(parts) == 3 && validNumber(parts[0]) && validNumber(parts[1]) && validNumber(parts[2])
 }
 
 func fail(err error) {

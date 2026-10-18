@@ -38,7 +38,7 @@ export async function webAssetDifferences(
     availableFiles(actualRoot),
   ])
   const productionExpected = expected.filter((path) => !developmentAssets.has(path))
-  const productionActual = actual.filter((path) => !developmentAssets.has(path))
+  const productionActual = actual
   const paths = [...new Set([...productionExpected, ...productionActual])].toSorted()
   const differences = await Promise.all(
     paths.map(async (path) => {

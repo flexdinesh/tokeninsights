@@ -20,13 +20,27 @@ Specific stable version:
 go install github.com/flexdinesh/tokeninsights/packages/cli/cmd/tokeninsights@v0.1.3
 ```
 
-Development version directly from `main`:
+Latest `main` source that passed native CI:
 
 ```sh
-go install github.com/flexdinesh/tokeninsights/packages/cli/cmd/tokeninsights@main
+go install github.com/flexdinesh/tokeninsights/packages/cli/cmd/tokeninsights@edge
 ```
 
-Go resolves `@latest` from stable module tags (`packages/cli/vX.Y.Z`), independently of GitHub's Latest badge. `@main` resolves the moving `main` branch to a Go pseudo-version, or a stable version when that commit is tagged. It does not wait for CI. Module proxies may briefly cache branch lookups; rerun the install after a push to update.
+Go resolves `@latest` from stable module tags (`packages/cli/vX.Y.Z`), independently of GitHub's Latest badge. `edge` is a moving source branch published after native CI succeeds for a main push. It contains that source plus generated dashboard assets. Its latest stable release ancestry makes its Go pseudo-version sort above that release. Module proxies may briefly cache branch lookups; rerun the install after publication to update.
+
+`main`, feature branches and their source SHAs omit generated assets, so direct
+versioned installs from them fail on the missing Go embed input. For local builds:
+
+```sh
+mise run setup
+pnpm run build:web
+cd packages/cli
+GOWORK=off go build ./cmd/tokeninsights ./cmd/tokeninsights-server
+```
+
+Root build/test/lint and CLI package tasks generate assets before invoking Go.
+An existing binary runs without Node/npm/pnpm. Source installs report Go's resolved
+module version; archive binaries include explicit release version/commit metadata.
 
 ## Release
 
@@ -36,14 +50,30 @@ Required secret:
 
 1. Merge the release-ready code to `main`.
 2. Run the **Release** workflow from GitHub Actions with branch `main` selected. Dispatches from other refs are skipped. The workflow checks out the latest `main` when it starts; that commit is verified and released even if `main` advances during the run.
-3. The workflow selects the next patch version, builds macOS/Linux amd64/arm64 archives, writes `checksums.txt`, then pushes the Go module tag and publishes a stable GitHub Release explicitly marked Latest. New versions and GitHub releases are published only through this manual workflow.
+3. The workflow selects the next patch version, builds the dashboard, and creates an asset commit with the resolved main source as its first parent. Native jobs build macOS/Linux amd64/arm64 archives from that same commit. After verification, it pushes only the Go module tag, writes `checksums.txt`, and publishes a stable GitHub Release explicitly marked Latest. New versions and GitHub releases are published only through this manual workflow.
 4. The workflow generates `Formula/tokeninsights.rb` from the local release checksums and opens or updates a pull request against `flexdinesh/homebrew-tap`.
 
-`.release-version` contains the active `major.minor` release series. It is currently `0.1`; releases increment the highest existing patch in that series. A rerun from the same commit reuses that commit's existing tag and updates its release assets and Latest badge.
+`.release-version` contains the active `major.minor` release series. It is currently `0.1`; releases increment the highest existing patch in that series. A rerun against the same source reuses its existing tag, identified by the tag commit's first parent. Existing published tags never move. Completed release archives/checksums are downloaded, verified and reused during recovery.
+
+To resume a release created by this workflow after main advances,
+dispatch **Release** from `main` with `retry_tag` set to its full module tag.
+Historical tags directly on main remain installable but cannot use this recovery path.
+This uses the original tagged source
+and version. Retrying an older version preserves the newer Latest release.
+If an existing GitHub release has incomplete assets, recovery stops;
+restore the original native workflow artifacts and checksum manifest before retrying.
 
 To begin a new minor or major series, change `.release-version`. For example, changing it to `0.2` makes the next release `packages/cli/v0.2.0`; changing it to `1.0` makes the next release `packages/cli/v1.0.0`. Later releases automatically increment that series' patch number.
 
-React assets are committed under `packages/cli/internal/server/static` and embedded with `go:embed` in every binary, including stable and main Go installs. Local pre-push verification rebuilds the frontend and checks asset drift. Formatting, schema/API consistency, full/race tests, benchmarks, browser tests and container contracts run in local pre-push verification. CI/release native jobs build both binaries and test storage on each supported OS/architecture, covering platforms unavailable on one developer host. Release validates its generated archives and Homebrew formula; preparation does not repeat local checks. Frontend changes must include regenerated assets (`pnpm run build:web`). The private `@tokeninsights/build-tools` workspace package under `tools/build` owns generated-asset checks and Homebrew formula generation; it is build/release-time tooling only.
+React assets under `packages/cli/internal/server/static` are ignored on `main` and embedded with `go:embed` after generation. CI alone commits them on `edge` and stable tags; source branch history stays free of bundle updates. Edge publication uses an observed-ref lease and rejects obsolete runs. Repository rulesets must allow the workflow identity to update `edge` and create `packages/cli/v*` tags. No `dev` archive channel is added. See [ADR 0017](adr/0017-generated-assets-on-installable-refs.md).
+
+Formatting, schema/API consistency, full/race tests, benchmarks, browser tests,
+container contracts and isolated source-install checks run in local pre-push.
+CI/release native jobs build both binaries and test storage on each supported
+OS/architecture, covering platforms unavailable on one developer host. Release
+validates generated archives and the Homebrew formula. The private
+`@tokeninsights/build-tools` workspace package owns asset generation, installable
+refs, local publication tests and Homebrew formula generation; it is build tooling.
 
 Release artifacts contain only the two native Go binaries and documentation. Production hosts need no Node.js, npm, pnpm, `node_modules`, repository JavaScript tooling, or separate web files. Go serves the embedded browser JavaScript as bytes; it executes only in the browser, and the Go runtime never invokes a JavaScript runtime.
 
@@ -75,6 +105,7 @@ Node/npm/pnpm. See [design](design.md) for the complete contract.
 pnpm run check-schema
 pnpm run test
 pnpm run build
+pnpm run test:distribution
 ```
 
 ## Version
@@ -88,7 +119,7 @@ tokeninsights --version
 The existing release archives and Homebrew formula contain both `tokeninsights`
 and `tokeninsights-server`. Go users install remote explicitly with
 `go install github.com/flexdinesh/tokeninsights/packages/cli/cmd/tokeninsights-server@latest`.
-Both embed committed assets and run without Node/npm/pnpm. Remote runs only when
+Both embed generated assets from stable tags or `edge` and run without Node/npm/pnpm. Remote runs only when
 explicitly launched and requires `--server-db-path`; installing it starts nothing.
 
 Native CI/release Linux/macOS amd64/arm64 jobs build with `CGO_ENABLED=0` and test on matching runners. See [design](design.md) for current acceptance/migration.

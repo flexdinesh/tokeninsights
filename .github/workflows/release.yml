@@ -2,6 +2,11 @@ name: Release
 
 on:
   workflow_dispatch:
+    inputs:
+      retry_tag:
+        description: Tag created by this workflow to resume; empty releases current main
+        required: false
+        type: string
 
 permissions:
   contents: write
@@ -21,8 +26,8 @@ jobs:
     outputs:
       tag: ${{ steps.tag.outputs.tag }}
       version: ${{ steps.tag.outputs.version }}
-      create: ${{ steps.tag.outputs.create }}
-      commit: ${{ steps.source.outputs.commit }}
+      source: ${{ steps.source.outputs.commit }}
+      commit: ${{ steps.assets.outputs.commit }}
     steps:
       - name: Checkout main
         uses: actions/checkout@v4
@@ -31,38 +36,67 @@ jobs:
           fetch-depth: 0
       - name: Pin source
         id: source
-        run: echo "commit=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+        env:
+          RETRY_TAG: ${{ inputs.retry_tag }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -n "$RETRY_TAG" ]]; then
+            [[ "$RETRY_TAG" =~ ^packages/cli/v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]
+            release="$(git rev-parse "$RETRY_TAG^{commit}")"
+            if git merge-base --is-ancestor "$release" origin/main; then
+              echo 'retry_tag requires a generated asset commit; historical source installs remain supported.' >&2
+              exit 1
+            fi
+            source="$(git rev-parse "$release^1")"
+            git merge-base --is-ancestor "$source" origin/main
+            echo "release=$release" >> "$GITHUB_OUTPUT"
+            git checkout --detach "$source"
+          fi
+          echo "commit=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
-      - name: Set up Go for release version selection
+      - name: Set up build tools
         uses: jdx/mise-action@v4
         with:
-          install_args: go
+          install_args: go node pnpm
+      - run: mise run setup
 
       - name: Select release version
         id: tag
+        env:
+          RETRY_TAG: ${{ inputs.retry_tag }}
         shell: bash
         run: |
           set -euo pipefail
 
-          git fetch --tags --force
-
           tag_prefix="packages/cli/v"
-          tag="$(cd packages/cli && go run ./tools/release-version)"
-          if tag_commit="$(git rev-list -n 1 "${tag}" 2>/dev/null)"; then
-            head_commit="$(git rev-parse HEAD)"
-            if [[ "${tag_commit}" != "${head_commit}" ]]; then
-              echo "${tag} points to ${tag_commit}, not current main ${head_commit}" >&2
-              exit 1
-            fi
-            create="false"
-          else
-            create="true"
+          tag="$RETRY_TAG"
+          if [[ -z "$tag" ]]; then
+            tag="$(cd packages/cli && go run ./tools/release-version)"
           fi
-
           version="${tag#${tag_prefix}}"
           echo "tag=${tag}" >> "$GITHUB_OUTPUT"
           echo "version=${version}" >> "$GITHUB_OUTPUT"
-          echo "create=${create}" >> "$GITHUB_OUTPUT"
+
+      - run: pnpm run build:web
+        if: inputs.retry_tag == ''
+      - name: Prepare installable source commit
+        id: assets
+        env:
+          GITHUB_SHA: ${{ steps.source.outputs.commit }}
+          RELEASE_TAG: ${{ steps.tag.outputs.tag }}
+          EXISTING_RELEASE: ${{ steps.source.outputs.release }}
+        run: |
+          commit="$EXISTING_RELEASE"
+          if [ -z "$commit" ]; then
+            commit="$(node tools/build/src/install-refs.ts release "$RELEASE_TAG")"
+          fi
+          echo "commit=$commit" >> "$GITHUB_OUTPUT"
+          git bundle create release.bundle "$RELEASE_TAG"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-source
+          path: release.bundle
 
   native:
     name: Native ${{ matrix.os }}/${{ matrix.arch }}
@@ -87,7 +121,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ needs.prepare.outputs.commit }}
+          ref: ${{ needs.prepare.outputs.source }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-source
+          path: .release-source
+      - name: Checkout installable source
+        env:
+          RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
+          RELEASE_COMMIT: ${{ needs.prepare.outputs.commit }}
+        run: |
+          git fetch .release-source/release.bundle "refs/tags/$RELEASE_TAG:refs/tags/$RELEASE_TAG"
+          git checkout --detach "$RELEASE_COMMIT"
       - uses: jdx/mise-action@v4
         with:
           install_args: go
@@ -128,8 +173,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ needs.prepare.outputs.commit }}
+          ref: ${{ needs.prepare.outputs.source }}
           fetch-depth: 0
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-source
+          path: .release-source
+      - name: Checkout verified release source
+        env:
+          RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
+          RELEASE_COMMIT: ${{ needs.prepare.outputs.commit }}
+        run: |
+          git fetch .release-source/release.bundle "refs/tags/$RELEASE_TAG:refs/tags/$RELEASE_TAG"
+          git checkout --detach "$RELEASE_COMMIT"
       - uses: jdx/mise-action@v4
       - run: mise run setup
       - uses: actions/download-artifact@v4
@@ -140,31 +196,44 @@ jobs:
       - name: Checksums
         run: cd dist && shasum -a 256 *.tar.gz > checksums.txt
       - name: Create release tag
-        if: needs.prepare.outputs.create == 'true'
-        run: |
-          git tag "${{ needs.prepare.outputs.tag }}"
-          git push origin "${{ needs.prepare.outputs.tag }}"
+        env:
+          RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
+        run: git push origin "refs/tags/$RELEASE_TAG"
 
       - name: Publish GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
+          RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
         shell: bash
         run: |
           set -euo pipefail
 
-          tag="${{ needs.prepare.outputs.tag }}"
-          version="${{ needs.prepare.outputs.version }}"
+          tag="$RELEASE_TAG"
+          version="$RELEASE_VERSION"
+          stable_pattern='^packages/cli/v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$'
+          newest="$(git tag --list --sort=-version:refname | grep -E "$stable_pattern" | sed -n '1p')"
+          make_latest=false
+          if [[ "$tag" == "$newest" ]]; then make_latest=true; fi
 
           if gh release view "${tag}" >/dev/null 2>&1; then
-            gh release upload "${tag}" dist/*.tar.gz dist/checksums.txt --clobber
-            gh release edit "${tag}" --draft=false --prerelease=false --latest
+            # Resume with the original verified bytes, even after main advances.
+            previous="$(mktemp -d)"
+            gh release download "${tag}" --dir "$previous"
+            for archive in dist/*.tar.gz; do
+              test -f "$previous/$(basename "$archive")"
+              awk -v name="$(basename "$archive")" '$2 == name { count++ } END { exit count != 1 }' "$previous/checksums.txt"
+            done
+            (cd "$previous" && shasum -a 256 -c checksums.txt)
+            cp "$previous"/*.tar.gz "$previous/checksums.txt" dist/
+            gh release edit "${tag}" --draft=false --prerelease=false --latest="$make_latest"
           else
             gh release create "${tag}" \
               dist/*.tar.gz \
               dist/checksums.txt \
               --title "tokeninsights v${version}" \
               --verify-tag \
-              --latest \
+              --latest="$make_latest" \
               --generate-notes
           fi
 

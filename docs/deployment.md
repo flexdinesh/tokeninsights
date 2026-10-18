@@ -1,7 +1,7 @@
 # Docker and hosted deployment
 
 `tokeninsights-server` runs the foreground server without collecting harness data.
-It serves the committed embedded dashboard and authenticated REST API. One container
+It serves the embedded dashboard and authenticated REST API. One container
 owns token and account state in SQLite or PostgreSQL. Collectors run
 on client machines; the server has no harness mounts, collector daemon or analytics TUI.
 
@@ -21,10 +21,15 @@ Ingress and TLS are deployment-owned; use HTTPS for external deployments.
 optionally pins the browser origin; otherwise browser authentication matches the
 request Host and supports HTTP or HTTPS origins.
 
-The Dockerfile pins Go and Debian image digests. It builds with `CGO_ENABLED=0`
+The Dockerfile pins Node, Go and Debian image digests. A build stage installs the
+workspace dependencies with pinned pnpm and the frozen lockfile, then builds the
+dashboard from source through `pnpm run build:web`. Generated host assets and
+`node_modules` are excluded from the build context; the embedded dashboard excludes
+the development mock service worker. Go builds with `CGO_ENABLED=0`
 and smoke-tests `--version`; runtime dependencies are CA certificates, timezone
 data. The binary itself probes readiness; no curl is required. There is no C/C++ database library or JavaScript
-runtime. Builds consume committed Go source and embedded browser assets.
+runtime. Builds consume committed Go and dashboard source; build tools stay in the
+build stages.
 
 ## Server configuration
 

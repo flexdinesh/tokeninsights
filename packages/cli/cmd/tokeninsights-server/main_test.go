@@ -13,7 +13,23 @@ import (
 
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/accounts"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/remoteserver"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/version"
 )
+
+func TestVersionIncludesBuildMetadata(t *testing.T) {
+	oldVersion, oldCommit, oldDate := version.Version, version.Commit, version.Date
+	t.Cleanup(func() {
+		version.Version, version.Commit, version.Date = oldVersion, oldCommit, oldDate
+	})
+	version.Version, version.Commit, version.Date = "0.1.7", "abc123", "2026-10-18T00:00:00Z"
+	var stdout, stderr bytes.Buffer
+	if err := run(t.Context(), []string{"--version"}, &stdout, &stderr); err != nil {
+		t.Fatal(err)
+	}
+	if got, want := stdout.String(), "tokeninsights-server 0.1.7 abc123 2026-10-18T00:00:00Z\n"; got != want {
+		t.Fatalf("version output = %q, want %q", got, want)
+	}
+}
 
 func TestAdminCommandsUseRunningOwner(t *testing.T) {
 	root := t.TempDir()

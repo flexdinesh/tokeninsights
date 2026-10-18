@@ -30,6 +30,16 @@ go install github.com/flexdinesh/tokeninsights/packages/cli/cmd/tokeninsights@la
 
 `@latest` installs the latest stable version, published manually from `main`. Use `@v0.1.3` to pin a stable version.
 
+For the latest `main` commit that passed native CI:
+
+```sh
+go install github.com/flexdinesh/tokeninsights/packages/cli/cmd/tokeninsights@edge
+```
+
+`main` and feature branches omit generated dashboard assets. For local Go builds,
+run `mise run setup` and `pnpm run build:web` first. Root build, test, and lint tasks
+generate these assets automatically. Direct `go install ...@main` is unsupported.
+
 See [release channels and workflow](docs/release.md).
 
 ## Run

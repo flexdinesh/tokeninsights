@@ -262,7 +262,7 @@ clears explicit bounds so refresh continues to follow the current period.
 The static summary strip, chart, and padded result table follow. Controls preserve keyboard access, mobile touch targets, and 200%
 text reflow. Presentation components use existing query state and callbacks;
 URL/history, dataset snapshots, authentication, and request lifecycle remain owned
-by their existing browser modules. Fonts and browser assets are committed and
+by their existing browser modules. Font sources are committed; generated browser assets are built and
 embedded by Go, with no remote font or host JavaScript runtime dependency.
 
 Compact header/navigation padding, section gaps and gutters, a 12rem plot and
@@ -683,7 +683,7 @@ and storage/HTTP separation. Real-adapter contract tests enforce the behaviors t
 types and import rules cannot prove.
 
 One process owns the shared database; two bounded compute workers. Docker packages
-the foreground executable with committed assets, non-root Debian runtime, CA/timezone
+the foreground executable with generated embedded assets, non-root Debian runtime, CA/timezone
 data, persistent SQLite `/data` and private `/run/tokeninsights` admin
 socket. `/healthz` is liveness; `/readyz` checks initialized storage/auth/routes,
 not absence of pending work. SIGTERM closes listeners, joins worker and closes
@@ -708,7 +708,15 @@ Collector JSONL replacement, per-user DBs, organizations, external queues,
 replicas and OAuth/OIDC are out of scope. Hosted username/password signup is
 operator-controlled and defaults off.
 
-Go embeds committed web assets. Production builds use pure Go (`CGO_ENABLED=0`); native CI/release
+Go embeds generated web assets. `main` ignores `packages/cli/internal/server/static`;
+local build/test/lint tasks build the dashboard before Go checks. Direct Go commands
+require `pnpm run build:web` first. CI publishes a separate asset commit to `edge`
+after native checks pass, or to a stable `packages/cli/vX.Y.Z` tag during manual
+release. Stable archives build from that same asset commit. `edge` includes the
+latest stable release as an ancestor for Go pseudo-version ordering; its first
+parent identifies the tested `main` source. Stale edge runs cannot regress it.
+See [ADR 0017](adr/0017-generated-assets-on-installable-refs.md).
+Production builds use pure Go (`CGO_ENABLED=0`); native CI/release
 Linux/macOS amd64/arm64 runners. Production needs no JavaScript runtime.
 Verification: format/lint/schema/API, native semantic fixtures, full/race tests,
 native build/JS-absent smoke and browser E2E.
