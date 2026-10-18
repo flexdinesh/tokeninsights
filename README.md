@@ -56,6 +56,9 @@ failed requests retain Retry controls.
 In-process collector progress also polls every five seconds, during collection
 and while idle. Hosted dashboards never poll collector progress.
 
+Web startup highlights the dashboard URL in color and shows a Ctrl+C shutdown hint.
+Redirected output stays plain; `NO_COLOR=1` disables terminal styling.
+
 Local TUI and Web open after storage initialization, before collection finishes. The
 dashboard shows collection, submission, and processing progress while saved usage
 remains readable; new published revisions refresh automatically.

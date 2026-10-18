@@ -325,6 +325,9 @@ claims in this change.
 Single-process `tui` owns collector, direct ingestion, processing and direct query
 adapters. `web` adds a foreground read-only HTTP listener, bound to 127.0.0.1:8765
 by default or the requested IPv4 host/port. Reserve the Web listener before capture.
+Once ready, the Web command prints a compact app heading, highlighted dashboard URL
+and Ctrl+C hint. Styling follows the output stream's terminal capabilities and
+`NO_COLOR`/`CLICOLOR`/`CLICOLOR_FORCE`; redirected output is plain by default.
 Both initialize owned storage, register startup progress and open saved usage
 before asynchronous capture. Shared local startup orchestration owns the background
 capture and progress observers; command cancellation or listener failure cancels and

@@ -653,7 +653,7 @@ func startLocal(t *testing.T, c client, extra ...string) string {
 	t.Helper()
 	args := append([]string{"--config-file", c.config, "web", "--sync=false", "--open=false", "--port", "0"}, extra...)
 	command := exec.Command(clientBinary, args...)
-	command.Env = c.env
+	command.Env = append(slices.Clone(c.env), "NO_COLOR=1")
 	output, err := command.StdoutPipe()
 	if err != nil {
 		t.Fatal(err)
@@ -680,8 +680,11 @@ func startLocal(t *testing.T, c client, extra ...string) string {
 	ready := make(chan string, 1)
 	go func() {
 		scanner := bufio.NewScanner(output)
-		if scanner.Scan() {
-			ready <- strings.TrimPrefix(scanner.Text(), "Dashboard: ")
+		for scanner.Scan() {
+			if target, ok := strings.CutPrefix(strings.TrimSpace(scanner.Text()), "Dashboard:"); ok {
+				ready <- strings.TrimSpace(target)
+				return
+			}
 		}
 	}()
 	select {
