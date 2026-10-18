@@ -15,6 +15,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/charmbracelet/x/ansi"
+
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/collector"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/collectorprogress"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/config"
@@ -66,9 +68,13 @@ func TestLocalWebOwnsListenerUntilCancellationAndNeverAcceptsHTTPIngestion(t *te
 		return collector.Result{}, ctx.Err()
 	}
 	var address string
+	var stdout bytes.Buffer
 	openDashboard = func(url string) error {
 		if !strings.HasPrefix(url, "http://127.0.0.1:") {
 			t.Fatal("wrong browser address/order", url)
+		}
+		if output := ansi.Strip(stdout.String()); !strings.Contains(output, "Dashboard:  "+url) || !strings.Contains(output, "Ctrl+C") {
+			t.Fatal("ready output missing browser URL or shutdown hint", output)
 		}
 		select {
 		case <-started:
@@ -119,7 +125,7 @@ func TestLocalWebOwnsListenerUntilCancellationAndNeverAcceptsHTTPIngestion(t *te
 		cancel()
 		return nil
 	}
-	if err := runWeb(commandInvocation{context: ctx, stdout: io.Discard, stderr: io.Discard, settings: &settings}, []string{"--full-refresh", "--source-dir", root}); err != nil {
+	if err := runWeb(commandInvocation{context: ctx, stdout: &stdout, stderr: io.Discard, settings: &settings}, []string{"--full-refresh", "--source-dir", root}); err != nil {
 		t.Fatal(err)
 	}
 	select {
@@ -137,6 +143,38 @@ func TestLocalWebOwnsListenerUntilCancellationAndNeverAcceptsHTTPIngestion(t *te
 		t.Fatal("command retained database ownership", err)
 	}
 	_ = runtime.Close()
+}
+
+func TestWebReadyOutputRespectsColorEnvironment(t *testing.T) {
+	const url = "http://127.0.0.1:43210"
+	for _, test := range []struct {
+		name     string
+		force    string
+		noColor  string
+		cliColor string
+		styled   bool
+	}{
+		{name: "redirected"},
+		{name: "forced color", force: "1", styled: true},
+		{name: "no color overrides force", force: "1", noColor: "1"},
+		{name: "disabled color", cliColor: "0"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Setenv("CLICOLOR_FORCE", test.force)
+			t.Setenv("NO_COLOR", test.noColor)
+			t.Setenv("CLICOLOR", test.cliColor)
+			var output bytes.Buffer
+			printWebReady(&output, url)
+			text := output.String()
+			plain := ansi.Strip(text)
+			if (text != plain) != test.styled {
+				t.Fatalf("styled = %v, want %v: %q", text != plain, test.styled, text)
+			}
+			if !strings.Contains(plain, "TokenInsights  ready") || !strings.Contains(plain, "Dashboard:  "+url) || !strings.Contains(plain, "Press Ctrl+C to stop.") {
+				t.Fatalf("missing ready information: %q", plain)
+			}
+		})
+	}
 }
 
 func readWebProgress(t *testing.T, url string) collectorprogress.Snapshot {

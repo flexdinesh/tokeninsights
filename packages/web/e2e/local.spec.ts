@@ -11,7 +11,7 @@ function startCLI(
 ): Promise<{ origin: string; stop: () => Promise<void> }> {
   return new Promise((resolveRun, reject) => {
     const child = spawn(resolve('../cli/bin/tokeninsights'), args, {
-      env,
+      env: { ...env, NO_COLOR: '1' },
       stdio: ['ignore', 'pipe', 'pipe'],
     })
     let output = ''
@@ -22,7 +22,7 @@ function startCLI(
     }, 10000)
     child.stdout.on('data', (chunk: Buffer) => {
       output += chunk.toString()
-      const origin = /Dashboard: (http:\/\/[^\s]+)/u.exec(output)?.[1]
+      const origin = /Dashboard:\s+(http:\/\/[^\s]+)/u.exec(output)?.[1]
       if (origin && !ready) {
         ready = true
         clearTimeout(deadline)

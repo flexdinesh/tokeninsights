@@ -4,8 +4,11 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"io"
 	"net"
 	"time"
+
+	"github.com/charmbracelet/lipgloss"
 
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/adapters/sqlanalytics"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/browser"
@@ -84,10 +87,21 @@ func runLocalWeb(invocation commandInvocation, settings config.LocalSettings, sy
 		Policy: runtime.Policy, Progress: runtime.Progress, ProcessUsage: processusage.New(),
 	})
 	return serveLocalWeb(ctx, runtime.Store, []serverruntime.Binding{{Listener: listener, Handler: handler}}, func() error {
-		_, _ = fmt.Fprintln(invocation.stdout, "Dashboard: "+url)
+		printWebReady(invocation.stdout, url)
 		if openBrowser && openDashboard(url) != nil {
 			_, _ = fmt.Fprintln(invocation.stderr, "Could not open browser; open dashboard URL above.")
 		}
 		return nil
 	})
+}
+
+func printWebReady(output io.Writer, url string) {
+	renderer := lipgloss.NewRenderer(output)
+	title := renderer.NewStyle().Bold(true)
+	ready := renderer.NewStyle().Foreground(lipgloss.Color("2"))
+	link := renderer.NewStyle().Bold(true).Foreground(lipgloss.Color("6"))
+	hint := renderer.NewStyle().Faint(true)
+	_, _ = fmt.Fprintf(output, "\n  %s  %s\n\n  Dashboard:  %s\n\n  %s\n\n",
+		title.Render("TokenInsights"), ready.Render("ready"), link.Render(url),
+		hint.Render("Press Ctrl+C to stop."))
 }
