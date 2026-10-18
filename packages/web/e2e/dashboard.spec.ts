@@ -276,7 +276,7 @@ test('saved usage, seven views, filtering, history, pagination, and automatic re
   await expect(page.getByLabel('Total tokens: 258,000', { exact: true })).toBeVisible()
   await expect(page.getByRole('region', { name: 'Usage over time', exact: true })).toBeVisible()
   await expect(page.locator('.recharts-surface')).toBeVisible()
-  await expect(page.getByRole('button', { name: 'This month', exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: /^Date range:/ })).toBeVisible()
   for (const tab of ['Models', 'Providers', 'Harnesses', 'Sessions', 'Context', 'Repo', 'Tokens']) {
     await page
       .getByRole('navigation', { name: 'Analytics views' })
@@ -374,6 +374,7 @@ test('saved usage, seven views, filtering, history, pagination, and automatic re
   await expect(page.getByLabel('Total tokens: 258,000', { exact: true })).toBeVisible()
   expect(syncRequests).toBe(0)
   expect(errors).toEqual([])
+  await page.getByRole('button', { name: /^Date range:/ }).click()
   await page.getByRole('button', { name: 'All time', exact: true }).click()
   await expect(page.locator('.session-coverage')).toHaveText('Sessions 80 shown / 80 synced')
   await expect(page.getByLabel('Sessions shown: 80', { exact: true })).toBeVisible()
@@ -608,7 +609,7 @@ test('themes, keyboard filters, mobile layout, and scalable typography', async (
   ).toBeGreaterThan(bodySize)
   const toolbarControls = [
     page.getByRole('button', { name: 'Harness', exact: true }),
-    page.getByRole('button', { name: 'This month', exact: true }),
+    page.getByRole('button', { name: /^Date range:/ }),
     page.getByRole('combobox', { name: 'Time bucket', exact: true }),
   ]
   const controlHeights = await Promise.all(
@@ -703,7 +704,9 @@ for (const address of ['127.0.0.1', 'localhost']) {
 test('custom dates, session search, and saved usage after status failure', async ({ page }) => {
   await page.goto('/')
   await expect(page.getByRole('region', { name: 'Filtered usage summary' })).toBeVisible()
-  await page.getByRole('button', { name: 'This month', exact: true }).click()
+  await page.getByRole('button', { name: /^Date range:/ }).click()
+  await expect(page.getByLabel('From date', { exact: true })).toHaveCount(0)
+  await page.getByRole('button', { name: 'Custom', exact: true }).click()
   await page.getByLabel('From date', { exact: true }).fill('2099-01-01')
   await page.getByRole('button', { name: 'Apply range' }).click()
   await expect(page.getByRole('heading', { name: 'No usage matches these filters' })).toBeVisible()
@@ -723,4 +726,59 @@ test('custom dates, session search, and saved usage after status failure', async
     timeout: 10000,
   })
   await expect(page.getByLabel('Total tokens: 4,300', { exact: true })).toBeVisible()
+})
+
+test('calendar periods step, survive navigation and history, and reveal custom fields on demand', async ({
+  page,
+}) => {
+  await page.goto('/tokens')
+  const dates = page.getByRole('button', { name: /^Date range:/ })
+  await expect(dates).toHaveText('Monthly')
+  await expect(page.getByLabel('Quick date ranges')).toHaveCount(0)
+  const periods: [string, string][] = [
+    ['Daily', 'day'],
+    ['Weekly', 'week'],
+    ['Monthly', 'month'],
+    ['Yearly', 'year'],
+  ]
+  for (const [label, unit] of periods) {
+    await dates.click()
+    await expect(page.getByLabel('From date', { exact: true })).toHaveCount(0)
+    await page.getByRole('button', { name: label, exact: true }).click()
+    await expect(page.getByRole('button', { name: `Next ${unit}`, exact: true })).toBeDisabled()
+    await page.getByRole('button', { name: `Previous ${unit}`, exact: true }).click()
+    await expect(page).toHaveURL(/dateMode=calendar/)
+    await expect(page.getByRole('button', { name: `Next ${unit}`, exact: true })).toBeEnabled()
+    await expect(dates).toHaveText(label)
+    await page.getByRole('button', { name: `Next ${unit}`, exact: true }).click()
+    await expect(page).not.toHaveURL(/from=/)
+    await expect(page.getByLabel('Total tokens: 258,000', { exact: true })).toBeVisible()
+  }
+  await page.getByRole('button', { name: 'Previous year', exact: true }).click()
+  await page
+    .getByRole('navigation', { name: 'Analytics views' })
+    .getByRole('link', { name: 'Models', exact: true })
+    .click()
+  await page.reload()
+  await expect(page.getByRole('button', { name: 'Next year', exact: true })).toBeEnabled()
+  await page.getByRole('button', { name: 'Next year', exact: true }).click()
+  await page.goBack()
+  await expect(page).toHaveURL(/dateMode=calendar/)
+  await expect(page.getByRole('button', { name: 'Next year', exact: true })).toBeEnabled()
+  await dates.click()
+  await page.getByRole('button', { name: 'Custom', exact: true }).click()
+  await page.getByLabel('From date', { exact: true }).fill('2026-10-02')
+  await page.getByLabel('To date', { exact: true }).fill('2026-10-01')
+  await expect(page.getByRole('button', { name: 'Apply range' })).toBeDisabled()
+  await expect(page.getByRole('alert')).toContainText('From must not be after to.')
+  await page.getByLabel('To date', { exact: true }).fill('2026-10-03')
+  await page.getByRole('button', { name: 'Apply range' }).click()
+  await expect(page.getByRole('navigation', { name: 'Period navigation' })).toHaveCount(0)
+  await page.reload()
+  await dates.click()
+  await expect(page.getByLabel('From date', { exact: true })).toHaveValue('2026-10-02')
+  await page.getByRole('button', { name: 'All time', exact: true }).click()
+  await expect(page.getByRole('navigation', { name: 'Period navigation' })).toHaveCount(0)
+  await dates.click()
+  await expect(page.getByLabel('From date', { exact: true })).toHaveCount(0)
 })

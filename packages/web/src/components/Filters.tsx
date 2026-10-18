@@ -1,7 +1,7 @@
 import { useEffect, useId, useRef, useState } from 'react'
 import { CalendarDays, Check, ChevronDown, Filter, Search, X } from 'lucide-react'
 import type { Dimension, Facets, Selection } from '../contracts'
-import { bucketSchema, periodSchema } from '../contracts'
+import { bucketSchema } from '../contracts'
 import { useDashboardQuery } from '../state'
 import { useFacets } from '../api'
 import { Button } from './ui/button'
@@ -24,11 +24,10 @@ const locationDimensions: {
   { key: 'directories', label: 'Directory' },
 ]
 const periods: { value: Selection['period']; label: string }[] = [
-  { value: 'today', label: 'Today' },
-  { value: 'yesterday', label: 'Yesterday' },
-  { value: 'week', label: 'This week' },
-  { value: 'month', label: 'This month' },
-  { value: 'year', label: 'This year' },
+  { value: 'today', label: 'Daily' },
+  { value: 'week', label: 'Weekly' },
+  { value: 'month', label: 'Monthly' },
+  { value: 'year', label: 'Yearly' },
   { value: 'all', label: 'All time' },
 ]
 
@@ -208,24 +207,32 @@ function DateFilter() {
   const [from, setFrom] = useState(query.from)
   const [to, setTo] = useState(query.to)
   const invalid = Boolean(from && to && from > to)
-  const custom = query.from || query.to
+  const custom = Boolean((query.from || query.to) && query.dateMode !== 'calendar')
+  const [editingCustom, setEditingCustom] = useState(custom)
+  const dateLabel = custom
+    ? `${query.from || 'Beginning'} → ${query.to || 'Now'}`
+    : (periods.find((p) => p.value === query.period)?.label ?? 'Daily')
   return (
     <Popover
       open={open}
       onOpenChange={(value) => {
         setOpen(value)
         if (value) {
-          setFrom(query.from)
-          setTo(query.to)
+          setEditingCustom(custom)
+          setFrom(custom ? query.from : '')
+          setTo(custom ? query.to : '')
         }
       }}
     >
       <PopoverTrigger asChild>
-        <Button variant="outline" size="sm" className="filter-button date-button">
+        <Button
+          variant="outline"
+          size="sm"
+          className="filter-button date-button"
+          aria-label={`Date range: ${dateLabel}`}
+        >
           <CalendarDays size="1em" />
-          {custom
-            ? `${query.from || 'Beginning'} → ${query.to || 'Now'}`
-            : periods.find((p) => p.value === query.period)?.label}
+          {dateLabel}
           <ChevronDown size="1em" />
         </Button>
       </PopoverTrigger>
@@ -235,61 +242,80 @@ function DateFilter() {
           {periods.map((p) => (
             <Button
               key={p.value}
-              variant={!custom && query.period === p.value ? 'secondary' : 'outline'}
-              aria-pressed={!custom && query.period === p.value}
+              variant={
+                !editingCustom &&
+                (query.period === p.value || (p.value === 'today' && query.period === 'yesterday'))
+                  ? 'secondary'
+                  : 'outline'
+              }
+              aria-pressed={
+                !editingCustom &&
+                (query.period === p.value || (p.value === 'today' && query.period === 'yesterday'))
+              }
               onClick={() => {
-                updateSelection({ period: p.value, from: '', to: '' })
+                updateSelection({ period: p.value, from: '', to: '', dateMode: undefined })
                 setOpen(false)
               }}
             >
               {p.label}
             </Button>
           ))}
+          <Button
+            variant={editingCustom ? 'secondary' : 'outline'}
+            aria-pressed={editingCustom}
+            onClick={() => setEditingCustom(true)}
+          >
+            Custom
+          </Button>
         </div>
-        <div className="date-inputs">
-          <label htmlFor={`${errorId}-from`}>
-            From
-            <Input
-              id={`${errorId}-from`}
-              aria-label="From date"
-              aria-invalid={invalid || undefined}
-              aria-describedby={invalid ? errorId : undefined}
-              type="date"
-              value={from}
-              onChange={(e) => setFrom(e.target.value)}
-            />
-          </label>
-          <label htmlFor={`${errorId}-to`}>
-            To
-            <Input
-              id={`${errorId}-to`}
-              aria-label="To date"
-              aria-invalid={invalid || undefined}
-              aria-describedby={invalid ? errorId : undefined}
-              type="date"
-              value={to}
-              onChange={(e) => setTo(e.target.value)}
-            />
-          </label>
-        </div>
-        <p className="hint">
-          Inclusive dates in the server’s local timezone. Either bound can be empty.
-        </p>
-        {invalid && (
-          <p id={errorId} role="alert" className="error-text">
-            From must not be after to.
-          </p>
+        {editingCustom && (
+          <>
+            <div className="date-inputs">
+              <label htmlFor={`${errorId}-from`}>
+                From
+                <Input
+                  id={`${errorId}-from`}
+                  aria-label="From date"
+                  aria-invalid={invalid || undefined}
+                  aria-describedby={invalid ? errorId : undefined}
+                  type="date"
+                  value={from}
+                  onChange={(e) => setFrom(e.target.value)}
+                />
+              </label>
+              <label htmlFor={`${errorId}-to`}>
+                To
+                <Input
+                  id={`${errorId}-to`}
+                  aria-label="To date"
+                  aria-invalid={invalid || undefined}
+                  aria-describedby={invalid ? errorId : undefined}
+                  type="date"
+                  value={to}
+                  onChange={(e) => setTo(e.target.value)}
+                />
+              </label>
+            </div>
+            <p className="hint">
+              Inclusive dates in the server’s local timezone. Either bound can be empty.
+            </p>
+            {invalid && (
+              <p id={errorId} role="alert" className="error-text">
+                From must not be after to.
+              </p>
+            )}
+            <Button
+              className="full-width"
+              disabled={invalid || (!from && !to)}
+              onClick={() => {
+                updateSelection({ from, to, dateMode: undefined })
+                setOpen(false)
+              }}
+            >
+              Apply range
+            </Button>
+          </>
         )}
-        <Button
-          className="full-width"
-          disabled={invalid || (!from && !to)}
-          onClick={() => {
-            updateSelection({ from, to })
-            setOpen(false)
-          }}
-        >
-          Apply range
-        </Button>
       </PopoverContent>
     </Popover>
   )
@@ -310,7 +336,7 @@ export function FilterToolbar({
   const hasFilters =
     dimensions.some((d) => query[d.key].length > 0) ||
     (query.tab === 'repo' && locationDimensions.some((d) => query[d.key].length > 0)) ||
-    Boolean(query.from || query.to)
+    Boolean((query.from || query.to) && query.dateMode !== 'calendar')
   return (
     <section className="filters" aria-label="Dashboard filters">
       <div className="filter-content">
@@ -402,12 +428,12 @@ export function FilterToolbar({
                   )
                 }),
               )}
-            {(query.from || query.to) && (
+            {(query.from || query.to) && query.dateMode !== 'calendar' && (
               <Button
                 variant="secondary"
                 size="sm"
                 className="filter-chip"
-                onClick={() => updateSelection({ from: '', to: '' })}
+                onClick={() => updateSelection({ from: '', to: '', dateMode: undefined })}
               >
                 Custom dates
                 <X size="0.9em" />
@@ -451,28 +477,6 @@ export function BucketControl() {
           ))}
         </SelectContent>
       </Select>
-    </div>
-  )
-}
-
-export function QuickPeriods() {
-  const { query, updateSelection } = useDashboardQuery()
-  return (
-    <div className="quick-periods" aria-label="Quick date ranges">
-      {['today', 'week', 'month', 'year', 'all'].map((value) => {
-        const period = periodSchema.parse(value)
-        return (
-          <Button
-            key={period}
-            variant="ghost"
-            size="sm"
-            aria-pressed={query.period === period && !query.from && !query.to}
-            onClick={() => updateSelection({ period, from: '', to: '' })}
-          >
-            {period === 'all' ? 'All time' : period[0]?.toUpperCase() + period.slice(1)}
-          </Button>
-        )
-      })}
     </div>
   )
 }

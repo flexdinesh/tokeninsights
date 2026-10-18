@@ -4,7 +4,7 @@ TokenInsights is a token usage dashboard for OpenCode, Pi, Codex, and Claude Cod
 
 The browser dashboard uses white and neutral charcoal themes, restrained blue accents,
 and locally bundled DM Sans. Compact navigation and filters wrap on smaller screens;
-filters and quick dates share a toolbar directly below the header. Hover, focus, or
+filters and period navigation share a toolbar directly below the header. Choose Daily, Weekly, Monthly, Yearly, All time, or Custom in the date filter. Previous/next arrows step calendar periods through the current period; weeks start Monday in the server timezone. Custom date inputs appear only after choosing Custom. Hover, focus, or
 press the status icon beside theme selection for loading status and last ingestion.
 In-process Web also shows harness details and TokenInsights process CPU/resident RAM.
 

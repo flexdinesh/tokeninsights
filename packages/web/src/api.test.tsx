@@ -115,7 +115,7 @@ it('uses server defaults on first load', async () => {
     </QueryClientProvider>,
   )
 
-  expect(await screen.findByRole('button', { name: 'This week' })).toBeVisible()
+  expect(await screen.findByRole('button', { name: 'Date range: Weekly' })).toBeVisible()
   client.clear()
 })
 

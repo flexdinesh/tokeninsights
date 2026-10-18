@@ -5,7 +5,7 @@ export const exactCount = (n: number) => exact.format(n)
 
 const millisecondsPerMinute = 60_000
 
-function serverZone(timezone: string) {
+export function serverZone(timezone: string) {
   const offset = /^UTC([+-])(\d{2}):(\d{2})$/.exec(timezone)
   if (offset) {
     const hours = Number(offset[2])
