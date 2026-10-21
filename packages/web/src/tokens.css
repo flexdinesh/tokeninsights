@@ -68,8 +68,8 @@
   --border-width: 0.0625rem;
   --focus-width: 0.125rem;
   --focus-offset: 0.125rem;
-  --control-height-sm: 2.25rem;
-  --control-height-md: 2.25rem;
+  --control-height-sm: 1.875rem;
+  --control-height-md: 2rem;
   --control-height-lg: 2.75rem;
   --control-height: var(--control-height-md);
   --control-height-compact: var(--control-height-sm);
@@ -78,7 +78,8 @@
   --reading-width: 42rem;
   --page-gutter: var(--space-4);
   --panel-padding: var(--space-4);
-  --header-height: 3rem;
+  --header-height: 2.75rem;
+  --table-row-height: 2rem;
   --sidebar-width: 12rem;
   --popover-width: 22rem;
   --chart-height: 12rem;
