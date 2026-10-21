@@ -28,7 +28,7 @@ storage smoke case has two datasets, two sessions each, ten messages/session and
 three generations. The paced smoke stream retains forty spaced batches and its
 independent-dataset assertion, with sixteen messages/batch. Ordinary tests do not
 execute benchmark bodies. Local pre-push runs smoke explicitly,
-without timing gates.
+without timing gates, so packages run concurrently.
 
 `bench:storage` runs the full matrix below, with three iterations and three
 repetitions, one Go package at a time (`-p=1`). Do not run other verification or

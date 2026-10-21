@@ -68,8 +68,9 @@ try {
     }
     dsn = `postgres://postgres:tokeninsights-contract@127.0.0.1:${port}/postgres?sslmode=disable`
   }
+  // Smoke has no timing gates, so packages build and run concurrently.
   const args = smoke
-    ? ['-run', '^$', '-bench', '.', '-benchtime=1x', '-count=1', '-p=1']
+    ? ['-run', '^$', '-bench', '.', '-benchtime=1x', '-count=1']
     : process.argv.slice(2)
   const child = spawn('go', ['test', ...args, './...'], {
     stdio: 'inherit',

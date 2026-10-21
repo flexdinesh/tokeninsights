@@ -51,17 +51,18 @@ Run commands from the repository root unless noted otherwise.
 | Check formatting | `pnpm run format:check` |
 | Lint Go and TypeScript | `pnpm run lint` |
 | Run all tests | `pnpm run test` |
+| Run TypeScript, plugin and web unit tests | `pnpm run test:js` |
 | Run Go race-detector suite | `pnpm run test:race` |
 | Verify real server image on both backends | `pnpm run test:container` |
 | Validate SQLite/PostgreSQL schema copies | `pnpm run check-schema` |
 | Validate generated API files | `pnpm run check-api` |
 | Regenerate API files | `pnpm run generate:api` |
-| Build and sync embedded web assets | `pnpm run build:web` |
+| Build and sync embedded web assets; skips unchanged inputs | `pnpm run build:web` |
 | Check committed web assets | `pnpm run check-web` |
 | Run browser end-to-end tests | `pnpm run test:web-e2e` |
 | Build production binary and validate contracts | `pnpm run build` |
 
-The pre-push hook clears Git-local environment variables before running `mise run check:push`, so fixture Git commands operate on their own repositories rather than the repository being pushed. Verification covers formatting, lint, the public docs build, SQLite/PostgreSQL/API contracts, unit/conformance tests, all Go race tests, a frontend rebuild with committed-asset comparison, native build, browser E2E, and real-container contracts on SQLite/PostgreSQL. Docker is required for container contracts even when an external PostgreSQL test DSN is supplied. Checks fail fast and never repair tracked files. Regenerate stale API/assets explicitly before committing and pushing. There is no pre-commit test suite.
+The pre-push hook clears Git-local environment variables before running `mise run check:push`, so fixture Git commands operate on their own repositories rather than the repository being pushed. Verification covers formatting, lint, the public docs build, SQLite/PostgreSQL/API contracts, TypeScript/web unit tests, all Go tests once under the race detector, a frontend rebuild with committed-asset comparison, native build, browser E2E, and real-container contracts on SQLite/PostgreSQL. Docker is required for container contracts even when an external PostgreSQL test DSN is supplied. `build:web` records a digest of web inputs and build output under `packages/web/node_modules/.cache`; repeated tasks skip the build while both match and resync embedded assets that drifted. Browser E2E tests run fully parallel. Checks fail fast and never repair tracked files. Regenerate stale API/assets explicitly before committing and pushing. There is no pre-commit test suite.
 
 Locally reproducible verification belongs in `check:push`, not CI or release preparation. New CI checks must document coverage unavailable on the developer host in both workflow and PR; rerunning local checks is not a reason. CI builds both binaries and tests storage on matching Linux/macOS amd64/arm64 runners, providing native platform coverage one host cannot supply. Release additionally packages, validates and publishes generated artifacts. CI only verifies; development installs resolve `main` directly without publication or waiting for CI. Both workflows disable hook installation with `HUSKY=0`. Hooks run locally after dependency setup; GUI clients must have mise on PATH. Root pnpm scripts own application commands; mise tasks delegate to those same scripts. Public docs dev/build tasks run Hugo directly through mise; pre-push invokes the same docs build task.
 
