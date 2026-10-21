@@ -1,0 +1,89 @@
+# Distributed sync
+
+Distributed sync submits sanitized usage evidence from each collector machine to one
+authenticated [self-hosted server](/self-hosting). Local dashboards never switch to
+a remote server based on these settings, and a remote failure never starts a local
+fallback. Distributed mode has no analytics TUI.
+
+## Configure a collector
+
+Create an API key with read and ingest scopes in the hosted dashboard settings, then:
+
+```sh
+tokeninsights config set distributed.server-url https://usage.example.com
+tokeninsights config set distributed.server-token  # secure prompt/stdin; no token argument
+tokeninsights sync
+tokeninsights browse
+```
+
+`TOKENINSIGHTS_ACCESS_TOKEN` overrides the stored token. `browse` opens the
+configured URL without syncing and requires only the URL. `sync status` and
+`sync --dry-run` need no credentials.
+
+## Run sync
+
+```sh
+tokeninsights sync                     # finite background worker
+tokeninsights sync --print             # also submits; stdout is only remote URL
+tokeninsights sync --wait              # foreground acceptance for scripts
+tokeninsights sync --debug             # capture/acceptance/receipt progress UI
+tokeninsights sync status --json
+```
+
+Background success means the job was saved and its worker started, not that upload
+or processing succeeded. Check `sync status`. Workers have a ten-minute bound and at
+most three delivery attempts, respecting Retry-After. Later explicit sync replays
+retained immutable requests and resumes earlier queued requests for the same
+endpoint/credential. Completed job history retains the latest 1,000 terminal jobs;
+queued/running work is retained. Jobs never store bearer tokens.
+
+Ordinary sync supports an ingest-only token; `--debug` also needs read permission
+and waits on its own receipts.
+
+## Options
+
+```sh
+tokeninsights sync --harness codex      # opencode, pi, codex, or claude-code
+tokeninsights sync --publish-only       # retry retained evidence without collection
+tokeninsights sync --full-refresh       # reread sources/retry quarantine
+tokeninsights sync --dry-run            # parse without persistent writes or delivery
+```
+
+All four harnesses are collected by default. Distributed sync can run alongside a
+local viewer, sharing collector continuity/outbox while retaining independent
+destination acknowledgements.
+
+## Accounting
+
+Local and distributed modes use the same identity, normalization, ambiguity,
+estimates and deduplication rules. Equal token counts never establish duplicate
+identity. Durable native session, message and request identities govern
+contributions; all five token components remain atomic. Exact retries return
+original receipts. Collector deletion, source removal and interrupted uploads do not
+erase server history or inflate confirmed totals. Ambiguous usable counters remain
+separate estimates.
+
+## Harness plugins
+
+Completion plugins trigger `tokeninsights sync --harness HARNESS` in the background
+when a harness finishes a turn. Hooks never wait for remote ingestion, and plugins
+contain no parser, database writer or HTTP client. Configure the distributed URL and
+token before installing them.
+
+| Harness     | Trigger               | Install                                                                           |
+| ----------- | --------------------- | --------------------------------------------------------------------------------- |
+| Codex       | `Stop` hook           | Register `.agents/plugins/marketplace.json`, then install its TokenInsights entry |
+| Claude Code | `Stop` hook           | Register `.claude-plugin/marketplace.json`, then install its TokenInsights entry  |
+| Pi          | `agent_settled`       | Install/load `packages/plugin-pi`                                                 |
+| OpenCode V2 | `session.status` idle | Register `packages/plugin-opencode/index.js` through its plugin loader            |
+
+Use user-wide registration to cover multiple repositories. TokenInsights never edits
+harness registrations automatically. Set `TOKENINSIGHTS_BINARY` to the executable
+path when the harness `PATH` lacks `tokeninsights`.
+
+A completion event is a collection opportunity, not proof that every harness write
+is flushed. Delayed records remain collectible by later sync. Plugins never refresh
+a local viewer; restart `tui` or `web` to recollect locally. Use manual `sync` and
+`sync status` to troubleshoot. See
+[completion plugins](https://github.com/flexdinesh/tokeninsights/blob/main/docs/plugins.md)
+for adapter details.

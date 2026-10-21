@@ -1,0 +1,96 @@
+# Commands
+
+Commands select composition. Bare invocation prints help; run any command with
+`--help` for its full flag list.
+
+## Local viewers
+
+```sh
+tokeninsights tui                 # collect, ingest and open terminal dashboard
+tokeninsights web                 # collect, ingest and serve browser dashboard until exit
+tokeninsights web --host 0.0.0.0  # bind all IPv4 interfaces (read-only dashboard)
+tokeninsights tui --sync=false    # show saved data; resume pending processing
+tokeninsights web --full-refresh  # reread sources/retry quarantine at startup
+```
+
+Local viewers need no daemon or separate server. TUI queries and local ingestion
+never use HTTP. Local viewers ignore distributed settings, including unreachable
+servers.
+
+| Flag                                                                  | `tui` | `web` | Purpose                                                                    |
+| --------------------------------------------------------------------- | ----- | ----- | -------------------------------------------------------------------------- |
+| `--sync`                                                              | yes   | yes   | Refresh usage in the background; `--sync=false` reads saved data           |
+| `--full-refresh`                                                      | yes   | yes   | Reread sources and retry quarantine at startup                             |
+| `--source-dir`                                                        | yes   | yes   | Override startup capture source directory                                  |
+| `--collector-db-path`, `--server-db-path`, `--app-db-path`            | yes   | yes   | Override database paths                                                    |
+| `--host`, `--port`                                                    |       | yes   | Bind address; default `127.0.0.1:8765`, port `0` chooses an available port |
+| `--open`                                                              |       | yes   | Open the browser automatically (default true)                              |
+| `--today`, `--yesterday`, `--week`, `--month`, `--year`, `--all-time` | yes   |       | Date range presets; weeks are Monday to Sunday                             |
+| `--filter-day-from`, `--filter-day-to`                                | yes   |       | Local day range, `YYYY-MM-DD`                                              |
+| `--bucket`                                                            | yes   |       | Time bucket: `day`, `week`, `month`, or `year`                             |
+| `--harness`, `--model`, `--provider`, `--session-id`                  | yes   |       | Filters; repeat or comma-separate                                          |
+
+## Distributed
+
+```sh
+tokeninsights sync                # start finite background submission
+tokeninsights sync --print        # also submit; stdout contains only remote URL
+tokeninsights sync --wait         # wait for acceptance
+tokeninsights sync --debug        # show capture, acceptance and receipt processing
+tokeninsights sync status --json  # latest durable job status
+tokeninsights browse              # open configured hosted dashboard; no upload
+tokeninsights browse --open=false # print dashboard URL without launching browser
+```
+
+See [Distributed sync](/sync) for setup, options and job behavior.
+
+## Configuration
+
+```sh
+tokeninsights config set KEY VALUE
+tokeninsights config get KEY
+tokeninsights config remove KEY
+```
+
+Keys: `collector.db-path`, `in-process.server-db-path`, `in-process.app-db-path`,
+`in-process.host`, `in-process.port`, `distributed.server-url`,
+`distributed.server-token`.
+
+Set `distributed.server-token` without a value to read it securely from the
+terminal or stdin. Passing a token value as an argument is rejected; `get` reports
+only whether it is configured.
+
+Configuration lives in `${XDG_CONFIG_HOME:-~/.config}/tokeninsights/config.json`,
+private and atomically written. Select another file with `--config-file PATH` or
+`TOKENINSIGHTS_CONFIG_PATH`.
+
+```json
+{
+  "collector": { "db-path": "/home/user/.local/share/tokeninsights/collector.sqlite" },
+  "in-process": { "host": "127.0.0.1", "port": 8765 },
+  "distributed": { "server-url": "https://usage.example.com" }
+}
+```
+
+Precedence: flags, then environment, then file, then defaults. Role-specific
+environment names remain; `TOKENINSIGHTS_SERVER_URL` and
+`TOKENINSIGHTS_ACCESS_TOKEN` apply only to distributed commands. There is no mode
+setting or flag.
+
+Flat configuration files are rejected without modification. Manually regroup their
+settings or select a fresh file with `--config-file`. No automatic conversion,
+deletion, or credential copying occurs.
+
+## Maintenance
+
+```sh
+tokeninsights data reprocess  # rebuild processed usage, no daemon
+tokeninsights data wait       # resume waiting for a saved generation
+```
+
+See [Maintenance](/maintenance).
+
+## Removed commands
+
+Legacy `service`, `server`, and `collector` commands are removed. The hosted server
+is the separate `tokeninsights-server` executable; see [Self-hosting](/self-hosting).

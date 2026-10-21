@@ -4,11 +4,14 @@ packages:
   - 'packages/plugin-pi'
   - 'packages/plugin-opencode'
   - 'tools/build'
+  - 'docs-website'
 injectWorkspacePackages: true
 allowBuilds:
   '@google/genai': true
+  es5-ext: false
   esbuild: true
   koffi: true
   msgpackr-extract: true
   msw: true
   protobufjs: true
+  vue-demi: false

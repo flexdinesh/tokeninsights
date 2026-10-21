@@ -1,0 +1,38 @@
+# Install
+
+Install TokenInsights on each machine where you use OpenCode, Pi, Codex, or Claude
+Code.
+
+## Homebrew
+
+```sh
+brew install flexdinesh/tap/tokeninsights
+```
+
+## Go
+
+```sh
+go install github.com/flexdinesh/tokeninsights/packages/cli/cmd/tokeninsights@latest
+```
+
+`@latest` installs the latest stable version, published manually from `main`. Use
+`@v0.1.3` to pin a stable version.
+
+For the latest `main` commit that passed native CI:
+
+```sh
+go install github.com/flexdinesh/tokeninsights/packages/cli/cmd/tokeninsights@edge
+```
+
+Make sure the directory containing the installed binary is on your `PATH`.
+
+`main` and feature branches omit generated dashboard assets, so direct
+`go install ...@main` is unsupported. To build from a checkout, run `mise run setup`
+and `pnpm run build:web` first. Root build, test, and lint tasks generate these
+assets automatically.
+
+See [release channels and workflow](https://github.com/flexdinesh/tokeninsights/blob/main/docs/release.md).
+
+## Next
+
+[Open your first dashboard](/getting-started).

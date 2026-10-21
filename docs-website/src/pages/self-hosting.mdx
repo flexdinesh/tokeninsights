@@ -1,0 +1,107 @@
+# Self-hosting
+
+`tokeninsights-server` runs one authenticated server that serves the dashboard and
+REST API for [distributed sync](/sync). It never collects harness data; collectors
+run on client machines. One process owns token and account state in SQLite
+(default) or PostgreSQL 18. There is no published image.
+
+For full configuration, ingress, backup and verification details, see
+[Docker and hosted deployment](https://github.com/flexdinesh/tokeninsights/blob/main/docs/deployment.md).
+
+## Same-machine SQLite server
+
+From a repository checkout, supply bootstrap credentials through your environment
+or secret manager, then start the Compose deployment:
+
+```sh
+export TOKENINSIGHTS_BOOTSTRAP_USERNAME=alice
+export TOKENINSIGHTS_BOOTSTRAP_PASSWORD=...  # 15 to 128 characters
+docker compose up -d --build
+tokeninsights config set distributed.server-url http://127.0.0.1:8766
+tokeninsights browse
+```
+
+Sign in with username/password. Open the profile icon in the top right, then create
+a named API key in settings with read and ingest scopes. Copy its secret when shown:
+
+```sh
+tokeninsights config set distributed.server-token  # enter the API key
+tokeninsights sync --wait
+```
+
+Compose publishes only on host loopback. Change the port with
+`TOKENINSIGHTS_SERVER_PORT=9000` and configure the client URL to match. Local `web`
+stays on 8765 with independent token/account storage.
+
+## Native server
+
+```sh
+tokeninsights-server --listen 127.0.0.1:8766 \
+  --server-db-path /var/lib/tokeninsights/server.sqlite \
+  --app-db-path /var/lib/tokeninsights/app.sqlite \
+  --public-url https://usage.example.com \
+  --admin-socket /run/tokeninsights/admin.sock
+```
+
+Configuration is read once at startup; flags override environment values. The
+server runs plain HTTP; ingress and TLS are deployment-owned. Use HTTPS for external
+deployments.
+
+| Environment variable                   | Flag                | Default                                             |
+| -------------------------------------- | ------------------- | --------------------------------------------------- |
+| `TOKENINSIGHTS_STORAGE_BACKEND`        | `--storage-backend` | `sqlite`; alternatively `postgres`                  |
+| `TOKENINSIGHTS_LISTEN`                 | `--listen`          | `0.0.0.0:8766`                                      |
+| `TOKENINSIGHTS_SERVER_PORT`            | None                | `8766`; also controls Compose port publishing       |
+| `TOKENINSIGHTS_PUBLIC_URL`             | `--public-url`      | Optional browser origin pin                         |
+| `TOKENINSIGHTS_SIGNUP_ENABLED`         | `--signup`          | `false`                                             |
+| `TOKENINSIGHTS_SERVER_DB_PATH`         | `--server-db-path`  | Required for SQLite                                 |
+| `TOKENINSIGHTS_APP_DB_PATH`            | `--app-db-path`     | `app.sqlite` beside token database                  |
+| `TOKENINSIGHTS_ADMIN_SOCKET`           | `--admin-socket`    | SQLite: beside token database; PostgreSQL: required |
+| `TOKENINSIGHTS_TRUSTED_PROXIES`        | `--trusted-proxies` | Empty; comma-separated CIDRs                        |
+| `TOKENINSIGHTS_POSTGRES_DSN` / `_FILE` | None                | PostgreSQL connection secret                        |
+
+## PostgreSQL
+
+Provision an empty PostgreSQL 18 database and a dedicated role with CONNECT and
+CREATE. Supply the DSN through `TOKENINSIGHTS_POSTGRES_DSN` or
+`TOKENINSIGHTS_POSTGRES_DSN_FILE`, never as a command argument:
+
+```sh
+export TOKENINSIGHTS_POSTGRES_DSN_FILE=/secure/tokeninsights/postgres-dsn
+docker compose -f deploy/compose.postgres.yaml up -d --build
+```
+
+Configuration or connection errors never select another backend. Do not run multiple
+replicas against one database.
+
+## Users and API keys
+
+Signup defaults off; enable it with `TOKENINSIGHTS_SIGNUP_ENABLED=true` or `--signup`.
+Settings are self-service only; there is no public admin UI. Operators administer
+through the running server's private owner socket:
+
+```sh
+docker compose exec tokeninsights tokeninsights-server admin user create alice
+docker compose exec -T tokeninsights \
+  tokeninsights-server admin user reset-password USER_ID < /secure/new-password
+docker compose exec tokeninsights \
+  tokeninsights-server admin token create USER_ID --scopes read,ingest
+```
+
+Token creation prints the secret once. Use `token revoke TOKEN_ID` or
+`user disable USER_ID` to block access. Password changes end browser sessions
+without revoking API keys; key revocation takes effect immediately and leaves
+browser sessions intact. Each hosted user has one dataset; credentials cannot select
+another user's data.
+
+## Health, shutdown and backups
+
+`GET /healthz` reports liveness and `GET /readyz` reports readiness. The image runs
+`tokeninsights-server healthcheck`. SIGTERM shuts down HTTP, joins processing and
+closes storage.
+
+Stop the server before backups or restore. For SQLite, preserve the complete matched
+set: `app.sqlite`, `server.sqlite`, their WALs, and the token `.application.json`
+pairing guard. For PostgreSQL, back up both namespaces together in one consistent
+database backup. Keep personal and hosted storage separate; a hosted server rejects
+a personal database.
