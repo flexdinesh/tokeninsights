@@ -83,7 +83,7 @@ Read `docs/design.md` and the relevant ADRs before non-trivial changes, especial
 
 ## Commands
 
-`mise.toml` pins development tools. `mise run setup` installs dependencies and Husky's pre-push hook; `mise run setup:browser` installs Chromium. Root pnpm scripts own application tasks; mise delegates to them. Public docs live independently in `docs-website/`, using Hugo/Hextra with direct `mise run dev:docs` and `mise run build:docs` tasks. All locally reproducible checks run in `check:push`, including the docs build, live PostgreSQL and real-container contracts. CI covers native Linux/macOS amd64/arm64 builds and focused storage tests. Root test/race scripts require Docker or `TOKENINSIGHTS_TEST_POSTGRES_DSN` with CREATEDB privileges; container contracts always require Docker.
+`mise.toml` pins development tools. `mise run setup` installs dependencies and Husky's pre-push hook; `mise run setup:browser` installs Chromium. Root pnpm scripts own application tasks; mise delegates to them. Public docs live in `docs-website/`, a Vocs pnpm workspace package run with `pnpm run dev:docs` and `pnpm run build:docs`. All locally reproducible checks except the docs build run in `check:push`, including live PostgreSQL and real-container contracts. CI covers native Linux/macOS amd64/arm64 builds and focused storage tests. Root test/race scripts require Docker or `TOKENINSIGHTS_TEST_POSTGRES_DSN` with CREATEDB privileges; container contracts always require Docker.
 
 ```sh
 mise run check:push

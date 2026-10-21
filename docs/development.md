@@ -1,6 +1,6 @@
 # Development
 
-TokenInsights is a pnpm monorepo with a Go CLI and a Vite/React browser application. The independent public documentation site in `docs-website/` uses Hugo/Hextra and its own Go module. `mise.toml` pins Go, Node, pnpm, and Hugo Extended for development. Direct Go builds require Go 1.26+, without a C/C++ or JavaScript toolchain. Race verification requires CGO.
+TokenInsights is a pnpm monorepo with a Go CLI and a Vite/React browser application. The public documentation site in `docs-website/` is a Vocs pnpm workspace package. `mise.toml` pins Go, Node, and pnpm for development. Direct Go builds require Go 1.26+, without a C/C++ or JavaScript toolchain. Race verification requires CGO.
 
 ## Development builds
 
@@ -40,8 +40,8 @@ Run commands from the repository root unless noted otherwise.
 | Run hot-reloading web app against Go API | `pnpm run dev:web` |
 | Run web app with synthetic API responses | `pnpm run dev:web:mock` |
 | Build frontend into Go and run local Web capture/dashboard | `pnpm run start:web` |
-| Serve public docs with live reload | `mise run dev:docs` |
-| Build public docs as static files | `mise run build:docs` |
+| Serve public docs with live reload | `pnpm run dev:docs` |
+| Build public docs as static files | `pnpm run build:docs` |
 
 ### Verification and generation
 
@@ -64,7 +64,7 @@ Run commands from the repository root unless noted otherwise.
 
 The pre-push hook clears Git-local environment variables before running `mise run check:push`, so fixture Git commands operate on their own repositories rather than the repository being pushed. Verification covers formatting, lint, the public docs build, SQLite/PostgreSQL/API contracts, TypeScript/web unit tests, all Go tests once under the race detector, a frontend rebuild with committed-asset comparison, native build, browser E2E, and real-container contracts on SQLite/PostgreSQL. Docker is required for container contracts even when an external PostgreSQL test DSN is supplied. `build:web` records a digest of web inputs and build output under `packages/web/node_modules/.cache`; repeated tasks skip the build while both match and resync embedded assets that drifted. Browser E2E tests run fully parallel. Checks fail fast and never repair tracked files. Regenerate stale API/assets explicitly before committing and pushing. There is no pre-commit test suite.
 
-Locally reproducible verification belongs in `check:push`, not CI or release preparation. New CI checks must document coverage unavailable on the developer host in both workflow and PR; rerunning local checks is not a reason. CI builds both binaries and tests storage on matching Linux/macOS amd64/arm64 runners, providing native platform coverage one host cannot supply. Release additionally packages, validates and publishes generated artifacts. CI only verifies; development installs resolve `main` directly without publication or waiting for CI. Both workflows disable hook installation with `HUSKY=0`. Hooks run locally after dependency setup; GUI clients must have mise on PATH. Root pnpm scripts own application commands; mise tasks delegate to those same scripts. Public docs dev/build tasks run Hugo directly through mise; pre-push invokes the same docs build task.
+Locally reproducible verification belongs in `check:push`, not CI or release preparation. New CI checks must document coverage unavailable on the developer host in both workflow and PR; rerunning local checks is not a reason. CI builds both binaries and tests storage on matching Linux/macOS amd64/arm64 runners, providing native platform coverage one host cannot supply. Release additionally packages, validates and publishes generated artifacts. CI only verifies; development installs resolve `main` directly without publication or waiting for CI. Both workflows disable hook installation with `HUSKY=0`. Hooks run locally after dependency setup; GUI clients must have mise on PATH. Root pnpm scripts own application commands; mise tasks delegate to those same scripts. Public docs dev/build tasks follow the same delegation; pre-push does not build docs.
 
 Install Chromium once before browser tests when using pnpm directly:
 

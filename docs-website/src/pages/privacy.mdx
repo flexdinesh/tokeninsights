@@ -1,0 +1,47 @@
+# Privacy and data
+
+TokenInsights collects usage metadata from durable local harness artifacts.
+It does not store prompt text, assistant text, tool arguments, tool output,
+request headers, secrets, raw provider payloads, or full source paths in raw
+analytics storage.
+
+Stored metadata includes token counts, timestamps, models, providers, session
+identifiers, hashed location keys, and display names. Directory paths use `~/` where
+a home directory can be identified; otherwise a full directory path may remain in
+collector storage. Source artifact paths and full Git remote URLs are not stored.
+
+## Local dashboards
+
+`tokeninsights web` and `tokeninsights tui` keep collected usage in local SQLite
+databases. The browser dashboard binds to localhost by default.
+
+Default data files live under
+`${XDG_DATA_HOME:-~/.local/share}/tokeninsights/`:
+
+| File                           | Purpose                                              | Flag / environment                                        |
+| ------------------------------ | ---------------------------------------------------- | --------------------------------------------------------- |
+| `collector.sqlite`             | Local source progress and evidence awaiting delivery | `--collector-db-path` / `TOKENINSIGHTS_COLLECTOR_DB_PATH` |
+| `server.sqlite`                | Token history and processing state                   | `--server-db-path` / `TOKENINSIGHTS_SERVER_DB_PATH`       |
+| `app.sqlite`                   | Application identity and settings                    | `--app-db-path` / `TOKENINSIGHTS_APP_DB_PATH`             |
+| `<collector-path>.jobs.sqlite` | Sync jobs                                            | Derived from collector path                               |
+
+Each role uses its own database. Paths cannot alias; wrong storage roles reject
+without mutation. Existing unrelated files stay untouched. App and token databases
+are paired by identity; never pair one `app.sqlite` with another token database.
+
+## Distributed usage
+
+Distributed sync is explicit: configure a remote server and run
+`tokeninsights sync` to submit sanitized usage evidence. Submitted evidence is
+retained indefinitely for replay. Local dashboards do not switch to a remote server
+based on those settings.
+
+Publication can include directory basenames and stable location keys. Full
+collector-local directory paths and private conversation content stay local.
+
+## Provider and model names
+
+Raw provider and model values retain the harness names. Canonical values used by
+filters and dashboards map Pi `openai-codex` to `openai`, map `fireworks-ai` to
+`fireworks`, and shorten Fireworks model names by removing
+`accounts/fireworks/models/`.

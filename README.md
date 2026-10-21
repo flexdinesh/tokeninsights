@@ -2,216 +2,32 @@
 
 TokenInsights is a token usage dashboard for OpenCode, Pi, Codex, and Claude Code. A Go collector captures sanitized evidence in SQLite. Shared ingestion and processing store token data in SQLite inside local commands, or SQLite/PostgreSQL in an authenticated remote server.
 
-The browser dashboard uses white and neutral charcoal themes, restrained blue accents,
-and locally bundled DM Sans. Compact navigation and filters wrap on smaller screens;
-filters and period navigation share a toolbar directly below the header. Choose Daily, Weekly, Monthly, Yearly, All time, or Custom in the date filter. Previous/next arrows step calendar periods through the current period; weeks start Monday in the server timezone. Custom date inputs appear only after choosing Custom. Hover, focus, or
-press the status icon beside theme selection for loading status and last ingestion.
-In-process Web also shows harness details and TokenInsights process CPU/resident RAM.
-
-The Repo view groups token, model, and provider usage by repository or directory. Location filters apply only there. Missing location data appears as **unknown**; the web view lets you expand an unknown row to see recorded contributing directories when available.
-
 | Web                                                                                  | TUI                                                                       |
 | ------------------------------------------------------------------------------------ | ------------------------------------------------------------------------- |
 | ![TokenInsights browser dashboard with synthetic demo data](assets/tokeninsights-web.png) | ![TokenInsights terminal dashboard with synthetic fixture data](assets/tokeninsights-tui.png) |
 
-## Install
-
-With Homebrew:
+## Quickstart
 
 ```sh
 brew install flexdinesh/tap/tokeninsights
+tokeninsights web
 ```
-
-With Go:
-
-```sh
-go install github.com/flexdinesh/tokeninsights/packages/cli/cmd/tokeninsights@latest
-```
-
-`@latest` installs the latest stable version, published manually from `main`. Use `@v0.1.3` to pin a stable version.
-
-For the latest `main` commit that passed native CI:
-
-```sh
-go install github.com/flexdinesh/tokeninsights/packages/cli/cmd/tokeninsights@edge
-```
-
-`main` and feature branches omit generated dashboard assets. For local Go builds,
-run `mise run setup` and `pnpm run build:web` first. Root build, test, and lint tasks
-generate these assets automatically. Direct `go install ...@main` is unsupported.
-
-See [release channels and workflow](docs/release.md).
-
-## Run
-
-Commands select composition. Local viewers need no daemon or separate server setup:
-
-```sh
-tokeninsights tui                    # show saved usage; refresh in background
-tokeninsights web                    # open dashboard; collect and ingest in background
-tokeninsights web --host 0.0.0.0      # expose read-only dashboard on all IPv4 interfaces
-tokeninsights tui --sync=false       # query saved usage
-tokeninsights web --sync=false
-```
-
-`web` remains foreground until terminated; its server stops with it. Default bind is
-`127.0.0.1:8765`. With a wildcard bind, the local browser opens a loopback URL. Use
-`--open=false` to print the URL without opening a browser. One viewer owns a local token
-database at a time. TUI queries and local ingestion never use HTTP. Distributed
-sync can run alongside a local viewer, sharing collector continuity/outbox while
-retaining independent destination acknowledgements. TUI `r` only queries saved data.
-The browser checks saved-data status every five seconds and refreshes published
-usage automatically, including with `--sync=false`. It has no manual Reload button;
-failed requests retain Retry controls.
-In-process collector progress also polls every five seconds, during collection
-and while idle. Hosted dashboards never poll collector progress.
-
-Web startup highlights the dashboard URL in color and shows a Ctrl+C shutdown hint.
-Redirected output stays plain; `NO_COLOR=1` disables terminal styling.
-
-Local TUI and Web open after storage initialization, before collection finishes. The
-dashboard shows collection, submission, and processing progress while saved usage
-remains readable; new published revisions refresh automatically.
-Completed browser collection details collapse under **Latest collection**. Harness
-states describe that run only: **No new usage** means unchanged sources or no sources
-found; saved usage from earlier runs remains included. Collection errors
-remain visible without closing the dashboard. Restart `tui` or `web` to retry collection; add `--full-refresh` to reread unchanged quarantined sources. Hosted dashboards expose no collector progress.
-The local hostname identifies the machine running the viewer, not the producer of
-every historical fact. Imported history may include other machines.
-
-The TUI keeps a visible refresh strip above navigation: saved usage remains usable
-during collection, submission, and processing. Four persistent harness rows show
-discovery, reading, saving and finalized source counts with remaining work;
-unknown discovery totals stay unknown. Counts measure source files/databases,
-not sessions or tokens. Failed and quarantined sources remain explicit.
-Local delivery is labeled “Processing” and shows acknowledged entries and pending
-entries; subsequent processing shows the
-current local dataset backlog, which may include earlier work. No overall
-percentage or ETA is estimated. This detail is single-process TUI only;
-browser and distributed collector/server progress contracts are unchanged.
-Completion appears only after
-processing is query-visible and a successful dashboard read displays that revision;
-acceptance alone is not completion. Failures and quarantined sources show an
-incomplete refresh without discarding saved usage. `--sync=false` skips startup
-collection while durable pending processing still resumes. Quit cancels and joins
-background work. `query_timeout` refers to reading usage. Reprocessing is explicit,
-never automatic.
-
-TUI loads its complete result in one consistent snapshot, using the same analytics
-as Web and retaining its 100,000-row limit. Date ranges narrow analytics work;
-startup collection checks the same sources for every range.
-SQLite and PostgreSQL count groups without repeating row aggregates; counts,
-totals and displayed rows retain the same snapshot and filtering rules.
-
-For distributed collection, run one authenticated [server container](docs/deployment.md)
-and configure the collector. For a same-machine SQLite deployment, optionally set
-`TOKENINSIGHTS_BOOTSTRAP_USERNAME` and `TOKENINSIGHTS_BOOTSTRAP_PASSWORD`, run
-`docker compose up -d --build`, and open `http://127.0.0.1:8766`. Sign in with
-username/password, then use the profile icon to open settings and create an API key
-with read and ingest scopes. Configure that key as `distributed.server-token` below.
-Signup defaults off; operators enable it with `TOKENINSIGHTS_SIGNUP_ENABLED=true`.
-Local viewers automatically use their default identity and expose no account flows.
-Configure another container port with `TOKENINSIGHTS_SERVER_PORT`; TLS/ingress is
-deployment-owned.
-Local Web stays on 8765 with independent token/account storage.
-
-```sh
-tokeninsights config set distributed.server-url https://usage.example.com
-tokeninsights config set distributed.server-token  # secure prompt/stdin; no token argument
-tokeninsights sync                     # finite background worker
-tokeninsights sync --print             # also submits; stdout is only remote URL
-tokeninsights sync --wait              # foreground acceptance for scripts
-tokeninsights sync --debug             # capture/acceptance/receipt progress UI
-tokeninsights sync status --json
-tokeninsights browse                   # open remote browser login; no upload
-```
-
-Background success means the job was saved and its worker started, not that upload
-or processing succeeded. Check `sync status`. Workers have a ten-minute bound and
-at most three delivery attempts, respecting Retry-After. Later explicit sync replays
-retained immutable requests and resumes earlier queued requests for the same
-endpoint/credential. Completed job history retains the latest 1,000 terminal jobs; queued/running work is retained.
-Jobs never store bearer tokens. Ordinary remote sync supports
-an ingest-only token; debug also needs read permission and waits on its own receipts.
-Distributed mode has no analytics TUI. Remote failure never starts a local fallback.
-
-Both modes use the same identity, normalization, ambiguity, estimates and deduplication
-rules. All four harnesses are collected by default. Plugins trigger background `sync`
-with their own `--harness`; richer event payloads are not accepted. Useful options:
-
-```sh
-tokeninsights sync --harness codex
-tokeninsights sync --publish-only       # retry retained evidence without collection
-tokeninsights sync --full-refresh       # reread sources/retry quarantine
-tokeninsights sync --dry-run            # parse without persistent writes or delivery
-```
-
-Equal token counts never establish duplicate identity. Durable native session,
-message and request identities govern contributions; all five components remain
-atomic. Exact retries return original receipts. Collector deletion, source removal
-and interrupted uploads do not erase server history or inflate confirmed totals.
-Ambiguous usable counters remain separate estimates.
-
-Configuration lives in `${XDG_CONFIG_HOME:-~/.config}/tokeninsights/config.json`,
-private and atomically written:
-
-```json
-{
-  "collector": { "db-path": "/home/user/.local/share/tokeninsights/collector.sqlite" },
-  "in-process": { "host": "127.0.0.1", "port": 8765 },
-  "distributed": { "server-url": "https://usage.example.com" }
-}
-```
-
-Use dotted config keys, including `in-process.server-db-path` and
-`in-process.app-db-path`. Set `distributed.server-token` through the secure
-prompt/stdin; `get` reports only whether configured. Flags override environment,
-then file, then defaults. Existing role-specific environment names remain;
-`TOKENINSIGHTS_SERVER_URL` and `TOKENINSIGHTS_ACCESS_TOKEN` apply only to distributed
-commands. `browse` requires only URL. `sync status` and `sync --dry-run` need no
-credentials. Local viewers ignore remote settings, including unreachable servers.
-
-Flat configuration and mode selection are removed. Existing flat files reject
-without modification; manually regroup their settings or select a fresh file with
-`--config-file`. No automatic conversion, deletion, or credential copying occurs.
-Hosted server deployment configuration is independent of this client file.
-
-Storage: `collector.sqlite` for source continuity/outbox, `server.sqlite` for token
-history/receipts/processing, `app.sqlite` for users/credentials/system state. App and
-token databases are paired by identity. Operational sync jobs use
-`<canonical-collector-path>.jobs.sqlite`. Defaults live under XDG data home.
-
-Bare invocation prints help. Local viewers own their foreground runtime.
-Local maintenance uses `data reprocess|wait`. Legacy `service`, `server`, and
-`collector` commands are removed. Never pair one
-`app.sqlite` with another token database or reuse personal history as a hosted account.
-
-## Privacy
-
-Local viewers keep data on your machine. Running sync submits whitelisted native evidence, retained indefinitely initially for replay. It stores usage metadata such as token counts, timestamps, models, providers, session identifiers, hashed location keys, and display names. Directory paths use `~/` where a home directory can be identified; otherwise a full directory path may remain in collector storage. It does not store prompts, responses, tool arguments, tool output, source artifact paths, or full Git remote URLs.
-
-Default files under `${XDG_DATA_HOME:-~/.local/share}/tokeninsights/`:
-
-| Role | File | Flag / environment |
-| --- | --- | --- |
-| Host collector | `collector.sqlite` | `--collector-db-path` / `TOKENINSIGHTS_COLLECTOR_DB_PATH` |
-| Token data | `server.sqlite` | `--server-db-path` / `TOKENINSIGHTS_SERVER_DB_PATH` |
-| Application | `app.sqlite` | `--app-db-path` / `TOKENINSIGHTS_APP_DB_PATH` |
-| Sync jobs | `<collector-path>.jobs.sqlite` | Derived from collector path |
-
-Each role uses its own database. Fresh databases collect retained sources and ingest sanitized evidence. Paths cannot alias; wrong storage roles reject without mutation. Existing unrelated files stay untouched.
-
-Storage uses collector schema **20**, token SQLite schema **1**, PostgreSQL token/account schemas **1/2**, personal application SQLite schema **2**, hosted application SQLite schema **3** and job SQLite schema **1**. Local application storage retains its existing contract. Only current schemas are supported; incompatible contracts reject without mutation. No imports or migrations. Fresh collection rebuilds usage from retained sources. Reprocessing within a current SQLite/PostgreSQL preserves the published generation until its replacement is complete.
-
-Rebuild earlier PR databases from retained sources into fresh files. Normalized source times must be valid Unix milliseconds; invalid observations remain server evidence with diagnostics. Filename-derived Pi/Claude sessions remain raw-only until native session evidence exists. Local ingestion runs directly within the owning command; its web listener exposes no ingestion route. Hosted browser access uses username/password; collector API keys resolve the same user's stable dataset. Changing a password ends browser sessions without revoking API keys; key revocation takes effect immediately and leaves browser sessions intact. Bootstrap credentials initialize once and never reset changed passwords or reenable disabled users.
-
-Raw provider and model values retain the harness names. Stored canonical values used by filters and dashboards map Pi `openai-codex` to `openai`, map `fireworks-ai` to `fireworks`, and shorten Fireworks model names by removing `accounts/fireworks/models/`. Server processing canonicalizes names in each projection.
-
-Server exposes processed metadata to reachable dashboard clients. Default localhost binding keeps the local experience on this machine. Publication sends directory basenames and stable location keys, not collector-local directory paths or private content.
 
 ## Documentation
 
-Public user docs live in [`docs-website/`](docs-website/README.md), an independent Hugo/Hextra site. Run `mise run dev:docs` to serve them locally at `http://localhost:1313/`, or `mise run build:docs` to output static files. Internal engineering docs remain in `docs/`.
+User guides live in [`docs-website/`](docs-website/README.md), a Vocs site. Run `pnpm run dev:docs` to serve them locally at `http://localhost:5173/`.
+
+- [Overview](docs-website/src/pages/index.mdx)
+- [Install](docs-website/src/pages/install.mdx): Homebrew, Go, and release channels.
+- [Getting started](docs-website/src/pages/getting-started.mdx)
+- [Local usage](docs-website/src/pages/local-usage.mdx): browser and terminal dashboards.
+- [Commands](docs-website/src/pages/commands.mdx): viewers, sync, configuration, and maintenance.
+- [Distributed sync](docs-website/src/pages/sync.mdx): collectors, jobs, and harness plugins.
+- [Self-hosting](docs-website/src/pages/self-hosting.mdx): server, storage, users, and API keys.
+- [Maintenance](docs-website/src/pages/maintenance.mdx): reprocessing, backups, and incompatible data.
+- [Privacy and data](docs-website/src/pages/privacy.mdx)
+
+Internal engineering docs remain in `docs/`.
 
 [ADR 0009](docs/adr/0009-single-process-and-distributed-compositions.md) records the approved runtime composition; the [development guide](docs/development.md) defines verification gates.
 
@@ -226,57 +42,3 @@ Public user docs live in [`docs-website/`](docs-website/README.md), an independe
 - [Hosted user management](docs/adr/0016-hosted-user-management.md) — password login, optional signup, browser sessions and API keys.
 - [Collector/ingestion failure tests](docs/collector-ingestion-tests.md) — guarantees, synthetic fixtures, executable coverage, and future acceptance gates.
 - [Completion plugins](docs/plugins.md) — thin completion hooks, install artifacts, and host verification scope.
-
-
-## Evidence, processing and upgrades
-
-SQLite uses pooled reads and a serialized WAL writer. PostgreSQL uses a dedicated owned writer and pooled snapshot reads.
-
-Distributed `sync --wait` waits for acceptance. Local TUI and Web show saved data
-during collection and processing. The browser shows usage totals by default;
-**Review excluded usage** opens separate saved counters that cannot be confidently included.
-Date ranges and filters apply to both views; excluded usage never inflates the main totals.
-Unusable evidence retains diagnostics.
-Local maintenance:
-
-    tokeninsights data reprocess
-    tokeninsights data wait
-
-Reprocessing keeps the published generation until complete.
-Local data maintenance has a 30-second visibility wait. TUI queries confirmed usage.
-If reprocessing exceeds that wait, `data wait` resumes the saved generation without
-starting another rebuild. Persistent `processing_failed` errors can be recovered
-with `data reprocess`; keep a stopped backup of the paired databases and application
-guard before maintenance. Raw evidence and the old published generation remain intact.
-Production builds support `CGO_ENABLED=0` and need no JavaScript runtime. Race tests require CGO.
-
-Application pairing also persists `<canonical-token-path>.application.json`, containing
-only the application instance ID. Keep this guard with both databases in stopped
-backups. A missing/replaced app database fails closed to preserve credential revocations. Restore the matched set; do not delete the guard to bypass recovery.
-
-## Incompatible data
-
-For `incompatible_application_database` in local `tui`, `web`, or `data` commands,
-the error prints the resolved config and application database paths. The database
-has an unsupported schema version or role; automatic migrations are unavailable.
-Close processes using it, delete that application database and its `-wal`/`-shm`
-files if present, then rerun the command. This resets local accounts and credentials,
-preserving the separate token database and config. Pairing/backup errors instead
-require restoring the matched backup described above.
-
-If you encounter incompatible data, delete the old local data:
-
-```sh
-rm -rf ~/.local/share/tokeninsights
-```
-
-Then reinstall TokenInsights using your preferred installation method.
-
-Hosted persistence selects `--storage-backend=sqlite|postgres` (default SQLite).
-PostgreSQL 18 stores both tokens and accounts through separate interfaces; supply
-`TOKENINSIGHTS_POSTGRES_DSN` or `TOKENINSIGHTS_POSTGRES_DSN_FILE` and an absolute
-admin socket, without SQLite paths. The same server binary supports environment-only
-native and Docker startup. Compose examples provide private administration,
-readiness probes and host reverse-proxy deployment; proxy trust is explicit.
-In-process mode, collector/outbox and jobs use SQLite. No extensions, migrations or
-automatic fallback. See [deployment](docs/deployment.md) for configuration and backups.

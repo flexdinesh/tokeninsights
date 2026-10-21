@@ -1,23 +1,23 @@
 # Public documentation website
 
-Independent [Hugo](https://gohugo.io/) site using [Hextra](https://imfing.github.io/hextra/). Hugo Extended is pinned in the root `mise.toml`; Hextra is pinned in this directory's `go.mod` and `go.sum`. No pnpm workspace or Node runtime is required to build or serve this site.
+[Vocs](https://vocs.dev/) site, a pnpm workspace package (`@tokeninsights/docs`). Vocs, Waku, Vite, and React are pinned in `package.json`; React 19.3 is required by Vocs and is independent of the dashboard's React version.
 
 From the repository root:
 
 ```sh
-mise run dev:docs
+pnpm run dev:docs
 ```
 
-Open <http://localhost:1313/>. Hugo watches content and configuration changes and live reloads the browser. Stop with Ctrl+C. Mise installs the required tools when missing; the first Hugo run downloads the pinned theme.
+Open <http://localhost:5173/>. Vocs watches pages and configuration and live reloads the browser. Stop with Ctrl+C.
 
 Build static HTML, CSS, JavaScript, and assets:
 
 ```sh
-mise run build:docs
+pnpm run build:docs
 ```
 
-Output lives in `docs-website/public/` and is ignored by Git. Draft pages appear in the local preview but are excluded from the static build.
+`renderStrategy: 'full-static'` writes plain files to `docs-website/dist/public/`, ignored by Git. The build fails on dead internal links. `mise run dev:docs` and `mise run build:docs` delegate to the same scripts. The pre-push check does not build docs.
 
-Edit public user guides in `content/`. Set `title` and `weight` in each page's YAML front matter to control sidebar labels and order. Follow the existing Markdown pages; custom layouts and assets can be added later.
+Edit public user guides in `src/pages/` as Markdown or MDX. Each page's `# H1` sets its title; `vocs.config.ts` controls the sidebar labels and order. Run `pnpm run format` and `pnpm run lint` from the root to format and lint pages and configuration.
 
 Internal architecture, ADRs, and other engineering docs stay in the repository's `docs/` directory. This site has no dependency on the application, its databases, or its browser build. Deployment is not configured.

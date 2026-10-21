@@ -1,0 +1,106 @@
+# Local usage
+
+Local dashboards run on your machine and read saved token usage. One viewer owns
+the local storage at a time; close it before opening the other viewer.
+
+import webScreenshot from '../../../assets/tokeninsights-web.png'
+import tuiScreenshot from '../../../assets/tokeninsights-tui.png'
+
+<img src={webScreenshot} alt="TokenInsights browser dashboard with synthetic demo data" />
+
+<img src={tuiScreenshot} alt="TokenInsights terminal dashboard with synthetic fixture data" />
+
+## Browser dashboard
+
+```sh
+tokeninsights web
+```
+
+The dashboard opens at `http://127.0.0.1:8765`. The command runs in the foreground;
+Ctrl+C stops its server. Startup highlights the dashboard URL in color and shows a
+Ctrl+C shutdown hint. Redirected output stays plain; `NO_COLOR=1` disables terminal
+styling.
+
+To print the URL without opening a browser:
+
+```sh
+tokeninsights web --open=false
+```
+
+To expose the read-only dashboard on all IPv4 interfaces:
+
+```sh
+tokeninsights web --host 0.0.0.0
+```
+
+With a wildcard bind, the local browser opens a loopback URL.
+
+The browser dashboard uses white and neutral charcoal themes, restrained blue
+accents, and locally bundled DM Sans. Compact navigation and filters wrap on smaller
+screens; filters and period navigation share a toolbar directly below the header.
+Hover, focus, or press the status icon beside theme selection for loading status and
+last ingestion. In-process Web also shows harness details and TokenInsights process
+CPU/resident RAM.
+
+The browser checks saved-data status every five seconds and refreshes published
+usage automatically, including with `--sync=false`. It has no manual Reload button;
+failed requests retain Retry controls. Completed collection details collapse under
+**Latest collection**.
+
+**Review excluded usage** opens separate saved counters that cannot be confidently
+included. Date ranges and filters apply to both views; excluded usage never inflates
+the main totals.
+
+## Terminal dashboard
+
+```sh
+tokeninsights tui
+```
+
+Press `r` to query saved usage again. This does not start another collection.
+
+The TUI keeps a visible refresh strip above navigation. Four harness rows show
+discovery, reading, saving and finalized source counts with remaining work. Counts
+measure source files/databases, not sessions or tokens. Failed and quarantined
+sources remain explicit. No overall percentage or ETA is estimated. Completion
+appears only after processing is visible and the dashboard displays that revision.
+
+The TUI loads its complete result in one consistent snapshot, using the same
+analytics as Web and retaining its 100,000-row limit.
+
+## View saved usage
+
+Skip collection on startup with `--sync=false`:
+
+```sh
+tokeninsights web --sync=false
+tokeninsights tui --sync=false
+```
+
+Previously accepted data may still finish processing. Both viewers refresh when
+new usage is published.
+
+## Filter your view
+
+Use date ranges and model, provider, or harness filters to narrow the displayed
+usage. Filters affect what you see; they do not change which harnesses are
+collected on startup.
+
+In the browser, choose Daily, Weekly, Monthly, Yearly, All time, or Custom in the
+date filter. Previous/next arrows step calendar periods through the current period;
+weeks start Monday in the server timezone. Custom date inputs appear only after
+choosing Custom.
+
+The Repo view groups token, model, and provider usage by repository or directory.
+Location filters apply only there. Missing location data appears as **unknown**;
+expand an unknown row to see recorded contributing directories when available.
+
+## Refresh local sources
+
+Restart the dashboard to collect again. If a source failed during collection,
+the dashboard keeps saved usage available; restarting retries collection. Add
+`--full-refresh` to reread unchanged quarantined sources.
+
+In the latest collection, **No new usage** means unchanged sources or no sources
+found; saved usage from earlier runs remains included. The local hostname identifies
+the machine running the viewer, not the producer of every historical fact.
