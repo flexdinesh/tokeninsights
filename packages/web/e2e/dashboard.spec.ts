@@ -264,6 +264,8 @@ test('table columns resize by drag and keyboard without sorting', async ({ page 
 test('saved usage, seven views, filtering, history, pagination, and automatic refresh', async ({
   page,
 }) => {
+  // Hundreds of sequential steps exceed the default timeout under parallel workers.
+  test.slow()
   const errors: string[] = []
   let syncRequests = 0
   page.on('request', (request) => {
