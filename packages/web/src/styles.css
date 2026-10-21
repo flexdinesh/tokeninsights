@@ -183,7 +183,7 @@ textarea[aria-invalid='true'] {
   top: 0;
   z-index: var(--layer-header);
   min-height: var(--header-height);
-  padding: var(--space-2) var(--page-gutter);
+  padding: var(--space-1) var(--page-gutter);
   background: var(--color-surface);
   border-bottom: var(--border-width) solid var(--color-border);
   display: flex;
@@ -339,7 +339,7 @@ textarea[aria-invalid='true'] {
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-2);
-  margin-top: var(--space-3);
+  margin-top: var(--space-2);
 }
 .filter-chip {
   display: inline-flex;
@@ -376,11 +376,13 @@ textarea[aria-invalid='true'] {
   min-height: var(--control-height);
   border: var(--border-width) solid var(--color-border-strong);
   border-radius: var(--radius-md);
-  padding: var(--space-1) var(--space-3);
-  margin: var(--space-3) 0;
+  padding: 0 var(--space-3);
+  margin: var(--space-2) 0;
   color: var(--color-text-muted);
 }
 .search-field input {
+  min-height: 0;
+  padding: var(--space-1) 0;
   background: transparent;
   border: 0;
   min-width: 0;
@@ -403,14 +405,14 @@ textarea[aria-invalid='true'] {
 .filter-options {
   max-height: 16rem;
   overflow: auto;
-  margin-bottom: var(--space-3);
+  margin-bottom: var(--space-2);
 }
 .check-option {
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  min-height: var(--control-height);
-  padding: var(--space-1);
+  min-height: var(--control-height-compact);
+  padding: 0 var(--space-1);
   border-radius: var(--radius-sm);
   font-size: var(--text-sm);
   cursor: pointer;
@@ -424,13 +426,13 @@ textarea[aria-invalid='true'] {
 .hint {
   color: var(--color-text-muted);
   font-size: var(--text-xs);
-  margin: var(--space-3) 0;
+  margin: var(--space-2) 0;
 }
 .date-presets {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: var(--space-2);
-  margin: var(--space-3) 0 var(--space-4);
+  margin: var(--space-2) 0 var(--space-3);
 }
 .date-inputs {
   display: grid;
@@ -451,8 +453,8 @@ textarea[aria-invalid='true'] {
   display: grid;
   grid-template-columns: 1.25fr repeat(4, minmax(0, 1fr));
   gap: var(--space-4);
-  padding: var(--space-3) 0;
-  margin: 0 0 var(--space-3);
+  padding: var(--space-2) 0;
+  margin: 0 0 var(--space-2);
   border-bottom: var(--border-width) solid var(--color-border);
 }
 .summary-card {
@@ -497,7 +499,7 @@ textarea[aria-invalid='true'] {
   justify-content: flex-start;
   gap: var(--space-2);
   min-height: var(--control-height);
-  padding: var(--space-2) var(--space-3);
+  padding: var(--space-1) var(--space-3);
   border: 0;
   border-radius: var(--radius-md);
   color: var(--muted-foreground);
@@ -557,7 +559,7 @@ textarea[aria-invalid='true'] {
   align-items: center;
   justify-content: space-between;
   gap: var(--space-4);
-  padding: var(--space-3) 0 var(--space-2);
+  padding: var(--space-2) 0;
 }
 .panel-heading > div {
   min-width: 0;
@@ -571,7 +573,7 @@ textarea[aria-invalid='true'] {
   border: 0;
   border-radius: 0;
   background: transparent;
-  margin: var(--space-3) 0;
+  margin: var(--space-2) 0;
 }
 .chart-panel .panel-heading {
   padding-block: 0 var(--space-2);
@@ -724,14 +726,14 @@ th {
   font-weight: var(--weight-medium);
   font-size: var(--text-xs);
   color: var(--color-text-secondary);
-  padding: var(--space-1) var(--space-3);
+  padding: 0 var(--space-3);
   white-space: nowrap;
 }
 th button {
   display: inline-flex;
   align-items: center;
   gap: var(--space-1);
-  min-height: var(--control-height);
+  min-height: var(--control-height-compact);
   background: none;
   border: 0;
   padding: var(--space-1) 0;
@@ -776,7 +778,8 @@ th[aria-sort='descending'] {
 }
 td {
   border-bottom: var(--border-width) solid var(--color-border);
-  padding: var(--space-2) var(--space-3);
+  height: var(--table-row-height);
+  padding: var(--space-1) var(--space-3);
   vertical-align: middle;
 }
 tbody tr:last-child td {
@@ -917,7 +920,7 @@ tbody tr:hover {
   align-items: center;
   flex-wrap: wrap;
   gap: var(--space-4);
-  padding: var(--space-2) 0;
+  padding: var(--space-1) 0;
   border-top: var(--border-width) solid var(--color-border);
   background: transparent;
   color: var(--color-text-muted);

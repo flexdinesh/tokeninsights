@@ -125,48 +125,48 @@ components:
     textColor: "{colors.primary-foreground}"
     rounded: "{rounded.md}"
     padding: "0.375rem 0.75rem"
-    height: "2.25rem"
+    height: "2rem"
   button-outline:
     backgroundColor: "{colors.background}"
     textColor: "{colors.foreground}"
     rounded: "{rounded.md}"
     padding: "0.375rem 0.75rem"
-    height: "2.25rem"
+    height: "2rem"
   button-secondary:
     backgroundColor: "{colors.secondary}"
     textColor: "{colors.secondary-foreground}"
     rounded: "{rounded.md}"
     padding: "0.375rem 0.75rem"
-    height: "2.25rem"
+    height: "2rem"
   button-ghost:
     backgroundColor: "transparent"
     textColor: "{colors.foreground}"
     rounded: "{rounded.md}"
     padding: "0.375rem 0.75rem"
-    height: "2.25rem"
+    height: "2rem"
   button-destructive:
     backgroundColor: "{colors.destructive}"
     textColor: "#ffffff"
     rounded: "{rounded.md}"
     padding: "0.375rem 0.75rem"
-    height: "2.25rem"
+    height: "2rem"
   input-text:
     backgroundColor: "{colors.field-surface}"
     textColor: "{colors.foreground}"
     rounded: "{rounded.md}"
     padding: "0.25rem 0.75rem"
-    height: "2.25rem"
+    height: "2rem"
   navigation-selected:
     backgroundColor: "{colors.accent}"
     textColor: "{colors.accent-foreground}"
     rounded: "{rounded.md}"
-    padding: "0.5rem 0.75rem"
+    padding: "0.25rem 0.75rem"
   filter-chip:
     backgroundColor: "{colors.accent}"
     textColor: "{colors.accent-foreground}"
     rounded: "{rounded.sm}"
     padding: "0.25rem 0.5rem"
-    height: "2.25rem"
+    height: "1.875rem"
   card:
     backgroundColor: "{colors.card}"
     textColor: "{colors.foreground}"
@@ -256,7 +256,7 @@ and complete timeline dates.
 
 A sticky desktop navigation sidebar (12rem) anchors the workspace. It holds the
 brand and all existing view links. The main column keeps a wrapping, sticky header
-(3rem minimum height) for the current-view heading, machine identity, a fixed-size
+(2.75rem minimum height) for the current-view heading, machine identity, a fixed-size
 status indicator beside theme selection. Horizontal wrapping filters and period
 navigation share a toolbar immediately below the header. The date filter selects
 Daily, Weekly, Monthly, Yearly, All time, or Custom. Previous/next arrows surround
@@ -282,7 +282,7 @@ Mobile/coarse-pointer controls grow to 2.75rem. Widths and type follow the root
 font size; preserve reflow at 200% text.
 
 Tables scroll within their own region, capped at 35rem, with sticky headings.
-Rows use 0.5rem vertical padding, fine rules, neutral headings, and right-aligned numeric cells.
+Rows have a 2rem minimum height with 0.25rem vertical padding, fine rules, neutral headings, and right-aligned numeric cells.
 The independent result summary describes all filtered results. Headings and cells
 keep shared horizontal gutters, including outer edges, with 0.75rem horizontal
 cell padding.
@@ -319,8 +319,9 @@ navigation/table regions.
 ### Buttons
 
 Primary, outline, secondary, ghost, and destructive variants share visible focus.
-Regular and compact controls have a 2.25rem minimum height; large controls use
-2.75rem. Frontmatter heights describe minima. Compact controls use small corners.
+Regular controls have a 2rem minimum height. Compact controls (filters, period
+arrows, chart metrics, bucket, chips, popover options, table sort headings) use
+1.875rem; large controls use 2.75rem. Frontmatter heights describe minima. Compact controls use small corners.
 Primary/destructive hover reduces fill to 90%; secondary to 80%; outline and ghost
 use the neutral accent surface. Disabled controls use 50% opacity. No hover movement.
 
@@ -330,7 +331,7 @@ Keep visible labels, field edges, native dates, and associated validation.
 Date ranges wrap to preserve their full label. Search wrappers own their focus
 outline, with no nested input shadow; multiselect rows retain checkbox labels and search.
 
-Popovers target 22rem width, scroll within available height, and use 8px anchor
+Popovers target 22rem width with 0.75rem padding, scroll within available height, and use 8px anchor
 offset with 16px collision clearance. The header shows the local machine hostname
 in single-process mode; its accessible label distinguishes viewer identity from
 historical producers. The page origin remains available in the footer. Local and
