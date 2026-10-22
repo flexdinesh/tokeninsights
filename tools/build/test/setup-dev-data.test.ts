@@ -1,9 +1,10 @@
 import assert from 'node:assert/strict'
 import { DatabaseSync } from 'node:sqlite'
-import { cp, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises'
+import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
 import test from 'node:test'
 
+import { listFiles } from '../src/files.ts'
 import { setupDevData } from '../src/setup-dev-data.ts'
 import type { SyncFunction, SyncPaths } from '../src/setup-dev-data.ts'
 import { workspacePath } from '../src/workspace.ts'
@@ -101,9 +102,5 @@ async function createWorkspace(): Promise<string> {
 }
 
 async function relativeFiles(root: string): Promise<string[]> {
-  const entries = await readdir(root, { recursive: true, withFileTypes: true })
-  return entries
-    .filter((entry) => entry.isFile())
-    .map((entry) => join(entry.parentPath, entry.name).slice(root.length + 1))
-    .toSorted()
+  return listFiles(root)
 }

@@ -15,3 +15,9 @@ allowBuilds:
   msw: true
   protobufjs: true
   vue-demi: false
+# Supply-chain policy applied everywhere (local, CI, Docker): packages must be
+# 3 days old, except harness SDKs tracked as soon as they ship.
+minimumReleaseAge: 4320
+minimumReleaseAgeExclude:
+  - '@opencode/*'
+  - '@earendil-works/*'

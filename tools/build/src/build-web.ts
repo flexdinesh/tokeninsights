@@ -1,10 +1,11 @@
 import { spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises'
-import { dirname, join, relative, resolve } from 'node:path'
+import { mkdir, readFile, writeFile } from 'node:fs/promises'
+import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { webAssetDifferences } from './check-web.ts'
+import { listFiles } from './files.ts'
 import { syncWebAssets } from './sync-web-assets.ts'
 import { workspacePath, workspaceRoot } from './workspace.ts'
 
@@ -24,15 +25,6 @@ const sharedInputs = [
   'tools/build/src/sync-web-assets.ts',
 ]
 
-async function files(root: string, excluded: ReadonlySet<string>): Promise<string[]> {
-  const entries = await readdir(root, { recursive: true, withFileTypes: true })
-  return entries
-    .filter((entry) => entry.isFile())
-    .map((entry) => relative(root, join(entry.parentPath, entry.name)))
-    .filter((path) => !path.split('/').some((segment) => excluded.has(segment)))
-    .toSorted()
-}
-
 async function digest(root: string, paths: string[]): Promise<string> {
   const contents = await Promise.all(paths.map((path) => readFile(join(root, path))))
   const hash = createHash('sha256')
@@ -48,7 +40,7 @@ export async function directoryDigest(
   root: string,
   excluded: ReadonlySet<string> = new Set(),
 ): Promise<string> {
-  return digest(root, await files(root, excluded))
+  return digest(root, await listFiles(root, excluded))
 }
 
 async function inputDigest(): Promise<string> {
