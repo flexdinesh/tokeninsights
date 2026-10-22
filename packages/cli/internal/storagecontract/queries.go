@@ -124,9 +124,6 @@ func orderingAndBounds(t *testing.T, store Tokens) {
 }
 
 func calendarQueries(t *testing.T, store Tokens) {
-	t.Setenv("TZ", "/unavailable-test-zone")
-	original := time.Local
-	t.Cleanup(func() { time.Local = original })
 	for index, tc := range []struct {
 		zone, at, day, week, month, year string
 		offset                           int
@@ -138,19 +135,19 @@ func calendarQueries(t *testing.T, store Tokens) {
 		{"fixed", "2026-01-01T02:00:00Z", "2025-12-31", "2025-12-29", "2025-12", "2025", -28800},
 	} {
 		t.Run(fmt.Sprintf("%d", index), func(t *testing.T) {
-			var err error
-			if tc.zone == "fixed" {
-				time.Local = time.FixedZone("custom", tc.offset)
-			} else {
-				time.Local, err = time.LoadLocation(tc.zone)
+			zone := time.FixedZone("custom", tc.offset)
+			if tc.zone != "fixed" {
+				var err error
+				zone, err = time.LoadLocation(tc.zone)
 				if err != nil {
 					t.Fatal(err)
 				}
 			}
-			at, err := time.Parse(time.RFC3339, tc.at)
+			parsed, err := time.Parse(time.RFC3339, tc.at)
 			if err != nil {
 				t.Fatal(err)
 			}
+			at := parsed.In(zone)
 			d := dataset(t, store, fmt.Sprintf("calendar-%d", index))
 			r := record("calendar")
 			r.Data = json.RawMessage(fmt.Sprintf(`{"type":"message","id":"calendar","message":{"role":"assistant","timestamp":%d,"provider":"openai","model":"model","usage":{"input":10,"output":1}}}`, at.UnixMilli()))
