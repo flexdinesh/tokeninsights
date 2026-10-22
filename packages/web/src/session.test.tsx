@@ -5,7 +5,7 @@ import { afterEach, expect, it, vi } from 'vitest'
 import { changeBrowserSession, useAnalytics } from './api'
 import { clearAccountQueries } from './session'
 import { mockBootstrap, mockDashboard } from './mocks/data'
-import { initialQuery } from './state'
+import { initialQuery } from './query'
 
 afterEach(() => {
   cleanup()

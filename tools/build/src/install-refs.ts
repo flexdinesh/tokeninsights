@@ -4,9 +4,8 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { workspaceRoot } from './workspace.ts'
+import { embeddedAssets, workspaceRoot } from './workspace.ts'
 
-export const embeddedAssets = 'packages/cli/internal/server/static'
 const stableTag = /^packages\/cli\/v(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)$/
 
 function git(root: string, args: string[], env = process.env): string {

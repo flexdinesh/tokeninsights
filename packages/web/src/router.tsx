@@ -8,7 +8,7 @@ import {
 import { App, DashboardView } from './App'
 import { SettingsPage } from './components/SettingsPage'
 import { tabSchema } from './contracts'
-import { parseDashboardSearch, parseDashboardSearchParams, stringifyDashboardSearch } from './state'
+import { parseDashboardSearch, parseDashboardSearchParams, stringifyDashboardSearch } from './query'
 import { Button } from './components/ui/button'
 
 function NotFound() {

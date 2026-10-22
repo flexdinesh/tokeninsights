@@ -24,8 +24,14 @@ async function fixture(
   await Promise.all([
     cp(join(workspace, '.oxfmtrc.json'), join(root, '.oxfmtrc.json')),
     cp(join(workspace, 'package.json'), join(root, 'package.json')),
-    ...['build-plugins.ts', 'plugin-runner.ts'].map((file) =>
-      cp(join(workspace, 'tools', 'build', 'src', file), join(root, 'tools', 'build', 'src', file)),
+    cp(
+      join(workspace, 'tools', 'build', 'src', 'build-plugins.ts'),
+      join(root, 'tools', 'build', 'src', 'build-plugins.ts'),
+    ),
+    cp(
+      join(workspace, 'packages', 'plugin-runtime', 'src'),
+      join(root, 'packages', 'plugin-runtime', 'src'),
+      { recursive: true },
     ),
     ...['pi', 'opencode'].map(async (harness) => {
       const destination = join(root, 'packages', `plugin-${harness}`)
@@ -52,11 +58,18 @@ for (const harness of ['pi', 'opencode']) {
       const script = join(root, 'tools', 'build', 'src', 'build-plugins.ts')
       const options = { cwd: root, env: { ...process.env, TMPDIR: temporary } }
       await execute(process.execPath, [script, harness], options)
+      const dist = join(workspace, 'packages', `plugin-${harness}`, 'dist')
+      const committed = (await readdir(dist)).toSorted()
+      assert.deepEqual(
+        (await readdir(join(root, 'packages', `plugin-${harness}`, 'dist'))).toSorted(),
+        committed,
+        'portable build changed committed artifact set',
+      )
       await Promise.all(
-        ['index.js', 'completion.js', 'lifecycle.js', 'runner.js'].map(async (file) => {
+        committed.map(async (file) => {
           const [actual, expected] = await Promise.all([
             readFile(join(root, 'packages', `plugin-${harness}`, 'dist', file)),
-            readFile(join(workspace, 'packages', `plugin-${harness}`, 'dist', file)),
+            readFile(join(dist, file)),
           ])
           assert.deepEqual(actual, expected, `portable build changed committed ${file}`)
         }),

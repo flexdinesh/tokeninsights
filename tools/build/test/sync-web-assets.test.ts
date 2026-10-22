@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
 
-import { webAssetDifferences } from '../src/check-web.ts'
+import { webAssetDifferences } from '../src/sync-web-assets.ts'
 
 void test('web asset comparison reports content and file-set drift', async () => {
   const root = await mkdtemp(join(tmpdir(), 'tokeninsights-web-assets-'))

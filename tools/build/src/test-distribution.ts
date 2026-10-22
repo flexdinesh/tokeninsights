@@ -14,8 +14,7 @@ import { tmpdir } from 'node:os'
 import { join, relative } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
-import { embeddedAssets } from './install-refs.ts'
-import { workspacePath } from './workspace.ts'
+import { embeddedAssets, workspacePath } from './workspace.ts'
 
 // Real source installs through Git, with disposable publication refs, configuration,
 // module cache and databases. The repository and public remote remain untouched.

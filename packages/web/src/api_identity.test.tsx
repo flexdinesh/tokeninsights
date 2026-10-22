@@ -4,7 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { afterEach, expect, it, vi } from 'vitest'
 import { useAnalytics, useFacets } from './api'
 import { mockBootstrap, mockDashboard, mockFacets, mockSyncStatus } from './mocks/data'
-import { initialQuery } from './state'
+import { initialQuery } from './query'
 
 afterEach(() => {
   cleanup()

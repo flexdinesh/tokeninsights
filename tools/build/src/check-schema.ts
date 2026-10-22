@@ -7,8 +7,10 @@ const EMBEDDED_SCHEMA_SQL_PATH = new URL(
   '../../../packages/cli/internal/collectordb/schema/schema.sql',
   import.meta.url,
 ).pathname
-const SCHEMA_GO_PATH = new URL('../../../packages/cli/internal/collectordb/schema.go', import.meta.url)
-  .pathname
+const SCHEMA_GO_PATH = new URL(
+  '../../../packages/cli/internal/collectordb/schema.go',
+  import.meta.url,
+).pathname
 
 const SQL_KEYWORDS = new Set([
   'PRIMARY',

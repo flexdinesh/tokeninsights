@@ -3,19 +3,22 @@ import type { FormEvent } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
 import { Copy, UserRound } from 'lucide-react'
-import { AuthenticationRequired } from '../api'
 import {
   changePassword,
   createAPIKey,
   revokeAPIKey,
   useAccount,
   useAPIKeys,
+  passwordMaxCharacters,
+  passwordMinCharacters,
   validPassword,
 } from '../account'
 import type { APIKeyCreated, APIKeyInfo } from '../contracts'
 import { apiKeyLabelMaxCharacters } from '../contracts'
+import { AuthenticationRequired } from '../http'
 import { useIdentity } from '../identity'
-import { DashboardPreferencesProvider, initialQuery, parseDashboardSearch } from '../state'
+import { initialQuery, parseDashboardSearch } from '../query'
+import { DashboardPreferencesProvider } from '../state'
 import { DashboardSidebar } from './DashboardSidebar'
 import { Button } from './ui/button'
 import { Input } from './ui/input'
@@ -112,7 +115,9 @@ function PasswordSettings() {
     event.preventDefault()
     if (pending) return
     if (!validPassword(password)) {
-      setError('Use a password between 15 and 128 characters.')
+      setError(
+        `Use a password between ${passwordMinCharacters} and ${passwordMaxCharacters} characters.`,
+      )
       return
     }
     if (password !== confirmation) {
@@ -161,7 +166,7 @@ function PasswordSettings() {
           aria-describedby="new-password-help"
         />
         <p id="new-password-help" className="field-help">
-          15–128 characters.
+          {passwordMinCharacters}–{passwordMaxCharacters} characters.
         </p>
         <label htmlFor="confirm-password">Confirm new password</label>
         <Input

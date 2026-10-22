@@ -5,8 +5,8 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { RouterProvider, createMemoryHistory } from '@tanstack/react-router'
 import { useAnalytics } from './api'
 import { createAppRouter } from './router'
-import { initialQuery } from './state'
-import type { QueryState } from './state'
+import { initialQuery } from './query'
+import type { QueryState } from './query'
 import type { Bootstrap, Dashboard, SyncStatus } from './contracts'
 
 const testIdentity = {

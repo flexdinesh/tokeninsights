@@ -58,11 +58,10 @@ Run commands from the repository root unless noted otherwise.
 | Validate generated API files | `pnpm run check-api` |
 | Regenerate API files | `pnpm run generate:api` |
 | Build and sync embedded web assets; skips unchanged inputs | `pnpm run build:web` |
-| Check committed web assets | `pnpm run check-web` |
-| Run browser end-to-end tests | `pnpm run test:web-e2e` |
+| Build the CLI and run browser end-to-end tests | `pnpm run test:web-e2e` |
 | Build production binary and validate contracts | `pnpm run build` |
 
-The pre-push hook clears Git-local environment variables before running `mise run check:push`, so fixture Git commands operate on their own repositories rather than the repository being pushed. Verification covers formatting, lint, the public docs build, SQLite/PostgreSQL/API contracts, TypeScript/web unit tests, all Go tests once under the race detector, a frontend rebuild with committed-asset comparison, native build, browser E2E, and real-container contracts on SQLite/PostgreSQL. Docker is required for container contracts even when an external PostgreSQL test DSN is supplied. `build:web` records a digest of web inputs and build output under `packages/web/node_modules/.cache`; repeated tasks skip the build while both match and resync embedded assets that drifted. Browser E2E tests run fully parallel. Checks fail fast and never repair tracked files. Regenerate stale API/assets explicitly before committing and pushing. There is no pre-commit test suite.
+The pre-push hook clears Git-local environment variables before running `mise run check:push`, so fixture Git commands operate on their own repositories rather than the repository being pushed. Verification covers formatting, lint, SQLite/PostgreSQL/API contracts, TypeScript/web unit tests, all Go tests once under the race detector, benchmark smoke, native build, distribution and asset-publication checks, browser E2E, and real-container contracts on SQLite/PostgreSQL. Docker is required for container contracts even when an external PostgreSQL test DSN is supplied. `build:web` records a digest of web inputs and build output under `packages/web/node_modules/.cache`; repeated tasks skip the build while both match and resync embedded assets that drifted. Browser E2E tests run fully parallel. Checks fail fast and never repair tracked files. Regenerate stale API files and plugin bundles explicitly before committing and pushing. There is no pre-commit test suite.
 
 Locally reproducible verification belongs in `check:push`, not CI or release preparation. New CI checks must document coverage unavailable on the developer host in both workflow and PR; rerunning local checks is not a reason. CI builds both binaries and tests storage on matching Linux/macOS amd64/arm64 runners, providing native platform coverage one host cannot supply. Release additionally packages, validates and publishes generated artifacts. CI only verifies; development installs resolve `main` directly without publication or waiting for CI. Both workflows disable hook installation with `HUSKY=0`. Hooks run locally after dependency setup; GUI clients must have mise on PATH. Root pnpm scripts own application commands; mise tasks delegate to those same scripts. Public docs dev/build tasks follow the same delegation; pre-push does not build docs.
 
@@ -96,16 +95,17 @@ tokeninsights web
 
 ### Direct Go commands
 
-Committed web assets let Go build and install without Node or pnpm:
+Embedded web assets are ignored on `main` ([ADR 0017](adr/0017-generated-assets-on-installable-refs.md)). Generate them once before direct Go commands:
 
 ```sh
+pnpm run build:web
 cd packages/cli
 go test ./...
 go build -o bin/tokeninsights ./cmd/tokeninsights
 go install ./cmd/tokeninsights
 ```
 
-Direct Go commands use the currently committed embedded web assets. Use `pnpm run install:cli` when frontend changes must be included.
+Direct Go commands embed the last generated assets; rerun `pnpm run build:web` after frontend changes, or use `pnpm run install:cli`.
 
 ## Local scratch files
 
@@ -177,13 +177,13 @@ sizes, timing boundaries, engine-specific size accounting and profiling commands
 
 ## Build Tooling
 
-The private `@tokeninsights/build-tools` workspace under `tools/build` owns schema validation, fixture preparation and safety checks, embedded-web checks, and Homebrew formula generation. Root pnpm scripts are the stable entry points.
+The private `@tokeninsights/build-tools` workspace under `tools/build` owns schema validation, fixture preparation and safety checks, embedded web asset generation, Pi/OpenCode plugin bundles, and Homebrew formula generation. The shared Pi/OpenCode collector runner lives in the private `@tokeninsights/plugin-runtime` workspace under `packages/plugin-runtime`; plugin builds copy it into each `dist/runner.js`. Root pnpm scripts are the stable entry points.
 
 Go uses `gofmt` and the repository-pinned `golangci-lint`. TypeScript, JavaScript, and React use Oxfmt and Oxlint. Node tooling is development-only; the production `tokeninsights` binary does not require a JavaScript runtime.
 
 ## Web Dashboard
 
-React source lives in `packages/web`. Vite stages output in ignored `packages/web/dist`; the build tooling copies it to committed `packages/cli/internal/server/static` assets for `go:embed`.
+React source lives in `packages/web`. Vite stages output in ignored `packages/web/dist`; the build tooling copies it to `packages/cli/internal/server/static` for `go:embed`. That directory is ignored on `main`; CI commits it only on `edge` and stable module tags ([ADR 0017](adr/0017-generated-assets-on-installable-refs.md)).
 
 Go tests cover SQL aggregation, API behavior, raw ingestion/replay, processing generations and collector outbox/acknowledgements, assets, listener lifecycle, and date boundaries. React tests cover URL state, filtering, and cancelled requests. Browser tests launch the built binary with isolated synthetic data and verify the full dashboard.
 

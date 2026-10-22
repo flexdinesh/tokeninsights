@@ -2,13 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { Outlet, useNavigate } from '@tanstack/react-router'
 import { CircleAlert, LoaderCircle } from 'lucide-react'
-import {
-  AuthenticationRequired,
-  changeBrowserSession,
-  useAnalytics,
-  useBootstrap,
-  useFacets,
-} from './api'
+import { changeBrowserSession, useAnalytics, useBootstrap, useFacets } from './api'
+import { AuthenticationRequired } from './http'
 import { clearAccountQueries } from './session'
 import { hasCapability, showsCollectorProgress } from './capabilities'
 import { PasswordLogin } from './components/PasswordLogin'
@@ -18,7 +13,8 @@ import { collectorStages } from './components/CollectorProgress'
 import type { DashboardStatusValue } from './components/DashboardStatus'
 import type { Bootstrap } from './contracts'
 import { locationGroupSchema } from './contracts'
-import { DashboardProvider, parseDashboardSearch, useDashboardQuery } from './state'
+import { parseDashboardSearch } from './query'
+import { DashboardProvider, useDashboardQuery } from './state'
 import { useDashboardSync } from './useDashboardSync'
 import { serverTimeZoneLabel } from './format'
 import { FilterToolbar } from './components/Filters'

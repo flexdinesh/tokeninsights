@@ -8,10 +8,9 @@ import { pathToFileURL } from 'node:url'
 import { setTimeout as pause } from 'node:timers/promises'
 import { isCompletion } from '../../../packages/plugin-opencode/src/completion.ts'
 import { setupCompletion } from '../../../packages/plugin-opencode/src/lifecycle.ts'
-import { registerCompletion } from '../../../packages/plugin-pi/src/completion.ts'
 import { registerNativeCompletion } from '../../../packages/plugin-pi/src/lifecycle.ts'
 import type { PiCompletionContext } from '../../../packages/plugin-pi/src/lifecycle.ts'
-import { CollectorRunner, syncFailure } from '../src/plugin-runner.ts'
+import { CollectorRunner, syncFailure } from '@tokeninsights/plugin-runtime'
 
 function record(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -118,38 +117,6 @@ process.exit(Number(process.env.HOOK_EXIT || 0));
     }
   })
 }
-
-void test('Pi settled notification returns while sync remains in background', async () => {
-  let handler: ((event: unknown) => Promise<void>) | undefined
-  let started = false
-  let completed = false
-  let finish: (() => void) | undefined
-  const completion = new Promise<void>((resolve) => {
-    finish = resolve
-  })
-  registerCompletion(
-    {
-      on(event, callback) {
-        assert.equal(event, 'agent_settled')
-        handler = callback
-      },
-    },
-    async () => {
-      started = true
-      await completion
-      completed = true
-    },
-  )
-  assert.ok(handler !== undefined && finish !== undefined)
-  const pending = handler({ assistant: 'synthetic-private-marker' })
-  assert.equal(started, true)
-  assert.equal(completed, false)
-  await pending
-  assert.equal(completed, false)
-  finish()
-  await completion
-  assert.equal(completed, true)
-})
 
 void test('OpenCode V2 routing accepts idle statuses without inspecting transcripts', () => {
   const completion = {

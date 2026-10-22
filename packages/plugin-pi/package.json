@@ -14,6 +14,7 @@
   },
   "devDependencies": {
     "@earendil-works/pi-coding-agent": "1.4.0",
+    "@tokeninsights/plugin-runtime": "workspace:*",
     "@types/node": "26.6.5",
     "typescript": "^7.0.2"
   },

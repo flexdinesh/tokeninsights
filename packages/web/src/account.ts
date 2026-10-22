@@ -1,16 +1,27 @@
 import { useQuery } from '@tanstack/react-query'
 import type { z } from 'zod'
-import { AuthenticationRequired, request } from './api'
 import {
   accountUserSchema,
   apiKeyCreatedSchema,
   apiKeyListSchema,
   authInfoSchema,
-  errorSchema,
+  browserSessionPasswordMaxCharacters,
+  browserSessionPasswordMinCharacters,
+  newPasswordMaxCharacters,
+  newPasswordMinCharacters,
 } from './contracts'
+import type { CreateAPIKeyRequest } from './contracts'
+import { parseBody, request, send } from './http'
 
-export const passwordMinCharacters = 15
-export const passwordMaxCharacters = 128
+// Signup and password change both accept new passwords; enforce bounds valid for each.
+export const passwordMinCharacters = Math.max(
+  browserSessionPasswordMinCharacters,
+  newPasswordMinCharacters,
+)
+export const passwordMaxCharacters = Math.min(
+  browserSessionPasswordMaxCharacters,
+  newPasswordMaxCharacters,
+)
 
 export function validPassword(password: string): boolean {
   const length = Array.from(password).length
@@ -39,38 +50,8 @@ export const useAPIKeys = (datasetId: string) =>
     queryFn: ({ signal }) => request('/api/v2/account/keys', apiKeyListSchema, signal, datasetId),
   })
 
-async function mutate(
-  path: string,
-  method: string,
-  body?: unknown,
-  datasetId?: string,
-): Promise<Response> {
-  const response = await fetch(path, {
-    method,
-    credentials: 'same-origin',
-    headers: {
-      ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
-      ...(datasetId === undefined ? {} : { 'X-TokenInsights-Dataset-ID': datasetId }),
-    },
-    body: body === undefined ? undefined : JSON.stringify(body),
-  })
-  if (response.status === 401 || (datasetId !== undefined && response.status === 409))
-    throw new AuthenticationRequired()
-  if (!response.ok) {
-    let error: unknown
-    try {
-      error = await response.json()
-    } catch {
-      /* Fall back to the response status. */
-    }
-    const parsed = errorSchema.safeParse(error)
-    throw new Error(parsed.success ? parsed.data.message : `Request failed (${response.status})`)
-  }
-  return response
-}
-
 export async function signup(credentials: { username: string; password: string }): Promise<void> {
-  await mutate('/api/v2/auth/signup', 'POST', credentials)
+  await send('/api/v2/auth/signup', { method: 'POST', body: credentials })
 }
 
 export async function changePassword(
@@ -78,26 +59,24 @@ export async function changePassword(
   currentPassword: string,
   password: string,
 ): Promise<void> {
-  await mutate('/api/v2/account/password', 'PUT', { currentPassword, password }, datasetId)
+  await send('/api/v2/account/password', {
+    method: 'PUT',
+    body: { currentPassword, password },
+    datasetId,
+  })
 }
 
 export async function createAPIKey(
   datasetId: string,
-  body: {
-    label: string
-    permissions: ('read' | 'ingest')[]
-    expiresAt?: string
-  },
+  body: CreateAPIKeyRequest,
 ): Promise<z.output<typeof apiKeyCreatedSchema>> {
-  const response = await mutate('/api/v2/account/keys', 'POST', body, datasetId)
-  return apiKeyCreatedSchema.parse(await response.json())
+  const response = await send('/api/v2/account/keys', { method: 'POST', body, datasetId })
+  return parseBody(response, apiKeyCreatedSchema)
 }
 
 export async function revokeAPIKey(datasetId: string, tokenId: string): Promise<void> {
-  await mutate(
-    `/api/v2/account/keys/${encodeURIComponent(tokenId)}`,
-    'DELETE',
-    undefined,
+  await send(`/api/v2/account/keys/${encodeURIComponent(tokenId)}`, {
+    method: 'DELETE',
     datasetId,
-  )
+  })
 }

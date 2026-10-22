@@ -9,8 +9,8 @@ import {
   reduceQuery,
   searchFromQuery,
   stringifyDashboardSearch,
-} from './state'
-import type { QueryState } from './state'
+} from './query'
+import type { QueryState } from './query'
 
 const defaults: Selection = {
   period: 'week',

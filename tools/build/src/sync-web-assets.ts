@@ -1,12 +1,52 @@
-import { cp, rm, stat } from 'node:fs/promises'
-import { basename, dirname, relative, resolve } from 'node:path'
+import { cp, readFile, rm, stat } from 'node:fs/promises'
+import { basename, dirname, join, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { workspacePath } from './workspace.ts'
+import { listFiles } from './files.ts'
+import { embeddedAssets, workspacePath } from './workspace.ts'
 
 const scriptPath = fileURLToPath(import.meta.url)
 const source = workspacePath('packages', 'web', 'dist')
-const target = workspacePath('packages', 'cli', 'internal', 'server', 'static')
+const target = workspacePath(embeddedAssets)
+const developmentAssets = new Set(['mockServiceWorker.js'])
+
+async function availableFiles(root: string): Promise<string[]> {
+  try {
+    return await listFiles(root)
+  } catch {
+    return []
+  }
+}
+
+// Reports how embedded assets differ from the production subset of a web build.
+export async function webAssetDifferences(
+  expectedRoot: string,
+  actualRoot: string,
+): Promise<string[]> {
+  const [expected, actual] = await Promise.all([
+    availableFiles(expectedRoot),
+    availableFiles(actualRoot),
+  ])
+  const productionExpected = expected.filter((path) => !developmentAssets.has(path))
+  const productionActual = actual
+  const paths = [...new Set([...productionExpected, ...productionActual])].toSorted()
+  const differences = await Promise.all(
+    paths.map(async (path) => {
+      if (!productionExpected.includes(path)) {
+        return `unexpected ${path}`
+      }
+      if (!productionActual.includes(path)) {
+        return `missing ${path}`
+      }
+      const [expectedContents, actualContents] = await Promise.all([
+        readFile(join(expectedRoot, path)),
+        readFile(join(actualRoot, path)),
+      ])
+      return expectedContents.equals(actualContents) ? undefined : `changed ${path}`
+    }),
+  )
+  return differences.filter((difference) => difference !== undefined)
+}
 
 export async function syncWebAssets(): Promise<void> {
   const sourceInfo = await stat(source)
@@ -21,7 +61,7 @@ export async function syncWebAssets(): Promise<void> {
   await rm(target, { force: true, recursive: true })
   await cp(source, target, {
     recursive: true,
-    filter: (path) => relative(source, path) !== 'mockServiceWorker.js',
+    filter: (path) => !developmentAssets.has(relative(source, path)),
   })
 }
 

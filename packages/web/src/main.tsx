@@ -3,7 +3,7 @@ import { createRoot } from 'react-dom/client'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { RouterProvider } from '@tanstack/react-router'
 import { router } from './router'
-import { AuthenticationRequired } from './api'
+import { AuthenticationRequired } from './http'
 import './styles.css'
 
 if (import.meta.env.MODE === 'mock') {

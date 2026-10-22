@@ -6,7 +6,8 @@ import { join } from 'node:path'
 import test from 'node:test'
 import { pathToFileURL } from 'node:url'
 
-import { assetCommit, embeddedAssets, prepareRelease, publishEdge } from '../src/install-refs.ts'
+import { assetCommit, prepareRelease, publishEdge } from '../src/install-refs.ts'
+import { embeddedAssets } from '../src/workspace.ts'
 
 function shellQuote(value: string): string {
   return `'${value.replaceAll("'", "'\\''")}'`
