@@ -1,4 +1,4 @@
-package db
+package writerlock
 
 import (
 	"bufio"
@@ -23,14 +23,14 @@ func TestWriterLockAliasesAndCancellation(t *testing.T) {
 		t.Fatal(err)
 	}
 	path := filepath.Join(realDir, "nested", "usage.sqlite")
-	release, err := AcquireWriterLock(context.Background(), path)
+	release, err := Acquire(context.Background(), path)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer release()
 	for _, alias := range []string{path, filepath.Join(aliasDir, "nested", "usage.sqlite")} {
 		ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
-		unlock, err := AcquireWriterLock(ctx, alias)
+		unlock, err := Acquire(ctx, alias)
 		cancel()
 		if unlock != nil {
 			unlock()
@@ -45,7 +45,7 @@ func TestWriterLockAliasesAndCancellation(t *testing.T) {
 	}
 	release()
 	release() // Release is idempotent; never unlock a later owner's descriptor.
-	unlock, err := AcquireWriterLock(context.Background(), path)
+	unlock, err := Acquire(context.Background(), path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -57,7 +57,7 @@ func TestWriterLockAliasesAndCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	missing := filepath.Join(root, "cancelled", "usage.sqlite")
-	if _, err := AcquireWriterLock(ctx, missing); !errors.Is(err, context.Canceled) {
+	if _, err := Acquire(ctx, missing); !errors.Is(err, context.Canceled) {
 		t.Fatalf("cancelled lock: %v", err)
 	}
 	if _, err := os.Stat(filepath.Dir(missing)); !errors.Is(err, os.ErrNotExist) {
@@ -67,23 +67,21 @@ func TestWriterLockAliasesAndCancellation(t *testing.T) {
 
 func TestWriterLockDatabaseSymlink(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "collector.sqlite")
-	database, _, err := CreateIfMissing(path)
-	if err != nil {
+	if err := os.WriteFile(path, nil, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	defer func() { _ = database.Close() }()
 	alias := filepath.Join(t.TempDir(), "linked.sqlite")
 	if err := os.Symlink(path, alias); err != nil {
 		t.Fatal(err)
 	}
-	release, err := AcquireWriterLock(context.Background(), alias)
+	release, err := Acquire(context.Background(), alias)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer release()
 	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
 	defer cancel()
-	if unlock, err := AcquireWriterLock(ctx, path); !errors.Is(err, context.DeadlineExceeded) {
+	if unlock, err := Acquire(ctx, path); !errors.Is(err, context.DeadlineExceeded) {
 		if unlock != nil {
 			unlock()
 		}
@@ -93,7 +91,7 @@ func TestWriterLockDatabaseSymlink(t *testing.T) {
 
 func TestWriterLockSubprocessCrashRelease(t *testing.T) {
 	if path := os.Getenv("TOKENINSIGHTS_LOCK_TEST_PATH"); path != "" {
-		_, err := AcquireWriterLock(context.Background(), path)
+		_, err := Acquire(context.Background(), path)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(2)
@@ -123,7 +121,7 @@ func TestWriterLockSubprocessCrashRelease(t *testing.T) {
 		t.Fatalf("child lock handshake failed: %v", scanner.Err())
 	}
 	waitCtx, waitCancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
-	unlock, err := AcquireWriterLock(waitCtx, path)
+	unlock, err := Acquire(waitCtx, path)
 	waitCancel()
 	if unlock != nil {
 		unlock()
@@ -137,7 +135,7 @@ func TestWriterLockSubprocessCrashRelease(t *testing.T) {
 	if err := command.Wait(); err == nil {
 		t.Fatal("child unexpectedly exited successfully")
 	}
-	unlock, err = AcquireWriterLock(ctx, path)
+	unlock, err = Acquire(ctx, path)
 	if err != nil {
 		t.Fatalf("crash retained lock: %v", err)
 	}

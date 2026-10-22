@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/db"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/collectordb"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/evidence"
 )
 
@@ -40,7 +40,7 @@ func TestOutboxRetryAcknowledgementAndResetProtection(t *testing.T) {
 	if err := store.Close(); err != nil {
 		t.Fatal(err)
 	}
-	if err := db.ResetAllLocked(t.Context(), path); err == nil {
+	if err := collectordb.ResetAllLocked(t.Context(), path); err == nil {
 		t.Fatal("reset deleted unaccepted evidence")
 	}
 	store, err = Open(t.Context(), path)

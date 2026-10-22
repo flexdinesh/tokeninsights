@@ -1,4 +1,4 @@
-package db
+package collectordb
 
 const SupportedSchemaVersion = 20
 const CollectorApplicationID = 1414091587

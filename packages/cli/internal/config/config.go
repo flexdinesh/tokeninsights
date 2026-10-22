@@ -14,9 +14,9 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/db"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/dbpath"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/networkprefs"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/writerlock"
 )
 
 const maxFileBytes = 256 * 1024
@@ -408,7 +408,7 @@ func Update(ctx context.Context, path string, change func(*Values) error) error 
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return err
 	}
-	release, err := db.AcquireWriterLock(ctx, path)
+	release, err := writerlock.Acquire(ctx, path)
 	if err != nil {
 		return err
 	}

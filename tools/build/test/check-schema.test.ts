@@ -91,8 +91,8 @@ void test('each role checks embedded bytes, independent version, and application
 void test('repository collector source and embedded contracts agree', async () => {
   const paths = [
     '../../../schema/schema.sql',
-    '../../../packages/cli/internal/db/schema/schema.sql',
-    '../../../packages/cli/internal/db/schema.go',
+    '../../../packages/cli/internal/collectordb/schema/schema.sql',
+    '../../../packages/cli/internal/collectordb/schema.go',
   ]
   const [collector, embeddedCollector, collectorGo] = await Promise.all(
     paths.map((path) => readFile(new URL(path, import.meta.url), 'utf8')),

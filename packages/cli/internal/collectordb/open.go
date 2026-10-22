@@ -1,5 +1,5 @@
-// Package db owns collector SQLite lifecycle and the cross-process writer lock.
-package db
+// Package collectordb owns collector SQLite lifecycle and schema validation.
+package collectordb
 
 import (
 	"context"

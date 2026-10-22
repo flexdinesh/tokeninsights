@@ -24,7 +24,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/db"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/collectordb"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/evidence"
 	api "github.com/flexdinesh/tokeninsights/packages/cli/internal/server/api"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/storagecontract"
@@ -204,7 +204,7 @@ func readUsage(t *testing.T, target string) api.UsageResponseV2 {
 
 func assertAcknowledged(t *testing.T, c client) {
 	t.Helper()
-	database, err := db.OpenWritable(c.collector)
+	database, err := collectordb.OpenWritable(c.collector)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -328,7 +328,7 @@ func remoteFailureRetainsJournalAndRestartResumesAcceptedWork(t *testing.T, remo
 	if output, err := c.run(t, "sync", "--harness", "pi", "--source-dir", c.source); err == nil || !strings.Contains(output, "transport_failed") {
 		t.Fatal(output, err)
 	}
-	database, err := db.OpenWritable(c.collector)
+	database, err := collectordb.OpenWritable(c.collector)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -369,7 +369,7 @@ func remoteFailureRetainsJournalAndRestartResumesAcceptedWork(t *testing.T, remo
 		t.Fatal("replay changed identities")
 	}
 	assertAcknowledged(t, c)
-	database, err = db.OpenWritable(c.collector)
+	database, err = collectordb.OpenWritable(c.collector)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -477,7 +477,7 @@ func remoteCommittedResponseLostReplaysExactRequestAndReceipt(t *testing.T, remo
 		t.Fatal("lost receipt acknowledged", output)
 	}
 	before := assertUsage(t, target, 1, 120)
-	database, err := db.OpenWritable(c.collector)
+	database, err := collectordb.OpenWritable(c.collector)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -547,7 +547,7 @@ func TestConfigDestinationSwitchingPreservesIndependentProgress(t *testing.T) {
 	}
 	assertUsage(t, a, 1, 120)
 	assertUsage(t, b, 1, 120)
-	database, err := db.OpenWritable(c.collector)
+	database, err := collectordb.OpenWritable(c.collector)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -633,7 +633,7 @@ func TestLocalViewerAndRemoteSyncShareCollectorWithoutSharingStorage(t *testing.
 		c.sync(t)
 		assertUsage(t, localURL, 1, 120)
 		assertUsage(t, remote.target, 1, 120)
-		database, err := db.OpenWritable(c.collector)
+		database, err := collectordb.OpenWritable(c.collector)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -765,7 +765,7 @@ func allHarnessesPublishThroughConfiguredRemoteBinaryAndRebuild(t *testing.T, re
 
 func collectorReceipts(t *testing.T, c client) []evidence.Receipt {
 	t.Helper()
-	database, err := db.OpenWritable(c.collector)
+	database, err := collectordb.OpenWritable(c.collector)
 	if err != nil {
 		t.Fatal(err)
 	}

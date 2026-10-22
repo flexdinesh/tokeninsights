@@ -16,7 +16,7 @@ import (
 func TestLayerDependencies(t *testing.T) {
 	const prefix = "github.com/flexdinesh/tokeninsights/packages/cli/internal/"
 	imports := map[string][]string{}
-	err := filepath.WalkDir("..", func(path string, entry fs.DirEntry, err error) error {
+	walk := func(path string, entry fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
@@ -27,7 +27,8 @@ func TestLayerDependencies(t *testing.T) {
 		if err != nil {
 			return err
 		}
-		packageName := strings.TrimPrefix(filepath.ToSlash(filepath.Dir(path)), "../")
+		packageName := filepath.ToSlash(filepath.Dir(path))
+		packageName = strings.TrimPrefix(strings.TrimPrefix(packageName, "../../"), "../")
 		if _, found := imports[packageName]; !found {
 			imports[packageName] = nil
 		}
@@ -39,9 +40,11 @@ func TestLayerDependencies(t *testing.T) {
 			imports[packageName] = append(imports[packageName], name)
 		}
 		return nil
-	})
-	if err != nil {
-		t.Fatal(err)
+	}
+	for _, root := range []string{"..", "../../cmd"} {
+		if err := filepath.WalkDir(root, walk); err != nil {
+			t.Fatal(err)
+		}
 	}
 	for name, dependencies := range imports {
 		if name == "storagecontract" {
@@ -53,6 +56,8 @@ func TestLayerDependencies(t *testing.T) {
 			}
 		}
 	}
+	hostCapture := []string{prefix + "collector", prefix + "pipeline", prefix + "rawcollectorstore", prefix + "collectordb", prefix + "syncjob", prefix + "localruntime", prefix + "clientworkflow"}
+	pureContract := []string{"database/sql", "net/http", "os", prefix + "persistence", prefix + "adapters", prefix + "datastore", prefix + "server", prefix + "collector", prefix + "pipeline"}
 	rules := []struct {
 		name      string
 		forbidden []string
@@ -63,16 +68,26 @@ func TestLayerDependencies(t *testing.T) {
 		{"processusage", []string{"net/http", "database/sql", prefix + "collector", prefix + "pipeline", prefix + "datastore", prefix + "server", prefix + "localruntime"}},
 		{"collectorprogress", []string{prefix + "pipeline", prefix + "collector", prefix + "localruntime", prefix + "datastore"}},
 		{"datastore", []string{"net/http", prefix + "ingestionhttp", prefix + "collector", prefix + "pipeline", prefix + "server"}},
-		{"querymodel", []string{"database/sql", "net/http", prefix + "db", prefix + "datastore", prefix + "server"}},
-		{"analytics", []string{"database/sql", prefix + "datastore", prefix + "appstore", prefix + "db", prefix + "adapters"}},
+		{"querymodel", []string{"database/sql", "net/http", prefix + "collectordb", prefix + "datastore", prefix + "server"}},
+		{"analytics", []string{"database/sql", prefix + "datastore", prefix + "appstore", prefix + "collectordb", prefix + "adapters"}},
 		{"clientaddress", []string{"os", "database/sql", prefix + "accounts", prefix + "datastore", prefix + "server"}},
-		{"accounts", []string{"database/sql", prefix + "datastore", prefix + "appstore", prefix + "db", prefix + "adapters", prefix + "clientaddress"}},
+		{"accounts", []string{"database/sql", prefix + "datastore", prefix + "appstore", prefix + "collectordb", prefix + "adapters", prefix + "clientaddress"}},
 		{"server", []string{"database/sql", prefix + "datastore", prefix + "appstore", prefix + "adapters", prefix + "pipeline", prefix + "collector", prefix + "localruntime", prefix + "remoteserver"}},
 		{"localruntime", []string{prefix + "syncjob", prefix + "clientworkflow"}},
-		{"serverruntime", []string{"database/sql", prefix + "datastore", prefix + "appstore", prefix + "db", prefix + "adapters"}},
+		{"serverruntime", []string{"database/sql", prefix + "datastore", prefix + "appstore", prefix + "collectordb", prefix + "adapters"}},
+		// Remote servers accept and process evidence; they never capture host sources.
+		{"remoteserver", hostCapture},
+		{"cmd/tokeninsights-server", hostCapture},
+		{"collector", []string{prefix + "processor", prefix + "dataengine", prefix + "datastore", prefix + "analytics", prefix + "accounts", prefix + "server", prefix + "localruntime", prefix + "remoteserver"}},
+		{"evidence", pureContract},
+		{"publication", pureContract},
+		{"collectordb", []string{"net/http"}},
+		{"writerlock", []string{"database/sql", "net/http"}},
+		{"dbpath", []string{"database/sql", "net/http"}},
 	}
+	persistenceOwners := map[string]bool{"datastore": true, "pipeline": true, "localruntime": true, "collector": true, "collectordb": true, "remoteserver": true, "cmd/tokeninsights-server": true}
 	for _, rule := range rules {
-		if rule.name != "datastore" && rule.name != "pipeline" && rule.name != "localruntime" {
+		if !persistenceOwners[rule.name] {
 			rule.forbidden = append(rule.forbidden, prefix+"persistence", prefix+"adapters")
 		}
 		t.Run(rule.name, func(t *testing.T) {

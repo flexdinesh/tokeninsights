@@ -16,11 +16,11 @@ import (
 	"time"
 
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/config"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/db"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/evidence"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/persistence/sqlitecore"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/pipeline"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/serverownership"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/writerlock"
 	_ "modernc.org/sqlite"
 )
 
@@ -104,7 +104,7 @@ func Open(ctx context.Context, collectorPath string) (*Store, error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
 		return nil, err
 	}
-	release, err := db.AcquireWriterLock(ctx, path+".init")
+	release, err := writerlock.Acquire(ctx, path+".init")
 	if err != nil {
 		return nil, err
 	}

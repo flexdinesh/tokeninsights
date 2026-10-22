@@ -6,11 +6,11 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/db"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/dbpath"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/evidence"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/pipeline"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/rawcollectorstore"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/writerlock"
 )
 
 func captureRaw(ctx context.Context, options Options) (pipeline.Summary, error) {
@@ -23,7 +23,7 @@ func captureRaw(ctx context.Context, options Options) (pipeline.Summary, error) 
 		defer func() { _ = os.RemoveAll(directory) }()
 		path = filepath.Join(directory, "collector.sqlite")
 	}
-	release, err := db.AcquireWriterLock(ctx, path)
+	release, err := writerlock.Acquire(ctx, path)
 	if err != nil {
 		return pipeline.Summary{}, err
 	}
@@ -73,12 +73,12 @@ func publishRaw(ctx context.Context, options Options, result *Result) error {
 	if local {
 		lockIdentity = "local"
 	}
-	releaseDelivery, err := db.AcquireWriterLock(ctx, path+".delivery-"+evidence.Hash([]byte(lockIdentity+"\x00"+d.DatabaseID+"\x00"+d.DatasetID)))
+	releaseDelivery, err := writerlock.Acquire(ctx, path+".delivery-"+evidence.Hash([]byte(lockIdentity+"\x00"+d.DatabaseID+"\x00"+d.DatasetID)))
 	if err != nil {
 		return failure("publication", "collector_busy", err)
 	}
 	defer releaseDelivery()
-	release, err := db.AcquireWriterLock(ctx, path)
+	release, err := writerlock.Acquire(ctx, path)
 	if err != nil {
 		return failure("publication", "collector_busy", err)
 	}
@@ -145,7 +145,7 @@ func publishRaw(ctx context.Context, options Options, result *Result) error {
 
 // Each journal operation holds a short capture lock, never across transport.
 func withPublicationLock(ctx context.Context, path string, operation func() error) error {
-	release, err := db.AcquireWriterLock(ctx, path)
+	release, err := writerlock.Acquire(ctx, path)
 	if err != nil {
 		return failure("publication", "collector_busy", err)
 	}

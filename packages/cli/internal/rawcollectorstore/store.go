@@ -9,7 +9,7 @@ import (
 	"net/url"
 	"time"
 
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/db"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/collectordb"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/evidence"
 )
 
@@ -20,7 +20,7 @@ type SavedBatch struct {
 }
 
 func Open(ctx context.Context, path string) (*Store, error) {
-	database, err := db.OpenEvidence(ctx, path)
+	database, err := collectordb.OpenEvidence(ctx, path)
 	if err != nil {
 		return nil, err
 	}

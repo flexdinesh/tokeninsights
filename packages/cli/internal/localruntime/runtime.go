@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/dbpath"
 	"io"
 	"os"
 	"path/filepath"
@@ -23,11 +24,11 @@ import (
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/collector"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/collectorprogress"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/datastore"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/db"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/queryclient"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/server"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/serverfeatures"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/serverownership"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/writerlock"
 )
 
 var ErrOwned = errors.New("database already owned; close the process using this database")
@@ -83,21 +84,21 @@ func OpenWithAppOptions(ctx context.Context, collectorPath, dataPath, appPath st
 		return nil, err
 	}
 	for _, other := range []string{dataPath, appPath} {
-		if err := collector.ValidatePaths(canonicalCollector+".jobs.sqlite", other); err != nil {
+		if err := dbpath.ValidateDistinct(canonicalCollector+".jobs.sqlite", other); err != nil {
 			return nil, err
 		}
 	}
-	if err := collector.ValidatePaths(dataPath+".application.json", appPath); err != nil {
+	if err := dbpath.ValidateDistinct(dataPath+".application.json", appPath); err != nil {
 		return nil, err
 	}
 
 	for _, other := range []string{collectorPath, dataPath} {
-		if err := collector.ValidatePaths(appPath, other); err != nil {
+		if err := dbpath.ValidateDistinct(appPath, other); err != nil {
 			return nil, err
 		}
 	}
 
-	if err := collector.ValidatePaths(collectorPath, dataPath); err != nil {
+	if err := dbpath.ValidateDistinct(collectorPath, dataPath); err != nil {
 		return nil, err
 	}
 	path, _, err := serverownership.Identify(dataPath)
@@ -107,7 +108,7 @@ func OpenWithAppOptions(ctx context.Context, collectorPath, dataPath, appPath st
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return nil, err
 	}
-	release, err := db.AcquireWriterLock(ctx, path+".service.op")
+	release, err := writerlock.Acquire(ctx, path+".service.op")
 	if err != nil {
 		return nil, err
 	}

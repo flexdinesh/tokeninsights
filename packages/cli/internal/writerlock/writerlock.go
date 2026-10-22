@@ -1,4 +1,5 @@
-package db
+// Package writerlock serializes writers of one file across processes.
+package writerlock
 
 import (
 	"context"
@@ -13,15 +14,15 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-const WriterLockTimeout = 30 * time.Second
-const writerLockPollInterval = 25 * time.Millisecond
+const Timeout = 30 * time.Second
+const pollInterval = 25 * time.Millisecond
 
-// AcquireWriterLock serializes writers across processes. Callers must not nest
+// Acquire serializes writers across processes. Callers must not nest
 // acquisitions of the same path; independent locks require consistent ordering.
 // The persistent sidecar must never be removed: flock locks its
 // inode, and the kernel releases it when the owning process exits.
-func AcquireWriterLock(ctx context.Context, path string) (func(), error) {
-	ctx, cancel := context.WithTimeout(ctx, WriterLockTimeout)
+func Acquire(ctx context.Context, path string) (func(), error) {
+	ctx, cancel := context.WithTimeout(ctx, Timeout)
 	defer cancel()
 	if err := ctx.Err(); err != nil {
 		return nil, err
@@ -37,7 +38,7 @@ func AcquireWriterLock(ctx context.Context, path string) (func(), error) {
 	if err != nil {
 		return nil, fmt.Errorf("open database writer lock: %w", err)
 	}
-	ticker := time.NewTicker(writerLockPollInterval)
+	ticker := time.NewTicker(pollInterval)
 	defer ticker.Stop()
 	for {
 		if err := ctx.Err(); err != nil {

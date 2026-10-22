@@ -589,6 +589,8 @@ and its adapters isolate application persistence. Dataengine owns processing con
 | `evidence`, `publication` | Sanitized wire records and stable contribution contracts |
 | `pipeline` | Capture/native readers, continuity and safe enrichment |
 | `rawcollectorstore` | Collector capture/checkpoint/outbox transactions and immutable dataset-bound requests |
+| `collectordb` | Collector SQLite opening, reset and schema validation |
+| `dbpath`, `writerlock` | Canonical database paths, role alias rejection and cross-process file writer locks; no SQL or role knowledge |
 | `collector` | Delivery orchestration with injected destination transport; no local-service discovery |
 | `clientworkflow` | Remote endpoint resolution and authenticated descriptor preflight |
 | `processor` | Pure evidence interpretation; no host reads, SQL, network or wall clock |
