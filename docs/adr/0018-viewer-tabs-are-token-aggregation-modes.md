@@ -1,5 +1,7 @@
 # Viewer tabs are token aggregation modes
 
+Renumbered from duplicate 0001; decision unchanged.
+
 The TUI and web dashboard use tabs to aggregate canonical token facts: tokens
 over time, models, providers, harnesses, sessions, context and repository. Tabs
 represent supported analytics, with session context derived from prompt-side
