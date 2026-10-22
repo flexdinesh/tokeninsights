@@ -2,7 +2,6 @@ package sqliteaccounts
 
 import (
 	"errors"
-	"net/http/httptest"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -66,29 +65,22 @@ func TestCredentialsPersistOnlyDigests(t *testing.T) {
 	}
 }
 
-func TestSessionCookieAndRequestAuthentication(t *testing.T) {
+func TestSessionAuthentication(t *testing.T) {
 	s, _ := testAccounts(t)
 	u, err := s.Signup(t.Context(), "user", "synthetic-password-one")
 	if err != nil {
 		t.Fatal(err)
 	}
-	session, expiry, err := s.CreateSession(t.Context(), "user", "synthetic-password-one")
+	session, _, err := s.CreateSession(t.Context(), "user", "synthetic-password-one")
 	if err != nil {
 		t.Fatal(err)
 	}
-	cookie := accounts.SessionCookie(session, expiry)
-	if !cookie.Secure || !cookie.HttpOnly || cookie.Domain != "" {
-		t.Fatal("unsafe session cookie", cookie)
-	}
-	request := httptest.NewRequest("GET", "https://usage.example/api/v2/instance", nil)
-	request.AddCookie(cookie)
-	p, err := s.AuthenticateRequest(t.Context(), request)
-	if err != nil || p.UserID != u.UserID {
+	p, err := s.AuthenticateSession(t.Context(), session)
+	if err != nil || p.UserID != u.UserID || p.CredentialKind != accounts.SessionCredential {
 		t.Fatal(p, err)
 	}
-	request.Header.Set("Authorization", "Bearer invalid")
-	if _, err := s.AuthenticateRequest(t.Context(), request); !errors.Is(err, accounts.ErrUnauthenticated) {
-		t.Fatal("invalid bearer fell back to session", err)
+	if _, err := s.AuthenticateBearer(t.Context(), session); !errors.Is(err, accounts.ErrUnauthenticated) {
+		t.Fatal("session secret authenticated as bearer", err)
 	}
 }
 

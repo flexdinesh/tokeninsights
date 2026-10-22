@@ -71,7 +71,7 @@ func TestLayerDependencies(t *testing.T) {
 		{"querymodel", []string{"database/sql", "net/http", prefix + "collectordb", prefix + "datastore", prefix + "server"}},
 		{"analytics", []string{"database/sql", prefix + "datastore", prefix + "appstore", prefix + "collectordb", prefix + "adapters"}},
 		{"clientaddress", []string{"os", "database/sql", prefix + "accounts", prefix + "datastore", prefix + "server"}},
-		{"accounts", []string{"database/sql", prefix + "datastore", prefix + "appstore", prefix + "collectordb", prefix + "adapters", prefix + "clientaddress"}},
+		{"accounts", []string{"database/sql", "net/http", prefix + "datastore", prefix + "appstore", prefix + "collectordb", prefix + "adapters", prefix + "clientaddress"}},
 		{"server", []string{"database/sql", prefix + "datastore", prefix + "appstore", prefix + "adapters", prefix + "pipeline", prefix + "collector", prefix + "localruntime", prefix + "remoteserver"}},
 		{"localruntime", []string{prefix + "syncjob", prefix + "clientworkflow"}},
 		{"serverruntime", []string{"database/sql", prefix + "datastore", prefix + "appstore", prefix + "collectordb", prefix + "adapters"}},
@@ -82,6 +82,7 @@ func TestLayerDependencies(t *testing.T) {
 		{"evidence", pureContract},
 		{"publication", pureContract},
 		{"collectordb", []string{"net/http"}},
+		{"operator", []string{"database/sql", prefix + "datastore", prefix + "appstore", prefix + "server", prefix + "ingestionhttp"}},
 		{"writerlock", []string{"database/sql", "net/http"}},
 		{"dbpath", []string{"database/sql", "net/http"}},
 	}

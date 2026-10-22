@@ -603,7 +603,8 @@ and its adapters isolate application persistence. Dataengine owns processing con
 | `serverfeatures` | Typed kind/capability policy |
 | `collectorprogress` | Sanitized progress values, registry and HTTP reads; no capture dependencies |
 | `processusage` | Own-process CPU/RSS sampling and cache; Web composition injects read-only snapshots |
-| `accounts` | Credential contracts, shared policy and dataset provisioning contract |
+| `accounts` | Credential contracts, shared policy and dataset provisioning contract; no HTTP |
+| `operator` | Private owner-socket account administration protocol (handler and client) |
 | `adapters/accountsql` | Shared account transactions and recoverable provisioning |
 | `adapters/sqlite`, `adapters/sqliteaccounts`, `appstore` | SQLite opening and physical application pairing |
 | `adapters/postgres`, `persistence/postgres` | Paired PostgreSQL composition, schemas, connections and ownership |

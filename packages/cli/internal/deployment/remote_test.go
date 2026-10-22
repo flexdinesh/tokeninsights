@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/json"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/operator"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -52,16 +53,16 @@ func newRemote(t *testing.T, backend string) *remoteServer {
 		r.dsn = testdb.New(t)
 	}
 	r.start(t)
-	r.admin(t, accounts.AdminRequest{Operation: "create-user", DisplayName: "fixture"}, &r.user)
-	r.admin(t, accounts.AdminRequest{Operation: "create-token", UserID: r.user.UserID, Permissions: []string{accounts.Read, accounts.Ingest}}, &r.token)
+	r.admin(t, operator.Request{Operation: "create-user", DisplayName: "fixture"}, &r.user)
+	r.admin(t, operator.Request{Operation: "create-token", UserID: r.user.UserID, Permissions: []string{accounts.Read, accounts.Ingest}}, &r.token)
 	remoteTokens.Store(r.target, r.token.Secret)
 	return r
 }
 
-func (r *remoteServer) admin(t *testing.T, request accounts.AdminRequest, result interface{}) {
+func (r *remoteServer) admin(t *testing.T, request operator.Request, result interface{}) {
 	t.Helper()
 	var output bytes.Buffer
-	if err := accounts.AdminCall(t.Context(), r.socket, request, &output); err != nil {
+	if err := operator.Call(t.Context(), r.socket, request, &output); err != nil {
 		t.Fatal(err)
 	}
 	if result != nil {

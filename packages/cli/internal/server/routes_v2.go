@@ -85,7 +85,7 @@ func (a *app) scoped(r *http.Request) (*app, accounts.Principal, error) {
 	if a.policy.Kind != serverfeatures.Hosted {
 		return a, accounts.Principal{UserID: evidence.PersonalDatasetID, DatasetID: evidence.PersonalDatasetID, CredentialKind: accounts.LocalCredential, Permissions: []string{accounts.Read, accounts.Ingest}}, nil
 	}
-	p, err := a.accounts.AuthenticateRequest(r.Context(), r)
+	p, err := authenticateRequest(r.Context(), a.accounts, r)
 	if err != nil {
 		return nil, p, err
 	}

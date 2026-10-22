@@ -1,4 +1,6 @@
-package accounts
+// Package operator owns the private owner-socket protocol for hosted account
+// administration. It must never be mounted on a public listener.
+package operator
 
 import (
 	"context"
@@ -11,12 +13,16 @@ import (
 	"strings"
 	"time"
 
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/ingestionhttp"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/accounts"
 )
 
-const maxAdminBody = 4096
+const (
+	maxBody      = 4096
+	accountsPath = "/control/v1/accounts"
+)
 
-type AdminRequest struct {
+// Request is one administrative operation sent to the running owner process.
+type Request struct {
 	Operation   string     `json:"operation"`
 	Password    string     `json:"password,omitempty"`
 	DisplayName string     `json:"displayName,omitempty"`
@@ -26,13 +32,13 @@ type AdminRequest struct {
 	ExpiresAt   *time.Time `json:"expiresAt,omitempty"`
 }
 
-// AdminHandler must only be mounted on the private mode-0600 operator socket.
-func (s *Service) AdminHandler() http.Handler {
+// Handler must only be mounted on the private mode-0600 operator socket.
+func Handler(s *accounts.Service) http.Handler {
 	mux := http.NewServeMux()
-	mux.HandleFunc("POST /control/v1/accounts", func(w http.ResponseWriter, r *http.Request) {
-		decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxAdminBody))
+	mux.HandleFunc("POST "+accountsPath, func(w http.ResponseWriter, r *http.Request) {
+		decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxBody))
 		decoder.DisallowUnknownFields()
-		var request AdminRequest
+		var request Request
 		if err := decoder.Decode(&request); err != nil {
 			http.Error(w, "invalid_request", http.StatusBadRequest)
 			return
@@ -65,7 +71,7 @@ func (s *Service) AdminHandler() http.Handler {
 		}
 		if err != nil {
 			code := http.StatusBadRequest
-			if errors.Is(err, ErrNotFound) {
+			if errors.Is(err, accounts.ErrNotFound) {
 				code = http.StatusNotFound
 			}
 			http.Error(w, "account_operation_failed", code)
@@ -78,8 +84,8 @@ func (s *Service) AdminHandler() http.Handler {
 	return mux
 }
 
-// AdminCall talks to the owner process; provisioning never reopens its DB.
-func AdminCall(ctx context.Context, socket string, request AdminRequest, output io.Writer) error {
+// Call talks to the owner process; provisioning never reopens its DB.
+func Call(ctx context.Context, socket string, request Request, output io.Writer) error {
 	if socket == "" {
 		return errors.New("--admin-socket required")
 	}
@@ -87,19 +93,12 @@ func AdminCall(ctx context.Context, socket string, request AdminRequest, output 
 	if err != nil {
 		return err
 	}
-	path := "/control/v1/accounts"
-	status := http.StatusOK
-	if request.Operation == "reprocess" {
-		path = ingestionhttp.ProcessingPrefix + "reprocess"
-		body = []byte("{}")
-		status = http.StatusAccepted
-	}
 	transport := &http.Transport{DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
 		return (&net.Dialer{}).DialContext(ctx, "unix", socket)
 	}}
 	defer transport.CloseIdleConnections()
 	client := &http.Client{Transport: transport, Timeout: 30 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
-	r, err := http.NewRequestWithContext(ctx, http.MethodPost, "http://operator"+path, strings.NewReader(string(body)))
+	r, err := http.NewRequestWithContext(ctx, http.MethodPost, "http://operator"+accountsPath, strings.NewReader(string(body)))
 	if err != nil {
 		return err
 	}
@@ -109,9 +108,9 @@ func AdminCall(ctx context.Context, socket string, request AdminRequest, output 
 		return fmt.Errorf("admin server unavailable: %w", err)
 	}
 	defer func() { _ = response.Body.Close() }()
-	if response.StatusCode != status {
+	if response.StatusCode != http.StatusOK {
 		return fmt.Errorf("account operation failed (%d)", response.StatusCode)
 	}
-	_, err = io.Copy(output, io.LimitReader(response.Body, maxAdminBody))
+	_, err = io.Copy(output, io.LimitReader(response.Body, maxBody))
 	return err
 }

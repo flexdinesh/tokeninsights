@@ -2,7 +2,6 @@
 package ingestionhttp
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -14,11 +13,6 @@ import (
 )
 
 const IngestionPrefix = "/api/v3/ingestion/"
-const ProcessingPrefix = "/api/v2/processing/"
-
-type Reprocessor interface {
-	Reprocess(context.Context) (int64, error)
-}
 
 func respond(w http.ResponseWriter, status int, value interface{}) {
 	w.Header().Set("Content-Type", "application/json")
@@ -109,25 +103,6 @@ func Handler(receiver evidence.Receiver, prefix string, protocol int) http.Handl
 			return
 		}
 		respond(w, responseStatus(response), response)
-	})
-	return mux
-}
-func AdminHandler(processor Reprocessor, prefix string) http.Handler {
-	mux := http.NewServeMux()
-	mux.HandleFunc("POST "+prefix+"reprocess", func(w http.ResponseWriter, r *http.Request) {
-		body, err := io.ReadAll(io.LimitReader(r.Body, 3))
-		if err != nil || len(body) != 0 && string(body) != "{}" {
-			fail(w, 400, "validation", "invalid_request")
-			return
-		}
-		generation, err := processor.Reprocess(r.Context())
-		if err != nil {
-			fail(w, 503, "database", "unavailable")
-			return
-		}
-		respond(w, 202, struct {
-			Generation int64 `json:"generation"`
-		}{generation})
 	})
 	return mux
 }
