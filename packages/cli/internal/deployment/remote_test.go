@@ -117,8 +117,7 @@ func (r *remoteServer) start(t *testing.T) {
 				}
 			case <-time.After(20 * time.Second):
 				_ = command.Process.Kill()
-				<-done
-				t.Error("server shutdown timeout")
+				t.Errorf("server shutdown timeout (exit after kill: %v)", <-done)
 			}
 			_ = log.Close()
 			remoteTokens.Delete(target)

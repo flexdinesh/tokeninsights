@@ -673,8 +673,7 @@ func startLocal(t *testing.T, c client, extra ...string) string {
 			}
 		case <-time.After(10 * time.Second):
 			_ = command.Process.Kill()
-			<-done
-			t.Error("local shutdown timeout")
+			t.Errorf("local shutdown timeout (exit after kill: %v)", <-done)
 		}
 	})
 	ready := make(chan string, 1)

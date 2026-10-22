@@ -81,8 +81,7 @@ func BenchmarkIngestionSavedQueries(b *testing.B) {
 				queryCount++
 				if err != nil || dashboard.Summary.SessionCount != int64(sessions) || dashboard.Summary.TotalTokens < previous || dashboard.Summary.TotalTokens > want {
 					cancel()
-					<-done
-					b.Fatalf("saved snapshot: %+v %v", dashboard, err)
+					b.Fatalf("saved snapshot: %+v %v (ingestion after cancel: %v)", dashboard, err, <-done)
 				}
 				previous = dashboard.Summary.TotalTokens
 				select {
