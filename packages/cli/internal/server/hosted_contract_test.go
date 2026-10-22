@@ -307,7 +307,7 @@ func TestDisabledHTTPCapabilitiesFailClosed(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer func() { _ = store.Close() }()
-			policy, err := serverfeatures.New(kind, false, serverfeatures.Usage, serverfeatures.Facets, serverfeatures.WebDashboard, serverfeatures.TerminalDashboard, serverfeatures.RawIngestion, serverfeatures.Reprocess)
+			policy, err := serverfeatures.New(kind, false, serverfeatures.Usage, serverfeatures.Facets, serverfeatures.WebDashboard, serverfeatures.TerminalDashboard, serverfeatures.RawIngestion)
 			if err != nil {
 				t.Fatal(err)
 			}

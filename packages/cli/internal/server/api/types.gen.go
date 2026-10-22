@@ -1253,11 +1253,6 @@ type RawSourceData struct {
 	Vcs *NativeScalar `json:"vcs,omitempty"`
 }
 
-// ReprocessAcceptance defines model for ReprocessAcceptance.
-type ReprocessAcceptance struct {
-	Generation Count `json:"generation"`
-}
-
 // Selection defines model for Selection.
 type Selection struct {
 	Bucket Bucket `json:"bucket"`

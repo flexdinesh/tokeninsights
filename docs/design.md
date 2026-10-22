@@ -355,8 +355,9 @@ existing SQLite/PostgreSQL processing queue remains behind dataengine's backend 
 `serverfeatures` owns typed kind/capabilities and validates dependent features.
 `GET /api/v2/instance` returns serverKind, datasetId, bounded capabilities and caller
 permissions separately. `usage`, `facets`, `web-dashboard`, `raw-ingestion`,
-`terminal-dashboard`, `collector-progress`, `dashboard-reload`, `reprocess` determine mounted routes
-and command/browser preflight. Unknown feature names are ignored; absent required
+`terminal-dashboard`, `collector-progress`, `dashboard-reload` determine mounted routes
+and command/browser preflight. Reprocessing has no HTTP route: local `data reprocess`
+and hosted owner-socket `user reprocess` start it. Unknown feature names are ignored; absent required
 features/unknown kinds reject. Hosted cannot enable terminal-dashboard,
 collector-progress or dashboard-reload. Local composition still advertises the
 dashboard-reload capability, including saved-only viewers; the browser uses

@@ -99,7 +99,7 @@ pnpm run build
 
 ## Verification
 
-- **Local checks belong in pre-push**. Add locally reproducible checks to the root `check:push` script, reached by `.husky/pre-push`; do not add or duplicate them in CI or release preparation.
+- **Local checks belong in pre-push**. Add locally reproducible checks, except the docs build, to the root `check:push` script, reached by `.husky/pre-push`; do not add or duplicate them in CI or release preparation.
 - **CI requires a concrete reason**. Before adding or expanding a CI check, identify the coverage unavailable locally and document it in the workflow and PR. Native OS/architecture coverage and validation of artifacts generated during release are valid reasons. Convenience or repeating a local check is not.
 
 - After changing code, run `pnpm run format`, `pnpm run lint`, the relevant focused tests, and `pnpm run test`.

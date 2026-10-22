@@ -8,7 +8,6 @@ export type Capability =
   | 'terminal-dashboard'
   | 'collector-progress'
   | 'dashboard-reload'
-  | 'reprocess'
 
 export function hasCapability(server: Bootstrap, capability: Capability): boolean {
   return server.capabilities.includes(capability)

@@ -570,28 +570,6 @@ paths:
           description: Your API key is revoked.
         default:
           $ref: '#/components/responses/Error'
-  /api/v2/processing/reprocess:
-    post:
-      operationId: reprocessEvidence
-      summary: Stage reprocessing of retained raw evidence
-      description:
-        Builds a new generation asynchronously. Published history stays active until replacement
-        coverage is complete. Available on private local transport and the remote server.
-      tags:
-        - Ingestion
-      responses:
-        '202':
-          description: Durable reprocessing generation requested
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ReprocessAcceptance'
-        '503':
-          description: Unable to queue reprocessing
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/IngestionError'
 components:
   securitySchemes:
     bearerAuth:
@@ -1419,14 +1397,6 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/EvidenceOutcome'
-    ReprocessAcceptance:
-      type: object
-      additionalProperties: false
-      required:
-        - generation
-      properties:
-        generation:
-          $ref: '#/components/schemas/Count'
     InstanceResponseV2:
       type: object
       additionalProperties: false
@@ -1486,7 +1456,7 @@ components:
             minLength: 1
             description:
               'Unknown capabilities are ignored by clients. Known names: usage, facets, web-dashboard,
-              dashboard-reload, raw-ingestion, terminal-dashboard, collector-progress, reprocess.
+              dashboard-reload, raw-ingestion, terminal-dashboard, collector-progress.
               dashboard-reload is query-only and available only to local viewers.'
         defaults:
           $ref: '#/components/schemas/Selection'
