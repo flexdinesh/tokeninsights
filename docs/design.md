@@ -596,7 +596,7 @@ and its adapters isolate application persistence. Dataengine owns processing con
 | `processor` | Pure evidence interpretation; no host reads, SQL, network or wall clock |
 | `dataengine` | Transport-independent work/processing orchestration and retry scheduling |
 | `datastore` | Shared relational token transactions and dataset-scoped persistence |
-| `analytics` | Backend-independent query contracts, results and query policy |
+| `analytics` | Backend-independent query contracts, values, selections, results and query policy |
 | `adapters/sqlanalytics` | Dataset-scoped SQL queries and receiver/query composition |
 | `server`, `ingestionhttp` | Authorized REST/asset and ingestion adapters |
 | `clientaddress` | Explicit trusted-proxy client address resolution; no environment, account or storage dependencies |
@@ -615,7 +615,7 @@ and its adapters isolate application persistence. Dataengine owns processing con
 | `cli` | Command parsing, environment defaults and local composition; no storage adapters or SQL |
 | `tui` | Terminal dashboard over `queryclient.Reader` and the local runtime; no HTTP, SQL or storage adapters |
 
-`querymodel` owns storage-independent query values. Direct queries receive an
+`analytics` owns storage-independent query values and selections. Direct queries receive an
 analytics repository and instance identity; they do not construct an HTTP app.
 Storage supplies semantic receiver operations; `ingestionhttp` mounts HTTP routes.
 The collector requires an injected delivery adapter before capture. Single-process

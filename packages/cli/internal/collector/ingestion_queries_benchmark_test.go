@@ -14,7 +14,6 @@ import (
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/localruntime"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/pipeline"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/storagecontract"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/viewer"
 )
 
 // Keep saved sessions queryable while adding 9,950 messages to them. This uses
@@ -67,7 +66,7 @@ func BenchmarkIngestionSavedQueries(b *testing.B) {
 				}
 				done <- err
 			}()
-			query := analytics.Query{Selection: viewer.Selection{Period: "all", Bucket: "day"}, Tab: "sessions", Quality: "confirmed", Sort: "total", Direction: "desc", Page: 1, PageSize: 200}
+			query := analytics.Query{Selection: analytics.Selection{Period: "all", Bucket: "day"}, Tab: "sessions", Quality: "confirmed", Sort: "total", Direction: "desc", Page: 1, PageSize: 200}
 			want := int64(sessions * messages * startupBenchmarkTokens)
 			previous := int64(sessions * startupBenchmarkTokens)
 			ticker := time.NewTicker(200 * time.Millisecond)

@@ -3,6 +3,7 @@ package tui
 import (
 	"flag"
 	"fmt"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/analytics"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/queryclient"
 	"io"
 	"strings"
@@ -11,8 +12,6 @@ import (
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/config"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/localruntime"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/pipeline"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/querymodel"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/viewer"
 )
 
 type period string
@@ -92,7 +91,7 @@ type tableOptions struct {
 	period          period
 	bucket          timeBucket
 	sort            sortMode
-	repoGroup       querymodel.RepoGroup
+	repoGroup       analytics.RepoGroup
 	filters         filters
 }
 
@@ -251,7 +250,7 @@ func selectedBucket(value string) (timeBucket, error) {
 }
 
 func periodStart(now time.Time, selected period) time.Time {
-	return viewer.PeriodStart(now, string(selected))
+	return analytics.PeriodStart(now, string(selected))
 }
 
 func validateHarnesses(values stringList) error {

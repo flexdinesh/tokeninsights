@@ -9,7 +9,6 @@ import (
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/analytics"
 	api "github.com/flexdinesh/tokeninsights/packages/cli/internal/server/api"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/serverfeatures"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/viewer"
 )
 
 // DirectQuery adapts the same query validation, analytics and presentation used
@@ -18,12 +17,12 @@ type DirectQuery struct {
 	source             analytics.Repository
 	policy             serverfeatures.Policy
 	instance, hostname string
-	defaults           viewer.Selection
+	defaults           analytics.Selection
 }
 
 // NewDirectQuery advertises the composition's policy, like the HTTP instance route.
 func NewDirectQuery(source analytics.Repository, policy serverfeatures.Policy, instance, hostname string) *DirectQuery {
-	return &DirectQuery{source: source, policy: policy, instance: instance, hostname: hostname, defaults: viewer.Selection{Period: "month", Bucket: "day"}}
+	return &DirectQuery{source: source, policy: policy, instance: instance, hostname: hostname, defaults: analytics.Selection{Period: "month", Bucket: "day"}}
 }
 func (d *DirectQuery) Instance(ctx context.Context) (api.InstanceResponseV2, error) {
 	status, err := d.source.Status(ctx)

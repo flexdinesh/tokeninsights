@@ -2,13 +2,13 @@ package tui
 
 import (
 	"context"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/analytics"
 	"reflect"
 	"testing"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/queryclient"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/querymodel"
 )
 
 func TestInitialFilterWaitsForValidatedPublication(t *testing.T) {
@@ -83,7 +83,7 @@ func TestUnavailableStatusClearsSavedDataAndRecoversSameRevision(t *testing.T) {
 	if len(m.rows) != 0 {
 		t.Fatal("late successful read restored unavailable data")
 	}
-	updated, cmd := m.Update(sharedSyncMsg{generation: m.publicationGeneration, instanceID: "instance", dataEpoch: "epoch", readiness: "ready", status: querymodel.SyncStatus{Revision: 3}})
+	updated, cmd := m.Update(sharedSyncMsg{generation: m.publicationGeneration, instanceID: "instance", dataEpoch: "epoch", readiness: "ready", status: analytics.SyncStatus{Revision: 3}})
 	m = updated.(interactiveModel)
 	if cmd == nil || !m.reloadInFlight || m.serviceReadiness != "ready" {
 		t.Fatal("storage recovery at the same revision did not schedule a read")
@@ -97,7 +97,7 @@ func TestNewerStatusDuringReadRetriesOnNextPollWithoutHotLoop(t *testing.T) {
 	m.sharedSync.Revision = 1
 	m.reloadInFlight = true
 	_, sequence := m.queryContext(m.queries)
-	updated, _ := m.Update(sharedSyncMsg{instanceID: "instance", dataEpoch: "epoch", readiness: "ready", status: querymodel.SyncStatus{Revision: 2}})
+	updated, _ := m.Update(sharedSyncMsg{instanceID: "instance", dataEpoch: "epoch", readiness: "ready", status: analytics.SyncStatus{Revision: 2}})
 	m = updated.(interactiveModel)
 	if !m.reloadInFlight {
 		t.Fatal("status discarded the in-flight read")
@@ -107,7 +107,7 @@ func TestNewerStatusDuringReadRetriesOnNextPollWithoutHotLoop(t *testing.T) {
 	if immediate != nil || m.err != queryclient.ErrSnapshotChanged {
 		t.Fatal("old revision retried immediately or was accepted")
 	}
-	updated, cmd := m.Update(sharedSyncMsg{instanceID: "instance", dataEpoch: "epoch", readiness: "ready", status: querymodel.SyncStatus{Revision: 2}})
+	updated, cmd := m.Update(sharedSyncMsg{instanceID: "instance", dataEpoch: "epoch", readiness: "ready", status: analytics.SyncStatus{Revision: 2}})
 	m = updated.(interactiveModel)
 	if cmd == nil || !m.reloadInFlight {
 		t.Fatal("next status poll did not retry the pending revision")
@@ -132,7 +132,7 @@ func TestDashboardReplacementAcceptsSnapshotAndInvalidatesOldReaders(t *testing.
 	if oldFacetContext.Err() != context.Canceled || oldStatusContext.Err() != context.Canceled || len(m.filterValues) != 0 || !reflect.DeepEqual(m.options.filters.providers, stringList{"selected"}) {
 		t.Fatal("replacement did not cancel obsolete reads and preserve selections")
 	}
-	updated, cmd := m.Update(sharedSyncMsg{requestID: oldStatusSequence, generation: oldGeneration, instanceID: "old", dataEpoch: "old-epoch", readiness: "ready", status: querymodel.SyncStatus{Revision: 99}})
+	updated, cmd := m.Update(sharedSyncMsg{requestID: oldStatusSequence, generation: oldGeneration, instanceID: "old", dataEpoch: "old-epoch", readiness: "ready", status: analytics.SyncStatus{Revision: 99}})
 	m = updated.(interactiveModel)
 	if cmd != nil || m.instanceID != "new" || m.observedRevision != 1 || len(m.rows) != 1 {
 		t.Fatal("late status reverted the new publication")
@@ -153,7 +153,7 @@ func TestInitialDashboardIdentityRejectsEarlierFacetsAndStatus(t *testing.T) {
 	_, usageSequence := m.queryContext(m.queries)
 	updated, _ := m.Update(reloadMsg{requestID: usageSequence, instanceID: "new", dataEpoch: "new-epoch", revision: 4, rows: []renderRow{{bucket: "new"}}})
 	m = updated.(interactiveModel)
-	updated, _ = m.Update(sharedSyncMsg{requestID: statusSequence, instanceID: "old", dataEpoch: "old-epoch", readiness: "ready", status: querymodel.SyncStatus{Revision: 100}})
+	updated, _ = m.Update(sharedSyncMsg{requestID: statusSequence, instanceID: "old", dataEpoch: "old-epoch", readiness: "ready", status: analytics.SyncStatus{Revision: 100}})
 	m = updated.(interactiveModel)
 	updated, _ = m.Update(filterValuesMsg{requestID: facetSequence, instanceID: "old", dataEpoch: "old-epoch", revision: 100, dimension: filterProvider, values: []string{"old-provider"}})
 	m = updated.(interactiveModel)
@@ -174,7 +174,7 @@ func TestSamePublicationRevisionCannotMoveBackwards(t *testing.T) {
 	if cmd != nil || len(m.filterValues) != 0 || m.filterErr == nil {
 		t.Fatal("older facet publication was accepted or retried immediately")
 	}
-	updated, _ = m.Update(sharedSyncMsg{instanceID: "instance", dataEpoch: "epoch", readiness: "ready", status: querymodel.SyncStatus{Revision: 6}})
+	updated, _ = m.Update(sharedSyncMsg{instanceID: "instance", dataEpoch: "epoch", readiness: "ready", status: analytics.SyncStatus{Revision: 6}})
 	m = updated.(interactiveModel)
 	if m.sharedSync.Revision != 7 || m.observedRevision != 7 {
 		t.Fatal("older status lowered the observed revision")

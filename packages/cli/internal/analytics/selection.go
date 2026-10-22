@@ -1,11 +1,8 @@
-// Package viewer holds presentation-independent viewer semantics.
-package viewer
+package analytics
 
 import (
 	"fmt"
 	"time"
-
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/querymodel"
 )
 
 type Selection struct {
@@ -85,8 +82,8 @@ func PeriodEnd(now time.Time, period string) time.Time {
 	}
 }
 
-func (s Selection) Filter(now time.Time) querymodel.Filter {
-	f := querymodel.Filter{Start: PeriodStart(now, s.Period), End: PeriodEnd(now, s.Period), DayFrom: s.From, DayTo: s.To,
+func (s Selection) Filter(now time.Time) Filter {
+	f := Filter{Start: PeriodStart(now, s.Period), End: PeriodEnd(now, s.Period), DayFrom: s.From, DayTo: s.To,
 		Providers: s.Providers, Models: s.Models, Harnesses: s.Harnesses, SessionIDs: s.Sessions}
 	if s.From != "" || s.To != "" {
 		f.Start, f.End = time.Time{}, time.Time{}

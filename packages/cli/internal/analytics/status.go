@@ -2,13 +2,12 @@ package analytics
 
 import (
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/dataengine"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/querymodel"
 )
 
 // Facets contains filter choices from one dataset and one read snapshot.
 type Facets struct {
 	Providers, Models, Harnesses, Sessions []string
-	Repositories, Directories              []querymodel.LocationOption
+	Repositories, Directories              []LocationOption
 	Revision, Generation, InputRevision    int64
 	DatabaseID, DatasetID                  string
 }

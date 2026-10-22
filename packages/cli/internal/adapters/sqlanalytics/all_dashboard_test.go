@@ -9,8 +9,6 @@ import (
 
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/analytics"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/persistence/sqlutil"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/querymodel"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/viewer"
 )
 
 func TestAllDashboardMatchesPaginatedSnapshots(t *testing.T) {
@@ -23,7 +21,7 @@ func TestAllDashboardMatchesPaginatedSnapshots(t *testing.T) {
 		for _, tab := range []string{"tokens", "models", "providers", "harnesses", "sessions", "context", "repo"} {
 			for _, direction := range []string{"asc", "desc"} {
 				t.Run(quality+"/"+tab+"/"+direction, func(t *testing.T) {
-					q := analytics.Query{Selection: viewer.Selection{Period: "month", Bucket: "day"}, Quality: quality, Tab: tab, Sort: "total", Direction: direction, Page: 1, PageSize: 2, LocationGroup: querymodel.RepoGroupDirectory}
+					q := analytics.Query{Selection: analytics.Selection{Period: "month", Bucket: "day"}, Quality: quality, Tab: tab, Sort: "total", Direction: direction, Page: 1, PageSize: 2, LocationGroup: analytics.RepoGroupDirectory}
 					if tab == "context" {
 						q.Sort = "averageContext"
 					}
@@ -52,7 +50,7 @@ func TestAllDashboardMatchesPaginatedSnapshots(t *testing.T) {
 			}
 		}
 	}
-	q := analytics.Query{Selection: viewer.Selection{Period: "all", Bucket: "day", Models: []string{"model-2"}}, Quality: "confirmed", Tab: "models", Sort: "name", Direction: "asc", Page: 1, PageSize: 2}
+	q := analytics.Query{Selection: analytics.Selection{Period: "all", Bucket: "day", Models: []string{"model-2"}}, Quality: "confirmed", Tab: "models", Sort: "name", Direction: "asc", Page: 1, PageSize: 2}
 	filtered, err := LoadAllDashboard(t.Context(), store, q, now, 1)
 	if err != nil || filtered.Summary.TotalTokens != 120 || filtered.RowCount != 1 || len(filtered.Rows) != 1 || filtered.Rows[0].Name != "model-2" {
 		t.Fatal("filter lost", filtered, err)
@@ -66,7 +64,7 @@ func TestAllDashboardMatchesPaginatedSnapshots(t *testing.T) {
 
 func TestAllDashboardBoundsAndCancellation(t *testing.T) {
 	store := dashboardStore(t)
-	q := analytics.Query{Selection: viewer.Selection{Period: "all", Bucket: "day"}, Quality: "confirmed", Tab: "sessions", Sort: "total", Direction: "desc", Page: 1, PageSize: 2}
+	q := analytics.Query{Selection: analytics.Selection{Period: "all", Bucket: "day"}, Quality: "confirmed", Tab: "sessions", Sort: "total", Direction: "desc", Page: 1, PageSize: 2}
 	for _, limit := range []int{0, -1, 5} {
 		result, err := LoadAllDashboard(t.Context(), store, q, time.Now(), limit)
 		if err == nil || len(result.Rows) != 0 {
@@ -110,7 +108,7 @@ func TestAllDashboardDuringAtomicPublication(t *testing.T) {
 			t.Error(err)
 		}
 	}()
-	q := analytics.Query{Selection: viewer.Selection{Period: "all", Bucket: "day"}, Quality: "confirmed", Tab: "sessions", Sort: "total", Direction: "desc", Page: 1, PageSize: 2}
+	q := analytics.Query{Selection: analytics.Selection{Period: "all", Bucket: "day"}, Quality: "confirmed", Tab: "sessions", Sort: "total", Direction: "desc", Page: 1, PageSize: 2}
 	for range publications {
 		result, err := LoadAllDashboard(t.Context(), store, q, time.Now(), 6)
 		if err != nil {

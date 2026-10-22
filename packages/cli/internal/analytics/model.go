@@ -1,4 +1,4 @@
-package querymodel
+package analytics
 
 import "time"
 

@@ -16,7 +16,6 @@ import (
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/datastore"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/evidence"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/storagecontract"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/viewer"
 )
 
 type pacedBackend struct {
@@ -125,7 +124,7 @@ func BenchmarkPacedProcessing(b *testing.B) {
 				}
 			}
 			visible := time.Now()
-			query := analytics.Query{Selection: viewer.Selection{Period: "all", Bucket: "day"}, Tab: "sessions", Quality: "confirmed", Sort: "total", Direction: "desc", Page: 1, PageSize: 200}
+			query := analytics.Query{Selection: analytics.Selection{Period: "all", Bucket: "day"}, Tab: "sessions", Quality: "confirmed", Sort: "total", Direction: "desc", Page: 1, PageSize: 200}
 			dashboard, err := sqlanalytics.LoadDashboard(ctx, hot, query, time.Now())
 			b.StopTimer()
 			queried := time.Now()

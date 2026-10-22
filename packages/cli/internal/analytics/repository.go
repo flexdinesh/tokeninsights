@@ -1,3 +1,5 @@
+// Package analytics owns backend-independent query contracts, values,
+// selections and query policy.
 package analytics
 
 import (

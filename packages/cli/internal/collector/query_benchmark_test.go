@@ -2,6 +2,7 @@ package collector_test
 
 import (
 	"fmt"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/analytics"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
@@ -15,7 +16,6 @@ import (
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/queryclient"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/server"
 	api "github.com/flexdinesh/tokeninsights/packages/cli/internal/server/api"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/viewer"
 )
 
 const queryBenchmarkSessions = 600
@@ -56,7 +56,7 @@ func BenchmarkLocalSavedQueries(b *testing.B) {
 		b.Fatal(err)
 	}
 	for _, period := range []api.Period{"today", "month", "all"} {
-		filter := (viewer.Selection{Period: string(period)}).Filter(now)
+		filter := (analytics.Selection{Period: string(period)}).Filter(now)
 		var sessions int64
 		for i := range queryBenchmarkSessions {
 			at := dates[i%len(dates)]

@@ -2,12 +2,12 @@ package tui
 
 import (
 	"fmt"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/analytics"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/querymodel"
 )
 
 const (
@@ -89,7 +89,7 @@ func (m interactiveModel) deskFilterItems() []string {
 	return deskScopeItems
 }
 
-func repoGroupLabel(group querymodel.RepoGroup) string { return string(group) }
+func repoGroupLabel(group analytics.RepoGroup) string { return string(group) }
 
 // These are exact component sums from the entire filtered result, never from
 // formatted K/M labels or the visible viewport. Context peaks are not additive.

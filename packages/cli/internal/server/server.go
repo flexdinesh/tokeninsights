@@ -22,7 +22,6 @@ import (
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/networkprefs"
 	serverapi "github.com/flexdinesh/tokeninsights/packages/cli/internal/server/api"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/serverfeatures"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/viewer"
 )
 
 const DefaultPort = networkprefs.DefaultPort
@@ -33,7 +32,7 @@ const queryTimeout = 30 * time.Second
 var assets embed.FS
 
 type Options struct {
-	Defaults   viewer.Selection
+	Defaults   analytics.Selection
 	InstanceID string
 	Hostname   string
 }

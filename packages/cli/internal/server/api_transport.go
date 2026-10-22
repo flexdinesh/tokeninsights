@@ -2,12 +2,10 @@ package server
 
 import (
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/analytics"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/querymodel"
 	serverapi "github.com/flexdinesh/tokeninsights/packages/cli/internal/server/api"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/viewer"
 )
 
-func apiSelection(selection viewer.Selection) serverapi.Selection {
+func apiSelection(selection analytics.Selection) serverapi.Selection {
 	return serverapi.Selection{
 		Period:    serverapi.Period(selection.Period),
 		Bucket:    serverapi.Bucket(selection.Bucket),
@@ -102,10 +100,10 @@ func apiUsageRows(rows []Row) []serverapi.UsageRow {
 	return result
 }
 
-func apiLocationOptions(options []querymodel.LocationOption) []serverapi.LocationOption {
+func apiLocationOptions(options []analytics.LocationOption) []serverapi.LocationOption {
 	result := make([]serverapi.LocationOption, 0, len(options))
 	for _, option := range options {
-		result = append(result, serverapi.LocationOption{Key: option.Key, Name: querymodel.LocationDisplayName(option)})
+		result = append(result, serverapi.LocationOption{Key: option.Key, Name: analytics.LocationDisplayName(option)})
 	}
 	return result
 }

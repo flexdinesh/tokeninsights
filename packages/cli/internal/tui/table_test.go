@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/analytics"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -14,7 +15,6 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/datastore"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/querymodel"
 	"github.com/muesli/termenv"
 	_ "modernc.org/sqlite"
 )
@@ -1088,7 +1088,7 @@ func TestDashboardSessionCoverageAcrossDateFilters(t *testing.T) {
 			}
 			updated, _ := m.Update(msg)
 			m = updated.(interactiveModel)
-			if m.sessionCounts != (querymodel.SessionCounts{Shown: test.shown, Synced: syncedSessions}) {
+			if m.sessionCounts != (analytics.SessionCounts{Shown: test.shown, Synced: syncedSessions}) {
 				t.Fatalf("%s / %s: counts = %+v", test.period, tab, m.sessionCounts)
 			}
 			summary := ansi.Strip(m.renderTableSummary())

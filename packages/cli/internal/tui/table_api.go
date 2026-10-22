@@ -3,11 +3,11 @@ package tui
 import (
 	"context"
 	"errors"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/analytics"
 	"sync"
 	"time"
 
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/queryclient"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/querymodel"
 	api "github.com/flexdinesh/tokeninsights/packages/cli/internal/server/api"
 )
 
@@ -72,7 +72,7 @@ func tableUsageParams(options tableOptions, tab tabMode) api.GetUsageParams {
 	if tab == tabRepo {
 		group := options.repoGroup
 		if group == "" {
-			group = querymodel.RepoGroupRepository
+			group = analytics.RepoGroupRepository
 		}
 		params.LocationGroup = apiPointer(api.LocationGroup(group))
 		params.Repository = apiPointer([]string(options.filters.repositories))
@@ -153,7 +153,7 @@ func (m interactiveModel) loadServerDashboard() reloadMsg {
 	if result.InputRevision != nil {
 		inputRevision = *result.InputRevision
 	}
-	return reloadMsg{instanceID: result.InstanceId, dataEpoch: result.DataEpoch, selection: m.selectionKey(), rows: rows, revision: result.Revision, serverGeneration: serverGeneration, inputRevision: inputRevision, lastSyncMs: result.LastSynced, processingPending: result.Pending, sessionCounts: querymodel.SessionCounts{Shown: result.Summary.Sessions, Synced: result.Summary.SyncedSessions}, hostname: instance.Hostname, timezone: instance.Timezone}
+	return reloadMsg{instanceID: result.InstanceId, dataEpoch: result.DataEpoch, selection: m.selectionKey(), rows: rows, revision: result.Revision, serverGeneration: serverGeneration, inputRevision: inputRevision, lastSyncMs: result.LastSynced, processingPending: result.Pending, sessionCounts: analytics.SessionCounts{Shown: result.Summary.Sessions, Synced: result.Summary.SyncedSessions}, hostname: instance.Hostname, timezone: instance.Timezone}
 }
 
 func apiRenderRows(source []api.UsageRow, tab tabMode) []renderRow {
@@ -216,9 +216,9 @@ func facetValues(response api.UsageFacetsResponseV2, dimension filterDimension) 
 		if dimension == filterDirectory {
 			source = response.Directories
 		}
-		locations := make([]querymodel.LocationOption, 0, len(source))
+		locations := make([]analytics.LocationOption, 0, len(source))
 		for _, value := range source {
-			locations = append(locations, querymodel.LocationOption{Key: value.Key, Name: value.Name})
+			locations = append(locations, analytics.LocationOption{Key: value.Key, Name: value.Name})
 		}
 		values, keys := locationFilterLabels(locations)
 		return values, keys, nil

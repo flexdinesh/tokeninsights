@@ -2,10 +2,10 @@ package tui
 
 import (
 	"fmt"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/analytics"
 	"strings"
 
 	"github.com/charmbracelet/x/ansi"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/querymodel"
 )
 
 type tableSummaryModel struct {
@@ -13,7 +13,7 @@ type tableSummaryModel struct {
 	totalValue    int64
 	showTotal     bool
 	loading       bool
-	sessionCounts querymodel.SessionCounts
+	sessionCounts analytics.SessionCounts
 }
 
 const tableSummarySeparator = " · "

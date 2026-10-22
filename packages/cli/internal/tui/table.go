@@ -16,7 +16,6 @@ import (
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/localruntime"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/pipeline"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/queryclient"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/querymodel"
 )
 
 type reloadMsg struct {
@@ -25,7 +24,7 @@ type reloadMsg struct {
 	instanceID, dataEpoch string
 	selection             string
 	rows                  []renderRow
-	coverage              []querymodel.DayCoverage
+	coverage              []analytics.DayCoverage
 	revision              int64
 	preservePosition      bool
 	refreshToken          string
@@ -34,7 +33,7 @@ type reloadMsg struct {
 	lastSyncMs            int64
 	processingPending     *int64
 	hostname, timezone    string
-	sessionCounts         querymodel.SessionCounts
+	sessionCounts         analytics.SessionCounts
 	err                   error
 }
 
@@ -70,7 +69,7 @@ type sharedSyncMsg struct {
 	instanceID, dataEpoch string
 	readiness             string
 	pending               bool
-	status                querymodel.SyncStatus
+	status                analytics.SyncStatus
 	err                   error
 }
 
@@ -124,7 +123,7 @@ type interactiveModel struct {
 	activeTab             tabMode
 	statusline            statuslineModel
 	tableSummary          tableSummaryModel
-	sessionCounts         querymodel.SessionCounts
+	sessionCounts         analytics.SessionCounts
 	width                 int
 	height                int
 	scrollOffset          int
@@ -145,8 +144,8 @@ type interactiveModel struct {
 	requestID             uint64
 	cancel                context.CancelFunc
 	statusPolling         bool
-	sharedSync            querymodel.SyncStatus
-	coverage              []querymodel.DayCoverage
+	sharedSync            analytics.SyncStatus
+	coverage              []analytics.DayCoverage
 	options               tableOptions
 	now                   time.Time
 	err                   error
@@ -176,7 +175,7 @@ type syncProgressRow struct {
 }
 
 var aggregationTabs = []tabMode{tabTokens, tabModels, tabProviders, tabHarnesses, tabSessions, tabContext, tabRepo}
-var repoGroupOptions = []querymodel.RepoGroup{querymodel.RepoGroupRepository, querymodel.RepoGroupDirectory}
+var repoGroupOptions = []analytics.RepoGroup{analytics.RepoGroupRepository, analytics.RepoGroupDirectory}
 var dateRangeOptions = []period{periodToday, periodYesterday, periodWeek, periodMonth, periodYear, periodAllTime}
 var bucketOptions = []timeBucket{bucketDay, bucketWeek, bucketMonth, bucketYear}
 var defaultSortOptions = []sortMode{sortDate, sortTokens, sortInput, sortOutput, sortCacheRead, sortName}
@@ -223,7 +222,7 @@ func (m interactiveModel) Init() tea.Cmd {
 
 func newInteractiveModel(ctx context.Context, options tableOptions, now time.Time, hostname string) interactiveModel {
 	if options.repoGroup == "" {
-		options.repoGroup = querymodel.RepoGroupRepository
+		options.repoGroup = analytics.RepoGroupRepository
 	}
 	syncContext, cancel := context.WithCancel(ctx)
 	m := interactiveModel{
@@ -350,7 +349,7 @@ func (m interactiveModel) transitionPublication(instanceID, dataEpoch string, re
 		m.queries.invalidate()
 		m.statusQueries.invalidate()
 		m.rows, m.coverage = nil, nil
-		m.sessionCounts, m.lastSyncMs = querymodel.SessionCounts{}, 0
+		m.sessionCounts, m.lastSyncMs = analytics.SessionCounts{}, 0
 		m.refresh.loaded = false
 		m.refresh.displayedRevision, m.refresh.inputRevision, m.refresh.serverGeneration = 0, 0, 0
 		m.refresh.displayedToken, m.refresh.queryErr = "", nil
@@ -1037,7 +1036,7 @@ func (m interactiveModel) handlePopupKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 }
 
-func indexOfRepoGroup(value querymodel.RepoGroup) int {
+func indexOfRepoGroup(value analytics.RepoGroup) int {
 	for i, option := range repoGroupOptions {
 		if option == value {
 			return i
@@ -1579,11 +1578,11 @@ func activeRepoFiltersLabel(f filters) string {
 	return " · " + strings.Join(parts, " · ")
 }
 
-func locationFilterLabels(source []querymodel.LocationOption) ([]string, map[string]string) {
+func locationFilterLabels(source []analytics.LocationOption) ([]string, map[string]string) {
 	values := make([]string, 0, len(source))
 	keys := make(map[string]string, len(source))
 	for _, option := range source {
-		base := querymodel.LocationDisplayName(option)
+		base := analytics.LocationDisplayName(option)
 		label := base
 		for suffix := 2; ; suffix++ {
 			if _, exists := keys[label]; !exists {

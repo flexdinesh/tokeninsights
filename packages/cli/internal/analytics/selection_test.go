@@ -1,4 +1,4 @@
-package viewer
+package analytics
 
 import (
 	"testing"

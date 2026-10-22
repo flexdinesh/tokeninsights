@@ -10,8 +10,6 @@ import (
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/analytics"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/datastore"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/evidence"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/querymodel"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/viewer"
 )
 
 func dashboardStore(t *testing.T) *datastore.Store {
@@ -53,7 +51,7 @@ func TestSQLDashboardTabsFiltersPaginationAndSeparateEstimates(t *testing.T) {
 	store := dashboardStore(t)
 	for _, tab := range []string{"tokens", "models", "providers", "harnesses", "sessions", "context", "repo"} {
 		t.Run(tab, func(t *testing.T) {
-			q := analytics.Query{Selection: viewer.Selection{Period: "all", Bucket: "day"}, Tab: tab, Quality: "confirmed", Sort: "total", Direction: "desc", Page: 1, PageSize: 2, LocationGroup: querymodel.RepoGroupRepository}
+			q := analytics.Query{Selection: analytics.Selection{Period: "all", Bucket: "day"}, Tab: tab, Quality: "confirmed", Sort: "total", Direction: "desc", Page: 1, PageSize: 2, LocationGroup: analytics.RepoGroupRepository}
 			if tab == "context" {
 				q.Sort = "averageContext"
 			}
@@ -81,7 +79,7 @@ func TestSQLDashboardTabsFiltersPaginationAndSeparateEstimates(t *testing.T) {
 			}
 		})
 	}
-	q := analytics.Query{Selection: viewer.Selection{Period: "all", Bucket: "day", Models: []string{"model-2"}}, Tab: "models", Quality: "confirmed", Sort: "name", Direction: "asc", Page: 999999999, PageSize: 2}
+	q := analytics.Query{Selection: analytics.Selection{Period: "all", Bucket: "day", Models: []string{"model-2"}}, Tab: "models", Quality: "confirmed", Sort: "name", Direction: "asc", Page: 999999999, PageSize: 2}
 	data, err := LoadDashboard(t.Context(), store, q, time.Now())
 	if err != nil || data.Summary.TotalTokens != 120 || data.Page != 1 || data.Rows[0].Name != "model-2" {
 		t.Fatalf("filter/page %+v %v", data, err)

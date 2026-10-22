@@ -2,13 +2,13 @@ package tui
 
 import (
 	"context"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/analytics"
 	"strings"
 	"testing"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/ansi"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/querymodel"
 )
 
 func TestRepoTabGroupsAndFiltersWithoutChangingOtherTabs(t *testing.T) {
@@ -21,7 +21,7 @@ func TestRepoTabGroupsAndFiltersWithoutChangingOtherTabs(t *testing.T) {
 		t.Fatal(err)
 	}
 	insertLoadRowsCanonicalToken(t, database, now.Add(time.Second).UnixMilli(), "pi", "two", "anthropic", "claude")
-	options := tableOptions{query: queryClient(t, path), period: periodAllTime, bucket: bucketDay, repoGroup: querymodel.RepoGroupRepository}
+	options := tableOptions{query: queryClient(t, path), period: periodAllTime, bucket: bucketDay, repoGroup: analytics.RepoGroupRepository}
 	rows, err := loadRows(context.Background(), options, now, groupByNone, tabRepo)
 	if err != nil || len(rows) != 2 || (rows[0].location != "unknown" && rows[1].location != "unknown") {
 		t.Fatalf("repo rows = %+v, err = %v", rows, err)
@@ -37,7 +37,7 @@ func TestRepoTabGroupsAndFiltersWithoutChangingOtherTabs(t *testing.T) {
 			t.Fatalf("repo table missing %q: %s", want, table)
 		}
 	}
-	options.repoGroup = querymodel.RepoGroupDirectory
+	options.repoGroup = analytics.RepoGroupDirectory
 	rows, err = loadRows(context.Background(), options, now, groupByNone, tabRepo)
 	if err != nil || len(rows) != 1 || rows[0].location != "~/work/repo" {
 		t.Fatalf("directory row = %+v, err = %v", rows, err)
@@ -49,14 +49,14 @@ func TestRepoTabGroupsAndFiltersWithoutChangingOtherTabs(t *testing.T) {
 }
 
 func TestLocationFilterLabelsKeepDuplicateNamesSelectable(t *testing.T) {
-	labels, keys := locationFilterLabels([]querymodel.LocationOption{{Key: "first", Name: "repo"}, {Key: "second", Name: "repo"}})
+	labels, keys := locationFilterLabels([]analytics.LocationOption{{Key: "first", Name: "repo"}, {Key: "second", Name: "repo"}})
 	if len(labels) != 2 || labels[0] != "repo" || labels[1] != "repo (2)" || keys[labels[0]] != "first" || keys[labels[1]] != "second" {
 		t.Fatalf("location labels = %v, keys = %v", labels, keys)
 	}
 }
 
 func TestRepoTabControlsOnlyRepositoryAndDirectory(t *testing.T) {
-	if len(repoGroupOptions) != 2 || repoGroupOptions[0] != querymodel.RepoGroupRepository || repoGroupOptions[1] != querymodel.RepoGroupDirectory {
+	if len(repoGroupOptions) != 2 || repoGroupOptions[0] != analytics.RepoGroupRepository || repoGroupOptions[1] != analytics.RepoGroupDirectory {
 		t.Fatalf("repo group options = %v", repoGroupOptions)
 	}
 	m := newInteractiveModel(context.Background(), tableOptions{}, time.Now(), "host")
@@ -78,7 +78,7 @@ func TestRepoTabControlsOnlyRepositoryAndDirectory(t *testing.T) {
 	m.popupCursor = 1
 	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	m = updated.(interactiveModel)
-	if m.options.repoGroup != querymodel.RepoGroupDirectory {
+	if m.options.repoGroup != analytics.RepoGroupDirectory {
 		t.Fatalf("repo group = %q", m.options.repoGroup)
 	}
 }

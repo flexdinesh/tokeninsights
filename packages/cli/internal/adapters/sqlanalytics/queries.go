@@ -13,7 +13,6 @@ import (
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/datastore"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/persistence/sqlutil"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/publication"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/querymodel"
 )
 
 func dataTable(q analytics.Query) string {
@@ -22,7 +21,7 @@ func dataTable(q analytics.Query) string {
 	}
 	return "analytics_confirmed"
 }
-func queryWhere(f querymodel.Filter, timezone, datasetID string) (string, []interface{}, error) {
+func queryWhere(f analytics.Filter, timezone, datasetID string) (string, []interface{}, error) {
 	where := " WHERE countable AND dataset_id=?"
 	args := []interface{}{datasetID}
 	if !f.Start.IsZero() {
@@ -88,7 +87,7 @@ func safeAggregate(values ...int64) error {
 	}
 	return nil
 }
-func queryFilter(q analytics.Query, now time.Time) querymodel.Filter {
+func queryFilter(q analytics.Query, now time.Time) analytics.Filter {
 	f := q.Selection.Filter(now)
 	if q.Tab == "repo" {
 		f.RepositoryKeys = q.RepositoryKeys
@@ -121,7 +120,7 @@ func queryGrouping(q analytics.Query) grouping {
 		return grouping{"harness||':'||provider||':'||model", "model", "harness,provider,model"}
 	case "repo":
 		key, name := "repository_key", "repository_name"
-		if q.LocationGroup == querymodel.RepoGroupDirectory {
+		if q.LocationGroup == analytics.RepoGroupDirectory {
 			key, name = "directory_key", "directory_name"
 		}
 		key = "COALESCE(NULLIF(" + key + ",''),'unknown')"
@@ -316,7 +315,7 @@ func loadDashboard(ctx context.Context, store *datastore.Store, q analytics.Quer
 }
 
 func LoadFacets(ctx context.Context, store *datastore.Store, q analytics.Query, search string, now time.Time) (analytics.Facets, error) {
-	result := analytics.Facets{Providers: []string{}, Models: []string{}, Harnesses: []string{}, Sessions: []string{}, Repositories: []querymodel.LocationOption{}, Directories: []querymodel.LocationOption{}}
+	result := analytics.Facets{Providers: []string{}, Models: []string{}, Harnesses: []string{}, Sessions: []string{}, Repositories: []analytics.LocationOption{}, Directories: []analytics.LocationOption{}}
 	tx, err := store.BeginRead(ctx)
 	if err != nil {
 		return result, err
@@ -369,7 +368,7 @@ func LoadFacets(ctx context.Context, store *datastore.Store, q analytics.Query, 
 		}
 		for rows.Next() {
 			if location {
-				var option querymodel.LocationOption
+				var option analytics.LocationOption
 				if err := rows.Scan(&option.Key, &option.Name); err != nil {
 					_ = rows.Close()
 					return result, err

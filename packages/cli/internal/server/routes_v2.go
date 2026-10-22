@@ -20,7 +20,6 @@ import (
 	api "github.com/flexdinesh/tokeninsights/packages/cli/internal/server/api"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/serverfeatures"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/version"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/viewer"
 )
 
 type DataHandlerOptions struct {
@@ -58,7 +57,7 @@ func NewDataHandlerWithOptions(ctx context.Context, store DataSource, log io.Wri
 	if options.Policy.Kind == serverfeatures.Hosted {
 		options.Hostname = ""
 	}
-	a := newApp(ctx, Options{InstanceID: options.InstanceID, Hostname: options.Hostname, Defaults: viewer.Selection{Period: "month", Bucket: "day"}}, log)
+	a := newApp(ctx, Options{InstanceID: options.InstanceID, Hostname: options.Hostname, Defaults: analytics.Selection{Period: "month", Bucket: "day"}}, log)
 	a.source = store
 	if options.Policy.Kind == serverfeatures.Personal {
 		a.data = store.Receiver(evidence.PersonalDatasetID)
@@ -221,7 +220,7 @@ func (a *app) instanceV2(w http.ResponseWriter, r *http.Request, p accounts.Prin
 }
 
 // instanceResponse is the single instance descriptor for HTTP and direct readers.
-func instanceResponse(policy serverfeatures.Policy, granted []string, status analytics.ProcessingStatus, instanceID, hostname string, defaults viewer.Selection) api.InstanceResponseV2 {
+func instanceResponse(policy serverfeatures.Policy, granted []string, status analytics.ProcessingStatus, instanceID, hostname string, defaults analytics.Selection) api.InstanceResponseV2 {
 	capabilities := make([]string, 0, len(policy.Capabilities))
 	for _, capability := range policy.Capabilities {
 		capabilities = append(capabilities, string(capability))

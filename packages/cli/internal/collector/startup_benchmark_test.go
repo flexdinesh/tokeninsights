@@ -13,7 +13,6 @@ import (
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/collector"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/localruntime"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/pipeline"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/viewer"
 )
 
 const (
@@ -38,7 +37,7 @@ func startupBenchmarkRun(b *testing.B, runtime *localruntime.Runtime, options co
 		b.Fatal(err)
 	}
 	visible := time.Now()
-	query := analytics.Query{Selection: viewer.Selection{Period: "all", Bucket: "day"}, Tab: "sessions", Quality: "confirmed", Sort: "total", Direction: "desc", Page: 1, PageSize: 200}
+	query := analytics.Query{Selection: analytics.Selection{Period: "all", Bucket: "day"}, Tab: "sessions", Quality: "confirmed", Sort: "total", Direction: "desc", Page: 1, PageSize: 200}
 	dashboard, err := sqlanalytics.LoadDashboard(b.Context(), runtime.Store, query, time.Now())
 	if err != nil || dashboard.Summary.TotalTokens != wantTokens || dashboard.Summary.SessionCount != int64(wantSessions) || dashboard.Pending != 0 {
 		b.Fatalf("startup totals: %+v %v", dashboard, err)
