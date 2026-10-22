@@ -28,17 +28,17 @@ var runWebCollector = collector.Run
 var serveLocalWeb = serverruntime.Serve
 
 func runWeb(invocation commandInvocation, args []string) error {
-	settings := invocation.defaults()
+	defaults := invocation.defaults()
 	flags := flag.NewFlagSet("tokeninsights web", flag.ContinueOnError)
 	flags.SetOutput(invocation.stderr)
 	var syncBefore, fullRefresh bool
 	var sourceDir string
 	openBrowser := flags.Bool("open", true, "open browser automatically")
-	flags.StringVar(&settings.AppDBPath, "app-db-path", settings.AppDBPath, "application SQLite database")
-	flags.StringVar(&settings.ServerDBPath, "server-db-path", settings.ServerDBPath, "local server database")
-	flags.StringVar(&settings.CollectorDBPath, "collector-db-path", settings.CollectorDBPath, "collector database")
-	flags.StringVar(&settings.Host, "host", settings.Host, "local web/API bind IPv4 address")
-	flags.IntVar(&settings.Port, "port", settings.Port, "local web/API port (0 chooses available)")
+	flags.String("app-db-path", defaults.AppDBPath, "application SQLite database")
+	flags.String("server-db-path", defaults.ServerDBPath, "local server database")
+	flags.String("collector-db-path", defaults.CollectorDBPath, "collector database")
+	flags.String("host", defaults.Host, "local web/API bind IPv4 address")
+	flags.Int("port", defaults.Port, "local web/API port (0 chooses available)")
 	flags.BoolVar(&syncBefore, "sync", true, "refresh usage in the background; --sync=false reads saved data")
 	flags.BoolVar(&fullRefresh, "full-refresh", false, "reread sources and retry quarantine at startup")
 	flags.StringVar(&sourceDir, "source-dir", "", "override startup capture source directory")
@@ -48,7 +48,8 @@ func runWeb(invocation commandInvocation, args []string) error {
 	if flags.NArg() != 0 {
 		return fmt.Errorf("unexpected argument\n%w", ErrUsage)
 	}
-	if err := settings.Validate(); err != nil {
+	settings, err := invocation.resolveLocal(flags)
+	if err != nil {
 		return err
 	}
 	if !syncBefore && fullRefresh {

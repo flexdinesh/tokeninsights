@@ -115,7 +115,7 @@ func TestTUIDefaultSyncShowsSavedUsageWhileCollectionRunsAndQuitCancels(t *testi
 		return updated.(interactiveModel), nil
 	})
 	defer restore()
-	if err := runCommandForTest(t.Context(), io.Discard, "--all-time", "--collector-db-path", options.collectorDBPath, "--server-db-path", options.dbPath); err != nil {
+	if err := runCommandForTest(t, t.Context(), io.Discard, "--all-time", "--collector-db-path", options.collectorDBPath, "--server-db-path", options.dbPath); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -188,7 +188,7 @@ func TestTUIBackgroundIngestionAndReplayPreserveUsageAndReloadOnlyQueries(t *tes
 	})
 	defer restore()
 	var stdout bytes.Buffer
-	if err := runCommandForTest(t.Context(), &stdout, "--collector-db-path", collectorPath, "--server-db-path", serverPath, "--all-time"); err != nil {
+	if err := runCommandForTest(t, t.Context(), &stdout, "--collector-db-path", collectorPath, "--server-db-path", serverPath, "--all-time"); err != nil {
 		t.Fatal(err)
 	}
 	if stdout.Len() != 0 {

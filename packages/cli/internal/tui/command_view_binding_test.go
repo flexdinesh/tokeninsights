@@ -55,7 +55,7 @@ func TestViewBackgroundCollectionUsesDirectDestination(t *testing.T) {
 		return dashboard, nil
 	})
 	defer restore()
-	if err := runCommandForTest(t.Context(), io.Discard, "--collector-db-path", collectorPath, "--server-db-path", serverPath, "--full-refresh", "--source-dir", root); err != nil {
+	if err := runCommandForTest(t, t.Context(), io.Discard, "--collector-db-path", collectorPath, "--server-db-path", serverPath, "--full-refresh", "--source-dir", root); err != nil {
 		t.Fatal(err)
 	}
 }

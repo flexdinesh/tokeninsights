@@ -90,7 +90,7 @@ func TestBackgroundPrintReturnsBeforeRemoteAcceptanceAndActuallySubmits(t *testi
 	settings.CollectorDBPath = filepath.Join(root, "collector.sqlite")
 	var stdout, stderr bytes.Buffer
 	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
-	err = runSync(commandInvocation{context: ctx, stdout: &stdout, stderr: &stderr, remote: &settings}, []string{"--print", "--harness", "pi", "--source-dir", filepath.Join(root, "sources")})
+	err = runSync(commandInvocation{context: ctx, stdout: &stdout, stderr: &stderr, configPath: syncConfigForTest(t, settings)}, []string{"--print", "--harness", "pi", "--source-dir", filepath.Join(root, "sources")})
 	cancel()
 	if err != nil {
 		t.Fatal(err)
@@ -144,7 +144,7 @@ func TestDebugRequiresReadBeforeCaptureAndPrintRejectsLocal(t *testing.T) {
 	root := t.TempDir()
 	settings := config.SyncSettings{}
 	settings.CollectorDBPath = filepath.Join(root, "collector.sqlite")
-	if err := runSync(commandInvocation{context: t.Context(), stdout: io.Discard, stderr: io.Discard, remote: &settings}, []string{"--print"}); err == nil {
+	if err := runSync(commandInvocation{context: t.Context(), stdout: io.Discard, stderr: io.Discard, configPath: syncConfigForTest(t, settings)}, []string{"--print"}); err == nil {
 		t.Fatal("local print accepted")
 	}
 	if _, err := os.Stat(settings.CollectorDBPath); !os.IsNotExist(err) {
@@ -165,7 +165,7 @@ func TestDebugRequiresReadBeforeCaptureAndPrintRejectsLocal(t *testing.T) {
 	defer remote.Close()
 	settings.ServerURL = remote.URL
 	settings.ServerToken = "ingest-only"
-	err := runSync(commandInvocation{context: t.Context(), stdout: io.Discard, stderr: io.Discard, remote: &settings}, []string{"--debug"})
+	err := runSync(commandInvocation{context: t.Context(), stdout: io.Discard, stderr: io.Discard, configPath: syncConfigForTest(t, settings)}, []string{"--debug"})
 	if err == nil || !strings.Contains(err.Error(), "read permission") {
 		t.Fatal(err)
 	}

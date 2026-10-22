@@ -89,8 +89,12 @@ func TestTUIIgnoresDistributedCredentialsAndInvalidRemoteEnvironment(t *testing.
 	if err := Run(t.Context(), append([]string{"--config-file", path, "tui"}, args...), io.Discard, io.Discard, time.Now()); err != nil {
 		t.Fatal(err)
 	}
-	if !reflect.DeepEqual(received.Args, args) || received.Settings.ServerDBPath != serverPath || received.Settings.CollectorDBPath != collectorPath {
-		t.Fatalf("tui received %+v", received)
+	if !reflect.DeepEqual(received.Args, args) {
+		t.Fatalf("tui received args %v", received.Args)
+	}
+	settings, err := received.Resolve(config.Overrides{ServerDBPath: &serverPath, CollectorDBPath: &collectorPath})
+	if err != nil || settings.ServerDBPath != serverPath || settings.CollectorDBPath != collectorPath {
+		t.Fatalf("tui resolved %+v, %v", settings, err)
 	}
 	assertViewMissingPath(t, collectorPath+".jobs.sqlite")
 }

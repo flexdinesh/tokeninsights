@@ -42,7 +42,8 @@ processing, generations, receipts and analytics.
 | Sync jobs | collector.sqlite.jobs.sqlite | schema/jobs.sql | 1 |
 
 Defaults use XDG_DATA_HOME or ~/.local/share/tokeninsights. Role-specific flags/
-environment/config override them. Reject aliased paths, wrong roles, incompatible
+environment/config override them, in that order. Each command parses its flags once;
+`config.FlagOverrides` then feeds explicitly set flags into resolution. Reject aliased paths, wrong roles, incompatible
 versions and corrupt contracts. Former tokeninsights.sqlite stays untouched.
 Local CLI application role/version errors include resolved config/application paths
 and manual deletion/recreation guidance, including account/credential loss. They

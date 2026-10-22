@@ -62,7 +62,7 @@ func TestIngestionPreflightRejectsBeforeCapture(t *testing.T) {
 				settings := config.SyncSettings{}
 				settings.ServerURL, settings.ServerToken = remote.URL, "fixture-token"
 				settings.CollectorDBPath = filepath.Join(t.TempDir(), "collector.sqlite")
-				invocation := commandInvocation{context: t.Context(), stdout: io.Discard, stderr: io.Discard, remote: &settings}
+				invocation := commandInvocation{context: t.Context(), stdout: io.Discard, stderr: io.Discard, configPath: syncConfigForTest(t, settings)}
 				spec, ok := commandByName(command)
 				if !ok {
 					t.Fatal("missing command")

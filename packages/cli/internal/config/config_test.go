@@ -2,6 +2,7 @@ package config
 
 import (
 	"context"
+	"flag"
 	"os"
 	"path/filepath"
 	"strings"
@@ -183,5 +184,49 @@ func TestEnvironmentDefaultsApplyRolePathsIndependently(t *testing.T) {
 	t.Setenv("TOKENINSIGHTS_PORT", "not-a-port")
 	if settings := EnvironmentDefaults(); settings.Port != Defaults().Port {
 		t.Fatal("invalid environment broke help defaults", settings)
+	}
+}
+
+func TestFlagOverridesUseOnlyExplicitFlags(t *testing.T) {
+	flags := flag.NewFlagSet("test", flag.ContinueOnError)
+	collector := flags.String("collector-db-path", "/default/collector.sqlite", "")
+	flags.String("server-db-path", "/default/server.sqlite", "")
+	flags.String("host", "", "")
+	flags.Int("port", 0, "")
+	flags.Bool("sync", true, "")
+	if err := flags.Parse([]string{"-collector-db-path", "/flag/collector.sqlite", "--host=", "--port", "9000", "--sync=false"}); err != nil {
+		t.Fatal(err)
+	}
+	overrides, err := FlagOverrides(flags)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if overrides.CollectorDBPath == nil || *overrides.CollectorDBPath != *collector {
+		t.Fatalf("collector override = %v", overrides.CollectorDBPath)
+	}
+	if overrides.ServerDBPath != nil || overrides.AppDBPath != nil || overrides.ServerURL != nil {
+		t.Fatalf("unset flags became overrides: %+v", overrides)
+	}
+	if overrides.Host == nil || *overrides.Host != Defaults().Host {
+		t.Fatalf("empty host override = %v, want default host", overrides.Host)
+	}
+	if overrides.Port == nil || *overrides.Port != 9000 {
+		t.Fatalf("port override = %v", overrides.Port)
+	}
+}
+
+func TestFlagOverridesTakePrecedenceOverInvalidEnvironment(t *testing.T) {
+	t.Setenv("TOKENINSIGHTS_PORT", "not-a-port")
+	flags := flag.NewFlagSet("test", flag.ContinueOnError)
+	flags.Int("port", 0, "")
+	if err := flags.Parse([]string{"-port", "0"}); err != nil {
+		t.Fatal(err)
+	}
+	overrides, err := FlagOverrides(flags)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ResolveLocal(filepath.Join(t.TempDir(), "config.json"), true, overrides); err != nil {
+		t.Fatalf("single-dash --port did not override invalid environment: %v", err)
 	}
 }

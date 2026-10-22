@@ -93,6 +93,8 @@ type tableOptions struct {
 	sort            sortMode
 	repoGroup       analytics.RepoGroup
 	filters         filters
+	// overrides holds explicitly set configuration flags for resolution.
+	overrides config.Overrides
 }
 
 func parseTableOptions(args []string, stderr io.Writer, requirePeriod bool, defaultPeriod period) (tableOptions, error) {
@@ -100,9 +102,7 @@ func parseTableOptions(args []string, stderr io.Writer, requirePeriod bool, defa
 }
 
 func parseViewerOptions(args []string, stderr io.Writer, requirePeriod bool, defaultPeriod period, extra func(*flag.FlagSet)) (tableOptions, error) {
-	return parseViewerOptionsWithDefaults(args, stderr, requirePeriod, defaultPeriod, extra, config.EnvironmentDefaults())
-}
-func parseViewerOptionsWithDefaults(args []string, stderr io.Writer, requirePeriod bool, defaultPeriod period, extra func(*flag.FlagSet), settings config.LocalSettings) (tableOptions, error) {
+	settings := config.EnvironmentDefaults()
 	flags := flag.NewFlagSet("tokeninsights tui", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 
@@ -148,6 +148,10 @@ func parseViewerOptionsWithDefaults(args []string, stderr io.Writer, requirePeri
 	if flags.NArg() > 0 {
 		return tableOptions{}, usageError("unexpected argument %q", flags.Arg(0))
 	}
+	overrides, err := config.FlagOverrides(flags)
+	if err != nil {
+		return tableOptions{}, &UsageError{Err: err}
+	}
 	selectedDBPath := strings.TrimSpace(dbPath)
 	if selectedDBPath == "" {
 		selectedDBPath = defaultServerDBPath
@@ -188,7 +192,7 @@ func parseViewerOptionsWithDefaults(args []string, stderr io.Writer, requirePeri
 	if !syncOnStart && fullRefresh {
 		return tableOptions{}, usageError("--full-refresh requires startup collection")
 	}
-	return tableOptions{appDBPath: settings.AppDBPath, dbPath: selectedDBPath, collectorDBPath: collectorDBPath, syncOnStart: syncOnStart, fullRefresh: fullRefresh, sourceDir: sourceDir, period: selected, bucket: selectedBucket, filters: queryFilters}, nil
+	return tableOptions{appDBPath: settings.AppDBPath, dbPath: selectedDBPath, collectorDBPath: collectorDBPath, syncOnStart: syncOnStart, fullRefresh: fullRefresh, sourceDir: sourceDir, period: selected, bucket: selectedBucket, filters: queryFilters, overrides: overrides}, nil
 }
 
 func selectedPeriod(today bool, yesterday bool, week bool, month bool, year bool, allTime bool, required bool, fallback period) (period, error) {

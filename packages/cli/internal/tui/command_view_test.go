@@ -86,7 +86,7 @@ func TestTUIReadsSavedUsageDirectlyWithoutCollection(t *testing.T) {
 		return model, nil
 	})
 	defer restore()
-	if err := runCommandForTest(t.Context(), io.Discard, "--sync=false", "--all-time", "--server-db-path", options.dbPath, "--collector-db-path", options.collectorDBPath); err != nil {
+	if err := runCommandForTest(t, t.Context(), io.Discard, "--sync=false", "--all-time", "--server-db-path", options.dbPath, "--collector-db-path", options.collectorDBPath); err != nil {
 		t.Fatal(err)
 	}
 	assertViewMissingPath(t, options.collectorDBPath)
@@ -94,7 +94,7 @@ func TestTUIReadsSavedUsageDirectlyWithoutCollection(t *testing.T) {
 
 func TestViewRejectsRemoteFlagsBeforeOpeningLocalDatabase(t *testing.T) {
 	invalidLocal := t.TempDir()
-	err := runCommandForTest(t.Context(), io.Discard, "--sync=false", "--server-url", "https://remote.test", "--server-db-path", invalidLocal)
+	err := runCommandForTest(t, t.Context(), io.Discard, "--sync=false", "--server-url", "https://remote.test", "--server-db-path", invalidLocal)
 	if !errors.As(err, new(*UsageError)) {
 		t.Fatal(err)
 	}
@@ -109,7 +109,7 @@ func TestViewQuitCancelsReadsWithoutReportingFailure(t *testing.T) {
 		return model, nil
 	})
 	defer restore()
-	if err := runCommandForTest(t.Context(), io.Discard, "--sync=false", "--server-db-path", options.dbPath, "--collector-db-path", options.collectorDBPath); err != nil {
+	if err := runCommandForTest(t, t.Context(), io.Discard, "--sync=false", "--server-db-path", options.dbPath, "--collector-db-path", options.collectorDBPath); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -128,7 +128,7 @@ func TestViewReturnsProgramAndQueryErrors(t *testing.T) {
 				return model, nil
 			})
 			defer restore()
-			if err := runCommandForTest(t.Context(), io.Discard, "--sync=false", "--server-db-path", options.dbPath, "--collector-db-path", options.collectorDBPath); !errors.Is(err, expected) {
+			if err := runCommandForTest(t, t.Context(), io.Discard, "--sync=false", "--server-db-path", options.dbPath, "--collector-db-path", options.collectorDBPath); !errors.Is(err, expected) {
 				t.Fatal(err)
 			}
 		})
@@ -137,7 +137,7 @@ func TestViewReturnsProgramAndQueryErrors(t *testing.T) {
 
 func TestTUIRejectsRemovedNoSyncFlagBeforeSideEffects(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "server.sqlite")
-	err := runCommandForTest(context.Background(), io.Discard, "--sync", "--no-sync", "--server-db-path", path)
+	err := runCommandForTest(t, context.Background(), io.Discard, "--sync", "--no-sync", "--server-db-path", path)
 	if !errors.As(err, new(*UsageError)) {
 		t.Fatalf("expected usage error, got %v", err)
 	}
@@ -196,7 +196,7 @@ func TestViewOwnedDatabaseDoesNotLaunchSecondViewer(t *testing.T) {
 		return model, nil
 	})
 	defer restore()
-	if err := runCommandForTest(t.Context(), io.Discard, "--sync=false", "--server-db-path", options.dbPath, "--collector-db-path", options.collectorDBPath); !errors.Is(err, localruntime.ErrOwned) {
+	if err := runCommandForTest(t, t.Context(), io.Discard, "--sync=false", "--server-db-path", options.dbPath, "--collector-db-path", options.collectorDBPath); !errors.Is(err, localruntime.ErrOwned) {
 		t.Fatal(err)
 	}
 }

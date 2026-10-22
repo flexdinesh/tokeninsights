@@ -15,14 +15,15 @@ import (
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/serverfeatures"
 )
 
-// Command is one `tokeninsights tui` invocation after global configuration.
+// Command is one `tokeninsights tui` invocation. Resolve applies explicitly
+// set configuration flags over environment, config file and defaults.
 type Command struct {
-	Context  context.Context
-	Args     []string
-	Settings config.LocalSettings
-	Now      time.Time
-	Stdout   io.Writer
-	Stderr   io.Writer
+	Context context.Context
+	Args    []string
+	Resolve func(config.Overrides) (config.LocalSettings, error)
+	Now     time.Time
+	Stdout  io.Writer
+	Stderr  io.Writer
 }
 
 // UsageError reports invalid terminal dashboard options. The caller adds its
@@ -37,13 +38,16 @@ var runViewCollector = collector.Run
 // Run owns the terminal dashboard composition: it opens command-owned local
 // storage, starts optional background capture and runs the interactive program.
 func Run(command Command) error {
-	options, err := parseViewerOptionsWithDefaults(command.Args, command.Stderr, false, periodMonth, nil, command.Settings)
+	options, err := parseViewerOptions(command.Args, command.Stderr, false, periodMonth, nil)
 	if err != nil {
 		return err
 	}
-	settings := command.Settings
-	settings.ServerDBPath, settings.AppDBPath = options.dbPath, options.appDBPath
-	runtime, err := localruntime.OpenWithAppOptions(command.Context, options.collectorDBPath, options.dbPath, settings.ApplicationPath(), localruntime.Options{CaptureDetails: true})
+	settings, err := command.Resolve(options.overrides)
+	if err != nil {
+		return err
+	}
+	options.appDBPath, options.dbPath, options.collectorDBPath = settings.AppDBPath, settings.ServerDBPath, settings.CollectorDBPath
+	runtime, err := localruntime.OpenWithAppOptions(command.Context, settings.CollectorDBPath, settings.ServerDBPath, settings.ApplicationPath(), localruntime.Options{CaptureDetails: true})
 	if err != nil {
 		return err
 	}

@@ -24,20 +24,17 @@ func runSync(invocation commandInvocation, args []string) error {
 	}
 	flags := flag.NewFlagSet("tokeninsights sync", flag.ContinueOnError)
 	flags.SetOutput(invocation.stderr)
-	var dbPath string
 	var all bool
 	var dryRun bool
 	var fullRefresh bool
 	var sourceDir string
 	var harnesses harnessValues
-	var serverURL string
 	var publishOnly, wait, debug, printURL bool
 	flags.BoolVar(&wait, "wait", false, "wait for remote acceptance")
 	flags.BoolVar(&debug, "debug", false, "show collection, acceptance and receipt processing")
 	flags.BoolVar(&printURL, "print", false, "submit and print only the remote URL")
-	settings := invocation.syncDefaults()
-	flags.StringVar(&dbPath, "collector-db-path", settings.CollectorDBPath, "collector SQLite database")
-	flags.StringVar(&serverURL, "server-url", settings.ServerURL, "authenticated hosted ingestion server")
+	flags.String("collector-db-path", invocation.syncDefaults().CollectorDBPath, "collector SQLite database")
+	flags.String("server-url", "", "authenticated hosted ingestion server")
 	flags.BoolVar(&publishOnly, "publish-only", false, "submit retained raw evidence without collecting")
 	flags.Var(&harnesses, "harness", "harness to sync: opencode, pi, codex, or claude-code")
 	flags.BoolVar(&all, "all", false, "sync all supported harnesses")
@@ -54,7 +51,11 @@ func runSync(invocation commandInvocation, args []string) error {
 	if err != nil {
 		return err
 	}
-	settings.ServerURL, settings.CollectorDBPath = strings.TrimSpace(serverURL), strings.TrimSpace(dbPath)
+	settings, err := invocation.resolveSync(flags)
+	if err != nil {
+		return err
+	}
+	settings.ServerURL, settings.CollectorDBPath = strings.TrimSpace(settings.ServerURL), strings.TrimSpace(settings.CollectorDBPath)
 	if dryRun && (wait || debug || printURL) {
 		return fmt.Errorf("--dry-run cannot combine with --wait/--debug/--print\n%w", ErrUsage)
 	}
@@ -164,7 +165,7 @@ func runDistributedSync(invocation commandInvocation, settings config.SyncSettin
 func runSyncStatus(invocation commandInvocation, args []string) error {
 	flags := flag.NewFlagSet("tokeninsights sync status", flag.ContinueOnError)
 	flags.SetOutput(invocation.stderr)
-	path := flags.String("collector-db-path", invocation.syncDefaults().CollectorDBPath, "collector database")
+	flags.String("collector-db-path", invocation.syncDefaults().CollectorDBPath, "collector database")
 	asJSON := flags.Bool("json", false, "machine-readable job status")
 	if err := flags.Parse(args); err != nil {
 		return err
@@ -172,7 +173,11 @@ func runSyncStatus(invocation commandInvocation, args []string) error {
 	if flags.NArg() != 0 {
 		return ErrUsage
 	}
-	store, err := syncjob.Open(invocation.context, *path)
+	settings, err := invocation.resolveSync(flags)
+	if err != nil {
+		return err
+	}
+	store, err := syncjob.Open(invocation.context, settings.CollectorDBPath)
 	if err != nil {
 		return err
 	}

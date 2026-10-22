@@ -18,8 +18,12 @@ func isolateViewSources(t *testing.T, root string) {
 	t.Setenv("XDG_DATA_HOME", filepath.Join(root, "xdg"))
 	t.Setenv("CODEX_HOME", filepath.Join(root, "codex"))
 	t.Setenv("CLAUDE_CONFIG_DIR", filepath.Join(root, "claude"))
-	t.Setenv("TOKENINSIGHTS_SERVER_URL", "")
-	t.Setenv("TOKENINSIGHTS_SERVER_TOKEN", "")
+	for _, key := range []string{"TOKENINSIGHTS_SERVER_URL", "TOKENINSIGHTS_ACCESS_TOKEN"} {
+		t.Setenv(key, "")
+		if err := os.Unsetenv(key); err != nil {
+			t.Fatal(err)
+		}
+	}
 }
 
 func assertViewMissingPath(t *testing.T, path string) {

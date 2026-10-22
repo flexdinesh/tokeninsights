@@ -18,17 +18,21 @@ func runData(invocation commandInvocation, args []string) error {
 	if action != "reprocess" && action != "wait" {
 		return ErrUsage
 	}
-	settings := invocation.defaults()
+	defaults := invocation.defaults()
 	flags := flag.NewFlagSet("tokeninsights data "+action, flag.ContinueOnError)
 	flags.SetOutput(invocation.stderr)
-	flags.StringVar(&settings.ServerDBPath, "server-db-path", settings.ServerDBPath, "token database")
-	flags.StringVar(&settings.CollectorDBPath, "collector-db-path", settings.CollectorDBPath, "collector database")
-	flags.StringVar(&settings.AppDBPath, "app-db-path", settings.AppDBPath, "application database")
+	flags.String("server-db-path", defaults.ServerDBPath, "token database")
+	flags.String("collector-db-path", defaults.CollectorDBPath, "collector database")
+	flags.String("app-db-path", defaults.AppDBPath, "application database")
 	if err := flags.Parse(args[1:]); err != nil {
 		return err
 	}
 	if flags.NArg() != 0 {
 		return ErrUsage
+	}
+	settings, err := invocation.resolveLocal(flags)
+	if err != nil {
+		return err
 	}
 	runtime, err := localruntime.OpenWithApp(invocation.context, settings.CollectorDBPath, settings.ServerDBPath, settings.ApplicationPath())
 	if err != nil {
