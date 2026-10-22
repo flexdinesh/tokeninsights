@@ -10,7 +10,6 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/adapters/sqlanalytics"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/browser"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/collector"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/config"
@@ -82,7 +81,7 @@ func runLocalWeb(invocation commandInvocation, settings config.LocalSettings, sy
 		host = "127.0.0.1"
 	}
 	url := "http://" + net.JoinHostPort(host, port)
-	handler := server.NewDataHandlerWithOptions(ctx, sqlanalytics.Source{Store: runtime.Store}, invocation.stderr, server.DataHandlerOptions{
+	handler := server.NewDataHandlerWithOptions(ctx, runtime.DataSource(), invocation.stderr, server.DataHandlerOptions{
 		Host: settings.Host, InstanceID: runtime.InstanceID, Hostname: runtime.Hostname,
 		Policy: runtime.Policy, Progress: runtime.Progress, ProcessUsage: processusage.New(),
 	})

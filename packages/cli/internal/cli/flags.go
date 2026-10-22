@@ -120,6 +120,7 @@ func parseViewerOptionsWithDefaults(args []string, stderr io.Writer, requirePeri
 	var bucket string
 	var queryFilters filters
 	flags.StringVar(&settings.AppDBPath, "app-db-path", settings.AppDBPath, "application SQLite database")
+	defaultServerDBPath := settings.ServerDBPath
 	flags.StringVar(&dbPath, "server-db-path", settings.ServerDBPath, "local query server database path")
 	flags.StringVar(&collectorDBPath, "collector-db-path", settings.CollectorDBPath, "collector database used by startup sync")
 	flags.BoolVar(&fullRefresh, "full-refresh", false, "reread sources and retry quarantine at startup")
@@ -150,7 +151,7 @@ func parseViewerOptionsWithDefaults(args []string, stderr io.Writer, requirePeri
 	}
 	selectedDBPath := strings.TrimSpace(dbPath)
 	if selectedDBPath == "" {
-		selectedDBPath = defaultServerDBPath()
+		selectedDBPath = defaultServerDBPath
 	}
 
 	selected, err := selectedPeriod(today, yesterday, week, month, year, allTime, requirePeriod, defaultPeriod)

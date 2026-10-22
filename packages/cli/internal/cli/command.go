@@ -197,9 +197,7 @@ func (invocation commandInvocation) defaults() config.LocalSettings {
 		settings := *invocation.settings
 		return settings
 	}
-	settings := config.Defaults()
-	settings.CollectorDBPath, settings.ServerDBPath = defaultCollectorDBPath(), defaultServerDBPath()
-	return settings
+	return config.EnvironmentDefaults()
 }
 
 func configurationOverrides(args []string) (config.Overrides, error) {
@@ -248,5 +246,5 @@ func (invocation commandInvocation) syncDefaults() config.SyncSettings {
 	if invocation.remote != nil {
 		return *invocation.remote
 	}
-	return config.SyncSettings{CollectorDBPath: config.Defaults().CollectorDBPath}
+	return config.SyncSettings{CollectorDBPath: config.EnvironmentDefaults().CollectorDBPath}
 }

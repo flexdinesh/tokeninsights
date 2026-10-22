@@ -11,6 +11,7 @@ import (
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/queryclient"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/server"
 	api "github.com/flexdinesh/tokeninsights/packages/cli/internal/server/api"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/serverfeatures"
 )
 
 // queryClient uses the production in-process reader, the same path the local
@@ -30,14 +31,19 @@ func queryReader(t *testing.T, path, instance string) queryclient.Reader {
 	if !ok {
 		t.Fatal("invalid fixture store")
 	}
-	return storeReader(store, instance)
+	return storeReader(t, store, instance)
 }
 
 // Production composition always supplies a non-empty instance identity.
 const fixtureInstance = "fixture-instance"
 
-func storeReader(store *datastore.Store, instance string) queryclient.Reader {
-	return server.NewDirectQuery(sqlanalytics.Queries{Store: store}, instance, "")
+func storeReader(t *testing.T, store *datastore.Store, instance string) queryclient.Reader {
+	t.Helper()
+	policy, err := serverfeatures.NewLocalViewer(false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return server.NewDirectQuery(sqlanalytics.Queries{Store: store}, policy, instance, "")
 }
 
 var queryStores sync.Map

@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/accounts"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/analytics"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/collectorprogress"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/evidence"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/ingestionhttp"
@@ -216,15 +217,20 @@ func (a *app) instanceV2(w http.ResponseWriter, r *http.Request, p accounts.Prin
 		a.queryError(w, r, err)
 		return
 	}
-	caps := make([]string, 0, len(a.policy.Capabilities))
-	for _, capability := range a.policy.Capabilities {
-		caps = append(caps, string(capability))
+	writeJSON(w, 200, instanceResponse(a.policy, p.Permissions, status, a.options.InstanceID, a.instanceHostname(status.Hostname), a.options.Defaults))
+}
+
+// instanceResponse is the single instance descriptor for HTTP and direct readers.
+func instanceResponse(policy serverfeatures.Policy, granted []string, status analytics.ProcessingStatus, instanceID, hostname string, defaults viewer.Selection) api.InstanceResponseV2 {
+	capabilities := make([]string, 0, len(policy.Capabilities))
+	for _, capability := range policy.Capabilities {
+		capabilities = append(capabilities, string(capability))
 	}
-	permissions := make([]api.InstanceResponseV2Permissions, 0, len(p.Permissions))
-	for _, permission := range p.Permissions {
+	permissions := make([]api.InstanceResponseV2Permissions, 0, len(granted))
+	for _, permission := range granted {
 		permissions = append(permissions, api.InstanceResponseV2Permissions(permission))
 	}
-	writeJSON(w, 200, api.InstanceResponseV2{ApiVersion: "v2", ServerKind: api.InstanceResponseV2ServerKind(a.policy.Kind), Capabilities: caps, Permissions: permissions, DataEpoch: status.Metadata.DatabaseID, DatasetId: status.Metadata.DatasetID, InstanceId: a.options.InstanceID, DataReadiness: "ready", ServerVersion: version.Version, Hostname: a.instanceHostname(status.Hostname), Timezone: reportingTimezone(time.Local, time.Now()), Defaults: apiSelection(a.options.Defaults)})
+	return api.InstanceResponseV2{ApiVersion: api.V2, ServerKind: api.InstanceResponseV2ServerKind(policy.Kind), Capabilities: capabilities, Permissions: permissions, DataEpoch: status.Metadata.DatabaseID, DatasetId: status.Metadata.DatasetID, InstanceId: instanceID, DataReadiness: api.InstanceResponseV2DataReadinessReady, ServerVersion: version.Version, Hostname: hostname, Timezone: reportingTimezone(time.Local, time.Now()), Defaults: apiSelection(defaults)}
 }
 
 func (a *app) statusV2(w http.ResponseWriter, r *http.Request) {

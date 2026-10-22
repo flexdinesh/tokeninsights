@@ -169,7 +169,7 @@ func newViewQueryReader(t *testing.T, withUsage bool) (*observedReader, *datasto
 	if withUsage {
 		insertLoadRowsCanonicalTokenWithCounts(t, store.SQL(), 1767225600000, "pi", "fixture-view-session", "fixture-provider", "fixture-model", 80, 20, 0, 0, 0, 100)
 	}
-	return &observedReader{reader: storeReader(store, fixtureInstance)}, store
+	return &observedReader{reader: storeReader(t, store, fixtureInstance)}, store
 }
 
 func isolateViewSources(t *testing.T, root string) {

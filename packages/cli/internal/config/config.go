@@ -69,14 +69,36 @@ func Path(explicit string) (string, error) {
 	}
 	return filepath.Abs(explicit)
 }
+
+// Defaults are the built-in settings before config files and environment.
 func Defaults() LocalSettings {
-	base := os.Getenv("XDG_DATA_HOME")
-	if base == "" {
-		base = filepath.Join(os.Getenv("HOME"), ".local", "share")
-	}
+	base := dataDirectory()
 	return LocalSettings{Host: networkprefs.DefaultHost, Port: networkprefs.DefaultPort,
-		CollectorDBPath: filepath.Join(base, "tokeninsights", "collector.sqlite"),
-		ServerDBPath:    filepath.Join(base, "tokeninsights", "server.sqlite")}
+		CollectorDBPath: filepath.Join(base, "collector.sqlite"),
+		ServerDBPath:    filepath.Join(base, "server.sqlite")}
+}
+
+// EnvironmentDefaults applies environment variables without a config file. It
+// serves help output, which must render even when the environment is invalid.
+func EnvironmentDefaults() LocalSettings {
+	settings, err := Values{}.local("", true, Overrides{})
+	if err != nil {
+		return Defaults()
+	}
+	return settings
+}
+
+func dataDirectory() string {
+	if base := strings.TrimSpace(os.Getenv("XDG_DATA_HOME")); base != "" {
+		return filepath.Join(base, "tokeninsights")
+	}
+	if home := strings.TrimSpace(os.Getenv("HOME")); home != "" {
+		return filepath.Join(home, ".local", "share", "tokeninsights")
+	}
+	if cwd, err := os.Getwd(); err == nil && strings.TrimSpace(cwd) != "" {
+		return filepath.Join(cwd, ".tokeninsights-data")
+	}
+	return ".tokeninsights-data"
 }
 
 func Read(path string) (Values, error) {

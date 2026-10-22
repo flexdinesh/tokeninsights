@@ -16,6 +16,7 @@ import (
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/queryclient"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/server"
 	api "github.com/flexdinesh/tokeninsights/packages/cli/internal/server/api"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/serverfeatures"
 )
 
 func TestDirectCompleteQueryMatchesHTTPPagination(t *testing.T) {
@@ -50,13 +51,28 @@ func TestDirectCompleteQueryMatchesHTTPPagination(t *testing.T) {
 			break
 		}
 	}
-	direct := server.NewDirectQuery(sqlanalytics.Queries{Store: store}, "instance", "")
+	policy, err := serverfeatures.NewLocalViewer(false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	direct := server.NewDirectQuery(sqlanalytics.Queries{Store: store}, policy, "instance", "")
 	local := queryclient.NewDirect(direct)
 	httpServer := httptest.NewServer(server.NewDataHandler(t.Context(), sqlanalytics.Source{Store: store}, nil, "127.0.0.1", "instance", false))
 	t.Cleanup(httpServer.Close)
 	remote, err := queryclient.New(httpServer.URL, httpServer.Client())
 	if err != nil {
 		t.Fatal(err)
+	}
+	instance, err := local.Instance(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	advertised := make([]string, 0, len(policy.Capabilities))
+	for _, capability := range policy.Capabilities {
+		advertised = append(advertised, string(capability))
+	}
+	if !reflect.DeepEqual(instance.Capabilities, advertised) || string(instance.ServerKind) != string(policy.Kind) || instance.InstanceId != "instance" {
+		t.Fatalf("direct instance ignores composition policy: %+v", instance)
 	}
 	period, tab, sort := api.Period("all"), api.UsageTab("models"), api.SortField("name")
 	params := api.GetUsageParams{Period: &period, Tab: &tab, Sort: &sort}

@@ -138,3 +138,50 @@ func TestConcurrentSettersPreserveUpdatesAndAtomicReads(t *testing.T) {
 		t.Fatal("invalid secret", err)
 	}
 }
+
+func TestDefaultsUseXDGThenHomeAndIgnoreLegacyDatabase(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("XDG_DATA_HOME", root)
+	t.Setenv("TOKENINSIGHTS_DB_PATH", filepath.Join(root, "legacy-override.sqlite"))
+	legacy := filepath.Join(root, "tokeninsights", "tokeninsights.sqlite")
+	if err := os.MkdirAll(filepath.Dir(legacy), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(legacy, []byte("legacy-history"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	defaults := Defaults()
+	if defaults.CollectorDBPath != filepath.Join(root, "tokeninsights", "collector.sqlite") || defaults.ServerDBPath != filepath.Join(root, "tokeninsights", "server.sqlite") {
+		t.Fatal("role defaults used legacy storage", defaults)
+	}
+	if value, err := os.ReadFile(legacy); err != nil || string(value) != "legacy-history" {
+		t.Fatal("legacy changed")
+	}
+	home := t.TempDir()
+	t.Setenv("XDG_DATA_HOME", " ")
+	t.Setenv("HOME", home)
+	if got := Defaults().CollectorDBPath; got != filepath.Join(home, ".local", "share", "tokeninsights", "collector.sqlite") {
+		t.Fatal("home fallback", got)
+	}
+	t.Setenv("HOME", "")
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := Defaults().ServerDBPath; got != filepath.Join(cwd, ".tokeninsights-data", "server.sqlite") {
+		t.Fatal("working directory fallback", got)
+	}
+}
+
+func TestEnvironmentDefaultsApplyRolePathsIndependently(t *testing.T) {
+	t.Setenv("TOKENINSIGHTS_COLLECTOR_DB_PATH", "/fixture/collector.sqlite")
+	t.Setenv("TOKENINSIGHTS_SERVER_DB_PATH", "/fixture/server.sqlite")
+	settings := EnvironmentDefaults()
+	if settings.CollectorDBPath != "/fixture/collector.sqlite" || settings.ServerDBPath != "/fixture/server.sqlite" {
+		t.Fatal("role environment selection", settings)
+	}
+	t.Setenv("TOKENINSIGHTS_PORT", "not-a-port")
+	if settings := EnvironmentDefaults(); settings.Port != Defaults().Port {
+		t.Fatal("invalid environment broke help defaults", settings)
+	}
+}

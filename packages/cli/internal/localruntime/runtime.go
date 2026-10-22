@@ -164,7 +164,7 @@ func OpenWithAppOptions(ctx context.Context, collectorPath, dataPath, appPath st
 	hostname := resolveHostname(os.Hostname)
 	id := hex.EncodeToString(instance[:])
 	r := &Runtime{InstanceID: id, Hostname: hostname, Policy: policy, Progress: collectorprogress.New(id), Store: store, App: app, owner: owner, cancel: cancel, ctx: workerCtx, collectorPath: canonicalCollector, dataPath: path, done: make(chan struct{}), queries: sqlanalytics.Queries{Store: store}, captureDetails: options.CaptureDetails}
-	r.Query = queryclient.NewDirect(server.NewDirectQuery(r.queries, id, hostname))
+	r.Query = queryclient.NewDirect(server.NewDirectQuery(r.queries, policy, id, hostname))
 	r.Destination = &collector.Destination{Identity: "http://local", DatabaseID: metadata.DatabaseID, DatasetID: metadata.DatasetID, Local: true, Transport: collector.DirectDelivery{Receiver: store}}
 	// WaitVisible reads durable failure state, including failures from a prior owner.
 	go func() { defer close(r.done); store.Run(workerCtx, nil) }()
@@ -249,3 +249,7 @@ func (r *Runtime) Close() error {
 }
 
 var _ io.Closer = (*Runtime)(nil)
+
+// DataSource exposes the runtime's storage to the local HTTP listener without
+// callers constructing storage adapters.
+func (r *Runtime) DataSource() server.DataSource { return sqlanalytics.Source{Store: r.Store} }
