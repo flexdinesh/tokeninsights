@@ -10,7 +10,14 @@ import {
   Columns3,
   Copy,
 } from 'lucide-react'
-import { flexRender, getCoreRowModel, useReactTable } from '@tanstack/react-table'
+import {
+  columnResizingFeature,
+  columnSizingFeature,
+  columnVisibilityFeature,
+  flexRender,
+  tableFeatures,
+  useTable,
+} from '@tanstack/react-table'
 import type { ColumnDef } from '@tanstack/react-table'
 import type { Dashboard, Row, Sort, Tab } from '../contracts'
 import { sortSchema } from '../contracts'
@@ -37,6 +44,12 @@ interface Column {
   numeric?: boolean
 }
 const resizeStep = 16
+// Sorting and pagination are server-owned; the table only sizes and hides columns.
+const features = tableFeatures({
+  columnVisibilityFeature,
+  columnSizingFeature,
+  columnResizingFeature,
+})
 const minColumnSize = 112
 const maxColumnSize = 480
 
@@ -266,7 +279,7 @@ export function ResultsTable({
   const specs = useMemo(() => columnsFor(query.tab), [query.tab])
   const displayRows = data.rows
   const columnId = useId()
-  const columns = useMemo<ColumnDef<DisplayRow>[]>(
+  const columns = useMemo<ColumnDef<typeof features, DisplayRow>[]>(
     () =>
       specs.map((spec) => ({
         id: spec.id,
@@ -281,13 +294,10 @@ export function ResultsTable({
   const visibility = Object.fromEntries(
     specs.map((s) => [s.id, !hidden.includes(s.id) || s.id === 'name']),
   )
-  // oxlint-disable-next-line react/incompatible-library -- TanStack Table intentionally owns its memoized model.
-  const table = useReactTable({
+  const table = useTable({
+    features,
     data: displayRows,
     columns,
-    getCoreRowModel: getCoreRowModel(),
-    manualSorting: true,
-    manualPagination: true,
     columnResizeMode: 'onChange',
     getRowId: (row) => row.key,
     state: { columnVisibility: visibility },

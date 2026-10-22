@@ -219,6 +219,24 @@ test('repo charts show full filtered token shares in both location groupings', a
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
 })
 
+test('table columns hide and restore from the Columns menu', async ({ page }) => {
+  await page.goto('/tokens')
+  const details = page.getByRole('region', { name: 'Tokens details', exact: true })
+  const input = details.getByRole('columnheader', { name: 'Input', exact: true })
+  await expect(input).toBeVisible()
+  const cells = await details.getByRole('row').nth(1).getByRole('cell').count()
+
+  await details.getByRole('button', { name: 'Columns' }).click()
+  const menu = page.getByRole('dialog', { name: 'Visible columns' })
+  await menu.getByRole('checkbox', { name: 'Input' }).click()
+  await expect(input).toBeHidden()
+  await expect(details.getByRole('row').nth(1).getByRole('cell')).toHaveCount(cells - 1)
+
+  await menu.getByRole('checkbox', { name: 'Input' }).click()
+  await expect(input).toBeVisible()
+  await expect(details.getByRole('row').nth(1).getByRole('cell')).toHaveCount(cells)
+})
+
 test('table columns resize by drag and keyboard without sorting', async ({ page }) => {
   await page.goto('/tokens')
   const details = page.getByRole('region', { name: 'Tokens details', exact: true })

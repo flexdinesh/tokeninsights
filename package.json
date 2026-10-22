@@ -43,10 +43,10 @@
   },
   "devDependencies": {
     "husky": "9.1.7",
-    "orval": "8.30.0",
-    "oxfmt": "0.67.0",
-    "oxlint": "1.82.0",
-    "oxlint-tsgolint": "7.0.2001"
+    "orval": "8.43.0",
+    "oxfmt": "0.74.0",
+    "oxlint": "1.89.0",
+    "oxlint-tsgolint": "7.0.2004"
   },
   "engines": {
     "node": ">=26"
