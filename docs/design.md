@@ -584,6 +584,14 @@ and its adapters isolate application persistence. Dataengine owns processing con
 
 [ADR 0011](adr/0011-storage-adapter-contracts.md) defines separate token/account contracts. [ADR 0012](adr/0012-sqlite-and-postgres-persistence.md) implements SQLite and PostgreSQL adapters. Shared relational transaction code owns behavior; small engine-specific SQL fragments remain private. Account and token transactions stay separate even when they share a physical database.
 
+Storage code location follows ownership:
+
+- Top-level role packages (`rawcollectorstore`, `collectordb`, `syncjob`, `appstore`, `datastore`) own one durable role's schema, transactions and lifecycle.
+- `adapters/<name>` implements consumer-defined ports (`analytics.Repository`, `accounts.Repository`, `evidence.Receiver`) or composes engine-specific roles. Only composition roots and other adapters import it.
+- `persistence/<name>` holds engine mechanics shared across roles: connections, physical checks and SQL helpers. It has no domain contracts or role knowledge.
+
+New role schemas belong in a top-level package; port implementations in `adapters`; role-free engine mechanics in `persistence`. `internal/architecture` enforces both import locations.
+
 | Package | Behavior boundary |
 | --- | --- |
 | `evidence`, `publication` | Sanitized wire records and stable contribution contracts |

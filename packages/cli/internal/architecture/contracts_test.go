@@ -57,6 +57,21 @@ func TestLayerDependencies(t *testing.T) {
 			}
 		}
 	}
+	// Storage location rule (docs/design.md): composition roots select adapters;
+	// role packages and adapters share engine mechanics from persistence.
+	compositionRoots := []string{"localruntime", "remoteserver", "cmd/tokeninsights", "cmd/tokeninsights-server"}
+	storageRoles := []string{"rawcollectorstore", "collectordb", "syncjob", "appstore", "datastore"}
+	for name, dependencies := range imports {
+		adapterOwner := strings.HasPrefix(name, "adapters/")
+		for _, dependency := range dependencies {
+			if strings.HasPrefix(dependency, prefix+"adapters/") && !adapterOwner && !slices.Contains(compositionRoots, name) {
+				t.Errorf("%s imports adapter %s; only composition roots and adapters select adapters", name, dependency)
+			}
+			if strings.HasPrefix(dependency, prefix+"persistence/") && !adapterOwner && !strings.HasPrefix(name, "persistence/") && !slices.Contains(storageRoles, name) {
+				t.Errorf("%s imports engine mechanics %s; only storage roles and adapters use persistence", name, dependency)
+			}
+		}
+	}
 	hostCapture := []string{prefix + "collector", prefix + "pipeline", prefix + "rawcollectorstore", prefix + "collectordb", prefix + "syncjob", prefix + "localruntime", prefix + "clientworkflow"}
 	pureContract := []string{"database/sql", "net/http", "os", prefix + "persistence", prefix + "adapters", prefix + "datastore", prefix + "server", prefix + "collector", prefix + "pipeline"}
 	rules := []struct {
