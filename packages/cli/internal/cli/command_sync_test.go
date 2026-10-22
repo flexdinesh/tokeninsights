@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"context"
+	"errors"
 	"io"
 	"path/filepath"
 	"strings"
@@ -85,4 +86,28 @@ func captureForTest(t *testing.T, ctx context.Context, collectorPath, dataPath, 
 		return err
 	}
 	return local.WaitVisible(ctx)
+}
+
+func TestSyncAllIncludesClaudeCodeHarness(t *testing.T) {
+	harnesses, err := syncHarnesses(true, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	names := make([]string, 0, len(harnesses))
+	for _, harness := range harnesses {
+		names = append(names, string(harness))
+	}
+	if got := strings.Join(names, ","); got != "opencode,pi,codex,claude-code" {
+		t.Fatalf("got harnesses %q, want opencode,pi,codex,claude-code", got)
+	}
+}
+
+func TestSyncHarnessesValidatesSharedNames(t *testing.T) {
+	harnesses, err := syncHarnesses(false, harnessValues{"pi", "claude-code"})
+	if err != nil || len(harnesses) != 2 || harnesses[1] != pipeline.HarnessClaudeCode {
+		t.Fatal(harnesses, err)
+	}
+	if _, err := syncHarnesses(false, harnessValues{"claude"}); !errors.Is(err, ErrUsage) || !strings.Contains(err.Error(), `invalid --harness "claude"`) {
+		t.Fatal("unsupported harness accepted", err)
+	}
 }

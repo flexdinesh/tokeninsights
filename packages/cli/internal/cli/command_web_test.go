@@ -195,10 +195,9 @@ func readWebProgress(t *testing.T, url string) collectorprogress.Snapshot {
 }
 
 func TestLocalWebCaptureFailureKeepsSavedDashboardAndShowsFailure(t *testing.T) {
-	options := localViewOptions(t, true)
-	_ = options.local.Close()
+	collectorPath, serverPath := seedLocalUsage(t)
 	settings := config.Defaults()
-	settings.CollectorDBPath, settings.ServerDBPath, settings.Port = options.collectorDBPath, options.dbPath, 0
+	settings.CollectorDBPath, settings.ServerDBPath, settings.Port = collectorPath, serverPath, 0
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 	previousOpen, previousCollector := openDashboard, runWebCollector

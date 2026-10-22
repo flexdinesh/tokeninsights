@@ -3,11 +3,13 @@ package cli
 import (
 	"bytes"
 	"errors"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/tui"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -64,12 +66,11 @@ func TestBrowseAndSyncRejectMissingConfigurationBeforeSideEffects(t *testing.T) 
 	}
 	assertViewMissingPath(t, filepath.Join(root, "xdg", "tokeninsights"))
 }
-func TestTUIIgnoresDistributedCredentialsAndUsesOnlyDirectQueries(t *testing.T) {
-	options := localViewOptions(t, true)
-	if err := options.local.Close(); err != nil {
-		t.Fatal(err)
-	}
-	path := filepath.Join(t.TempDir(), "config.json")
+func TestTUIIgnoresDistributedCredentialsAndInvalidRemoteEnvironment(t *testing.T) {
+	root := t.TempDir()
+	isolateViewSources(t, root)
+	collectorPath, serverPath := filepath.Join(root, "collector.sqlite"), filepath.Join(root, "server.sqlite")
+	path := filepath.Join(root, "config.json")
 	if err := config.Update(t.Context(), path, func(v *config.Values) error {
 		if err := v.Set("distributed.server-url", "http://127.0.0.1:1", false); err != nil {
 			return err
@@ -80,19 +81,16 @@ func TestTUIIgnoresDistributedCredentialsAndUsesOnlyDirectQueries(t *testing.T) 
 	}
 	t.Setenv("TOKENINSIGHTS_SERVER_URL", "invalid-url")
 	t.Setenv("TOKENINSIGHTS_ACCESS_TOKEN", "invalid token")
-	restore := replaceInteractiveProgramRunnerForTest(t, func(model interactiveModel, _ io.Writer) (interactiveModel, error) {
-		if model.options.local == nil {
-			t.Fatal("missing local runtime")
-		}
-		loaded := model.loadServerDashboard()
-		if loaded.err != nil || len(loaded.rows) != 1 {
-			t.Fatal("direct saved query failed", loaded.err)
-		}
-		return model, nil
-	})
-	defer restore()
-	if err := Run(t.Context(), []string{"--config-file", path, "tui", "--sync=false", "--all-time", "--server-db-path", options.dbPath, "--collector-db-path", options.collectorDBPath}, io.Discard, io.Discard, time.Now()); err != nil {
+	var received tui.Command
+	previous := runTerminalDashboard
+	runTerminalDashboard = func(command tui.Command) error { received = command; return nil }
+	t.Cleanup(func() { runTerminalDashboard = previous })
+	args := []string{"--sync=false", "--all-time", "--server-db-path", serverPath, "--collector-db-path", collectorPath}
+	if err := Run(t.Context(), append([]string{"--config-file", path, "tui"}, args...), io.Discard, io.Discard, time.Now()); err != nil {
 		t.Fatal(err)
 	}
-	assertViewMissingPath(t, options.collectorDBPath+".jobs.sqlite")
+	if !reflect.DeepEqual(received.Args, args) || received.Settings.ServerDBPath != serverPath || received.Settings.CollectorDBPath != collectorPath {
+		t.Fatalf("tui received %+v", received)
+	}
+	assertViewMissingPath(t, collectorPath+".jobs.sqlite")
 }

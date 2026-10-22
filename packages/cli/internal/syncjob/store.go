@@ -236,8 +236,16 @@ func scan(row *sql.Row) (Job, error) {
 func (s *Store) Get(ctx context.Context, id string) (Job, error) {
 	return scan(s.database.QueryRowContext(ctx, "SELECT "+columns+" FROM jobs WHERE id=?", id))
 }
+
+// ErrNoJobs reports an empty sync-job queue.
+var ErrNoJobs = errors.New("no sync jobs")
+
 func (s *Store) Latest(ctx context.Context) (Job, error) {
-	return scan(s.database.QueryRowContext(ctx, "SELECT "+columns+" FROM jobs ORDER BY created_ms DESC,rowid DESC LIMIT 1"))
+	job, err := scan(s.database.QueryRowContext(ctx, "SELECT "+columns+" FROM jobs ORDER BY created_ms DESC,rowid DESC LIMIT 1"))
+	if errors.Is(err, sql.ErrNoRows) {
+		return Job{}, ErrNoJobs
+	}
+	return job, err
 }
 
 // Acquire excludes workers without holding a SQLite transaction during capture.

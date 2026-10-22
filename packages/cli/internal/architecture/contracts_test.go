@@ -5,6 +5,7 @@ import (
 	"go/token"
 	"io/fs"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -87,6 +88,33 @@ func TestLayerDependencies(t *testing.T) {
 		{"dbpath", []string{"database/sql", "net/http"}},
 	}
 	persistenceOwners := map[string]bool{"datastore": true, "pipeline": true, "localruntime": true, "collector": true, "collectordb": true, "remoteserver": true, "cmd/tokeninsights-server": true}
+	// Command packages compose through localruntime; they never construct
+	// storage adapters or HTTP handlers themselves.
+	direct := []struct {
+		name      string
+		forbidden []string
+		allowed   []string
+	}{
+		{"tui", []string{"net/http", "database/sql", prefix + "server", prefix + "adapters", prefix + "datastore", prefix + "persistence", prefix + "syncjob", prefix + "remoteserver"}, []string{prefix + "server/api"}},
+		{"cli", []string{"database/sql", prefix + "adapters", prefix + "datastore", prefix + "persistence", prefix + "remoteserver"}, nil},
+	}
+	for _, rule := range direct {
+		t.Run("direct/"+rule.name, func(t *testing.T) {
+			if _, found := imports[rule.name]; !found {
+				t.Fatalf("boundary package %s is missing; update its contract", rule.name)
+			}
+			for _, dependency := range imports[rule.name] {
+				if slices.Contains(rule.allowed, dependency) {
+					continue
+				}
+				for _, forbidden := range rule.forbidden {
+					if dependency == forbidden || strings.HasPrefix(dependency, forbidden+"/") {
+						t.Errorf("%s directly imports forbidden dependency %s", rule.name, dependency)
+					}
+				}
+			}
+		})
+	}
 	for _, rule := range rules {
 		if !persistenceOwners[rule.name] {
 			rule.forbidden = append(rule.forbidden, prefix+"persistence", prefix+"adapters")

@@ -2,7 +2,6 @@ package cli
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -30,7 +29,7 @@ func runSync(invocation commandInvocation, args []string) error {
 	var dryRun bool
 	var fullRefresh bool
 	var sourceDir string
-	var harnesses stringList
+	var harnesses harnessValues
 	var serverURL string
 	var publishOnly, wait, debug, printURL bool
 	flags.BoolVar(&wait, "wait", false, "wait for remote acceptance")
@@ -73,17 +72,36 @@ func runSync(invocation commandInvocation, args []string) error {
 	return err
 }
 
-func syncHarnesses(all bool, values stringList) ([]pipeline.Harness, error) {
+// harnessValues collects repeated or comma-separated --harness values.
+type harnessValues []string
+
+func (values *harnessValues) String() string { return strings.Join(*values, ",") }
+
+func (values *harnessValues) Set(value string) error {
+	for _, item := range strings.Split(value, ",") {
+		if trimmed := strings.TrimSpace(item); trimmed != "" {
+			*values = append(*values, trimmed)
+		}
+	}
+	return nil
+}
+
+func syncHarnesses(all bool, values harnessValues) ([]pipeline.Harness, error) {
 	if all && len(values) > 0 {
 		return nil, fmt.Errorf("choose either --all or --harness, not both\n%w", ErrUsage)
 	}
 	if all || len(values) == 0 {
 		return pipeline.SupportedHarnesses, nil
 	}
-	if err := validateHarnesses(values); err != nil {
-		return nil, err
+	selected := make([]pipeline.Harness, 0, len(values))
+	for _, value := range values {
+		harness, ok := pipeline.ParseHarness(value)
+		if !ok {
+			return nil, fmt.Errorf("invalid --harness %q: must be opencode, pi, codex, or claude-code\n%w", value, ErrUsage)
+		}
+		selected = append(selected, harness)
 	}
-	return harnessList(values), nil
+	return selected, nil
 }
 
 var spawnSyncWorker = syncjob.Spawn
@@ -163,7 +181,7 @@ func runSyncStatus(invocation commandInvocation, args []string) error {
 		return err
 	}
 	job, err := store.Latest(invocation.context)
-	if errors.Is(err, sql.ErrNoRows) {
+	if errors.Is(err, syncjob.ErrNoJobs) {
 		_, err = io.WriteString(invocation.stdout, "No sync jobs.\n")
 		return err
 	}

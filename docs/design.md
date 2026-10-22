@@ -612,6 +612,8 @@ and its adapters isolate application persistence. Dataengine owns processing con
 | `localruntime` | Command ownership and background startup lifetime, direct ingestion/query, local requests and development fixtures |
 | `serverruntime` | Shared worker/readiness/listener lifecycle through interfaces |
 | `remoteserver` | Authenticated remote composition |
+| `cli` | Command parsing, environment defaults and local composition; no storage adapters or SQL |
+| `tui` | Terminal dashboard over `queryclient.Reader` and the local runtime; no HTTP, SQL or storage adapters |
 
 `querymodel` owns storage-independent query values. Direct queries receive an
 analytics repository and instance identity; they do not construct an HTTP app.
