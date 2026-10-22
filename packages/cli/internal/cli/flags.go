@@ -3,6 +3,7 @@ package cli
 import (
 	"flag"
 	"fmt"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/queryclient"
 	"io"
 	"strings"
 	"time"
@@ -83,9 +84,7 @@ type tableOptions struct {
 	local           *localruntime.Runtime
 	appDBPath       string
 	dbPath          string
-	serverURL       string
-	token           string
-	datasetID       string
+	query           *queryclient.Client
 	collectorDBPath string
 	fullRefresh     bool
 	sourceDir       string

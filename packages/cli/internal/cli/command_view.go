@@ -34,7 +34,7 @@ func runView(invocation commandInvocation, args []string) error {
 			return fmt.Errorf("tui requires %s capability", capability)
 		}
 	}
-	options.local = runtime
+	options.local, options.query = runtime, runtime.Query
 	model := newInteractiveModel(invocation.context, options, invocation.now, runtime.Hostname)
 	if options.syncOnStart {
 		model = model.startCollection()

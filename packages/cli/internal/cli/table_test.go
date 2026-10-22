@@ -64,7 +64,7 @@ func TestLoadRowsTokenTabUsesCanonicalTokens(t *testing.T) {
 	recordedAt := time.Date(2026, 4, 24, 12, 0, 0, 0, time.Local)
 	insertLoadRowsCanonicalToken(t, database, recordedAt.UnixMilli(), "opencode", "ses_1", "openai", "gpt-5")
 
-	rows, err := loadRows(context.Background(), tableOptions{serverURL: queryServerURL(t, dbPath), period: periodAllTime, bucket: bucketDay}, recordedAt, groupByNone, tabTokens)
+	rows, err := loadRows(context.Background(), tableOptions{query: queryClient(t, dbPath), period: periodAllTime, bucket: bucketDay}, recordedAt, groupByNone, tabTokens)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -85,7 +85,7 @@ func TestLoadRowsSessionTabIncludesContextUsed(t *testing.T) {
 	recordedAt := time.Date(2026, 4, 24, 12, 0, 0, 0, time.Local)
 	insertLoadRowsCanonicalToken(t, database, recordedAt.UnixMilli(), "opencode", "ses_1", "openai", "gpt-5")
 
-	rows, err := loadRows(context.Background(), tableOptions{serverURL: queryServerURL(t, dbPath), period: periodAllTime, bucket: bucketDay}, recordedAt, groupByNone, tabSessions)
+	rows, err := loadRows(context.Background(), tableOptions{query: queryClient(t, dbPath), period: periodAllTime, bucket: bucketDay}, recordedAt, groupByNone, tabSessions)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -104,7 +104,7 @@ func TestLoadRowsTokenTabUsesTimeBucket(t *testing.T) {
 	insertLoadRowsCanonicalToken(t, database, time.Date(2026, 4, 20, 9, 0, 0, 0, time.Local).UnixMilli(), "opencode", "ses_1", "openai", "gpt-5")
 	insertLoadRowsCanonicalToken(t, database, time.Date(2026, 4, 24, 9, 0, 0, 0, time.Local).UnixMilli(), "pi", "ses_2", "anthropic", "claude")
 
-	rows, err := loadRows(context.Background(), tableOptions{serverURL: queryServerURL(t, dbPath), period: periodAllTime, bucket: bucketWeek}, now, groupByNone, tabTokens)
+	rows, err := loadRows(context.Background(), tableOptions{query: queryClient(t, dbPath), period: periodAllTime, bucket: bucketWeek}, now, groupByNone, tabTokens)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -123,7 +123,7 @@ func TestLoadRowsYesterdayPeriodExcludesToday(t *testing.T) {
 	insertLoadRowsCanonicalToken(t, database, now.AddDate(0, 0, -1).UnixMilli(), "opencode", "ses_1", "openai", "gpt-5")
 	insertLoadRowsCanonicalToken(t, database, now.UnixMilli(), "pi", "ses_2", "anthropic", "claude")
 
-	rows, err := loadRows(context.Background(), tableOptions{serverURL: queryServerURL(t, dbPath), period: periodYesterday, bucket: bucketDay}, now, groupByNone, tabTokens)
+	rows, err := loadRows(context.Background(), tableOptions{query: queryClient(t, dbPath), period: periodYesterday, bucket: bucketDay}, now, groupByNone, tabTokens)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -143,9 +143,9 @@ func TestLoadRowsCustomDayBoundsOverridePreset(t *testing.T) {
 	insertLoadRowsCanonicalToken(t, database, now.UnixMilli(), "pi", "ses_2", "anthropic", "claude")
 
 	rows, err := loadRows(context.Background(), tableOptions{
-		serverURL: queryServerURL(t, dbPath),
-		period:    periodMonth,
-		bucket:    bucketDay,
+		query:  queryClient(t, dbPath),
+		period: periodMonth,
+		bucket: bucketDay,
 		filters: filters{
 			dayFrom: "2026-03-15",
 			dayTo:   "2026-03-15",
@@ -169,7 +169,7 @@ func TestLoadRowsModelTabAggregatesByModel(t *testing.T) {
 	insertLoadRowsCanonicalToken(t, database, recordedAt.UnixMilli(), "opencode", "ses_1", "openai", "gpt-5")
 	insertLoadRowsCanonicalToken(t, database, recordedAt.Add(time.Second).UnixMilli(), "pi", "ses_2", "azure", "gpt-5")
 
-	rows, err := loadRows(context.Background(), tableOptions{serverURL: queryServerURL(t, dbPath), period: periodAllTime, bucket: bucketDay}, recordedAt, groupByNone, tabModels)
+	rows, err := loadRows(context.Background(), tableOptions{query: queryClient(t, dbPath), period: periodAllTime, bucket: bucketDay}, recordedAt, groupByNone, tabModels)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -190,7 +190,7 @@ func TestLoadRowsContextTabShowsSessionPeakContextLoadStats(t *testing.T) {
 	insertLoadRowsCanonicalTokenWithCounts(t, database, recordedAt.Add(2*time.Second).UnixMilli(), "codex", "ses_2", "openai", "gpt-5", 50, 5, 1, 5, 0, 61)
 	insertLoadRowsCanonicalTokenWithCounts(t, database, recordedAt.Add(3*time.Second).UnixMilli(), "opencode", "ses_3", "openai", "gpt-5", 500, 50, 10, 0, 0, 560)
 
-	rows, err := loadRows(context.Background(), tableOptions{serverURL: queryServerURL(t, dbPath), period: periodAllTime, bucket: bucketDay}, recordedAt, groupByNone, tabContext)
+	rows, err := loadRows(context.Background(), tableOptions{query: queryClient(t, dbPath), period: periodAllTime, bucket: bucketDay}, recordedAt, groupByNone, tabContext)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -209,7 +209,7 @@ func TestDashboardReadsServerWithoutCollectorDatabase(t *testing.T) {
 	database, path := newLoadRowsTestDB(t)
 	now := time.Now()
 	insertLoadRowsCanonicalToken(t, database, now.UnixMilli(), "pi", "saved-session", "unknown", "unknown")
-	options := tableOptions{serverURL: queryServerURL(t, path), dbPath: filepath.Join(t.TempDir(), "missing-collector.sqlite"), period: periodAllTime, bucket: bucketDay}
+	options := tableOptions{query: queryClient(t, path), dbPath: filepath.Join(t.TempDir(), "missing-collector.sqlite"), period: periodAllTime, bucket: bucketDay}
 	m := newInteractiveModel(context.Background(), options, now, "unused-client-host")
 	result := m.loadDashboard()
 	if result.err != nil || len(result.rows) != 1 || result.rows[0].totalValue != 136 {
@@ -223,7 +223,7 @@ func TestDashboardCancellationPreservesSavedSnapshot(t *testing.T) {
 	database, path := newLoadRowsTestDB(t)
 	now := time.Now()
 	insertLoadRowsCanonicalToken(t, database, now.UnixMilli(), "pi", "saved-session", "unknown", "unknown")
-	m := newInteractiveModel(context.Background(), tableOptions{serverURL: queryServerURL(t, path), period: periodAllTime, bucket: bucketDay}, now, "test")
+	m := newInteractiveModel(context.Background(), tableOptions{query: queryClient(t, path), period: periodAllTime, bucket: bucketDay}, now, "test")
 	result := m.loadDashboard()
 	if result.err != nil {
 		t.Fatal(result.err)
@@ -1068,7 +1068,7 @@ func TestDashboardSessionCoverageAcrossDateFilters(t *testing.T) {
 		insertLoadRowsCanonicalToken(t, database, recordedAt.UnixMilli(), "opencode", fmt.Sprintf("session-%d", i), "openai", "model-a")
 	}
 
-	options := tableOptions{serverURL: queryServerURL(t, dbPath), period: periodMonth, bucket: bucketDay}
+	options := tableOptions{query: queryClient(t, dbPath), period: periodMonth, bucket: bucketDay}
 	m := newInteractiveModel(context.Background(), options, now, "test-host")
 	m.width, m.height = 100, 24
 	for _, test := range []struct {

@@ -44,7 +44,7 @@ func TestViewBackgroundCollectionUsesDirectDestination(t *testing.T) {
 			t.Fatal("missing harnesses/normalization")
 		}
 		dashboard := finishCollectionForTest(t, model)
-		if dashboard.options.local == nil || dashboard.options.serverURL != "" || dashboard.refresh.result == nil || dashboard.refresh.result.Err != nil {
+		if dashboard.options.local == nil || dashboard.options.query != dashboard.options.local.Query || dashboard.refresh.result == nil || dashboard.refresh.result.Err != nil {
 			t.Fatal("wrong runtime")
 		}
 		details := dashboard.options.local.Progress.Details()

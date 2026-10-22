@@ -2,10 +2,8 @@ package cli
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
-	"net/http"
-	"net/http/httptest"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/queryclient"
 	"reflect"
 	"testing"
 	"time"
@@ -14,16 +12,11 @@ import (
 )
 
 func TestReloadCancelsObsoleteSameSelectionAndRejectsLateError(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		if r.URL.Path == "/api/v2/instance" {
-			_ = json.NewEncoder(w).Encode(api.InstanceResponseV2{DatasetId: "default", ServerKind: "personal", Capabilities: []string{"usage", "facets"}, Permissions: []api.InstanceResponseV2Permissions{"read"}, ApiVersion: api.V2, InstanceId: "instance", DataEpoch: "epoch", DataReadiness: api.InstanceResponseV2DataReadinessReady, Hostname: "producer", Timezone: "UTC +00:00"})
-			return
-		}
-		_ = json.NewEncoder(w).Encode(api.UsageResponseV2{DatasetId: "default", InstanceId: "instance", DataEpoch: "epoch", Revision: 1, Page: 1, PageSize: 200, RowCount: 1, Rows: []api.UsageRow{{Key: "one", Name: "2026-01-01", Total: 42}}, Summary: api.UsageSummary{Total: 42, Sessions: 1, SyncedSessions: 1}})
-	}))
-	defer server.Close()
-	m := newInteractiveModel(t.Context(), tableOptions{serverURL: server.URL, dbPath: "/unusable/local/path", period: periodAllTime, bucket: bucketDay}, time.Now(), "unknown")
+	reader := staticReader{
+		instance: api.InstanceResponseV2{DatasetId: "default", ServerKind: "personal", Capabilities: []string{"usage", "facets"}, Permissions: []api.InstanceResponseV2Permissions{"read"}, ApiVersion: api.V2, InstanceId: "instance", DataEpoch: "epoch", DataReadiness: api.InstanceResponseV2DataReadinessReady, Hostname: "producer", Timezone: "UTC +00:00"},
+		usage:    api.UsageResponseV2{DatasetId: "default", InstanceId: "instance", DataEpoch: "epoch", Revision: 1, Page: 1, PageSize: 200, RowCount: 1, Rows: []api.UsageRow{{Key: "one", Name: "2026-01-01", Total: 42}}, Summary: api.UsageSummary{Total: 42, Sessions: 1, SyncedSessions: 1}},
+	}
+	m := newInteractiveModel(t.Context(), tableOptions{query: queryclient.NewDirect(reader), dbPath: "/unusable/local/path", period: periodAllTime, bucket: bucketDay}, time.Now(), "unknown")
 	defer m.cancelSync()
 	oldRequest := m.reloadCmd()
 	newRequest := m.reloadCmd()
@@ -66,7 +59,7 @@ func TestServerIngestionTimeUsesServingOffset(t *testing.T) {
 }
 
 func TestServerReplacementCancelsOldFacetsAndPreservesSelectedFilters(t *testing.T) {
-	m := newInteractiveModel(t.Context(), tableOptions{serverURL: "http://127.0.0.1:8765", period: periodAllTime, bucket: bucketDay, filters: filters{providers: stringList{"selected"}}}, time.Now(), "unknown")
+	m := newInteractiveModel(t.Context(), tableOptions{query: queryclient.NewDirect(staticReader{}), period: periodAllTime, bucket: bucketDay, filters: filters{providers: stringList{"selected"}}}, time.Now(), "unknown")
 	defer m.cancelSync()
 	m.instanceID, m.dataEpoch = "old", "old-epoch"
 	m.popup, m.filterDimension = popupFilterValues, filterProvider
@@ -94,7 +87,7 @@ func TestLocationFacetsUseRepoAPIAndInactiveFiltersDoNotHideOtherTabs(t *testing
 		t.Fatal(err)
 	}
 	insertLoadRowsCanonicalToken(t, database, now.Add(time.Second).UnixMilli(), "codex", "unlocated", "provider-two", "model-two")
-	options := tableOptions{serverURL: queryServerURL(t, path), period: periodAllTime, bucket: bucketDay}
+	options := tableOptions{query: queryClient(t, path), period: periodAllTime, bucket: bucketDay}
 	values, keys, err := loadLocationFilterValues(t.Context(), options, now, filterRepository)
 	if err != nil || !reflect.DeepEqual(values, []string{"fixture-repo", "unknown"}) || keys["fixture-repo"] != "fixture-repository" {
 		t.Fatalf("repo facets=%v keys=%v error=%v", values, keys, err)

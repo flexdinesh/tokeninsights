@@ -1698,5 +1698,5 @@ func rowName(row renderRow, activeTab tabMode) string {
 }
 
 func (m interactiveModel) selectionKey() string {
-	return fmt.Sprintf("%s/%s/%s/%s/%s/%+v/%s/%s", m.options.serverURL, m.options.period, m.options.bucket, m.options.sort, m.options.repoGroup, m.options.filters, m.groupBy, m.activeTab)
+	return fmt.Sprintf("%s/%s/%s/%s/%+v/%s/%s", m.options.period, m.options.bucket, m.options.sort, m.options.repoGroup, m.options.filters, m.groupBy, m.activeTab)
 }

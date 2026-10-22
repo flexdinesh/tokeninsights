@@ -2,10 +2,7 @@ package cli
 
 import (
 	"context"
-	"net/http"
-	"net/http/httptest"
 	"reflect"
-	"sync/atomic"
 	"testing"
 	"time"
 
@@ -42,35 +39,20 @@ func TestSnapshotReplacementUsesTheSamePublicationTransition(t *testing.T) {
 	}
 }
 
-func TestReadOnlyHTTPReloadAcceptsRestartWithoutQueryLoop(t *testing.T) {
+func TestReadOnlyReloadAcceptsRestartWithoutQueryLoop(t *testing.T) {
 	database, path := newLoadRowsTestDB(t)
 	defer func() { _ = database.Close() }()
 	insertLoadRowsCanonicalToken(t, database, time.Now().UnixMilli(), "pi", "saved", "provider", "model")
-	oldHandler := queryHandler(t, path, "old")
-	newHandler := queryHandler(t, path, "new")
-	var replaced atomic.Bool
-	var requests atomic.Int64
-	remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet {
-			t.Errorf("viewer wrote server: %s", r.Method)
-		}
-		requests.Add(1)
-		if replaced.Load() {
-			newHandler.ServeHTTP(w, r)
-		} else {
-			oldHandler.ServeHTTP(w, r)
-		}
-	}))
-	defer remote.Close()
-	m := newInteractiveModel(t.Context(), tableOptions{serverURL: remote.URL, period: periodAllTime, bucket: bucketDay}, time.Now(), "unknown")
+	reader := &observedReader{reader: queryReader(t, path, "old")}
+	m := newInteractiveModel(t.Context(), tableOptions{query: queryclient.NewDirect(reader), period: periodAllTime, bucket: bucketDay}, time.Now(), "unknown")
 	defer m.cancelSync()
 	updated, _ := m.Update(m.reloadCmd()())
 	m = updated.(interactiveModel)
 	if m.err != nil || m.instanceID != "old" || len(m.rows) != 1 {
 		t.Fatalf("initial snapshot: %+v", m)
 	}
-	replaced.Store(true)
-	before := requests.Load()
+	reader.set(queryReader(t, path, "new"))
+	before := reader.reads.Load()
 	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'r'}})
 	m = updated.(interactiveModel)
 	if cmd == nil {
@@ -78,8 +60,8 @@ func TestReadOnlyHTTPReloadAcceptsRestartWithoutQueryLoop(t *testing.T) {
 	}
 	updated, followup := m.Update(cmd())
 	m = updated.(interactiveModel)
-	if m.err != nil || m.instanceID != "new" || len(m.rows) != 1 || followup != nil || requests.Load()-before != 4 {
-		t.Fatalf("replacement retried valid snapshot: instance=%s err=%v followup=%v requests=%d", m.instanceID, m.err, followup != nil, requests.Load()-before)
+	if m.err != nil || m.instanceID != "new" || len(m.rows) != 1 || followup != nil || reader.reads.Load()-before != 2 { // one instance and one usage read
+		t.Fatalf("replacement retried valid snapshot: instance=%s err=%v followup=%v requests=%d", m.instanceID, m.err, followup != nil, reader.reads.Load()-before)
 	}
 }
 

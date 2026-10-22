@@ -6,22 +6,17 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net/http"
-	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"reflect"
 	"strings"
-	"sync/atomic"
 	"testing"
 	"time"
 
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/adapters/sqlanalytics"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/collector"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/datastore"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/evidence"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/localruntime"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/server"
 )
 
 func localViewOptions(t *testing.T, withUsage bool) tableOptions {
@@ -32,7 +27,7 @@ func localViewOptions(t *testing.T, withUsage bool) tableOptions {
 	if err != nil {
 		t.Fatal(err)
 	}
-	options.local = runtime
+	options.local, options.query = runtime, runtime.Query
 	t.Cleanup(func() { _ = runtime.Close() })
 	if withUsage {
 		metadata, err := runtime.Store.Metadata(t.Context())
@@ -68,7 +63,7 @@ func TestTUIReadsSavedUsageDirectlyWithoutCollection(t *testing.T) {
 		return collector.Result{}, nil
 	})
 	restore := replaceInteractiveProgramRunnerForTest(t, func(model interactiveModel, _ io.Writer) (interactiveModel, error) {
-		if model.options.local == nil || model.options.serverURL != "" {
+		if model.options.local == nil || model.options.query != model.options.local.Query {
 			t.Fatal("not direct query")
 		}
 		hostname, err := os.Hostname()
@@ -163,9 +158,7 @@ func TestViewParsesIndependentServerCollectorAndFilterOptions(t *testing.T) {
 	}
 }
 
-type viewRequestCounts struct{ gets, posts atomic.Int64 }
-
-func newViewQueryServer(t *testing.T, withUsage bool) (*httptest.Server, *datastore.Store, *viewRequestCounts) {
+func newViewQueryReader(t *testing.T, withUsage bool) (*observedReader, *datastore.Store) {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "query-server.sqlite")
 	store, err := datastore.Open(t.Context(), path)
@@ -176,19 +169,7 @@ func newViewQueryServer(t *testing.T, withUsage bool) (*httptest.Server, *datast
 	if withUsage {
 		insertLoadRowsCanonicalTokenWithCounts(t, store.SQL(), 1767225600000, "pi", "fixture-view-session", "fixture-provider", "fixture-model", 80, 20, 0, 0, 0, 100)
 	}
-	handler := server.NewDataHandler(t.Context(), sqlanalytics.Source{Store: store}, io.Discard, "127.0.0.1", "", true)
-	requests := &viewRequestCounts{}
-	remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch r.Method {
-		case http.MethodGet:
-			requests.gets.Add(1)
-		case http.MethodPost:
-			requests.posts.Add(1)
-		}
-		handler.ServeHTTP(w, r)
-	}))
-	t.Cleanup(remote.Close)
-	return remote, store, requests
+	return &observedReader{reader: storeReader(store, fixtureInstance)}, store
 }
 
 func isolateViewSources(t *testing.T, root string) {

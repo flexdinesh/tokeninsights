@@ -3,9 +3,7 @@ package cli
 import (
 	"context"
 	"errors"
-	"io"
-	"net/http"
-	"net/http/httptest"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/queryclient"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -18,10 +16,10 @@ import (
 )
 
 func TestReadOnlyViewerLoadsSavedUsageWithoutSourceCoverage(t *testing.T) {
-	remote, _, requests := newViewQueryServer(t, true)
+	reader, _ := newViewQueryReader(t, true)
 	root := t.TempDir()
 	isolateViewSources(t, root)
-	options := tableOptions{serverURL: remote.URL, dbPath: filepath.Join(root, "unopened.sqlite"), collectorDBPath: filepath.Join(root, "collector.sqlite"), period: periodAllTime, bucket: bucketDay}
+	options := tableOptions{query: queryclient.NewDirect(reader), dbPath: filepath.Join(root, "unopened.sqlite"), collectorDBPath: filepath.Join(root, "collector.sqlite"), period: periodAllTime, bucket: bucketDay}
 	model := newInteractiveModel(context.Background(), options, time.Now(), "unknown")
 	defer model.cancelSync()
 	if model.syncing || model.syncInFlight || !model.loading {
@@ -43,17 +41,17 @@ func TestReadOnlyViewerLoadsSavedUsageWithoutSourceCoverage(t *testing.T) {
 			t.Fatalf("query-only server claims source coverage %q: %s", invented, view)
 		}
 	}
-	if requests.posts.Load() != 0 {
-		t.Fatal("view requested server collection")
+	if reader.reads.Load() == 0 {
+		t.Fatal("view did not read saved usage")
 	}
 	assertViewMissingPath(t, options.dbPath)
 	assertViewMissingPath(t, options.collectorDBPath)
 }
 
 func TestViewerReloadReadsServerAndPreservesFilters(t *testing.T) {
-	remote, _, requests := newViewQueryServer(t, true)
+	reader, _ := newViewQueryReader(t, true)
 	selected := filters{providers: stringList{"fixture-provider"}, models: stringList{"fixture-model"}, harnesses: stringList{"pi"}, sessionIDs: stringList{"fixture-view-session"}}
-	options := tableOptions{serverURL: remote.URL, period: periodAllTime, bucket: bucketDay, filters: selected}
+	options := tableOptions{query: queryclient.NewDirect(reader), period: periodAllTime, bucket: bucketDay, filters: selected}
 	model := newInteractiveModel(context.Background(), options, time.Now(), "unknown")
 	defer model.cancelSync()
 	updated, _ := model.Update(model.loadDashboard())
@@ -69,54 +67,34 @@ func TestViewerReloadReadsServerAndPreservesFilters(t *testing.T) {
 	if model.err != nil || len(model.rows) != 1 || model.rows[0].totalValue != 100 || !reflect.DeepEqual(model.options.filters, selected) {
 		t.Fatalf("reload lost saved data/filter scope: err=%v filters=%+v rows=%+v", model.err, model.options.filters, model.rows)
 	}
-	if requests.posts.Load() != 0 {
-		t.Fatal("reload wrote server data")
+	if reader.reads.Load() == 0 {
+		t.Fatal("reload did not read saved usage")
 	}
 }
 
 func TestViewerOldSyncShortcutDoesNotCollect(t *testing.T) {
-	remote, _, requests := newViewQueryServer(t, true)
-	model := newInteractiveModel(context.Background(), tableOptions{serverURL: remote.URL, period: periodAllTime, bucket: bucketDay}, time.Now(), "unknown")
+	reader, _ := newViewQueryReader(t, true)
+	model := newInteractiveModel(context.Background(), tableOptions{query: queryclient.NewDirect(reader), period: periodAllTime, bucket: bucketDay}, time.Now(), "unknown")
 	defer model.cancelSync()
-	before := requests.gets.Load()
+	before := reader.reads.Load()
 	updated, cmd := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'u'}})
 	model = updated.(interactiveModel)
-	if cmd != nil || model.syncing || model.syncInFlight || requests.posts.Load() != 0 || requests.gets.Load() != before {
+	if cmd != nil || model.syncing || model.syncInFlight || reader.reads.Load() != before {
 		t.Fatal("obsolete sync shortcut triggered work")
 	}
 }
 
 func TestViewerQueryFailureRetainsSavedRowsAndFilters(t *testing.T) {
 	var fail atomic.Bool
-	remote, _, _ := newViewQueryServer(t, true)
-	proxy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	reader, _ := newViewQueryReader(t, true)
+	reader.intercept = func(context.Context) error {
 		if fail.Load() {
-			http.Error(w, "unavailable", http.StatusServiceUnavailable)
-			return
+			return queryclient.ErrUnavailable
 		}
-		target := remote.URL + r.URL.RequestURI()
-		request, err := http.NewRequestWithContext(r.Context(), r.Method, target, nil)
-		if err != nil {
-			t.Error(err)
-			return
-		}
-		response, err := http.DefaultClient.Do(request)
-		if err != nil {
-			t.Error(err)
-			return
-		}
-		defer func() { _ = response.Body.Close() }()
-		for key, values := range response.Header {
-			for _, value := range values {
-				w.Header().Add(key, value)
-			}
-		}
-		w.WriteHeader(response.StatusCode)
-		_, _ = io.Copy(w, response.Body)
-	}))
-	defer proxy.Close()
+		return nil
+	}
 	selected := filters{providers: stringList{"fixture-provider"}, models: stringList{"fixture-model"}}
-	model := newInteractiveModel(context.Background(), tableOptions{serverURL: proxy.URL, period: periodAllTime, bucket: bucketDay, filters: selected}, time.Now(), "unknown")
+	model := newInteractiveModel(context.Background(), tableOptions{query: queryclient.NewDirect(reader), period: periodAllTime, bucket: bucketDay, filters: selected}, time.Now(), "unknown")
 	defer model.cancelSync()
 	loaded := model.loadDashboard()
 	if loaded.err != nil {
@@ -155,12 +133,12 @@ func TestViewerQueryFailureRetainsSavedRowsAndFilters(t *testing.T) {
 
 func TestQuitCancelsOutstandingViewerReads(t *testing.T) {
 	started := make(chan struct{})
-	remote := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+	reader := &observedReader{intercept: func(ctx context.Context) error {
 		close(started)
-		<-r.Context().Done()
-	}))
-	defer remote.Close()
-	model := newInteractiveModel(context.Background(), tableOptions{serverURL: remote.URL, period: periodAllTime, bucket: bucketDay}, time.Now(), "unknown")
+		<-ctx.Done()
+		return ctx.Err()
+	}}
+	model := newInteractiveModel(context.Background(), tableOptions{query: queryclient.NewDirect(reader), period: periodAllTime, bucket: bucketDay}, time.Now(), "unknown")
 	defer model.cancelSync()
 	finished := make(chan reloadMsg, 1)
 	go func() { finished <- model.loadDashboard() }()

@@ -21,7 +21,7 @@ func TestRepoTabGroupsAndFiltersWithoutChangingOtherTabs(t *testing.T) {
 		t.Fatal(err)
 	}
 	insertLoadRowsCanonicalToken(t, database, now.Add(time.Second).UnixMilli(), "pi", "two", "anthropic", "claude")
-	options := tableOptions{serverURL: queryServerURL(t, path), period: periodAllTime, bucket: bucketDay, repoGroup: querymodel.RepoGroupRepository}
+	options := tableOptions{query: queryClient(t, path), period: periodAllTime, bucket: bucketDay, repoGroup: querymodel.RepoGroupRepository}
 	rows, err := loadRows(context.Background(), options, now, groupByNone, tabRepo)
 	if err != nil || len(rows) != 2 || (rows[0].location != "unknown" && rows[1].location != "unknown") {
 		t.Fatalf("repo rows = %+v, err = %v", rows, err)
