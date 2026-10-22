@@ -2,10 +2,10 @@ package tui
 
 import (
 	"fmt"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/analytics"
 	"strings"
 
 	"github.com/charmbracelet/x/ansi"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/analytics"
 )
 
 type tableSummaryModel struct {

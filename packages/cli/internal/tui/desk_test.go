@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/analytics"
 	"strings"
 	"testing"
 	"time"
@@ -12,6 +11,8 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/analytics"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/flagvalue"
 	"github.com/muesli/termenv"
 )
 
@@ -26,7 +27,7 @@ func TestReadoutsUseExactFilteredComponentsAcrossViews(t *testing.T) {
 	insertLoadRowsCanonicalTokenWithCounts(t, database, now.UnixMilli(), "pi", "excluded", "other", "other-model", 99, 0, 0, 0, 0, 99)
 	for _, tab := range []tabMode{tabTokens, tabModels, tabProviders, tabHarnesses, tabSessions} {
 		t.Run(tab.String(), func(t *testing.T) {
-			rows, err := loadRows(context.Background(), tableOptions{query: queryClient(t, path), period: periodAllTime, bucket: bucketDay, filters: filters{harnesses: stringList{"codex"}}}, now, groupByNone, tab)
+			rows, err := loadRows(context.Background(), tableOptions{query: queryClient(t, path), period: periodAllTime, bucket: bucketDay, filters: filters{harnesses: flagvalue.List{"codex"}}}, now, groupByNone, tab)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -148,7 +149,7 @@ func TestDrawerScrollsLongListsAndPreservesDashboard(t *testing.T) {
 }
 
 func TestDrawerCancelDiscardsDraftAndApplyCommits(t *testing.T) {
-	base := interactiveModel{popup: popupFilterValues, filterDimension: filterModel, filterValues: []string{"model-a", "model-b"}, filterSelections: map[string]bool{"model-a": true}, options: tableOptions{filters: filters{models: stringList{"model-a"}}}, cursor: 3, scrollOffset: 2}
+	base := interactiveModel{popup: popupFilterValues, filterDimension: filterModel, filterValues: []string{"model-a", "model-b"}, filterSelections: map[string]bool{"model-a": true}, options: tableOptions{filters: filters{models: flagvalue.List{"model-a"}}}, cursor: 3, scrollOffset: 2}
 	base.popupCursor = 1
 	draftModel, _ := base.Update(tea.KeyMsg{Type: tea.KeySpace})
 	draft := draftModel.(interactiveModel)

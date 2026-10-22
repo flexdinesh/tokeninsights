@@ -13,6 +13,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/analytics"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/collectorprogress"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/flagvalue"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/localruntime"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/pipeline"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/queryclient"
@@ -1298,15 +1299,15 @@ func (m interactiveModel) applyFilterValues() (tea.Model, tea.Cmd) {
 	}
 	switch m.filterDimension {
 	case filterProvider:
-		m.options.filters.providers = stringList(selected)
+		m.options.filters.providers = flagvalue.List(selected)
 	case filterModel:
-		m.options.filters.models = stringList(selected)
+		m.options.filters.models = flagvalue.List(selected)
 	case filterHarness:
-		m.options.filters.harnesses = stringList(selected)
+		m.options.filters.harnesses = flagvalue.List(selected)
 	case filterRepository:
-		m.options.filters.repositories = stringList(selected)
+		m.options.filters.repositories = flagvalue.List(selected)
 	case filterDirectory:
-		m.options.filters.directories = stringList(selected)
+		m.options.filters.directories = flagvalue.List(selected)
 	}
 	m.popup = popupNone
 	m = m.resetRowPosition()
@@ -1564,7 +1565,7 @@ func activeRepoFiltersLabel(f filters) string {
 	var parts []string
 	for _, facet := range []struct {
 		name   string
-		values stringList
+		values flagvalue.List
 	}{
 		{"repository", f.repositories}, {"directory", f.directories},
 	} {

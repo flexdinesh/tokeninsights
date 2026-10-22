@@ -623,6 +623,7 @@ New role schemas belong in a top-level package; port implementations in `adapter
 | `serverruntime` | Shared worker/readiness/listener lifecycle through interfaces |
 | `remoteserver` | Authenticated remote composition |
 | `cli` | Command parsing, environment defaults and local composition; no storage adapters or SQL |
+| `flagvalue` | Shared command-line flag values: repeatable lists and `--harness` parsing |
 | `tui` | Terminal dashboard over `queryclient.Reader` and the local runtime; no HTTP, SQL or storage adapters |
 
 `analytics` owns storage-independent query values and selections. Direct queries receive an

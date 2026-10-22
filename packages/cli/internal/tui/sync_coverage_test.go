@@ -3,7 +3,6 @@ package tui
 import (
 	"context"
 	"errors"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/queryclient"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -13,6 +12,8 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/flagvalue"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/queryclient"
 )
 
 func TestReadOnlyViewerLoadsSavedUsageWithoutSourceCoverage(t *testing.T) {
@@ -50,7 +51,7 @@ func TestReadOnlyViewerLoadsSavedUsageWithoutSourceCoverage(t *testing.T) {
 
 func TestViewerReloadReadsServerAndPreservesFilters(t *testing.T) {
 	reader, _ := newViewQueryReader(t, true)
-	selected := filters{providers: stringList{"fixture-provider"}, models: stringList{"fixture-model"}, harnesses: stringList{"pi"}, sessionIDs: stringList{"fixture-view-session"}}
+	selected := filters{providers: flagvalue.List{"fixture-provider"}, models: flagvalue.List{"fixture-model"}, harnesses: flagvalue.List{"pi"}, sessionIDs: flagvalue.List{"fixture-view-session"}}
 	options := tableOptions{query: queryclient.NewDirect(reader), period: periodAllTime, bucket: bucketDay, filters: selected}
 	model := newInteractiveModel(context.Background(), options, time.Now(), "unknown")
 	defer model.cancelSync()
@@ -93,7 +94,7 @@ func TestViewerQueryFailureRetainsSavedRowsAndFilters(t *testing.T) {
 		}
 		return nil
 	}
-	selected := filters{providers: stringList{"fixture-provider"}, models: stringList{"fixture-model"}}
+	selected := filters{providers: flagvalue.List{"fixture-provider"}, models: flagvalue.List{"fixture-model"}}
 	model := newInteractiveModel(context.Background(), tableOptions{query: queryclient.NewDirect(reader), period: periodAllTime, bucket: bucketDay, filters: selected}, time.Now(), "unknown")
 	defer model.cancelSync()
 	loaded := model.loadDashboard()

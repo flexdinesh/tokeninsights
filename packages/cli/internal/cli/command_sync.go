@@ -12,6 +12,7 @@ import (
 
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/collector"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/config"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/flagvalue"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/pipeline"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/syncjob"
 )
@@ -28,7 +29,7 @@ func runSync(invocation commandInvocation, args []string) error {
 	var dryRun bool
 	var fullRefresh bool
 	var sourceDir string
-	var harnesses harnessValues
+	var harnesses flagvalue.List
 	var publishOnly, wait, debug, printURL bool
 	flags.BoolVar(&wait, "wait", false, "wait for remote acceptance")
 	flags.BoolVar(&debug, "debug", false, "show collection, acceptance and receipt processing")
@@ -36,7 +37,7 @@ func runSync(invocation commandInvocation, args []string) error {
 	flags.String("collector-db-path", invocation.syncDefaults().CollectorDBPath, "collector SQLite database")
 	flags.String("server-url", "", "authenticated hosted ingestion server")
 	flags.BoolVar(&publishOnly, "publish-only", false, "submit retained raw evidence without collecting")
-	flags.Var(&harnesses, "harness", "harness to sync: opencode, pi, codex, or claude-code")
+	flags.Var(&harnesses, "harness", "harness to sync: "+flagvalue.HarnessChoices())
 	flags.BoolVar(&all, "all", false, "sync all supported harnesses")
 	flags.BoolVar(&dryRun, "dry-run", false, "discover and parse without writing")
 	flags.BoolVar(&fullRefresh, "full-refresh", false, "ignore source refresh state and retry quarantined sources")
@@ -73,34 +74,16 @@ func runSync(invocation commandInvocation, args []string) error {
 	return err
 }
 
-// harnessValues collects repeated or comma-separated --harness values.
-type harnessValues []string
-
-func (values *harnessValues) String() string { return strings.Join(*values, ",") }
-
-func (values *harnessValues) Set(value string) error {
-	for _, item := range strings.Split(value, ",") {
-		if trimmed := strings.TrimSpace(item); trimmed != "" {
-			*values = append(*values, trimmed)
-		}
-	}
-	return nil
-}
-
-func syncHarnesses(all bool, values harnessValues) ([]pipeline.Harness, error) {
+func syncHarnesses(all bool, values flagvalue.List) ([]pipeline.Harness, error) {
 	if all && len(values) > 0 {
 		return nil, fmt.Errorf("choose either --all or --harness, not both\n%w", ErrUsage)
 	}
 	if all || len(values) == 0 {
 		return pipeline.SupportedHarnesses, nil
 	}
-	selected := make([]pipeline.Harness, 0, len(values))
-	for _, value := range values {
-		harness, ok := pipeline.ParseHarness(value)
-		if !ok {
-			return nil, fmt.Errorf("invalid --harness %q: must be opencode, pi, codex, or claude-code\n%w", value, ErrUsage)
-		}
-		selected = append(selected, harness)
+	selected, err := flagvalue.Harnesses(values)
+	if err != nil {
+		return nil, fmt.Errorf("%w\n%w", err, ErrUsage)
 	}
 	return selected, nil
 }

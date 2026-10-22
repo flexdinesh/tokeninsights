@@ -3,11 +3,12 @@ package tui
 import (
 	"context"
 	"errors"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/queryclient"
 	"reflect"
 	"testing"
 	"time"
 
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/flagvalue"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/queryclient"
 	api "github.com/flexdinesh/tokeninsights/packages/cli/internal/server/api"
 )
 
@@ -59,7 +60,7 @@ func TestServerIngestionTimeUsesServingOffset(t *testing.T) {
 }
 
 func TestServerReplacementCancelsOldFacetsAndPreservesSelectedFilters(t *testing.T) {
-	m := newInteractiveModel(t.Context(), tableOptions{query: queryclient.NewDirect(staticReader{}), period: periodAllTime, bucket: bucketDay, filters: filters{providers: stringList{"selected"}}}, time.Now(), "unknown")
+	m := newInteractiveModel(t.Context(), tableOptions{query: queryclient.NewDirect(staticReader{}), period: periodAllTime, bucket: bucketDay, filters: filters{providers: flagvalue.List{"selected"}}}, time.Now(), "unknown")
 	defer m.cancelSync()
 	m.instanceID, m.dataEpoch = "old", "old-epoch"
 	m.popup, m.filterDimension = popupFilterValues, filterProvider
@@ -68,7 +69,7 @@ func TestServerReplacementCancelsOldFacetsAndPreservesSelectedFilters(t *testing
 	oldMessage := filterValuesMsg{requestID: oldSequence, selection: m.selectionKey(), dimension: filterProvider, values: []string{"old-provider"}}
 	updated, _ := m.Update(sharedSyncMsg{instanceID: "new", dataEpoch: "new-epoch", readiness: "ready"})
 	m = updated.(interactiveModel)
-	if !errors.Is(oldContext.Err(), context.Canceled) || len(m.filterValues) != 0 || !m.filterLoading || !reflect.DeepEqual(m.options.filters.providers, stringList{"selected"}) {
+	if !errors.Is(oldContext.Err(), context.Canceled) || len(m.filterValues) != 0 || !m.filterLoading || !reflect.DeepEqual(m.options.filters.providers, flagvalue.List{"selected"}) {
 		t.Fatalf("replacement retained stale facets: values=%v loading=%v selected=%v", m.filterValues, m.filterLoading, m.options.filters.providers)
 	}
 	updated, _ = m.Update(oldMessage)
@@ -92,12 +93,12 @@ func TestLocationFacetsUseRepoAPIAndInactiveFiltersDoNotHideOtherTabs(t *testing
 	if err != nil || !reflect.DeepEqual(values, []string{"fixture-repo", "unknown"}) || keys["fixture-repo"] != "fixture-repository" {
 		t.Fatalf("repo facets=%v keys=%v error=%v", values, keys, err)
 	}
-	options.filters.repositories = stringList{"fixture-repository"}
+	options.filters.repositories = flagvalue.List{"fixture-repository"}
 	values, keys, err = loadLocationFilterValues(t.Context(), options, now, filterDirectory)
 	if err != nil || !reflect.DeepEqual(values, []string{"fixture/dir"}) || keys["fixture/dir"] != "fixture-directory" {
 		t.Fatalf("directory facets=%v keys=%v error=%v", values, keys, err)
 	}
-	options.filters.directories = stringList{"fixture-directory"}
+	options.filters.directories = flagvalue.List{"fixture-directory"}
 	m := newInteractiveModel(t.Context(), options, now, "unknown")
 	defer m.cancelSync()
 	loaded, _ := m.Update(m.loadDashboard())

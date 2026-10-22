@@ -6,7 +6,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/operator"
 	"io"
 	"net"
 	"net/url"
@@ -19,6 +18,7 @@ import (
 
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/accounts"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/clientaddress"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/operator"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/server"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/serverfeatures"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/serverownership"

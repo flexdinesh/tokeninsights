@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/operator"
 	"io"
 	"net/http"
 	"os"
@@ -16,6 +15,7 @@ import (
 
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/accounts"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/evidence"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/operator"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/persistence/postgres/testdb"
 )
 

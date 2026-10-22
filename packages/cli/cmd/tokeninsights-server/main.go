@@ -5,7 +5,6 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/operator"
 	"io"
 	"os"
 	"os/signal"
@@ -15,6 +14,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/accounts"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/operator"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/remoteserver"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/version"
 )

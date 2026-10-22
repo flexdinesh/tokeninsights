@@ -3,7 +3,6 @@ package remoteserver
 import (
 	"context"
 	"errors"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/dbpath"
 	"path/filepath"
 
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/accounts"
@@ -13,6 +12,7 @@ import (
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/adapters/sqliteaccounts"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/appstore"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/datastore"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/dbpath"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/server"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/serverownership"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/serverruntime"

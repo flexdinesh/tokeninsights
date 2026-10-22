@@ -3,15 +3,15 @@ package tui
 import (
 	"flag"
 	"fmt"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/analytics"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/queryclient"
 	"io"
 	"strings"
 	"time"
 
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/analytics"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/config"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/flagvalue"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/localruntime"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/pipeline"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/queryclient"
 )
 
 type period string
@@ -52,29 +52,13 @@ const (
 	sortModel          sortMode = "model"
 )
 
-type stringList []string
-
-func (values *stringList) String() string {
-	return strings.Join(*values, ",")
-}
-
-func (values *stringList) Set(value string) error {
-	for _, item := range strings.Split(value, ",") {
-		trimmed := strings.TrimSpace(item)
-		if trimmed != "" {
-			*values = append(*values, trimmed)
-		}
-	}
-	return nil
-}
-
 type filters struct {
-	sessionIDs   stringList
-	providers    stringList
-	models       stringList
-	harnesses    stringList
-	repositories stringList
-	directories  stringList
+	sessionIDs   flagvalue.List
+	providers    flagvalue.List
+	models       flagvalue.List
+	harnesses    flagvalue.List
+	repositories flagvalue.List
+	directories  flagvalue.List
 	dayFrom      string
 	dayTo        string
 }
@@ -257,11 +241,9 @@ func periodStart(now time.Time, selected period) time.Time {
 	return analytics.PeriodStart(now, string(selected))
 }
 
-func validateHarnesses(values stringList) error {
-	for _, value := range values {
-		if _, ok := pipeline.ParseHarness(value); !ok {
-			return usageError("invalid --harness %q: must be opencode, pi, codex, or claude-code", value)
-		}
+func validateHarnesses(values flagvalue.List) error {
+	if _, err := flagvalue.Harnesses(values); err != nil {
+		return &UsageError{Err: err}
 	}
 	return nil
 }

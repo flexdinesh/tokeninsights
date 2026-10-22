@@ -12,6 +12,7 @@ import (
 
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/collector"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/datastore"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/flagvalue"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/localruntime"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/pipeline"
 )
@@ -103,11 +104,11 @@ func TestSyncAllIncludesClaudeCodeHarness(t *testing.T) {
 }
 
 func TestSyncHarnessesValidatesSharedNames(t *testing.T) {
-	harnesses, err := syncHarnesses(false, harnessValues{"pi", "claude-code"})
+	harnesses, err := syncHarnesses(false, flagvalue.List{"pi", "claude-code"})
 	if err != nil || len(harnesses) != 2 || harnesses[1] != pipeline.HarnessClaudeCode {
 		t.Fatal(harnesses, err)
 	}
-	if _, err := syncHarnesses(false, harnessValues{"claude"}); !errors.Is(err, ErrUsage) || !strings.Contains(err.Error(), `invalid --harness "claude"`) {
+	if _, err := syncHarnesses(false, flagvalue.List{"claude"}); !errors.Is(err, ErrUsage) || !strings.Contains(err.Error(), `invalid --harness "claude"`) {
 		t.Fatal("unsupported harness accepted", err)
 	}
 }

@@ -3,7 +3,6 @@ package cli
 import (
 	"bytes"
 	"errors"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/tui"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -15,6 +14,7 @@ import (
 	"time"
 
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/config"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/tui"
 )
 
 func TestBrowseOpensConfiguredURLWithoutCaptureAuthenticationOrStorage(t *testing.T) {

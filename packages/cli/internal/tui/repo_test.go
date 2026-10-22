@@ -2,13 +2,14 @@ package tui
 
 import (
 	"context"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/analytics"
 	"strings"
 	"testing"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/analytics"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/flagvalue"
 )
 
 func TestRepoTabGroupsAndFiltersWithoutChangingOtherTabs(t *testing.T) {
@@ -26,7 +27,7 @@ func TestRepoTabGroupsAndFiltersWithoutChangingOtherTabs(t *testing.T) {
 	if err != nil || len(rows) != 2 || (rows[0].location != "unknown" && rows[1].location != "unknown") {
 		t.Fatalf("repo rows = %+v, err = %v", rows, err)
 	}
-	options.filters.repositories = stringList{"repo-one"}
+	options.filters.repositories = flagvalue.List{"repo-one"}
 	rows, err = loadRows(context.Background(), options, now, groupByNone, tabRepo)
 	if err != nil || len(rows) != 1 || rows[0].location != "repo" || rows[0].providers != "openai" || rows[0].harnesses != "codex" || rows[0].models != "gpt" {
 		t.Fatalf("filtered repo row = %+v, err = %v", rows, err)

@@ -14,6 +14,7 @@ import (
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/collector"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/collectorprogress"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/dataengine"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/flagvalue"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/localruntime"
 	"github.com/muesli/termenv"
 )
@@ -138,22 +139,22 @@ func TestBackgroundPublicationPreservesFocusedIdentityAndDrawerDraft(t *testing.
 	m.rows = []renderRow{{model: "a", totalValue: 300}, {model: "b", totalValue: 200}, {model: "c", totalValue: 100}}
 	m.popup, m.filterDimension, m.popupCursor = popupFilterValues, filterModel, 1
 	m.filterValues = []string{"a", "b", "c"}
-	m.options.filters.models = stringList{"a"}
+	m.options.filters.models = flagvalue.List{"a"}
 	m.filterSelections = map[string]bool{"a": false, "b": true}
 	updated, _ := m.Update(reloadMsg{preservePosition: true, instanceID: "instance", dataEpoch: "database", revision: 2,
 		rows: []renderRow{{model: "new", totalValue: 400}, {model: "a", totalValue: 300}, {model: "c", totalValue: 250}, {model: "b", totalValue: 200}}})
 	m = updated.(interactiveModel)
-	if m.cursor != 3 || m.rows[m.cursor].model != "b" || m.popup != popupFilterValues || !reflect.DeepEqual(m.options.filters.models, stringList{"a"}) {
+	if m.cursor != 3 || m.rows[m.cursor].model != "b" || m.popup != popupFilterValues || !reflect.DeepEqual(m.options.filters.models, flagvalue.List{"a"}) {
 		t.Fatal("publication moved focused identity or changed applied scope")
 	}
 	updated, _ = m.Update(filterValuesMsg{instanceID: "instance", dataEpoch: "database", revision: 2, dimension: filterModel, values: []string{"a", "b", "new"}})
 	m = updated.(interactiveModel)
-	if m.filterSelections["a"] || !m.filterSelections["b"] || m.filterValues[m.popupCursor] != "b" || !reflect.DeepEqual(m.options.filters.models, stringList{"a"}) {
+	if m.filterSelections["a"] || !m.filterSelections["b"] || m.filterValues[m.popupCursor] != "b" || !reflect.DeepEqual(m.options.filters.models, flagvalue.List{"a"}) {
 		t.Fatal("facet refresh overwrote unapplied selections or focused value", m.filterSelections)
 	}
 	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyEsc})
 	m = updated.(interactiveModel)
-	if m.popup != popupNone || !reflect.DeepEqual(m.options.filters.models, stringList{"a"}) {
+	if m.popup != popupNone || !reflect.DeepEqual(m.options.filters.models, flagvalue.List{"a"}) {
 		t.Fatal("Cancel committed background-refreshed draft")
 	}
 }
@@ -203,14 +204,14 @@ func TestColdStartEmptyStateWaitsForRefresh(t *testing.T) {
 func TestBackgroundFacetsPreserveClearAllDraft(t *testing.T) {
 	m := savedRefreshModel(t)
 	m.popup, m.filterDimension = popupFilterValues, filterModel
-	m.options.filters.models = stringList{"a"}
+	m.options.filters.models = flagvalue.List{"a"}
 	m.filterValues = []string{"a", "b"}
 	m.filterSelections = map[string]bool{"a": true}
 	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'c'}})
 	m = updated.(interactiveModel)
 	updated, _ = m.Update(filterValuesMsg{instanceID: "instance", dataEpoch: "database", revision: 1, dimension: filterModel, values: []string{"a", "b", "new"}})
 	m = updated.(interactiveModel)
-	if len(selectedValues(m.filterValues, m.filterSelections)) != 0 || !reflect.DeepEqual(m.options.filters.models, stringList{"a"}) {
+	if len(selectedValues(m.filterValues, m.filterSelections)) != 0 || !reflect.DeepEqual(m.options.filters.models, flagvalue.List{"a"}) {
 		t.Fatal("background facets resurrected cleared draft or committed it", m.filterSelections)
 	}
 	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})

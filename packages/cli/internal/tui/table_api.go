@@ -3,10 +3,10 @@ package tui
 import (
 	"context"
 	"errors"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/analytics"
 	"sync"
 	"time"
 
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/analytics"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/queryclient"
 	api "github.com/flexdinesh/tokeninsights/packages/cli/internal/server/api"
 )

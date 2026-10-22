@@ -16,7 +16,6 @@ import (
 	"time"
 
 	"github.com/charmbracelet/x/ansi"
-
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/collector"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/collectorprogress"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/config"

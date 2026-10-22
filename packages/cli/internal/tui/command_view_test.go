@@ -16,6 +16,7 @@ import (
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/collector"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/datastore"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/evidence"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/flagvalue"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/localruntime"
 )
 
@@ -152,7 +153,7 @@ func TestViewParsesIndependentServerCollectorAndFilterOptions(t *testing.T) {
 	if options.dbPath != "server.sqlite" || options.collectorDBPath != "collector.sqlite" || !options.syncOnStart {
 		t.Fatalf("wrong remote options: %+v", options)
 	}
-	expected := filters{providers: stringList{"fixture-provider"}, models: stringList{"fixture-model"}, harnesses: stringList{"pi"}, sessionIDs: stringList{"fixture-session"}}
+	expected := filters{providers: flagvalue.List{"fixture-provider"}, models: flagvalue.List{"fixture-model"}, harnesses: flagvalue.List{"pi"}, sessionIDs: flagvalue.List{"fixture-session"}}
 	if !reflect.DeepEqual(options.filters, expected) {
 		t.Fatalf("filters=%+v, want %+v", options.filters, expected)
 	}

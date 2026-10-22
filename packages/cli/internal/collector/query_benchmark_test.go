@@ -2,7 +2,6 @@ package collector_test
 
 import (
 	"fmt"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/analytics"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
@@ -10,6 +9,7 @@ import (
 	"time"
 
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/adapters/sqlanalytics"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/analytics"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/collector"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/localruntime"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/pipeline"

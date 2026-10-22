@@ -3,10 +3,10 @@ package storagecontract
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/analytics"
 	"testing"
 	"time"
 
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/analytics"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/evidence"
 )
 

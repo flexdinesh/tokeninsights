@@ -2,12 +2,13 @@ package tui
 
 import (
 	"context"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/analytics"
 	"reflect"
 	"testing"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/analytics"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/flagvalue"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/queryclient"
 )
 
@@ -66,7 +67,7 @@ func TestReadOnlyReloadAcceptsRestartWithoutQueryLoop(t *testing.T) {
 }
 
 func TestUnavailableStatusClearsSavedDataAndRecoversSameRevision(t *testing.T) {
-	m := newInteractiveModel(t.Context(), tableOptions{filters: filters{models: stringList{"selected"}}}, time.Now(), "unknown")
+	m := newInteractiveModel(t.Context(), tableOptions{filters: filters{models: flagvalue.List{"selected"}}}, time.Now(), "unknown")
 	defer m.cancelSync()
 	updated, _ := m.Update(reloadMsg{instanceID: "instance", dataEpoch: "epoch", revision: 3, rows: []renderRow{{bucket: "saved"}}})
 	m = updated.(interactiveModel)
@@ -75,7 +76,7 @@ func TestUnavailableStatusClearsSavedDataAndRecoversSameRevision(t *testing.T) {
 	oldGeneration := m.publicationGeneration
 	updated, _ = m.Update(sharedSyncMsg{requestID: statusSequence, generation: oldGeneration, instanceID: "instance", dataEpoch: "", readiness: "unavailable"})
 	m = updated.(interactiveModel)
-	if len(m.rows) != 0 || m.err != queryclient.ErrUnavailable || m.serviceReadiness != "unavailable" || m.instanceID != "instance" || m.dataEpoch != "epoch" || !reflect.DeepEqual(m.options.filters.models, stringList{"selected"}) {
+	if len(m.rows) != 0 || m.err != queryclient.ErrUnavailable || m.serviceReadiness != "unavailable" || m.instanceID != "instance" || m.dataEpoch != "epoch" || !reflect.DeepEqual(m.options.filters.models, flagvalue.List{"selected"}) {
 		t.Fatal("unavailable metadata established an empty identity or retained saved data")
 	}
 	updated, _ = m.Update(reloadMsg{requestID: usageSequence, generation: oldGeneration, instanceID: "instance", dataEpoch: "epoch", revision: 3, rows: []renderRow{{bucket: "late"}}})
@@ -115,7 +116,7 @@ func TestNewerStatusDuringReadRetriesOnNextPollWithoutHotLoop(t *testing.T) {
 }
 
 func TestDashboardReplacementAcceptsSnapshotAndInvalidatesOldReaders(t *testing.T) {
-	m := newInteractiveModel(t.Context(), tableOptions{filters: filters{providers: stringList{"selected"}}}, time.Now(), "unknown")
+	m := newInteractiveModel(t.Context(), tableOptions{filters: filters{providers: flagvalue.List{"selected"}}}, time.Now(), "unknown")
 	defer m.cancelSync()
 	m.instanceID, m.dataEpoch, m.observedRevision = "old", "old-epoch", 9
 	m.popup, m.filterDimension = popupFilterValues, filterProvider
@@ -129,7 +130,7 @@ func TestDashboardReplacementAcceptsSnapshotAndInvalidatesOldReaders(t *testing.
 	if m.instanceID != "new" || m.dataEpoch != "new-epoch" || m.observedRevision != 1 || len(m.rows) != 1 || m.rows[0].bucket != "new" || m.reloadInFlight {
 		t.Fatal("valid replacement snapshot was rejected or queued another dashboard read")
 	}
-	if oldFacetContext.Err() != context.Canceled || oldStatusContext.Err() != context.Canceled || len(m.filterValues) != 0 || !reflect.DeepEqual(m.options.filters.providers, stringList{"selected"}) {
+	if oldFacetContext.Err() != context.Canceled || oldStatusContext.Err() != context.Canceled || len(m.filterValues) != 0 || !reflect.DeepEqual(m.options.filters.providers, flagvalue.List{"selected"}) {
 		t.Fatal("replacement did not cancel obsolete reads and preserve selections")
 	}
 	updated, cmd := m.Update(sharedSyncMsg{requestID: oldStatusSequence, generation: oldGeneration, instanceID: "old", dataEpoch: "old-epoch", readiness: "ready", status: analytics.SyncStatus{Revision: 99}})

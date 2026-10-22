@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/charmbracelet/lipgloss"
-
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/browser"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/collector"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/config"

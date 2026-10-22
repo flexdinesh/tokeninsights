@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/analytics"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -14,7 +13,9 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/analytics"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/datastore"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/flagvalue"
 	"github.com/muesli/termenv"
 	_ "modernc.org/sqlite"
 )
@@ -1227,7 +1228,7 @@ func TestFilterValuesClearIsStagedUntilEnter(t *testing.T) {
 			"openai":    true,
 		},
 		options: tableOptions{
-			filters: filters{providers: stringList{"anthropic", "openai"}},
+			filters: filters{providers: flagvalue.List{"anthropic", "openai"}},
 		},
 	}
 
@@ -1255,7 +1256,7 @@ func TestFilterValuesEscapeCancelsStagedChanges(t *testing.T) {
 			"anthropic": true,
 		},
 		options: tableOptions{
-			filters: filters{providers: stringList{"anthropic"}},
+			filters: filters{providers: flagvalue.List{"anthropic"}},
 		},
 	}
 

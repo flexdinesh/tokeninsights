@@ -2,11 +2,11 @@ package tui
 
 import (
 	"context"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/analytics"
 	"slices"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/analytics"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/serverfeatures"
 )
 

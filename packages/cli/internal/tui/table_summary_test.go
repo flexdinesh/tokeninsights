@@ -1,11 +1,11 @@
 package tui
 
 import (
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/analytics"
 	"strings"
 	"testing"
 
 	"github.com/charmbracelet/x/ansi"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/analytics"
 )
 
 func TestTableSummaryRendersFullResultTotals(t *testing.T) {

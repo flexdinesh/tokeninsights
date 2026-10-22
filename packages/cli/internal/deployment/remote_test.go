@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/json"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/operator"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -18,6 +17,7 @@ import (
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/adapters/postgres"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/adapters/sqlite"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/datastore"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/operator"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/persistence/postgres/testdb"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/storagecontract"
 )
