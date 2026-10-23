@@ -54,6 +54,9 @@ func runWeb(invocation commandInvocation, args []string) error {
 	if !syncBefore && fullRefresh {
 		return fmt.Errorf("--full-refresh requires startup collection\n%w", ErrUsage)
 	}
+	if err := invocation.prepareLocalStorage(settings); err != nil {
+		return err
+	}
 	return runLocalWeb(invocation, settings, syncBefore, *openBrowser, pipeline.SyncOptions{Harnesses: pipeline.SupportedHarnesses, Now: invocation.now, FullRefresh: fullRefresh, SourceDir: sourceDir})
 }
 

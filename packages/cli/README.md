@@ -127,6 +127,8 @@ and provisioning; jobs schema 1 stores finite invocations/status without tokens.
 SQLite token schema 1 stores dataset-scoped evidence, receipts, processing state, facts
 and estimates. Only current schemas are supported. Incompatible role, structure,
 version or stored server kind rejects before mutation. No imports or migrations.
+Local commands offer to move stores written by an older version aside to
+`<file>.v<old>.bak` after terminal confirmation; remote servers never reset.
 Remote database identity stays pinned; deliberate local replacement permits replay.
 
 ## TUI Arguments

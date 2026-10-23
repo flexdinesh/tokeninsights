@@ -29,23 +29,37 @@ revocations. Restore the matched set; do not delete the guard to bypass recovery
 
 ## Incompatible data
 
-Only current schemas are supported; incompatible databases reject without mutation.
-There are no imports or migrations. Storage uses collector schema **20**, token SQLite
-schema **1**, PostgreSQL token/account schemas **1/2**, personal application SQLite
-schema **2**, hosted application SQLite schema **3** and job SQLite schema **1**.
+Only current schemas are supported. There are no imports or migrations. Storage uses
+collector schema **20**, token SQLite schema **1**, PostgreSQL token/account schemas
+**1/2**, personal application SQLite schema **2**, hosted application SQLite schema
+**3** and job SQLite schema **1**.
 
-For `incompatible_application_database` in local `tui`, `web`, or `data` commands,
-the error prints the resolved config and application database paths. The database
-has an unsupported schema version or role. Close processes using it, delete that
-application database and its `-wal`/`-shm` files if present, then rerun the command.
-This resets local accounts and credentials, preserving the separate token database
-and config. Pairing/backup errors instead require restoring the matched backup.
+When `tui`, `web`, `data`, or `sync` finds local storage written by an older version,
+it asks before resetting:
 
-If you encounter incompatible data, delete the old local data:
+```text
+TokenInsights needs to reset local storage written by an older version.
 
-```sh
-rm -rf ~/.local/share/tokeninsights
+  collector.sqlite   schema 19 -> 20   reset
+  server.sqlite      schema 1          keep
+  app.sqlite         schema 2          keep
+
+Old files move aside:
+  /home/you/.local/share/tokeninsights/collector.sqlite.v19.bak
+
+Usage is rebuilt from saved usage and harness logs.
+
+Reset now? [y/N]
 ```
 
-Then reinstall TokenInsights using your preferred [installation method](/install).
-Fresh collection rebuilds usage from retained sources.
+Old files are moved, never deleted. Resetting the token database also resets the
+application database and its pairing guard, recreating local accounts and
+credentials. If the collector and token databases reset together, usage whose
+harness logs were already deleted cannot be rebuilt; restore the `.bak` files to
+recover it. Without a terminal (for example, plugin background syncs), the command
+reports the files and changes nothing; run it once in a terminal.
+
+Files written by a newer version, files that are not TokenInsights databases, and
+files whose structure does not match are never reset. The error names each file
+and the next step. Remote servers never reset storage; incompatible databases
+reject without mutation.

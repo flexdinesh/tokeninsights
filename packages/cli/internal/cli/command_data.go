@@ -34,6 +34,9 @@ func runData(invocation commandInvocation, args []string) error {
 	if err != nil {
 		return err
 	}
+	if err := invocation.prepareLocalStorage(settings); err != nil {
+		return err
+	}
 	runtime, err := localruntime.OpenWithApp(invocation.context, settings.CollectorDBPath, settings.ServerDBPath, settings.ApplicationPath())
 	if err != nil {
 		return err

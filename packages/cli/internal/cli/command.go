@@ -10,9 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/appstore"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/config"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/dbpath"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/localruntime"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/syncjob"
 )
@@ -24,9 +22,6 @@ type commandInvocation struct {
 	stderr     io.Writer
 	now        time.Time
 	configPath string
-	// applicationPath records the resolved local application database for
-	// incompatible-schema guidance after the command returns.
-	applicationPath *string
 }
 
 type commandHandler func(commandInvocation, []string) error
@@ -49,7 +44,7 @@ var commands = []commandSpec{
 }
 
 func Run(ctx context.Context, args []string, stdout io.Writer, stderr io.Writer, now time.Time) error {
-	invocation := commandInvocation{context: ctx, stdin: os.Stdin, stdout: stdout, stderr: stderr, now: now, applicationPath: new(string)}
+	invocation := commandInvocation{context: ctx, stdin: os.Stdin, stdout: stdout, stderr: stderr, now: now}
 	if len(args) == 5 && args[0] == "__prepare-dev-data" && args[1] == "--collector-db-path" && args[3] == "--server-db-path" {
 		return localruntime.PrepareFixture(ctx, args[2], args[4])
 	}
@@ -85,18 +80,6 @@ func Run(ctx context.Context, args []string, stdout io.Writer, stderr io.Writer,
 		err := command.run(invocation, args[1:])
 		if errors.Is(err, flag.ErrHelp) {
 			return nil
-		}
-		if errors.Is(err, appstore.ErrIncompatibleDatabase) && *invocation.applicationPath != "" {
-			path, pathErr := dbpath.Canonical(*invocation.applicationPath)
-			if pathErr != nil {
-				return err
-			}
-			return fmt.Errorf("%w: the local application database has an unsupported schema version or database role. "+
-				"This binary supports application schema version %d; automatic migrations are unavailable.\n"+
-				"Config: %s\nApplication database: %s\n"+
-				"Close TokenInsights processes using this database, then delete the application database above and its -wal and -shm files if present. "+
-				"Rerun the command to recreate it. This resets local accounts and credentials; token usage remains in the separate server database. "+
-				"Do not delete the config file", err, appstore.SchemaVersion, invocation.configPath, path)
 		}
 		return err
 	}
@@ -174,9 +157,6 @@ func (invocation commandInvocation) resolveLocalOverrides(overrides config.Overr
 	settings, err := config.ResolveLocal(invocation.configPath, true, overrides)
 	if err != nil {
 		return settings, fmt.Errorf("configuration: %w", err)
-	}
-	if invocation.applicationPath != nil {
-		*invocation.applicationPath = settings.ApplicationPath()
 	}
 	return settings, nil
 }

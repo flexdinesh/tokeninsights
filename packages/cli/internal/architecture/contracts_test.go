@@ -72,7 +72,7 @@ func TestLayerDependencies(t *testing.T) {
 			}
 		}
 	}
-	hostCapture := []string{prefix + "collector", prefix + "pipeline", prefix + "rawcollectorstore", prefix + "collectordb", prefix + "syncjob", prefix + "localruntime", prefix + "clientworkflow"}
+	hostCapture := []string{prefix + "collector", prefix + "pipeline", prefix + "rawcollectorstore", prefix + "collectordb", prefix + "syncjob", prefix + "localruntime", prefix + "clientworkflow", prefix + "localstorage"}
 	pureContract := []string{"database/sql", "net/http", "os", prefix + "persistence", prefix + "adapters", prefix + "datastore", prefix + "server", prefix + "collector", prefix + "pipeline"}
 	rules := []struct {
 		name      string
@@ -90,7 +90,8 @@ func TestLayerDependencies(t *testing.T) {
 		{"server", []string{"database/sql", prefix + "datastore", prefix + "appstore", prefix + "adapters", prefix + "pipeline", prefix + "collector", prefix + "localruntime", prefix + "remoteserver"}},
 		{"localruntime", []string{prefix + "syncjob", prefix + "clientworkflow"}},
 		{"serverruntime", []string{"database/sql", prefix + "datastore", prefix + "appstore", prefix + "collectordb", prefix + "adapters"}},
-		// Remote servers accept and process evidence; they never capture host sources.
+		// Remote servers accept and process evidence; they never capture host
+		// sources or reset storage.
 		{"remoteserver", hostCapture},
 		{"cmd/tokeninsights-server", hostCapture},
 		{"collector", []string{prefix + "processor", prefix + "dataengine", prefix + "datastore", prefix + "analytics", prefix + "accounts", prefix + "server", prefix + "localruntime", prefix + "remoteserver"}},
@@ -100,6 +101,7 @@ func TestLayerDependencies(t *testing.T) {
 		{"operator", []string{"database/sql", prefix + "datastore", prefix + "appstore", prefix + "server", prefix + "ingestionhttp"}},
 		{"writerlock", []string{"database/sql", "net/http"}},
 		{"dbpath", []string{"database/sql", "net/http"}},
+		{"storagecompat", pureContract},
 	}
 	persistenceOwners := map[string]bool{"datastore": true, "pipeline": true, "localruntime": true, "collector": true, "collectordb": true, "remoteserver": true, "cmd/tokeninsights-server": true}
 	// Command packages compose through localruntime; they never construct

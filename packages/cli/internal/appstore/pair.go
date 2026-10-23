@@ -21,11 +21,10 @@ const maxAttachmentBytes = 1024
 // prevents loss/replacement of SQLite from silently resetting account identity.
 // Restore the token DB, app DB and this guard together from a stopped backup.
 func OpenPaired(ctx context.Context, appPath, dataPath, id, kind string) (*Store, error) {
-	canonical, err := dbpath.Canonical(dataPath)
+	marker, err := GuardPath(dataPath)
 	if err != nil {
 		return nil, err
 	}
-	marker := canonical + ".application.json"
 	var saved attachment
 	existing := false
 	file, err := os.Open(marker)
@@ -75,6 +74,16 @@ func OpenPaired(ctx context.Context, appPath, dataPath, id, kind string) (*Store
 	}
 	return store, nil
 }
+
+// GuardPath names the pairing sidecar beside the canonical token database.
+func GuardPath(dataPath string) (string, error) {
+	canonical, err := dbpath.Canonical(dataPath)
+	if err != nil {
+		return "", err
+	}
+	return canonical + ".application.json", nil
+}
+
 func writeAttachment(path string, value attachment) error {
 	file, err := os.CreateTemp(filepath.Dir(path), ".application-pair-*")
 	if err != nil {

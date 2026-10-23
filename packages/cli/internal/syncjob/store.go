@@ -20,6 +20,7 @@ import (
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/persistence/sqlitecore"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/pipeline"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/serverownership"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/storagecompat"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/writerlock"
 	_ "modernc.org/sqlite"
 )
@@ -95,16 +96,38 @@ type Store struct {
 }
 
 func (s *Store) Close() error { return s.database.Close() }
-func Open(ctx context.Context, collectorPath string) (*Store, error) {
+
+// Path names the operational store beside the canonical collector database.
+func Path(collectorPath string) (string, error) {
 	canonical, _, err := serverownership.Identify(collectorPath)
+	if err != nil {
+		return "", err
+	}
+	return canonical + ".jobs.sqlite", nil
+}
+
+// InitLock names the writer lock that serializes store initialization.
+func InitLock(path string) string { return path + ".init" }
+
+// InspectCompatibility classifies the existing operational store read-only.
+func InspectCompatibility(ctx context.Context, collectorPath string) (string, storagecompat.Result, error) {
+	path, err := Path(collectorPath)
+	if err != nil {
+		return "", storagecompat.Result{}, err
+	}
+	result, err := sqlitecore.Inspect(ctx, path, ApplicationID, SchemaVersion, Schema)
+	return path, result, err
+}
+
+func Open(ctx context.Context, collectorPath string) (*Store, error) {
+	path, err := Path(collectorPath)
 	if err != nil {
 		return nil, err
 	}
-	path := canonical + ".jobs.sqlite"
 	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
 		return nil, err
 	}
-	release, err := writerlock.Acquire(ctx, path+".init")
+	release, err := writerlock.Acquire(ctx, InitLock(path))
 	if err != nil {
 		return nil, err
 	}
