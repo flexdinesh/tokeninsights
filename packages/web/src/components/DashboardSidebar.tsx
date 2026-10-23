@@ -45,7 +45,7 @@ export function DashboardSidebar({
       }
       actions={
         onSignOut && (
-          <Button variant="quiet" size="compact" onClick={() => void onSignOut()}>
+          <Button variant="quiet" className="justify-start" onClick={() => void onSignOut()}>
             Sign out
           </Button>
         )

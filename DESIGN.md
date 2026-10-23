@@ -14,8 +14,8 @@ colors:
   dark-surface-rail: "#1b1b1b"
   surface-heading: "#fafafa"
   dark-surface-heading: "#222222"
-  surface-hover: "#f1f1f2"
-  dark-surface-hover: "#292929"
+  surface-hover: "#f7f7f7"
+  dark-surface-hover: "#222222"
   ink: "#22252b"
   dark-ink: "#efefef"
   ink-muted: "#64666d"
@@ -136,7 +136,7 @@ components:
     height: "2rem"
   button-outline-hover:
     backgroundColor: "{colors.surface-hover}"
-    textColor: "{colors.ink-hover}"
+    textColor: "{colors.ink}"
   button-secondary:
     backgroundColor: "{colors.surface-raised}"
     textColor: "{colors.ink-muted}"
@@ -151,7 +151,7 @@ components:
     height: "2rem"
   button-link:
     backgroundColor: "transparent"
-    textColor: "{colors.ink-subtle}"
+    textColor: "{colors.ink}"
     padding: "0"
   button-destructive:
     backgroundColor: "{colors.status-danger}"
@@ -279,7 +279,7 @@ Neutral surfaces carry the workspace; one quiet blue carries every interaction.
 - **Quiet Blue** (`#285bd4` light, `#82aaff` dark): `action`, `selected-ink`,
   `focus`, `ink-hover` and `chart-1`. Filled primary buttons use `action` with
   `action-ink`; selected controls use `selected-ink` on the `selected` tint;
-  hovered quiet, outline and link controls turn `ink-hover`.
+  hovered link actions and table sort headings turn `ink-hover`.
 
 ### Tertiary
 
@@ -307,7 +307,9 @@ data; readout values remain neutral.
 **The Selection Rule.** Every selected state is the `selected` tint with
 `selected-ink` and no border: navigation, segmented controls, date presets,
 active filter triggers and chips. `aria-pressed`, `aria-current="page"` or the
-Button `selected` prop drive it through one `selected:` variant.
+Button `selected` prop drive it through one `selected:` variant, which keeps
+its look while hovered. Hover is neutral (`surface-hover`, main ink) so it never
+reads as selected.
 
 ## Typography
 
@@ -408,11 +410,12 @@ Refined and restrained: controls read as quiet tools until hovered or selected.
 
 - **Variants:** `default` (filled `action`), `outline` (field edge on `surface`),
   `secondary` (`surface-raised`, muted ink), `ghost`, `quiet` (muted ink, no
-  surface), `link` (subtle ink, underline on hover, no padding), `destructive`.
+  surface), `link` (main ink, blue underline on hover, no padding), `destructive`.
 - **Sizes:** default 2rem body text; `compact` 1.875rem label text with small
   corners (filters, period arrows, chart metrics, chips, table controls); `lg`
   2.75rem; matching `icon`, `icon-compact` and `icon-lg` squares.
-- **Hover / Focus:** outline, ghost, quiet and link turn `ink-hover` blue; filled
+- **Hover / Focus:** outline, ghost and quiet take the neutral hover surface and
+  main ink; link turns `ink-hover` blue with an underline; filled
   variants reduce to 90%; secondary to 80%. Disabled controls use 50% opacity.
   No hover movement. `type="button"` is the default.
 

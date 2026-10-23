@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-10-23T03:18:06.376015Z",
+  "generatedAt": "2026-10-23T03:40:06.694133Z",
   "title": "Design System: TokenInsights",
   "extensions": {
     "colorMeta": {
@@ -187,22 +187,22 @@
       "surface-hover": {
         "role": "neutral",
         "displayName": "Surface Hover",
-        "canonical": "#f1f1f2",
+        "canonical": "#f7f7f7",
         "tonalRamp": [
-          "oklch(0.150 0.0013 286.37)",
-          "oklch(0.264 0.0013 286.37)",
-          "oklch(0.379 0.0013 286.37)",
-          "oklch(0.493 0.0013 286.37)",
-          "oklch(0.607 0.0013 286.37)",
-          "oklch(0.721 0.0013 286.37)",
-          "oklch(0.836 0.0013 286.37)",
-          "oklch(0.950 0.0013 286.37)"
+          "oklch(0.150 0.0000 0.00)",
+          "oklch(0.264 0.0000 0.00)",
+          "oklch(0.379 0.0000 0.00)",
+          "oklch(0.493 0.0000 0.00)",
+          "oklch(0.607 0.0000 0.00)",
+          "oklch(0.721 0.0000 0.00)",
+          "oklch(0.836 0.0000 0.00)",
+          "oklch(0.950 0.0000 0.00)"
         ]
       },
       "dark-surface-hover": {
         "role": "neutral",
         "displayName": "Dark Surface Hover",
-        "canonical": "#292929",
+        "canonical": "#222222",
         "tonalRamp": [
           "oklch(0.150 0.0000 0.00)",
           "oklch(0.264 0.0000 0.00)",
@@ -1144,15 +1144,15 @@
       "refersTo": "button-outline",
       "description": "Field-edged control for toolbar and table actions.",
       "html": "<button type=\"button\" class=\"ds-button-outline\">Columns</button>",
-      "css": ".ds-button-outline{display:inline-flex;align-items:center;justify-content:center;gap:0.5rem;min-height:var(--control-height);padding:0.25rem 0.75rem;border:var(--border-width) solid transparent;border-radius:var(--radius-md);font:500 var(--text-body)/1.43 var(--font-sans);cursor:pointer;transition:background-color var(--duration-fast),color var(--duration-fast);background:var(--surface);color:var(--ink);border-color:var(--line-strong);}.ds-button-outline:hover{background:var(--surface-hover);color:var(--ink-hover);}.ds-button-outline:focus-visible{outline:var(--focus-width) solid var(--focus);outline-offset:var(--focus-offset);}.ds-button-outline:disabled{opacity:var(--opacity-disabled);pointer-events:none;}"
+      "css": ".ds-button-outline{display:inline-flex;align-items:center;justify-content:center;gap:0.5rem;min-height:var(--control-height);padding:0.25rem 0.75rem;border:var(--border-width) solid transparent;border-radius:var(--radius-md);font:500 var(--text-body)/1.43 var(--font-sans);cursor:pointer;transition:background-color var(--duration-fast),color var(--duration-fast);background:var(--surface);color:var(--ink);border-color:var(--line-strong);}.ds-button-outline:hover{background:var(--surface-hover);color:var(--ink);}.ds-button-outline:focus-visible{outline:var(--focus-width) solid var(--focus);outline-offset:var(--focus-offset);}.ds-button-outline:disabled{opacity:var(--opacity-disabled);pointer-events:none;}"
     },
     {
       "name": "Quiet Button",
       "kind": "button",
       "refersTo": "button-quiet",
-      "description": "Muted control for navigation-like actions; blue on hover.",
+      "description": "Muted control for navigation-like actions; neutral hover.",
       "html": "<button type=\"button\" class=\"ds-button-quiet\">Sign out</button>",
-      "css": ".ds-button-quiet{display:inline-flex;align-items:center;justify-content:center;gap:0.5rem;min-height:var(--control-height);padding:0.25rem 0.75rem;border:var(--border-width) solid transparent;border-radius:var(--radius-md);font:500 var(--text-body)/1.43 var(--font-sans);cursor:pointer;transition:background-color var(--duration-fast),color var(--duration-fast);background:transparent;color:var(--ink-muted);}.ds-button-quiet:hover{background:var(--surface-hover);color:var(--ink-hover);}.ds-button-quiet:focus-visible{outline:var(--focus-width) solid var(--focus);outline-offset:var(--focus-offset);}.ds-button-quiet:disabled{opacity:var(--opacity-disabled);pointer-events:none;}"
+      "css": ".ds-button-quiet{display:inline-flex;align-items:center;justify-content:center;gap:0.5rem;min-height:var(--control-height);padding:0.25rem 0.75rem;border:var(--border-width) solid transparent;border-radius:var(--radius-md);font:500 var(--text-body)/1.43 var(--font-sans);cursor:pointer;transition:background-color var(--duration-fast),color var(--duration-fast);background:transparent;color:var(--ink-muted);}.ds-button-quiet:hover{background:var(--surface-hover);color:var(--ink);}.ds-button-quiet:focus-visible{outline:var(--focus-width) solid var(--focus);outline-offset:var(--focus-offset);}.ds-button-quiet:disabled{opacity:var(--opacity-disabled);pointer-events:none;}"
     },
     {
       "name": "Link Button",
@@ -1160,7 +1160,7 @@
       "refersTo": "button-link",
       "description": "Inline text action: drill-downs, clear actions, disclosures.",
       "html": "<button type=\"button\" class=\"ds-button-link\">Show directories</button>",
-      "css": ".ds-button-link{display:inline-flex;align-items:center;justify-content:center;gap:0.5rem;min-height:var(--control-height);padding:0.25rem 0.75rem;border:var(--border-width) solid transparent;border-radius:var(--radius-md);font:500 var(--text-body)/1.43 var(--font-sans);cursor:pointer;transition:background-color var(--duration-fast),color var(--duration-fast);background:transparent;color:var(--ink-subtle);padding:0;}.ds-button-link:hover{color:var(--ink-hover);text-decoration:underline;text-underline-offset:var(--underline-offset);}.ds-button-link:focus-visible{outline:var(--focus-width) solid var(--focus);outline-offset:var(--focus-offset);}.ds-button-link:disabled{opacity:var(--opacity-disabled);pointer-events:none;}"
+      "css": ".ds-button-link{display:inline-flex;align-items:center;justify-content:center;gap:0.5rem;min-height:var(--control-height);padding:0.25rem 0.75rem;border:var(--border-width) solid transparent;border-radius:var(--radius-md);font:500 var(--text-body)/1.43 var(--font-sans);cursor:pointer;transition:background-color var(--duration-fast),color var(--duration-fast);background:transparent;color:var(--ink);padding:0;}.ds-button-link:hover{color:var(--ink-hover);text-decoration:underline;text-underline-offset:var(--underline-offset);}.ds-button-link:focus-visible{outline:var(--focus-width) solid var(--focus);outline-offset:var(--focus-offset);}.ds-button-link:disabled{opacity:var(--opacity-disabled);pointer-events:none;}"
     },
     {
       "name": "Selected Control",
@@ -1184,7 +1184,7 @@
       "refersTo": "navigation-item",
       "description": "Sidebar view links; the current page uses the selected tint.",
       "html": "<nav class=\"ds-nav\"><a href=\"#\" aria-current=\"page\">Tokens</a><a href=\"#\">Models</a><a href=\"#\">Sessions</a></nav>",
-      "css": ".ds-nav{display:grid;gap:0.25rem;width:12rem;padding:0.75rem;background:var(--surface-rail);font:500 var(--text-body)/1.43 var(--font-sans);}.ds-nav a{display:flex;align-items:center;min-height:var(--control-height);padding:0.25rem 0.75rem;border-radius:var(--radius-md);color:var(--ink-muted);text-decoration:none;}.ds-nav a:hover{background:var(--surface-hover);color:var(--ink-hover);}.ds-nav a[aria-current=page]{background:var(--selected);color:var(--selected-ink);}.ds-nav a:focus-visible{outline:var(--focus-width) solid var(--focus);outline-offset:calc(-1 * var(--focus-width));}"
+      "css": ".ds-nav{display:grid;gap:0.25rem;width:12rem;padding:0.75rem;background:var(--surface-rail);font:500 var(--text-body)/1.43 var(--font-sans);}.ds-nav a{display:flex;align-items:center;min-height:var(--control-height);padding:0.25rem 0.75rem;border-radius:var(--radius-md);color:var(--ink-muted);text-decoration:none;}.ds-nav a:hover{background:var(--surface-hover);color:var(--ink);}.ds-nav a[aria-current=page]{background:var(--selected);color:var(--selected-ink);}.ds-nav a:focus-visible{outline:var(--focus-width) solid var(--focus);outline-offset:calc(-1 * var(--focus-width));}"
     },
     {
       "name": "Active Filter Chip",
@@ -1226,7 +1226,7 @@
       },
       {
         "name": "The Selection Rule",
-        "body": "Every selected state is the `selected` tint with `selected-ink` and no border: navigation, segmented controls, date presets, active filter triggers and chips. `aria-pressed`, `aria-current=\"page\"` or the Button `selected` prop drive it through one `selected:` variant.",
+        "body": "Every selected state is the `selected` tint with `selected-ink` and no border: navigation, segmented controls, date presets, active filter triggers and chips. `aria-pressed`, `aria-current=\"page\"` or the Button `selected` prop drive it through one `selected:` variant, which keeps its look while hovered. Hover is neutral (`surface-hover`, main ink) so it never reads as selected.",
         "section": "colors"
       },
       {

@@ -13,7 +13,7 @@
   --surface-field: light-dark(var(--palette-gray-0), var(--palette-charcoal-850));
   --surface-rail: light-dark(var(--palette-gray-0), var(--palette-charcoal-875));
   --surface-heading: light-dark(var(--palette-gray-25), var(--palette-charcoal-850));
-  --surface-hover: light-dark(var(--palette-gray-75), var(--palette-charcoal-800));
+  --surface-hover: light-dark(var(--palette-gray-50), var(--palette-charcoal-850));
 
   /* Ink */
   --ink: light-dark(var(--palette-gray-900), var(--palette-charcoal-50));

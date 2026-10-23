@@ -3,8 +3,12 @@
  * focus treatment; components opt in through these names, never by restyling.
  */
 
-/* Selected: pressed toggles, the current navigation link, and active filters. */
-@custom-variant selected (&:where([aria-pressed='true'], [aria-current='page'], [data-selected='true']));
+/*
+ * Selected: pressed toggles, the current navigation link, and active filters.
+ * :is() matches hover's specificity and the variant sorts after it, so a
+ * selected control keeps its tint and blue ink while hovered.
+ */
+@custom-variant selected (&:is([aria-pressed='true'], [aria-current='page'], [data-selected='true']));
 
 /* Keyboard focus: one outline, offset outside the control. */
 @utility focus-ring {

@@ -1,6 +1,16 @@
 import { useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
-import { Activity, Box, Columns3, SearchX } from 'lucide-react'
+import {
+  Activity,
+  ArrowDown,
+  ArrowUpDown,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  Columns3,
+  SearchX,
+  Sun,
+} from 'lucide-react'
 import {
   Alert,
   AlertDescription,
@@ -42,6 +52,7 @@ import {
   TableCell,
   TableHead,
   TableHeader,
+  TableResizeHandle,
   TableRow,
   TableScroll,
   TableSortButton,
@@ -121,6 +132,18 @@ const buttonVariants = [
 
 const buttonSizes = ['compact', 'default', 'lg'] as const
 
+const tableColumns = [
+  { label: 'Model', numeric: false, active: false },
+  { label: 'Sessions', numeric: true, active: false },
+  { label: 'Total', numeric: true, active: true },
+  { label: 'Input', numeric: true, active: false },
+]
+
+const tableRows = [
+  { model: 'model-a', provider: 'openai', sessions: 30, total: '129K', input: '30K' },
+  { model: 'model-b', provider: 'anthropic', sessions: 30, total: '129K', input: '30K' },
+]
+
 function noop() {}
 
 function initialTheme(): Theme {
@@ -173,12 +196,24 @@ export function DesignCatalog() {
             </Example>
             <Example title="Radius and control heights">
               <div className="flex flex-wrap items-end gap-4">
-                <div className="size-12 rounded-sm border border-line-strong" title="radius-sm" />
-                <div className="size-12 rounded-md border border-line-strong" title="radius-md" />
-                <div className="size-12 rounded-lg border border-line-strong" title="radius-lg" />
-                <div className="h-(--control-height-compact) w-12 bg-surface-hover" />
-                <div className="h-(--control-height) w-12 bg-surface-hover" />
-                <div className="h-(--control-height-lg) w-12 bg-surface-hover" />
+                <Measure label="radius-sm">
+                  <div className="size-12 rounded-sm border border-line-strong" />
+                </Measure>
+                <Measure label="radius-md">
+                  <div className="size-12 rounded-md border border-line-strong" />
+                </Measure>
+                <Measure label="radius-lg">
+                  <div className="size-12 rounded-lg border border-line-strong" />
+                </Measure>
+                <Measure label="control-height-compact">
+                  <div className="h-(--control-height-compact) w-12 bg-surface-raised" />
+                </Measure>
+                <Measure label="control-height">
+                  <div className="h-(--control-height) w-12 bg-surface-raised" />
+                </Measure>
+                <Measure label="control-height-lg">
+                  <div className="h-(--control-height-lg) w-12 bg-surface-raised" />
+                </Measure>
               </div>
             </Example>
           </CatalogSection>
@@ -262,6 +297,43 @@ export function DesignCatalog() {
                   <Checkbox id="catalog-checkbox" defaultChecked aria-label="Checked" />
                   <CheckboxOption id="catalog-option" label="model-a" />
                 </div>
+              </div>
+            </Example>
+            <Example title="Filter triggers and period navigation">
+              <div className="flex flex-wrap items-center gap-2">
+                <Button variant="outline" size="compact" className="gap-1">
+                  <span>Harness:</span>
+                  <span className="text-ink-subtle">All</span>
+                  <ChevronDown aria-hidden="true" />
+                </Button>
+                <Button variant="outline" size="compact" className="gap-1" selected>
+                  <span>Model:</span>
+                  <span className="text-ink-subtle">model-a</span>
+                  <Badge>1</Badge>
+                  <ChevronDown aria-hidden="true" />
+                </Button>
+                <div className="ml-auto flex items-center gap-2 text-body">
+                  <Button variant="outline" size="icon-compact" aria-label="Previous month">
+                    <ChevronLeft aria-hidden="true" />
+                  </Button>
+                  <span>October 2026</span>
+                  <Button variant="outline" size="icon-compact" aria-label="Next month" disabled>
+                    <ChevronRight aria-hidden="true" />
+                  </Button>
+                </div>
+              </div>
+              <div className="w-(--popover-width) max-w-full rounded-lg border border-line bg-surface-overlay p-3 shadow-overlay">
+                <PopoverHeader
+                  title="Harness"
+                  action={
+                    <Button variant="link" size="compact">
+                      Clear
+                    </Button>
+                  }
+                />
+                <SearchField aria-label="Search harness" placeholder="Search harness" />
+                <CheckboxOption id="catalog-static-pi" label="pi" defaultChecked />
+                <CheckboxOption id="catalog-static-codex" label="codex" />
               </div>
             </Example>
             <Example title="Chips and popover">
@@ -370,26 +442,48 @@ export function DesignCatalog() {
               }
             />
             <TableScroll aria-label="Catalog table">
-              <Table>
+              <Table className="table-fixed">
                 <TableHeader>
                   <TableRow>
-                    <TableHead aria-sort="ascending">
-                      <TableSortButton>Model</TableSortButton>
-                    </TableHead>
-                    <TableHead numeric>
-                      <TableSortButton>Total</TableSortButton>
-                    </TableHead>
+                    {tableColumns.map((column) => (
+                      <TableHead
+                        key={column.label}
+                        numeric={column.numeric}
+                        aria-sort={column.active ? 'descending' : 'none'}
+                      >
+                        <TableSortButton>
+                          {column.label}
+                          {column.active ? (
+                            <ArrowDown aria-hidden="true" />
+                          ) : (
+                            <ArrowUpDown aria-hidden="true" className="text-ink-subtle" />
+                          )}
+                        </TableSortButton>
+                        <TableResizeHandle
+                          resizing={column.label === 'Input'}
+                          aria-label={`Resize ${column.label} column`}
+                        />
+                      </TableHead>
+                    ))}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  <TableRow>
-                    <TableCell>model-a</TableCell>
-                    <TableCell numeric>129K</TableCell>
-                  </TableRow>
-                  <TableRow>
-                    <TableCell>model-b</TableCell>
-                    <TableCell numeric>129K</TableCell>
-                  </TableRow>
+                  {tableRows.map((row) => (
+                    <TableRow key={row.model}>
+                      <TableCell>
+                        <div className="flex min-w-0 flex-col gap-1">
+                          <span className="truncate font-medium">{row.model}</span>
+                          <span className="flex flex-col text-label text-ink-subtle">
+                            <span>pi</span>
+                            <span>{row.provider}</span>
+                          </span>
+                        </div>
+                      </TableCell>
+                      <TableCell numeric>{row.sessions}</TableCell>
+                      <TableCell numeric>{row.total}</TableCell>
+                      <TableCell numeric>{row.input}</TableCell>
+                    </TableRow>
+                  ))}
                 </TableBody>
               </Table>
             </TableScroll>
@@ -419,8 +513,11 @@ export function DesignCatalog() {
                 <PageHeader title="/ Models">
                   <span className="text-label font-semibold">controlbox</span>
                   <HeaderDivider />
-                  <Button variant="quiet" size="icon-compact" aria-label="Models">
-                    <Box aria-hidden="true" />
+                  <Button variant="quiet" size="icon-compact" aria-label="Local status: Ready">
+                    <StatusIcon state="ready" />
+                  </Button>
+                  <Button variant="quiet" size="icon-compact" aria-label="Theme: light">
+                    <Sun aria-hidden="true" />
                   </Button>
                 </PageHeader>
               </div>
@@ -448,6 +545,15 @@ function CatalogSection({
       </Heading>
       {children}
     </section>
+  )
+}
+
+function Measure({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <figure className="grid justify-items-start gap-1">
+      {children}
+      <figcaption className="font-mono text-label text-ink-subtle">--{label}</figcaption>
+    </figure>
   )
 }
 

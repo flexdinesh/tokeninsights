@@ -287,7 +287,7 @@ function DashboardShell({
                   if (parsed.success) setLocationGroup(parsed.data)
                 }}
               >
-                <SelectTrigger aria-label="Group by location">
+                <SelectTrigger size="compact" aria-label="Group by location">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>

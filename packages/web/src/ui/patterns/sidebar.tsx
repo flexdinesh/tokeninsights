@@ -32,9 +32,10 @@ export function Sidebar({
         {children}
       </nav>
       {(note || actions) && (
-        <div className="mt-auto grid justify-items-start gap-3 px-3 text-label text-ink-subtle max-nav:mt-0 max-nav:px-0">
-          {note && <div className="max-nav:hidden">{note}</div>}
-          {actions}
+        <div className="mt-auto grid justify-items-start gap-3 max-nav:mt-0">
+          {note && <div className="px-3 text-label text-ink-subtle max-nav:hidden">{note}</div>}
+          {/* Actions keep their own padding, aligning their text with nav items. */}
+          {actions && <div className="grid w-full">{actions}</div>}
         </div>
       )}
     </aside>
