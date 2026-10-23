@@ -198,7 +198,7 @@ jobs:
       - name: Create release tag
         env:
           RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
-        run: git push origin "refs/tags/$RELEASE_TAG"
+        run: git push --no-verify origin "refs/tags/$RELEASE_TAG"
 
       - name: Publish GitHub release
         env:
