@@ -8,7 +8,7 @@ import './styles.css'
 
 if (import.meta.env.MODE === 'mock') {
   const { worker } = await import('./mocks/browser')
-  await worker.start({ onUnhandledRequest: 'bypass' })
+  await worker.start({ onUnhandledFrame: 'bypass' })
 }
 
 const client = new QueryClient({

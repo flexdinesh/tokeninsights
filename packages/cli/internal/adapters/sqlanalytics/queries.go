@@ -69,10 +69,12 @@ func queryWhere(f querymodel.Filter, timezone, datasetID string) (string, []inte
 	return where, args, nil
 }
 
+// The caller's clock location is the reporting zone, so queries never read the
+// mutable process-wide time.Local.
 func reportingZone(now time.Time) string {
-	name := analytics.ReportingTimezone(time.Local, now)
+	name := analytics.ReportingTimezone(now.Location(), now)
 	if strings.HasPrefix(name, "UTC+") || strings.HasPrefix(name, "UTC-") {
-		_, offset := now.In(time.Local).Zone()
+		_, offset := now.Zone()
 		return "@" + strconv.Itoa(offset)
 	}
 	return name

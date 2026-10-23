@@ -30,7 +30,7 @@ jobs:
       commit: ${{ steps.assets.outputs.commit }}
     steps:
       - name: Checkout main
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           ref: main
           fetch-depth: 0
@@ -56,7 +56,7 @@ jobs:
           echo "commit=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
       - name: Set up build tools
-        uses: jdx/mise-action@v4
+        uses: jdx/mise-action@v5
         with:
           install_args: go node pnpm
       - run: mise run setup
@@ -93,7 +93,7 @@ jobs:
           fi
           echo "commit=$commit" >> "$GITHUB_OUTPUT"
           git bundle create release.bundle "$RELEASE_TAG"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: release-source
           path: release.bundle
@@ -119,10 +119,10 @@ jobs:
             arch: arm64
     runs-on: ${{ matrix.runner }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ needs.prepare.outputs.source }}
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: release-source
           path: .release-source
@@ -133,7 +133,7 @@ jobs:
         run: |
           git fetch .release-source/release.bundle "refs/tags/$RELEASE_TAG:refs/tags/$RELEASE_TAG"
           git checkout --detach "$RELEASE_COMMIT"
-      - uses: jdx/mise-action@v4
+      - uses: jdx/mise-action@v5
         with:
           install_args: go
       - name: Build and smoke test native binaries
@@ -161,7 +161,7 @@ jobs:
           PATH=/usr/bin:/bin "dist/${archive_dir}/tokeninsights-server" --version
           cp README.md LICENSE "dist/${archive_dir}/"
           tar -C dist -czf "dist/${archive_dir}.tar.gz" "${archive_dir}"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: native-${{ matrix.os }}-${{ matrix.arch }}
           path: dist/*.tar.gz
@@ -171,11 +171,11 @@ jobs:
     needs: [prepare, native]
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ needs.prepare.outputs.source }}
           fetch-depth: 0
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: release-source
           path: .release-source
@@ -186,9 +186,9 @@ jobs:
         run: |
           git fetch .release-source/release.bundle "refs/tags/$RELEASE_TAG:refs/tags/$RELEASE_TAG"
           git checkout --detach "$RELEASE_COMMIT"
-      - uses: jdx/mise-action@v4
+      - uses: jdx/mise-action@v5
       - run: mise run setup
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           pattern: native-*
           path: dist
@@ -238,7 +238,7 @@ jobs:
           fi
 
       - name: Checkout Homebrew tap
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: flexdinesh/homebrew-tap
           token: ${{ secrets.HOMEBREW_TAP_TOKEN }}

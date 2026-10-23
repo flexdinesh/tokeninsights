@@ -7,7 +7,9 @@ import (
 
 // Repository reads one authorized dataset. Implementations must return rows,
 // totals and publication metadata from a consistent snapshot. No query can
-// select a different dataset through user-supplied filter values.
+// select a different dataset through user-supplied filter values. The time
+// argument is the clock; its location is the reporting zone for day boundaries
+// and calendar buckets.
 type Repository interface {
 	// Dashboard clamps page after counting; rows, summary and revisions agree.
 	Dashboard(context.Context, Query, time.Time) (Dashboard, error)

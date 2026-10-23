@@ -1,6 +1,6 @@
 # Development
 
-TokenInsights is a pnpm monorepo with a Go CLI and a Vite/React browser application. The public documentation site in `docs-website/` is a Vocs pnpm workspace package. `mise.toml` pins Go, Node, and pnpm for development. Direct Go builds require Go 1.26+, without a C/C++ or JavaScript toolchain. Race verification requires CGO.
+TokenInsights is a pnpm monorepo with a Go CLI and a Vite/React browser application. The public documentation site in `docs-website/` is a Vocs pnpm workspace package. `mise.toml` pins Go, Node, and pnpm for development. Direct Go builds require Go 1.27+, without a C/C++ or JavaScript toolchain. Race verification requires CGO. `pnpm-workspace.yaml` enforces a 3-day minimum release age for npm packages everywhere, except the `@opencode/*` and `@earendil-works/*` harness SDKs.
 
 ## Development builds
 
