@@ -1,12 +1,12 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-10-11T01:44:44.402029Z",
+  "generatedAt": "2026-10-23T03:40:06.694133Z",
   "title": "Design System: TokenInsights",
   "extensions": {
     "colorMeta": {
-      "background": {
+      "surface": {
         "role": "neutral",
-        "displayName": "Background",
+        "displayName": "Surface",
         "canonical": "#ffffff",
         "tonalRamp": [
           "oklch(0.150 0.0000 0.00)",
@@ -19,9 +19,9 @@
           "oklch(0.950 0.0000 0.00)"
         ]
       },
-      "dark-background": {
+      "dark-surface": {
         "role": "neutral",
-        "displayName": "Dark Background",
+        "displayName": "Dark Surface",
         "canonical": "#181818",
         "tonalRamp": [
           "oklch(0.150 0.0000 0.00)",
@@ -34,9 +34,189 @@
           "oklch(0.950 0.0000 0.00)"
         ]
       },
-      "foreground": {
+      "surface-raised": {
         "role": "neutral",
-        "displayName": "Foreground",
+        "displayName": "Surface Raised",
+        "canonical": "#f7f7f7",
+        "tonalRamp": [
+          "oklch(0.150 0.0000 0.00)",
+          "oklch(0.264 0.0000 0.00)",
+          "oklch(0.379 0.0000 0.00)",
+          "oklch(0.493 0.0000 0.00)",
+          "oklch(0.607 0.0000 0.00)",
+          "oklch(0.721 0.0000 0.00)",
+          "oklch(0.836 0.0000 0.00)",
+          "oklch(0.950 0.0000 0.00)"
+        ]
+      },
+      "dark-surface-raised": {
+        "role": "neutral",
+        "displayName": "Dark Surface Raised",
+        "canonical": "#222222",
+        "tonalRamp": [
+          "oklch(0.150 0.0000 0.00)",
+          "oklch(0.264 0.0000 0.00)",
+          "oklch(0.379 0.0000 0.00)",
+          "oklch(0.493 0.0000 0.00)",
+          "oklch(0.607 0.0000 0.00)",
+          "oklch(0.721 0.0000 0.00)",
+          "oklch(0.836 0.0000 0.00)",
+          "oklch(0.950 0.0000 0.00)"
+        ]
+      },
+      "surface-overlay": {
+        "role": "neutral",
+        "displayName": "Surface Overlay",
+        "canonical": "#ffffff",
+        "tonalRamp": [
+          "oklch(0.150 0.0000 0.00)",
+          "oklch(0.264 0.0000 0.00)",
+          "oklch(0.379 0.0000 0.00)",
+          "oklch(0.493 0.0000 0.00)",
+          "oklch(0.607 0.0000 0.00)",
+          "oklch(0.721 0.0000 0.00)",
+          "oklch(0.836 0.0000 0.00)",
+          "oklch(0.950 0.0000 0.00)"
+        ]
+      },
+      "dark-surface-overlay": {
+        "role": "neutral",
+        "displayName": "Dark Surface Overlay",
+        "canonical": "#222222",
+        "tonalRamp": [
+          "oklch(0.150 0.0000 0.00)",
+          "oklch(0.264 0.0000 0.00)",
+          "oklch(0.379 0.0000 0.00)",
+          "oklch(0.493 0.0000 0.00)",
+          "oklch(0.607 0.0000 0.00)",
+          "oklch(0.721 0.0000 0.00)",
+          "oklch(0.836 0.0000 0.00)",
+          "oklch(0.950 0.0000 0.00)"
+        ]
+      },
+      "surface-field": {
+        "role": "neutral",
+        "displayName": "Surface Field",
+        "canonical": "#ffffff",
+        "tonalRamp": [
+          "oklch(0.150 0.0000 0.00)",
+          "oklch(0.264 0.0000 0.00)",
+          "oklch(0.379 0.0000 0.00)",
+          "oklch(0.493 0.0000 0.00)",
+          "oklch(0.607 0.0000 0.00)",
+          "oklch(0.721 0.0000 0.00)",
+          "oklch(0.836 0.0000 0.00)",
+          "oklch(0.950 0.0000 0.00)"
+        ]
+      },
+      "dark-surface-field": {
+        "role": "neutral",
+        "displayName": "Dark Surface Field",
+        "canonical": "#222222",
+        "tonalRamp": [
+          "oklch(0.150 0.0000 0.00)",
+          "oklch(0.264 0.0000 0.00)",
+          "oklch(0.379 0.0000 0.00)",
+          "oklch(0.493 0.0000 0.00)",
+          "oklch(0.607 0.0000 0.00)",
+          "oklch(0.721 0.0000 0.00)",
+          "oklch(0.836 0.0000 0.00)",
+          "oklch(0.950 0.0000 0.00)"
+        ]
+      },
+      "surface-rail": {
+        "role": "neutral",
+        "displayName": "Surface Rail",
+        "canonical": "#ffffff",
+        "tonalRamp": [
+          "oklch(0.150 0.0000 0.00)",
+          "oklch(0.264 0.0000 0.00)",
+          "oklch(0.379 0.0000 0.00)",
+          "oklch(0.493 0.0000 0.00)",
+          "oklch(0.607 0.0000 0.00)",
+          "oklch(0.721 0.0000 0.00)",
+          "oklch(0.836 0.0000 0.00)",
+          "oklch(0.950 0.0000 0.00)"
+        ]
+      },
+      "dark-surface-rail": {
+        "role": "neutral",
+        "displayName": "Dark Surface Rail",
+        "canonical": "#1b1b1b",
+        "tonalRamp": [
+          "oklch(0.150 0.0000 0.00)",
+          "oklch(0.264 0.0000 0.00)",
+          "oklch(0.379 0.0000 0.00)",
+          "oklch(0.493 0.0000 0.00)",
+          "oklch(0.607 0.0000 0.00)",
+          "oklch(0.721 0.0000 0.00)",
+          "oklch(0.836 0.0000 0.00)",
+          "oklch(0.950 0.0000 0.00)"
+        ]
+      },
+      "surface-heading": {
+        "role": "neutral",
+        "displayName": "Surface Heading",
+        "canonical": "#fafafa",
+        "tonalRamp": [
+          "oklch(0.150 0.0000 0.00)",
+          "oklch(0.264 0.0000 0.00)",
+          "oklch(0.379 0.0000 0.00)",
+          "oklch(0.493 0.0000 0.00)",
+          "oklch(0.607 0.0000 0.00)",
+          "oklch(0.721 0.0000 0.00)",
+          "oklch(0.836 0.0000 0.00)",
+          "oklch(0.950 0.0000 0.00)"
+        ]
+      },
+      "dark-surface-heading": {
+        "role": "neutral",
+        "displayName": "Dark Surface Heading",
+        "canonical": "#222222",
+        "tonalRamp": [
+          "oklch(0.150 0.0000 0.00)",
+          "oklch(0.264 0.0000 0.00)",
+          "oklch(0.379 0.0000 0.00)",
+          "oklch(0.493 0.0000 0.00)",
+          "oklch(0.607 0.0000 0.00)",
+          "oklch(0.721 0.0000 0.00)",
+          "oklch(0.836 0.0000 0.00)",
+          "oklch(0.950 0.0000 0.00)"
+        ]
+      },
+      "surface-hover": {
+        "role": "neutral",
+        "displayName": "Surface Hover",
+        "canonical": "#f7f7f7",
+        "tonalRamp": [
+          "oklch(0.150 0.0000 0.00)",
+          "oklch(0.264 0.0000 0.00)",
+          "oklch(0.379 0.0000 0.00)",
+          "oklch(0.493 0.0000 0.00)",
+          "oklch(0.607 0.0000 0.00)",
+          "oklch(0.721 0.0000 0.00)",
+          "oklch(0.836 0.0000 0.00)",
+          "oklch(0.950 0.0000 0.00)"
+        ]
+      },
+      "dark-surface-hover": {
+        "role": "neutral",
+        "displayName": "Dark Surface Hover",
+        "canonical": "#222222",
+        "tonalRamp": [
+          "oklch(0.150 0.0000 0.00)",
+          "oklch(0.264 0.0000 0.00)",
+          "oklch(0.379 0.0000 0.00)",
+          "oklch(0.493 0.0000 0.00)",
+          "oklch(0.607 0.0000 0.00)",
+          "oklch(0.721 0.0000 0.00)",
+          "oklch(0.836 0.0000 0.00)",
+          "oklch(0.950 0.0000 0.00)"
+        ]
+      },
+      "ink": {
+        "role": "neutral",
+        "displayName": "Ink",
         "canonical": "#22252b",
         "tonalRamp": [
           "oklch(0.150 0.0120 264.34)",
@@ -49,9 +229,9 @@
           "oklch(0.950 0.0120 264.34)"
         ]
       },
-      "dark-foreground": {
+      "dark-ink": {
         "role": "neutral",
-        "displayName": "Dark Foreground",
+        "displayName": "Dark Ink",
         "canonical": "#efefef",
         "tonalRamp": [
           "oklch(0.150 0.0000 0.00)",
@@ -64,159 +244,9 @@
           "oklch(0.950 0.0000 0.00)"
         ]
       },
-      "card": {
+      "ink-muted": {
         "role": "neutral",
-        "displayName": "Card",
-        "canonical": "#ffffff",
-        "tonalRamp": [
-          "oklch(0.150 0.0000 0.00)",
-          "oklch(0.264 0.0000 0.00)",
-          "oklch(0.379 0.0000 0.00)",
-          "oklch(0.493 0.0000 0.00)",
-          "oklch(0.607 0.0000 0.00)",
-          "oklch(0.721 0.0000 0.00)",
-          "oklch(0.836 0.0000 0.00)",
-          "oklch(0.950 0.0000 0.00)"
-        ]
-      },
-      "dark-card": {
-        "role": "neutral",
-        "displayName": "Dark Card",
-        "canonical": "#181818",
-        "tonalRamp": [
-          "oklch(0.150 0.0000 0.00)",
-          "oklch(0.264 0.0000 0.00)",
-          "oklch(0.379 0.0000 0.00)",
-          "oklch(0.493 0.0000 0.00)",
-          "oklch(0.607 0.0000 0.00)",
-          "oklch(0.721 0.0000 0.00)",
-          "oklch(0.836 0.0000 0.00)",
-          "oklch(0.950 0.0000 0.00)"
-        ]
-      },
-      "popover": {
-        "role": "neutral",
-        "displayName": "Popover",
-        "canonical": "#ffffff",
-        "tonalRamp": [
-          "oklch(0.150 0.0000 0.00)",
-          "oklch(0.264 0.0000 0.00)",
-          "oklch(0.379 0.0000 0.00)",
-          "oklch(0.493 0.0000 0.00)",
-          "oklch(0.607 0.0000 0.00)",
-          "oklch(0.721 0.0000 0.00)",
-          "oklch(0.836 0.0000 0.00)",
-          "oklch(0.950 0.0000 0.00)"
-        ]
-      },
-      "dark-popover": {
-        "role": "neutral",
-        "displayName": "Dark Popover",
-        "canonical": "#222222",
-        "tonalRamp": [
-          "oklch(0.150 0.0000 0.00)",
-          "oklch(0.264 0.0000 0.00)",
-          "oklch(0.379 0.0000 0.00)",
-          "oklch(0.493 0.0000 0.00)",
-          "oklch(0.607 0.0000 0.00)",
-          "oklch(0.721 0.0000 0.00)",
-          "oklch(0.836 0.0000 0.00)",
-          "oklch(0.950 0.0000 0.00)"
-        ]
-      },
-      "primary": {
-        "role": "primary",
-        "displayName": "Blue Action",
-        "canonical": "#285bd4",
-        "tonalRamp": [
-          "oklch(0.150 0.1946 263.65)",
-          "oklch(0.264 0.1946 263.65)",
-          "oklch(0.379 0.1946 263.65)",
-          "oklch(0.493 0.1946 263.65)",
-          "oklch(0.607 0.1946 263.65)",
-          "oklch(0.721 0.1946 263.65)",
-          "oklch(0.836 0.1946 263.65)",
-          "oklch(0.950 0.1946 263.65)"
-        ]
-      },
-      "dark-primary": {
-        "role": "primary",
-        "displayName": "Dark Blue Action",
-        "canonical": "#82aaff",
-        "tonalRamp": [
-          "oklch(0.150 0.1311 264.28)",
-          "oklch(0.264 0.1311 264.28)",
-          "oklch(0.379 0.1311 264.28)",
-          "oklch(0.493 0.1311 264.28)",
-          "oklch(0.607 0.1311 264.28)",
-          "oklch(0.721 0.1311 264.28)",
-          "oklch(0.836 0.1311 264.28)",
-          "oklch(0.950 0.1311 264.28)"
-        ]
-      },
-      "primary-foreground": {
-        "role": "primary",
-        "displayName": "Primary Foreground",
-        "canonical": "#ffffff",
-        "tonalRamp": [
-          "oklch(0.150 0.0000 0.00)",
-          "oklch(0.264 0.0000 0.00)",
-          "oklch(0.379 0.0000 0.00)",
-          "oklch(0.493 0.0000 0.00)",
-          "oklch(0.607 0.0000 0.00)",
-          "oklch(0.721 0.0000 0.00)",
-          "oklch(0.836 0.0000 0.00)",
-          "oklch(0.950 0.0000 0.00)"
-        ]
-      },
-      "dark-primary-foreground": {
-        "role": "primary",
-        "displayName": "Dark Primary Foreground",
-        "canonical": "#181818",
-        "tonalRamp": [
-          "oklch(0.150 0.0000 0.00)",
-          "oklch(0.264 0.0000 0.00)",
-          "oklch(0.379 0.0000 0.00)",
-          "oklch(0.493 0.0000 0.00)",
-          "oklch(0.607 0.0000 0.00)",
-          "oklch(0.721 0.0000 0.00)",
-          "oklch(0.836 0.0000 0.00)",
-          "oklch(0.950 0.0000 0.00)"
-        ]
-      },
-      "secondary": {
-        "role": "neutral",
-        "displayName": "Secondary",
-        "canonical": "#f7f7f7",
-        "tonalRamp": [
-          "oklch(0.150 0.0000 0.00)",
-          "oklch(0.264 0.0000 0.00)",
-          "oklch(0.379 0.0000 0.00)",
-          "oklch(0.493 0.0000 0.00)",
-          "oklch(0.607 0.0000 0.00)",
-          "oklch(0.721 0.0000 0.00)",
-          "oklch(0.836 0.0000 0.00)",
-          "oklch(0.950 0.0000 0.00)"
-        ]
-      },
-      "dark-secondary": {
-        "role": "neutral",
-        "displayName": "Dark Secondary",
-        "canonical": "#222222",
-        "tonalRamp": [
-          "oklch(0.150 0.0000 0.00)",
-          "oklch(0.264 0.0000 0.00)",
-          "oklch(0.379 0.0000 0.00)",
-          "oklch(0.493 0.0000 0.00)",
-          "oklch(0.607 0.0000 0.00)",
-          "oklch(0.721 0.0000 0.00)",
-          "oklch(0.836 0.0000 0.00)",
-          "oklch(0.950 0.0000 0.00)"
-        ]
-      },
-      "secondary-foreground": {
-        "role": "neutral",
-        "displayName": "Secondary Foreground",
+        "displayName": "Ink Muted",
         "canonical": "#64666d",
         "tonalRamp": [
           "oklch(0.150 0.0113 273.21)",
@@ -229,9 +259,9 @@
           "oklch(0.950 0.0113 273.21)"
         ]
       },
-      "dark-secondary-foreground": {
+      "dark-ink-muted": {
         "role": "neutral",
-        "displayName": "Dark Secondary Foreground",
+        "displayName": "Dark Ink Muted",
         "canonical": "#b7b7b7",
         "tonalRamp": [
           "oklch(0.150 0.0000 0.00)",
@@ -244,39 +274,9 @@
           "oklch(0.950 0.0000 0.00)"
         ]
       },
-      "muted": {
+      "ink-subtle": {
         "role": "neutral",
-        "displayName": "Muted",
-        "canonical": "#f7f7f7",
-        "tonalRamp": [
-          "oklch(0.150 0.0000 0.00)",
-          "oklch(0.264 0.0000 0.00)",
-          "oklch(0.379 0.0000 0.00)",
-          "oklch(0.493 0.0000 0.00)",
-          "oklch(0.607 0.0000 0.00)",
-          "oklch(0.721 0.0000 0.00)",
-          "oklch(0.836 0.0000 0.00)",
-          "oklch(0.950 0.0000 0.00)"
-        ]
-      },
-      "dark-muted": {
-        "role": "neutral",
-        "displayName": "Dark Muted",
-        "canonical": "#222222",
-        "tonalRamp": [
-          "oklch(0.150 0.0000 0.00)",
-          "oklch(0.264 0.0000 0.00)",
-          "oklch(0.379 0.0000 0.00)",
-          "oklch(0.493 0.0000 0.00)",
-          "oklch(0.607 0.0000 0.00)",
-          "oklch(0.721 0.0000 0.00)",
-          "oklch(0.836 0.0000 0.00)",
-          "oklch(0.950 0.0000 0.00)"
-        ]
-      },
-      "muted-foreground": {
-        "role": "neutral",
-        "displayName": "Muted Foreground",
+        "displayName": "Ink Subtle",
         "canonical": "#64666d",
         "tonalRamp": [
           "oklch(0.150 0.0113 273.21)",
@@ -289,9 +289,9 @@
           "oklch(0.950 0.0113 273.21)"
         ]
       },
-      "dark-muted-foreground": {
+      "dark-ink-subtle": {
         "role": "neutral",
-        "displayName": "Dark Muted Foreground",
+        "displayName": "Dark Ink Subtle",
         "canonical": "#aaaaaa",
         "tonalRamp": [
           "oklch(0.150 0.0000 0.00)",
@@ -304,39 +304,9 @@
           "oklch(0.950 0.0000 0.00)"
         ]
       },
-      "accent": {
-        "role": "neutral",
-        "displayName": "Neutral Selection",
-        "canonical": "#f1f1f2",
-        "tonalRamp": [
-          "oklch(0.150 0.0013 286.37)",
-          "oklch(0.264 0.0013 286.37)",
-          "oklch(0.379 0.0013 286.37)",
-          "oklch(0.493 0.0013 286.37)",
-          "oklch(0.607 0.0013 286.37)",
-          "oklch(0.721 0.0013 286.37)",
-          "oklch(0.836 0.0013 286.37)",
-          "oklch(0.950 0.0013 286.37)"
-        ]
-      },
-      "dark-accent": {
-        "role": "neutral",
-        "displayName": "Dark Neutral Selection",
-        "canonical": "#292929",
-        "tonalRamp": [
-          "oklch(0.150 0.0000 0.00)",
-          "oklch(0.264 0.0000 0.00)",
-          "oklch(0.379 0.0000 0.00)",
-          "oklch(0.493 0.0000 0.00)",
-          "oklch(0.607 0.0000 0.00)",
-          "oklch(0.721 0.0000 0.00)",
-          "oklch(0.836 0.0000 0.00)",
-          "oklch(0.950 0.0000 0.00)"
-        ]
-      },
-      "accent-foreground": {
+      "ink-hover": {
         "role": "primary",
-        "displayName": "Blue Ink",
+        "displayName": "Ink Hover",
         "canonical": "#285bd4",
         "tonalRamp": [
           "oklch(0.150 0.1946 263.65)",
@@ -349,9 +319,9 @@
           "oklch(0.950 0.1946 263.65)"
         ]
       },
-      "dark-accent-foreground": {
+      "dark-ink-hover": {
         "role": "primary",
-        "displayName": "Dark Blue Ink",
+        "displayName": "Dark Ink Hover",
         "canonical": "#82aaff",
         "tonalRamp": [
           "oklch(0.150 0.1311 264.28)",
@@ -364,69 +334,9 @@
           "oklch(0.950 0.1311 264.28)"
         ]
       },
-      "destructive": {
-        "role": "tertiary",
-        "displayName": "Destructive",
-        "canonical": "oklch(0.56 0.22 27)",
-        "tonalRamp": [
-          "oklch(0.150 0.2200 27.00)",
-          "oklch(0.264 0.2200 27.00)",
-          "oklch(0.379 0.2200 27.00)",
-          "oklch(0.493 0.2200 27.00)",
-          "oklch(0.607 0.2200 27.00)",
-          "oklch(0.721 0.2200 27.00)",
-          "oklch(0.836 0.2200 27.00)",
-          "oklch(0.950 0.2200 27.00)"
-        ]
-      },
-      "dark-destructive": {
-        "role": "tertiary",
-        "displayName": "Dark Destructive",
-        "canonical": "oklch(0.68 0.19 23)",
-        "tonalRamp": [
-          "oklch(0.150 0.1900 23.00)",
-          "oklch(0.264 0.1900 23.00)",
-          "oklch(0.379 0.1900 23.00)",
-          "oklch(0.493 0.1900 23.00)",
-          "oklch(0.607 0.1900 23.00)",
-          "oklch(0.721 0.1900 23.00)",
-          "oklch(0.836 0.1900 23.00)",
-          "oklch(0.950 0.1900 23.00)"
-        ]
-      },
-      "destructive-foreground": {
-        "role": "tertiary",
-        "displayName": "Destructive Foreground",
-        "canonical": "oklch(0.985 0 0)",
-        "tonalRamp": [
-          "oklch(0.150 0.0000 0.00)",
-          "oklch(0.264 0.0000 0.00)",
-          "oklch(0.379 0.0000 0.00)",
-          "oklch(0.493 0.0000 0.00)",
-          "oklch(0.607 0.0000 0.00)",
-          "oklch(0.721 0.0000 0.00)",
-          "oklch(0.836 0.0000 0.00)",
-          "oklch(0.950 0.0000 0.00)"
-        ]
-      },
-      "dark-destructive-foreground": {
-        "role": "tertiary",
-        "displayName": "Dark Destructive Foreground",
-        "canonical": "oklch(0.985 0 0)",
-        "tonalRamp": [
-          "oklch(0.150 0.0000 0.00)",
-          "oklch(0.264 0.0000 0.00)",
-          "oklch(0.379 0.0000 0.00)",
-          "oklch(0.493 0.0000 0.00)",
-          "oklch(0.607 0.0000 0.00)",
-          "oklch(0.721 0.0000 0.00)",
-          "oklch(0.836 0.0000 0.00)",
-          "oklch(0.950 0.0000 0.00)"
-        ]
-      },
-      "border": {
+      "line": {
         "role": "neutral",
-        "displayName": "Border",
+        "displayName": "Line",
         "canonical": "#e3e3e5",
         "tonalRamp": [
           "oklch(0.150 0.0027 286.35)",
@@ -439,9 +349,9 @@
           "oklch(0.950 0.0027 286.35)"
         ]
       },
-      "dark-border": {
+      "dark-line": {
         "role": "neutral",
-        "displayName": "Dark Border",
+        "displayName": "Dark Line",
         "canonical": "#343434",
         "tonalRamp": [
           "oklch(0.150 0.0000 0.00)",
@@ -454,9 +364,9 @@
           "oklch(0.950 0.0000 0.00)"
         ]
       },
-      "input": {
+      "line-strong": {
         "role": "neutral",
-        "displayName": "Input",
+        "displayName": "Line Strong",
         "canonical": "#929299",
         "tonalRamp": [
           "oklch(0.150 0.0102 286.12)",
@@ -469,9 +379,9 @@
           "oklch(0.950 0.0102 286.12)"
         ]
       },
-      "dark-input": {
+      "dark-line-strong": {
         "role": "neutral",
-        "displayName": "Dark Input",
+        "displayName": "Dark Line Strong",
         "canonical": "#666666",
         "tonalRamp": [
           "oklch(0.150 0.0000 0.00)",
@@ -484,9 +394,9 @@
           "oklch(0.950 0.0000 0.00)"
         ]
       },
-      "ring": {
+      "action": {
         "role": "primary",
-        "displayName": "Blue Ink",
+        "displayName": "Action",
         "canonical": "#285bd4",
         "tonalRamp": [
           "oklch(0.150 0.1946 263.65)",
@@ -499,9 +409,9 @@
           "oklch(0.950 0.1946 263.65)"
         ]
       },
-      "dark-ring": {
+      "dark-action": {
         "role": "primary",
-        "displayName": "Dark Blue Ink",
+        "displayName": "Dark Action",
         "canonical": "#82aaff",
         "tonalRamp": [
           "oklch(0.150 0.1311 264.28)",
@@ -514,9 +424,129 @@
           "oklch(0.950 0.1311 264.28)"
         ]
       },
-      "success": {
+      "action-ink": {
+        "role": "neutral",
+        "displayName": "Action Ink",
+        "canonical": "#ffffff",
+        "tonalRamp": [
+          "oklch(0.150 0.0000 0.00)",
+          "oklch(0.264 0.0000 0.00)",
+          "oklch(0.379 0.0000 0.00)",
+          "oklch(0.493 0.0000 0.00)",
+          "oklch(0.607 0.0000 0.00)",
+          "oklch(0.721 0.0000 0.00)",
+          "oklch(0.836 0.0000 0.00)",
+          "oklch(0.950 0.0000 0.00)"
+        ]
+      },
+      "dark-action-ink": {
+        "role": "neutral",
+        "displayName": "Dark Action Ink",
+        "canonical": "#181818",
+        "tonalRamp": [
+          "oklch(0.150 0.0000 0.00)",
+          "oklch(0.264 0.0000 0.00)",
+          "oklch(0.379 0.0000 0.00)",
+          "oklch(0.493 0.0000 0.00)",
+          "oklch(0.607 0.0000 0.00)",
+          "oklch(0.721 0.0000 0.00)",
+          "oklch(0.836 0.0000 0.00)",
+          "oklch(0.950 0.0000 0.00)"
+        ]
+      },
+      "selected": {
+        "role": "neutral",
+        "displayName": "Selected",
+        "canonical": "#f1f1f2",
+        "tonalRamp": [
+          "oklch(0.150 0.0013 286.37)",
+          "oklch(0.264 0.0013 286.37)",
+          "oklch(0.379 0.0013 286.37)",
+          "oklch(0.493 0.0013 286.37)",
+          "oklch(0.607 0.0013 286.37)",
+          "oklch(0.721 0.0013 286.37)",
+          "oklch(0.836 0.0013 286.37)",
+          "oklch(0.950 0.0013 286.37)"
+        ]
+      },
+      "dark-selected": {
+        "role": "neutral",
+        "displayName": "Dark Selected",
+        "canonical": "#292929",
+        "tonalRamp": [
+          "oklch(0.150 0.0000 0.00)",
+          "oklch(0.264 0.0000 0.00)",
+          "oklch(0.379 0.0000 0.00)",
+          "oklch(0.493 0.0000 0.00)",
+          "oklch(0.607 0.0000 0.00)",
+          "oklch(0.721 0.0000 0.00)",
+          "oklch(0.836 0.0000 0.00)",
+          "oklch(0.950 0.0000 0.00)"
+        ]
+      },
+      "selected-ink": {
+        "role": "primary",
+        "displayName": "Selected Ink",
+        "canonical": "#285bd4",
+        "tonalRamp": [
+          "oklch(0.150 0.1946 263.65)",
+          "oklch(0.264 0.1946 263.65)",
+          "oklch(0.379 0.1946 263.65)",
+          "oklch(0.493 0.1946 263.65)",
+          "oklch(0.607 0.1946 263.65)",
+          "oklch(0.721 0.1946 263.65)",
+          "oklch(0.836 0.1946 263.65)",
+          "oklch(0.950 0.1946 263.65)"
+        ]
+      },
+      "dark-selected-ink": {
+        "role": "primary",
+        "displayName": "Dark Selected Ink",
+        "canonical": "#82aaff",
+        "tonalRamp": [
+          "oklch(0.150 0.1311 264.28)",
+          "oklch(0.264 0.1311 264.28)",
+          "oklch(0.379 0.1311 264.28)",
+          "oklch(0.493 0.1311 264.28)",
+          "oklch(0.607 0.1311 264.28)",
+          "oklch(0.721 0.1311 264.28)",
+          "oklch(0.836 0.1311 264.28)",
+          "oklch(0.950 0.1311 264.28)"
+        ]
+      },
+      "focus": {
+        "role": "primary",
+        "displayName": "Focus",
+        "canonical": "#285bd4",
+        "tonalRamp": [
+          "oklch(0.150 0.1946 263.65)",
+          "oklch(0.264 0.1946 263.65)",
+          "oklch(0.379 0.1946 263.65)",
+          "oklch(0.493 0.1946 263.65)",
+          "oklch(0.607 0.1946 263.65)",
+          "oklch(0.721 0.1946 263.65)",
+          "oklch(0.836 0.1946 263.65)",
+          "oklch(0.950 0.1946 263.65)"
+        ]
+      },
+      "dark-focus": {
+        "role": "primary",
+        "displayName": "Dark Focus",
+        "canonical": "#82aaff",
+        "tonalRamp": [
+          "oklch(0.150 0.1311 264.28)",
+          "oklch(0.264 0.1311 264.28)",
+          "oklch(0.379 0.1311 264.28)",
+          "oklch(0.493 0.1311 264.28)",
+          "oklch(0.607 0.1311 264.28)",
+          "oklch(0.721 0.1311 264.28)",
+          "oklch(0.836 0.1311 264.28)",
+          "oklch(0.950 0.1311 264.28)"
+        ]
+      },
+      "status-success": {
         "role": "tertiary",
-        "displayName": "Success",
+        "displayName": "Status Success",
         "canonical": "oklch(0.49 0.14 155)",
         "tonalRamp": [
           "oklch(0.150 0.1400 155.00)",
@@ -529,9 +559,9 @@
           "oklch(0.950 0.1400 155.00)"
         ]
       },
-      "dark-success": {
+      "dark-status-success": {
         "role": "tertiary",
-        "displayName": "Dark Success",
+        "displayName": "Dark Status Success",
         "canonical": "oklch(0.72 0.16 155)",
         "tonalRamp": [
           "oklch(0.150 0.1600 155.00)",
@@ -544,9 +574,9 @@
           "oklch(0.950 0.1600 155.00)"
         ]
       },
-      "warning": {
+      "status-warning": {
         "role": "tertiary",
-        "displayName": "Warning",
+        "displayName": "Status Warning",
         "canonical": "oklch(0.55 0.14 75)",
         "tonalRamp": [
           "oklch(0.150 0.1400 75.00)",
@@ -559,9 +589,9 @@
           "oklch(0.950 0.1400 75.00)"
         ]
       },
-      "dark-warning": {
+      "dark-status-warning": {
         "role": "tertiary",
-        "displayName": "Dark Warning",
+        "displayName": "Dark Status Warning",
         "canonical": "oklch(0.78 0.15 80)",
         "tonalRamp": [
           "oklch(0.150 0.1500 80.00)",
@@ -574,9 +604,69 @@
           "oklch(0.950 0.1500 80.00)"
         ]
       },
-      "error-surface": {
+      "status-danger": {
         "role": "tertiary",
-        "displayName": "Error Surface",
+        "displayName": "Status Danger",
+        "canonical": "oklch(0.56 0.22 27)",
+        "tonalRamp": [
+          "oklch(0.150 0.2200 27.00)",
+          "oklch(0.264 0.2200 27.00)",
+          "oklch(0.379 0.2200 27.00)",
+          "oklch(0.493 0.2200 27.00)",
+          "oklch(0.607 0.2200 27.00)",
+          "oklch(0.721 0.2200 27.00)",
+          "oklch(0.836 0.2200 27.00)",
+          "oklch(0.950 0.2200 27.00)"
+        ]
+      },
+      "dark-status-danger": {
+        "role": "tertiary",
+        "displayName": "Dark Status Danger",
+        "canonical": "oklch(0.68 0.19 23)",
+        "tonalRamp": [
+          "oklch(0.150 0.1900 23.00)",
+          "oklch(0.264 0.1900 23.00)",
+          "oklch(0.379 0.1900 23.00)",
+          "oklch(0.493 0.1900 23.00)",
+          "oklch(0.607 0.1900 23.00)",
+          "oklch(0.721 0.1900 23.00)",
+          "oklch(0.836 0.1900 23.00)",
+          "oklch(0.950 0.1900 23.00)"
+        ]
+      },
+      "status-danger-ink": {
+        "role": "tertiary",
+        "displayName": "Status Danger Ink",
+        "canonical": "#ffffff",
+        "tonalRamp": [
+          "oklch(0.150 0.0000 0.00)",
+          "oklch(0.264 0.0000 0.00)",
+          "oklch(0.379 0.0000 0.00)",
+          "oklch(0.493 0.0000 0.00)",
+          "oklch(0.607 0.0000 0.00)",
+          "oklch(0.721 0.0000 0.00)",
+          "oklch(0.836 0.0000 0.00)",
+          "oklch(0.950 0.0000 0.00)"
+        ]
+      },
+      "dark-status-danger-ink": {
+        "role": "tertiary",
+        "displayName": "Dark Status Danger Ink",
+        "canonical": "#181818",
+        "tonalRamp": [
+          "oklch(0.150 0.0000 0.00)",
+          "oklch(0.264 0.0000 0.00)",
+          "oklch(0.379 0.0000 0.00)",
+          "oklch(0.493 0.0000 0.00)",
+          "oklch(0.607 0.0000 0.00)",
+          "oklch(0.721 0.0000 0.00)",
+          "oklch(0.836 0.0000 0.00)",
+          "oklch(0.950 0.0000 0.00)"
+        ]
+      },
+      "status-danger-surface": {
+        "role": "tertiary",
+        "displayName": "Status Danger Surface",
         "canonical": "oklch(0.96 0.025 25)",
         "tonalRamp": [
           "oklch(0.150 0.0250 25.00)",
@@ -589,9 +679,9 @@
           "oklch(0.950 0.0250 25.00)"
         ]
       },
-      "dark-error-surface": {
+      "dark-status-danger-surface": {
         "role": "tertiary",
-        "displayName": "Dark Error Surface",
+        "displayName": "Dark Status Danger Surface",
         "canonical": "oklch(0.2 0.04 25)",
         "tonalRamp": [
           "oklch(0.150 0.0400 25.00)",
@@ -605,8 +695,8 @@
         ]
       },
       "chart-1": {
-        "role": "primary",
-        "displayName": "Blue Ink",
+        "role": "tertiary",
+        "displayName": "Chart 1",
         "canonical": "#285bd4",
         "tonalRamp": [
           "oklch(0.150 0.1946 263.65)",
@@ -620,8 +710,8 @@
         ]
       },
       "dark-chart-1": {
-        "role": "primary",
-        "displayName": "Dark Blue Ink",
+        "role": "tertiary",
+        "displayName": "Dark Chart 1",
         "canonical": "#82aaff",
         "tonalRamp": [
           "oklch(0.150 0.1311 264.28)",
@@ -635,7 +725,7 @@
         ]
       },
       "chart-2": {
-        "role": "secondary",
+        "role": "tertiary",
         "displayName": "Chart 2",
         "canonical": "#b45c7f",
         "tonalRamp": [
@@ -650,7 +740,7 @@
         ]
       },
       "dark-chart-2": {
-        "role": "secondary",
+        "role": "tertiary",
         "displayName": "Dark Chart 2",
         "canonical": "#e59aba",
         "tonalRamp": [
@@ -963,165 +1053,75 @@
           "oklch(0.836 0.1000 45.00)",
           "oklch(0.950 0.1000 45.00)"
         ]
-      },
-      "rail-surface": {
-        "role": "neutral",
-        "displayName": "Rail Surface",
-        "canonical": "#ffffff",
-        "tonalRamp": [
-          "oklch(0.150 0.0000 0.00)",
-          "oklch(0.264 0.0000 0.00)",
-          "oklch(0.379 0.0000 0.00)",
-          "oklch(0.493 0.0000 0.00)",
-          "oklch(0.607 0.0000 0.00)",
-          "oklch(0.721 0.0000 0.00)",
-          "oklch(0.836 0.0000 0.00)",
-          "oklch(0.950 0.0000 0.00)"
-        ]
-      },
-      "dark-rail-surface": {
-        "role": "neutral",
-        "displayName": "Dark Rail Surface",
-        "canonical": "#1b1b1b",
-        "tonalRamp": [
-          "oklch(0.150 0.0000 0.00)",
-          "oklch(0.264 0.0000 0.00)",
-          "oklch(0.379 0.0000 0.00)",
-          "oklch(0.493 0.0000 0.00)",
-          "oklch(0.607 0.0000 0.00)",
-          "oklch(0.721 0.0000 0.00)",
-          "oklch(0.836 0.0000 0.00)",
-          "oklch(0.950 0.0000 0.00)"
-        ]
-      },
-      "field-surface": {
-        "role": "neutral",
-        "displayName": "Field Surface",
-        "canonical": "#ffffff",
-        "tonalRamp": [
-          "oklch(0.150 0.0000 0.00)",
-          "oklch(0.264 0.0000 0.00)",
-          "oklch(0.379 0.0000 0.00)",
-          "oklch(0.493 0.0000 0.00)",
-          "oklch(0.607 0.0000 0.00)",
-          "oklch(0.721 0.0000 0.00)",
-          "oklch(0.836 0.0000 0.00)",
-          "oklch(0.950 0.0000 0.00)"
-        ]
-      },
-      "dark-field-surface": {
-        "role": "neutral",
-        "displayName": "Dark Field Surface",
-        "canonical": "#222222",
-        "tonalRamp": [
-          "oklch(0.150 0.0000 0.00)",
-          "oklch(0.264 0.0000 0.00)",
-          "oklch(0.379 0.0000 0.00)",
-          "oklch(0.493 0.0000 0.00)",
-          "oklch(0.607 0.0000 0.00)",
-          "oklch(0.721 0.0000 0.00)",
-          "oklch(0.836 0.0000 0.00)",
-          "oklch(0.950 0.0000 0.00)"
-        ]
-      },
-      "table-heading": {
-        "role": "neutral",
-        "displayName": "Table Heading",
-        "canonical": "#fafafa",
-        "tonalRamp": [
-          "oklch(0.150 0.0000 0.00)",
-          "oklch(0.264 0.0000 0.00)",
-          "oklch(0.379 0.0000 0.00)",
-          "oklch(0.493 0.0000 0.00)",
-          "oklch(0.607 0.0000 0.00)",
-          "oklch(0.721 0.0000 0.00)",
-          "oklch(0.836 0.0000 0.00)",
-          "oklch(0.950 0.0000 0.00)"
-        ]
-      },
-      "dark-table-heading": {
-        "role": "neutral",
-        "displayName": "Dark Table Heading",
-        "canonical": "#222222",
-        "tonalRamp": [
-          "oklch(0.150 0.0000 0.00)",
-          "oklch(0.264 0.0000 0.00)",
-          "oklch(0.379 0.0000 0.00)",
-          "oklch(0.493 0.0000 0.00)",
-          "oklch(0.607 0.0000 0.00)",
-          "oklch(0.721 0.0000 0.00)",
-          "oklch(0.836 0.0000 0.00)",
-          "oklch(0.950 0.0000 0.00)"
-        ]
       }
     },
     "typographyMeta": {
+      "page": {
+        "displayName": "Page",
+        "purpose": "Page and startup headings."
+      },
       "readout": {
         "displayName": "Readout",
-        "purpose": "All static metric values."
-      },
-      "headline": {
-        "displayName": "Headline",
-        "purpose": "Visible dashboard title and connection/error screen headlines."
+        "purpose": "All static metric values, tabular."
       },
       "title": {
-        "displayName": "Title",
-        "purpose": "Section headings."
+        "displayName": "Section",
+        "purpose": "Chart, table and settings section headings."
       },
       "body": {
         "displayName": "Body",
-        "purpose": "Interface text and chart headings."
+        "purpose": "Explanations, table cells and regular controls."
       },
       "label": {
         "displayName": "Label",
-        "purpose": "Metadata, controls, and axes."
+        "purpose": "Captions, axes, compact controls and metadata."
       },
-      "numeric": {
-        "displayName": "Numeric",
-        "purpose": "Tabular DM Sans numerals in readouts and numeric table cells; monospace reserved for code and paths."
+      "mono": {
+        "displayName": "Mono",
+        "purpose": "Code and directory paths only."
       }
     },
     "shadows": [
       {
         "name": "overlay-light",
         "value": "0 0.75rem 2rem rgb(0 0 0 / 12%)",
-        "purpose": "Light-theme overlays and chart tooltips."
+        "purpose": "Light-theme popovers, menus and chart tooltips."
       },
       {
         "name": "overlay-dark",
         "value": "0 0.75rem 2rem rgb(0 0 0 / 45%)",
-        "purpose": "Dark-theme overlays and chart tooltips."
+        "purpose": "Dark-theme popovers, menus and chart tooltips."
       }
     ],
     "motion": [
       {
-        "name": "state-colors",
+        "name": "duration-fast",
         "value": "150ms",
-        "purpose": "Background, text, and border state transitions."
+        "purpose": "Background, text and border state transitions."
       },
       {
-        "name": "loading-spin",
-        "value": "1.2s linear infinite",
-        "purpose": "Loading and sync indicators; disabled for reduced motion."
-      },
-      {
-        "name": "directory-disclosure",
+        "name": "duration-disclosure",
         "value": "180ms ease-out",
-        "purpose": "Repo directory disclosure icon rotation."
+        "purpose": "Disclosure chevron rotation."
+      },
+      {
+        "name": "duration-spin",
+        "value": "1.2s linear infinite",
+        "purpose": "Loading indicators; disabled for reduced motion."
       }
     ],
     "breakpoints": [
       {
-        "name": "compact-gutters",
-        "value": "75rem"
+        "name": "compact",
+        "value": "38rem"
       },
       {
-        "name": "desktop-navigation",
+        "name": "nav",
         "value": "55rem"
       },
       {
-        "name": "mobile",
-        "value": "38rem"
+        "name": "wide",
+        "value": "75rem"
       },
       {
         "name": "readouts-container",
@@ -1131,99 +1131,102 @@
   },
   "components": [
     {
-      "name": "Primary Button",
+      "name": "Default Button",
       "kind": "button",
-      "refersTo": "button-primary",
-      "description": "Existing shared primary Button variant; dashboard actions may use compact sizing.",
-      "html": "<button class=\"ds-button-primary\">Sign in</button>",
-      "css": ".ds-button-primary{display:inline-flex;align-items:center;justify-content:center;gap:0.5rem;min-height:var(--control-height-md);padding:0.25rem 0.75rem;border:var(--border-width) solid transparent;border-radius:var(--radius-md);background:var(--primary);color:var(--primary-foreground);font:500 var(--text-sm)/1.5 var(--font-sans);cursor:pointer;transition:background var(--duration-fast),color var(--duration-fast),border-color var(--duration-fast);}.ds-button-primary:hover:not(:disabled){background:color-mix(in srgb,var(--primary) 90%,transparent);}.ds-button-primary:focus-visible{outline:var(--focus-width) solid var(--ring);outline-offset:var(--focus-offset);box-shadow:0 0 0 var(--focus-offset) var(--background),0 0 0 calc(var(--focus-offset) + var(--focus-width)) var(--ring);}.ds-button-primary:disabled{opacity:0.5;cursor:default;pointer-events:none;}@media(max-width:38rem),(pointer:coarse){.ds-button-primary{min-height:2.75rem;}}@media(prefers-reduced-motion:reduce){.ds-button-primary{transition:none;}}"
+      "refersTo": "button-default",
+      "description": "Filled blue action for primary form submissions.",
+      "html": "<button type=\"button\" class=\"ds-button-default\">Sign in</button>",
+      "css": ".ds-button-default{display:inline-flex;align-items:center;justify-content:center;gap:0.5rem;min-height:var(--control-height);padding:0.25rem 0.75rem;border:var(--border-width) solid transparent;border-radius:var(--radius-md);font:500 var(--text-body)/1.43 var(--font-sans);cursor:pointer;transition:background-color var(--duration-fast),color var(--duration-fast);background:var(--action);color:var(--action-ink);}.ds-button-default:hover{background:color-mix(in srgb,var(--action) 90%,transparent);}.ds-button-default:focus-visible{outline:var(--focus-width) solid var(--focus);outline-offset:var(--focus-offset);}.ds-button-default:disabled{opacity:var(--opacity-disabled);pointer-events:none;}"
     },
     {
       "name": "Outline Button",
       "kind": "button",
       "refersTo": "button-outline",
-      "description": "Existing shared outline Button variant; dashboard actions may use compact sizing.",
-      "html": "<button class=\"ds-button-outline\">Reload</button>",
-      "css": ".ds-button-outline{display:inline-flex;align-items:center;justify-content:center;gap:0.5rem;min-height:var(--control-height-md);padding:0.25rem 0.75rem;border:var(--border-width) solid var(--input);border-radius:var(--radius-md);background:var(--background);color:var(--foreground);font:500 var(--text-sm)/1.5 var(--font-sans);cursor:pointer;transition:background var(--duration-fast),color var(--duration-fast),border-color var(--duration-fast);}.ds-button-outline:hover:not(:disabled){background:var(--accent);color:var(--accent-foreground);}.ds-button-outline:focus-visible{outline:var(--focus-width) solid var(--ring);outline-offset:var(--focus-offset);box-shadow:0 0 0 var(--focus-offset) var(--background),0 0 0 calc(var(--focus-offset) + var(--focus-width)) var(--ring);}.ds-button-outline:disabled{opacity:0.5;cursor:default;pointer-events:none;}@media(max-width:38rem),(pointer:coarse){.ds-button-outline{min-height:2.75rem;}}@media(prefers-reduced-motion:reduce){.ds-button-outline{transition:none;}}"
+      "description": "Field-edged control for toolbar and table actions.",
+      "html": "<button type=\"button\" class=\"ds-button-outline\">Columns</button>",
+      "css": ".ds-button-outline{display:inline-flex;align-items:center;justify-content:center;gap:0.5rem;min-height:var(--control-height);padding:0.25rem 0.75rem;border:var(--border-width) solid transparent;border-radius:var(--radius-md);font:500 var(--text-body)/1.43 var(--font-sans);cursor:pointer;transition:background-color var(--duration-fast),color var(--duration-fast);background:var(--surface);color:var(--ink);border-color:var(--line-strong);}.ds-button-outline:hover{background:var(--surface-hover);color:var(--ink);}.ds-button-outline:focus-visible{outline:var(--focus-width) solid var(--focus);outline-offset:var(--focus-offset);}.ds-button-outline:disabled{opacity:var(--opacity-disabled);pointer-events:none;}"
     },
     {
-      "name": "Secondary Button",
+      "name": "Quiet Button",
       "kind": "button",
-      "refersTo": "button-secondary",
-      "description": "Existing shared secondary Button variant; dashboard actions may use compact sizing.",
-      "html": "<button class=\"ds-button-secondary\">Secondary</button>",
-      "css": ".ds-button-secondary{display:inline-flex;align-items:center;justify-content:center;gap:0.5rem;min-height:var(--control-height-md);padding:0.25rem 0.75rem;border:var(--border-width) solid transparent;border-radius:var(--radius-md);background:var(--secondary);color:var(--secondary-foreground);font:500 var(--text-sm)/1.5 var(--font-sans);cursor:pointer;transition:background var(--duration-fast),color var(--duration-fast),border-color var(--duration-fast);}.ds-button-secondary:hover:not(:disabled){background:color-mix(in srgb,var(--secondary) 80%,transparent);}.ds-button-secondary:focus-visible{outline:var(--focus-width) solid var(--ring);outline-offset:var(--focus-offset);box-shadow:0 0 0 var(--focus-offset) var(--background),0 0 0 calc(var(--focus-offset) + var(--focus-width)) var(--ring);}.ds-button-secondary:disabled{opacity:0.5;cursor:default;pointer-events:none;}@media(max-width:38rem),(pointer:coarse){.ds-button-secondary{min-height:2.75rem;}}@media(prefers-reduced-motion:reduce){.ds-button-secondary{transition:none;}}"
+      "refersTo": "button-quiet",
+      "description": "Muted control for navigation-like actions; neutral hover.",
+      "html": "<button type=\"button\" class=\"ds-button-quiet\">Sign out</button>",
+      "css": ".ds-button-quiet{display:inline-flex;align-items:center;justify-content:center;gap:0.5rem;min-height:var(--control-height);padding:0.25rem 0.75rem;border:var(--border-width) solid transparent;border-radius:var(--radius-md);font:500 var(--text-body)/1.43 var(--font-sans);cursor:pointer;transition:background-color var(--duration-fast),color var(--duration-fast);background:transparent;color:var(--ink-muted);}.ds-button-quiet:hover{background:var(--surface-hover);color:var(--ink);}.ds-button-quiet:focus-visible{outline:var(--focus-width) solid var(--focus);outline-offset:var(--focus-offset);}.ds-button-quiet:disabled{opacity:var(--opacity-disabled);pointer-events:none;}"
     },
     {
-      "name": "Ghost Button",
+      "name": "Link Button",
       "kind": "button",
-      "refersTo": "button-ghost",
-      "description": "Existing shared ghost Button variant; dashboard actions may use compact sizing.",
-      "html": "<button class=\"ds-button-ghost\">Clear All</button>",
-      "css": ".ds-button-ghost{display:inline-flex;align-items:center;justify-content:center;gap:0.5rem;min-height:var(--control-height-md);padding:0.25rem 0.75rem;border:var(--border-width) solid transparent;border-radius:var(--radius-md);background:transparent;color:var(--foreground);font:500 var(--text-sm)/1.5 var(--font-sans);cursor:pointer;transition:background var(--duration-fast),color var(--duration-fast),border-color var(--duration-fast);}.ds-button-ghost:hover:not(:disabled){background:var(--accent);color:var(--accent-foreground);}.ds-button-ghost:focus-visible{outline:var(--focus-width) solid var(--ring);outline-offset:var(--focus-offset);box-shadow:0 0 0 var(--focus-offset) var(--background),0 0 0 calc(var(--focus-offset) + var(--focus-width)) var(--ring);}.ds-button-ghost:disabled{opacity:0.5;cursor:default;pointer-events:none;}@media(max-width:38rem),(pointer:coarse){.ds-button-ghost{min-height:2.75rem;}}@media(prefers-reduced-motion:reduce){.ds-button-ghost{transition:none;}}"
+      "refersTo": "button-link",
+      "description": "Inline text action: drill-downs, clear actions, disclosures.",
+      "html": "<button type=\"button\" class=\"ds-button-link\">Show directories</button>",
+      "css": ".ds-button-link{display:inline-flex;align-items:center;justify-content:center;gap:0.5rem;min-height:var(--control-height);padding:0.25rem 0.75rem;border:var(--border-width) solid transparent;border-radius:var(--radius-md);font:500 var(--text-body)/1.43 var(--font-sans);cursor:pointer;transition:background-color var(--duration-fast),color var(--duration-fast);background:transparent;color:var(--ink);padding:0;}.ds-button-link:hover{color:var(--ink-hover);text-decoration:underline;text-underline-offset:var(--underline-offset);}.ds-button-link:focus-visible{outline:var(--focus-width) solid var(--focus);outline-offset:var(--focus-offset);}.ds-button-link:disabled{opacity:var(--opacity-disabled);pointer-events:none;}"
     },
     {
-      "name": "Destructive Button",
+      "name": "Selected Control",
       "kind": "button",
-      "refersTo": "button-destructive",
-      "description": "Existing shared destructive Button variant; dashboard actions may use compact sizing.",
-      "html": "<button class=\"ds-button-destructive\">Remove</button>",
-      "css": ".ds-button-destructive{display:inline-flex;align-items:center;justify-content:center;gap:0.5rem;min-height:var(--control-height-md);padding:0.25rem 0.75rem;border:var(--border-width) solid transparent;border-radius:var(--radius-md);background:var(--destructive);color:#fff;font:500 var(--text-sm)/1.5 var(--font-sans);cursor:pointer;transition:background var(--duration-fast),color var(--duration-fast),border-color var(--duration-fast);}.ds-button-destructive:hover:not(:disabled){background:color-mix(in srgb,var(--destructive) 90%,transparent);}.ds-button-destructive:focus-visible{outline:var(--focus-width) solid var(--ring);outline-offset:var(--focus-offset);box-shadow:0 0 0 var(--focus-offset) var(--background),0 0 0 calc(var(--focus-offset) + var(--focus-width)) var(--ring);}.ds-button-destructive:disabled{opacity:0.5;cursor:default;pointer-events:none;}@media(max-width:38rem),(pointer:coarse){.ds-button-destructive{min-height:2.75rem;}}@media(prefers-reduced-motion:reduce){.ds-button-destructive{transition:none;}}"
+      "refersTo": "control-selected",
+      "description": "Shared selected state: tint and blue ink, no border. Driven by aria-pressed, aria-current or selected.",
+      "html": "<button type=\"button\" class=\"ds-selected\" aria-pressed=\"true\">Monthly</button>",
+      "css": ".ds-selected{display:inline-flex;align-items:center;justify-content:center;gap:0.5rem;min-height:var(--control-height);padding:0.25rem 0.75rem;border:var(--border-width) solid transparent;border-radius:var(--radius-md);font:500 var(--text-body)/1.43 var(--font-sans);cursor:pointer;transition:background-color var(--duration-fast),color var(--duration-fast);min-height:var(--control-height-compact);font-size:var(--text-label);border-radius:var(--radius-sm);background:var(--selected);color:var(--selected-ink);}.ds-selected:focus-visible{outline:var(--focus-width) solid var(--focus);outline-offset:var(--focus-offset);}"
     },
     {
       "name": "Text Field",
       "kind": "input",
       "refersTo": "input-text",
-      "description": "Labeled field with a stronger edge and visible focus.",
-      "html": "<label class=\"ds-field-label\">Search<input class=\"ds-input\" type=\"text\" placeholder=\"Search values\"></label>",
-      "css": ".ds-field-label{display:flex;flex-direction:column;gap:var(--space-1);color:var(--foreground);font:500 var(--text-xs)/1.5 var(--font-sans);}.ds-input{min-height:var(--control-height);padding:var(--space-1) var(--space-3);border:var(--border-width) solid var(--input);border-radius:var(--radius-md);background:var(--field-surface);color:var(--foreground);font:400 var(--text-sm)/1.5 var(--font-sans);transition:background var(--duration-fast),color var(--duration-fast),border-color var(--duration-fast);}.ds-input:hover:not(:disabled){background:var(--secondary);}.ds-input:focus-visible{outline:var(--focus-width) solid var(--ring);outline-offset:var(--focus-offset);border-color:var(--ring);box-shadow:0 0 0 var(--focus-width) color-mix(in srgb,var(--ring) 30%,transparent);}.ds-input::placeholder{color:var(--muted-foreground);}.ds-input[aria-invalid=true]{border-color:var(--destructive);}.ds-input:disabled{opacity:0.5;}@media(max-width:38rem),(pointer:coarse){.ds-input{min-height:2.75rem;}}@media(prefers-reduced-motion:reduce){.ds-input{transition:none;}}"
+      "description": "Labelled input on the field surface with a strong edge; invalid fields take the danger edge.",
+      "html": "<label class=\"ds-field\"><span>Key name</span><input class=\"ds-input\" placeholder=\"Work laptop\"></label>",
+      "css": ".ds-field{display:grid;gap:0.25rem;font:500 var(--text-body)/1.43 var(--font-sans);color:var(--ink);}.ds-input{min-height:var(--control-height);padding:0.25rem 0.75rem;border:var(--border-width) solid var(--line-strong);border-radius:var(--radius-md);background:var(--surface-field);color:var(--ink);font:400 var(--text-body)/1.43 var(--font-sans);caret-color:var(--action);}.ds-input:hover{background:var(--surface-raised);}.ds-input:focus-visible{outline:var(--focus-width) solid var(--focus);outline-offset:var(--focus-offset);}.ds-input[aria-invalid=true]{border-color:var(--status-danger);}"
     },
     {
       "name": "View Navigation",
       "kind": "nav",
-      "refersTo": "navigation-selected",
-      "description": "Sidebar view links become wrapping top navigation on narrow screens; selected links use blue ink on neutral gray.",
-      "html": "<nav class=\"ds-nav\" aria-label=\"Analytics views\"><a href=\"#tokens\" aria-current=\"page\">Tokens</a><a href=\"#models\">Models</a><a href=\"#providers\">Providers</a></nav>",
-      "css": ".ds-nav{display:flex;flex-direction:column;gap:var(--space-1);}.ds-nav a{display:inline-flex;align-items:center;justify-content:flex-start;gap:var(--space-2);min-height:var(--control-height);padding:var(--space-1) var(--space-3);border-radius:var(--radius-md);color:var(--muted-foreground);background:transparent;text-decoration:none;font:500 var(--text-sm)/1.5 var(--font-sans);white-space:nowrap;transition:background var(--duration-fast),color var(--duration-fast),border-color var(--duration-fast);}.ds-nav a:hover{background:var(--secondary);color:var(--foreground);}.ds-nav a[aria-current]{background:var(--accent);color:var(--accent-foreground);font-weight:600;}.ds-nav a:focus-visible{outline:var(--focus-width) solid var(--ring);outline-offset:calc(-1 * var(--focus-width));box-shadow:0 0 0 var(--focus-offset) var(--background),0 0 0 calc(var(--focus-offset) + var(--focus-width)) var(--ring);}@media(max-width:55rem){.ds-nav{flex-direction:row;flex-wrap:wrap;}.ds-nav a{padding:var(--space-2);}}@media(max-width:38rem),(pointer:coarse){.ds-nav a{min-height:2.75rem;}}@media(max-width:38rem){.ds-nav a{font-size:var(--text-xs);gap:var(--space-1);}}@media(prefers-reduced-motion:reduce){.ds-nav a{transition:none;}}"
+      "refersTo": "navigation-item",
+      "description": "Sidebar view links; the current page uses the selected tint.",
+      "html": "<nav class=\"ds-nav\"><a href=\"#\" aria-current=\"page\">Tokens</a><a href=\"#\">Models</a><a href=\"#\">Sessions</a></nav>",
+      "css": ".ds-nav{display:grid;gap:0.25rem;width:12rem;padding:0.75rem;background:var(--surface-rail);font:500 var(--text-body)/1.43 var(--font-sans);}.ds-nav a{display:flex;align-items:center;min-height:var(--control-height);padding:0.25rem 0.75rem;border-radius:var(--radius-md);color:var(--ink-muted);text-decoration:none;}.ds-nav a:hover{background:var(--surface-hover);color:var(--ink);}.ds-nav a[aria-current=page]{background:var(--selected);color:var(--selected-ink);}.ds-nav a:focus-visible{outline:var(--focus-width) solid var(--focus);outline-offset:calc(-1 * var(--focus-width));}"
     },
     {
       "name": "Active Filter Chip",
       "kind": "chip",
       "refersTo": "filter-chip",
-      "description": "Dimension and selected value with a removal action.",
-      "html": "<button class=\"ds-chip\" aria-label=\"Remove model example\"><span class=\"ds-chip-label\">Model</span><span class=\"ds-chip-value\">example</span><svg width=\"13\" height=\"13\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" aria-hidden=\"true\"><path d=\"M18 6 6 18M6 6l12 12\"/></svg></button>",
-      "css": ".ds-chip{display:inline-flex;align-items:center;gap:var(--space-2);min-height:var(--control-height-compact);max-width:100%;padding:var(--space-1) var(--space-2);background:var(--accent);color:var(--accent-foreground);border:var(--border-width) solid var(--accent-foreground);border-radius:var(--radius-sm);font:500 var(--text-xs)/1.5 var(--font-sans);cursor:pointer;}.ds-chip-label{color:var(--muted-foreground);}.ds-chip-value{max-width:15rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}.ds-chip:hover{border-color:var(--primary);}.ds-chip:focus-visible{outline:var(--focus-width) solid var(--ring);outline-offset:var(--focus-offset);}@media(max-width:38rem),(pointer:coarse){.ds-chip{min-height:2.75rem;}}"
-    },
-    {
-      "name": "Ordinary Card",
-      "kind": "card",
-      "refersTo": "card",
-      "description": "Shared bordered container outside flat analytics regions.",
-      "html": "<div class=\"ds-card\"><div class=\"ds-card-heading\">Refreshing usage</div><div class=\"ds-card-content\">Syncing all supported harnesses\u2026</div></div>",
-      "css": ".ds-card{background:var(--card);color:var(--foreground);border:var(--border-width) solid var(--border);border-radius:var(--radius-lg);font:400 var(--text-sm)/1.5 var(--font-sans);}.ds-card-heading{padding:1rem var(--panel-padding);font-weight:600;}.ds-card-content{padding:0 var(--panel-padding) var(--panel-padding);color:var(--muted-foreground);}"
+      "description": "Active filter with dimension, truncated value and remove action.",
+      "html": "<button type=\"button\" class=\"ds-chip\" aria-label=\"Remove model model-a\"><span class=\"ds-chip-dim\">Model</span><span>model-a</span><span aria-hidden=\"true\">×</span></button>",
+      "css": ".ds-chip{display:inline-flex;align-items:center;gap:0.5rem;min-height:var(--control-height-compact);padding:0 0.625rem;border:0;border-radius:var(--radius-sm);background:var(--selected);color:var(--selected-ink);font:500 var(--text-label)/1.33 var(--font-sans);cursor:pointer;}.ds-chip-dim{color:var(--ink-muted);}.ds-chip:focus-visible{outline:var(--focus-width) solid var(--focus);outline-offset:var(--focus-offset);}"
     },
     {
       "name": "Static Readout",
       "kind": "custom",
       "refersTo": "total-readout",
-      "description": "Plain measurement group, without an individual card or control state.",
-      "html": "<div class=\"ds-readout\"><span class=\"ds-readout-label\">Total tokens</span><strong aria-label=\"Total tokens: 647000\">647K</strong><span class=\"ds-readout-detail\">Included in your usage total</span></div>",
-      "css": ".ds-readout{display:flex;flex-direction:column;align-items:flex-start;gap:var(--space-2);color:var(--foreground);background:transparent;font-family:var(--font-sans);}.ds-readout-label{color:var(--secondary-foreground);font-size:var(--text-xs);font-weight:400;}.ds-readout strong{font-size:var(--text-readout);font-weight:600;line-height:var(--leading-tight);letter-spacing:var(--tracking-tight);font-variant-numeric:tabular-nums;}.ds-readout-detail{color:var(--muted-foreground);font-size:var(--text-xs);line-height:1.5;}"
+      "description": "Rule-separated informational readout; never interactive.",
+      "html": "<div class=\"ds-readout\"><span>Total tokens</span><strong>258K</strong><span>Included in your usage total</span></div>",
+      "css": ".ds-readout{display:grid;gap:0.25rem;padding:0.5rem 1rem;border-inline-start:var(--border-width) solid var(--line);font:400 var(--text-label)/1.33 var(--font-sans);color:var(--ink-muted);}.ds-readout strong{font:600 var(--text-readout)/1.15 var(--font-sans);letter-spacing:-0.035em;color:var(--ink);font-variant-numeric:tabular-nums;}"
     }
   ],
   "narrative": {
-    "northStar": "Quiet Blue \u2014 White First",
-    "overview": "White First is a mature measurement workspace: white surfaces, neutral gray\nsupporting regions, precise typography, and restrained blue actions. Its dark\ntheme uses neutral charcoal and soft white ink with the same hierarchy.\n\nLocally bundled DM Sans, tabular numerals, and generous section spacing support\nrepeated inspection. Preserve the TokenInsights text wordmark, offline assets, explicit\nstates, and existing analytical behavior.\n\nThis browser contract derives from [tokens.css](packages/web/src/tokens.css),\nshared styles, and UI primitives. Frontmatter records light roles and dark\ncounterparts; explicit and system themes use the same roles. Architecture remains\nin [docs/design.md](docs/design.md); terminal styling in\n[packages/cli/DESIGN.md](packages/cli/DESIGN.md).",
+    "northStar": "Quiet Blue — White First",
+    "overview": "White First is a mature measurement workspace: white surfaces, neutral gray supporting regions, precise typography, and restrained blue actions. Its dark theme uses neutral charcoal and soft white ink with the same hierarchy.\n\nLocally bundled DM Sans, tabular numerals, and compact section spacing support repeated inspection. Preserve the TokenInsights text wordmark, offline assets, explicit states, and existing analytical behavior.\n\nThis browser contract derives from the token layers and primitives in [`packages/web/src/ui/`](packages/web/src/ui/). Frontmatter colors record each semantic role's light value and its `dark-` counterpart, resolved through the palette; the design guard test fails when they drift. Architecture remains in [docs/design.md](docs/design.md); terminal styling in [packages/cli/DESIGN.md](packages/cli/DESIGN.md).",
     "keyCharacteristics": [
       "White light surfaces and neutral charcoal dark surfaces.",
       "Blue actions, selection, focus, and principal chart series.",
-      "Sidebar navigation, a visible dashboard title, and rule-separated analytics.",
-      "Wrapping filters, scalable type, and visible keyboard focus."
+      "Sidebar navigation, a compact current-view heading, and rule-separated analytics.",
+      "Wrapping filters, scalable type, and visible keyboard focus.",
+      "One component library owns appearance; features own layout."
     ],
     "rules": [
       {
+        "name": "The One Owner Rule",
+        "body": "A color, size or state lives in one token or one primitive. Features never restyle a primitive's color, border or typography.",
+        "section": "overview"
+      },
+      {
         "name": "The Neutral Surface Rule",
         "body": "Keep large surfaces white or neutral gray in light mode and neutral charcoal in dark mode. Blue belongs to feedback and plotted data; readout values remain neutral.",
+        "section": "colors"
+      },
+      {
+        "name": "The Selection Rule",
+        "body": "Every selected state is the `selected` tint with `selected-ink` and no border: navigation, segmented controls, date presets, active filter triggers and chips. `aria-pressed`, `aria-current=\"page\"` or the Button `selected` prop drive it through one `selected:` variant, which keeps its look while hovered. Hover is neutral (`surface-hover`, main ink) so it never reads as selected.",
         "section": "colors"
       },
       {
@@ -1233,13 +1236,19 @@
       },
       {
         "name": "The Flat Workspace Rule",
-        "body": "Use fine rules and surface tone at rest. Reserve the shared shadow for overlays and chart tooltips.",
+        "body": "Use fine rules and surface tone at rest. Reserve the overlay shadow for floating layers.",
         "section": "elevation"
+      },
+      {
+        "name": "The Visible Focus Rule",
+        "body": "Every focusable element shows a 2px `focus` outline with a 2px offset (`focus-ring`). Inside clipped regions (navigation, table scroll, resize handles) the outline insets (`focus-ring-inset`); search wrappers own their outline (`focus-ring-within`).",
+        "section": "shapes"
       }
     ],
     "dos": [
       "Do use blue for actions, selection, focus, and the principal plotted series.",
       "Do keep both themes neutral, with readable supporting ink.",
+      "Do add a semantic role before adding a color, size or layer; reference it from a primitive.",
       "Do use shared control sizes, visible focus, and enlarged touch targets.",
       "Do wrap filters, navigation, and chart controls; keep every view reachable.",
       "Do keep source identity, complete dates, and result summaries readable at enlarged text sizes."
@@ -1248,7 +1257,8 @@
       "Don't tint large workspace surfaces blue.",
       "Don't add separate metric cards or selection borders to static readouts.",
       "Don't rely on color alone for selection, categories, or status.",
-      "Don't add decorative chart animation, remote font dependencies, or arbitrary overlay shadows."
+      "Don't use palette variables, raw colors or arbitrary Tailwind values in features.",
+      "Don't override a primitive's color, border or type from a feature; add a variant instead."
     ]
   }
 }

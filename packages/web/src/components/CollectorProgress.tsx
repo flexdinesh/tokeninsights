@@ -1,3 +1,4 @@
+import { Heading } from '@/ui'
 import type { CollectorProgress as Progress } from '../contracts'
 
 export const collectorStages = {
@@ -30,11 +31,16 @@ export function CollectorProgress({ progress }: { progress: Progress | undefined
   const visible = terminal ? [...active, terminal] : active
   if (visible.length === 0) return null
   return (
-    <section className="collector-progress" aria-label="Collector progress">
+    <section
+      className="mt-3 grid gap-3 text-label text-ink-subtle [&_p]:my-1"
+      aria-label="Collector progress"
+    >
       {visible.map((attempt) => (
         <div key={attempt.attemptId}>
           {!['waiting', 'capturing', 'submitting'].includes(attempt.stage) && (
-            <h3>Latest collection</h3>
+            <Heading as="h3" variant="sub" className="text-ink">
+              Latest collection
+            </Heading>
           )}
           <AttemptStatus attempt={attempt} />
           <HarnessStates harnesses={attempt.harnesses} />
@@ -61,7 +67,11 @@ function AttemptStatus({ attempt }: { attempt: Progress['attempts'][number] }) {
 function HarnessStates({ harnesses }: { harnesses: Progress['attempts'][number]['harnesses'] }) {
   return (
     <>
-      <ul aria-label="Collection by harness" title="This run only; saved usage remains included.">
+      <ul
+        className="my-1 flex flex-wrap gap-x-4 gap-y-2"
+        aria-label="Collection by harness"
+        title="This run only; saved usage remains included."
+      >
         {Object.entries(harnesses).map(([harness, state]) => (
           <li
             key={harness}

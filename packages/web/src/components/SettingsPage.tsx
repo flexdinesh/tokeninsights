@@ -20,40 +20,86 @@ import { useIdentity } from '../identity'
 import { initialQuery, parseDashboardSearch } from '../query'
 import { DashboardPreferencesProvider } from '../state'
 import { DashboardSidebar } from './DashboardSidebar'
-import { Button } from './ui/button'
-import { Input } from './ui/input'
+import type { ReactNode } from 'react'
+import {
+  AppShell,
+  Button,
+  Field,
+  Heading,
+  Input,
+  PageContent,
+  PageHeader,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+  StartupShell,
+  Text,
+} from '@/ui'
 
 export function SettingsPage() {
   const { bootstrap, onSignOut } = useIdentity()
   if (bootstrap.serverKind !== 'hosted')
     return (
-      <main className="startup-state">
-        <h1>Account settings unavailable</h1>
+      <StartupShell>
+        <Heading as="h1" variant="page">
+          Account settings unavailable
+        </Heading>
         <p>Your local workspace manages identity automatically.</p>
         <UsageLink />
-      </main>
+      </StartupShell>
     )
   return (
     <DashboardPreferencesProvider>
-      <div className="app-shell dashboard-shell">
-        <DashboardSidebar
-          query={initialQuery(bootstrap.defaults)}
-          localMachine={false}
-          onSignOut={onSignOut}
-        />
-        <div className="dashboard-main">
-          <header className="app-header">
-            <h1 className="header-view">/ Account settings</h1>
-            <div className="header-actions">
-              <UsageLink />
-            </div>
-          </header>
-          <main className="dashboard account-settings">
-            <AccountSettings />
-          </main>
-        </div>
-      </div>
+      <AppShell
+        sidebar={
+          <DashboardSidebar
+            query={initialQuery(bootstrap.defaults)}
+            localMachine={false}
+            onSignOut={onSignOut}
+          />
+        }
+        header={
+          <PageHeader title="/ Account settings">
+            <UsageLink />
+          </PageHeader>
+        }
+      >
+        <PageContent className="max-w-settings">
+          <AccountSettings />
+        </PageContent>
+      </AppShell>
     </DashboardPreferencesProvider>
+  )
+}
+
+function SettingsSection({
+  id,
+  title,
+  icon,
+  description,
+  children,
+}: {
+  id: string
+  title: string
+  icon?: ReactNode
+  description?: ReactNode
+  children: ReactNode
+}) {
+  return (
+    <section className="border-b border-line py-6" aria-labelledby={id}>
+      <div className="mb-2 flex flex-wrap items-center gap-3 [&>svg]:size-5">
+        {icon}
+        <Heading id={id}>{title}</Heading>
+      </div>
+      {description && (
+        <Text variant="secondary" className="mb-4">
+          {description}
+        </Text>
+      )}
+      {children}
+    </section>
   )
 }
 
@@ -72,7 +118,7 @@ function AccountSettings() {
   const account = useAccount(bootstrap.datasetId, true)
   if (!account.data)
     return (
-      <div className="settings-state">
+      <div className="py-4 text-ink-subtle">
         {account.error ? (
           <>
             <p role="alert">Couldn’t load your account. {account.error.message}</p>
@@ -85,19 +131,15 @@ function AccountSettings() {
     )
   return (
     <>
-      <section className="settings-section" aria-labelledby="account-heading">
-        <div className="settings-heading">
-          <UserRound size="1.25em" />
-          <h2 id="account-heading">Account</h2>
-        </div>
-        <dl className="account-details">
-          <dt>Username</dt>
-          <dd>{account.data.username}</dd>
+      <SettingsSection id="account-heading" title="Account" icon={<UserRound aria-hidden="true" />}>
+        <dl className="my-4">
+          <dt className="text-ink-subtle">Username</dt>
+          <dd className="my-1 font-semibold wrap-anywhere">{account.data.username}</dd>
         </dl>
         <Button variant="outline" onClick={() => void onSignOut()}>
           Sign out
         </Button>
-      </section>
+      </SettingsSection>
       <PasswordSettings />
       <APIKeySettings />
     </>
@@ -140,56 +182,59 @@ function PasswordSettings() {
     }
   }
   return (
-    <section className="settings-section" aria-labelledby="password-heading">
-      <h2 id="password-heading">Password</h2>
-      <p>Changing your password signs you out on all devices. API keys stay active.</p>
-      <form className="settings-form" onSubmit={(event) => void submit(event)}>
-        <label htmlFor="current-password">Current password</label>
-        <Input
-          id="current-password"
-          type="password"
-          autoComplete="current-password"
-          value={currentPassword}
-          onChange={(event) => setCurrentPassword(event.target.value)}
-          required
-          disabled={pending}
-        />
-        <label htmlFor="new-password">New password</label>
-        <Input
-          id="new-password"
-          type="password"
-          autoComplete="new-password"
-          value={password}
-          onChange={(event) => setPassword(event.target.value)}
-          required
-          disabled={pending}
-          aria-describedby="new-password-help"
-        />
-        <p id="new-password-help" className="field-help">
-          {passwordMinCharacters}–{passwordMaxCharacters} characters.
-        </p>
-        <label htmlFor="confirm-password">Confirm new password</label>
-        <Input
-          id="confirm-password"
-          type="password"
-          autoComplete="new-password"
-          value={confirmation}
-          onChange={(event) => setConfirmation(event.target.value)}
-          required
-          disabled={pending}
-          aria-invalid={Boolean(error)}
-          aria-describedby={error ? 'password-error' : undefined}
-        />
-        {error && (
-          <p id="password-error" role="alert">
-            {error}
-          </p>
-        )}
-        <Button type="submit" disabled={pending}>
+    <SettingsSection
+      id="password-heading"
+      title="Password"
+      description="Changing your password signs you out on all devices. API keys stay active."
+    >
+      <form className="grid max-w-form gap-4" onSubmit={(event) => void submit(event)}>
+        <Field label="Current password">
+          {(control) => (
+            <Input
+              {...control}
+              type="password"
+              autoComplete="current-password"
+              value={currentPassword}
+              onChange={(event) => setCurrentPassword(event.target.value)}
+              required
+              disabled={pending}
+            />
+          )}
+        </Field>
+        <Field
+          label="New password"
+          description={`${passwordMinCharacters}–${passwordMaxCharacters} characters.`}
+        >
+          {(control) => (
+            <Input
+              {...control}
+              type="password"
+              autoComplete="new-password"
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              required
+              disabled={pending}
+            />
+          )}
+        </Field>
+        <Field label="Confirm new password" error={error || undefined}>
+          {(control) => (
+            <Input
+              {...control}
+              type="password"
+              autoComplete="new-password"
+              value={confirmation}
+              onChange={(event) => setConfirmation(event.target.value)}
+              required
+              disabled={pending}
+            />
+          )}
+        </Field>
+        <Button type="submit" className="justify-self-start" disabled={pending}>
           {pending ? 'Changing password…' : 'Change password'}
         </Button>
       </form>
-    </section>
+    </SettingsSection>
   )
 }
 
@@ -198,7 +243,7 @@ function APIKeySettings() {
   const client = useQueryClient()
   const keys = useAPIKeys(bootstrap.datasetId)
   const [label, setLabel] = useState('')
-  const [access, setAccess] = useState('sync')
+  const [access, setAccess] = useState<'sync' | 'read'>('sync')
   const [expires, setExpires] = useState('')
   const [created, setCreated] = useState<APIKeyCreated>()
   const [pending, setPending] = useState(false)
@@ -255,9 +300,11 @@ function APIKeySettings() {
     }
   }
   return (
-    <section className="settings-section" aria-labelledby="keys-heading">
-      <h2 id="keys-heading">API keys</h2>
-      <p>Use a key in your collector configuration to sync usage to this account.</p>
+    <SettingsSection
+      id="keys-heading"
+      title="API keys"
+      description="Use a key in your collector configuration to sync usage to this account."
+    >
       {created ? (
         <CreatedKey
           value={created}
@@ -267,57 +314,81 @@ function APIKeySettings() {
           }}
         />
       ) : (
-        <form className="settings-form" onSubmit={(event) => void submit(event)}>
-          <label htmlFor="key-label">Key name</label>
-          <Input
-            id="key-label"
-            ref={keyNameRef}
-            placeholder="Work laptop"
-            value={label}
-            onChange={(event) => setLabel(event.target.value)}
-            required
-            disabled={pending}
-          />
-          <label htmlFor="key-access">Access</label>
-          <select
-            id="key-access"
-            value={access}
-            onChange={(event) => setAccess(event.target.value)}
-            disabled={pending}
-          >
-            <option value="sync">Sync usage (read and ingest)</option>
-            <option value="read">Read usage only</option>
-          </select>
-          <label htmlFor="key-expiry">Expires on (optional)</label>
-          <Input
-            id="key-expiry"
-            type="date"
-            value={expires}
-            onChange={(event) => setExpires(event.target.value)}
-            disabled={pending}
-          />
-          <Button type="submit" disabled={pending || !label.trim()}>
+        <form className="grid max-w-form gap-4" onSubmit={(event) => void submit(event)}>
+          <Field label="Key name">
+            {(control) => (
+              <Input
+                {...control}
+                ref={keyNameRef}
+                placeholder="Work laptop"
+                value={label}
+                onChange={(event) => setLabel(event.target.value)}
+                required
+                disabled={pending}
+              />
+            )}
+          </Field>
+          <Field label="Access">
+            {(control) => (
+              <Select
+                value={access}
+                onValueChange={(value) => {
+                  if (value === 'sync' || value === 'read') setAccess(value)
+                }}
+                disabled={pending}
+              >
+                <SelectTrigger {...control}>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="sync">Sync usage (read and ingest)</SelectItem>
+                  <SelectItem value="read">Read usage only</SelectItem>
+                </SelectContent>
+              </Select>
+            )}
+          </Field>
+          <Field label="Expires on (optional)">
+            {(control) => (
+              <Input
+                {...control}
+                type="date"
+                value={expires}
+                onChange={(event) => setExpires(event.target.value)}
+                disabled={pending}
+              />
+            )}
+          </Field>
+          <Button type="submit" className="justify-self-start" disabled={pending || !label.trim()}>
             {pending ? 'Creating key…' : 'Create API key'}
           </Button>
         </form>
       )}
-      {error && <p role="alert">{error}</p>}
+      {error && (
+        <Text variant="danger" role="alert" className="mt-4">
+          {error}
+        </Text>
+      )}
       {keys.error ? (
-        <div className="settings-state">
-          <p role="alert">Couldn’t load API keys. {keys.error.message}</p>
+        <div className="grid justify-items-start gap-2 py-4">
+          <Text variant="danger" role="alert">
+            Couldn’t load API keys. {keys.error.message}
+          </Text>
           <Button variant="outline" onClick={() => void keys.refetch()}>
             Retry keys
           </Button>
         </div>
       ) : keys.data ? (
         keys.data.keys.length ? (
-          <ul className="api-key-list">
+          <ul className="mt-6">
             {keys.data.keys.map((key) => (
-              <li key={key.tokenId}>
+              <li
+                key={key.tokenId}
+                className="flex flex-wrap items-center justify-between gap-3 border-t border-line py-4"
+              >
                 <KeyDetails value={key} />
                 <Button
                   variant="outline"
-                  size="sm"
+                  size="compact"
                   disabled={Boolean(revoking) || Boolean(key.revokedAt)}
                   onClick={() => void revoke(key.tokenId)}
                   aria-label={`Revoke ${key.label}`}
@@ -328,12 +399,16 @@ function APIKeySettings() {
             ))}
           </ul>
         ) : (
-          <p className="settings-state">No API keys yet. Create one for your first collector.</p>
+          <Text variant="secondary" className="py-4">
+            No API keys yet. Create one for your first collector.
+          </Text>
         )
       ) : (
-        <p className="settings-state">Loading API keys…</p>
+        <Text variant="secondary" className="py-4">
+          Loading API keys…
+        </Text>
       )}
-    </section>
+    </SettingsSection>
   )
 }
 
@@ -341,9 +416,9 @@ function KeyDetails({ value }: { value: APIKeyInfo }) {
   const [now] = useState(() => Date.now())
   const expired = value.expiresAt !== undefined && new Date(value.expiresAt).getTime() <= now
   return (
-    <div>
-      <strong>{value.label}</strong>
-      <p>
+    <div className="min-w-0">
+      <strong className="wrap-anywhere">{value.label}</strong>
+      <Text variant="muted" className="mt-1">
         {value.permissions.includes('ingest')
           ? value.permissions.includes('read')
             ? 'Read and ingest'
@@ -355,7 +430,7 @@ function KeyDetails({ value }: { value: APIKeyInfo }) {
           : value.expiresAt
             ? `${expired ? 'Expired' : 'Expires'} ${new Date(value.expiresAt).toLocaleDateString()}`
             : 'No expiry'}
-      </p>
+      </Text>
     </div>
   )
 }
@@ -372,26 +447,37 @@ function CreatedKey({ value, onDone }: { value: APIKeyCreated; onDone: () => voi
     }
   }
   return (
-    <div className="created-key">
-      <h3>Save your API key</h3>
-      <p>This key is shown once. Copy it before closing.</p>
-      <label htmlFor="created-key">API key</label>
-      <Input
-        id="created-key"
-        ref={keyRef}
-        value={value.token}
-        readOnly
-        autoComplete="off"
-        spellCheck={false}
-      />
-      <div className="settings-actions">
+    <div className="grid max-w-form gap-4 py-4">
+      <div>
+        <Heading as="h3" variant="sub">
+          Save your API key
+        </Heading>
+        <Text variant="secondary" className="mt-1">
+          This key is shown once. Copy it before closing.
+        </Text>
+      </div>
+      <Field label="API key">
+        {(control) => (
+          <Input
+            {...control}
+            ref={keyRef}
+            value={value.token}
+            readOnly
+            autoComplete="off"
+            spellCheck={false}
+          />
+        )}
+      </Field>
+      <div className="flex flex-wrap items-center gap-3">
         <Button variant="outline" onClick={() => void copy()}>
-          <Copy size="1em" />
+          <Copy aria-hidden="true" />
           Copy key
         </Button>
         <Button onClick={onDone}>Done</Button>
       </div>
-      <p role="status">{message}</p>
+      <Text variant="secondary" role="status">
+        {message}
+      </Text>
     </div>
   )
 }

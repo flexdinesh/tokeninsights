@@ -1,10 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
-import { Activity, CircleAlert, LoaderCircle } from 'lucide-react'
 import type { CollectorProgress as Progress, SyncStatus } from '../contracts'
 import { formatServerDateTime, serverTimeZoneLabel } from '../format'
 import { CollectorProgress } from './CollectorProgress'
-import { Button } from './ui/button'
-import { Popover, PopoverContent, PopoverTrigger } from './ui/popover'
+import { Button, Popover, PopoverContent, PopoverTrigger, StatusIcon } from '@/ui'
 
 export type DashboardStatusValue = {
   label: string
@@ -57,7 +55,6 @@ export function DashboardStatus({
         <Button
           variant="ghost"
           size="icon"
-          className={`loading-status loading-status-${status.state}`}
           aria-label={`${statusScope} status: ${status.label}`}
           onPointerEnter={(event) => {
             if (event.pointerType === 'mouse') reveal()
@@ -73,13 +70,7 @@ export function DashboardStatus({
             reveal()
           }}
         >
-          {status.state === 'loading' ? (
-            <LoaderCircle className="spin" aria-hidden="true" />
-          ) : status.state === 'attention' ? (
-            <CircleAlert aria-hidden="true" />
-          ) : (
-            <Activity aria-hidden="true" />
-          )}
+          <StatusIcon state={status.state} />
           <span className="sr-only" role="status" aria-label={status.label}>
             {status.label}
           </span>
@@ -87,7 +78,7 @@ export function DashboardStatus({
       </PopoverTrigger>
       <PopoverContent
         align="end"
-        className="loading-status-details"
+        className="w-(--status-popover-width) max-w-(--radix-popover-content-available-width) text-label wrap-anywhere text-ink-subtle"
         aria-label={`${statusScope} status details`}
         onPointerEnter={reveal}
         onPointerLeave={leave}
@@ -95,7 +86,11 @@ export function DashboardStatus({
         onCloseAutoFocus={(event) => event.preventDefault()}
       >
         {localMachine && (
-          <div className="local-resource-usage" role="group" aria-label="Process resource usage">
+          <div
+            className="flex flex-wrap gap-3 text-ink tabular-nums"
+            role="group"
+            aria-label="Process resource usage"
+          >
             <span title="TokenInsights process CPU · 100% = one core">
               CPU{' '}
               {processUsage?.cpuPercent === undefined
@@ -110,9 +105,9 @@ export function DashboardStatus({
             </span>
           </div>
         )}
-        <p>{status.label}</p>
+        <p className="mt-2">{status.label}</p>
         {lastSynced ? (
-          <p>
+          <p className="mt-2">
             <time
               dateTime={new Date(lastSynced).toISOString()}
               title={serverTimeZoneLabel(timezone)}

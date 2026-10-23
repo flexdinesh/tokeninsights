@@ -154,7 +154,7 @@ test('enabled signup creates a browser session and an isolated account', async (
   await page.getByLabel('Password', { exact: true }).fill(hostedPassword)
   await page.getByRole('button', { name: 'Create account', exact: true }).click()
   await page.getByRole('link', { name: 'Account settings', exact: true }).click()
-  await expect(page.locator('.account-details')).toContainText(username)
+  await expect(page.getByRole('region', { name: 'Account', exact: true })).toContainText(username)
   await expect(
     page.getByText('No API keys yet. Create one for your first collector.'),
   ).toBeVisible()
@@ -184,11 +184,13 @@ test('a shared-cookie account switch rejects an old settings mutation before tou
   )
   // Submit without focusing the old tab: verify mutation binding independently
   // of the normal account-query refresh on focus.
-  await page.evaluate(() => document.getElementById('key-label')?.closest('form')?.requestSubmit())
+  await page
+    .getByLabel('Key name', { exact: true })
+    .evaluate((input) => input.closest('form')?.requestSubmit())
   expect((await rejection).status()).toBe(409)
   await expect(page.getByRole('heading', { name: 'Sign in to TokenInsights' })).toBeVisible()
-  await expect(page.locator('.account-details')).toHaveCount(0)
+  await expect(page.getByRole('region', { name: 'Account', exact: true })).toHaveCount(0)
   await other.getByRole('link', { name: 'Account settings', exact: true }).click()
-  await expect(other.locator('.account-details')).toContainText('bob')
+  await expect(other.getByRole('region', { name: 'Account', exact: true })).toContainText('bob')
   await expect(other.getByText('Old account must not create this', { exact: true })).toHaveCount(0)
 })

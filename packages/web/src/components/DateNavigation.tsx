@@ -1,7 +1,7 @@
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { calendarRange, calendarRangeLabel, shiftCalendarRange } from '../dateRange'
 import { useDashboardQuery } from '../state'
-import { Button } from './ui/button'
+import { Button } from '@/ui'
 
 export function DateNavigation({ timezone }: { timezone: string }) {
   const { query, updateSelection } = useDashboardQuery()
@@ -25,28 +25,35 @@ export function DateNavigation({ timezone }: { timezone: string }) {
   }
 
   return (
-    <nav className="date-navigation" aria-label="Period navigation">
+    <nav
+      className="ml-auto flex max-w-full items-center gap-2 max-compact:w-full max-compact:justify-between"
+      aria-label="Period navigation"
+    >
       <Button
         variant="outline"
-        size="icon-sm"
+        size="icon-compact"
         aria-label={`Previous ${unit}`}
         title={`Previous ${unit}`}
         onClick={() => move(-1)}
       >
-        <ChevronLeft size="1em" />
+        <ChevronLeft aria-hidden="true" />
       </Button>
-      <span className="date-navigation-label" aria-live="polite" aria-atomic="true">
+      <span
+        className="text-center text-label wrap-anywhere tabular-nums max-compact:flex-1"
+        aria-live="polite"
+        aria-atomic="true"
+      >
         {calendarRangeLabel(period, range.from, range.to)}
       </span>
       <Button
         variant="outline"
-        size="icon-sm"
+        size="icon-compact"
         aria-label={`Next ${unit}`}
         title={`Next ${unit}`}
         disabled={atCurrent}
         onClick={() => move(1)}
       >
-        <ChevronRight size="1em" />
+        <ChevronRight aria-hidden="true" />
       </Button>
     </nav>
   )

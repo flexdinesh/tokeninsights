@@ -23,10 +23,21 @@ const client = new QueryClient({
 })
 const root = document.getElementById('root')
 if (!root) throw new Error('Application root missing')
-createRoot(root).render(
-  <StrictMode>
-    <QueryClientProvider client={client}>
-      <RouterProvider router={router} />
-    </QueryClientProvider>
-  </StrictMode>,
-)
+// The design catalog renders outside the app router because the root route
+// requires a server bootstrap. Production builds drop this branch and chunk.
+if (import.meta.env.DEV && window.location.pathname === '/_design') {
+  const { DesignCatalog } = await import('./design/DesignCatalog')
+  createRoot(root).render(
+    <StrictMode>
+      <DesignCatalog />
+    </StrictMode>,
+  )
+} else {
+  createRoot(root).render(
+    <StrictMode>
+      <QueryClientProvider client={client}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>
+    </StrictMode>,
+  )
+}

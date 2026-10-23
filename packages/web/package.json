@@ -7,7 +7,8 @@
     "dev:mock": "vite --host 0.0.0.0 --mode mock",
     "build": "tsc --noEmit && vite build",
     "test": "tsc --noEmit && vitest run",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "design:capture": "node scripts/capture-design.ts"
   },
   "dependencies": {
     "@radix-ui/react-checkbox": "^1.4.1",

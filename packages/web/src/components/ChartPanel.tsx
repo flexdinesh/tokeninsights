@@ -3,9 +3,7 @@ import { CatchBoundary } from '@tanstack/react-router'
 import type { Row } from '../contracts'
 import { apiQueryParams } from '../query'
 import { useDashboardQuery } from '../state'
-import { Alert, AlertDescription } from './ui/alert'
-import { Button } from './ui/button'
-import { Skeleton } from './ui/skeleton'
+import { Alert, AlertDescription, Button, Skeleton } from '@/ui'
 
 const UsageChart = lazy(() =>
   import('./UsageChart').then((module) => ({ default: module.UsageChart })),
@@ -13,7 +11,7 @@ const UsageChart = lazy(() =>
 
 function ChartError() {
   return (
-    <Alert className="error-banner" variant="destructive" role="alert">
+    <Alert className="my-3" variant="destructive" role="alert">
       <AlertDescription>Chart couldn’t load. Reload the page to try again.</AlertDescription>
       <Button variant="outline" onClick={() => window.location.reload()}>
         Reload page
@@ -36,7 +34,13 @@ export function ChartPanel({
   return (
     <CatchBoundary getResetKey={() => resetKey} errorComponent={ChartError}>
       <Suspense
-        fallback={<Skeleton className="skeleton-chart" role="status" aria-label="Loading chart" />}
+        fallback={
+          <Skeleton
+            className="h-(--skeleton-chart-height)"
+            role="status"
+            aria-label="Loading chart"
+          />
+        }
       >
         <UsageChart rows={rows} totalTokens={totalTokens} timezone={timezone} />
       </Suspense>

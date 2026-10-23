@@ -13,7 +13,7 @@ test('excluded usage stays separate through review, return and browser history',
   await expect(page.getByLabel('Total tokens: 344,000', { exact: true })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Confirmed', exact: true })).toHaveCount(0)
   await expect(page.getByRole('button', { name: 'Estimated', exact: true })).toHaveCount(0)
-  await expect(page.locator('.excluded-usage-notice')).toContainText('120 tokens')
+  await expect(page.getByText(/^Usage excluded from totals/)).toContainText('120 tokens')
   await page.getByRole('button', { name: 'Review excluded usage', exact: true }).click()
   await expect(page).toHaveURL(/quality=estimated/)
   await expect(page.getByLabel('Excluded tokens: 120', { exact: true })).toBeVisible()
@@ -42,11 +42,17 @@ test('excluded review retains filters and empty usage offers recovery', async ({
   await expect(page).toHaveURL(/model=estimated-model/)
   await expect(page.getByLabel('Total tokens: 0', { exact: true })).toBeVisible()
   await expect(page.getByRole('heading', { name: 'No usage matches these filters' })).toBeVisible()
-  await page.locator('.empty-state').getByRole('button', { name: 'Review excluded usage' }).click()
+  await page
+    .getByRole('region', { name: 'Models details', exact: true })
+    .getByRole('button', { name: 'Review excluded usage' })
+    .click()
   await expect(page.getByLabel('Excluded tokens: 120', { exact: true })).toBeVisible()
   await expect(page).toHaveURL(/model=estimated-model/)
   await page.getByRole('button', { name: 'Back to usage', exact: true }).click()
-  await page.locator('.empty-state').getByRole('button', { name: 'Clear filters' }).click()
+  await page
+    .getByRole('region', { name: 'Models details', exact: true })
+    .getByRole('button', { name: 'Clear filters' })
+    .click()
   await expect(page.getByLabel('Total tokens: 344,000', { exact: true })).toBeVisible()
   expect(new URL(page.url()).searchParams.getAll('model')).toEqual([])
 })
@@ -56,7 +62,7 @@ test('no matching excluded usage keeps the main dashboard free of review control
 }) => {
   await page.goto('/models?period=all&model=model-a')
   await expect(page.getByLabel('Total tokens: 172,000', { exact: true })).toBeVisible()
-  await expect(page.locator('.excluded-usage-notice')).toHaveCount(0)
+  await expect(page.getByText(/^Usage excluded from totals/)).toHaveCount(0)
   await expect(page.getByRole('button', { name: 'Review excluded usage' })).toHaveCount(0)
 })
 
@@ -71,7 +77,7 @@ test('excluded disclosure respects Repo location filters', async ({ page }) => {
     `/repo?period=all&locationGroup=directory&directory=${encodeURIComponent(directory.locationKey)}`,
   )
   await expect(page.getByLabel('Total tokens: 68,800', { exact: true })).toBeVisible()
-  await expect(page.locator('.excluded-usage-notice')).toHaveCount(0)
+  await expect(page.getByText(/^Usage excluded from totals/)).toHaveCount(0)
   await expect(page.getByRole('button', { name: 'Review excluded usage' })).toHaveCount(0)
 })
 

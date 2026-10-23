@@ -15,8 +15,7 @@ import type { Row, Sort } from '../contracts'
 import { exactCount, formatCount, formatServerDateTime, serverTimeZoneLabel } from '../format'
 import { useDashboardPreferences, useDashboardQuery } from '../state'
 import { BucketControl } from './Filters'
-import { Button } from './ui/button'
-import { Card } from './ui/card'
+import { Button, cn, SectionHeader, SegmentedControl } from '@/ui'
 
 const metrics: { key: Sort; label: string }[] = [
   { key: 'total', label: 'Total' },
@@ -46,7 +45,7 @@ export function categoricalChartColor(index: number): string {
   return categoricalColors[index % categoricalColors.length] ?? categoricalColors[0] ?? ''
 }
 
-const axisTick = { fill: 'var(--color-text-muted)', fontSize: 'var(--text-xs)' }
+const axisTick = { fill: 'var(--ink-subtle)', fontSize: 'var(--text-label)' }
 
 function TimelineTick({
   x,
@@ -76,13 +75,13 @@ function TimelineTick({
   )
 }
 const tooltipStyle = {
-  background: 'var(--color-surface)',
-  color: 'var(--color-text-primary)',
-  border: 'var(--border-width) solid var(--color-border)',
+  background: 'var(--surface-overlay)',
+  color: 'var(--ink)',
+  border: 'var(--border-width) solid var(--line)',
   borderRadius: 'var(--radius-md)',
   padding: 'var(--space-3)',
   boxShadow: 'var(--shadow-overlay)',
-  fontSize: 'var(--text-xs)',
+  fontSize: 'var(--text-label)',
 }
 
 function tooltipFormatter(value: unknown): string {
@@ -157,53 +156,53 @@ export function UsageChart({
     tokenShare: formatTokenShare(r.total, totalTokens),
   }))
   return (
-    <Card className="chart-panel panel" role="region" aria-label={title}>
-      <div className="panel-heading">
-        <div>
-          <h2>{title}</h2>
-          <p className={timeline ? 'sr-only' : undefined}>
-            {timeline
-              ? 'Token usage across the selected range'
-              : context
-                ? 'Top 12 groups by average in-range session peak'
-                : query.tab === 'repo'
-                  ? 'Top 12 location rows by total tokens · % of filtered total'
-                  : 'Top 12 by total tokens · % of filtered total · select a label to filter'}
-          </p>
-        </div>
-        {timeline ? (
-          <div className="chart-controls">
-            <div className="chart-metrics" aria-label="Chart metric">
-              {metrics.map((m) => (
-                <Button
-                  key={m.key}
-                  variant="ghost"
-                  size="sm"
-                  aria-pressed={metric === m.key}
-                  onClick={() => setChartMetric(m.key)}
-                >
-                  {m.label}
-                </Button>
-              ))}
-            </div>
-            <BucketControl />
-          </div>
-        ) : (
-          <span className="chart-unit">
-            {context
-              ? 'Prompt-side tokens'
-              : reviewingExcluded
-                ? 'Excluded tokens'
-                : 'Countable tokens'}
-          </span>
-        )}
-      </div>
+    <section className="my-2" aria-label={title}>
+      <SectionHeader
+        className="pt-0"
+        title={title}
+        hideDescription={timeline}
+        description={
+          timeline
+            ? 'Token usage across the selected range'
+            : context
+              ? 'Top 12 groups by average in-range session peak'
+              : query.tab === 'repo'
+                ? 'Top 12 location rows by total tokens · % of filtered total'
+                : 'Top 12 by total tokens · % of filtered total · select a label to filter'
+        }
+        actions={
+          timeline ? (
+            <>
+              <SegmentedControl
+                label="Chart metric"
+                options={metrics.map((m) => ({ value: m.key, label: m.label }))}
+                value={metric}
+                onValueChange={setChartMetric}
+              />
+              <BucketControl />
+            </>
+          ) : (
+            <span className="text-label text-ink-subtle">
+              {context
+                ? 'Prompt-side tokens'
+                : reviewingExcluded
+                  ? 'Excluded tokens'
+                  : 'Countable tokens'}
+            </span>
+          )
+        }
+      />
       {rows.length === 0 ? (
-        <div className="chart-empty">
+        <div className="grid min-h-(--chart-height) place-items-center p-4 text-center text-body text-ink-subtle">
           {reviewingExcluded ? 'No excluded usage in this range' : 'No usage in this range'}
         </div>
       ) : (
-        <div className={`chart-canvas${showTokenShares ? ' chart-canvas-shares' : ''}`}>
+        <div
+          className={cn(
+            'h-(--chart-height) pr-1 tabular-nums',
+            showTokenShares && 'overflow-x-auto',
+          )}
+        >
           <ResponsiveContainer
             width="100%"
             height="100%"
@@ -219,7 +218,7 @@ export function UsageChart({
                 margin={{ top: 12, right: 12, left: 0, bottom: 0 }}
                 accessibilityLayer
               >
-                <CartesianGrid vertical={false} stroke="var(--color-border)" />
+                <CartesianGrid vertical={false} stroke="var(--line)" />
                 <XAxis
                   dataKey="label"
                   tickLine={false}
@@ -244,7 +243,7 @@ export function UsageChart({
                       : String(label)
                   }}
                   contentStyle={tooltipStyle}
-                  itemStyle={{ color: 'var(--color-text-primary)' }}
+                  itemStyle={{ color: 'var(--ink)' }}
                 />
                 <Area
                   type="linear"
@@ -264,7 +263,7 @@ export function UsageChart({
                 margin={{ top: showTokenShares ? 28 : 12, right: 12, left: 0, bottom: 0 }}
                 accessibilityLayer
               >
-                <CartesianGrid vertical={false} stroke="var(--color-border)" />
+                <CartesianGrid vertical={false} stroke="var(--line)" />
                 <XAxis
                   dataKey="label"
                   height={categoryAxisHeight}
@@ -290,7 +289,7 @@ export function UsageChart({
                       : tooltipFormatter(value)
                   }
                   contentStyle={tooltipStyle}
-                  itemStyle={{ color: 'var(--color-text-primary)' }}
+                  itemStyle={{ color: 'var(--ink)' }}
                 />
                 {context ? (
                   <>
@@ -303,13 +302,13 @@ export function UsageChart({
                     <Bar
                       dataKey="medianContext"
                       name="Median"
-                      fill="var(--color-chart-secondary)"
+                      fill="var(--chart-2)"
                       isAnimationActive={false}
                     />
                     <Bar
                       dataKey="maxContext"
                       name="Maximum"
-                      fill="var(--color-chart-tertiary)"
+                      fill="var(--chart-3)"
                       isAnimationActive={false}
                     />
                   </>
@@ -327,8 +326,8 @@ export function UsageChart({
                       <LabelList
                         dataKey="tokenShare"
                         position="top"
-                        fill="var(--color-text-primary)"
-                        fontSize="var(--text-xs)"
+                        fill="var(--ink)"
+                        fontSize="var(--text-label)"
                       />
                     )}
                   </Bar>
@@ -339,42 +338,58 @@ export function UsageChart({
         </div>
       )}
       {filterDimension && rows.length > 0 && (
-        <div className="chart-drilldowns" aria-label="Filter by chart item">
+        <div
+          className="flex flex-wrap justify-center gap-x-3 gap-y-2 px-(--panel-padding) pb-4"
+          role="group"
+          aria-label="Filter by chart item"
+        >
           {rows.map((row, index) => (
             <Button
               key={row.key}
-              variant="ghost"
-              size="sm"
-              className="chart-filter"
+              variant="link"
+              size="compact"
+              className="max-w-full justify-start text-left whitespace-normal wrap-anywhere"
               onClick={() => updateSelection({ [filterDimension]: [row.name] })}
               title={`Filter ${row.name}`}
             >
-              <span
-                className="legend-dot"
-                style={{ backgroundColor: categoricalChartColor(index) }}
-              />
-              <span className="chart-filter-name">{row.name}</span>
-              <span className="chart-share">{formatTokenShare(row.total, totalTokens)}</span>
+              <LegendSwatch color={categoricalChartColor(index)} />
+              <span className="min-w-0">{row.name}</span>
+              <span className="shrink-0 whitespace-nowrap tabular-nums">
+                {formatTokenShare(row.total, totalTokens)}
+              </span>
             </Button>
           ))}
         </div>
       )}
       {context && (
-        <ul className="context-legend" aria-label="Context chart legend">
+        <ul
+          className="flex flex-wrap justify-center gap-x-4 gap-y-2 px-(--panel-padding) pt-2 pb-4 text-label text-ink-muted"
+          aria-label="Context chart legend"
+        >
           {contextLegend.map(({ label, color }) => (
-            <li key={label}>
-              <span className="legend-dot" style={{ backgroundColor: color }} />
+            <li key={label} className="flex items-center gap-2">
+              <LegendSwatch color={color} />
               {label}
             </li>
           ))}
         </ul>
       )}
       {context && (
-        <p className="chart-note">
+        <p className="px-(--panel-padding) pb-4 text-label text-ink-subtle">
           Context = input + cache read + cache write. Each session contributes its peak within the
           selected range.
         </p>
       )}
-    </Card>
+    </section>
+  )
+}
+
+function LegendSwatch({ color }: { color: string }) {
+  return (
+    <span
+      aria-hidden="true"
+      className="inline-block size-2 shrink-0 rounded-sm"
+      style={{ backgroundColor: color }}
+    />
   )
 }

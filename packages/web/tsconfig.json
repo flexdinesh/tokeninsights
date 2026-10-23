@@ -16,5 +16,5 @@
     "allowImportingTsExtensions": true,
     "paths": { "@/*": ["./src/*"] }
   },
-  "include": ["src", "vite.config.ts", "playwright.config.ts", "e2e/*.ts"]
+  "include": ["src", "vite.config.ts", "playwright.config.ts", "e2e/*.ts", "scripts/*.ts"]
 }

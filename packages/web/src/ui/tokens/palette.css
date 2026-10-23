@@ -1,0 +1,66 @@
+/*
+ * Palette: raw values only. Private to src/ui/tokens; components and feature
+ * styles use the semantic roles in semantic.css, never these names.
+ * Steps: -600 serves light surfaces, -300 serves dark surfaces.
+ */
+:root {
+  /* Cool gray: White First light theme. */
+  --palette-gray-0: #ffffff;
+  --palette-gray-25: #fafafa;
+  --palette-gray-50: #f7f7f7;
+  --palette-gray-75: #f1f1f2;
+  --palette-gray-150: #e3e3e5;
+  --palette-gray-450: #929299;
+  --palette-gray-600: #64666d;
+  --palette-gray-900: #22252b;
+
+  /* Neutral charcoal: dark theme. */
+  --palette-charcoal-50: #efefef;
+  --palette-charcoal-250: #b7b7b7;
+  --palette-charcoal-300: #aaaaaa;
+  --palette-charcoal-550: #666666;
+  --palette-charcoal-750: #343434;
+  --palette-charcoal-800: #292929;
+  --palette-charcoal-850: #222222;
+  --palette-charcoal-875: #1b1b1b;
+  --palette-charcoal-900: #181818;
+
+  --palette-blue-600: #285bd4;
+  --palette-blue-300: #82aaff;
+
+  --palette-red-600: oklch(0.56 0.22 27);
+  --palette-red-300: oklch(0.68 0.19 23);
+  --palette-red-50: oklch(0.96 0.025 25);
+  --palette-red-950: oklch(0.2 0.04 25);
+  --palette-green-600: oklch(0.49 0.14 155);
+  --palette-green-300: oklch(0.72 0.16 155);
+  --palette-amber-600: oklch(0.55 0.14 75);
+  --palette-amber-300: oklch(0.78 0.15 80);
+
+  /* Categorical chart hues, ordered by chart slot 2..12 (slot 1 is blue). */
+  --palette-rose-600: #b45c7f;
+  --palette-rose-300: #e59aba;
+  --palette-orange-600: oklch(0.67 0.16 65);
+  --palette-orange-300: oklch(0.76 0.15 70);
+  --palette-teal-600: oklch(0.58 0.16 165);
+  --palette-teal-300: oklch(0.72 0.14 165);
+  --palette-scarlet-600: oklch(0.6 0.2 25);
+  --palette-scarlet-300: oklch(0.72 0.18 25);
+  --palette-magenta-600: oklch(0.62 0.18 330);
+  --palette-magenta-300: oklch(0.74 0.16 330);
+  --palette-cyan-600: oklch(0.55 0.14 200);
+  --palette-cyan-300: oklch(0.72 0.13 200);
+  --palette-lime-600: oklch(0.63 0.16 125);
+  --palette-lime-300: oklch(0.75 0.14 125);
+  --palette-yellow-600: oklch(0.61 0.15 90);
+  --palette-yellow-300: oklch(0.78 0.14 90);
+  --palette-azure-600: oklch(0.54 0.16 225);
+  --palette-azure-300: oklch(0.7 0.15 225);
+  --palette-pink-600: oklch(0.58 0.15 355);
+  --palette-pink-300: oklch(0.73 0.14 355);
+  --palette-brown-600: oklch(0.54 0.11 45);
+  --palette-brown-300: oklch(0.7 0.1 45);
+
+  --palette-shadow-light: rgb(0 0 0 / 12%);
+  --palette-shadow-dark: rgb(0 0 0 / 45%);
+}

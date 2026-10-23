@@ -1,14 +1,31 @@
 import { useEffect, useId, useRef, useState } from 'react'
-import { CalendarDays, Check, ChevronDown, Filter, Search, X } from 'lucide-react'
+import { CalendarDays, Check, ChevronDown, Filter } from 'lucide-react'
 import type { Dimension, Facets, Selection } from '../contracts'
 import { bucketSchema } from '../contracts'
 import { useDashboardQuery } from '../state'
 import { useFacets } from '../api'
-import { Button } from './ui/button'
-import { Checkbox } from './ui/checkbox'
-import { Input } from './ui/input'
-import { Popover, PopoverClose, PopoverContent, PopoverTrigger } from './ui/popover'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select'
+import {
+  Badge,
+  Button,
+  CheckboxOption,
+  Chip,
+  ControlLabel,
+  Field,
+  Input,
+  Popover,
+  PopoverClose,
+  PopoverContent,
+  PopoverHeader,
+  PopoverTrigger,
+  SearchField,
+  SegmentedControl,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+  Text,
+} from '@/ui'
 
 const dimensions: { key: Dimension; label: string }[] = [
   { key: 'harnesses', label: 'Harness' },
@@ -77,16 +94,20 @@ export function MultiSelect({
       <PopoverTrigger asChild>
         <Button
           variant="outline"
-          size="sm"
-          className={`filter-button ${selected.length ? 'is-selected' : ''}`}
+          size="compact"
+          selected={selected.length > 0}
+          className="max-w-full gap-1 max-compact:whitespace-normal"
           aria-label={`${label}${selected.length ? ` ${selected.length}` : ''}`}
         >
-          <span className="filter-label">{label}:</span>
-          <span className="filter-selection" aria-hidden="true">
+          <span>{label}:</span>
+          <span
+            className="max-w-(--filter-selection-width) truncate text-ink-subtle"
+            aria-hidden="true"
+          >
             {selected.length ? selectedNames.join(', ') : 'All'}
           </span>
-          {selected.length > 0 && <span className="count-badge">{selected.length}</span>}
-          <ChevronDown size="1em" />
+          {selected.length > 0 && <Badge>{selected.length}</Badge>}
+          <ChevronDown aria-hidden="true" />
         </Button>
       </PopoverTrigger>
       <PopoverContent
@@ -97,59 +118,65 @@ export function MultiSelect({
           searchInput.current?.focus()
         }}
       >
-        <div className="popover-heading">
-          <strong>{label}</strong>
-          <Button variant="ghost" size="sm" className="text-button" onClick={() => onChange([])}>
-            Clear
-          </Button>
-        </div>
-        <label className="search-field" htmlFor={searchId}>
-          <Search size="1em" />
-          <Input
-            ref={searchInput}
-            id={searchId}
-            aria-label={`Search ${label.toLowerCase()}`}
-            placeholder={`Find ${label.toLowerCase()}…`}
-            value={search}
-            onChange={(e) => {
-              if (controlledSearch === undefined) setLocalSearch(e.target.value)
-              onSearch?.(e.target.value)
-            }}
-          />
-        </label>
-        <div className="filter-options" aria-busy={loading}>
+        <PopoverHeader
+          title={label}
+          action={
+            <Button variant="link" size="compact" onClick={() => onChange([])}>
+              Clear
+            </Button>
+          }
+        />
+        <SearchField
+          ref={searchInput}
+          id={searchId}
+          className="my-2"
+          aria-label={`Search ${label.toLowerCase()}`}
+          placeholder={`Find ${label.toLowerCase()}…`}
+          value={search}
+          onChange={(e) => {
+            if (controlledSearch === undefined) setLocalSearch(e.target.value)
+            onSearch?.(e.target.value)
+          }}
+        />
+        <div className="mb-2 max-h-(--filter-options-max-height) overflow-auto" aria-busy={loading}>
           {options.map((value, index) => (
-            <label className="check-option" key={value.key} htmlFor={`${searchId}-${index}`}>
-              <Checkbox
-                id={`${searchId}-${index}`}
-                checked={selected.includes(value.key)}
-                onCheckedChange={() =>
-                  onChange(
-                    selected.includes(value.key)
-                      ? selected.filter((v) => v !== value.key)
-                      : [...selected, value.key],
-                  )
-                }
-              />
-              <span title={value.name}>{value.name}</span>
-            </label>
+            <CheckboxOption
+              key={value.key}
+              id={`${searchId}-${index}`}
+              label={value.name}
+              title={value.name}
+              checked={selected.includes(value.key)}
+              onCheckedChange={() =>
+                onChange(
+                  selected.includes(value.key)
+                    ? selected.filter((v) => v !== value.key)
+                    : [...selected, value.key],
+                )
+              }
+            />
           ))}
           {options.length === 0 && !error && (
-            <p className="muted">{loading ? 'Loading…' : 'No matching values'}</p>
+            <Text variant="muted">{loading ? 'Loading…' : 'No matching values'}</Text>
           )}
         </div>
         {error && (
           <div role="alert">
-            <p className="error-text">{error.message}</p>
-            <Button variant="outline" size="sm" onClick={error.onRetry} disabled={loading}>
+            <Text variant="danger" className="mb-2">
+              {error.message}
+            </Text>
+            <Button variant="outline" size="compact" onClick={error.onRetry} disabled={loading}>
               Retry {label.toLowerCase()} search
             </Button>
           </div>
         )}
-        {onSearch && <p className="hint">First 100 matches. Search to narrow results.</p>}
+        {onSearch && (
+          <Text variant="muted" className="my-2">
+            First 100 matches. Search to narrow results.
+          </Text>
+        )}
         <PopoverClose asChild>
-          <Button className="full-width">
-            <Check size="1em" />
+          <Button className="w-full">
+            <Check aria-hidden="true" />
             Done
           </Button>
         </PopoverClose>
@@ -227,85 +254,75 @@ function DateFilter() {
       <PopoverTrigger asChild>
         <Button
           variant="outline"
-          size="sm"
-          className="filter-button date-button"
+          size="compact"
+          className="max-w-full whitespace-normal wrap-anywhere"
           aria-label={`Date range: ${dateLabel}`}
         >
-          <CalendarDays size="1em" />
+          <CalendarDays aria-hidden="true" />
           {dateLabel}
-          <ChevronDown size="1em" />
+          <ChevronDown aria-hidden="true" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="date-popover" align="end" aria-label="Date range">
-        <strong>Date range</strong>
-        <div className="date-presets">
-          {periods.map((p) => (
-            <Button
-              key={p.value}
-              variant={
-                !editingCustom &&
-                (query.period === p.value || (p.value === 'today' && query.period === 'yesterday'))
-                  ? 'secondary'
-                  : 'outline'
-              }
-              aria-pressed={
-                !editingCustom &&
-                (query.period === p.value || (p.value === 'today' && query.period === 'yesterday'))
-              }
-              onClick={() => {
-                updateSelection({ period: p.value, from: '', to: '', dateMode: undefined })
-                setOpen(false)
-              }}
-            >
-              {p.label}
-            </Button>
-          ))}
-          <Button
-            variant={editingCustom ? 'secondary' : 'outline'}
-            aria-pressed={editingCustom}
-            onClick={() => setEditingCustom(true)}
-          >
-            Custom
-          </Button>
-        </div>
+      <PopoverContent align="end" aria-label="Date range">
+        <PopoverHeader title="Date range" />
+        <SegmentedControl
+          label="Date presets"
+          variant="outline"
+          size="default"
+          className="mt-2 mb-3 grid grid-cols-2 gap-2"
+          options={[...periods, { value: 'custom', label: 'Custom' }]}
+          value={editingCustom ? 'custom' : query.period === 'yesterday' ? 'today' : query.period}
+          onValueChange={(value) => {
+            if (value === 'custom') {
+              setEditingCustom(true)
+              return
+            }
+            updateSelection({ period: value, from: '', to: '', dateMode: undefined })
+            setOpen(false)
+          }}
+        />
         {editingCustom && (
           <>
-            <div className="date-inputs">
-              <label htmlFor={`${errorId}-from`}>
-                From
-                <Input
-                  id={`${errorId}-from`}
-                  aria-label="From date"
-                  aria-invalid={invalid || undefined}
-                  aria-describedby={invalid ? errorId : undefined}
-                  type="date"
-                  value={from}
-                  onChange={(e) => setFrom(e.target.value)}
-                />
-              </label>
-              <label htmlFor={`${errorId}-to`}>
-                To
-                <Input
-                  id={`${errorId}-to`}
-                  aria-label="To date"
-                  aria-invalid={invalid || undefined}
-                  aria-describedby={invalid ? errorId : undefined}
-                  type="date"
-                  value={to}
-                  onChange={(e) => setTo(e.target.value)}
-                />
-              </label>
+            <div className="grid grid-cols-2 gap-3 max-compact:grid-cols-1">
+              <Field label="From">
+                {(control) => (
+                  <Input
+                    {...control}
+                    aria-label="From date"
+                    aria-invalid={invalid || undefined}
+                    aria-describedby={invalid ? errorId : undefined}
+                    type="date"
+                    className="w-full"
+                    value={from}
+                    onChange={(e) => setFrom(e.target.value)}
+                  />
+                )}
+              </Field>
+              <Field label="To">
+                {(control) => (
+                  <Input
+                    {...control}
+                    aria-label="To date"
+                    aria-invalid={invalid || undefined}
+                    aria-describedby={invalid ? errorId : undefined}
+                    type="date"
+                    className="w-full"
+                    value={to}
+                    onChange={(e) => setTo(e.target.value)}
+                  />
+                )}
+              </Field>
             </div>
-            <p className="hint">
+            <Text variant="muted" className="my-2">
               Inclusive dates in the server’s local timezone. Either bound can be empty.
-            </p>
+            </Text>
             {invalid && (
-              <p id={errorId} role="alert" className="error-text">
+              <Text id={errorId} role="alert" variant="danger" className="mb-2">
                 From must not be after to.
-              </p>
+              </Text>
             )}
             <Button
-              className="full-width"
+              className="w-full"
               disabled={invalid || (!from && !to)}
               onClick={() => {
                 updateSelection({ from, to, dateMode: undefined })
@@ -338,117 +355,96 @@ export function FilterToolbar({
     (query.tab === 'repo' && locationDimensions.some((d) => query[d.key].length > 0)) ||
     Boolean((query.from || query.to) && query.dateMode !== 'calendar')
   return (
-    <section className="filters" aria-label="Dashboard filters">
-      <div className="filter-content">
-        <div className="filter-toolbar">
-          <span className="filter-caption">
-            <Filter size="1em" /> Filters
-          </span>
-          <div className="filter-date">
-            <DateFilter />
-          </div>
-          <div className="filter-group">
-            {dimensions.map((d) =>
-              d.key === 'sessions' ? (
-                <SessionFilter
-                  key={d.key}
-                  values={facets?.sessions ?? []}
-                  revision={revision}
-                  enabled={enabled}
-                  identity={identity}
-                />
-              ) : (
-                <MultiSelect
-                  key={d.key}
-                  label={d.label}
-                  selected={query[d.key]}
-                  values={facets?.[d.key] ?? []}
-                  onChange={(values) => updateSelection({ [d.key]: values })}
-                />
-              ),
-            )}
-            {query.tab === 'repo' &&
-              locationDimensions.map((d) => (
-                <MultiSelect
-                  key={d.key}
-                  label={d.label}
-                  selected={query[d.key]}
-                  values={facets?.[d.key] ?? []}
-                  missingName={`${d.label} (unavailable)`}
-                  onChange={(values) => updateLocations({ [d.key]: values })}
-                />
-              ))}
-          </div>
+    <section className="min-w-0 flex-auto" aria-label="Dashboard filters">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="mr-2 flex items-center gap-2 text-label text-ink-subtle max-compact:hidden [&_svg]:size-(--icon-size)">
+          <Filter aria-hidden="true" /> Filters
+        </span>
+        <div className="min-w-0">
+          <DateFilter />
         </div>
-        {hasFilters && (
-          <div className="active-filters" aria-label="Active filters">
-            {dimensions.flatMap((d) =>
-              query[d.key].map((value) => (
-                <Button
-                  key={`${d.key}:${value}`}
-                  variant="secondary"
-                  size="sm"
-                  className="filter-chip"
-                  onClick={() =>
-                    updateSelection({ [d.key]: query[d.key].filter((v) => v !== value) })
-                  }
-                  aria-label={`Remove ${d.label.toLowerCase()} ${value}`}
-                >
-                  <span className="muted">{d.label}</span>
-                  <span className="chip-value" title={value}>
-                    {value}
-                  </span>
-                  <X size="0.9em" />
-                </Button>
-              )),
-            )}
-            {query.tab === 'repo' &&
-              locationDimensions.flatMap((d) =>
-                query[d.key].map((value) => {
-                  const name =
-                    facets?.[d.key].find((option) => option.key === value)?.name ??
-                    (value === 'unknown' ? 'unknown' : `${d.label} (unavailable)`)
-                  return (
-                    <Button
-                      key={`${d.key}:${value}`}
-                      variant="secondary"
-                      size="sm"
-                      className="filter-chip"
-                      onClick={() =>
-                        updateLocations({ [d.key]: query[d.key].filter((key) => key !== value) })
-                      }
-                      aria-label={`Remove ${d.label.toLowerCase()} ${name}`}
-                    >
-                      <span className="muted">{d.label}</span>
-                      <span className="chip-value" title={name}>
-                        {name}
-                      </span>
-                      <X size="0.9em" />
-                    </Button>
-                  )
-                }),
-              )}
-            {(query.from || query.to) && query.dateMode !== 'calendar' && (
-              <Button
-                variant="secondary"
-                size="sm"
-                className="filter-chip"
-                onClick={() => updateSelection({ from: '', to: '', dateMode: undefined })}
-              >
-                Custom dates
-                <X size="0.9em" />
-              </Button>
-            )}
-            <Button variant="ghost" size="sm" className="text-button" onClick={clearFilters}>
-              Clear All
-            </Button>
-          </div>
+        {dimensions.map((d) =>
+          d.key === 'sessions' ? (
+            <SessionFilter
+              key={d.key}
+              values={facets?.sessions ?? []}
+              revision={revision}
+              enabled={enabled}
+              identity={identity}
+            />
+          ) : (
+            <MultiSelect
+              key={d.key}
+              label={d.label}
+              selected={query[d.key]}
+              values={facets?.[d.key] ?? []}
+              onChange={(values) => updateSelection({ [d.key]: values })}
+            />
+          ),
         )}
-        <p className="sr-only">
-          Date and usage filters apply to every view. Location filters apply only to Repo. Sync
-          always refreshes all supported harnesses.
-        </p>
+        {query.tab === 'repo' &&
+          locationDimensions.map((d) => (
+            <MultiSelect
+              key={d.key}
+              label={d.label}
+              selected={query[d.key]}
+              values={facets?.[d.key] ?? []}
+              missingName={`${d.label} (unavailable)`}
+              onChange={(values) => updateLocations({ [d.key]: values })}
+            />
+          ))}
       </div>
+      {hasFilters && (
+        <div className="mt-2 flex flex-wrap gap-2" role="group" aria-label="Active filters">
+          {dimensions.flatMap((d) =>
+            query[d.key].map((value) => (
+              <Chip
+                key={`${d.key}:${value}`}
+                dimension={d.label}
+                value={value}
+                title={value}
+                removeLabel={`Remove ${d.label.toLowerCase()} ${value}`}
+                onRemove={() =>
+                  updateSelection({ [d.key]: query[d.key].filter((v) => v !== value) })
+                }
+              />
+            )),
+          )}
+          {query.tab === 'repo' &&
+            locationDimensions.flatMap((d) =>
+              query[d.key].map((value) => {
+                const name =
+                  facets?.[d.key].find((option) => option.key === value)?.name ??
+                  (value === 'unknown' ? 'unknown' : `${d.label} (unavailable)`)
+                return (
+                  <Chip
+                    key={`${d.key}:${value}`}
+                    dimension={d.label}
+                    value={name}
+                    title={name}
+                    removeLabel={`Remove ${d.label.toLowerCase()} ${name}`}
+                    onRemove={() =>
+                      updateLocations({ [d.key]: query[d.key].filter((key) => key !== value) })
+                    }
+                  />
+                )
+              }),
+            )}
+          {(query.from || query.to) && query.dateMode !== 'calendar' && (
+            <Chip
+              value="Custom dates"
+              onRemove={() => updateSelection({ from: '', to: '', dateMode: undefined })}
+            />
+          )}
+          <Button variant="link" size="compact" onClick={clearFilters}>
+            Clear All
+          </Button>
+        </div>
+      )}
+      <p className="sr-only">
+        Date and usage filters apply to every view. Location filters apply only to Repo. Sync always
+        refreshes all supported harnesses.
+      </p>
     </section>
   )
 }
@@ -456,8 +452,7 @@ export function FilterToolbar({
 export function BucketControl() {
   const { query, updateSelection } = useDashboardQuery()
   return (
-    <div className="bucket-control">
-      Bucket
+    <ControlLabel label="Bucket">
       <Select
         value={query.bucket}
         onValueChange={(value) => {
@@ -465,7 +460,7 @@ export function BucketControl() {
           if (parsed.success) updateSelection({ bucket: parsed.data })
         }}
       >
-        <SelectTrigger size="sm" aria-label="Time bucket">
+        <SelectTrigger size="compact" aria-label="Time bucket">
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
@@ -477,6 +472,6 @@ export function BucketControl() {
           ))}
         </SelectContent>
       </Select>
-    </div>
+    </ControlLabel>
   )
 }

@@ -1,8 +1,8 @@
 ---
 version: 1
 slug: "packages-web-src-app-tsx"
-primary_target: "packages/web/src/App.tsx"
-related_targets: ["packages/web/src/styles.css","packages/web/src/tokens.css","packages/web/src/components/DashboardSidebar.tsx","packages/web/src/components/SummaryCards.tsx","packages/web/src/components/Filters.tsx","packages/web/src/components/UsageChart.tsx","packages/web/src/components/DashboardHeader.tsx","packages/web/src/components/PasswordLogin.tsx","packages/web/src/components/SettingsPage.tsx","packages/web/src/identity.tsx","packages/web/src/account.ts","packages/web/src/session.ts"]
+primary_target: "src/App.tsx"
+related_targets: ["src/styles.css","src/ui/tokens/palette.css","src/ui/tokens/semantic.css","src/ui/tokens/theme.css","src/ui/utilities.css","src/ui/index.ts","src/components/DashboardSidebar.tsx","src/components/SummaryCards.tsx","src/components/Filters.tsx","src/components/UsageChart.tsx","src/components/ResultsTable.tsx","src/components/DashboardHeader.tsx","src/components/PasswordLogin.tsx","src/components/SettingsPage.tsx","src/design/DesignCatalog.tsx","src/identity.tsx","src/account.ts","src/session.ts"]
 ---
 
 # Browser dashboard — Quiet Blue / White First
@@ -50,3 +50,9 @@ Key creation collects a name, sync or read-only access, and optional expiry. The
 Implementation evidence: source in the related identity targets; hosted login and settings captures at desktop/mobile widths, including the one-time-key view in dark mode, under ignored `.scratch/identity-preview/`. Captures are development evidence, not shipping assets. Final build recaptures, browser focus checks, and semantic assertions confirm focus on the revealed secret after creation and Key name after Done. Independent verdict: ship; the reviewer scored the listed focus fix resolved, with no visible regression. All 84 web unit tests and 40 real browser tests pass; mobile settings accessibility audit found no violations.
 
 Unresolved questions: none.
+
+## Design system consolidation
+
+Scope: refinement of the existing surface; identity, copy and behavior preserved. Tokens are palette → semantic roles (`light-dark()`) → Tailwind mapping with default scales reset, all under `src/ui/tokens/`. `src/ui` primitives and patterns own appearance; features own layout. Unified states: selected is tint plus blue ink without border; focus is a 2px blue outline with 2px offset; headings are page 28, section 16, sub 14. Settings access uses the Radix Select. `/_design` is a development-only catalog; `src/ui/design-guard.test.ts` enforces the contract.
+
+Evidence: the token commit captured pixel-identical to its base across 46 local and hosted captures (one 1/255 antialiasing difference). Later commits were reviewed side by side against that baseline. Captures live in ignored `packages/web/.scratch/visual/`.
