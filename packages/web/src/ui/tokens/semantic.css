@@ -79,18 +79,14 @@
   --opacity-disabled: 0.5;
 
   /* Layout */
-  --content-width: 100rem;
-  --reading-width: 42rem;
-  --prose-width: 70ch;
   --page-gutter: var(--space-4);
   --panel-padding: var(--space-4);
   --header-height: 2.75rem;
   --sidebar-width: 12rem;
+  --shell-columns: var(--sidebar-width) minmax(0, 1fr);
+  --startup-min-height: calc(100svh - var(--header-height));
   --popover-width: 22rem;
   --status-popover-width: 18rem;
-  --form-width: 28rem;
-  --login-width: 24rem;
-  --settings-width: 62rem;
   --chart-height: 12rem;
   --table-row-height: 2rem;
   --table-max-height: 35rem;
@@ -99,6 +95,20 @@
   --progress-width: 10rem;
   --skeleton-readout-height: 8rem;
   --skeleton-table-height: 28rem;
+  --readout-value-height: calc(var(--text-readout) * var(--leading-tight));
+  --readout-columns: 1.25fr repeat(4, minmax(0, 1fr));
+  --readout-columns-narrow: repeat(2, minmax(0, 1fr));
+
+  /* Truncation bounds for identity text in compact controls and cells. */
+  --chip-value-width: 15rem;
+  --filter-selection-width: 16ch;
+  --server-identity-width: 28rem;
+  --identity-min-width: 9rem;
+  --identity-max-width: 26rem;
+  --dimension-min-width: 6rem;
+  --dimension-max-width: 18rem;
+
+  --underline-offset: 0.2em;
 
   /* Layers */
   --layer-sticky: 1;
@@ -129,6 +139,7 @@
 @media (max-width: 38rem) {
   :root {
     --page-gutter: var(--space-3);
+    --filter-selection-width: 12ch;
   }
 }
 

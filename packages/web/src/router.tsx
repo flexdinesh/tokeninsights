@@ -9,7 +9,7 @@ import { App, DashboardView } from './App'
 import { SettingsPage } from './components/SettingsPage'
 import { tabSchema } from './contracts'
 import { parseDashboardSearch, parseDashboardSearchParams, stringifyDashboardSearch } from './query'
-import { Button } from './components/ui/button'
+import { Button } from '@/ui'
 
 function NotFound() {
   return <main className="startup-state">Dashboard route not found.</main>

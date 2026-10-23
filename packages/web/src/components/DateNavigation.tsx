@@ -1,7 +1,7 @@
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { calendarRange, calendarRangeLabel, shiftCalendarRange } from '../dateRange'
 import { useDashboardQuery } from '../state'
-import { Button } from './ui/button'
+import { Button } from '@/ui'
 
 export function DateNavigation({ timezone }: { timezone: string }) {
   const { query, updateSelection } = useDashboardQuery()
@@ -28,7 +28,7 @@ export function DateNavigation({ timezone }: { timezone: string }) {
     <nav className="date-navigation" aria-label="Period navigation">
       <Button
         variant="outline"
-        size="icon-sm"
+        size="icon-compact"
         aria-label={`Previous ${unit}`}
         title={`Previous ${unit}`}
         onClick={() => move(-1)}
@@ -40,7 +40,7 @@ export function DateNavigation({ timezone }: { timezone: string }) {
       </span>
       <Button
         variant="outline"
-        size="icon-sm"
+        size="icon-compact"
         aria-label={`Next ${unit}`}
         title={`Next ${unit}`}
         disabled={atCurrent}

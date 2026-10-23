@@ -3,8 +3,7 @@ import { Activity, CircleAlert, LoaderCircle } from 'lucide-react'
 import type { CollectorProgress as Progress, SyncStatus } from '../contracts'
 import { formatServerDateTime, serverTimeZoneLabel } from '../format'
 import { CollectorProgress } from './CollectorProgress'
-import { Button } from './ui/button'
-import { Popover, PopoverContent, PopoverTrigger } from './ui/popover'
+import { Button, Popover, PopoverContent, PopoverTrigger } from '@/ui'
 
 export type DashboardStatusValue = {
   label: string

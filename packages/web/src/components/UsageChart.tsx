@@ -15,8 +15,7 @@ import type { Row, Sort } from '../contracts'
 import { exactCount, formatCount, formatServerDateTime, serverTimeZoneLabel } from '../format'
 import { useDashboardPreferences, useDashboardQuery } from '../state'
 import { BucketControl } from './Filters'
-import { Button } from './ui/button'
-import { Card } from './ui/card'
+import { Button, Card } from '@/ui'
 
 const metrics: { key: Sort; label: string }[] = [
   { key: 'total', label: 'Total' },
@@ -178,7 +177,7 @@ export function UsageChart({
                 <Button
                   key={m.key}
                   variant="ghost"
-                  size="sm"
+                  size="compact"
                   aria-pressed={metric === m.key}
                   onClick={() => setChartMetric(m.key)}
                 >
@@ -344,7 +343,7 @@ export function UsageChart({
             <Button
               key={row.key}
               variant="ghost"
-              size="sm"
+              size="compact"
               className="chart-filter"
               onClick={() => updateSelection({ [filterDimension]: [row.name] })}
               title={`Filter ${row.name}`}

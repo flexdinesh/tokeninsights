@@ -1,0 +1,31 @@
+/*
+ * Interaction states shared by every primitive. One selected treatment and one
+ * focus treatment; components opt in through these names, never by restyling.
+ */
+
+/* Selected: pressed toggles, the current navigation link, and active filters. */
+@custom-variant selected (&:where([aria-pressed='true'], [aria-current='page'], [data-selected='true']));
+
+/* Keyboard focus: one outline, offset outside the control. */
+@utility focus-ring {
+  &:focus-visible {
+    outline: var(--focus-width) solid var(--focus);
+    outline-offset: var(--focus-offset);
+  }
+}
+
+/* Focus inside clipped regions (scroll areas, navigation, table headings). */
+@utility focus-ring-inset {
+  &:focus-visible {
+    outline: var(--focus-width) solid var(--focus);
+    outline-offset: calc(-1 * var(--focus-width));
+  }
+}
+
+/* Composite fields whose input sits inside a styled wrapper. */
+@utility focus-ring-within {
+  &:focus-within {
+    outline: var(--focus-width) solid var(--focus);
+    outline-offset: var(--focus-offset);
+  }
+}

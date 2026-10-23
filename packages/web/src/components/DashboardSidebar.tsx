@@ -4,8 +4,7 @@ import type { Tab } from '../contracts'
 import { labels } from '../format'
 import { reduceQuery, searchFromQuery } from '../query'
 import type { QueryState } from '../query'
-import { Brand } from './Brand'
-import { Button } from './ui/button'
+import { Brand, Button } from '@/ui'
 
 const tabs: { id: Tab; icon: typeof Activity }[] = [
   { id: 'tokens', icon: Activity },
@@ -48,7 +47,7 @@ export function DashboardSidebar({
         <p>{localMachine ? 'Local workspace' : 'Hosted workspace'}</p>
         <p>Usage metadata only</p>
         {onSignOut && (
-          <Button variant="ghost" size="sm" onClick={() => void onSignOut()}>
+          <Button variant="ghost" size="compact" onClick={() => void onSignOut()}>
             Sign out
           </Button>
         )}

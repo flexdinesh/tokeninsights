@@ -30,13 +30,26 @@ import {
   serverTimeZoneLabel,
 } from '../format'
 import { useDashboardPreferences, useDashboardQuery } from '../state'
-import { Badge } from './ui/badge'
-import { Button } from './ui/button'
-import { Checkbox } from './ui/checkbox'
-import { Card } from './ui/card'
-import { Popover, PopoverContent, PopoverTrigger } from './ui/popover'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select'
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './ui/table'
+import {
+  Badge,
+  Button,
+  Card,
+  Checkbox,
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/ui'
 
 interface Column {
   id: Sort
@@ -406,7 +419,7 @@ export function ResultsTable({
                         active ? (query.direction === 'asc' ? 'ascending' : 'descending') : 'none'
                       }
                     >
-                      <Button variant="ghost" size="sm" onClick={() => sortBy(sort)}>
+                      <Button variant="ghost" size="compact" onClick={() => sortBy(sort)}>
                         {flexRender(header.column.columnDef.header, header.getContext())}
                         {active ? (
                           query.direction === 'asc' ? (

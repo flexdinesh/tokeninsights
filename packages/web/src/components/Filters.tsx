@@ -4,11 +4,20 @@ import type { Dimension, Facets, Selection } from '../contracts'
 import { bucketSchema } from '../contracts'
 import { useDashboardQuery } from '../state'
 import { useFacets } from '../api'
-import { Button } from './ui/button'
-import { Checkbox } from './ui/checkbox'
-import { Input } from './ui/input'
-import { Popover, PopoverClose, PopoverContent, PopoverTrigger } from './ui/popover'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select'
+import {
+  Button,
+  Checkbox,
+  Input,
+  Popover,
+  PopoverClose,
+  PopoverContent,
+  PopoverTrigger,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/ui'
 
 const dimensions: { key: Dimension; label: string }[] = [
   { key: 'harnesses', label: 'Harness' },
@@ -77,7 +86,7 @@ export function MultiSelect({
       <PopoverTrigger asChild>
         <Button
           variant="outline"
-          size="sm"
+          size="compact"
           className={`filter-button ${selected.length ? 'is-selected' : ''}`}
           aria-label={`${label}${selected.length ? ` ${selected.length}` : ''}`}
         >
@@ -99,7 +108,12 @@ export function MultiSelect({
       >
         <div className="popover-heading">
           <strong>{label}</strong>
-          <Button variant="ghost" size="sm" className="text-button" onClick={() => onChange([])}>
+          <Button
+            variant="ghost"
+            size="compact"
+            className="text-button"
+            onClick={() => onChange([])}
+          >
             Clear
           </Button>
         </div>
@@ -141,7 +155,7 @@ export function MultiSelect({
         {error && (
           <div role="alert">
             <p className="error-text">{error.message}</p>
-            <Button variant="outline" size="sm" onClick={error.onRetry} disabled={loading}>
+            <Button variant="outline" size="compact" onClick={error.onRetry} disabled={loading}>
               Retry {label.toLowerCase()} search
             </Button>
           </div>
@@ -227,7 +241,7 @@ function DateFilter() {
       <PopoverTrigger asChild>
         <Button
           variant="outline"
-          size="sm"
+          size="compact"
           className="filter-button date-button"
           aria-label={`Date range: ${dateLabel}`}
         >
@@ -387,7 +401,7 @@ export function FilterToolbar({
                 <Button
                   key={`${d.key}:${value}`}
                   variant="secondary"
-                  size="sm"
+                  size="compact"
                   className="filter-chip"
                   onClick={() =>
                     updateSelection({ [d.key]: query[d.key].filter((v) => v !== value) })
@@ -412,7 +426,7 @@ export function FilterToolbar({
                     <Button
                       key={`${d.key}:${value}`}
                       variant="secondary"
-                      size="sm"
+                      size="compact"
                       className="filter-chip"
                       onClick={() =>
                         updateLocations({ [d.key]: query[d.key].filter((key) => key !== value) })
@@ -431,7 +445,7 @@ export function FilterToolbar({
             {(query.from || query.to) && query.dateMode !== 'calendar' && (
               <Button
                 variant="secondary"
-                size="sm"
+                size="compact"
                 className="filter-chip"
                 onClick={() => updateSelection({ from: '', to: '', dateMode: undefined })}
               >
@@ -439,7 +453,7 @@ export function FilterToolbar({
                 <X size="0.9em" />
               </Button>
             )}
-            <Button variant="ghost" size="sm" className="text-button" onClick={clearFilters}>
+            <Button variant="ghost" size="compact" className="text-button" onClick={clearFilters}>
               Clear All
             </Button>
           </div>
@@ -465,7 +479,7 @@ export function BucketControl() {
           if (parsed.success) updateSelection({ bucket: parsed.data })
         }}
       >
-        <SelectTrigger size="sm" aria-label="Time bucket">
+        <SelectTrigger size="compact" aria-label="Time bucket">
           <SelectValue />
         </SelectTrigger>
         <SelectContent>

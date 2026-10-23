@@ -3,9 +3,7 @@ import { CatchBoundary } from '@tanstack/react-router'
 import type { Row } from '../contracts'
 import { apiQueryParams } from '../query'
 import { useDashboardQuery } from '../state'
-import { Alert, AlertDescription } from './ui/alert'
-import { Button } from './ui/button'
-import { Skeleton } from './ui/skeleton'
+import { Alert, AlertDescription, Button, Skeleton } from '@/ui'
 
 const UsageChart = lazy(() =>
   import('./UsageChart').then((module) => ({ default: module.UsageChart })),

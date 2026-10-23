@@ -17,6 +17,7 @@
   --drop-shadow-*: initial;
   --text-shadow-*: initial;
   --breakpoint-*: initial;
+  --container-*: initial;
 
   --spacing: 0.25rem;
 
@@ -52,6 +53,17 @@
   --breakpoint-compact: 38rem;
   --breakpoint-nav: 55rem;
   --breakpoint-wide: 75rem;
+
+  /* Named widths: max-w-* utilities and @container query sizes. */
+  --container-readouts: 45rem;
+  --container-login: 24rem;
+  --container-form: 28rem;
+  --container-reading: 42rem;
+  --container-settings: 62rem;
+  --container-content: 100rem;
+  --container-prose: 70ch;
+
+  --animate-spin: spin var(--duration-spin) linear infinite;
 }
 
 @theme inline {

@@ -2,9 +2,7 @@ import { useState } from 'react'
 import type { FormEvent } from 'react'
 import { changeBrowserSession } from '../api'
 import { passwordMaxCharacters, passwordMinCharacters, signup, validPassword } from '../account'
-import { Brand } from './Brand'
-import { Button } from './ui/button'
-import { Input } from './ui/input'
+import { Brand, Button, Input } from '@/ui'
 
 export function PasswordLogin({
   onSignIn,

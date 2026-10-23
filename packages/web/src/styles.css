@@ -3,6 +3,7 @@
 @import './ui/tokens/palette.css';
 @import './ui/tokens/semantic.css';
 @import './ui/tokens/theme.css';
+@import './ui/utilities.css';
 
 @font-face {
   font-family: 'DM Sans';
@@ -278,7 +279,7 @@ textarea[aria-invalid='true'] {
 .dashboard {
   container-type: inline-size;
   container-name: dashboard;
-  max-width: var(--content-width);
+  max-width: var(--container-content);
   padding: var(--space-2) var(--page-gutter) var(--space-3);
   margin: 0 auto;
 }
@@ -1052,7 +1053,7 @@ tbody tr:hover {
   text-align: center;
 }
 .startup-state p {
-  max-width: var(--reading-width);
+  max-width: var(--container-reading);
 }
 .skeleton-card,
 .skeleton-chart,
@@ -1235,7 +1236,7 @@ a {
   font-weight: var(--font-weight-semibold);
 }
 .excluded-review p {
-  max-width: var(--prose-width);
+  max-width: var(--container-prose);
   margin-top: var(--space-1);
   color: var(--ink-muted);
   font-size: var(--text-body);
@@ -1406,7 +1407,7 @@ a {
 }
 .sync-coverage p {
   padding: var(--space-2) 0;
-  max-width: var(--prose-width);
+  max-width: var(--container-prose);
 }
 .coverage-scroll {
   max-height: var(--coverage-max-height);
@@ -1440,7 +1441,7 @@ a {
 .password-login form {
   display: grid;
   gap: var(--space-3);
-  width: min(100%, var(--login-width));
+  width: min(100%, var(--container-login));
   text-align: start;
 }
 .password-login form p[role='alert'] {
@@ -1452,7 +1453,7 @@ a {
   margin: 0;
 }
 .account-settings {
-  max-width: var(--settings-width);
+  max-width: var(--container-settings);
 }
 .settings-section {
   padding-block: var(--space-6);
@@ -1493,7 +1494,7 @@ a {
 .created-key {
   display: grid;
   gap: var(--space-3);
-  max-width: var(--form-width);
+  max-width: var(--container-form);
 }
 .settings-form > button {
   justify-self: start;

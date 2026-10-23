@@ -21,16 +21,8 @@ import { FilterToolbar } from './components/Filters'
 import { DateNavigation } from './components/DateNavigation'
 import { DashboardHeader } from './components/DashboardHeader'
 import { DashboardSidebar } from './components/DashboardSidebar'
-import { Brand } from './components/Brand'
 import { DashboardResults } from './components/DashboardResults'
-import { Button } from './components/ui/button'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from './components/ui/select'
+import { Brand, Button, Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/ui'
 
 export function App() {
   const client = useQueryClient()

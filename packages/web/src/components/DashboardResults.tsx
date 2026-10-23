@@ -6,10 +6,8 @@ import type { useDashboardSync } from '../useDashboardSync'
 import { ChartPanel } from './ChartPanel'
 import { SummaryCards } from './SummaryCards'
 import { ResultsTable } from './ResultsTable'
-import { Button } from './ui/button'
-import { Skeleton } from './ui/skeleton'
-import { Alert, AlertDescription } from './ui/alert'
 import { exactCount, formatCount, formatServerDateTime } from '../format'
+import { Alert, AlertDescription, Button, Skeleton } from '@/ui'
 
 export function DashboardResults({
   analytics,
@@ -157,7 +155,7 @@ export function DashboardResults({
                     · {formatCount(excluded.summary.total)} tokens
                   </span>
                 </p>
-                <Button variant="ghost" size="sm" onClick={() => setQuality('estimated')}>
+                <Button variant="ghost" size="compact" onClick={() => setQuality('estimated')}>
                   Review excluded usage
                   <ArrowRight aria-hidden="true" />
                 </Button>
@@ -166,7 +164,7 @@ export function DashboardResults({
             {!reviewingExcluded && excludedUsage.error && (
               <div className="excluded-usage-notice" role="status">
                 <p>Excluded usage couldn’t load.</p>
-                <Button variant="ghost" size="sm" onClick={() => void excludedUsage.refetch()}>
+                <Button variant="ghost" size="compact" onClick={() => void excludedUsage.refetch()}>
                   Retry excluded usage
                 </Button>
               </div>

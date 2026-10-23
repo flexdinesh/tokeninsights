@@ -2,10 +2,10 @@ import { Monitor, Moon, Sun, UserRound } from 'lucide-react'
 import { Link } from '@tanstack/react-router'
 import { useDashboardPreferences, useDashboardQuery } from '../state'
 import { labels } from '../format'
-import { Button } from './ui/button'
 import type { CollectorProgress, SyncStatus } from '../contracts'
 import { DashboardStatus } from './DashboardStatus'
 import type { DashboardStatusValue } from './DashboardStatus'
+import { Button } from '@/ui'
 
 export function DashboardHeader({
   hostname,

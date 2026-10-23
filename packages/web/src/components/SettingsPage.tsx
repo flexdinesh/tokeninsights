@@ -20,8 +20,7 @@ import { useIdentity } from '../identity'
 import { initialQuery, parseDashboardSearch } from '../query'
 import { DashboardPreferencesProvider } from '../state'
 import { DashboardSidebar } from './DashboardSidebar'
-import { Button } from './ui/button'
-import { Input } from './ui/input'
+import { Button, Input } from '@/ui'
 
 export function SettingsPage() {
   const { bootstrap, onSignOut } = useIdentity()
@@ -317,7 +316,7 @@ function APIKeySettings() {
                 <KeyDetails value={key} />
                 <Button
                   variant="outline"
-                  size="sm"
+                  size="compact"
                   disabled={Boolean(revoking) || Boolean(key.revokedAt)}
                   onClick={() => void revoke(key.tokenId)}
                   aria-label={`Revoke ${key.label}`}

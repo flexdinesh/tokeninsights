@@ -1,6 +1,6 @@
 import * as PopoverPrimitive from '@radix-ui/react-popover'
-import type { ComponentProps } from 'react'
-import { cn } from '@/lib/utils'
+import type { ComponentProps, ReactNode } from 'react'
+import { cn } from '../cn'
 
 function Popover(props: ComponentProps<typeof PopoverPrimitive.Root>) {
   return <PopoverPrimitive.Root data-slot="popover" {...props} />
@@ -34,8 +34,32 @@ function PopoverContent({
   )
 }
 
+/** Popover title row with an optional trailing action such as Clear. */
+function PopoverHeader({
+  title,
+  action,
+  className,
+}: {
+  title: ReactNode
+  action?: ReactNode
+  className?: string
+}) {
+  return (
+    <div
+      data-slot="popover-header"
+      className={cn(
+        'flex min-h-(--control-height-compact) items-center justify-between gap-2',
+        className,
+      )}
+    >
+      <strong className="text-body">{title}</strong>
+      {action}
+    </div>
+  )
+}
+
 function PopoverClose(props: ComponentProps<typeof PopoverPrimitive.Close>) {
   return <PopoverPrimitive.Close data-slot="popover-close" {...props} />
 }
 
-export { Popover, PopoverClose, PopoverContent, PopoverTrigger }
+export { Popover, PopoverClose, PopoverContent, PopoverHeader, PopoverTrigger }
