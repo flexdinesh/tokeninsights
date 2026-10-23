@@ -64,6 +64,10 @@ func runSync(invocation commandInvocation, args []string) error {
 		return fmt.Errorf("choose --wait or --debug\n%w", ErrUsage)
 	}
 	if !dryRun {
+		// Dry runs never write, so they never offer a reset.
+		if err := invocation.prepareSyncStorage(settings.CollectorDBPath); err != nil {
+			return err
+		}
 		return runDistributedSync(invocation, settings, selectedHarnesses, sourceDir, publishOnly, fullRefresh, wait, debug, printURL)
 	}
 	result, err := collector.Run(invocation.context, collector.Options{
@@ -158,6 +162,9 @@ func runSyncStatus(invocation commandInvocation, args []string) error {
 	}
 	settings, err := invocation.resolveSync(flags)
 	if err != nil {
+		return err
+	}
+	if err := invocation.prepareSyncStorage(settings.CollectorDBPath); err != nil {
 		return err
 	}
 	store, err := syncjob.Open(invocation.context, settings.CollectorDBPath)

@@ -14,7 +14,10 @@ import (
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/localruntime"
 )
 
-func TestLocalIncompatibleApplicationDatabaseGuidance(t *testing.T) {
+// Without a terminal, older local storage is reported and never reset. The
+// reported path follows every configuration source.
+func TestLocalOlderStorageWithoutTerminalChangesNothing(t *testing.T) {
+	nonInteractiveStorage(t)
 	for _, command := range []string{"tui", "web", "data"} {
 		for _, source := range []string{"default", "config", "environment", "flag"} {
 			t.Run(command+"/"+source, func(t *testing.T) {
@@ -69,48 +72,48 @@ func TestLocalIncompatibleApplicationDatabaseGuidance(t *testing.T) {
 					t.Fatal(err)
 				}
 				err = Run(t.Context(), args, io.Discard, io.Discard, time.Now())
-				if !errors.Is(err, appstore.ErrIncompatibleDatabase) {
-					t.Fatalf("expected incompatibility: %v", err)
+				if err == nil {
+					t.Fatal("older storage opened")
 				}
-				for _, want := range []string{"unsupported schema version or database role", "automatic migrations", "Config: " + configPath, "Application database: " + appPath, "Close TokenInsights", "delete the application database", "-wal", "-shm", "Rerun", "resets local accounts and credentials", "Do not delete the config"} {
+				for _, want := range []string{"written by an older version", storageUnchanged, filepath.Base(appPath) + "   schema 1 -> 2   reset", "\n  " + appPath, "Run this command in a terminal"} {
 					if !strings.Contains(err.Error(), want) {
 						t.Errorf("guidance missing %q: %v", want, err)
 					}
 				}
 				after, err := os.ReadFile(appPath)
 				if err != nil || !bytes.Equal(before, after) {
-					t.Fatal("incompatible database mutated", err)
-				}
-				if err := os.Remove(appPath); err != nil {
-					t.Fatal(err)
-				}
-				// The advertised recovery must work with the token database left intact.
-				recovery := []string{"--config-file", configPath, "data", "wait", "--app-db-path", appPath}
-				if err := Run(t.Context(), recovery, io.Discard, io.Discard, time.Now()); err != nil {
-					t.Fatalf("deleting incompatible app did not recover: %v", err)
+					t.Fatal("older database mutated", err)
 				}
 			})
 		}
 	}
 }
 
-func TestPairedApplicationIncompatibilityRetainsBackupRecovery(t *testing.T) {
+// Confirmed resets move the guard with its application; a missing application
+// beside an intact guard still requires restoring the stopped backup set.
+func TestPairGuardStillRejectsMissingApplication(t *testing.T) {
+	nonInteractiveStorage(t)
 	root := t.TempDir()
 	collectorPath, dataPath, appPath := filepath.Join(root, "collector.sqlite"), filepath.Join(root, "server.sqlite"), filepath.Join(root, "app.sqlite")
 	runtime, err := localruntime.OpenWithApp(t.Context(), collectorPath, dataPath, appPath)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := runtime.App.SQL().ExecContext(t.Context(), "PRAGMA user_version=1"); err != nil {
-		_ = runtime.Close()
+	if err := runtime.Close(); err != nil {
 		t.Fatal(err)
 	}
-	if err := runtime.Close(); err != nil {
+	if err := os.Remove(appPath); err != nil {
 		t.Fatal(err)
 	}
 	args := []string{"--config-file", filepath.Join(root, "config.json"), "data", "wait", "--collector-db-path", collectorPath, "--server-db-path", dataPath, "--app-db-path", appPath}
 	err = Run(t.Context(), args, io.Discard, io.Discard, time.Now())
 	if err == nil || err.Error() != "paired_application_mismatch_restore_backup" {
 		t.Fatalf("pair guard recovery changed: %v", err)
+	}
+	if _, err := os.Stat(dataPath + ".application.json"); err != nil {
+		t.Fatal("guard moved without a reset", err)
+	}
+	if _, err := os.Stat(appPath); !errors.Is(err, os.ErrNotExist) {
+		t.Fatal("missing application recreated", err)
 	}
 }

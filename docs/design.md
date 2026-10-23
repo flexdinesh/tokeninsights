@@ -45,10 +45,13 @@ Defaults use XDG_DATA_HOME or ~/.local/share/tokeninsights. Role-specific flags/
 environment/config override them, in that order. Each command parses its flags once;
 `config.FlagOverrides` then feeds explicitly set flags into resolution. Reject aliased paths, wrong roles, incompatible
 versions and corrupt contracts. Former tokeninsights.sqlite stays untouched.
-Local CLI application role/version errors include resolved config/application paths
-and manual deletion/recreation guidance, including account/credential loss. They
-preserve the error identity and do not delete files. Pairing errors retain backup
-recovery requirements; this guidance does not bypass the application pair guard.
+Local commands inspect their stores read-only before opening ([ADR 0020](adr/0020-reset-older-local-storage.md)).
+A store with a matching role and lower `user_version` is older; after terminal
+confirmation it moves to `<file>.v<old>.bak` with `-wal`/`-shm`. Token and
+application stores move together with the pair guard; collector and jobs move
+alone. Newer, foreign, mismatched or owned files, and non-terminal runs, report
+paths and change nothing. Remote servers never reset. A missing application beside
+an intact guard still requires restoring the matched backup.
 SQLite startup validates role/version and actual schema objects read-only before writable opening. Expected objects are derived from embedded SQL and cached; actual storage is inspected on every open. PostgreSQL validates both fixed namespaces against the committed catalog contract, paired identity and role versions. Missing halves and incompatible contracts reject without repair. New PostgreSQL namespaces initialize together in one transaction.
 
 Local composition always uses SQLite. Remote `--storage-backend=sqlite|postgres` (or `TOKENINSIGHTS_STORAGE_BACKEND`) selects both token/account adapters. PostgreSQL requires `TOKENINSIGHTS_POSTGRES_DSN` and an absolute `--admin-socket`; SQLite paths cannot be mixed with PostgreSQL settings. Credentials stay out of argv, client config and descriptors. PostgreSQL 18 is supported; no extensions are required.

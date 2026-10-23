@@ -1,7 +1,9 @@
 package remoteserver
 
 import (
+	"bytes"
 	"context"
+	"database/sql"
 	"errors"
 	"io"
 	"net/http"
@@ -72,6 +74,44 @@ func TestRemoteSettingsRejectBeforeStorage(t *testing.T) {
 	entries, err := os.ReadDir(root)
 	if err != nil || len(entries) != 0 {
 		t.Fatal("validation created storage", entries, err)
+	}
+}
+
+// Deployed servers never reset storage, even when an older release wrote it.
+func TestRemoteRejectsOlderStorageWithoutMutation(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "server.sqlite")
+	storage, err := openStorage(t.Context(), Settings{DBPath: path})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := storage.close(); err != nil {
+		t.Fatal(err)
+	}
+	database, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.Exec("PRAGMA user_version=0"); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.Close(); err != nil {
+		t.Fatal(err)
+	}
+	before, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := Run(t.Context(), Settings{PublicURL: "https://usage.example", Listen: "127.0.0.1:0", DBPath: path}, io.Discard, nil); err == nil {
+		t.Fatal("older storage opened")
+	}
+	after, err := os.ReadFile(path)
+	if err != nil || !bytes.Equal(before, after) {
+		t.Fatal("older storage mutated", err)
+	}
+	backups, err := filepath.Glob(filepath.Join(root, "*.bak*"))
+	if err != nil || len(backups) != 0 {
+		t.Fatal("remote moved storage aside", backups, err)
 	}
 }
 
