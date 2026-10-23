@@ -98,8 +98,10 @@ export function publishEdge(root: string, source: string): string | undefined {
     .find((tag) => stableTag.test(tag))
   const release = latest === undefined ? undefined : git(root, ['rev-parse', `${latest}^{commit}`])
   const commit = assetCommit(root, source, `edge: ${source}`, release)
+  // CI publishes tested source; local pre-push verification must not run here.
   git(root, [
     'push',
+    '--no-verify',
     `--force-with-lease=refs/heads/edge:${observed}`,
     'origin',
     `${commit}:refs/heads/edge`,

@@ -198,3 +198,15 @@ exec ${shellQuote(realGit)} "$@"
   }
   assert.equal(f.git('ls-remote', '--heads', 'origin', 'edge').split('\t')[0], competitor)
 })
+
+void test('edge publication bypasses local pre-push hooks', (t) => {
+  const f = fixture()
+  t.after(() => rmSync(f.root, { recursive: true, force: true }))
+  const hooks = join(f.root, 'hooks')
+  mkdirSync(hooks)
+  writeFileSync(join(hooks, 'pre-push'), '#!/bin/sh\nexit 1\n', { mode: 0o755 })
+  f.git('config', 'core.hooksPath', hooks)
+  const edge = publishEdge(f.checkout, f.git('rev-parse', 'HEAD'))
+  assert.ok(edge)
+  assert.equal(f.git('ls-remote', '--heads', 'origin', 'edge').split('\t')[0], edge)
+})
