@@ -249,7 +249,9 @@ datasets, and no evidence classification or storage contract changes.
 
 The browser presentation uses the White First design system in root `DESIGN.md`:
 white light surfaces, neutral charcoal dark surfaces, blue actions and chart lines,
-and locally bundled DM Sans. Branding uses a text wordmark. A desktop sidebar owns view navigation; below 55rem,
+and locally bundled DM Sans. Tokens and the shared component library live in
+`packages/web/src/ui`; features compose its primitives, and a design guard test
+enforces the token contract. Branding uses a text wordmark. A desktop sidebar owns view navigation; below 55rem,
 the same links wrap above the workspace. The header keeps machine identity,
 a fixed-size status indicator beside the theme switcher, the current view heading
 (`/ Tokens`, for example), and theme selection. Wrapping filters and period navigation

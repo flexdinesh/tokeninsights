@@ -39,6 +39,48 @@ function definedProperties() {
   return defined
 }
 
+function sourceText(path: string) {
+  return sources.find((source) => source.path === path)?.text ?? ''
+}
+
+// Semantic color roles resolved through the palette, as DESIGN.md records them:
+// the light value under the role name and the dark value under dark-<role>.
+function semanticColors() {
+  const palette = new Map(
+    [...sourceText(paletteFile).matchAll(/(--palette-[\w-]+):\s*([^;]+);/g)].map((match) => [
+      match[1] ?? '',
+      (match[2] ?? '').trim(),
+    ]),
+  )
+  const roles = sourceText('ui/tokens/semantic.css').split(':root[data-theme')[0] ?? ''
+  const colors: Record<string, string> = {}
+  for (const match of roles.matchAll(/\n\s+--([\w-]+):\s*([^;]+);/g)) {
+    const role = match[1] ?? ''
+    const value = (match[2] ?? '').trim()
+    const pair = /^light-dark\(var\((--palette-[\w-]+)\),\s*var\((--palette-[\w-]+)\)\)$/.exec(
+      value,
+    )
+    const single = /^var\((--palette-[\w-]+)\)$/.exec(value)
+    const light = pair?.[1] ?? single?.[1]
+    const dark = pair?.[2] ?? single?.[1]
+    if (!light || !dark) continue
+    colors[role] = palette.get(light) ?? `missing ${light}`
+    colors[`dark-${role}`] = palette.get(dark) ?? `missing ${dark}`
+  }
+  return colors
+}
+
+function designFrontmatterColors() {
+  const design = readFileSync(`${srcDirectory}../../../DESIGN.md`, 'utf8')
+  const block = /^---\n[\s\S]*?^colors:\n((?: {2}.+\n)+)/m.exec(design)?.[1] ?? ''
+  return Object.fromEntries(
+    [...block.matchAll(/^ {2}([\w-]+): "([^"]+)"$/gm)].map((match) => [
+      match[1] ?? '',
+      match[2] ?? '',
+    ]),
+  )
+}
+
 // Utility part of a class: everything after the last variant separator that
 // sits outside brackets, so arbitrary variants such as [&_svg]: stay allowed.
 function utilityOf(className: string) {
@@ -132,13 +174,19 @@ describe('design guard', () => {
     ).toEqual([])
   })
 
+  it('records every semantic color role in DESIGN.md frontmatter', () => {
+    const colors = semanticColors()
+    expect(Object.keys(colors).length).toBeGreaterThan(0)
+    expect(designFrontmatterColors()).toEqual(colors)
+  })
+
   it('loads the design catalog only behind the development flag', () => {
     const references = sources
       .filter(({ path }) => !path.startsWith('design/'))
       .filter(({ text }) => /design\/DesignCatalog|_design/.test(text))
       .map(({ path }) => path)
     expect(references).toEqual(['main.tsx'])
-    const main = sources.find(({ path }) => path === 'main.tsx')?.text ?? ''
+    const main = sourceText('main.tsx')
     expect(main).not.toMatch(/^import .*design\//m)
     expect(main).toMatch(
       /if \(import\.meta\.env\.DEV && window\.location\.pathname === '\/_design'\) \{\n\s+const \{ DesignCatalog \} = await import\('\.\/design\/DesignCatalog'\)/,
