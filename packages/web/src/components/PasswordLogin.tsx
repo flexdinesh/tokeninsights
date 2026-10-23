@@ -2,7 +2,7 @@ import { useState } from 'react'
 import type { FormEvent } from 'react'
 import { changeBrowserSession } from '../api'
 import { passwordMaxCharacters, passwordMinCharacters, signup, validPassword } from '../account'
-import { Brand, Button, Input } from '@/ui'
+import { Button, Field, Heading, Input, StartupShell } from '@/ui'
 
 export function PasswordLogin({
   onSignIn,
@@ -50,83 +50,82 @@ export function PasswordLogin({
   }
 
   return (
-    <div className="app-shell">
-      <header className="app-header">
-        <Brand />
-      </header>
-      <main className="startup-state password-login">
-        <h1>{creating ? 'Create your account' : 'Sign in to TokenInsights'}</h1>
-        <p>
-          {creating
-            ? 'Your account keeps your synced usage together.'
-            : 'View your synced usage and manage your API keys.'}
-        </p>
-        <form onSubmit={(event) => void submit(event)}>
-          <label htmlFor="username">Username</label>
-          <Input
-            id="username"
-            name="username"
-            autoComplete="username"
-            value={username}
-            onChange={(event) => setUsername(event.target.value)}
-            required
-            disabled={pending || disabled}
-            aria-describedby={creating ? 'username-help' : undefined}
-          />
-          {creating && (
-            <p id="username-help" className="field-help">
-              3–32 letters, numbers, underscores or hyphens. Start with a letter or number.
-            </p>
+    <StartupShell>
+      <Heading as="h1" variant="page">
+        {creating ? 'Create your account' : 'Sign in to TokenInsights'}
+      </Heading>
+      <p>
+        {creating
+          ? 'Your account keeps your synced usage together.'
+          : 'View your synced usage and manage your API keys.'}
+      </p>
+      <form
+        className="grid w-full max-w-login gap-4 text-start"
+        onSubmit={(event) => void submit(event)}
+      >
+        <Field
+          label="Username"
+          description={
+            creating
+              ? '3–32 letters, numbers, underscores or hyphens. Start with a letter or number.'
+              : undefined
+          }
+        >
+          {(control) => (
+            <Input
+              {...control}
+              name="username"
+              autoComplete="username"
+              value={username}
+              onChange={(event) => setUsername(event.target.value)}
+              required
+              disabled={pending || disabled}
+            />
           )}
-          <label htmlFor="password">Password</label>
-          <Input
-            id="password"
-            name="password"
-            type="password"
-            autoComplete={creating ? 'new-password' : 'current-password'}
-            value={password}
-            onChange={(event) => setPassword(event.target.value)}
-            required
-            disabled={pending || disabled}
-            aria-invalid={Boolean(error || sessionError)}
-            aria-describedby={
-              creating ? 'password-help' : error || sessionError ? 'login-error' : undefined
-            }
-          />
-          {creating && (
-            <p id="password-help" className="field-help">
-              {passwordMinCharacters}–{passwordMaxCharacters} characters.
-            </p>
+        </Field>
+        <Field
+          label="Password"
+          description={
+            creating ? `${passwordMinCharacters}–${passwordMaxCharacters} characters.` : undefined
+          }
+          error={error || sessionError || undefined}
+        >
+          {(control) => (
+            <Input
+              {...control}
+              name="password"
+              type="password"
+              autoComplete={creating ? 'new-password' : 'current-password'}
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              required
+              disabled={pending || disabled}
+            />
           )}
-          {(error || sessionError) && (
-            <p id="login-error" role="alert">
-              {error || sessionError}
-            </p>
-          )}
-          <Button type="submit" disabled={pending || disabled || !username.trim() || !password}>
-            {pending
-              ? creating
-                ? 'Creating account…'
-                : 'Signing in…'
-              : creating
-                ? 'Create account'
-                : 'Sign in'}
-          </Button>
-        </form>
-        {signupEnabled && (
-          <Button
-            variant="ghost"
-            disabled={pending || disabled}
-            onClick={() => {
-              setCreating(!creating)
-              setError('')
-              setPassword('')
-            }}
-          >
-            {creating ? 'Already have an account? Sign in' : 'Create an account'}
-          </Button>
-        )}
-      </main>
-    </div>
+        </Field>
+        <Button type="submit" disabled={pending || disabled || !username.trim() || !password}>
+          {pending
+            ? creating
+              ? 'Creating account…'
+              : 'Signing in…'
+            : creating
+              ? 'Create account'
+              : 'Sign in'}
+        </Button>
+      </form>
+      {signupEnabled && (
+        <Button
+          variant="link"
+          disabled={pending || disabled}
+          onClick={() => {
+            setCreating(!creating)
+            setError('')
+            setPassword('')
+          }}
+        >
+          {creating ? 'Already have an account? Sign in' : 'Create an account'}
+        </Button>
+      )}
+    </StartupShell>
   )
 }

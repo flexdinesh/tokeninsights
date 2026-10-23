@@ -1,10 +1,18 @@
 import { Link } from '@tanstack/react-router'
-import { Activity, Box, ChartNoAxesCombined, Command, GitBranch, Layers3 } from 'lucide-react'
+import {
+  Activity,
+  Box,
+  ChartNoAxesCombined,
+  Command,
+  Gauge,
+  GitBranch,
+  Layers3,
+} from 'lucide-react'
 import type { Tab } from '../contracts'
 import { labels } from '../format'
 import { reduceQuery, searchFromQuery } from '../query'
 import type { QueryState } from '../query'
-import { Brand, Button } from '@/ui'
+import { Button, Sidebar, SidebarItem } from '@/ui'
 
 const tabs: { id: Tab; icon: typeof Activity }[] = [
   { id: 'tokens', icon: Activity },
@@ -12,7 +20,7 @@ const tabs: { id: Tab; icon: typeof Activity }[] = [
   { id: 'providers', icon: Layers3 },
   { id: 'harnesses', icon: Command },
   { id: 'sessions', icon: ChartNoAxesCombined },
-  { id: 'context', icon: Layers3 },
+  { id: 'context', icon: Gauge },
   { id: 'repo', icon: GitBranch },
 ]
 
@@ -26,32 +34,36 @@ export function DashboardSidebar({
   query: QueryState
 }) {
   return (
-    <aside className="dashboard-sidebar" aria-label="Dashboard navigation">
-      <Brand />
-      <nav className="view-tabs" aria-label="Analytics views">
-        {tabs.map(({ id, icon: Icon }) => (
-          <Button key={id} variant="ghost" asChild>
-            <Link
-              to="/$tab"
-              params={{ tab: id }}
-              search={searchFromQuery(reduceQuery(query, { type: 'tab', value: id }))}
-              activeOptions={{ exact: true, includeSearch: false }}
-            >
-              <Icon size="1em" aria-hidden="true" />
-              {labels[id]}
-            </Link>
-          </Button>
-        ))}
-      </nav>
-      <div className="sidebar-footer">
-        <p>{localMachine ? 'Local workspace' : 'Hosted workspace'}</p>
-        <p>Usage metadata only</p>
-        {onSignOut && (
-          <Button variant="ghost" size="compact" onClick={() => void onSignOut()}>
+    <Sidebar
+      label="Dashboard navigation"
+      navLabel="Analytics views"
+      note={
+        <>
+          <p>{localMachine ? 'Local workspace' : 'Hosted workspace'}</p>
+          <p>Usage metadata only</p>
+        </>
+      }
+      actions={
+        onSignOut && (
+          <Button variant="quiet" size="compact" onClick={() => void onSignOut()}>
             Sign out
           </Button>
-        )}
-      </div>
-    </aside>
+        )
+      }
+    >
+      {tabs.map(({ id, icon: Icon }) => (
+        <SidebarItem key={id}>
+          <Link
+            to="/$tab"
+            params={{ tab: id }}
+            search={searchFromQuery(reduceQuery(query, { type: 'tab', value: id }))}
+            activeOptions={{ exact: true, includeSearch: false }}
+          >
+            <Icon aria-hidden="true" />
+            {labels[id]}
+          </Link>
+        </SidebarItem>
+      ))}
+    </Sidebar>
   )
 }

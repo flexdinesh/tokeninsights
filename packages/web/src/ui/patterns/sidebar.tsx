@@ -9,12 +9,15 @@ import { Brand } from './brand'
 export function Sidebar({
   label,
   navLabel,
-  footer,
+  note,
+  actions,
   children,
 }: {
   label: string
   navLabel: string
-  footer?: ReactNode
+  /** Context shown at the foot of the rail; hidden once navigation wraps. */
+  note?: ReactNode
+  actions?: ReactNode
   children: ReactNode
 }) {
   return (
@@ -28,9 +31,10 @@ export function Sidebar({
       <nav aria-label={navLabel} className="grid min-w-0 gap-1 max-nav:flex max-nav:flex-wrap">
         {children}
       </nav>
-      {footer && (
-        <div className="mt-auto grid gap-3 px-3 text-label text-ink-subtle max-nav:mt-0 max-nav:px-0 max-nav:empty:hidden max-nav:[&>p]:hidden">
-          {footer}
+      {(note || actions) && (
+        <div className="mt-auto grid justify-items-start gap-3 px-3 text-label text-ink-subtle max-nav:mt-0 max-nav:px-0">
+          {note && <div className="max-nav:hidden">{note}</div>}
+          {actions}
         </div>
       )}
     </aside>

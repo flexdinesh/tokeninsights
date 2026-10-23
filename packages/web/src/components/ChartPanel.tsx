@@ -11,7 +11,7 @@ const UsageChart = lazy(() =>
 
 function ChartError() {
   return (
-    <Alert className="error-banner" variant="destructive" role="alert">
+    <Alert className="my-3" variant="destructive" role="alert">
       <AlertDescription>Chart couldn’t load. Reload the page to try again.</AlertDescription>
       <Button variant="outline" onClick={() => window.location.reload()}>
         Reload page
@@ -34,7 +34,13 @@ export function ChartPanel({
   return (
     <CatchBoundary getResetKey={() => resetKey} errorComponent={ChartError}>
       <Suspense
-        fallback={<Skeleton className="skeleton-chart" role="status" aria-label="Loading chart" />}
+        fallback={
+          <Skeleton
+            className="h-(--skeleton-chart-height)"
+            role="status"
+            aria-label="Loading chart"
+          />
+        }
       >
         <UsageChart rows={rows} totalTokens={totalTokens} timezone={timezone} />
       </Suspense>

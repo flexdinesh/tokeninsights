@@ -7,7 +7,7 @@ import { extendTailwindMerge } from 'tailwind-merge'
 const twMerge = extendTailwindMerge({
   override: {
     theme: {
-      text: ['label', 'body', 'title', 'subheading', 'readout', 'page'],
+      text: ['label', 'body', 'title', 'readout', 'page'],
       'font-weight': ['normal', 'medium', 'semibold', 'bold'],
       leading: ['tight', 'normal'],
       tracking: ['tight', 'heading'],

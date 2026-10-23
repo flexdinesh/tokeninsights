@@ -1,6 +1,19 @@
 import { expect, test } from '@playwright/test'
+import type { Locator, Page } from '@playwright/test'
 import { InstanceResponseV2, UsageResponseV2 } from '../src/generated/api'
 import { dashboardSchema } from '../src/contracts'
+
+function sessionCoverage(page: Page) {
+  return page.getByText(/^(Excluded sessions|Sessions) \d+ shown \/ \d+ (synced|across all dates)$/)
+}
+
+function chartFilters(chart: Locator) {
+  return chart.getByRole('group', { name: 'Filter by chart item' }).getByRole('button')
+}
+
+function endingWith(values: string[]) {
+  return values.map((value) => new RegExp(`${value.replaceAll('.', '\\.')}$`))
+}
 
 test.describe('server reporting timezone', () => {
   test.use({ timezoneId: 'America/Los_Angeles' })
@@ -22,13 +35,15 @@ test.describe('server reporting timezone', () => {
       })
     })
     await page.goto('/sessions?period=all')
-    await expect(page.locator('.table-panel time')).toHaveText('Jan 1, 2026')
-    await expect(page.locator('.app-header time')).toHaveCount(0)
+    await expect(
+      page.getByRole('region', { name: 'Sessions details', exact: true }).locator('time'),
+    ).toHaveText('Jan 1, 2026')
+    await expect(page.getByRole('banner').locator('time')).toHaveCount(0)
     await page.getByRole('button', { name: 'Local status: Ready' }).click()
     await expect(
       page.getByRole('dialog', { name: 'Local status details' }).locator('time'),
     ).toHaveText('Last ingestion Jan 1, 2026, 00:30')
-    await expect(page.locator('.app-footer')).toContainText('UTC')
+    await expect(page.getByRole('main').locator('footer').last()).toContainText('UTC')
     expect(await page.evaluate(() => Intl.DateTimeFormat().resolvedOptions().timeZone)).toBe(
       'America/Los_Angeles',
     )
@@ -40,10 +55,9 @@ test('saved ingestion shows available rows without source completeness markers',
 }) => {
   await page.goto('/tokens')
   await expect(page.getByLabel('Total tokens: 258,000', { exact: true })).toBeVisible()
-  await expect(page.locator('.coverage-indicator')).toHaveCount(0)
   await expect(page.getByText('Source coverage', { exact: true })).toHaveCount(0)
   await expect(page.getByLabel('Sources checked')).toHaveCount(0)
-  await expect(page.locator('.app-header time')).toHaveCount(0)
+  await expect(page.getByRole('banner').locator('time')).toHaveCount(0)
   await page.getByRole('button', { name: 'Local status: Ready' }).click()
   await expect(page.getByRole('dialog', { name: 'Local status details' })).toContainText(
     'Last ingestion',
@@ -103,7 +117,7 @@ test('dimension charts show filtered token shares on bars, labels, and tooltips'
     await page.goto(`/${tab}`)
     const chart = page.getByRole('region', { name: title, exact: true })
     await expect(chart.locator('.recharts-label-list text')).toHaveText(shares)
-    await expect(chart.locator('.chart-share')).toHaveText(shares)
+    await expect(chartFilters(chart)).toHaveText(endingWith(shares))
     await chart.locator('.recharts-bar-rectangle path').first().hover()
     await expect(chart.locator('.recharts-tooltip-wrapper')).toContainText(`(${shares[0] ?? ''})`)
   }
@@ -135,20 +149,23 @@ test('dimension charts show filtered token shares on bars, labels, and tooltips'
   })
   await page.goto('/models')
   const expectedShares = Array.from({ length: 12 }, () => '4.2%')
-  await expect(chart.locator('.chart-share')).toHaveText(expectedShares)
+  await expect(chartFilters(chart)).toHaveText(endingWith(expectedShares))
   await expect(chart.locator('.recharts-label-list text')).toHaveText(expectedShares)
   expect(
-    await chart.locator('.chart-canvas').evaluate((el) => el.scrollWidth > el.clientWidth),
+    await chart
+      .locator('.recharts-responsive-container')
+      .locator('..')
+      .evaluate((el) => el.scrollWidth > el.clientWidth),
   ).toBe(true)
   expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)).toBe(false)
 
   await page.evaluate(() => {
     document.documentElement.style.fontSize = '200%'
   })
-  const sharesFitButtons = await chart.locator('.chart-filter').evaluateAll((buttons) =>
+  const sharesFitButtons = await chartFilters(chart).evaluateAll((buttons) =>
     buttons.every((button) => {
-      const share = button.querySelector('.chart-share')
-      const name = button.querySelector('.chart-filter-name')
+      const share = button.querySelector(':scope > span:last-child')
+      const name = button.querySelector(':scope > span:nth-last-child(2)')
       if (!share || !name) return false
       const bounds = button.getBoundingClientRect()
       const shareBounds = share.getBoundingClientRect()
@@ -213,7 +230,8 @@ test('repo charts show full filtered token shares in both location groupings', a
   })
   expect(
     await repositoryChart
-      .locator('.chart-canvas')
+      .locator('.recharts-responsive-container')
+      .locator('..')
       .evaluate((el) => el.scrollWidth > el.clientWidth),
   ).toBe(true)
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
@@ -271,7 +289,7 @@ test('table columns resize by drag and keyboard without sorting', async ({ page 
 
   await page.setViewportSize({ width: 390, height: 844 })
   const scrollsHorizontally = await details
-    .locator('.table-scroll')
+    .getByRole('region', { name: 'Scrollable results', exact: true })
     .evaluate((element) => element.scrollWidth > element.clientWidth)
   expect(scrollsHorizontally).toBe(true)
   await resize.focus()
@@ -305,15 +323,17 @@ test('saved usage, seven views, filtering, history, pagination, and automatic re
     await expect(page).toHaveURL(new RegExp(`/${tab.toLowerCase()}\\?`))
     await expect(page.getByRole('region', { name: `${tab} details`, exact: true })).toBeVisible()
     await expect(page.getByLabel('Total tokens: 258,000', { exact: true })).toBeVisible()
-    await expect(page.locator('.session-coverage')).toHaveText('Sessions 60 shown / 80 synced')
+    await expect(sessionCoverage(page)).toHaveText('Sessions 60 shown / 80 synced')
     await expect(page.getByLabel('Sessions shown: 60', { exact: true })).toBeVisible()
-    await expect(page.locator('.sessions-card')).toContainText(
-      '80 synced across all dates & harnesses',
-    )
+    await expect(
+      page
+        .getByRole('region', { name: 'Filtered usage summary' })
+        .getByText('80 synced across all dates & harnesses', { exact: true }),
+    ).toBeVisible()
     if (tab === 'Harnesses') {
       const details = page.getByRole('region', { name: 'Harnesses details', exact: true })
       await expect(
-        details.locator('tbody tr').first().locator('.identity-detail > span'),
+        details.locator('tbody tr').first().getByRole('cell').first().locator('span > span'),
       ).toHaveText(['anthropic', 'openai', 'model-a', 'model-b'])
     }
     if (tab === 'Repo') {
@@ -330,12 +350,10 @@ test('saved usage, seven views, filtering, history, pagination, and automatic re
         await expect(details.getByRole('columnheader', { name: column, exact: true })).toBeVisible()
       }
       const totalRow = details.locator('tbody tr').first()
-      const providers = totalRow.locator('td').nth(1).locator('.dimension-values > span')
+      const providers = totalRow.locator('td').nth(1).locator('span > span')
       await expect(providers).toHaveText(['anthropic', 'openai'])
-      await expect(totalRow.locator('td').nth(2).locator('.dimension-values > span')).toHaveText([
-        'pi',
-      ])
-      await expect(totalRow.locator('td').nth(3).locator('.dimension-values > span')).toHaveText([
+      await expect(totalRow.locator('td').nth(2).locator('span > span')).toHaveText(['pi'])
+      await expect(totalRow.locator('td').nth(3).locator('span > span')).toHaveText([
         'model-a',
         'model-b',
       ])
@@ -353,7 +371,7 @@ test('saved usage, seven views, filtering, history, pagination, and automatic re
       await expect(totalRow.getByText('Some usage has no recorded directory')).toBeVisible()
       await page.getByRole('combobox', { name: 'Group by location' }).click()
       await page.getByRole('option', { name: 'Directory' }).click()
-      const unknownDirectory = details.locator('.identity-cell').filter({
+      const unknownDirectory = details.getByRole('cell').filter({
         has: page.getByText('unknown', { exact: true }),
       })
       await expect(unknownDirectory).toContainText('No recorded directory')
@@ -366,7 +384,7 @@ test('saved usage, seven views, filtering, history, pagination, and automatic re
   await page.getByRole('checkbox', { name: 'model-a', exact: true }).check()
   await page.getByRole('button', { name: 'Done', exact: true }).click()
   await expect(page.getByLabel('Total tokens: 129,000', { exact: true })).toBeVisible()
-  await expect(page.locator('.session-coverage')).toHaveText('Sessions 30 shown / 80 synced')
+  await expect(sessionCoverage(page)).toHaveText('Sessions 30 shown / 80 synced')
   await expect(page).toHaveURL(/model=model-a/)
   await page.reload()
   await expect(page.getByLabel('Total tokens: 129,000', { exact: true })).toBeVisible()
@@ -380,12 +398,20 @@ test('saved usage, seven views, filtering, history, pagination, and automatic re
     .getByRole('navigation', { name: 'Analytics views' })
     .getByRole('link', { name: 'Sessions', exact: true })
     .click()
-  await expect(page.locator('.table-panel tbody tr')).toHaveCount(50)
+  await expect(
+    page.getByRole('region', { name: 'Sessions details', exact: true }).locator('tbody tr'),
+  ).toHaveCount(50)
   await page.getByRole('button', { name: 'Next page' }).click()
-  await expect(page.locator('.table-panel tbody tr')).toHaveCount(10)
-  await expect(page.locator('.results-summary')).toContainText('60 rows')
-  await expect(page.locator('.session-coverage')).toHaveText('Sessions 60 shown / 80 synced')
-  await expect(page.locator('.results-summary')).toContainText('258K')
+  await expect(
+    page.getByRole('region', { name: 'Sessions details', exact: true }).locator('tbody tr'),
+  ).toHaveCount(10)
+  await expect(
+    page.getByRole('region', { name: 'Sessions details', exact: true }).locator('footer'),
+  ).toContainText('60 rows')
+  await expect(sessionCoverage(page)).toHaveText('Sessions 60 shown / 80 synced')
+  await expect(
+    page.getByRole('region', { name: 'Sessions details', exact: true }).locator('footer'),
+  ).toContainText('258K')
   expect(syncRequests).toBe(0)
   await expect(page.getByRole('button', { name: 'Reload', exact: true })).toHaveCount(0)
   await expect(page.getByLabel('Total tokens: 258,000', { exact: true })).toBeVisible()
@@ -396,7 +422,7 @@ test('saved usage, seven views, filtering, history, pagination, and automatic re
   expect(errors).toEqual([])
   await page.getByRole('button', { name: /^Date range:/ }).click()
   await page.getByRole('button', { name: 'All time', exact: true }).click()
-  await expect(page.locator('.session-coverage')).toHaveText('Sessions 80 shown / 80 synced')
+  await expect(sessionCoverage(page)).toHaveText('Sessions 80 shown / 80 synced')
   await expect(page.getByLabel('Sessions shown: 80', { exact: true })).toBeVisible()
 })
 
@@ -534,9 +560,13 @@ test('themes, keyboard filters, mobile layout, and scalable typography', async (
   const heading = page.getByRole('heading', { name: '/ Tokens', exact: true })
   await expect(heading).toBeVisible()
   await expect(page.locator('link[rel="icon"]')).toHaveCount(0)
-  await expect(page.locator('.brand img')).toHaveCount(0)
-  const sidebar = await page.locator('.dashboard-sidebar').boundingBox()
-  const content = await page.locator('.dashboard-main').boundingBox()
+  await expect(
+    page.getByRole('complementary', { name: 'Dashboard navigation' }).locator('img'),
+  ).toHaveCount(0)
+  const sidebar = await page
+    .getByRole('complementary', { name: 'Dashboard navigation' })
+    .boundingBox()
+  const content = await page.getByRole('main').boundingBox()
   if (!sidebar || !content) throw new Error('Desktop navigation and dashboard must be visible')
   expect(sidebar.x + sidebar.width).toBeLessThanOrEqual(content.x)
   expect(
@@ -663,14 +693,20 @@ test('themes, keyboard filters, mobile layout, and scalable typography', async (
   await page.evaluate(() => {
     document.documentElement.style.fontSize = '200%'
   })
-  for (const readout of await page.locator('.summary-card strong').all()) {
+  for (const readout of await page
+    .getByRole('region', { name: 'Filtered usage summary' })
+    .locator('strong')
+    .all()) {
     const value = await readout.boundingBox()
     const container = await readout.locator('..').boundingBox()
     if (!value || !container) throw new Error('Usage readout must remain visible at 200% text')
     expect(value.x).toBeGreaterThanOrEqual(container.x)
     expect(value.x + value.width).toBeLessThanOrEqual(container.x + container.width)
   }
-  for (const period of await page.locator('tbody .identity-name').all()) {
+  for (const period of await page
+    .getByRole('region', { name: 'Tokens details', exact: true })
+    .locator('tbody td:first-child span[title]')
+    .all()) {
     await expect(period).toBeVisible()
     expect(await period.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(
       true,
@@ -702,7 +738,9 @@ for (const address of ['127.0.0.1', 'localhost']) {
     })
     await page.goto(`${origin}/tokens`)
     await expect(page.getByLabel('Total tokens: 258,000', { exact: true })).toBeVisible()
-    await expect(page.locator('.server-identity')).toHaveText(instance.hostname)
+    await expect(
+      page.getByRole('banner').getByText(instance.hostname, { exact: true }),
+    ).toBeVisible()
     await expect(page.getByRole('button', { name: 'Choose data source' })).toHaveCount(0)
     await page.getByRole('button', { name: 'Session', exact: true }).click()
     await page.getByRole('textbox', { name: 'Search session' }).fill('059')
@@ -731,14 +769,14 @@ test('custom dates, session search, and saved usage after status failure', async
   await page.getByRole('button', { name: 'Apply range' }).click()
   await expect(page.getByRole('heading', { name: 'No usage matches these filters' })).toBeVisible()
   await expect(page.getByLabel('Total tokens: 0', { exact: true })).toBeVisible()
-  await expect(page.locator('.session-coverage')).toHaveText('Sessions 0 shown / 80 synced')
+  await expect(sessionCoverage(page)).toHaveText('Sessions 0 shown / 80 synced')
   await page.getByRole('button', { name: 'Clear All', exact: true }).click()
   await page.getByRole('button', { name: 'Session', exact: true }).click()
   await page.getByRole('textbox', { name: 'Search session' }).fill('059')
   await page.getByRole('checkbox', { name: 'web-session-059', exact: true }).check()
   await page.getByRole('button', { name: 'Done', exact: true }).click()
   await expect(page.getByLabel('Total tokens: 4,300', { exact: true })).toBeVisible()
-  await expect(page.locator('.session-coverage')).toHaveText('Sessions 1 shown / 80 synced')
+  await expect(sessionCoverage(page)).toHaveText('Sessions 1 shown / 80 synced')
   await page.route('**/api/v2/status', (route) =>
     route.fulfill({ status: 503, json: { code: 'unavailable', message: 'Status unavailable' } }),
   )

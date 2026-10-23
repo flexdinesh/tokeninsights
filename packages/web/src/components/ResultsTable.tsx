@@ -31,13 +31,16 @@ import {
 } from '../format'
 import { useDashboardPreferences, useDashboardQuery } from '../state'
 import {
-  Badge,
   Button,
-  Card,
-  Checkbox,
+  CheckboxOption,
+  cn,
+  ControlLabel,
+  EmptyState,
   Popover,
   PopoverContent,
+  PopoverHeader,
   PopoverTrigger,
+  SectionHeader,
   Select,
   SelectContent,
   SelectItem,
@@ -48,7 +51,10 @@ import {
   TableCell,
   TableHead,
   TableHeader,
+  TableResizeHandle,
   TableRow,
+  TableScroll,
+  TableSortButton,
 } from '@/ui'
 
 interface Column {
@@ -143,6 +149,11 @@ function identityDetails(row: Row, tab: Tab): string[] {
   ].flatMap(summaryLines)
 }
 
+const identityCell = 'flex min-w-0 max-w-full flex-col gap-1'
+const identityName = 'truncate font-medium'
+const identityDetail = 'flex flex-col text-label wrap-anywhere text-ink-subtle empty:hidden'
+const dimensionValue = 'inline-block min-w-0 max-w-full wrap-anywhere'
+
 export function UnknownLocation({
   directories,
   hasUnknownDirectory,
@@ -154,38 +165,49 @@ export function UnknownLocation({
   const listId = useId()
 
   return (
-    <div className="identity-cell">
-      <div className="repo-location-line">
-        <span className="identity-name">unknown</span>
+    <div className={identityCell}>
+      <div className="flex flex-wrap items-center gap-x-2">
+        <span className={identityName}>unknown</span>
         {directories.length > 0 && (
-          <button
-            type="button"
-            className="repo-directory-toggle"
+          <Button
+            variant="link"
+            size="compact"
+            className="gap-1"
             aria-expanded={expanded}
             aria-controls={listId}
             onClick={() => setExpanded((value) => !value)}
           >
             {expanded ? 'Hide directories' : 'Show directories'}
-            <ChevronDown size="1em" aria-hidden="true" className={expanded ? 'expanded' : ''} />
-          </button>
+            <ChevronDown
+              aria-hidden="true"
+              className={cn(
+                'transition-transform duration-(--duration-disclosure) ease-out',
+                expanded && 'rotate-180',
+              )}
+            />
+          </Button>
         )}
       </div>
       {directories.length > 0 && (
         <ul
-          className="repo-directory-list"
+          className="grid gap-1 border-s border-line ps-2"
           id={listId}
           aria-label="Recorded directories"
           hidden={!expanded}
         >
           {directories.map((directory) => (
-            <li key={directory} className="repo-directory-path" title={directory}>
+            <li
+              key={directory}
+              className="font-mono text-label wrap-anywhere text-ink-subtle"
+              title={directory}
+            >
               {directory}
             </li>
           ))}
         </ul>
       )}
       {hasUnknownDirectory && (expanded || directories.length === 0) && (
-        <span className="identity-detail">
+        <span className={identityDetail}>
           {directories.length > 0
             ? 'Some usage has no recorded directory'
             : 'No recorded directory'}
@@ -219,11 +241,7 @@ function ResultsCell({
       </time>
     )
   if (spec.numeric && typeof value === 'number')
-    return (
-      <span className="numeric-value" title={exactCount(value)}>
-        {formatCount(value)}
-      </span>
-    )
+    return <span title={exactCount(value)}>{formatCount(value)}</span>
   if (spec.id === 'name' && tab === 'repo' && row.locationKey === 'unknown')
     return (
       <UnknownLocation
@@ -234,16 +252,20 @@ function ResultsCell({
   if (spec.id === 'name') {
     const details = identityDetails(row, tab)
     return (
-      <div className="identity-cell">
-        <div className="identity-line">
+      <div className={identityCell}>
+        <div className="flex min-w-0 items-center gap-2">
           <span
-            className={tab === 'tokens' ? 'identity-name period-name' : 'identity-name'}
+            className={cn(
+              identityName,
+              'min-w-0',
+              tab === 'tokens' && 'overflow-visible whitespace-normal wrap-anywhere tabular-nums',
+            )}
             title={String(value)}
           >
             {String(value)}
           </span>
         </div>
-        <span className="identity-detail">
+        <span className={identityDetail}>
           {details.map((detail) => (
             <span key={detail}>{detail}</span>
           ))}
@@ -253,14 +275,16 @@ function ResultsCell({
   }
   if (spec.id === 'harness' || spec.id === 'provider' || spec.id === 'model')
     return (
-      <span className="dimension-values">
+      <span className={dimensionValue}>
         {summaryLines(String(value)).map((line) => (
-          <span key={line}>{line}</span>
+          <span key={line} className="block">
+            {line}
+          </span>
         ))}
       </span>
     )
   return (
-    <span className="dimension-value" title={String(value)}>
+    <span className={dimensionValue} title={String(value)}>
       {String(value)}
     </span>
   )
@@ -327,76 +351,74 @@ export function ResultsTable({
           { id: 'context', label: 'Ctx used' },
         ]
   return (
-    <Card
-      className={`table-panel panel${query.tab === 'repo' ? ' repo-table-panel' : ''}`}
-      role="region"
+    <section
+      className="overflow-hidden border-t border-line"
       aria-label={`${reviewingExcluded ? 'Excluded ' : ''}${labels[query.tab]} details`}
     >
-      <div className="panel-heading">
-        <div className="table-title">
-          <h2>{title}</h2>
-          <Badge>{exactCount(data.rowCount)}</Badge>
-        </div>
-        <div className="table-controls">
-          <div className="bucket-control">
-            Sort
-            <Select
-              value={query.sort}
-              onValueChange={(value) => {
-                const sort = sortSchema.safeParse(value)
-                if (sort.success) sortBy(sort.data)
-              }}
+      <SectionHeader
+        title={title}
+        count={exactCount(data.rowCount)}
+        actions={
+          <>
+            <ControlLabel label="Sort">
+              <Select
+                value={query.sort}
+                onValueChange={(value) => {
+                  const sort = sortSchema.safeParse(value)
+                  if (sort.success) sortBy(sort.data)
+                }}
+              >
+                <SelectTrigger size="compact" aria-label="Sort by">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {sortOptions.map((s) => (
+                    <SelectItem key={s.id} value={s.id}>
+                      {s.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </ControlLabel>
+            <Button
+              variant="outline"
+              size="icon-compact"
+              aria-label={`Sort ${query.direction === 'asc' ? 'descending' : 'ascending'}`}
+              onClick={() => sortBy(query.sort)}
             >
-              <SelectTrigger aria-label="Sort by">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {sortOptions.map((s) => (
-                  <SelectItem key={s.id} value={s.id}>
-                    {s.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <Button
-            variant="outline"
-            size="icon"
-            aria-label={`Sort ${query.direction === 'asc' ? 'descending' : 'ascending'}`}
-            onClick={() => sortBy(query.sort)}
-          >
-            {query.direction === 'asc' ? <ArrowUp size="1em" /> : <ArrowDown size="1em" />}
-          </Button>
-          <Popover>
-            <PopoverTrigger asChild>
-              <Button variant="outline">
-                <Columns3 size="1em" />
-                Columns
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent align="end" aria-label="Visible columns">
-              <strong>Visible columns</strong>
-              {specs
-                .filter((s) => s.id !== 'name')
-                .map((s) => (
-                  <label key={s.id} className="check-option" htmlFor={`${columnId}-${s.id}`}>
-                    <Checkbox
+              {query.direction === 'asc' ? (
+                <ArrowUp aria-hidden="true" />
+              ) : (
+                <ArrowDown aria-hidden="true" />
+              )}
+            </Button>
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button variant="outline" size="compact">
+                  <Columns3 aria-hidden="true" />
+                  Columns
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent align="end" aria-label="Visible columns">
+                <PopoverHeader title="Visible columns" />
+                {specs
+                  .filter((s) => s.id !== 'name')
+                  .map((s) => (
+                    <CheckboxOption
+                      key={s.id}
                       id={`${columnId}-${s.id}`}
+                      label={s.label}
                       checked={!hidden.includes(s.id)}
                       onCheckedChange={() => toggleColumn(s.id)}
                     />
-                    {s.label}
-                  </label>
-                ))}
-            </PopoverContent>
-          </Popover>
-        </div>
-      </div>
-      <div className="table-scroll" role="region" tabIndex={0} aria-label="Scrollable results">
-        <Table
-          className="resizable-table"
-          style={{ width: table.getTotalSize(), minWidth: '100%' }}
-        >
+                  ))}
+              </PopoverContent>
+            </Popover>
+          </>
+        }
+      />
+      <TableScroll aria-label="Scrollable results">
+        <Table className="table-fixed" style={{ width: table.getTotalSize(), minWidth: '100%' }}>
           <colgroup>
             {table.getVisibleLeafColumns().map((column) => (
               <col key={column.id} style={{ width: column.getSize() }} />
@@ -413,30 +435,27 @@ export function ResultsTable({
                   return (
                     <TableHead
                       key={header.id}
-                      className={spec.numeric ? 'numeric' : ''}
+                      numeric={spec.numeric}
                       aria-label={spec.label}
                       aria-sort={
                         active ? (query.direction === 'asc' ? 'ascending' : 'descending') : 'none'
                       }
                     >
-                      <Button variant="ghost" size="compact" onClick={() => sortBy(sort)}>
+                      <TableSortButton onClick={() => sortBy(sort)}>
                         {flexRender(header.column.columnDef.header, header.getContext())}
                         {active ? (
                           query.direction === 'asc' ? (
-                            <ArrowUp size="0.9em" />
+                            <ArrowUp aria-hidden="true" />
                           ) : (
-                            <ArrowDown size="0.9em" />
+                            <ArrowDown aria-hidden="true" />
                           )
                         ) : (
-                          <ArrowUpDown size="0.9em" className="sort-hint" />
+                          <ArrowUpDown aria-hidden="true" className="text-ink-subtle" />
                         )}
-                      </Button>
-                      <div
-                        className={`column-resize-handle${header.column.getIsResizing() ? ' resizing' : ''}`}
-                        role="separator"
-                        tabIndex={0}
+                      </TableSortButton>
+                      <TableResizeHandle
+                        resizing={header.column.getIsResizing()}
                         aria-label={`Resize ${spec.label} column`}
-                        aria-orientation="vertical"
                         aria-valuemin={header.column.columnDef.minSize}
                         aria-valuemax={header.column.columnDef.maxSize}
                         aria-valuenow={header.column.getSize()}
@@ -478,7 +497,7 @@ export function ResultsTable({
                   const spec = specs.find((candidate) => candidate.id === cell.column.id)
                   if (!spec) return null
                   return (
-                    <TableCell key={cell.id} className={spec.numeric ? 'numeric' : ''}>
+                    <TableCell key={cell.id} numeric={spec.numeric}>
                       <ResultsCell
                         row={row.original}
                         spec={spec}
@@ -493,43 +512,47 @@ export function ResultsTable({
           </TableBody>
         </Table>
         {data.rowCount === 0 && displayRows.length === 0 && (
-          <div className="empty-state">
-            <SearchEmpty />
-            <h3>
-              {reviewingExcluded
+          <EmptyState
+            icon={<Copy aria-hidden="true" />}
+            title={
+              reviewingExcluded
                 ? 'No excluded usage matches these filters'
-                : 'No usage matches these filters'}
-            </h3>
-            <p>
-              {reviewingExcluded
-                ? 'Only usage excluded from your total appears here.'
-                : 'Your date range and filters apply to usage included in your total.'}{' '}
-              Try a wider date range{hasFilters ? ' or clear your filters' : ''}.
-            </p>
-            {(hasFilters || hasExcludedUsage || reviewingExcluded) && (
-              <div className="empty-state-actions">
-                {hasFilters && (
-                  <Button variant="outline" onClick={clearFilters}>
-                    Clear filters
-                  </Button>
-                )}
-                {(hasExcludedUsage || reviewingExcluded) && (
-                  <Button
-                    variant="ghost"
-                    onClick={() => setQuality(reviewingExcluded ? 'confirmed' : 'estimated')}
-                  >
-                    {reviewingExcluded ? 'Back to usage' : 'Review excluded usage'}
-                  </Button>
-                )}
-              </div>
-            )}
-          </div>
+                : 'No usage matches these filters'
+            }
+            description={
+              <>
+                {reviewingExcluded
+                  ? 'Only usage excluded from your total appears here.'
+                  : 'Your date range and filters apply to usage included in your total.'}{' '}
+                Try a wider date range{hasFilters ? ' or clear your filters' : ''}.
+              </>
+            }
+            actions={
+              (hasFilters || hasExcludedUsage || reviewingExcluded) && (
+                <>
+                  {hasFilters && (
+                    <Button variant="outline" onClick={clearFilters}>
+                      Clear filters
+                    </Button>
+                  )}
+                  {(hasExcludedUsage || reviewingExcluded) && (
+                    <Button
+                      variant="ghost"
+                      onClick={() => setQuality(reviewingExcluded ? 'confirmed' : 'estimated')}
+                    >
+                      {reviewingExcluded ? 'Back to usage' : 'Review excluded usage'}
+                    </Button>
+                  )}
+                </>
+              )
+            }
+          />
         )}
-      </div>
-      <footer className="results-summary">
-        <div className="result-counts">
+      </TableScroll>
+      <footer className="flex flex-wrap items-center justify-between gap-4 border-t border-line py-1 text-label text-ink-subtle [&_strong]:text-ink [&_strong]:tabular-nums">
+        <div className="flex min-w-0 flex-wrap items-baseline gap-y-1">
           <span
-            className="session-coverage"
+            className="wrap-anywhere"
             title={
               reviewingExcluded
                 ? 'Shown: sessions with excluded usage matching all filters, across all pages. All dates: sessions with excluded usage in this dataset, ignoring filters.'
@@ -541,13 +564,13 @@ export function ResultsTable({
             <strong>{exactCount(data.summary.syncedSessions)}</strong>{' '}
             {reviewingExcluded ? 'across all dates' : 'synced'}
           </span>
-          <span className="summary-dot">·</span>
+          <SummaryDot />
           <span>
             <strong>{exactCount(data.rowCount)}</strong> rows
           </span>
           {query.tab !== 'context' && (
             <>
-              <span className="summary-dot">·</span>
+              <SummaryDot />
               <span>
                 {reviewingExcluded ? 'Excluded total' : 'Total'}{' '}
                 <strong title={exactCount(data.summary.total)}>
@@ -557,26 +580,27 @@ export function ResultsTable({
             </>
           )}
         </div>
-        <div className="pagination">
-          <div className="pagination-size">
-            Rows
-            <Select
-              value={String(query.pageSize)}
-              onValueChange={(value) => setPageSize(Number(value))}
-            >
-              <SelectTrigger aria-label="Rows per page">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {[25, 50, 100, 200].map((n) => (
-                  <SelectItem key={n} value={String(n)}>
-                    {n}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+        <div className="ml-auto flex items-center gap-2">
+          <div className="mr-2 max-compact:hidden">
+            <ControlLabel label="Rows">
+              <Select
+                value={String(query.pageSize)}
+                onValueChange={(value) => setPageSize(Number(value))}
+              >
+                <SelectTrigger size="compact" aria-label="Rows per page">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {[25, 50, 100, 200].map((n) => (
+                    <SelectItem key={n} value={String(n)}>
+                      {n}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </ControlLabel>
           </div>
-          <span>
+          <span className="tabular-nums">
             {data.page} / {pages}
           </span>
           <Button
@@ -586,7 +610,7 @@ export function ResultsTable({
             onClick={() => setPage(data.page - 1)}
             aria-label="Previous page"
           >
-            <ChevronLeft size="1em" />
+            <ChevronLeft aria-hidden="true" />
           </Button>
           <Button
             variant="outline"
@@ -595,14 +619,18 @@ export function ResultsTable({
             onClick={() => setPage(data.page + 1)}
             aria-label="Next page"
           >
-            <ChevronRight size="1em" />
+            <ChevronRight aria-hidden="true" />
           </Button>
         </div>
       </footer>
-    </Card>
+    </section>
   )
 }
 
-function SearchEmpty() {
-  return <Copy size="1.6em" className="muted" aria-hidden />
+function SummaryDot() {
+  return (
+    <span aria-hidden="true" className="mx-2">
+      ·
+    </span>
+  )
 }

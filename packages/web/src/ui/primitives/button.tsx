@@ -14,7 +14,7 @@ const buttonVariants = cva(
         secondary: 'bg-surface-raised text-ink-muted hover:bg-surface-raised/80',
         ghost: 'hover:bg-surface-hover hover:text-ink-hover',
         quiet: 'text-ink-muted hover:bg-surface-hover hover:text-ink-hover',
-        link: 'text-ink-subtle underline-offset-(--underline-offset) hover:text-ink hover:underline',
+        link: 'text-ink-subtle underline-offset-(--underline-offset) hover:text-ink-hover hover:underline',
         destructive: 'bg-status-danger text-status-danger-ink hover:bg-status-danger/90',
       },
       size: {

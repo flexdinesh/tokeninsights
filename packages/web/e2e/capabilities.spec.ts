@@ -1,6 +1,19 @@
 import { expect, test } from '@playwright/test'
+import type { Page } from '@playwright/test'
 import { mockBootstrap, mockDashboard, mockFacets, mockSyncStatus } from '../src/mocks/data'
 import { bootstrapSchema } from '../src/contracts'
+
+// Header identity, status and theme controls must not shift while usage refreshes.
+function headerLayout(page: Page) {
+  const banner = page.getByRole('banner')
+  return Promise.all(
+    [
+      banner.getByTitle(new URL(page.url()).origin),
+      banner.getByRole('button', { name: /^Local status:/ }),
+      banner.getByRole('button', { name: /^Theme:/ }),
+    ].map((control) => control.boundingBox()),
+  )
+}
 
 for (const kind of ['personal', 'hosted']) {
   test(`${kind} browser respects collector-progress capability`, async ({ page }) => {
@@ -149,19 +162,19 @@ test('local startup shows capture and processing before fresh totals without an 
     return route.fulfill({ json: body })
   })
   await page.goto('/tokens')
-  await expect(page.locator('.app-header')).toContainText('Collecting usage')
+  await expect(page.getByRole('banner')).toContainText('Collecting usage')
   await page.getByRole('button', { name: 'Local status: Collecting usage' }).hover()
   await expect(page.getByRole('region', { name: 'Collector progress' })).toContainText(
     'codex: Collecting',
   )
   expect(progressRequests).toBe(1)
-  await expect(page.locator('.app-header').getByText('Ready', { exact: true })).toHaveCount(0)
+  await expect(page.getByRole('banner').getByText('Ready', { exact: true })).toHaveCount(0)
   await expect(
     page.getByText('No usage saved yet. Restart tokeninsights web to collect usage.'),
   ).toHaveCount(0)
   pending = 1
   stage = 'accepted'
-  await expect(page.locator('.app-header')).toContainText('Processing usage', {
+  await expect(page.getByRole('banner')).toContainText('Processing usage', {
     timeout: 10_000,
   })
   await expect(
@@ -172,7 +185,7 @@ test('local startup shows capture and processing before fresh totals without an 
   await expect(page.getByLabel('Total tokens: 647,000', { exact: true })).toBeVisible({
     timeout: 10_000,
   })
-  await expect(page.locator('.app-header')).toContainText('Ready')
+  await expect(page.getByRole('banner')).toContainText('Ready')
   expect(methods.every((method) => method === 'GET')).toBe(true)
 })
 
@@ -254,29 +267,13 @@ for (const kind of ['personal']) {
     await page.goto('/tokens')
     const ready = page.getByRole('button', { name: 'Local status: Ready' })
     await expect(ready).toBeVisible()
-    const before = await page
-      .locator('.server-identity, .loading-status, .theme-button')
-      .evaluateAll((elements) =>
-        elements.map((element) => {
-          const { x, y, width, height } = element.getBoundingClientRect()
-          return { x, y, width, height }
-        }),
-      )
+    const before = await headerLayout(page)
     holdUsage = true
     await page.getByRole('button', { name: 'Sort ascending', exact: true }).click()
     const refreshing = page.getByRole('button', { name: 'Local status: Refreshing usage…' })
     await expect(refreshing).toBeVisible()
-    await expect(refreshing.locator('svg')).toHaveClass(/spin/)
-    expect(
-      await page
-        .locator('.server-identity, .loading-status, .theme-button')
-        .evaluateAll((elements) =>
-          elements.map((element) => {
-            const { x, y, width, height } = element.getBoundingClientRect()
-            return { x, y, width, height }
-          }),
-        ),
-    ).toEqual(before)
+    await expect(refreshing.locator('svg')).toHaveClass(/animate-spin/)
+    expect(await headerLayout(page)).toEqual(before)
     await refreshing.hover()
     const details = page.getByRole('dialog', { name: 'Local status details' })
     await expect(details).toContainText('Refreshing usage…')

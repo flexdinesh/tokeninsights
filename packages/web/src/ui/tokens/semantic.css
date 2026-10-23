@@ -90,11 +90,10 @@
   --chart-height: 12rem;
   --table-row-height: 2rem;
   --table-max-height: 35rem;
-  --coverage-max-height: 20rem;
   --filter-options-max-height: 16rem;
-  --progress-width: 10rem;
   --skeleton-readout-height: 8rem;
   --skeleton-table-height: 28rem;
+  --skeleton-chart-height: calc(var(--chart-height) + 2 * var(--control-height));
   --readout-value-height: calc(var(--text-readout) * var(--leading-tight));
   --readout-columns: 1.25fr repeat(4, minmax(0, 1fr));
   --readout-columns-narrow: repeat(2, minmax(0, 1fr));
@@ -103,10 +102,6 @@
   --chip-value-width: 15rem;
   --filter-selection-width: 16ch;
   --server-identity-width: 28rem;
-  --identity-min-width: 9rem;
-  --identity-max-width: 26rem;
-  --dimension-min-width: 6rem;
-  --dimension-max-width: 18rem;
 
   --underline-offset: 0.2em;
 

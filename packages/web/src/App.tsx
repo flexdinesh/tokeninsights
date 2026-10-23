@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { Outlet, useNavigate } from '@tanstack/react-router'
-import { CircleAlert, LoaderCircle } from 'lucide-react'
+import { CircleAlert } from 'lucide-react'
 import { changeBrowserSession, useAnalytics, useBootstrap, useFacets } from './api'
 import { AuthenticationRequired } from './http'
 import { clearAccountQueries } from './session'
@@ -22,7 +22,21 @@ import { DateNavigation } from './components/DateNavigation'
 import { DashboardHeader } from './components/DashboardHeader'
 import { DashboardSidebar } from './components/DashboardSidebar'
 import { DashboardResults } from './components/DashboardResults'
-import { Brand, Button, Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/ui'
+import {
+  AppShell,
+  Button,
+  ControlLabel,
+  Heading,
+  PageContent,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+  Spinner,
+  StartupShell,
+  StatusDot,
+} from '@/ui'
 
 export function App() {
   const client = useQueryClient()
@@ -161,26 +175,23 @@ function ConnectionScreen({
   retry: () => Promise<unknown>
 }) {
   return (
-    <div className="app-shell">
-      <header className="app-header">
-        <Brand />
-      </header>
-      <main className="startup-state">
-        {error ? (
-          <>
-            <CircleAlert />
-            <h1>Couldn’t connect to {window.location.host}</h1>
-            <p>{error.message}</p>
-            <Button onClick={() => void retry()}>Retry Connection</Button>
-          </>
-        ) : (
-          <>
-            <LoaderCircle className="spin" />
-            <p>Connecting to {window.location.host}…</p>
-          </>
-        )}
-      </main>
-    </div>
+    <StartupShell>
+      {error ? (
+        <>
+          <CircleAlert aria-hidden="true" />
+          <Heading as="h1" variant="page">
+            Couldn’t connect to {window.location.host}
+          </Heading>
+          <p>{error.message}</p>
+          <Button onClick={() => void retry()}>Retry Connection</Button>
+        </>
+      ) : (
+        <>
+          <Spinner />
+          <p>Connecting to {window.location.host}…</p>
+        </>
+      )}
+    </StartupShell>
   )
 }
 
@@ -231,16 +242,16 @@ function DashboardShell({
   )
   const status = dashboardStatus(controller, analytics, facets, bootstrap, connectionError)
   return (
-    <div className="app-shell dashboard-shell">
-      <a href="#dashboard" className="skip-link">
-        Skip to dashboard
-      </a>
-      <DashboardSidebar
-        query={query}
-        localMachine={bootstrap.serverKind === 'personal'}
-        onSignOut={bootstrap.serverKind === 'hosted' ? onSignOut : undefined}
-      />
-      <div className="dashboard-main">
+    <AppShell
+      skipTarget="dashboard"
+      sidebar={
+        <DashboardSidebar
+          query={query}
+          localMachine={bootstrap.serverKind === 'personal'}
+          onSignOut={bootstrap.serverKind === 'hosted' ? onSignOut : undefined}
+        />
+      }
+      header={
         <DashboardHeader
           hostname={bootstrap.hostname}
           timezone={bootstrap.timezone}
@@ -252,66 +263,66 @@ function DashboardShell({
           localMachine={bootstrap.serverKind === 'personal'}
           lastSynced={analytics.data?.dashboard.lastSynced}
         />
-        <main id="dashboard" className="dashboard">
-          <div className="dashboard-toolbar">
-            {hasCapability(bootstrap, 'facets') && (
-              <FilterToolbar
-                facets={facets.data}
-                revision={revision}
-                enabled={enabled}
-                identity={controller.identity}
-              />
-            )}
-            <DateNavigation timezone={bootstrap.timezone} />
-          </div>
-          {query.tab === 'repo' && (
-            <div className="repo-controls" aria-label="Repo view options">
-              <div className="bucket-control">
-                <span>Group by</span>
-                <Select
-                  value={query.locationGroup}
-                  onValueChange={(value) => {
-                    const parsed = locationGroupSchema.safeParse(value)
-                    if (parsed.success) setLocationGroup(parsed.data)
-                  }}
-                >
-                  <SelectTrigger aria-label="Group by location">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {locationGroupSchema.options.map((value) => (
-                      <SelectItem key={value} value={value}>
-                        {value[0]?.toUpperCase() + value.slice(1)}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-          )}
-          <div className="studio-layout">
-            <DashboardResults
-              localMachine={bootstrap.serverKind === 'personal'}
-              analytics={analytics}
-              excludedUsage={excludedUsage}
-              facets={facets}
-              controller={controller}
-              timezone={bootstrap.timezone}
-              connectionError={connectionError}
-              retryConnection={retryConnection}
+      }
+    >
+      <PageContent id="dashboard">
+        <div className="mb-2 flex flex-wrap items-start gap-x-3 gap-y-2">
+          {hasCapability(bootstrap, 'facets') && (
+            <FilterToolbar
+              facets={facets.data}
+              revision={revision}
+              enabled={enabled}
+              identity={controller.identity}
             />
+          )}
+          <DateNavigation timezone={bootstrap.timezone} />
+        </div>
+        {query.tab === 'repo' && (
+          <div className="flex flex-wrap gap-3 pb-3" role="group" aria-label="Repo view options">
+            <ControlLabel label="Group by">
+              <Select
+                value={query.locationGroup}
+                onValueChange={(value) => {
+                  const parsed = locationGroupSchema.safeParse(value)
+                  if (parsed.success) setLocationGroup(parsed.data)
+                }}
+              >
+                <SelectTrigger aria-label="Group by location">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {locationGroupSchema.options.map((value) => (
+                    <SelectItem key={value} value={value}>
+                      {value[0]?.toUpperCase() + value.slice(1)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </ControlLabel>
           </div>
-          <footer className="app-footer">
-            <span>
-              <span className="status-dot" />
-              {bootstrap.hostname} · {window.location.origin} ·{' '}
-              {serverTimeZoneLabel(bootstrap.timezone)}
-            </span>
-            <span>OpenCode · Pi · Codex · Claude Code</span>
-          </footer>
-        </main>
-      </div>
-    </div>
+        )}
+        <div>
+          <DashboardResults
+            localMachine={bootstrap.serverKind === 'personal'}
+            analytics={analytics}
+            excludedUsage={excludedUsage}
+            facets={facets}
+            controller={controller}
+            timezone={bootstrap.timezone}
+            connectionError={connectionError}
+            retryConnection={retryConnection}
+          />
+        </div>
+        <footer className="flex justify-between gap-3 pt-3 text-label text-ink-subtle max-compact:flex-col max-compact:gap-2 [&>span]:min-w-0 [&>span]:wrap-anywhere">
+          <span className="flex items-center gap-2">
+            <StatusDot />
+            {bootstrap.hostname} · {window.location.origin} ·{' '}
+            {serverTimeZoneLabel(bootstrap.timezone)}
+          </span>
+          <span>OpenCode · Pi · Codex · Claude Code</span>
+        </footer>
+      </PageContent>
+    </AppShell>
   )
 }
 

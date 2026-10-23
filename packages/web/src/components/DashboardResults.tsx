@@ -7,7 +7,7 @@ import { ChartPanel } from './ChartPanel'
 import { SummaryCards } from './SummaryCards'
 import { ResultsTable } from './ResultsTable'
 import { exactCount, formatCount, formatServerDateTime } from '../format'
-import { Alert, AlertDescription, Button, Skeleton } from '@/ui'
+import { Alert, AlertDescription, Button, Heading, Skeleton, Text } from '@/ui'
 
 export function DashboardResults({
   analytics,
@@ -54,7 +54,7 @@ export function DashboardResults({
     (query.tab !== 'repo' || analytics.data?.locationGroup === query.locationGroup)
   return (
     <div
-      className="studio-results"
+      className="min-w-0"
       ref={resultsRef}
       tabIndex={-1}
       role="region"
@@ -66,18 +66,18 @@ export function DashboardResults({
           : 'Showing usage totals.'}
       </span>
       {reviewingExcluded && (
-        <div className="excluded-review">
-          <div className="excluded-review-heading">
-            <h2>Excluded usage</h2>
+        <div className="border-b border-line py-3">
+          <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+            <Heading>Excluded usage</Heading>
             <Button variant="ghost" onClick={() => setQuality('confirmed')}>
               <ArrowLeft aria-hidden="true" />
               Back to usage
             </Button>
           </div>
-          <p>
+          <Text variant="secondary" className="mt-1 max-w-prose">
             These saved token counts can’t be confidently included in your usage total. They stay
             separate. Your date range and filters apply to this review.
-          </p>
+          </Text>
         </div>
       )}
       {controller.processingPending && (
@@ -143,11 +143,11 @@ export function DashboardResults({
           </p>
         )}
       {enabled && data && hasData && !waitingForFirstData && (
-        <div className="analytics" aria-busy={analytics.isFetching}>
-          <div className="usage-workbench">
+        <div aria-busy={analytics.isFetching}>
+          <div className="mb-4">
             <SummaryCards summary={data.summary} estimated={query.quality === 'estimated'} />
             {!reviewingExcluded && hasExcludedUsage && excluded && (
-              <div className="excluded-usage-notice">
+              <div className={excludedNotice}>
                 <p>
                   Usage excluded from totals
                   <span title={`${exactCount(excluded.summary.total)} tokens`}>
@@ -155,14 +155,19 @@ export function DashboardResults({
                     · {formatCount(excluded.summary.total)} tokens
                   </span>
                 </p>
-                <Button variant="ghost" size="compact" onClick={() => setQuality('estimated')}>
+                <Button
+                  variant="ghost"
+                  size="compact"
+                  className="min-w-0 shrink whitespace-normal"
+                  onClick={() => setQuality('estimated')}
+                >
                   Review excluded usage
                   <ArrowRight aria-hidden="true" />
                 </Button>
               </div>
             )}
             {!reviewingExcluded && excludedUsage.error && (
-              <div className="excluded-usage-notice" role="status">
+              <div className={excludedNotice} role="status">
                 <p>Excluded usage couldn’t load.</p>
                 <Button variant="ghost" size="compact" onClick={() => void excludedUsage.refetch()}>
                   Retry excluded usage
@@ -195,19 +200,22 @@ export function DashboardResults({
   )
 }
 
+const excludedNotice =
+  'flex flex-wrap items-center gap-x-4 gap-y-2 py-2 text-label [&>p]:text-ink-muted'
+
 function RouteResultsSkeleton() {
   return (
     <div role="status" aria-label="Updating view results">
-      <Skeleton className="skeleton-chart" />
-      <Skeleton className="skeleton-table" />
+      <Skeleton className="h-(--skeleton-chart-height)" />
+      <Skeleton className="mt-2 h-(--skeleton-table-height)" />
     </div>
   )
 }
 
 function ErrorBanner({ message, onRetry }: { message: string; onRetry: () => void }) {
   return (
-    <Alert className="error-banner" variant="destructive" role="alert">
-      <CircleAlert size="1.1em" />
+    <Alert className="my-3" variant="destructive" role="alert">
+      <CircleAlert aria-hidden="true" />
       <AlertDescription>{message}</AlertDescription>
       <Button variant="outline" onClick={onRetry}>
         Retry Request
@@ -218,13 +226,13 @@ function ErrorBanner({ message, onRetry }: { message: string; onRetry: () => voi
 
 function DashboardSkeleton() {
   return (
-    <div className="dashboard-skeleton" role="status" aria-label="Loading dashboard">
-      <div className="summary-grid">
+    <div role="status" aria-label="Loading dashboard">
+      <div className="mb-2 grid grid-cols-(--readout-columns) gap-4 py-2 max-compact:grid-cols-(--readout-columns-narrow)">
         {[1, 2, 3, 4, 5].map((n) => (
-          <Skeleton key={n} className="skeleton-card" />
+          <Skeleton key={n} className="h-(--skeleton-readout-height)" />
         ))}
       </div>
-      <Skeleton className="skeleton-chart" />
+      <Skeleton className="h-(--skeleton-chart-height)" />
       <span className="sr-only">Loading dashboard…</span>
     </div>
   )

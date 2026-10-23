@@ -17,9 +17,9 @@ function SearchField({ className, id, ...props }: Omit<ComponentProps<'input'>, 
       <Search aria-hidden="true" />
       <input
         id={id}
-        type="search"
+        type="text"
         className={cn(
-          'w-full min-w-0 border-0 bg-transparent py-1 text-ink caret-action outline-none placeholder:text-ink-subtle [&::-webkit-search-cancel-button]:hidden',
+          'w-full min-w-0 border-0 bg-transparent py-1 text-ink caret-action outline-none placeholder:text-ink-subtle',
           fieldText,
         )}
         {...props}
