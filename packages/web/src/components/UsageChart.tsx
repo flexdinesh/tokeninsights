@@ -46,7 +46,7 @@ export function categoricalChartColor(index: number): string {
   return categoricalColors[index % categoricalColors.length] ?? categoricalColors[0] ?? ''
 }
 
-const axisTick = { fill: 'var(--color-text-muted)', fontSize: 'var(--text-xs)' }
+const axisTick = { fill: 'var(--ink-subtle)', fontSize: 'var(--text-label)' }
 
 function TimelineTick({
   x,
@@ -76,13 +76,13 @@ function TimelineTick({
   )
 }
 const tooltipStyle = {
-  background: 'var(--color-surface)',
-  color: 'var(--color-text-primary)',
-  border: 'var(--border-width) solid var(--color-border)',
+  background: 'var(--surface)',
+  color: 'var(--ink)',
+  border: 'var(--border-width) solid var(--line)',
   borderRadius: 'var(--radius-md)',
   padding: 'var(--space-3)',
   boxShadow: 'var(--shadow-overlay)',
-  fontSize: 'var(--text-xs)',
+  fontSize: 'var(--text-label)',
 }
 
 function tooltipFormatter(value: unknown): string {
@@ -219,7 +219,7 @@ export function UsageChart({
                 margin={{ top: 12, right: 12, left: 0, bottom: 0 }}
                 accessibilityLayer
               >
-                <CartesianGrid vertical={false} stroke="var(--color-border)" />
+                <CartesianGrid vertical={false} stroke="var(--line)" />
                 <XAxis
                   dataKey="label"
                   tickLine={false}
@@ -244,7 +244,7 @@ export function UsageChart({
                       : String(label)
                   }}
                   contentStyle={tooltipStyle}
-                  itemStyle={{ color: 'var(--color-text-primary)' }}
+                  itemStyle={{ color: 'var(--ink)' }}
                 />
                 <Area
                   type="linear"
@@ -264,7 +264,7 @@ export function UsageChart({
                 margin={{ top: showTokenShares ? 28 : 12, right: 12, left: 0, bottom: 0 }}
                 accessibilityLayer
               >
-                <CartesianGrid vertical={false} stroke="var(--color-border)" />
+                <CartesianGrid vertical={false} stroke="var(--line)" />
                 <XAxis
                   dataKey="label"
                   height={categoryAxisHeight}
@@ -290,7 +290,7 @@ export function UsageChart({
                       : tooltipFormatter(value)
                   }
                   contentStyle={tooltipStyle}
-                  itemStyle={{ color: 'var(--color-text-primary)' }}
+                  itemStyle={{ color: 'var(--ink)' }}
                 />
                 {context ? (
                   <>
@@ -303,13 +303,13 @@ export function UsageChart({
                     <Bar
                       dataKey="medianContext"
                       name="Median"
-                      fill="var(--color-chart-secondary)"
+                      fill="var(--chart-2)"
                       isAnimationActive={false}
                     />
                     <Bar
                       dataKey="maxContext"
                       name="Maximum"
-                      fill="var(--color-chart-tertiary)"
+                      fill="var(--chart-3)"
                       isAnimationActive={false}
                     />
                   </>
@@ -327,8 +327,8 @@ export function UsageChart({
                       <LabelList
                         dataKey="tokenShare"
                         position="top"
-                        fill="var(--color-text-primary)"
-                        fontSize="var(--text-xs)"
+                        fill="var(--ink)"
+                        fontSize="var(--text-label)"
                       />
                     )}
                   </Bar>

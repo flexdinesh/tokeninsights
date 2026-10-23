@@ -1,0 +1,140 @@
+/*
+ * Semantic roles: the public token contract. Each color is written once as
+ * light-dark(light, dark); color-scheme selects the side. System theme follows
+ * the OS; data-theme pins light or dark.
+ */
+:root {
+  color-scheme: light dark;
+
+  /* Surfaces */
+  --surface: light-dark(var(--palette-gray-0), var(--palette-charcoal-900));
+  --surface-raised: light-dark(var(--palette-gray-50), var(--palette-charcoal-850));
+  --surface-overlay: light-dark(var(--palette-gray-0), var(--palette-charcoal-850));
+  --surface-field: light-dark(var(--palette-gray-0), var(--palette-charcoal-850));
+  --surface-rail: light-dark(var(--palette-gray-0), var(--palette-charcoal-875));
+  --surface-heading: light-dark(var(--palette-gray-25), var(--palette-charcoal-850));
+  --surface-hover: light-dark(var(--palette-gray-75), var(--palette-charcoal-800));
+
+  /* Ink */
+  --ink: light-dark(var(--palette-gray-900), var(--palette-charcoal-50));
+  --ink-muted: light-dark(var(--palette-gray-600), var(--palette-charcoal-250));
+  --ink-subtle: light-dark(var(--palette-gray-600), var(--palette-charcoal-300));
+  --ink-hover: light-dark(var(--palette-blue-600), var(--palette-blue-300));
+
+  /* Lines */
+  --line: light-dark(var(--palette-gray-150), var(--palette-charcoal-750));
+  --line-strong: light-dark(var(--palette-gray-450), var(--palette-charcoal-550));
+
+  /* Interaction */
+  --action: light-dark(var(--palette-blue-600), var(--palette-blue-300));
+  --action-ink: light-dark(var(--palette-gray-0), var(--palette-charcoal-900));
+  --selected: light-dark(var(--palette-gray-75), var(--palette-charcoal-800));
+  --selected-ink: light-dark(var(--palette-blue-600), var(--palette-blue-300));
+  --focus: light-dark(var(--palette-blue-600), var(--palette-blue-300));
+
+  /* Status */
+  --status-success: light-dark(var(--palette-green-600), var(--palette-green-300));
+  --status-warning: light-dark(var(--palette-amber-600), var(--palette-amber-300));
+  --status-danger: light-dark(var(--palette-red-600), var(--palette-red-300));
+  --status-danger-ink: var(--palette-gray-0);
+  --status-danger-surface: light-dark(var(--palette-red-50), var(--palette-red-950));
+
+  /* Categorical chart series */
+  --chart-1: light-dark(var(--palette-blue-600), var(--palette-blue-300));
+  --chart-2: light-dark(var(--palette-rose-600), var(--palette-rose-300));
+  --chart-3: light-dark(var(--palette-orange-600), var(--palette-orange-300));
+  --chart-4: light-dark(var(--palette-teal-600), var(--palette-teal-300));
+  --chart-5: light-dark(var(--palette-scarlet-600), var(--palette-scarlet-300));
+  --chart-6: light-dark(var(--palette-magenta-600), var(--palette-magenta-300));
+  --chart-7: light-dark(var(--palette-cyan-600), var(--palette-cyan-300));
+  --chart-8: light-dark(var(--palette-lime-600), var(--palette-lime-300));
+  --chart-9: light-dark(var(--palette-yellow-600), var(--palette-yellow-300));
+  --chart-10: light-dark(var(--palette-azure-600), var(--palette-azure-300));
+  --chart-11: light-dark(var(--palette-pink-600), var(--palette-pink-300));
+  --chart-12: light-dark(var(--palette-brown-600), var(--palette-brown-300));
+
+  --shadow-overlay: 0 0.75rem 2rem
+    light-dark(var(--palette-shadow-light), var(--palette-shadow-dark));
+
+  /* Space: quarter-rem steps, identical to Tailwind's --spacing multiples. */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-6: 1.5rem;
+  --space-8: 2rem;
+  --space-12: 3rem;
+  --space-16: 4rem;
+
+  /* Strokes and focus */
+  --border-width: 0.0625rem;
+  --focus-width: 0.125rem;
+  --focus-offset: 0.125rem;
+
+  /* Controls */
+  --control-height: 2rem;
+  --control-height-compact: 1.875rem;
+  --control-height-lg: 2.75rem;
+  --icon-size: 1rem;
+  --opacity-disabled: 0.5;
+
+  /* Layout */
+  --content-width: 100rem;
+  --reading-width: 42rem;
+  --prose-width: 70ch;
+  --page-gutter: var(--space-4);
+  --panel-padding: var(--space-4);
+  --header-height: 2.75rem;
+  --sidebar-width: 12rem;
+  --popover-width: 22rem;
+  --status-popover-width: 18rem;
+  --form-width: 28rem;
+  --login-width: 24rem;
+  --settings-width: 62rem;
+  --chart-height: 12rem;
+  --table-row-height: 2rem;
+  --table-max-height: 35rem;
+  --coverage-max-height: 20rem;
+  --filter-options-max-height: 16rem;
+  --progress-width: 10rem;
+  --skeleton-readout-height: 8rem;
+  --skeleton-table-height: 28rem;
+
+  /* Layers */
+  --layer-sticky: 1;
+  --layer-header: 10;
+  --layer-popover: 20;
+  --layer-skip-link: 50;
+
+  /* Motion */
+  --duration-fast: 150ms;
+  --duration-disclosure: 180ms;
+  --duration-spin: 1.2s;
+}
+
+:root[data-theme='light'] {
+  color-scheme: light;
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+}
+
+@media (max-width: 75rem) {
+  :root {
+    --panel-padding: var(--space-3);
+  }
+}
+
+@media (max-width: 38rem) {
+  :root {
+    --page-gutter: var(--space-3);
+  }
+}
+
+@media (max-width: 38rem), (pointer: coarse) {
+  :root {
+    --control-height: var(--control-height-lg);
+    --control-height-compact: var(--control-height-lg);
+  }
+}
