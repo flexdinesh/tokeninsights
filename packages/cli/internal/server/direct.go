@@ -5,22 +5,24 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/accounts"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/analytics"
 	api "github.com/flexdinesh/tokeninsights/packages/cli/internal/server/api"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/version"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/viewer"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/serverfeatures"
 )
 
 // DirectQuery adapts the same query validation, analytics and presentation used
 // by REST without constructing HTTP requests or opening a listener.
 type DirectQuery struct {
 	source             analytics.Repository
+	policy             serverfeatures.Policy
 	instance, hostname string
-	defaults           viewer.Selection
+	defaults           analytics.Selection
 }
 
-func NewDirectQuery(source analytics.Repository, instance, hostname string) *DirectQuery {
-	return &DirectQuery{source: source, instance: instance, hostname: hostname, defaults: viewer.Selection{Period: "month", Bucket: "day"}}
+// NewDirectQuery advertises the composition's policy, like the HTTP instance route.
+func NewDirectQuery(source analytics.Repository, policy serverfeatures.Policy, instance, hostname string) *DirectQuery {
+	return &DirectQuery{source: source, policy: policy, instance: instance, hostname: hostname, defaults: analytics.Selection{Period: "month", Bucket: "day"}}
 }
 func (d *DirectQuery) Instance(ctx context.Context) (api.InstanceResponseV2, error) {
 	status, err := d.source.Status(ctx)
@@ -31,7 +33,8 @@ func (d *DirectQuery) Instance(ctx context.Context) (api.InstanceResponseV2, err
 	if d.hostname != "" {
 		hostname = d.hostname
 	}
-	return api.InstanceResponseV2{ApiVersion: api.V2, DatasetId: status.Metadata.DatasetID, ServerKind: "personal", Capabilities: []string{"usage", "facets", "terminal-dashboard"}, Permissions: []api.InstanceResponseV2Permissions{"read"}, DataEpoch: status.Metadata.DatabaseID, DataReadiness: api.InstanceResponseV2DataReadinessReady, InstanceId: d.instance, ServerVersion: version.Version, Hostname: hostname, Timezone: reportingTimezone(time.Local, time.Now()), Defaults: apiSelection(d.defaults)}, nil
+	// Direct readers are read-only; ingestion uses its own in-process destination.
+	return instanceResponse(d.policy, []string{accounts.Read}, status, d.instance, hostname, d.defaults), nil
 }
 
 func (d *DirectQuery) Usage(ctx context.Context, params api.GetUsageParams) (api.UsageResponseV2, error) {

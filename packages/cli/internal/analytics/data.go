@@ -4,9 +4,6 @@ import (
 	"fmt"
 	"net/url"
 	"strconv"
-
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/querymodel"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/viewer"
 )
 
 const defaultPageSize = 50
@@ -16,9 +13,9 @@ const SessionOptionLimit = 100
 
 type Query struct {
 	Quality        string
-	Selection      viewer.Selection
+	Selection      Selection
 	Tab            string
-	LocationGroup  querymodel.RepoGroup
+	LocationGroup  RepoGroup
 	RepositoryKeys []string
 	DirectoryKeys  []string
 	Sort           string
@@ -28,7 +25,7 @@ type Query struct {
 }
 
 func ParseQuery(values url.Values) (Query, error) {
-	q := Query{Selection: viewer.Selection{Period: "month", Bucket: "day"}, Tab: "tokens", Page: 1, PageSize: defaultPageSize}
+	q := Query{Selection: Selection{Period: "month", Bucket: "day"}, Tab: "tokens", Page: 1, PageSize: defaultPageSize}
 	q.Quality = values.Get("quality")
 	if q.Quality == "" {
 		q.Quality = "confirmed"
@@ -56,9 +53,9 @@ func ParseQuery(values url.Values) (Query, error) {
 	default:
 		return q, fmt.Errorf("invalid tab")
 	}
-	q.LocationGroup = querymodel.RepoGroupRepository
+	q.LocationGroup = RepoGroupRepository
 	if values.Has("locationGroup") {
-		q.LocationGroup = querymodel.RepoGroup(values.Get("locationGroup"))
+		q.LocationGroup = RepoGroup(values.Get("locationGroup"))
 	}
 	if values.Has("breakdown") || values.Has("worktree") || values.Has("branch") {
 		return q, fmt.Errorf("unsupported location option")
@@ -69,7 +66,7 @@ func ParseQuery(values url.Values) (Query, error) {
 		}
 	}
 	switch q.LocationGroup {
-	case querymodel.RepoGroupRepository, querymodel.RepoGroupDirectory:
+	case RepoGroupRepository, RepoGroupDirectory:
 	default:
 		return q, fmt.Errorf("invalid locationGroup")
 	}
@@ -163,7 +160,7 @@ type Dashboard struct {
 	RowCount      int
 	Page          int
 	PageSize      int
-	Summary       querymodel.ViewerSummaryRow
+	Summary       ViewerSummaryRow
 	LastSynced    int64
 	Range         string
 }

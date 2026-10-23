@@ -15,6 +15,16 @@ const (
 
 var SupportedHarnesses = []Harness{HarnessOpenCode, HarnessPi, HarnessCodex, HarnessClaudeCode}
 
+// ParseHarness accepts exactly one supported harness identifier.
+func ParseHarness(value string) (Harness, bool) {
+	for _, harness := range SupportedHarnesses {
+		if string(harness) == value {
+			return harness, true
+		}
+	}
+	return "", false
+}
+
 type Source struct {
 	Harness       Harness
 	ID            string

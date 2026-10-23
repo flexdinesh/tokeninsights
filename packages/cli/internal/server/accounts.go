@@ -100,7 +100,7 @@ func (a *app) passwordSession(w http.ResponseWriter, r *http.Request, signup boo
 		accountError(w, err)
 		return
 	}
-	setSessionCookie(w, r, accounts.SessionCookie(secret, expires))
+	setSessionCookie(w, r, sessionCookie(secret, expires))
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -114,13 +114,13 @@ func (a *app) logout(w http.ResponseWriter, r *http.Request) {
 	if !a.requireOrigin(w, r) {
 		return
 	}
-	if cookie, err := r.Cookie(accounts.SessionCookieName); err == nil {
+	if cookie, err := r.Cookie(sessionCookieName); err == nil {
 		if err := a.accounts.Logout(r.Context(), cookie.Value); err != nil {
 			accountError(w, err)
 			return
 		}
 	}
-	setSessionCookie(w, r, accounts.ClearSessionCookie())
+	setSessionCookie(w, r, clearSessionCookie())
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -135,7 +135,7 @@ func (a *app) accountAccess(handler func(accounts.Principal, http.ResponseWriter
 		if r.Method != http.MethodGet && !a.requireOrigin(w, r) {
 			return
 		}
-		cookie, err := r.Cookie(accounts.SessionCookieName)
+		cookie, err := r.Cookie(sessionCookieName)
 		if err != nil {
 			accountError(w, accounts.ErrUnauthenticated)
 			return
@@ -181,7 +181,7 @@ func (a *app) changePassword(p accounts.Principal, w http.ResponseWriter, r *htt
 		accountError(w, err)
 		return
 	}
-	setSessionCookie(w, r, accounts.ClearSessionCookie())
+	setSessionCookie(w, r, clearSessionCookie())
 	w.WriteHeader(http.StatusNoContent)
 }
 

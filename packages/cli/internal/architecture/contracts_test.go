@@ -5,6 +5,7 @@ import (
 	"go/token"
 	"io/fs"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -16,7 +17,7 @@ import (
 func TestLayerDependencies(t *testing.T) {
 	const prefix = "github.com/flexdinesh/tokeninsights/packages/cli/internal/"
 	imports := map[string][]string{}
-	err := filepath.WalkDir("..", func(path string, entry fs.DirEntry, err error) error {
+	walk := func(path string, entry fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
@@ -27,7 +28,8 @@ func TestLayerDependencies(t *testing.T) {
 		if err != nil {
 			return err
 		}
-		packageName := strings.TrimPrefix(filepath.ToSlash(filepath.Dir(path)), "../")
+		packageName := filepath.ToSlash(filepath.Dir(path))
+		packageName = strings.TrimPrefix(strings.TrimPrefix(packageName, "../../"), "../")
 		if _, found := imports[packageName]; !found {
 			imports[packageName] = nil
 		}
@@ -39,9 +41,11 @@ func TestLayerDependencies(t *testing.T) {
 			imports[packageName] = append(imports[packageName], name)
 		}
 		return nil
-	})
-	if err != nil {
-		t.Fatal(err)
+	}
+	for _, root := range []string{"..", "../../cmd"} {
+		if err := filepath.WalkDir(root, walk); err != nil {
+			t.Fatal(err)
+		}
 	}
 	for name, dependencies := range imports {
 		if name == "storagecontract" {
@@ -53,6 +57,23 @@ func TestLayerDependencies(t *testing.T) {
 			}
 		}
 	}
+	// Storage location rule (docs/design.md): composition roots select adapters;
+	// role packages and adapters share engine mechanics from persistence.
+	compositionRoots := []string{"localruntime", "remoteserver", "cmd/tokeninsights", "cmd/tokeninsights-server"}
+	storageRoles := []string{"rawcollectorstore", "collectordb", "syncjob", "appstore", "datastore"}
+	for name, dependencies := range imports {
+		adapterOwner := strings.HasPrefix(name, "adapters/")
+		for _, dependency := range dependencies {
+			if strings.HasPrefix(dependency, prefix+"adapters/") && !adapterOwner && !slices.Contains(compositionRoots, name) {
+				t.Errorf("%s imports adapter %s; only composition roots and adapters select adapters", name, dependency)
+			}
+			if strings.HasPrefix(dependency, prefix+"persistence/") && !adapterOwner && !strings.HasPrefix(name, "persistence/") && !slices.Contains(storageRoles, name) {
+				t.Errorf("%s imports engine mechanics %s; only storage roles and adapters use persistence", name, dependency)
+			}
+		}
+	}
+	hostCapture := []string{prefix + "collector", prefix + "pipeline", prefix + "rawcollectorstore", prefix + "collectordb", prefix + "syncjob", prefix + "localruntime", prefix + "clientworkflow"}
+	pureContract := []string{"database/sql", "net/http", "os", prefix + "persistence", prefix + "adapters", prefix + "datastore", prefix + "server", prefix + "collector", prefix + "pipeline"}
 	rules := []struct {
 		name      string
 		forbidden []string
@@ -63,16 +84,53 @@ func TestLayerDependencies(t *testing.T) {
 		{"processusage", []string{"net/http", "database/sql", prefix + "collector", prefix + "pipeline", prefix + "datastore", prefix + "server", prefix + "localruntime"}},
 		{"collectorprogress", []string{prefix + "pipeline", prefix + "collector", prefix + "localruntime", prefix + "datastore"}},
 		{"datastore", []string{"net/http", prefix + "ingestionhttp", prefix + "collector", prefix + "pipeline", prefix + "server"}},
-		{"querymodel", []string{"database/sql", "net/http", prefix + "db", prefix + "datastore", prefix + "server"}},
-		{"analytics", []string{"database/sql", prefix + "datastore", prefix + "appstore", prefix + "db", prefix + "adapters"}},
+		{"analytics", []string{"database/sql", "net/http", prefix + "datastore", prefix + "appstore", prefix + "collectordb", prefix + "adapters", prefix + "server"}},
 		{"clientaddress", []string{"os", "database/sql", prefix + "accounts", prefix + "datastore", prefix + "server"}},
-		{"accounts", []string{"database/sql", prefix + "datastore", prefix + "appstore", prefix + "db", prefix + "adapters", prefix + "clientaddress"}},
+		{"accounts", []string{"database/sql", "net/http", prefix + "datastore", prefix + "appstore", prefix + "collectordb", prefix + "adapters", prefix + "clientaddress"}},
 		{"server", []string{"database/sql", prefix + "datastore", prefix + "appstore", prefix + "adapters", prefix + "pipeline", prefix + "collector", prefix + "localruntime", prefix + "remoteserver"}},
 		{"localruntime", []string{prefix + "syncjob", prefix + "clientworkflow"}},
-		{"serverruntime", []string{"database/sql", prefix + "datastore", prefix + "appstore", prefix + "db", prefix + "adapters"}},
+		{"serverruntime", []string{"database/sql", prefix + "datastore", prefix + "appstore", prefix + "collectordb", prefix + "adapters"}},
+		// Remote servers accept and process evidence; they never capture host sources.
+		{"remoteserver", hostCapture},
+		{"cmd/tokeninsights-server", hostCapture},
+		{"collector", []string{prefix + "processor", prefix + "dataengine", prefix + "datastore", prefix + "analytics", prefix + "accounts", prefix + "server", prefix + "localruntime", prefix + "remoteserver"}},
+		{"evidence", pureContract},
+		{"publication", pureContract},
+		{"collectordb", []string{"net/http"}},
+		{"operator", []string{"database/sql", prefix + "datastore", prefix + "appstore", prefix + "server", prefix + "ingestionhttp"}},
+		{"writerlock", []string{"database/sql", "net/http"}},
+		{"dbpath", []string{"database/sql", "net/http"}},
+	}
+	persistenceOwners := map[string]bool{"datastore": true, "pipeline": true, "localruntime": true, "collector": true, "collectordb": true, "remoteserver": true, "cmd/tokeninsights-server": true}
+	// Command packages compose through localruntime; they never construct
+	// storage adapters or HTTP handlers themselves.
+	direct := []struct {
+		name      string
+		forbidden []string
+		allowed   []string
+	}{
+		{"tui", []string{"net/http", "database/sql", prefix + "server", prefix + "adapters", prefix + "datastore", prefix + "persistence", prefix + "syncjob", prefix + "remoteserver"}, []string{prefix + "server/api"}},
+		{"cli", []string{"database/sql", prefix + "adapters", prefix + "datastore", prefix + "persistence", prefix + "remoteserver"}, nil},
+	}
+	for _, rule := range direct {
+		t.Run("direct/"+rule.name, func(t *testing.T) {
+			if _, found := imports[rule.name]; !found {
+				t.Fatalf("boundary package %s is missing; update its contract", rule.name)
+			}
+			for _, dependency := range imports[rule.name] {
+				if slices.Contains(rule.allowed, dependency) {
+					continue
+				}
+				for _, forbidden := range rule.forbidden {
+					if dependency == forbidden || strings.HasPrefix(dependency, forbidden+"/") {
+						t.Errorf("%s directly imports forbidden dependency %s", rule.name, dependency)
+					}
+				}
+			}
+		})
 	}
 	for _, rule := range rules {
-		if rule.name != "datastore" && rule.name != "pipeline" && rule.name != "localruntime" {
+		if !persistenceOwners[rule.name] {
 			rule.forbidden = append(rule.forbidden, prefix+"persistence", prefix+"adapters")
 		}
 		t.Run(rule.name, func(t *testing.T) {

@@ -4,11 +4,13 @@ import { fileURLToPath } from 'node:url'
 
 const SCHEMA_SQL_PATH = new URL('../../../schema/schema.sql', import.meta.url).pathname
 const EMBEDDED_SCHEMA_SQL_PATH = new URL(
-  '../../../packages/cli/internal/db/schema/schema.sql',
+  '../../../packages/cli/internal/collectordb/schema/schema.sql',
   import.meta.url,
 ).pathname
-const SCHEMA_GO_PATH = new URL('../../../packages/cli/internal/db/schema.go', import.meta.url)
-  .pathname
+const SCHEMA_GO_PATH = new URL(
+  '../../../packages/cli/internal/collectordb/schema.go',
+  import.meta.url,
+).pathname
 
 const SQL_KEYWORDS = new Set([
   'PRIMARY',

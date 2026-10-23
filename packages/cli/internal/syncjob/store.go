@@ -16,11 +16,11 @@ import (
 	"time"
 
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/config"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/db"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/evidence"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/persistence/sqlitecore"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/pipeline"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/serverownership"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/writerlock"
 	_ "modernc.org/sqlite"
 )
 
@@ -104,7 +104,7 @@ func Open(ctx context.Context, collectorPath string) (*Store, error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
 		return nil, err
 	}
-	release, err := db.AcquireWriterLock(ctx, path+".init")
+	release, err := writerlock.Acquire(ctx, path+".init")
 	if err != nil {
 		return nil, err
 	}
@@ -236,8 +236,16 @@ func scan(row *sql.Row) (Job, error) {
 func (s *Store) Get(ctx context.Context, id string) (Job, error) {
 	return scan(s.database.QueryRowContext(ctx, "SELECT "+columns+" FROM jobs WHERE id=?", id))
 }
+
+// ErrNoJobs reports an empty sync-job queue.
+var ErrNoJobs = errors.New("no sync jobs")
+
 func (s *Store) Latest(ctx context.Context) (Job, error) {
-	return scan(s.database.QueryRowContext(ctx, "SELECT "+columns+" FROM jobs ORDER BY created_ms DESC,rowid DESC LIMIT 1"))
+	job, err := scan(s.database.QueryRowContext(ctx, "SELECT "+columns+" FROM jobs ORDER BY created_ms DESC,rowid DESC LIMIT 1"))
+	if errors.Is(err, sql.ErrNoRows) {
+		return Job{}, ErrNoJobs
+	}
+	return job, err
 }
 
 // Acquire excludes workers without holding a SQLite transaction during capture.

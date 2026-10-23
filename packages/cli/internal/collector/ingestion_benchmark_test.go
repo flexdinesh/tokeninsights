@@ -24,7 +24,6 @@ import (
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/server"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/serverfeatures"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/storagecontract"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/viewer"
 )
 
 // Timings on the backend are accumulated across concurrent workers, not additive
@@ -263,7 +262,7 @@ func BenchmarkIngestion(b *testing.B) {
 							b.Fatal(err)
 						}
 						visible := time.Now()
-						query := analytics.Query{Selection: viewer.Selection{Period: "all", Bucket: "day"}, Tab: "sessions", Quality: "confirmed", Sort: "total", Direction: "desc", Page: 1, PageSize: 200}
+						query := analytics.Query{Selection: analytics.Selection{Period: "all", Bucket: "day"}, Tab: "sessions", Quality: "confirmed", Sort: "total", Direction: "desc", Page: 1, PageSize: 200}
 						dashboard, err := sqlanalytics.LoadDashboard(ctx, scoped, query, time.Now())
 						b.StopTimer()
 						queried := time.Now()

@@ -23,7 +23,7 @@ startup/upload failures are diagnosed with manual sync and `sync status`; hook
 output contains no credentials or event contents. Actual host cancellation
 semantics remain a smoke-test item.
 
-Pi/OpenCode runners spawn an argument array with `shell: false`, observe only the short enqueue child, bound its lifetime to 60 seconds and coalesce overlapping callbacks with a follow-up pass for completions during a scan. Pi returns control to the harness while the finite subprocess runs. Cleanup terminates an active enqueue child; the separately detached Go worker
+Pi/OpenCode share one runner from the private `packages/plugin-runtime` workspace; builds copy it into each plugin's `dist/runner.js`, so committed bundles stay self-contained. Runners spawn an argument array with `shell: false`, observe only the short enqueue child, bound its lifetime to 60 seconds and coalesce overlapping callbacks with a follow-up pass for completions during a scan. Pi returns control to the harness while the finite subprocess runs. Cleanup terminates an active enqueue child; the separately detached Go worker
 survives plugin cleanup after successful startup. Unix process groups receive termination followed by bounded kill escalation. The plugins delegate durable queuing and bounded background retries to the CLI;
 they keep no separate persistent trigger queue. Missing executables, nonzero exit and timeout expose only a generic host diagnostic, never event or collector output.
 

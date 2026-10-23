@@ -8,8 +8,8 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/collectordb"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/datastore"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/db"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/rawcollectorstore"
 )
 
@@ -19,7 +19,7 @@ func TestPrepareFixtureRejectsHostedBeforeResettingCollector(t *testing.T) {
 	if err := PrepareFixture(ctx, collectorPath, serverPath); err != nil {
 		t.Fatal(err)
 	}
-	collector, err := db.OpenWritable(collectorPath)
+	collector, err := collectordb.OpenWritable(collectorPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -49,7 +49,7 @@ func TestPrepareFixtureRejectsHostedBeforeResettingCollector(t *testing.T) {
 	if err != nil || !bytes.Equal(beforeServer, afterServer) {
 		t.Fatal("rejected hosted database mutated", err)
 	}
-	collector, err = db.OpenWritable(collectorPath)
+	collector, err = collectordb.OpenWritable(collectorPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -75,7 +75,7 @@ func TestPrepareFixtureSeparateRolesPreserveInodesAndUnrelatedHistory(t *testing
 	if err := PrepareFixture(ctx, collectorPath, serverPath); err != nil {
 		t.Fatal(err)
 	}
-	collector, err := db.OpenWritable(collectorPath)
+	collector, err := collectordb.OpenWritable(collectorPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -140,7 +140,7 @@ func TestPrepareFixtureSeparateRolesPreserveInodesAndUnrelatedHistory(t *testing
 	if _, err := os.Stat(filepath.Join(root, "source")); !os.IsNotExist(err) {
 		t.Fatal("generated sources not cleared", err)
 	}
-	collector, err = db.OpenWritable(collectorPath)
+	collector, err = collectordb.OpenWritable(collectorPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -207,7 +207,7 @@ func TestPrepareFixtureRejectsLegacyRoleBeforeResettingCollector(t *testing.T) {
 	if string(before) != string(after) {
 		t.Fatal("legacy bytes changed")
 	}
-	collector, err = db.OpenWritable(collectorPath)
+	collector, err = collectordb.OpenWritable(collectorPath)
 	if err != nil {
 		t.Fatal(err)
 	}

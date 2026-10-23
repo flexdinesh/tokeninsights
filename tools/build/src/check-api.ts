@@ -4,15 +4,20 @@ import { join } from 'node:path'
 import { spawnSync } from 'node:child_process'
 
 const ROOT = new URL('../../../', import.meta.url).pathname
-const GO_OUTPUT = 'packages/cli/internal/server/api/types.gen.go'
+const GO_MODULE = 'packages/cli'
+const GO_CONFIG = 'internal/server/api/oapi-codegen.yaml'
+// Output path configured in GO_CONFIG, relative to the Go module.
+const GO_GENERATED = 'internal/server/api/types.gen.go'
+const GO_OUTPUT = `${GO_MODULE}/${GO_GENERATED}`
 const WEB_OUTPUT = 'packages/web/src/generated/api.ts'
 
-function run(command: string, args: string[], cwd: string, env = process.env): void {
+function run(command: string, args: string[], cwd: string, env = process.env): string {
   const result = spawnSync(command, args, { cwd, encoding: 'utf8', env })
   if (result.error) throw result.error
   if (result.status !== 0) {
     throw new Error(result.stderr || result.stdout || `${command} failed`)
   }
+  return result.stdout
 }
 
 async function sameFile(actual: string, generated: string): Promise<boolean> {
@@ -29,22 +34,15 @@ async function main(): Promise<void> {
     const goDirectory = join(temporary, 'go')
     const webDirectory = join(temporary, 'web')
     await Promise.all([mkdir(goDirectory), mkdir(webDirectory)])
-    const generatedGo = join(goDirectory, 'types.gen.go')
+    const generatedGo = join(goDirectory, GO_GENERATED)
     const generatedWeb = join(webDirectory, 'api.ts')
+    // oapi-codegen ignores -o when -config sets output, so run the pinned tool
+    // with the repository config from a temporary working directory.
+    const codegen = run('go', ['tool', '-n', 'oapi-codegen'], join(ROOT, GO_MODULE)).trim()
     run(
-      'go',
-      [
-        'tool',
-        'oapi-codegen',
-        '-generate',
-        'models',
-        '-package',
-        'api',
-        '-o',
-        generatedGo,
-        '../../docs/openapi.yaml',
-      ],
-      join(ROOT, 'packages/cli'),
+      codegen,
+      ['-config', join(ROOT, GO_MODULE, GO_CONFIG), join(ROOT, 'docs/openapi.yaml')],
+      goDirectory,
     )
     run('pnpm', ['exec', 'orval', '--config', 'orval.config.ts'], ROOT, {
       ...process.env,

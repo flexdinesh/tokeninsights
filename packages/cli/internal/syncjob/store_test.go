@@ -198,3 +198,14 @@ func TestRemovedLocalJobsAreReportedWithoutMutationOrRemoteDispatch(t *testing.T
 		t.Fatal("local request routed remotely", next, err)
 	}
 }
+
+func TestLatestReportsEmptyQueue(t *testing.T) {
+	store, err := Open(t.Context(), filepath.Join(t.TempDir(), "collector.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = store.Close() }()
+	if _, err := store.Latest(t.Context()); !errors.Is(err, ErrNoJobs) {
+		t.Fatalf("Latest() error = %v, want ErrNoJobs", err)
+	}
+}

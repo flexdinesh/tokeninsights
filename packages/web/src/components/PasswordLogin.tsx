@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import type { FormEvent } from 'react'
 import { changeBrowserSession } from '../api'
-import { signup, validPassword } from '../account'
+import { passwordMaxCharacters, passwordMinCharacters, signup, validPassword } from '../account'
 import { Brand } from './Brand'
 import { Button } from './ui/button'
 import { Input } from './ui/input'
@@ -27,7 +27,9 @@ export function PasswordLogin({
     event.preventDefault()
     if (pending || disabled) return
     if (creating && !validPassword(password)) {
-      setError('Use a password between 15 and 128 characters.')
+      setError(
+        `Use a password between ${passwordMinCharacters} and ${passwordMaxCharacters} characters.`,
+      )
       return
     }
     setPending(true)
@@ -95,7 +97,7 @@ export function PasswordLogin({
           />
           {creating && (
             <p id="password-help" className="field-help">
-              15–128 characters.
+              {passwordMinCharacters}–{passwordMaxCharacters} characters.
             </p>
           )}
           {(error || sessionError) && (

@@ -17,7 +17,6 @@ import (
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/evidence"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/processor"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/publication"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/viewer"
 )
 
 type Dataset struct {
@@ -156,7 +155,7 @@ func drain(t testing.TB, d Dataset) {
 }
 
 func query() analytics.Query {
-	return analytics.Query{Quality: "confirmed", Selection: viewer.Selection{Period: "all", Bucket: "day"}, Tab: "sessions", Sort: "name", Direction: "asc", Page: 1, PageSize: 50}
+	return analytics.Query{Quality: "confirmed", Selection: analytics.Selection{Period: "all", Bucket: "day"}, Tab: "sessions", Sort: "name", Direction: "asc", Page: 1, PageSize: 50}
 }
 
 func dashboard(t *testing.T, d Dataset) analytics.Dashboard {

@@ -18,6 +18,7 @@ import (
 
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/accounts"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/clientaddress"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/operator"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/server"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/serverfeatures"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/serverownership"
@@ -149,7 +150,7 @@ func Run(ctx context.Context, settings Settings, log io.Writer, ready func(strin
 	defer closePrivate()
 	handler := server.NewDataHandlerWithOptions(runCtx, storage.source, log, options)
 	bindings := []serverruntime.Binding{{Listener: listener, Handler: settings.TrustedProxies.Handler(handler), Health: true}}
-	bindings = append(bindings, serverruntime.Binding{Listener: private, Handler: options.Accounts.AdminHandler()})
+	bindings = append(bindings, serverruntime.Binding{Listener: private, Handler: operator.Handler(options.Accounts)})
 	address := listener.Addr().String()
 	if host == "0.0.0.0" {
 		_, assignedPort, err := net.SplitHostPort(address)

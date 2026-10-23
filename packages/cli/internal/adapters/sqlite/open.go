@@ -5,13 +5,13 @@ import (
 	"context"
 
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/datastore"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/db"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/writerlock"
 )
 
 // Open serializes embedded initialization. Composition separately holds the
 // database's lifetime lock until workers, requests and storage have closed.
 func Open(ctx context.Context, path string, options datastore.Options) (*datastore.Store, error) {
-	release, err := db.AcquireWriterLock(ctx, path)
+	release, err := writerlock.Acquire(ctx, path)
 	if err != nil {
 		return nil, err
 	}

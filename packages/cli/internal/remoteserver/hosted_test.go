@@ -15,6 +15,7 @@ import (
 
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/accounts"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/evidence"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/operator"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/persistence/postgres/testdb"
 )
 
@@ -43,10 +44,10 @@ func hostedRequest(t *testing.T, url, token, method string, body []byte) (int, [
 	return response.StatusCode, data
 }
 
-func hostedAdmin(t *testing.T, socket string, request accounts.AdminRequest, result interface{}) {
+func hostedAdmin(t *testing.T, socket string, request operator.Request, result interface{}) {
 	t.Helper()
 	var output bytes.Buffer
-	if err := accounts.AdminCall(t.Context(), socket, request, &output); err != nil {
+	if err := operator.Call(t.Context(), socket, request, &output); err != nil {
 		t.Fatal(err)
 	}
 	if result != nil {
@@ -121,8 +122,8 @@ func hostedIsolationAndProvisioning(t *testing.T, backend string) {
 	tokens := make([]accounts.Token, 2)
 	caps := make([]evidence.Capabilities, 2)
 	for i, name := range []string{"Alice", "Bob"} {
-		hostedAdmin(t, socket, accounts.AdminRequest{Operation: "create-user", DisplayName: name}, &users[i])
-		hostedAdmin(t, socket, accounts.AdminRequest{Operation: "create-token", UserID: users[i].UserID, Permissions: []string{accounts.Read, accounts.Ingest}}, &tokens[i])
+		hostedAdmin(t, socket, operator.Request{Operation: "create-user", DisplayName: name}, &users[i])
+		hostedAdmin(t, socket, operator.Request{Operation: "create-token", UserID: users[i].UserID, Permissions: []string{accounts.Read, accounts.Ingest}}, &tokens[i])
 		code, data := hostedRequest(t, target+"/api/v3/ingestion/capabilities", tokens[i].Secret, "GET", nil)
 		if code != http.StatusOK {
 			t.Fatal(code, string(data))
@@ -212,11 +213,11 @@ func hostedIsolationAndProvisioning(t *testing.T, backend string) {
 	var rebuilt struct {
 		Generation int64 `json:"generation"`
 	}
-	hostedAdmin(t, socket, accounts.AdminRequest{Operation: "reprocess-user", UserID: users[0].UserID}, &rebuilt)
+	hostedAdmin(t, socket, operator.Request{Operation: "reprocess-user", UserID: users[0].UserID}, &rebuilt)
 	if rebuilt.Generation < 2 {
 		t.Fatal("operator reprocess did not stage generation", rebuilt)
 	}
-	hostedAdmin(t, socket, accounts.AdminRequest{Operation: "revoke-token", TokenID: tokens[0].TokenID}, nil)
+	hostedAdmin(t, socket, operator.Request{Operation: "revoke-token", TokenID: tokens[0].TokenID}, nil)
 	if code, _ := hostedRequest(t, target+"/api/v2/instance", tokens[0].Secret, "GET", nil); code != http.StatusUnauthorized {
 		t.Fatal("revoked user token", code)
 	}
@@ -369,7 +370,7 @@ func TestHostedBootstrapInitializesOnceBeforeReady(t *testing.T) {
 				t.Fatal("bootstrap identity", user)
 			}
 			const reset = "replacement operator password"
-			hostedAdmin(t, settings.AdminSocket, accounts.AdminRequest{Operation: "reset-password", UserID: user.UserID, Password: reset}, nil)
+			hostedAdmin(t, settings.AdminSocket, operator.Request{Operation: "reset-password", UserID: user.UserID, Password: reset}, nil)
 			stop()
 			target, stop = startHosted(t, settings)
 			t.Cleanup(stop)
@@ -380,7 +381,7 @@ func TestHostedBootstrapInitializesOnceBeforeReady(t *testing.T) {
 			if user.UserID != after.UserID || user.DatasetID != after.DatasetID {
 				t.Fatal("bootstrap changed durable identity", user, after)
 			}
-			hostedAdmin(t, settings.AdminSocket, accounts.AdminRequest{Operation: "disable-user", UserID: user.UserID}, nil)
+			hostedAdmin(t, settings.AdminSocket, operator.Request{Operation: "disable-user", UserID: user.UserID}, nil)
 			stop()
 			target, stop = startHosted(t, settings)
 			t.Cleanup(stop)

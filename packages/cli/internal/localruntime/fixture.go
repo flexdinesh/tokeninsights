@@ -12,12 +12,13 @@ import (
 
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/appstore"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/collector"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/collectordb"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/datastore"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/db"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/evidence"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/pipeline"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/rawcollectorstore"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/serverownership"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/writerlock"
 )
 
 // PrepareFixture resets only the two compatible development databases. Keep
@@ -35,7 +36,7 @@ func PrepareFixture(ctx context.Context, collectorPath, serverPath string) error
 	if filepath.Base(root) != ".tokeninsights-dev" || filepath.Base(collectorPath) != "collector.sqlite" || filepath.Base(serverPath) != "server.sqlite" || filepath.Dir(serverPath) != root {
 		return fmt.Errorf("uncontrolled development databases")
 	}
-	release, err := db.AcquireWriterLock(ctx, serverPath+".service.op")
+	release, err := writerlock.Acquire(ctx, serverPath+".service.op")
 	if err != nil {
 		return err
 	}
@@ -52,12 +53,12 @@ func PrepareFixture(ctx context.Context, collectorPath, serverPath string) error
 	if err := inspectFixtureRoles(collectorPath, serverPath); err != nil {
 		return err
 	}
-	writer, err := db.AcquireWriterLock(ctx, collectorPath)
+	writer, err := writerlock.Acquire(ctx, collectorPath)
 	if err != nil {
 		return err
 	}
 	defer writer()
-	serverWriter, err := db.AcquireWriterLock(ctx, serverPath)
+	serverWriter, err := writerlock.Acquire(ctx, serverPath)
 	if err != nil {
 		return err
 	}
@@ -85,7 +86,7 @@ func PrepareFixture(ctx context.Context, collectorPath, serverPath string) error
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
-	if err := db.ResetAllLocked(ctx, collectorPath); err != nil {
+	if err := collectordb.ResetAllLocked(ctx, collectorPath); err != nil {
 		return err
 	}
 	capture, err := rawcollectorstore.Open(ctx, collectorPath)
@@ -138,7 +139,7 @@ func PrepareFixture(ctx context.Context, collectorPath, serverPath string) error
 
 func inspectFixtureRoles(collectorPath, serverPath string) error {
 	if _, err := os.Stat(collectorPath); err == nil {
-		collector, err := db.OpenWritable(collectorPath)
+		collector, err := collectordb.OpenWritable(collectorPath)
 		if err != nil {
 			return err
 		}

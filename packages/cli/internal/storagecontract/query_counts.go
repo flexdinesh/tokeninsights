@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/analytics"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/evidence"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/querymodel"
 )
 
 // Group counts describe visible row identities, not facts or native sessions.
@@ -46,12 +46,12 @@ func queryGroupCounts(t *testing.T, store Tokens) {
 		t.Run(fmt.Sprintf("generation-%d", generation), func(t *testing.T) {
 			for _, tc := range []struct {
 				tab           string
-				location      querymodel.RepoGroup
+				location      analytics.RepoGroup
 				all, filtered int
 			}{
 				{"models", "", 3, 1}, {"providers", "", 2, 2}, {"harnesses", "", 1, 1}, {"sessions", "", 3, 2},
 				{"context", "", 5, 2}, {"tokens", "", 2, 2},
-				{"repo", querymodel.RepoGroupRepository, 2, 2}, {"repo", querymodel.RepoGroupDirectory, 3, 2},
+				{"repo", analytics.RepoGroupRepository, 2, 2}, {"repo", analytics.RepoGroupDirectory, 3, 2},
 			} {
 				t.Run(tc.tab+string(tc.location), func(t *testing.T) {
 					for _, filter := range []struct {
@@ -78,7 +78,7 @@ func queryGroupCounts(t *testing.T, store Tokens) {
 								t.Fatal(err)
 							}
 							s := got.Summary
-							wantSummary := querymodel.ViewerSummaryRow{
+							wantSummary := analytics.ViewerSummaryRow{
 								TotalTokens: filter.facts * 24, InputTokens: filter.facts * 10,
 								OutputTokens: filter.facts * 5, ReasoningTokens: filter.facts * 2,
 								CacheReadTokens: filter.facts * 3, CacheWriteTokens: filter.facts * 4,

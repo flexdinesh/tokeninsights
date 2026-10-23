@@ -75,15 +75,6 @@ func TestCommandHelpSucceedsWithoutDatabaseSideEffects(t *testing.T) {
 	}
 }
 
-func replaceInteractiveProgramRunnerForTest(t *testing.T, runner func(interactiveModel, io.Writer) (interactiveModel, error)) func() {
-	t.Helper()
-	previous := runInteractiveProgram
-	runInteractiveProgram = runner
-	return func() {
-		runInteractiveProgram = previous
-	}
-}
-
 func createOpenCodeSQLiteMessagesForCLI(t *testing.T, dbPath string) {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Dir(dbPath), 0o755); err != nil {

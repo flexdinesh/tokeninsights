@@ -10,7 +10,6 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -87,55 +86,12 @@ func failure(stage, code string, cause error) error {
 
 // ValidatePaths must precede creation or collection, including remote selection.
 func ValidatePaths(collectorPath, serverPath string) error {
-	if strings.TrimSpace(collectorPath) == "" || strings.TrimSpace(serverPath) == "" {
-		return failure("configuration", "missing_database_path", nil)
+	err := dbpath.ValidateDistinct(collectorPath, serverPath)
+	var configuration *dbpath.ConfigurationError
+	if errors.As(err, &configuration) {
+		return failure("configuration", configuration.Code, nil)
 	}
-	first, err := dbpath.Canonical(collectorPath)
-	if err != nil {
-		return err
-	}
-	second, err := dbpath.Canonical(serverPath)
-	if err != nil {
-		return err
-	}
-	for _, suffix := range []string{"", "-wal", "-shm", "-journal"} {
-		if err := distinctPaths(first+suffix, second); err != nil {
-			return err
-		}
-		if suffix != "" {
-			if err := distinctPaths(first, second+suffix); err != nil {
-				return err
-			}
-		}
-	}
-	return nil
-}
-
-func distinctPaths(first, second string) error {
-	var err error
-	first, err = dbpath.Canonical(first)
-	if err != nil {
-		return err
-	}
-	second, err = dbpath.Canonical(second)
-	if err != nil {
-		return err
-	}
-	if first == second {
-		return failure("configuration", "database_paths_alias", nil)
-	}
-	a, ae := os.Stat(first)
-	b, be := os.Stat(second)
-	if ae == nil && be == nil && os.SameFile(a, b) {
-		return failure("configuration", "database_paths_alias", nil)
-	}
-	if ae != nil && !errors.Is(ae, os.ErrNotExist) {
-		return ae
-	}
-	if be != nil && !errors.Is(be, os.ErrNotExist) {
-		return be
-	}
-	return nil
+	return err
 }
 
 func Run(ctx context.Context, options Options) (Result, error) {

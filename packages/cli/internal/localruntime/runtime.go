@@ -23,11 +23,12 @@ import (
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/collector"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/collectorprogress"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/datastore"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/db"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/dbpath"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/queryclient"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/server"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/serverfeatures"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/serverownership"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/writerlock"
 )
 
 var ErrOwned = errors.New("database already owned; close the process using this database")
@@ -83,21 +84,21 @@ func OpenWithAppOptions(ctx context.Context, collectorPath, dataPath, appPath st
 		return nil, err
 	}
 	for _, other := range []string{dataPath, appPath} {
-		if err := collector.ValidatePaths(canonicalCollector+".jobs.sqlite", other); err != nil {
+		if err := dbpath.ValidateDistinct(canonicalCollector+".jobs.sqlite", other); err != nil {
 			return nil, err
 		}
 	}
-	if err := collector.ValidatePaths(dataPath+".application.json", appPath); err != nil {
+	if err := dbpath.ValidateDistinct(dataPath+".application.json", appPath); err != nil {
 		return nil, err
 	}
 
 	for _, other := range []string{collectorPath, dataPath} {
-		if err := collector.ValidatePaths(appPath, other); err != nil {
+		if err := dbpath.ValidateDistinct(appPath, other); err != nil {
 			return nil, err
 		}
 	}
 
-	if err := collector.ValidatePaths(collectorPath, dataPath); err != nil {
+	if err := dbpath.ValidateDistinct(collectorPath, dataPath); err != nil {
 		return nil, err
 	}
 	path, _, err := serverownership.Identify(dataPath)
@@ -107,7 +108,7 @@ func OpenWithAppOptions(ctx context.Context, collectorPath, dataPath, appPath st
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return nil, err
 	}
-	release, err := db.AcquireWriterLock(ctx, path+".service.op")
+	release, err := writerlock.Acquire(ctx, path+".service.op")
 	if err != nil {
 		return nil, err
 	}
@@ -163,7 +164,7 @@ func OpenWithAppOptions(ctx context.Context, collectorPath, dataPath, appPath st
 	hostname := resolveHostname(os.Hostname)
 	id := hex.EncodeToString(instance[:])
 	r := &Runtime{InstanceID: id, Hostname: hostname, Policy: policy, Progress: collectorprogress.New(id), Store: store, App: app, owner: owner, cancel: cancel, ctx: workerCtx, collectorPath: canonicalCollector, dataPath: path, done: make(chan struct{}), queries: sqlanalytics.Queries{Store: store}, captureDetails: options.CaptureDetails}
-	r.Query = queryclient.NewDirect(server.NewDirectQuery(r.queries, id, hostname))
+	r.Query = queryclient.NewDirect(server.NewDirectQuery(r.queries, policy, id, hostname))
 	r.Destination = &collector.Destination{Identity: "http://local", DatabaseID: metadata.DatabaseID, DatasetID: metadata.DatasetID, Local: true, Transport: collector.DirectDelivery{Receiver: store}}
 	// WaitVisible reads durable failure state, including failures from a prior owner.
 	go func() { defer close(r.done); store.Run(workerCtx, nil) }()
@@ -248,3 +249,7 @@ func (r *Runtime) Close() error {
 }
 
 var _ io.Closer = (*Runtime)(nil)
+
+// DataSource exposes the runtime's storage to the local HTTP listener without
+// callers constructing storage adapters.
+func (r *Runtime) DataSource() server.DataSource { return sqlanalytics.Source{Store: r.Store} }

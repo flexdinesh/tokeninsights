@@ -11,8 +11,6 @@ import (
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/datastore"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/evidence"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/persistence/sqlutil"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/querymodel"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/viewer"
 )
 
 func TestDatasetAnalyticsIsolateCollidingIdentities(t *testing.T) {
@@ -92,11 +90,11 @@ func TestDatasetAnalyticsIsolateCollidingIdentities(t *testing.T) {
 		total, context, unresolved int64
 	}{{alice, 240, 100, 0}, {bob, 1840, 900, 1}} {
 		for _, tab := range []string{"tokens", "models", "providers", "harnesses", "sessions", "context", "repo", "directory"} {
-			queryTab, group := tab, querymodel.RepoGroupRepository
+			queryTab, group := tab, analytics.RepoGroupRepository
 			if tab == "directory" {
-				queryTab, group = "repo", querymodel.RepoGroupDirectory
+				queryTab, group = "repo", analytics.RepoGroupDirectory
 			}
-			q := analytics.Query{Selection: viewer.Selection{Period: "all", Bucket: "day"}, Quality: "confirmed", Tab: queryTab, Sort: "total", Direction: "desc", Page: 999, PageSize: 1, LocationGroup: group}
+			q := analytics.Query{Selection: analytics.Selection{Period: "all", Bucket: "day"}, Quality: "confirmed", Tab: queryTab, Sort: "total", Direction: "desc", Page: 999, PageSize: 1, LocationGroup: group}
 			result, err := LoadDashboard(t.Context(), test.store, q, time.Now())
 			if err != nil {
 				t.Fatal(tab, err)
@@ -205,7 +203,7 @@ func TestDatasetAnalyticsIsolateCollidingIdentities(t *testing.T) {
 		store             *datastore.Store
 		generation, total int64
 	}{{alice, 1, 240}, {bob, 2, 1840}} {
-		q := analytics.Query{Selection: viewer.Selection{Period: "all", Bucket: "day"}, Quality: "confirmed", Tab: "sessions", Sort: "date", Direction: "desc", Page: 1, PageSize: 10}
+		q := analytics.Query{Selection: analytics.Selection{Period: "all", Bucket: "day"}, Quality: "confirmed", Tab: "sessions", Sort: "date", Direction: "desc", Page: 1, PageSize: 10}
 		result, err := LoadDashboard(t.Context(), test.store, q, time.Now())
 		if err != nil {
 			t.Fatal(err)

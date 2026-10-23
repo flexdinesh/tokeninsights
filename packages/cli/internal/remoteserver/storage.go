@@ -11,12 +11,12 @@ import (
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/adapters/sqlite"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/adapters/sqliteaccounts"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/appstore"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/collector"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/datastore"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/db"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/dbpath"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/server"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/serverownership"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/serverruntime"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/writerlock"
 )
 
 type accountLifecycle interface {
@@ -60,13 +60,13 @@ func openStorage(ctx context.Context, settings Settings) (*hostedStorage, error)
 	if appPath == "" {
 		appPath = filepath.Join(filepath.Dir(path), "app.sqlite")
 	}
-	if err := collector.ValidatePaths(appPath, path); err != nil {
+	if err := dbpath.ValidateDistinct(appPath, path); err != nil {
 		return nil, err
 	}
-	if err := collector.ValidatePaths(appPath, path+".application.json"); err != nil {
+	if err := dbpath.ValidateDistinct(appPath, path+".application.json"); err != nil {
 		return nil, err
 	}
-	release, err := db.AcquireWriterLock(ctx, path+".service.op")
+	release, err := writerlock.Acquire(ctx, path+".service.op")
 	if err != nil {
 		return nil, err
 	}

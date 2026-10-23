@@ -632,13 +632,6 @@ export const ProcessingStatus = zod.strictObject({
 export type ProcessingStatus = zod.input<typeof ProcessingStatus>
 export type ProcessingStatusOutput = zod.output<typeof ProcessingStatus>
 
-export const ReprocessAcceptance = zod.strictObject({
-  generation: Count,
-})
-
-export type ReprocessAcceptance = zod.input<typeof ReprocessAcceptance>
-export type ReprocessAcceptanceOutput = zod.output<typeof ReprocessAcceptance>
-
 export const instanceResponseV2DatasetIdMax = 256
 
 export const InstanceResponseV2 = zod.strictObject({
@@ -666,7 +659,7 @@ export const InstanceResponseV2 = zod.strictObject({
       .string()
       .min(1)
       .describe(
-        'Unknown capabilities are ignored by clients. Known names: usage, facets, web-dashboard, dashboard-reload, raw-ingestion, terminal-dashboard, collector-progress, reprocess. dashboard-reload is query-only and available only to local viewers.',
+        'Unknown capabilities are ignored by clients. Known names: usage, facets, web-dashboard, dashboard-reload, raw-ingestion, terminal-dashboard, collector-progress. dashboard-reload is query-only and available only to local viewers.',
       ),
   ),
   defaults: Selection,
@@ -1412,12 +1405,3 @@ export const RevokeAPIKeyResponse = zod.void()
 
 export type RevokeAPIKeyResponse = zod.input<typeof RevokeAPIKeyResponse>
 export type RevokeAPIKeyResponseOutput = zod.output<typeof RevokeAPIKeyResponse>
-
-/**
- * Builds a new generation asynchronously. Published history stays active until replacement coverage is complete. Available on private local transport and the remote server.
- * @summary Stage reprocessing of retained raw evidence
- */
-export const ReprocessEvidenceResponse = ReprocessAcceptance
-
-export type ReprocessEvidenceResponse = zod.input<typeof ReprocessEvidenceResponse>
-export type ReprocessEvidenceResponseOutput = zod.output<typeof ReprocessEvidenceResponse>

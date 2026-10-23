@@ -15,11 +15,10 @@ import (
 	"time"
 
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/adapters/sqlanalytics"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/analytics"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/datastore"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/querymodel"
 	serverapi "github.com/flexdinesh/tokeninsights/packages/cli/internal/server/api"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/version"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/viewer"
 	_ "modernc.org/sqlite"
 )
 
@@ -142,7 +141,7 @@ func TestRepoUnknownAndDirectoryGrouping(t *testing.T) {
 	if len(transport) != 1 || transport[0].DirectoryNames == nil || !transport[0].HasUnknownDirectory {
 		t.Fatalf("unknown directory transport: %+v", transport)
 	}
-	q.LocationGroup = querymodel.RepoGroupDirectory
+	q.LocationGroup = analytics.RepoGroupDirectory
 	data, err = loadDashboard(context.Background(), path, q, time.Now())
 	if err != nil {
 		t.Fatal(err)
@@ -203,7 +202,7 @@ func TestDashboardSessionCoverageAcrossBucketsAndDates(t *testing.T) {
 }
 
 func TestAPIValidationFacetsAndAssets(t *testing.T) {
-	a := fixtureApp(t, fixture(t), Options{Defaults: viewer.Selection{Period: "week", Bucket: "day", Providers: []string{}, Models: []string{}, Harnesses: []string{}, Sessions: []string{}}})
+	a := fixtureApp(t, fixture(t), Options{Defaults: analytics.Selection{Period: "week", Bucket: "day", Providers: []string{}, Models: []string{}, Harnesses: []string{}, Sessions: []string{}}})
 	handler := a.handler()
 	for _, query := range []string{"period=bad", "bucket=hour", "tab=invalid", "from=2026-02-30", "from=2026-10-01&to=2026-09-01", "page=0", "pageSize=201", "direction=bad", "tab=context&sort=total", "sort=sql", "harness=bad", "tab=repo&locationGroup=bad", "tab=repo&breakdown=provider", "tab=repo&worktree=old", "tab=repo&branch=main", "repository=unknown"} {
 		w := httptest.NewRecorder()

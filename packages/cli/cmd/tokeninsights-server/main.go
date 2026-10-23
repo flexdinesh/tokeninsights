@@ -14,6 +14,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/accounts"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/operator"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/remoteserver"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/version"
 )
@@ -44,13 +45,10 @@ func runAdmin(ctx context.Context, args []string, stdin io.Reader, stdout, stder
 		return err
 	}
 	command := flags.Args()
-	if len(command) == 1 && command[0] == "reprocess" {
-		return accounts.AdminCall(ctx, *socket, accounts.AdminRequest{Operation: "reprocess"}, stdout)
-	}
 	if len(command) < 3 {
-		return fmt.Errorf("use admin --admin-socket PATH reprocess, user create|disable|reprocess|reset-password VALUE or token create|revoke ID")
+		return fmt.Errorf("use admin --admin-socket PATH user create|disable|reprocess|reset-password VALUE or token create|revoke ID")
 	}
-	request := accounts.AdminRequest{}
+	request := operator.Request{}
 	switch command[0] + " " + command[1] {
 	case "user create":
 		if len(command) != 3 {
@@ -115,7 +113,7 @@ func runAdmin(ctx context.Context, args []string, stdin io.Reader, stdout, stder
 	default:
 		return fmt.Errorf("unknown admin operation")
 	}
-	return accounts.AdminCall(ctx, *socket, request, stdout)
+	return operator.Call(ctx, *socket, request, stdout)
 }
 
 func main() {

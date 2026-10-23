@@ -42,7 +42,8 @@ processing, generations, receipts and analytics.
 | Sync jobs | collector.sqlite.jobs.sqlite | schema/jobs.sql | 1 |
 
 Defaults use XDG_DATA_HOME or ~/.local/share/tokeninsights. Role-specific flags/
-environment/config override them. Reject aliased paths, wrong roles, incompatible
+environment/config override them, in that order. Each command parses its flags once;
+`config.FlagOverrides` then feeds explicitly set flags into resolution. Reject aliased paths, wrong roles, incompatible
 versions and corrupt contracts. Former tokeninsights.sqlite stays untouched.
 Local CLI application role/version errors include resolved config/application paths
 and manual deletion/recreation guidance, including account/credential loss. They
@@ -355,8 +356,9 @@ existing SQLite/PostgreSQL processing queue remains behind dataengine's backend 
 `serverfeatures` owns typed kind/capabilities and validates dependent features.
 `GET /api/v2/instance` returns serverKind, datasetId, bounded capabilities and caller
 permissions separately. `usage`, `facets`, `web-dashboard`, `raw-ingestion`,
-`terminal-dashboard`, `collector-progress`, `dashboard-reload`, `reprocess` determine mounted routes
-and command/browser preflight. Unknown feature names are ignored; absent required
+`terminal-dashboard`, `collector-progress`, `dashboard-reload` determine mounted routes
+and command/browser preflight. Reprocessing has no HTTP route: local `data reprocess`
+and hosted owner-socket `user reprocess` start it. Unknown feature names are ignored; absent required
 features/unknown kinds reject. Hosted cannot enable terminal-dashboard,
 collector-progress or dashboard-reload. Local composition still advertises the
 dashboard-reload capability, including saved-only viewers; the browser uses
@@ -584,24 +586,35 @@ and its adapters isolate application persistence. Dataengine owns processing con
 
 [ADR 0011](adr/0011-storage-adapter-contracts.md) defines separate token/account contracts. [ADR 0012](adr/0012-sqlite-and-postgres-persistence.md) implements SQLite and PostgreSQL adapters. Shared relational transaction code owns behavior; small engine-specific SQL fragments remain private. Account and token transactions stay separate even when they share a physical database.
 
+Storage code location follows ownership:
+
+- Top-level role packages (`rawcollectorstore`, `collectordb`, `syncjob`, `appstore`, `datastore`) own one durable role's schema, transactions and lifecycle.
+- `adapters/<name>` implements consumer-defined ports (`analytics.Repository`, `accounts.Repository`, `evidence.Receiver`) or composes engine-specific roles. Only composition roots and other adapters import it.
+- `persistence/<name>` holds engine mechanics shared across roles: connections, physical checks and SQL helpers. It has no domain contracts or role knowledge.
+
+New role schemas belong in a top-level package; port implementations in `adapters`; role-free engine mechanics in `persistence`. `internal/architecture` enforces both import locations.
+
 | Package | Behavior boundary |
 | --- | --- |
 | `evidence`, `publication` | Sanitized wire records and stable contribution contracts |
 | `pipeline` | Capture/native readers, continuity and safe enrichment |
 | `rawcollectorstore` | Collector capture/checkpoint/outbox transactions and immutable dataset-bound requests |
+| `collectordb` | Collector SQLite opening, reset and schema validation |
+| `dbpath`, `writerlock` | Canonical database paths, role alias rejection and cross-process file writer locks; no SQL or role knowledge |
 | `collector` | Delivery orchestration with injected destination transport; no local-service discovery |
 | `clientworkflow` | Remote endpoint resolution and authenticated descriptor preflight |
 | `processor` | Pure evidence interpretation; no host reads, SQL, network or wall clock |
 | `dataengine` | Transport-independent work/processing orchestration and retry scheduling |
 | `datastore` | Shared relational token transactions and dataset-scoped persistence |
-| `analytics` | Backend-independent query contracts, results and query policy |
+| `analytics` | Backend-independent query contracts, values, selections, results and query policy |
 | `adapters/sqlanalytics` | Dataset-scoped SQL queries and receiver/query composition |
 | `server`, `ingestionhttp` | Authorized REST/asset and ingestion adapters |
 | `clientaddress` | Explicit trusted-proxy client address resolution; no environment, account or storage dependencies |
 | `serverfeatures` | Typed kind/capability policy |
 | `collectorprogress` | Sanitized progress values, registry and HTTP reads; no capture dependencies |
 | `processusage` | Own-process CPU/RSS sampling and cache; Web composition injects read-only snapshots |
-| `accounts` | Credential contracts, shared policy and dataset provisioning contract |
+| `accounts` | Credential contracts, shared policy and dataset provisioning contract; no HTTP |
+| `operator` | Private owner-socket account administration protocol (handler and client) |
 | `adapters/accountsql` | Shared account transactions and recoverable provisioning |
 | `adapters/sqlite`, `adapters/sqliteaccounts`, `appstore` | SQLite opening and physical application pairing |
 | `adapters/postgres`, `persistence/postgres` | Paired PostgreSQL composition, schemas, connections and ownership |
@@ -609,8 +622,11 @@ and its adapters isolate application persistence. Dataengine owns processing con
 | `localruntime` | Command ownership and background startup lifetime, direct ingestion/query, local requests and development fixtures |
 | `serverruntime` | Shared worker/readiness/listener lifecycle through interfaces |
 | `remoteserver` | Authenticated remote composition |
+| `cli` | Command parsing, environment defaults and local composition; no storage adapters or SQL |
+| `flagvalue` | Shared command-line flag values: repeatable lists and `--harness` parsing |
+| `tui` | Terminal dashboard over `queryclient.Reader` and the local runtime; no HTTP, SQL or storage adapters |
 
-`querymodel` owns storage-independent query values. Direct queries receive an
+`analytics` owns storage-independent query values and selections. Direct queries receive an
 analytics repository and instance identity; they do not construct an HTTP app.
 Storage supplies semantic receiver operations; `ingestionhttp` mounts HTTP routes.
 The collector requires an injected delivery adapter before capture. Single-process

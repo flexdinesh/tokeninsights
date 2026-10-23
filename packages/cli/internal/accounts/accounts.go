@@ -4,15 +4,12 @@ package accounts
 import (
 	"context"
 	"errors"
-	"net/http"
-	"strings"
 	"time"
 )
 
 const (
 	Read                                 = "read"
 	Ingest                               = "ingest"
-	SessionCookieName                    = "tokeninsights_session"
 	SessionLifetime                      = 24 * time.Hour
 	CredentialBytes                      = 32
 	MaxTokenBytes                        = 4096
@@ -133,31 +130,6 @@ func (s *Service) Cleanup(ctx context.Context) error { return s.repository.Clean
 func (s *Service) ReprocessUser(ctx context.Context, id string) (int64, error) {
 	return s.repository.ReprocessUser(ctx, id)
 }
-func (s *Service) AuthenticateRequest(ctx context.Context, r *http.Request) (Principal, error) {
-	if header := r.Header.Get("Authorization"); header != "" {
-		parts := strings.Fields(header)
-		if len(parts) != 2 || !strings.EqualFold(parts[0], "Bearer") {
-			return Principal{}, ErrUnauthenticated
-		}
-		return s.AuthenticateBearer(ctx, parts[1])
-	}
-	cookie, err := r.Cookie(SessionCookieName)
-	if err != nil {
-		return Principal{}, ErrUnauthenticated
-	}
-	return s.AuthenticateSession(ctx, cookie.Value)
-}
-
-func SessionCookie(secret string, expires time.Time) *http.Cookie {
-	return &http.Cookie{Name: SessionCookieName, Value: secret, Path: "/", Expires: expires, MaxAge: int(SessionLifetime / time.Second), Secure: true, HttpOnly: true, SameSite: http.SameSiteLaxMode}
-}
-
-func ClearSessionCookie() *http.Cookie {
-	c := SessionCookie("", time.Unix(1, 0))
-	c.MaxAge = -1
-	return c
-}
-
 func (s *Service) Signup(ctx context.Context, username, password string) (User, error) {
 	return s.repository.Signup(ctx, username, password)
 }

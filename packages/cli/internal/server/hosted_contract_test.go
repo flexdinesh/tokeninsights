@@ -283,7 +283,7 @@ func TestHostedHTTPBrowserSessionReadOnlyAndLogout(t *testing.T) {
 		t.Fatalf("cookies: %+v", cookies)
 	}
 	cookie := cookies[0]
-	if cookie.Name != accounts.SessionCookieName || !cookie.Secure || !cookie.HttpOnly || cookie.SameSite != http.SameSiteLaxMode || cookie.Path != "/" {
+	if cookie.Name != sessionCookieName || !cookie.Secure || !cookie.HttpOnly || cookie.SameSite != http.SameSiteLaxMode || cookie.Path != "/" {
 		t.Fatalf("cookie policy: %+v", cookie)
 	}
 	requireHostedStatus(t, hostedRequest(t, fixture.handler, http.MethodGet, "/api/v2/usage?period=all", "", nil, cookie), 200)
@@ -307,7 +307,7 @@ func TestDisabledHTTPCapabilitiesFailClosed(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer func() { _ = store.Close() }()
-			policy, err := serverfeatures.New(kind, false, serverfeatures.Usage, serverfeatures.Facets, serverfeatures.WebDashboard, serverfeatures.TerminalDashboard, serverfeatures.RawIngestion, serverfeatures.Reprocess)
+			policy, err := serverfeatures.New(kind, false, serverfeatures.Usage, serverfeatures.Facets, serverfeatures.WebDashboard, serverfeatures.TerminalDashboard, serverfeatures.RawIngestion)
 			if err != nil {
 				t.Fatal(err)
 			}

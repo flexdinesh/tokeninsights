@@ -16,7 +16,6 @@ import (
 	"time"
 
 	"github.com/charmbracelet/x/ansi"
-
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/collector"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/collectorprogress"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/config"
@@ -125,7 +124,7 @@ func TestLocalWebOwnsListenerUntilCancellationAndNeverAcceptsHTTPIngestion(t *te
 		cancel()
 		return nil
 	}
-	if err := runWeb(commandInvocation{context: ctx, stdout: &stdout, stderr: io.Discard, settings: &settings}, []string{"--full-refresh", "--source-dir", root}); err != nil {
+	if err := runWeb(commandInvocation{context: ctx, stdout: &stdout, stderr: io.Discard, configPath: localConfigForTest(t, settings)}, []string{"--full-refresh", "--source-dir", root}); err != nil {
 		t.Fatal(err)
 	}
 	select {
@@ -195,10 +194,9 @@ func readWebProgress(t *testing.T, url string) collectorprogress.Snapshot {
 }
 
 func TestLocalWebCaptureFailureKeepsSavedDashboardAndShowsFailure(t *testing.T) {
-	options := localViewOptions(t, true)
-	_ = options.local.Close()
+	collectorPath, serverPath := seedLocalUsage(t)
 	settings := config.Defaults()
-	settings.CollectorDBPath, settings.ServerDBPath, settings.Port = options.collectorDBPath, options.dbPath, 0
+	settings.CollectorDBPath, settings.ServerDBPath, settings.Port = collectorPath, serverPath, 0
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 	previousOpen, previousCollector := openDashboard, runWebCollector
@@ -236,7 +234,7 @@ func TestLocalWebCaptureFailureKeepsSavedDashboardAndShowsFailure(t *testing.T) 
 		return nil
 	}
 	var stderr bytes.Buffer
-	if err := runWeb(commandInvocation{context: ctx, stdout: io.Discard, stderr: &stderr, settings: &settings}, nil); err != nil || stderr.Len() != 0 {
+	if err := runWeb(commandInvocation{context: ctx, stdout: io.Discard, stderr: &stderr, configPath: localConfigForTest(t, settings)}, nil); err != nil || stderr.Len() != 0 {
 		t.Fatal("terminal blocked or capture failure stopped dashboard", err, stderr.String())
 	}
 }
@@ -260,7 +258,7 @@ func TestLocalWebSavedOnlyHasNoStartupCollection(t *testing.T) {
 		cancel()
 		return nil
 	}
-	if err := runWeb(commandInvocation{context: ctx, stdout: io.Discard, stderr: io.Discard, settings: &settings}, []string{"--sync=false"}); err != nil {
+	if err := runWeb(commandInvocation{context: ctx, stdout: io.Discard, stderr: io.Discard, configPath: localConfigForTest(t, settings)}, []string{"--sync=false"}); err != nil {
 		t.Fatal(err)
 	}
 	assertViewMissingPath(t, settings.CollectorDBPath)
@@ -290,7 +288,7 @@ func TestLocalWebHTTPFailureCancelsAndJoinsCollection(t *testing.T) {
 		bindings[0].Listener = failedWebListener{Listener: bindings[0].Listener, err: expected}
 		return serverruntime.Serve(ctx, store, bindings, ready)
 	}
-	err := runWeb(commandInvocation{context: t.Context(), stdout: io.Discard, stderr: io.Discard, settings: &settings}, []string{"--open=false"})
+	err := runWeb(commandInvocation{context: t.Context(), stdout: io.Discard, stderr: io.Discard, configPath: localConfigForTest(t, settings)}, []string{"--open=false"})
 	if !errors.Is(err, expected) {
 		t.Fatal("HTTP failure lost", err)
 	}
@@ -304,4 +302,29 @@ func TestLocalWebHTTPFailureCancelsAndJoinsCollection(t *testing.T) {
 		t.Fatal("ownership leaked", err)
 	}
 	_ = runtime.Close()
+}
+
+// Commands parse their own flags once, so every flag form outranks the
+// environment, including single-dash forms a separate pre-scan would miss.
+func TestWebSingleDashFlagsOverrideInvalidEnvironment(t *testing.T) {
+	root := t.TempDir()
+	settings := config.Defaults()
+	settings.CollectorDBPath, settings.ServerDBPath = filepath.Join(root, "env-collector.sqlite"), filepath.Join(root, "env-server.sqlite")
+	path := localConfigForTest(t, settings)
+	t.Setenv("TOKENINSIGHTS_PORT", "not-a-port")
+	t.Setenv("TOKENINSIGHTS_COLLECTOR_DB_PATH", settings.CollectorDBPath)
+	flagCollector, flagServer := filepath.Join(root, "collector.sqlite"), filepath.Join(root, "server.sqlite")
+	previousServe := serveLocalWeb
+	t.Cleanup(func() { serveLocalWeb = previousServe })
+	serveLocalWeb = func(context.Context, serverruntime.Readiness, []serverruntime.Binding, func() error) error {
+		return nil
+	}
+	err := Run(t.Context(), []string{"--config-file", path, "web", "--sync=false", "--open=false", "-port", "0", "-collector-db-path", flagCollector, "-server-db-path", flagServer}, io.Discard, io.Discard, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(flagServer); err != nil {
+		t.Fatalf("flag server database not used: %v", err)
+	}
+	assertViewMissingPath(t, settings.ServerDBPath)
 }

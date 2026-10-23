@@ -27,12 +27,11 @@ const (
 	RawIngestion      Capability = "raw-ingestion"
 	TerminalDashboard Capability = "terminal-dashboard"
 	CollectorProgress Capability = "collector-progress"
-	Reprocess         Capability = "reprocess"
 )
 
 func (c Capability) Known() bool {
 	switch c {
-	case Usage, Facets, WebDashboard, DashboardReload, RawIngestion, TerminalDashboard, CollectorProgress, Reprocess:
+	case Usage, Facets, WebDashboard, DashboardReload, RawIngestion, TerminalDashboard, CollectorProgress:
 		return true
 	}
 	return false
@@ -77,7 +76,7 @@ func NewLocalViewer(collectorProgress bool, disabled ...Capability) (Policy, err
 }
 
 func newPolicy(kind Kind, collectorProgress, dashboardReload bool, disabled ...Capability) (Policy, error) {
-	p := Policy{Kind: kind, Capabilities: Capabilities{Usage, Facets, WebDashboard, RawIngestion, Reprocess}}
+	p := Policy{Kind: kind, Capabilities: Capabilities{Usage, Facets, WebDashboard, RawIngestion}}
 	if dashboardReload {
 		p.Capabilities = append(p.Capabilities, DashboardReload)
 	}

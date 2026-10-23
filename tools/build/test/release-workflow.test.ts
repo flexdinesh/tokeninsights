@@ -6,8 +6,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
 
-import { embeddedAssets, prepareRelease } from '../src/install-refs.ts'
-import { workspacePath } from '../src/workspace.ts'
+import { prepareRelease } from '../src/install-refs.ts'
+import { embeddedAssets, workspacePath } from '../src/workspace.ts'
 
 function stepScript(name: string): string {
   const lines = readFileSync(workspacePath('.github/workflows/release.yml'), 'utf8').split('\n')

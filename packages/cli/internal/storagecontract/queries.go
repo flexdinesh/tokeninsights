@@ -11,7 +11,6 @@ import (
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/analytics"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/evidence"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/publication"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/querymodel"
 )
 
 // These oracles enter through raw ingestion, so adapters cannot satisfy query
@@ -36,7 +35,7 @@ func queryTabsAndSessionPeaks(t *testing.T, store Tokens) {
 		t.Run(tab, func(t *testing.T) {
 			q := query()
 			q.Tab, q.PageSize = tab, 2
-			q.LocationGroup = querymodel.RepoGroupRepository
+			q.LocationGroup = analytics.RepoGroupRepository
 			if tab == "context" {
 				q.Sort = "averageContext"
 			}

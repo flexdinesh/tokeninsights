@@ -1,4 +1,4 @@
-import { CollectorRunner, syncFailure } from '../../../tools/build/src/plugin-runner.ts'
+import { CollectorRunner, syncFailure } from '@tokeninsights/plugin-runtime'
 
 export type PiCompletionContext = {
   hasUI: boolean

@@ -3,6 +3,7 @@ packages:
   - 'packages/web'
   - 'packages/plugin-pi'
   - 'packages/plugin-opencode'
+  - 'packages/plugin-runtime'
   - 'tools/build'
   - 'docs-website'
 injectWorkspacePackages: true

@@ -1,48 +1,17 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { z } from 'zod'
 import {
   bootstrapSchema,
   dashboardSchema,
   collectorProgressSchema,
-  errorSchema,
   facetsSchema,
   statusSchema,
 } from './contracts'
-import { apiQueryParams } from './state'
+import { request, send } from './http'
+import { apiQueryParams } from './query'
 import type { Bootstrap } from './contracts'
-import type { QueryState } from './state'
+import type { QueryState } from './query'
 
 const dashboardPollIntervalMs = 5_000
-
-export async function request<T>(
-  path: string,
-  schema: z.ZodType<T>,
-  signal?: AbortSignal,
-  expectedDatasetId?: string,
-): Promise<T> {
-  const response = await fetch(path, {
-    signal,
-    method: 'GET',
-    credentials: 'same-origin',
-    headers:
-      expectedDatasetId === undefined
-        ? undefined
-        : { 'X-TokenInsights-Dataset-ID': expectedDatasetId },
-  })
-  if (response.status === 401 || (expectedDatasetId !== undefined && response.status === 409))
-    throw new AuthenticationRequired()
-  let body: unknown
-  try {
-    body = await response.json()
-  } catch {
-    throw new Error('Invalid response from server')
-  }
-  if (!response.ok) {
-    const error = errorSchema.safeParse(body)
-    throw new Error(error.success ? error.data.message : `Request failed (${response.status})`)
-  }
-  return schema.parse(body)
-}
 
 export function getInstance(signal?: AbortSignal): Promise<Bootstrap> {
   return request('/api/v2/instance', bootstrapSchema, signal)
@@ -139,25 +108,15 @@ export function useFacets(
   })
 }
 
-export class AuthenticationRequired extends Error {
-  constructor() {
-    super('Sign in to view your token usage.')
-    this.name = 'AuthenticationRequired'
-  }
-}
-
 export async function changeBrowserSession(credentials?: {
   username: string
   password: string
 }): Promise<void> {
-  const response = await fetch('/api/v2/auth/session', {
+  await send('/api/v2/auth/session', {
     method: credentials === undefined ? 'DELETE' : 'POST',
-    credentials: 'same-origin',
-    headers: credentials === undefined ? undefined : { 'Content-Type': 'application/json' },
-    body: credentials === undefined ? undefined : JSON.stringify(credentials),
+    body: credentials,
+    failure: 'Sign in failed',
   })
-  if (response.status === 401) throw new AuthenticationRequired()
-  if (!response.ok) throw new Error(`Sign in failed (${response.status})`)
 }
 
 export const useCollectorProgress = (enabled: boolean, instanceId: string) =>

@@ -4,17 +4,16 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { webAssetDifferences } from './check-web.ts'
 import { listFiles } from './files.ts'
-import { syncWebAssets } from './sync-web-assets.ts'
-import { workspacePath, workspaceRoot } from './workspace.ts'
+import { syncWebAssets, webAssetDifferences } from './sync-web-assets.ts'
+import { embeddedAssets, workspacePath, workspaceRoot } from './workspace.ts'
 
 // Lint, test, build and distribution tasks each require embedded assets. Rebuild
 // only when web inputs change or the recorded build output drifted.
 const scriptPath = fileURLToPath(import.meta.url)
 const webRoot = workspacePath('packages', 'web')
 const builtAssets = join(webRoot, 'dist')
-const embeddedAssets = workspacePath('packages', 'cli', 'internal', 'server', 'static')
+const embeddedRoot = workspacePath(embeddedAssets)
 const stampPath = join(webRoot, 'node_modules', '.cache', 'tokeninsights', 'web-build.txt')
 const generatedEntries = new Set(['node_modules', 'dist', 'test-results', 'playwright-report'])
 const sharedInputs = [
@@ -80,7 +79,7 @@ async function main(): Promise<void> {
     if (build.error) throw build.error
     if (build.status !== 0) throw new Error('web build failed')
   }
-  if (!current || (await webAssetDifferences(builtAssets, embeddedAssets)).length > 0) {
+  if (!current || (await webAssetDifferences(builtAssets, embeddedRoot)).length > 0) {
     await syncWebAssets()
   }
   if (!current) {

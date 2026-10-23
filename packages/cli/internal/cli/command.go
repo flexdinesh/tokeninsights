@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"strconv"
 	"strings"
 	"time"
 
@@ -24,10 +23,10 @@ type commandInvocation struct {
 	stdout     io.Writer
 	stderr     io.Writer
 	now        time.Time
-	settings   *config.LocalSettings
-	remote     *config.SyncSettings
-	browse     *config.BrowseSettings
 	configPath string
+	// applicationPath records the resolved local application database for
+	// incompatible-schema guidance after the command returns.
+	applicationPath *string
 }
 
 type commandHandler func(commandInvocation, []string) error
@@ -50,7 +49,7 @@ var commands = []commandSpec{
 }
 
 func Run(ctx context.Context, args []string, stdout io.Writer, stderr io.Writer, now time.Time) error {
-	invocation := commandInvocation{context: ctx, stdin: os.Stdin, stdout: stdout, stderr: stderr, now: now}
+	invocation := commandInvocation{context: ctx, stdin: os.Stdin, stdout: stdout, stderr: stderr, now: now, applicationPath: new(string)}
 	if len(args) == 5 && args[0] == "__prepare-dev-data" && args[1] == "--collector-db-path" && args[3] == "--server-db-path" {
 		return localruntime.PrepareFixture(ctx, args[2], args[4])
 	}
@@ -78,41 +77,6 @@ func Run(ctx context.Context, args []string, stdout io.Writer, stderr io.Writer,
 			return fmt.Errorf("unknown command %q\n%w", args[0], ErrUsage)
 		}
 	}
-	help := len(args) == 0 || (len(args) > 0 && (args[0] == "help" || args[0] == "version"))
-	for _, arg := range args {
-		if arg == "--" {
-			break
-		}
-		if arg == "--help" || arg == "-h" || arg == "--version" {
-			help = true
-		}
-	}
-	if !help && (len(args) == 0 || args[0] != "config") {
-		overrides, err := configurationOverrides(args)
-		if err != nil {
-			return fmt.Errorf("%w\n%w", err, ErrUsage)
-		}
-		switch args[0] {
-		case "sync":
-			settings, err := config.ResolveSync(invocation.configPath, true, overrides)
-			if err != nil {
-				return fmt.Errorf("configuration: %w", err)
-			}
-			invocation.remote = &settings
-		case "browse":
-			settings, err := config.ResolveBrowse(invocation.configPath, true, overrides)
-			if err != nil {
-				return fmt.Errorf("configuration: %w", err)
-			}
-			invocation.browse = &settings
-		default:
-			settings, err := config.ResolveLocal(invocation.configPath, true, overrides)
-			if err != nil {
-				return fmt.Errorf("configuration: %w", err)
-			}
-			invocation.settings = &settings
-		}
-	}
 	if len(args) == 0 {
 		return runHelp(invocation, nil)
 	}
@@ -122,8 +86,8 @@ func Run(ctx context.Context, args []string, stdout io.Writer, stderr io.Writer,
 		if errors.Is(err, flag.ErrHelp) {
 			return nil
 		}
-		if errors.Is(err, appstore.ErrIncompatibleDatabase) && invocation.settings != nil {
-			path, pathErr := dbpath.Canonical(invocation.settings.ApplicationPath())
+		if errors.Is(err, appstore.ErrIncompatibleDatabase) && *invocation.applicationPath != "" {
+			path, pathErr := dbpath.Canonical(*invocation.applicationPath)
 			if pathErr != nil {
 				return err
 			}
@@ -192,61 +156,55 @@ func configFileArgument(args []string) ([]string, string, error) {
 	return result, path, nil
 }
 
+// defaults supplies flag help values; resolveLocal applies the config file.
 func (invocation commandInvocation) defaults() config.LocalSettings {
-	if invocation.settings != nil {
-		settings := *invocation.settings
-		return settings
-	}
-	settings := config.Defaults()
-	settings.CollectorDBPath, settings.ServerDBPath = defaultCollectorDBPath(), defaultServerDBPath()
-	return settings
+	return config.EnvironmentDefaults()
 }
 
-func configurationOverrides(args []string) (config.Overrides, error) {
-	var values config.Overrides
-	for i := 0; i < len(args); i++ {
-		if args[i] == "--" {
-			break
-		}
-		key, value, equals := strings.Cut(args[i], "=")
-		switch key {
-		case "--app-db-path", "--server-url", "--host", "--port", "--collector-db-path", "--server-db-path":
-			if !equals {
-				i++
-				if i >= len(args) {
-					return values, fmt.Errorf("%s requires a value", key)
-				}
-				value = args[i]
-			}
-			switch key {
-			case "--app-db-path":
-				values.AppDBPath = &value
-			case "--server-url":
-				values.ServerURL = &value
-			case "--host":
-				if value == "" {
-					value = config.Defaults().Host
-				}
-				values.Host = &value
-			case "--port":
-				port, err := strconv.Atoi(value)
-				if err != nil {
-					return values, fmt.Errorf("invalid port")
-				}
-				values.Port = &port
-			case "--collector-db-path":
-				values.CollectorDBPath = &value
-			case "--server-db-path":
-				values.ServerDBPath = &value
-			}
-		}
+// resolveLocal resolves local settings after the command parsed its flags.
+func (invocation commandInvocation) resolveLocal(flags *flag.FlagSet) (config.LocalSettings, error) {
+	overrides, err := config.FlagOverrides(flags)
+	if err != nil {
+		return config.LocalSettings{}, err
 	}
-	return values, nil
+	return invocation.resolveLocalOverrides(overrides)
+}
+
+func (invocation commandInvocation) resolveLocalOverrides(overrides config.Overrides) (config.LocalSettings, error) {
+	settings, err := config.ResolveLocal(invocation.configPath, true, overrides)
+	if err != nil {
+		return settings, fmt.Errorf("configuration: %w", err)
+	}
+	if invocation.applicationPath != nil {
+		*invocation.applicationPath = settings.ApplicationPath()
+	}
+	return settings, nil
+}
+
+func (invocation commandInvocation) resolveSync(flags *flag.FlagSet) (config.SyncSettings, error) {
+	overrides, err := config.FlagOverrides(flags)
+	if err != nil {
+		return config.SyncSettings{}, err
+	}
+	settings, err := config.ResolveSync(invocation.configPath, true, overrides)
+	if err != nil {
+		return settings, fmt.Errorf("configuration: %w", err)
+	}
+	return settings, nil
+}
+
+func (invocation commandInvocation) resolveBrowse(flags *flag.FlagSet) (config.BrowseSettings, error) {
+	overrides, err := config.FlagOverrides(flags)
+	if err != nil {
+		return config.BrowseSettings{}, err
+	}
+	settings, err := config.ResolveBrowse(invocation.configPath, true, overrides)
+	if err != nil {
+		return settings, fmt.Errorf("configuration: %w", err)
+	}
+	return settings, nil
 }
 
 func (invocation commandInvocation) syncDefaults() config.SyncSettings {
-	if invocation.remote != nil {
-		return *invocation.remote
-	}
-	return config.SyncSettings{CollectorDBPath: config.Defaults().CollectorDBPath}
+	return config.SyncSettings{CollectorDBPath: config.EnvironmentDefaults().CollectorDBPath}
 }
