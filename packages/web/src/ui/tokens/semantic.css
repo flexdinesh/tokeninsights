@@ -36,7 +36,7 @@
   --status-success: light-dark(var(--palette-green-600), var(--palette-green-300));
   --status-warning: light-dark(var(--palette-amber-600), var(--palette-amber-300));
   --status-danger: light-dark(var(--palette-red-600), var(--palette-red-300));
-  --status-danger-ink: var(--palette-gray-0);
+  --status-danger-ink: light-dark(var(--palette-gray-0), var(--palette-charcoal-900));
   --status-danger-surface: light-dark(var(--palette-red-50), var(--palette-red-950));
 
   /* Categorical chart series */
