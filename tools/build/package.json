@@ -2,6 +2,7 @@
   "name": "@tokeninsights/build-tools",
   "version": "1.0.0",
   "private": true,
+  "license": "MIT",
   "type": "module",
   "scripts": {
     "check:api": "node src/check-api.ts",

@@ -42,3 +42,7 @@ Internal engineering docs remain in `docs/`.
 - [Hosted user management](docs/adr/0016-hosted-user-management.md) — password login, optional signup, browser sessions and API keys.
 - [Collector/ingestion failure tests](docs/collector-ingestion-tests.md) — guarantees, synthetic fixtures, executable coverage, and future acceptance gates.
 - [Completion plugins](docs/plugins.md) — thin completion hooks, install artifacts, and host verification scope.
+
+## License
+
+[MIT](LICENSE)
