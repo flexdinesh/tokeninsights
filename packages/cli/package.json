@@ -1,13 +1,5 @@
 {
   "name": "@tokeninsights/cli",
   "version": "1.0.0",
-  "private": true,
-  "scripts": {
-    "build": "pnpm --workspace-root run build:web && go build -o bin/tokeninsights ./cmd/tokeninsights && go build -o bin/tokeninsights-server ./cmd/tokeninsights-server",
-    "lint": "pnpm --workspace-root run build:web && go tool -modfile=golangci-lint.mod golangci-lint run ./...",
-    "test": "pnpm --workspace-root run build:web && node ../../tools/build/src/test-go.ts",
-    "bench:smoke": "pnpm --workspace-root run build:web && node ../../tools/build/src/test-go.ts --benchmark-smoke",
-    "bench:storage": "pnpm --workspace-root run build:web && node ../../tools/build/src/test-go.ts -run ^$ -bench ^BenchmarkStorage$ -benchtime=3x -count=3 -p=1 -timeout=30m",
-    "test:race": "pnpm --workspace-root run build:web && node ../../tools/build/src/test-go.ts -race"
-  }
+  "private": true
 }

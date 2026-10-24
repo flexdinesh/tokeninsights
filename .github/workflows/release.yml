@@ -78,7 +78,7 @@ jobs:
           echo "tag=${tag}" >> "$GITHUB_OUTPUT"
           echo "version=${version}" >> "$GITHUB_OUTPUT"
 
-      - run: pnpm run build:web
+      - run: mise run build:web
         if: inputs.retry_tag == ''
       - name: Prepare installable source commit
         id: assets
@@ -247,7 +247,8 @@ jobs:
 
       - name: Generate Homebrew formula
         run: |
-          pnpm run generate:homebrew -- \
+          # Direct script call also works for retried releases whose source predates mise tasks.
+          node tools/build/src/generate-homebrew-formula.ts \
             --version "${{ needs.prepare.outputs.version }}" \
             --tag "${{ needs.prepare.outputs.tag }}" \
             --checksums "${{ github.workspace }}/dist/checksums.txt" \

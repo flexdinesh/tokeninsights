@@ -10,7 +10,7 @@ COPY tools/build/package.json tools/build/package.json
 RUN HUSKY=0 pnpm install --frozen-lockfile
 COPY packages/web/ packages/web/
 COPY tools/build/ tools/build/
-RUN pnpm run build:web
+RUN node tools/build/src/build-web.ts
 
 FROM golang:1.27.3-trixie@sha256:fbb7ae40b62ff8afe31662df570d39b4f5052ac32b90dae8e60d7657a20a74f4 AS build
 WORKDIR /src

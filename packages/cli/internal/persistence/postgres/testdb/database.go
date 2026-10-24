@@ -21,7 +21,7 @@ func New(t testing.TB) string {
 	t.Helper()
 	dsn := os.Getenv("TOKENINSIGHTS_TEST_POSTGRES_DSN")
 	if dsn == "" {
-		t.Skip("live PostgreSQL required: run pnpm test or set TOKENINSIGHTS_TEST_POSTGRES_DSN")
+		t.Skip("live PostgreSQL required: run mise run test or set TOKENINSIGHTS_TEST_POSTGRES_DSN")
 	}
 	config, err := pgx.ParseConfig(dsn)
 	if err != nil {

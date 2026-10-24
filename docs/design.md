@@ -665,7 +665,7 @@ receipts. Restart fixtures commit work through real adapters while the binary is
 stopped; they do not race the worker or add production test switches. In-process
 composition remains SQLite-only. See the [coverage map](collector-ingestion-tests.md).
 
-The real Docker image has a separate `pnpm run test:container` contract on both
+The real Docker image has a separate `mise run test:container` contract on both
 backends: environment configuration, secret-file startup, non-root/read-only root,
 alternate-port readiness, private admin, ingestion, replacement durability,
 revocation and SIGTERM. Local pre-push runs this alongside native deployment contracts. CI is limited to native OS/architecture coverage unavailable on one developer host; new CI checks require a documented reason.
@@ -730,8 +730,8 @@ replicas and OAuth/OIDC are out of scope. Hosted username/password signup is
 operator-controlled and defaults off.
 
 Go embeds generated web assets. `main` ignores `packages/cli/internal/server/static`;
-local build/test/lint tasks build the dashboard before Go checks. Direct Go commands
-require `pnpm run build:web` first. CI publishes a separate asset commit to `edge`
+local mise build/test/lint tasks build the dashboard before Go checks. Direct Go commands
+require `mise run build:web` first. CI publishes a separate asset commit to `edge`
 after native checks pass, or to a stable `packages/cli/vX.Y.Z` tag during manual
 release. Stable archives build from that same asset commit. `edge` includes the
 latest stable release as an ancestor for Go pseudo-version ordering; its first

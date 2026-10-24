@@ -40,7 +40,7 @@ func dockerCleanup(t *testing.T, args ...string) {
 func TestContainerDeployment(t *testing.T) {
 	image := os.Getenv("TOKENINSIGHTS_TEST_SERVER_IMAGE")
 	if image == "" {
-		t.Skip("run pnpm test:container to build and test the server image")
+		t.Skip("run mise run test:container to build and test the server image")
 	}
 	pgImage := os.Getenv("TOKENINSIGHTS_TEST_POSTGRES_IMAGE")
 	if pgImage == "" {

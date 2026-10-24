@@ -33,12 +33,12 @@ versioned installs from them fail on the missing Go embed input. For local build
 
 ```sh
 mise run setup
-pnpm run build:web
+mise run build:web
 cd packages/cli
 GOWORK=off go build ./cmd/tokeninsights ./cmd/tokeninsights-server
 ```
 
-Root build/test/lint and CLI package tasks generate assets before invoking Go.
+mise build/test/lint tasks generate assets before invoking Go.
 An existing binary runs without Node/npm/pnpm. Source installs report Go's resolved
 module version; archive binaries include explicit release version/commit metadata.
 
@@ -102,10 +102,10 @@ Node/npm/pnpm. See [design](design.md) for the complete contract.
 ### Checks
 
 ```sh
-pnpm run check-schema
-pnpm run test
-pnpm run build
-pnpm run test:distribution
+mise run check-schema
+mise run test
+mise run build
+mise run test:distribution
 ```
 
 ## Version
@@ -124,7 +124,7 @@ explicitly launched and requires `--server-db-path`; installing it starts nothin
 
 Native CI/release Linux/macOS amd64/arm64 jobs build with `CGO_ENABLED=0` and test on matching runners. See [design](design.md) for current acceptance/migration.
 
-Live PostgreSQL verification: `pnpm test` and `pnpm test:race` start a pinned
+Live PostgreSQL verification: `mise run test` and `mise run test:race` start a pinned
 PostgreSQL 18 Docker container and remove it afterward. Alternatively set
 `TOKENINSIGHTS_TEST_POSTGRES_DSN` to a test server with CREATEDB privileges; tests
 create random databases and delete only those. Never use production credentials.

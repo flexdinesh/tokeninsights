@@ -2,6 +2,8 @@ module github.com/flexdinesh/tokeninsights/packages/cli
 
 go 1.27.0
 
+toolchain go1.27.3
+
 require (
 	github.com/charmbracelet/bubbletea v1.3.10
 	github.com/charmbracelet/lipgloss v1.1.0

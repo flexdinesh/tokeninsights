@@ -9,9 +9,9 @@ measurements. It does not define latency SLOs or production capacity.
 Run from the repository root, with the pinned development tools:
 
 ```sh
-pnpm run bench:smoke
+mise run bench:smoke
 mkdir -p .scratch/storage-tmp
-env TMPDIR="$PWD/.scratch/storage-tmp" pnpm run bench:storage
+env TMPDIR="$PWD/.scratch/storage-tmp" mise run bench:storage
 ```
 
 Both commands use the same disposable PostgreSQL runner as tests. Supply

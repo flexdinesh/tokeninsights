@@ -15,7 +15,7 @@ tokeninsights web
 
 ## Documentation
 
-User guides live in [`docs-website/`](docs-website/README.md), a Vocs site. Run `pnpm run dev:docs` to serve them locally at `http://localhost:5173/`.
+User guides live in [`docs-website/`](docs-website/README.md), a Vocs site. Run `mise run dev:docs` to serve them locally at `http://localhost:5173/`.
 
 - [Overview](docs-website/src/pages/index.mdx)
 - [Install](docs-website/src/pages/install.mdx): Homebrew, Go, and release channels.

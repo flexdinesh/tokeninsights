@@ -4,4 +4,4 @@ Private native TypeScript tooling for repository builds, schema validation, test
 
 Production does not depend on this package. The Go binary embeds prebuilt browser assets and runs without Node, npm, pnpm, or `node_modules`.
 
-Run these tools through the root package scripts. Use `pnpm run format`, `pnpm run format:check`, and `pnpm run lint` for repository-wide formatting and linting.
+Run these tools through mise tasks (`mise tasks ls`). Use `mise run format`, `mise run format:check`, and `mise run lint` for repository-wide formatting and linting.

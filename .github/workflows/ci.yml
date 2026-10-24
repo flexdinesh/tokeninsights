@@ -28,8 +28,8 @@ jobs:
       - uses: jdx/mise-action@v5
         with:
           install_args: node pnpm
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm run build:web
+      # The pnpm deps provider installs the frozen lockfile before the task runs.
+      - run: mise run build:web
       - uses: actions/upload-artifact@v7
         with:
           name: dashboard-assets
