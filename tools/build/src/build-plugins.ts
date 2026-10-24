@@ -67,7 +67,7 @@ try {
     const committed = (await readdir(new URL('dist/', packageRoot))).toSorted()
     if (expected.join('\n') !== committed.join('\n'))
       throw new Error(
-        `Plugin ${harness} artifacts ${committed.join(', ')} differ from ${expected.join(', ')}; run pnpm run build:plugins`,
+        `Plugin ${harness} artifacts ${committed.join(', ')} differ from ${expected.join(', ')}; run mise run build:plugins`,
       )
     await Promise.all(
       files.map(async (file) => {
@@ -77,7 +77,7 @@ try {
         ])
         if (!built.equals(current))
           throw new Error(
-            `Plugin ${harness} artifact ${file.name} is stale; run pnpm run build:plugins`,
+            `Plugin ${harness} artifact ${file.name} is stale; run mise run build:plugins`,
           )
       }),
     )

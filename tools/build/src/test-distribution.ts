@@ -213,7 +213,7 @@ async function install(channel: string, version: RegExp): Promise<string> {
 try {
   assert.ok(
     existsSync(workspacePath(embeddedAssets, 'index.html')),
-    'run pnpm run build:web before distribution verification',
+    'run mise run build:web before distribution verification',
   )
   mkdirSync(checkout)
   writeFileSync(join(fixture, 'gitconfig'), '')

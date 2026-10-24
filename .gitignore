@@ -16,3 +16,7 @@ packages/cli/.impeccable/review/
 # Local plans and disposable previews.
 .scratch/
 packages/web/previews/
+
+# Personal mise overrides.
+mise.local.toml
+mise.*.local.toml

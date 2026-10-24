@@ -55,7 +55,7 @@ function parseArgs(args: string[]): FormulaOptions {
     const value = normalizedArgs[index + 1]
     if (!key?.startsWith('--') || value === undefined || value.startsWith('--')) {
       throw new Error(
-        'usage: pnpm run generate:homebrew -- --version <version> --tag <tag> --checksums <path> --output <path>',
+        'usage: mise run generate:homebrew -- --version <version> --tag <tag> --checksums <path> --output <path>',
       )
     }
     parsed.set(key.slice(2), value)

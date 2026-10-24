@@ -23,7 +23,7 @@ request Host and supports HTTP or HTTPS origins.
 
 The Dockerfile pins Node, Go and Debian image digests. A build stage installs the
 workspace dependencies with pinned pnpm and the frozen lockfile, then builds the
-dashboard from source through `pnpm run build:web`. Generated host assets and
+dashboard from source with `node tools/build/src/build-web.ts`; the image has no mise. Generated host assets and
 `node_modules` are excluded from the build context; the embedded dashboard excludes
 the development mock service worker. Go builds with `CGO_ENABLED=0`
 and smoke-tests `--version`; runtime dependencies are CA certificates, timezone
@@ -339,7 +339,7 @@ scaling configuration in these examples.
 
 ## Deployment verification
 
-Run `pnpm run test:container` after changing the image or deployment boundary.
+Run `mise run test:container` after changing the image or deployment boundary.
 It builds the actual image and checks both SQLite and PostgreSQL: non-root startup,
 read-only root, an alternate listen port, readiness, private administration, real
 client ingestion, receipts/totals after container replacement, revocation and clean

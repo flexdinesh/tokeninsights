@@ -26,8 +26,8 @@ Full architecture, schema contract, pipelines, and invariants are in [`docs/desi
 - **Missing provider/model handling**: Raw facts preserve source absence as null. Canonical/view model absence becomes `unknown`; provider absence becomes `unknown` except Claude Code artifact-derived rows, which use provider `maybe-anthropic` with `provider_source='inferred'`.
 - **Server ingestion accepts sanitized raw evidence**. Source paths/cursors stay local. Evidence/receipts/scopes commit together; asynchronous facts/provenance/outcomes commit together. Status is in SQLite/PostgreSQL. Replays after collector deletion must preserve stable IDs and totals.
 - **Raw storage is metadata-only**. Do not store prompt text, assistant text, tool arguments, tool output, request headers, secrets, raw provider payloads, or full source paths.
-- **Production is Go-only**. Node, npm, pnpm, `node_modules`, and repository JavaScript tooling are build-, test-, and development-only. Generated dashboard assets are ignored on `main`; local Go builds require `pnpm run build:web` first. Root build/test/lint tasks generate them. CI commits assets only on installable `edge` and stable module tags, keeping `go install ...@edge|@latest|@vX.Y.Z` independent of JavaScript tools. The production binary embeds browser JavaScript with `go:embed`, serves bytes through Go, and runs without a host JavaScript runtime. Go runtime code must never invoke Node, npm, or pnpm. See [ADR 0017](docs/adr/0017-generated-assets-on-installable-refs.md).
-- **Format and lint before verification**. Use `gofmt` and the repository-pinned `golangci-lint` for Go. Use Oxfmt and Oxlint for TypeScript, JavaScript, and React. Run them through the root pnpm scripts.
+- **Production is Go-only**. Node, npm, pnpm, `node_modules`, and repository JavaScript tooling are build-, test-, and development-only. Generated dashboard assets are ignored on `main`; local Go builds require `mise run build:web` first. mise build/test/lint tasks generate them. CI commits assets only on installable `edge` and stable module tags, keeping `go install ...@edge|@latest|@vX.Y.Z` independent of JavaScript tools. The production binary embeds browser JavaScript with `go:embed`, serves bytes through Go, and runs without a host JavaScript runtime. Go runtime code must never invoke Node, npm, or pnpm. See [ADR 0017](docs/adr/0017-generated-assets-on-installable-refs.md).
+- **Format and lint before verification**. Use `gofmt` and the repository-pinned `golangci-lint` for Go. Use Oxfmt and Oxlint for TypeScript, JavaScript, and React. Run them through mise tasks.
 - **Write for maintainability**. Do not use magic numbers in calculations for quick fixes that violate code discipline.
 - **Propose refactoring**. When you see an opportunity to refactor to strongly adhere to guidelines and quality, suggest it to the user.
 
@@ -50,7 +50,7 @@ Read `docs/design.md` and the relevant ADRs before non-trivial changes, especial
 - **Resolve deployment inputs once**: executable boundaries parse env/flags and
   secret files into typed settings; domains never read them. Proxy trust belongs
   at the hosted HTTP boundary and cannot override origin or authorization. Keep
-  native/image behavior aligned; deployment changes require `pnpm run test:container`.
+  native/image behavior aligned; deployment changes require `mise run test:container`.
 - **Keep policy and mechanism separate**: mode policy determines permitted behavior;
   adapters implement storage/transport. Changing the storage engine must not change
   accounting, tenant isolation, or the meaning of a successful operation.
@@ -74,7 +74,7 @@ Read `docs/design.md` and the relevant ADRs before non-trivial changes, especial
 
 ### Domain and schema
 
-- Schema changed? Get explicit approval first. Update the affected collector source/embed/constants or affected embedded schema and role-version constants; run `pnpm run check-schema` and affected live adapter contracts.
+- Schema changed? Get explicit approval first. Update the affected collector source/embed/constants or affected embedded schema and role-version constants; run `mise run check-schema` and affected live adapter contracts.
 - Token semantics changed? Update pipeline normalization, CLI query structs, SQL, aggregation, rendering, tests, README, and `docs/design.md`.
 - CLI query columns changed? Update scan order, aggregation, rendering, tests, README, and `docs/design.md`.
 - Grouping changed? Update sorting and table alignment tests.
@@ -83,27 +83,27 @@ Read `docs/design.md` and the relevant ADRs before non-trivial changes, especial
 
 ## Commands
 
-`mise.toml` pins development tools. `mise run setup` installs dependencies and Husky's pre-push hook; `mise run setup:browser` installs Chromium. Root pnpm scripts own application tasks; mise delegates to them. Public docs live in `docs-website/`, a Vocs pnpm workspace package run with `pnpm run dev:docs` and `pnpm run build:docs`. All locally reproducible checks except the docs build run in `check:push`, including live PostgreSQL and real-container contracts. CI covers native Linux/macOS amd64/arm64 builds and focused storage tests. Root test/race scripts require Docker or `TOKENINSIGHTS_TEST_POSTGRES_DSN` with CREATEDB privileges; container contracts always require Docker.
+`mise.toml` pins exact development tools, locked by `mise.lock`, and owns all tasks; root `package.json` keeps only `prepare`, and tasks call per-package leaf scripts. `mise tasks ls` lists them. `mise run setup` installs dependencies and Husky's pre-push hook; `mise run setup:browser` installs Chromium. Bump tools per `docs/development.md`; `check:toolchain` rejects drift. Public docs live in `docs-website/`, a Vocs pnpm workspace package run with `mise run dev:docs` and `mise run build:docs`. All locally reproducible checks except the docs build run in `check:push`, including live PostgreSQL and real-container contracts. CI covers native Linux/macOS amd64/arm64 builds and focused storage tests. Test/race tasks require Docker or `TOKENINSIGHTS_TEST_POSTGRES_DSN` with CREATEDB privileges; container contracts always require Docker.
 
 ```sh
 mise run check:push
-pnpm run format
-pnpm run format:check
-pnpm run lint
+mise run format
+mise run format:check
+mise run lint
 
-pnpm run check-schema
-pnpm run bench:smoke
-pnpm run test
-pnpm run build
+mise run check-schema
+mise run bench:smoke
+mise run test
+mise run build
 ```
 
 ## Verification
 
-- **Local checks belong in pre-push**. Add locally reproducible checks, except the docs build, to the root `check:push` script, reached by `.husky/pre-push`; do not add or duplicate them in CI or release preparation.
+- **Local checks belong in pre-push**. Add locally reproducible checks, except the docs build, to the `check:push` mise task, reached by `.husky/pre-push`; do not add or duplicate them in CI or release preparation.
 - **CI requires a concrete reason**. Before adding or expanding a CI check, identify the coverage unavailable locally and document it in the workflow and PR. Native OS/architecture coverage and validation of artifacts generated during release are valid reasons. Convenience or repeating a local check is not.
 
-- After changing code, run `pnpm run format`, `pnpm run lint`, the relevant focused tests, and `pnpm run test`.
-- Run `pnpm run build` after tests pass.
+- After changing code, run `mise run format`, `mise run lint`, the relevant focused tests, and `mise run test`.
+- Run `mise run build` after tests pass.
 - After build-tooling or web-asset changes, build directly from `packages/cli` and verify the resulting binary runs with Node, npm, and pnpm absent from `PATH`.
 - For manual CLI or TUI verification, print the following project-local command on screen and ask the user to run it and verify the result:
 

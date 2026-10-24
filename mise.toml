@@ -1,42 +1,286 @@
+min_version = "2026.10.18"
+
+[settings]
+# Required by [deps]. Exact pins below resolve once into the committed mise.lock.
+experimental = true
+lockfile = true
+lockfile_platforms = ["linux-x64", "linux-arm64", "macos-x64", "macos-arm64"]
+
+# Locked installs for this project only; global user tools stay unaffected.
+[tool_config]
+locked = true
+
+[settings.task]
+output = "keep-order"
+source_freshness_hash_contents = true
+
+# check:toolchain keeps these pins equal to the Dockerfile, packageManager and go.mod toolchain.
 [tools]
-go = "1"
+go = "1.27.3"
 node = "26.12.1"
 pnpm = "12.15.0"
 
+[env]
+# Never let go switch to another toolchain behind the pinned one.
+GOTOOLCHAIN = "local"
+_.path = ["{{config_root}}/node_modules/.bin"]
+
+[deps.pnpm]
+auto = true
+run = "pnpm install --frozen-lockfile"
+
+[vars]
+format_paths = "package.json compose.yaml pnpm-workspace.yaml orval.config.ts .agents/plugins .claude-plugin deploy docs/openapi.yaml docs-website .github/workflows packages/cli/package.json packages/web packages/plugin-codex packages/plugin-claude packages/plugin-pi packages/plugin-opencode packages/plugin-runtime tools/build"
+lint_paths = "orval.config.ts docs-website packages/web packages/plugin-pi packages/plugin-opencode packages/plugin-runtime tools/build"
+
+# Setup
+
 [tasks.setup]
 description = "Install dependencies and local Git hooks"
-run = "pnpm install --frozen-lockfile"
+run = "mise deps install"
 
 [tasks."setup:browser"]
 description = "Install Chromium for local browser tests"
 run = "pnpm --filter @tokeninsights/web exec playwright install chromium"
 
-[tasks."check:push"]
-description = "Full local verification before push"
-run = "pnpm run check:push"
+# Format and lint
 
 [tasks.format]
-run = "pnpm run format"
+description = "Format Go, TypeScript, config and mise files"
+run = [
+  "node tools/build/src/format-go.ts",
+  "oxfmt {{vars.format_paths}}",
+  "mise fmt",
+]
+
+[tasks."format:check"]
+description = "Check formatting without changing files"
+run = [
+  "node tools/build/src/format-go.ts --check",
+  "oxfmt --check {{vars.format_paths}}",
+  "mise fmt --check",
+]
 
 [tasks.lint]
-run = "pnpm run lint"
+description = "Lint Go and TypeScript"
+depends = ["build:web"]
+run = [
+  "cd packages/cli && go tool -modfile=golangci-lint.mod golangci-lint run ./...",
+  "oxlint {{vars.lint_paths}}",
+]
 
-[tasks.test]
-run = "pnpm run test"
+# Contracts
 
-[tasks."test:race"]
-run = "pnpm run test:race"
+[tasks.check-schema]
+description = "Validate SQLite/PostgreSQL schema copies"
+run = "pnpm --filter @tokeninsights/build-tools run check:schema"
+
+[tasks.check-api]
+description = "Validate generated API files"
+run = "pnpm --filter @tokeninsights/build-tools run check:api"
+
+[tasks."check:toolchain"]
+description = "Check Dockerfile, packageManager and go.mod toolchain match mise pins"
+run = "node tools/build/src/check-toolchain.ts"
+
+[tasks."check:plugins"]
+description = "Check committed plugin artifacts match sources"
+run = "pnpm --recursive --filter '@tokeninsights/plugin-*' run check:build"
+
+[tasks."typecheck:plugins"]
+description = "Typecheck plugin packages"
+run = "pnpm --recursive --filter '@tokeninsights/plugin-*' run typecheck"
+
+# Generate
+
+[tasks."generate:api:go"]
+description = "Regenerate Go API server code"
+dir = "{{config_root}}/packages/cli"
+run = "go tool oapi-codegen -config internal/server/api/oapi-codegen.yaml ../../docs/openapi.yaml"
+
+[tasks."generate:api:web"]
+description = "Regenerate web API client"
+run = [
+  "orval --config orval.config.ts",
+  "oxfmt packages/web/src/generated/api.ts",
+]
+
+[tasks."generate:api"]
+description = "Regenerate API files"
+depends = ["generate:api:go", "generate:api:web"]
+
+[tasks."generate:homebrew"]
+description = "Generate Homebrew formula"
+run = "pnpm --filter @tokeninsights/build-tools run generate:homebrew"
+
+# Build
+
+[tasks."build:web"]
+description = "Build and sync embedded web assets; skips unchanged inputs"
+run = "node tools/build/src/build-web.ts"
+
+[tasks."build:cli"]
+description = "Build tokeninsights and tokeninsights-server into packages/cli/bin"
+depends = ["build:web"]
+dir = "{{config_root}}/packages/cli"
+# Relative to dir. Includes embedded assets synced by build:web.
+sources = ["**/*", "!bin/**", "../../mise.lock"]
+outputs = ["bin/tokeninsights", "bin/tokeninsights-server"]
+run = [
+  "go build -o bin/tokeninsights ./cmd/tokeninsights",
+  "go build -o bin/tokeninsights-server ./cmd/tokeninsights-server",
+]
+
+[tasks."build:plugins"]
+description = "Build plugin artifacts"
+sources = [
+  "packages/plugin-opencode/src/**/*",
+  "packages/plugin-pi/src/**/*",
+  "packages/plugin-runtime/src/**/*",
+  "packages/plugin-opencode/package.json",
+  "packages/plugin-pi/package.json",
+  "pnpm-lock.yaml",
+  "tools/build/src/build-plugins.ts",
+]
+outputs = ["packages/plugin-opencode/dist/**/*", "packages/plugin-pi/dist/**/*"]
+run = "pnpm --recursive --filter '@tokeninsights/plugin-*' run build"
 
 [tasks.build]
-run = "pnpm run build"
-
-[tasks.dev]
-run = "pnpm run dev"
-
-[tasks."dev:docs"]
-description = "Serve public documentation with live reload"
-run = "pnpm run dev:docs"
+description = "Build production binaries and plugins, validating contracts"
+run = [
+  { tasks = [
+    "check-schema",
+    "check-api",
+  ] },
+  { tasks = [
+    "build:cli",
+    "build:plugins",
+  ] },
+]
 
 [tasks."build:docs"]
 description = "Build public documentation as static files"
-run = "pnpm run build:docs"
+run = "pnpm --filter @tokeninsights/docs run build"
+
+[tasks."install:cli"]
+description = "Install tokeninsights binaries into Go's bin directory"
+depends = ["build:web"]
+dir = "{{config_root}}/packages/cli"
+run = "go install ./cmd/tokeninsights ./cmd/tokeninsights-server"
+
+# Test
+
+[tasks."test:js"]
+description = "Run TypeScript, plugin and web unit tests"
+run = [
+  { task = "typecheck:plugins" },
+  { task = "check:plugins" },
+  "pnpm --filter @tokeninsights/build-tools run typecheck",
+  "pnpm --filter @tokeninsights/build-tools run test",
+  "pnpm --filter @tokeninsights/web run test",
+]
+
+[tasks."test:go"]
+description = "Run Go tests against SQLite and PostgreSQL"
+depends = ["build:web"]
+dir = "{{config_root}}/packages/cli"
+run = "node ../../tools/build/src/test-go.ts"
+
+[tasks.test]
+description = "Run all tests"
+run = [{ task = "test:js" }, { task = "test:go" }]
+
+[tasks."test:race"]
+description = "Run Go tests under the race detector"
+depends = ["build:web"]
+dir = "{{config_root}}/packages/cli"
+run = "node ../../tools/build/src/test-go.ts -race"
+
+[tasks."bench:smoke"]
+description = "Run benchmark bodies once without timing gates"
+depends = ["build:web"]
+dir = "{{config_root}}/packages/cli"
+run = "node ../../tools/build/src/test-go.ts --benchmark-smoke"
+
+[tasks."bench:storage"]
+description = "Run storage benchmarks"
+depends = ["build:web"]
+dir = "{{config_root}}/packages/cli"
+run = "node ../../tools/build/src/test-go.ts -run ^$ -bench ^BenchmarkStorage$ -benchtime=3x -count=3 -p=1 -timeout=30m"
+
+[tasks."test:distribution"]
+description = "Verify Git source installs"
+depends = ["build:web"]
+run = "node tools/build/src/test-distribution.ts"
+
+[tasks."test:web-e2e"]
+description = "Run browser end-to-end tests"
+depends = ["build:cli"]
+run = "pnpm --filter @tokeninsights/web run test:e2e"
+
+[tasks."test:container"]
+description = "Verify real server image on both backends"
+run = "node tools/build/src/test-container.ts"
+
+[tasks."check:push"]
+description = "Full local verification before push"
+run = [
+  { tasks = [
+    "format:check",
+    "lint",
+    "check-schema",
+    "check-api",
+    "check:toolchain",
+    "test:js",
+  ] },
+  { task = "test:race" },
+  { task = "bench:smoke" },
+  { task = "build:cli" },
+  { task = "test:distribution" },
+  { task = "test:web-e2e" },
+  { task = "test:container" },
+]
+
+# Develop
+
+[tasks.dev]
+description = "Run Go API and hot-reloading web app"
+run = [{ tasks = ["dev:server", "dev:web"] }]
+
+[tasks."dev:data"]
+description = "Recreate sanitized fixture data"
+depends = ["build:cli"]
+run = "pnpm --filter @tokeninsights/build-tools run setup-dev-data"
+
+[tasks."dev:cli"]
+description = "Open TUI with fixture data"
+depends = ["dev:data"]
+interactive = true
+run = "TOKENINSIGHTS_ACCESS_TOKEN= ./packages/cli/bin/tokeninsights tui --sync=false --all-time --collector-db-path .tokeninsights-dev/collector.sqlite --server-db-path .tokeninsights-dev/server.sqlite --app-db-path .tokeninsights-dev/app.sqlite"
+
+[tasks."dev:server"]
+description = "Run Go API with fixture data"
+depends = ["dev:data"]
+output = "prefix"
+run = "node tools/build/src/dev-server.ts"
+
+[tasks."dev:web"]
+description = "Run hot-reloading web app against Go API"
+output = "prefix"
+run = "pnpm --filter @tokeninsights/web run dev"
+
+[tasks."dev:web:mock"]
+description = "Run web app with synthetic API responses"
+output = "prefix"
+run = "pnpm --filter @tokeninsights/web run dev:mock"
+
+[tasks."dev:docs"]
+description = "Serve public documentation with live reload"
+output = "prefix"
+run = "pnpm --filter @tokeninsights/docs run dev"
+
+[tasks."start:web"]
+description = "Build frontend into Go and run local Web capture/dashboard"
+depends = ["build:cli"]
+output = "prefix"
+run = "./packages/cli/bin/tokeninsights web"
