@@ -1,10 +1,9 @@
 name: CI
 
+# Pull requests run no CI: Linux amd64 checks run locally in pre-push.
+# Main pushes cover platforms the developer host cannot.
 on:
   push:
-    branches:
-      - main
-  pull_request:
     branches:
       - main
 
@@ -15,7 +14,7 @@ env:
   HUSKY: '0'
 
 concurrency:
-  group: ci-${{ github.event.pull_request.number || github.ref }}
+  group: ci-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -35,14 +34,15 @@ jobs:
           name: dashboard-assets
           path: packages/cli/internal/server/static
 
-  # Native OS/architecture coverage cannot be reproduced by one developer host.
+  # Native OS/architecture coverage cannot be reproduced on the Linux amd64
+  # developer host, which already covers that platform in pre-push.
   native:
     name: Native ${{ matrix.runner }}
     needs: assets
     strategy:
       fail-fast: false
       matrix:
-        runner: [ubuntu-24.04, ubuntu-24.04-arm, macos-15-intel, macos-15]
+        runner: [ubuntu-24.04-arm, macos-15-intel, macos-15]
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v7
@@ -64,7 +64,6 @@ jobs:
   edge:
     name: Publish edge source
     needs: native
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     permissions:
       contents: write
