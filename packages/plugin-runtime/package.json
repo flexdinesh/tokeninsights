@@ -2,6 +2,7 @@
   "name": "@tokeninsights/plugin-runtime",
   "version": "1.0.0",
   "private": true,
+  "license": "MIT",
   "type": "module",
   "exports": "./src/plugin-runner.ts",
   "scripts": {
