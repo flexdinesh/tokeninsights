@@ -1,5 +1,4 @@
 import assert from 'node:assert/strict'
-import { readFile } from 'node:fs/promises'
 import test from 'node:test'
 
 import { schemaContractMismatches } from '../src/check-schema.ts'
@@ -85,20 +84,5 @@ void test('each role checks embedded bytes, independent version, and application
       false,
     ).join('\n'),
     /application_id 0/,
-  )
-})
-
-void test('repository collector source and embedded contracts agree', async () => {
-  const paths = [
-    '../../../schema/schema.sql',
-    '../../../packages/cli/internal/collectordb/schema/schema.sql',
-    '../../../packages/cli/internal/collectordb/schema.go',
-  ]
-  const [collector, embeddedCollector, collectorGo] = await Promise.all(
-    paths.map((path) => readFile(new URL(path, import.meta.url), 'utf8')),
-  )
-  assert.deepEqual(
-    schemaContractMismatches(collector, embeddedCollector, collectorGo, 'CollectorApplicationID'),
-    [],
   )
 })

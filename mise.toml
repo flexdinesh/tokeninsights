@@ -85,11 +85,11 @@ run = "node tools/build/src/check-toolchain.ts"
 
 [tasks."check:plugins"]
 description = "Check committed plugin artifacts match sources"
-run = "pnpm --recursive --filter '@tokeninsights/plugin-*' run check:build"
+run = "pnpm --workspace-concurrency=${TOKENINSIGHTS_CHECK_CONCURRENCY:-2} --recursive --filter '@tokeninsights/plugin-*' run check:build"
 
 [tasks."typecheck:plugins"]
 description = "Typecheck plugin packages"
-run = "pnpm --recursive --filter '@tokeninsights/plugin-*' run typecheck"
+run = "pnpm --workspace-concurrency=${TOKENINSIGHTS_CHECK_CONCURRENCY:-2} --recursive --filter '@tokeninsights/plugin-*' run typecheck"
 
 # Generate
 
@@ -224,7 +224,13 @@ run = "node tools/build/src/test-container.ts"
 
 [tasks."check:push"]
 description = "Full local verification before push"
+run = "node tools/build/src/check-push.ts"
+
+[tasks."check:push:stages"]
+description = "Internal verification stages, entered through the repository gate"
+hide = true
 run = [
+  "test \"$TOKENINSIGHTS_CHECK_GATE_ACTIVE\" = 1",
   { tasks = [
     "format:check",
     "lint",
@@ -245,7 +251,9 @@ run = [
 
 [tasks.dev]
 description = "Run Go API and hot-reloading web app"
-run = [{ tasks = ["dev:server", "dev:web"] }]
+depends = ["dev:data"]
+output = "prefix"
+run = "node tools/build/src/dev.ts"
 
 [tasks."dev:data"]
 description = "Recreate sanitized fixture data"

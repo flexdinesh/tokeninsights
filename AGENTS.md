@@ -100,6 +100,7 @@ mise run build
 ## Verification
 
 - **Local checks belong in pre-push**. Add locally reproducible checks, except the docs build, to the `check:push` mise task, reached by `.husky/pre-push`; do not add or duplicate them in CI or release preparation.
+- **Queue the entire pre-push pipeline across worktrees**. Use `mise run check:push`; its repository-wide gate serializes all verification stages using the canonical Git common directory. Do not invoke internal stages to bypass admission. Only compilation of the small gate helper precedes admission. Keep test concurrency bounded and preserve critical checks on every push.
 - **CI requires a concrete reason**. Before adding or expanding a CI check, identify the coverage unavailable locally and document it in the workflow and PR. Native OS/architecture coverage and validation of artifacts generated during release are valid reasons. Convenience or repeating a local check is not.
 
 - After changing code, run `mise run format`, `mise run lint`, the relevant focused tests, and `mise run test`.

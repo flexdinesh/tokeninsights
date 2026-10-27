@@ -73,7 +73,38 @@ Run commands from the repository root unless noted otherwise. `mise tasks ls` li
 | Build the CLI and run browser end-to-end tests | `mise run test:web-e2e` |
 | Build production binaries and plugins, validating contracts | `mise run build` |
 
-The pre-push hook clears Git-local environment variables before running `mise run check:push`, so fixture Git commands operate on their own repositories rather than the repository being pushed. Verification covers formatting, lint, SQLite/PostgreSQL/API contracts, toolchain pins, TypeScript/web unit tests, all Go tests once under the race detector, benchmark smoke, native build, distribution and asset-publication checks, browser E2E, and real-container contracts on SQLite/PostgreSQL. Docker is required for container contracts even when an external PostgreSQL test DSN is supplied. `check:push` runs format check, lint, schema, API, toolchain and TypeScript checks in parallel, then race tests, benchmark smoke, CLI build, distribution, browser E2E and container contracts serially; `keep-order` output prints each task's output after it finishes. Go tasks depend on `build:web`, so one graph builds assets once. `build:web` records a digest of web inputs and build output under `packages/web/node_modules/.cache`; repeated runs skip the build while both match and resync embedded assets that drifted. `build:cli` and `build:plugins` skip when content hashes of their declared sources and outputs are unchanged; verification tasks never skip. Browser E2E tests run fully parallel. Checks fail fast and never repair tracked files. Regenerate stale API files and plugin bundles explicitly before committing and pushing. There is no pre-commit test suite.
+The pre-push hook clears Git-local environment variables before running `mise run check:push`, so fixture Git commands operate on their own repositories rather than the repository being pushed. Verification covers formatting, lint, SQLite/PostgreSQL/API contracts, toolchain pins, TypeScript/web unit tests, all Go tests once under the race detector, benchmark smoke, native build, distribution and asset-publication checks, browser E2E, and real-container contracts on SQLite/PostgreSQL. Docker is required for container contracts even when an external PostgreSQL test DSN is supplied.
+
+The entire pipeline queues across worktrees using an OS advisory lock at
+`<canonical Git common directory>/tokeninsights-check.lock`. Both the hook and
+direct `mise run check:push` enter this gate. Only compilation of the small Go
+gate helper precedes admission. The task prints waiting, acquisition and execution
+durations separately. Canceling a waiter starts no checks; canceling an owner
+stops its process group before releasing admission. Parent-process loss also
+triggers cleanup. Never delete the lock file: its inode, not its contents, owns
+exclusion. Independently detached containers still require their tool's cleanup.
+The hidden `check:push:stages` task is an internal implementation detail.
+
+Within admission, format, lint, schema, API, toolchain and TypeScript tasks have
+bounded concurrency; race tests, benchmark smoke, CLI build, distribution,
+browser E2E and container contracts follow serially. `TOKENINSIGHTS_CHECK_CONCURRENCY`
+defaults to `2` for mise jobs, Node test files, plugin workspaces, Go package/test
+parallelism and default `GOMAXPROCS`. Explicit `GOMAXPROCS`/`GOFLAGS` remain supported;
+explicit Go runner `-p`/`-parallel` arguments override its defaults. Vitest defaults
+to two workers, overridable with `TOKENINSIGHTS_VITEST_WORKERS`. Chromium defaults
+to one worker; an explicit override is
+`mise exec -- pnpm --filter @tokeninsights/web exec playwright test --workers=2`.
+Standalone focused test tasks remain available without acquiring
+the full-pipeline gate; avoid launching them alongside a queued full run.
+
+Go tasks depend on `build:web`, so one graph builds assets once. `build:web`
+records input/output digests under `packages/web/node_modules/.cache` and resyncs
+drifted embedded assets. CLI/plugin builds reuse unchanged outputs. Verification
+tasks never skip; Go runs use `-count=1` to avoid cached test results. `keep-order`
+output prints each task's output after it finishes, including phase duration.
+Checks fail fast and never repair tracked files. Regenerate stale API files and
+plugin bundles explicitly before committing and pushing. There is no pre-commit
+test suite.
 
 Locally reproducible verification belongs in `check:push`, not CI or release preparation. New CI checks must document coverage unavailable on the developer host in both workflow and PR; rerunning local checks is not a reason. CI runs only on main pushes, never on pull requests. It builds both binaries and tests storage on Linux arm64 and macOS amd64/arm64 runners, covering platforms the Linux amd64 developer host cannot; pre-push already covers Linux amd64. Release additionally packages, validates and publishes generated artifacts. CI only verifies; development installs resolve `main` directly without publication or waiting for CI. Both workflows disable hook installation with `HUSKY=0`, and CI pushes to `edge` and release tags use `--no-verify`, so pre-push never runs in CI. Hooks run locally after dependency setup; GUI clients must have mise on PATH. mise tasks own orchestration ([ADR 0021](adr/0021-mise-owns-task-orchestration.md)); root `package.json` keeps only `prepare`, and tasks call per-package leaf scripts. Pre-push does not build docs.
 
@@ -136,9 +167,25 @@ Fixture preparation runs the shared local capture, direct ingestion and processi
 Direct delivery uses the same acceptance contract as authenticated HTTP, then waits
 for processing and releases ownership. The fixture application's database pairing
 follows its controlled reset. `dev:cli` queries the saved fixture directly;
-`dev:server` runs `web --sync=false --open=false` on 127.0.0.1:8765. `dev` runs
-that server and Vite together. Browser Reload never collects sources. Vite proxies
-`/api` to the Go server; `dev:web:mock` runs without Go or local harness data.
+`dev:server` runs `web --sync=false --open=false` on an available loopback port.
+`dev` discovers that server's actual URL before starting Vite on its own available
+loopback port, then prints both URLs. Vite proxies `/api` to that exact server.
+Browser Reload never collects sources; `dev:web:mock` needs no Go server or local
+harness data.
+
+Run `mise run dev` independently in each worktree. Each owns its fixture databases
+and listeners. To choose ports explicitly, use
+`mise run dev -- --api-port 8765 --web-port 5173`; either port can be `0` for
+automatic allocation. An occupied explicit port fails without falling back.
+Stopping the command stops both processes; startup failure also cleans up the
+other process. One fixture viewer may run per worktree because it owns those
+databases. Ordinary installed CLI database and port defaults are unchanged.
+
+For separate processes, run `mise run dev:server -- --api-port 0`, then pass its
+printed URL to `TOKENINSIGHTS_DEV_API_URL=http://127.0.0.1:PORT mise run dev:web -- --port 0`.
+The standalone frontend requires an explicit API URL; it never guesses another
+worktree's backend. Mock development supports `mise run dev:web:mock -- --port 0`.
+Development binds loopback unless a standalone Vite `--host` is explicitly supplied.
 
 The [collector rebuild fixture](../packages/cli/testdata/conformance/collector-rebuild/README.md)
 pins independent logical facts and reparse/copy/streaming scenarios. Publication,
@@ -191,7 +238,17 @@ Go uses `gofmt` and the repository-pinned `golangci-lint`. TypeScript, JavaScrip
 
 React source lives in `packages/web`. Vite stages output in ignored `packages/web/dist`; the build tooling copies it to `packages/cli/internal/server/static` for `go:embed`. That directory is ignored on `main`; CI commits it only on `edge` and stable module tags ([ADR 0017](adr/0017-generated-assets-on-installable-refs.md)).
 
-Go tests cover SQL aggregation, API behavior, raw ingestion/replay, processing generations and collector outbox/acknowledgements, assets, listener lifecycle, and date boundaries. React tests cover URL state, filtering, and cancelled requests. Browser tests launch the built binary with isolated synthetic data and verify the full dashboard.
+Go tests cover SQL aggregation, API behavior, raw ingestion/replay, processing generations and collector outbox/acknowledgements, assets, listener lifecycle, and date boundaries. React tests cover URL state, filtering, cancelled requests, account forms, capability/loading states, excluded evidence, retries and preference retention.
+
+Seven Chromium cases cover real-server dashboard filtering/history/pagination,
+secure hosted cookies and cross-tab account isolation, bundled chart recovery,
+pointer/keyboard resize, mobile keyboard navigation and excluded-evidence focus.
+Calendar/view/percentage/error matrices belong in React or Go tests. Full theme,
+font and screenshot matrices are intentionally omitted. Success screenshots are
+not captured; failure screenshots/traces and bounded server logs remain in unique
+per-run output directories. Browser setup binds ephemeral ports, owns private
+fixture data and account credentials, and removes runtime metadata after joining
+its children. Concurrent runs must not share `TOKENINSIGHTS_E2E_RUN` overrides.
 
 ## Skipping CI
 
