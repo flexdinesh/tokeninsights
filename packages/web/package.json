@@ -4,8 +4,8 @@
   "license": "MIT",
   "type": "module",
   "scripts": {
-    "dev": "vite --host 0.0.0.0",
-    "dev:mock": "vite --host 0.0.0.0 --mode mock",
+    "dev": "vite",
+    "dev:mock": "vite --mode mock",
     "build": "tsc --noEmit && vite build",
     "test": "tsc --noEmit && vitest run",
     "test:e2e": "playwright test",

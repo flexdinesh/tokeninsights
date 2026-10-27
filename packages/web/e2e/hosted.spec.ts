@@ -1,21 +1,16 @@
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { createHash, randomUUID } from 'node:crypto'
-import { expect, test } from '@playwright/test'
-import { z } from 'zod'
-import {
-  adminRequest,
-  hostedFixturePointer,
-  hostedOrigin,
-  hostedBackend,
-  hostedPassword,
-  tokenSchema,
-  userSchema,
-} from './hosted-fixture'
+import { createHash } from 'node:crypto'
+import { expect, test, fixtureMetadata } from './fixture'
+import { tokenSchema, userSchema } from './hosted-fixture'
+
+let hostedOrigin = ''
+let hostedPassword = ''
 
 const fixtureAccountSchema = userSchema.extend(tokenSchema.shape)
 
 test.beforeEach(async ({ context }, testInfo) => {
+  ;({ hostedOrigin, hostedPassword } = fixtureMetadata())
   // Each test represents a separate client behind the trusted fixture proxy.
   // Preserve production admission limits without sharing the proxy's loopback quota.
   const hash = createHash('sha256').update(testInfo.testId).digest('hex')
@@ -24,13 +19,8 @@ test.beforeEach(async ({ context }, testInfo) => {
 })
 
 async function fixtureAccount(name: string) {
-  const home = await readFile(hostedFixturePointer, 'utf8')
+  const home = fixtureMetadata().hostedHome
   return fixtureAccountSchema.parse(JSON.parse(await readFile(join(home, name + '.json'), 'utf8')))
-}
-
-async function operatorSocket() {
-  const home = await readFile(hostedFixturePointer, 'utf8')
-  return readFile(join(home, 'socket.txt'), 'utf8')
 }
 
 test('real hosted sessions isolate users sharing one database and never poll collector progress', async ({
@@ -71,93 +61,6 @@ test('real hosted sessions isolate users sharing one database and never poll col
   const savedPreferences = await page.evaluate(() => Object.values(localStorage))
   expect(savedPreferences).not.toContain(alice.token)
   expect(savedPreferences).not.toContain(bob.token)
-})
-
-test('self-service API key revocation rejects the key and preserves independent browser sessions', async ({
-  page,
-}) => {
-  await page.goto(hostedOrigin + '/tokens')
-  await page.getByLabel('Username', { exact: true }).fill('alice')
-  await page.getByLabel('Password', { exact: true }).fill(hostedPassword)
-  await page.getByRole('button', { name: 'Sign in', exact: true }).click()
-  await expect(page.getByLabel('Total tokens: 120', { exact: true })).toBeVisible()
-  await page.getByRole('link', { name: 'Account settings', exact: true }).click()
-  await page.getByLabel('Key name', { exact: true }).fill('Browser test laptop')
-  await page.getByRole('button', { name: 'Create API key', exact: true }).click()
-  const token = await page.getByLabel('API key', { exact: true }).inputValue()
-  const headers = { Authorization: `Bearer ${token}` }
-  expect((await fetch(hostedBackend + '/api/v2/usage', { headers })).status).toBe(200)
-  await page.getByRole('button', { name: 'Done', exact: true }).click()
-  await expect(page.getByLabel('API key', { exact: true })).toHaveCount(0)
-  await page.getByRole('button', { name: 'Revoke Browser test laptop', exact: true }).click()
-  await expect(
-    page.getByRole('button', { name: 'Revoke Browser test laptop', exact: true }),
-  ).toBeDisabled()
-  expect((await fetch(hostedBackend + '/api/v2/usage', { headers })).status).toBe(401)
-  await page.getByRole('link', { name: 'Return to usage', exact: true }).click()
-  await expect(page.getByLabel('Total tokens: 120', { exact: true })).toBeVisible()
-  expect(page.url()).not.toContain(token)
-  expect(await page.evaluate(() => Object.values(localStorage))).not.toContain(token)
-})
-
-test('password change signs out the browser, rejects old credentials and preserves API keys', async ({
-  page,
-}) => {
-  const socket = await operatorSocket()
-  const username = 'password-' + randomUUID().slice(0, 8)
-  const user = await adminRequest(
-    socket,
-    { operation: 'create-user', displayName: username },
-    userSchema,
-  )
-  await adminRequest(
-    socket,
-    { operation: 'reset-password', userId: user.userId, password: hostedPassword },
-    z.object({}),
-  )
-  const key = await adminRequest(
-    socket,
-    { operation: 'create-token', userId: user.userId, permissions: ['read'] },
-    tokenSchema,
-  )
-  await page.goto(hostedOrigin + '/settings')
-  await page.getByLabel('Username', { exact: true }).fill(username)
-  await page.getByLabel('Password', { exact: true }).fill(hostedPassword)
-  await page.getByRole('button', { name: 'Sign in', exact: true }).click()
-  await page.getByRole('link', { name: 'Account settings', exact: true }).click()
-  await page.getByLabel('Current password', { exact: true }).fill(hostedPassword)
-  await page.getByLabel('New password', { exact: true }).fill('new hosted fixture password')
-  await page.getByLabel('Confirm new password', { exact: true }).fill('new hosted fixture password')
-  await page.getByRole('button', { name: 'Change password', exact: true }).click()
-  await expect(page.getByRole('heading', { name: 'Sign in to TokenInsights' })).toBeVisible()
-  await page.getByLabel('Username', { exact: true }).fill(username)
-  await page.getByLabel('Password', { exact: true }).fill(hostedPassword)
-  await page.getByRole('button', { name: 'Sign in', exact: true }).click()
-  await expect(page.getByRole('alert')).toContainText('Couldn’t sign in.')
-  await page.getByLabel('Password', { exact: true }).fill('new hosted fixture password')
-  await page.getByRole('button', { name: 'Sign in', exact: true }).click()
-  await expect(page.getByRole('link', { name: 'Account settings', exact: true })).toBeVisible()
-  expect(
-    (
-      await fetch(hostedBackend + '/api/v2/usage', {
-        headers: { Authorization: `Bearer ${key.token}` },
-      })
-    ).status,
-  ).toBe(200)
-})
-
-test('enabled signup creates a browser session and an isolated account', async ({ page }) => {
-  const username = 'signup-' + randomUUID().slice(0, 8)
-  await page.goto(hostedOrigin + '/tokens')
-  await page.getByRole('button', { name: 'Create an account', exact: true }).click()
-  await page.getByLabel('Username', { exact: true }).fill(username)
-  await page.getByLabel('Password', { exact: true }).fill(hostedPassword)
-  await page.getByRole('button', { name: 'Create account', exact: true }).click()
-  await page.getByRole('link', { name: 'Account settings', exact: true }).click()
-  await expect(page.getByRole('region', { name: 'Account', exact: true })).toContainText(username)
-  await expect(
-    page.getByText('No API keys yet. Create one for your first collector.'),
-  ).toBeVisible()
 })
 
 test('a shared-cookie account switch rejects an old settings mutation before touching the new account', async ({

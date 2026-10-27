@@ -1,10 +1,42 @@
-import { afterEach, expect, it } from 'vitest'
+import { afterEach, expect, it, vi } from 'vitest'
 import { cleanup, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { useState } from 'react'
 import { MultiSelect } from './Filters'
 
 afterEach(cleanup)
+
+it('failed session search retains the draft and selection and retries the same search', async () => {
+  const user = userEvent.setup()
+  const retry = vi.fn<() => void>()
+  const { rerender } = render(
+    <MultiSelect
+      label="Session"
+      values={[]}
+      selected={['saved-session']}
+      onChange={() => undefined}
+      error={{ message: 'Session values couldn’t load', onRetry: retry }}
+    />,
+  )
+  await user.click(screen.getByRole('button', { name: 'Session 1' }))
+  await user.type(screen.getByRole('textbox', { name: 'Search session' }), 'new')
+  expect(screen.getByRole('alert')).toHaveTextContent('Session values couldn’t load')
+  expect(screen.queryByText('No matching values')).not.toBeInTheDocument()
+  await user.click(screen.getByRole('button', { name: 'Retry session search' }))
+  expect(retry).toHaveBeenCalledOnce()
+  rerender(
+    <MultiSelect
+      label="Session"
+      values={['new-session']}
+      selected={['saved-session']}
+      onChange={() => undefined}
+    />,
+  )
+  expect(screen.getByRole('textbox', { name: 'Search session' })).toHaveValue('new')
+  expect(screen.getByRole('checkbox', { name: 'new-session' })).not.toBeChecked()
+  await user.clear(screen.getByRole('textbox', { name: 'Search session' }))
+  expect(screen.getByRole('checkbox', { name: 'saved-session' })).toBeChecked()
+})
 
 function Example() {
   const [selected, setSelected] = useState(['unavailable-model'])

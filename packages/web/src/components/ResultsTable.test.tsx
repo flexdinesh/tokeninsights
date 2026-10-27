@@ -5,6 +5,20 @@ import { UnknownLocation } from './ResultsTable'
 
 afterEach(cleanup)
 
+it('new query results retain expanded directories and focus for the same location', async () => {
+  const user = userEvent.setup()
+  const { rerender } = render(
+    <UnknownLocation directories={['~/work/one']} hasUnknownDirectory={false} />,
+  )
+  await user.click(screen.getByRole('button', { name: 'Show directories' }))
+  const toggle = screen.getByRole('button', { name: 'Hide directories' })
+  toggle.focus()
+  rerender(<UnknownLocation directories={['~/work/one', '~/work/two']} hasUnknownDirectory />)
+  expect(toggle).toHaveFocus()
+  expect(screen.getByRole('list', { name: 'Recorded directories' })).toHaveTextContent('~/work/two')
+  expect(screen.getByText('Some usage has no recorded directory')).toBeVisible()
+})
+
 it('reveals all recorded directories on request and identifies missing directory data', async () => {
   const user = userEvent.setup()
   render(

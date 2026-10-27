@@ -1,4 +1,5 @@
-import { spawn } from 'node:child_process'
+import { spawn, type ChildProcess } from 'node:child_process'
+import { randomUUID } from 'node:crypto'
 import type { Server } from 'node:http'
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -7,19 +8,19 @@ import { z } from 'zod'
 import { CollectorProgressResponse, StatusResponseV2 } from '../src/generated/api.ts'
 import {
   adminRequest,
-  hostedBackend,
-  hostedFixturePointer,
-  hostedOrigin,
-  hostedPassword,
   seedHostedUser,
   startHostedProxy,
   tokenSchema,
   userSchema,
 } from './hosted-fixture.ts'
+import { metadataSchema, runDirectory } from './fixture.ts'
 
-const tempRoot = process.env.TOKENINSIGHTS_TEST_TMP ?? tmpdir()
-const localHome = await mkdtemp(join(tempRoot, 'ti-web-'))
-const now = new Date()
+const readinessTimeout = 30_000
+const shutdownTimeout = 5_000
+const pollInterval = 50
+const requestTimeout = 1_000
+const diagnosticLimit = 64 * 1024
+const delay = (milliseconds: number) => new Promise<void>((done) => setTimeout(done, milliseconds))
 
 async function writeSession(
   home: string,
@@ -57,36 +58,11 @@ async function writeSession(
   )
 }
 
-for (let index = 0; index < 80; index++) {
-  const model = index % 2 === 0 ? 'model-a' : 'model-b'
-  const provider = index % 2 === 0 ? 'openai' : 'anthropic'
-  const recordedAt = new Date(now)
-  if (index >= 60) recordedAt.setFullYear(now.getFullYear() - 1)
-  const cwd = index % 5 === 4 ? undefined : join(localHome, 'workspace', `project-${index % 4}`)
-  await writeSession(localHome, index, 'web-session', model, provider, 4300, 3000, recordedAt, cwd)
-}
-
-// Usable counters with no native message identity remain estimated only.
-await writeFile(
-  join(localHome, '.pi/agent/sessions/estimated.jsonl'),
-  [
-    JSON.stringify({ type: 'session', id: 'estimated-session' }),
-    JSON.stringify({
-      type: 'message',
-      timestamp: now.toISOString(),
-      message: {
-        role: 'assistant',
-        provider: 'openai',
-        model: 'estimated-model',
-        usage: { input: 100, output: 20 },
-      },
-    }),
-  ].join('\n'),
-)
-
 function localEnvironment(home: string): NodeJS.ProcessEnv {
   return {
-    ...process.env,
+    PATH: process.env.PATH,
+    TZ: 'UTC',
+    NO_COLOR: '1',
     HOME: home,
     TOKENINSIGHTS_SERVER_URL: '',
     TOKENINSIGHTS_ACCESS_TOKEN: '',
@@ -98,162 +74,280 @@ function localEnvironment(home: string): NodeJS.ProcessEnv {
     CLAUDE_CONFIG_DIR: join(home, '.claude'),
   }
 }
-function startServer(home: string, port: string) {
-  return spawn(
-    resolve('../cli/bin/tokeninsights'),
-    [
-      'web',
-      '--open=false',
-      '--host',
-      '0.0.0.0',
-      '--port',
-      port,
-      '--collector-db-path',
-      join(home, 'collector.sqlite'),
-      '--server-db-path',
-      join(home, 'server.sqlite'),
-    ],
-    { stdio: 'inherit', env: localEnvironment(home) },
-  )
-}
 
-const hostedHome = join(localHome, 'hosted')
-await mkdir(hostedHome)
-const hostedSocket = join(hostedHome, 'admin.sock')
-const hostedServer = spawn(
-  resolve('../cli/bin/tokeninsights-server'),
-  [
-    '--listen',
-    '127.0.0.1:18768',
-    '--server-db-path',
-    join(hostedHome, 'server.sqlite'),
-    '--public-url',
-    hostedOrigin,
-    '--admin-socket',
-    hostedSocket,
-    '--signup',
-    '--trusted-proxies',
-    '127.0.0.1/32',
-  ],
-  {
-    stdio: 'inherit',
-    env: {
-      ...process.env,
-      HOME: hostedHome,
-      XDG_DATA_HOME: join(hostedHome, '.local/share'),
-      XDG_CONFIG_HOME: join(hostedHome, '.config'),
-    },
-  },
-)
-const children = [startServer(localHome, '18765'), hostedServer]
-
-let stopping = false
-let proxy: Server | undefined
-
-async function stop(code: number) {
-  if (stopping) return
-  stopping = true
-  await Promise.all(
-    children.map(
-      (child) =>
-        new Promise<void>((resolveStop) => {
-          if (child.exitCode !== null || child.signalCode !== null) {
-            resolveStop()
-            return
-          }
-          child.once('exit', () => resolveStop())
-          child.kill('SIGTERM')
-        }),
-    ),
-  )
-  const activeProxy = proxy
-  if (activeProxy)
-    await new Promise<void>((resolveClose) => activeProxy.close(() => resolveClose()))
-  await rm(localHome, { recursive: true, force: true })
-  await rm(hostedFixturePointer, { force: true })
-  process.exitCode = code
-}
-
-process.on('SIGINT', () => void stop(0))
-process.on('SIGTERM', () => void stop(0))
-for (const child of children) {
-  child.on('exit', (code) => {
-    if (!stopping) void stop(code ?? 1)
+function startChild(executable: string, args: string[], environment: NodeJS.ProcessEnv) {
+  const child = spawn(resolve('../cli/bin', executable), args, {
+    stdio: ['ignore', 'pipe', 'pipe'],
+    env: environment,
   })
+  let output = ''
+  let failure: Error | undefined
+  const record = (chunk: Buffer) => {
+    output = (output + chunk.toString()).slice(-diagnosticLimit)
+  }
+  child.stdout.on('data', record)
+  child.stderr.on('data', record)
   child.on('error', (error) => {
-    console.error(error)
-    void stop(1)
+    failure = error
+  })
+  return {
+    child,
+    output: () => output,
+    assertRunning() {
+      if (failure) throw failure
+      if (child.exitCode !== null || child.signalCode !== null)
+        throw new Error(`Fixture exited before readiness: ${output}`)
+    },
+  }
+}
+
+async function stopChild(child: ChildProcess) {
+  if (child.exitCode !== null || child.signalCode !== null || child.pid === undefined) return
+  await new Promise<void>((done, reject) => {
+    const finish = () => {
+      clearTimeout(kill)
+      clearTimeout(deadline)
+      done()
+    }
+    const kill = setTimeout(() => child.kill('SIGKILL'), shutdownTimeout)
+    const deadline = setTimeout(() => {
+      child.off('exit', finish)
+      reject(new Error('Fixture child did not exit after SIGKILL'))
+    }, shutdownTimeout * 2)
+    child.once('exit', finish)
+    child.kill('SIGTERM')
   })
 }
 
-try {
-  // The foreground local command owns fixture capture and processing.
-  const localDeadline = Date.now() + 30000
-  for (;;) {
-    const local = children[0]
-    if (!local || local.exitCode !== null || local.signalCode !== null)
-      throw new Error('Local fixture exited before capture completed')
-    let accepted = false
-    try {
-      const response = await fetch('http://127.0.0.1:18765/api/v2/collector-progress')
-      if (response.ok) {
-        const progress = CollectorProgressResponse.parse(await response.json())
-        if (progress.attempts.some((attempt) => ['failed', 'interrupted'].includes(attempt.stage)))
-          throw new Error('Local fixture capture failed')
-        accepted = progress.attempts.some((attempt) => attempt.stage === 'accepted')
-      }
-    } catch (error) {
-      if (!(error instanceof TypeError)) throw error
-    }
-    if (accepted) {
-      const response = await fetch('http://127.0.0.1:18765/api/v2/status')
-      if (response.ok) {
-        const status = StatusResponseV2.parse(await response.json())
-        if (status.pending === 0 && status.generation === status.targetGeneration) break
-      }
-    }
-    if (Date.now() >= localDeadline) throw new Error('Local fixture capture timed out')
-    await new Promise<void>((resolveWait) => setTimeout(resolveWait, 50))
+async function waitUntil(check: () => Promise<boolean>, label: string) {
+  const deadline = Date.now() + readinessTimeout
+  while (!(await check())) {
+    if (Date.now() >= deadline) throw new Error(`${label} timed out`)
+    await delay(pollInterval)
   }
-  const hostedDeadline = Date.now() + 10000
-  for (;;) {
-    if (hostedServer.exitCode !== null || hostedServer.signalCode !== null)
-      throw new Error('Hosted fixture exited before readiness')
-    try {
-      if ((await fetch(hostedBackend + '/readyz')).ok) break
-    } catch {
-      /* Bounded startup. */
+}
+
+async function boundURL(process: ReturnType<typeof startChild>, signal: AbortSignal) {
+  let address = ''
+  await waitUntil(async () => {
+    signal.throwIfAborted()
+    process.assertRunning()
+    address = process.output().match(/http:\/\/127\.0\.0\.1:\d+/)?.[0] ?? ''
+    return address !== ''
+  }, 'Bound URL discovery')
+  return address
+}
+
+export default async function setup() {
+  const directory = runDirectory()
+  await mkdir(directory, { recursive: true, mode: 0o700 })
+  // Keep Unix sockets short even when the checkout has a long absolute path.
+  const localHome = await mkdtemp(join(tmpdir(), 'ti-e2e-'))
+  const hostedHome = join(localHome, 'hosted')
+  const hostedPassword = randomUUID()
+  const children: ReturnType<typeof startChild>[] = []
+  const cancellation = new AbortController()
+  let ready = false
+  let proxy: Server | undefined
+  let cleanup: Promise<void> | undefined
+  const stop = () => {
+    cleanup ??= (async () => {
+      const activeProxy = proxy
+      const closing = activeProxy
+        ? new Promise<void>((done, reject) => {
+            activeProxy.close((error) => (error ? reject(error) : done()))
+            activeProxy.closeAllConnections()
+          })
+        : Promise.resolve()
+      const stopped = await Promise.allSettled([
+        closing,
+        ...children.map(({ child }) => stopChild(child)),
+      ])
+      const finalized = await Promise.allSettled([
+        ...children.map((child, index) =>
+          writeFile(join(directory, `server-${index}.log`), child.output(), { mode: 0o600 }),
+        ),
+        rm(join(directory, 'fixture.json'), { force: true }),
+        rm(localHome, { recursive: true, force: true }),
+      ])
+      process.off('SIGINT', onSignal)
+      process.off('SIGTERM', onSignal)
+      for (const result of [...stopped, ...finalized])
+        if (result.status === 'rejected') throw result.reason
+    })()
+    return cleanup
+  }
+  const onSignal = () => {
+    cancellation.abort(new Error('Browser fixture setup interrupted'))
+    if (ready)
+      void stop().catch((error: unknown) => {
+        console.error(error)
+        process.exitCode = 1
+      })
+  }
+  process.once('SIGINT', onSignal)
+  process.once('SIGTERM', onSignal)
+
+  try {
+    const now = new Date()
+    for (let index = 0; index < 80; index++) {
+      cancellation.signal.throwIfAborted()
+      const model = index % 2 === 0 ? 'model-a' : 'model-b'
+      const provider = index % 2 === 0 ? 'openai' : 'anthropic'
+      const recordedAt = new Date(now)
+      if (index >= 60) recordedAt.setFullYear(now.getFullYear() - 1)
+      const cwd = index % 5 === 4 ? undefined : join(localHome, 'workspace', `project-${index % 4}`)
+      await writeSession(
+        localHome,
+        index,
+        'web-session',
+        model,
+        provider,
+        4300,
+        3000,
+        recordedAt,
+        cwd,
+      )
     }
-    if (Date.now() >= hostedDeadline) throw new Error('Hosted fixture readiness timed out')
-    await new Promise<void>((resolveWait) => setTimeout(resolveWait, 50))
+
+    // Usable counters with no native message identity remain estimated only.
+    await writeFile(
+      join(localHome, '.pi/agent/sessions/estimated.jsonl'),
+      [
+        JSON.stringify({ type: 'session', id: 'estimated-session' }),
+        JSON.stringify({
+          type: 'message',
+          timestamp: now.toISOString(),
+          message: {
+            role: 'assistant',
+            provider: 'openai',
+            model: 'estimated-model',
+            usage: { input: 100, output: 20 },
+          },
+        }),
+      ].join('\n'),
+    )
+
+    await mkdir(hostedHome, { mode: 0o700 })
+    const hostedSocket = join(hostedHome, 'admin.sock')
+    let hostedBackend = ''
+    proxy = await startHostedProxy(() => hostedBackend)
+    cancellation.signal.throwIfAborted()
+    const address = proxy.address()
+    if (!address || typeof address === 'string') throw new Error('Expected HTTPS TCP listener')
+    const hostedOrigin = `https://127.0.0.1:${address.port}`
+    const local = startChild(
+      'tokeninsights',
+      [
+        'web',
+        '--open=false',
+        '--host',
+        '127.0.0.1',
+        '--port',
+        '0',
+        '--collector-db-path',
+        join(localHome, 'collector.sqlite'),
+        '--server-db-path',
+        join(localHome, 'server.sqlite'),
+      ],
+      localEnvironment(localHome),
+    )
+    children.push(local)
+    const hosted = startChild(
+      'tokeninsights-server',
+      [
+        '--listen',
+        '127.0.0.1:0',
+        '--server-db-path',
+        join(hostedHome, 'server.sqlite'),
+        '--public-url',
+        hostedOrigin,
+        '--admin-socket',
+        hostedSocket,
+        '--signup',
+        '--trusted-proxies',
+        '127.0.0.1/32',
+      ],
+      localEnvironment(hostedHome),
+    )
+    children.push(hosted)
+    const localOrigin = await boundURL(local, cancellation.signal)
+    hostedBackend = await boundURL(hosted, cancellation.signal)
+    await waitUntil(async () => {
+      local.assertRunning()
+      cancellation.signal.throwIfAborted()
+      const progress = CollectorProgressResponse.parse(
+        await (
+          await fetch(localOrigin + '/api/v2/collector-progress', {
+            signal: AbortSignal.timeout(requestTimeout),
+          })
+        ).json(),
+      )
+      if (progress.attempts.some((attempt) => ['failed', 'interrupted'].includes(attempt.stage)))
+        throw new Error('Local capture failed')
+      if (!progress.attempts.some((attempt) => attempt.stage === 'accepted')) return false
+      const status = StatusResponseV2.parse(
+        await (
+          await fetch(localOrigin + '/api/v2/status', {
+            signal: AbortSignal.timeout(requestTimeout),
+          })
+        ).json(),
+      )
+      return status.pending === 0 && status.generation === status.targetGeneration
+    }, 'Local capture')
+    await waitUntil(async () => {
+      hosted.assertRunning()
+      cancellation.signal.throwIfAborted()
+      return (
+        await fetch(hostedBackend + '/readyz', { signal: AbortSignal.timeout(requestTimeout) })
+      ).ok
+    }, 'Hosted readiness')
+    for (const { name, input } of [
+      { name: 'alice', input: 100 },
+      { name: 'bob', input: 400 },
+    ]) {
+      const user = await adminRequest(
+        hostedSocket,
+        { operation: 'create-user', displayName: name },
+        userSchema,
+      )
+      const token = await adminRequest(
+        hostedSocket,
+        {
+          operation: 'create-token',
+          userId: user.userId,
+          permissions: ['read', 'ingest'],
+        },
+        tokenSchema,
+      )
+      await adminRequest(
+        hostedSocket,
+        {
+          operation: 'reset-password',
+          userId: user.userId,
+          password: hostedPassword,
+        },
+        z.object({}),
+      )
+      await seedHostedUser(hostedBackend, token.token, input, cancellation.signal)
+      await writeFile(join(hostedHome, name + '.json'), JSON.stringify({ ...user, ...token }), {
+        mode: 0o600,
+      })
+    }
+    const metadata = metadataSchema.parse({
+      localOrigin,
+      hostedOrigin,
+      hostedBackend,
+      hostedHome,
+      hostedPassword,
+    })
+    cancellation.signal.throwIfAborted()
+    await writeFile(join(directory, 'fixture.json'), JSON.stringify(metadata), { mode: 0o600 })
+    cancellation.signal.throwIfAborted()
+    ready = true
+    return stop
+  } catch (error) {
+    await stop()
+    throw error
   }
-  for (const { name, input } of [
-    { name: 'alice', input: 100 },
-    { name: 'bob', input: 400 },
-  ]) {
-    const user = await adminRequest(
-      hostedSocket,
-      { operation: 'create-user', displayName: name },
-      userSchema,
-    )
-    const token = await adminRequest(
-      hostedSocket,
-      { operation: 'create-token', userId: user.userId, permissions: ['read', 'ingest'] },
-      tokenSchema,
-    )
-    await adminRequest(
-      hostedSocket,
-      { operation: 'reset-password', userId: user.userId, password: hostedPassword },
-      z.object({}),
-    )
-    await seedHostedUser(token.token, input)
-    await writeFile(join(hostedHome, name + '.json'), JSON.stringify({ ...user, ...token }))
-  }
-  await writeFile(join(hostedHome, 'socket.txt'), hostedSocket)
-  // Fixture files are available only to the Node test process through this local pointer.
-  await writeFile(hostedFixturePointer, hostedHome, { mode: 0o600 })
-  proxy = await startHostedProxy()
-} catch (error) {
-  await stop(1)
-  throw error
 }

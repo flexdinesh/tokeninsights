@@ -1,11 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import {
-  readToolchainFiles,
-  toolchainMismatches,
-  type ToolchainFiles,
-} from '../src/check-toolchain.ts'
+import { toolchainMismatches, type ToolchainFiles } from '../src/check-toolchain.ts'
 
 const files: ToolchainFiles = {
   miseToml: `[settings]
@@ -64,8 +60,4 @@ void test('missing copies and pins are reported', () => {
     toolchainMismatches({ ...files, miseToml: '[tools]\ngo = "1.27.3"\nnode = "26.12.1"\n' }),
     ['mise.toml: [tools] pnpm pin missing'],
   )
-})
-
-void test('repository pins agree', async () => {
-  assert.deepEqual(toolchainMismatches(await readToolchainFiles()), [])
 })

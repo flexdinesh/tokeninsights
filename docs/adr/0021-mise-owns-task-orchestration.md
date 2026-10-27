@@ -33,7 +33,13 @@ without race) and `check:toolchain`.
   `pnpm install --frozen-lockfile` before `mise run`/`mise exec` when
   `package.json` or `pnpm-lock.yaml` changed or `node_modules` is missing;
   `--no-deps` skips. `mise run setup` is `mise deps install`.
-- **Graph**: `check:push` runs format check (including `mise fmt --check`), lint,
+- **Admission** (27 October 2026): `check:push` queues its entire verification
+  graph across worktrees of the repository, using an OS advisory lock in the
+  canonical Git common directory. Only compilation of the small development
+  lock helper happens before admission. Both the hook and direct task entry use
+  this gate. Waiting is visible and cancellable; queue time is separate from
+  execution time. Internal stages do not constitute a separate supported entry.
+- **Graph**: the admitted graph runs format check (including `mise fmt --check`), lint,
   schema, API, toolchain and TypeScript checks in parallel, then race tests,
   benchmark smoke, CLI build, distribution, browser E2E and container contracts
   serially, with `keep-order` output. Go tasks depend on `build:web`, so it runs
@@ -44,11 +50,18 @@ without race) and `check:toolchain`.
   CI assets and release use `mise run build:web`. Release calls
   `node tools/build/src/generate-homebrew-formula.ts` directly so retried older
   releases still work. The pre-push hook still runs `mise run check:push`.
+- **Development lifetime**: mise builds binaries and prepares fixture data. A
+  TypeScript development launcher then owns the API/Vite process pair, discovers
+  the OS-assigned API address before configuring Vite's proxy, and joins shutdown.
+  This process lifecycle does not duplicate the build/test task graph. Both ports
+  default to automatic allocation; explicit ports fail on collision. Fixture
+  stores remain worktree-local; installed CLI defaults do not change.
 
 ## Consequences
 
-One definition per task, parallel independent checks, and one asset build per
-graph. Tool versions cannot drift silently across development, image and module.
+One definition per task, bounded parallel checks, and one asset build per graph.
+Concurrent pushes queue instead of competing for Chromium, compiler and Docker
+resources. Tool versions cannot drift silently across development, image and module.
 
 - All contributors run experimental mise features; mise changes may break
   `[deps]` behavior.

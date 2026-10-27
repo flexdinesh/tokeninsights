@@ -1,15 +1,10 @@
 import { request, type Server } from 'node:http'
 import { createServer } from 'node:https'
 import { readFile } from 'node:fs/promises'
-import { join, resolve } from 'node:path'
-import { tmpdir } from 'node:os'
+import { resolve } from 'node:path'
 import { z } from 'zod'
 import { RawCapabilitiesV3, UsageResponseV2 } from '../src/generated/api.ts'
 
-export const hostedFixturePointer = join(tmpdir(), 'tokeninsights-web-hosted-18769.txt')
-export const hostedBackend = 'http://127.0.0.1:18768'
-export const hostedOrigin = 'https://127.0.0.1:18769'
-export const hostedPassword = 'hosted fixture password'
 export const userSchema = z.object({ userId: z.string(), datasetId: z.string() })
 export const tokenSchema = z.object({ tokenId: z.string(), token: z.string() })
 
@@ -45,46 +40,58 @@ export async function adminRequest<T>(
       },
     )
     outgoing.on('error', reject)
+    outgoing.setTimeout(5_000, () => outgoing.destroy(new Error('Admin request timed out')))
     outgoing.end(JSON.stringify(body))
   })
 }
 
-export async function startHostedProxy(): Promise<Server> {
+export async function startHostedProxy(backendURL: () => string): Promise<Server> {
   const [key, cert] = await Promise.all([
     readFile(resolve('e2e/fixtures/hosted-key.pem')),
     readFile(resolve('e2e/fixtures/hosted-cert.pem')),
   ])
   const proxy = createServer({ key, cert }, (incoming, response) => {
+    const backend = backendURL()
+    if (!backend) {
+      response.writeHead(503).end()
+      return
+    }
     const upstream = request(
+      new URL(incoming.url ?? '/', backend),
       {
-        hostname: '127.0.0.1',
-        port: 18768,
-        path: incoming.url,
         method: incoming.method,
         headers: incoming.headers,
       },
-      (backend) => {
-        response.writeHead(backend.statusCode ?? 502, backend.headers)
-        backend.pipe(response)
+      (upstreamResponse) => {
+        response.writeHead(upstreamResponse.statusCode ?? 502, upstreamResponse.headers)
+        upstreamResponse.pipe(response)
       },
     )
     upstream.on('error', () => {
       response.writeHead(502)
       response.end()
     })
+    upstream.setTimeout(5_000, () => upstream.destroy(new Error('Proxy request timed out')))
+    response.on('close', () => upstream.destroy())
     incoming.pipe(upstream)
   })
   await new Promise<void>((resolveListening, reject) => {
     proxy.once('error', reject)
-    proxy.listen(18769, '127.0.0.1', resolveListening)
+    proxy.listen(0, '127.0.0.1', resolveListening)
   })
   return proxy
 }
 
-export async function seedHostedUser(token: string, input: number): Promise<void> {
+export async function seedHostedUser(
+  hostedBackend: string,
+  token: string,
+  input: number,
+  signal: AbortSignal,
+): Promise<void> {
   const headers = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }
   const capabilitiesResponse = await fetch(hostedBackend + '/api/v3/ingestion/capabilities', {
     headers,
+    signal: AbortSignal.any([signal, AbortSignal.timeout(5_000)]),
   })
   const capabilities = RawCapabilitiesV3.parse(await capabilitiesResponse.json())
   const batch = {
@@ -122,6 +129,7 @@ export async function seedHostedUser(token: string, input: number): Promise<void
     ],
   }
   const acceptance = await fetch(hostedBackend + '/api/v3/ingestion/batches', {
+    signal: AbortSignal.any([signal, AbortSignal.timeout(5_000)]),
     method: 'POST',
     headers,
     body: JSON.stringify(batch),
@@ -129,7 +137,10 @@ export async function seedHostedUser(token: string, input: number): Promise<void
   if (acceptance.status !== 202) throw new Error('Hosted fixture evidence acceptance failed')
   const deadline = Date.now() + 30_000
   for (;;) {
-    const response = await fetch(hostedBackend + '/api/v2/usage?period=all', { headers })
+    const response = await fetch(hostedBackend + '/api/v2/usage?period=all', {
+      headers,
+      signal: AbortSignal.any([signal, AbortSignal.timeout(5_000)]),
+    })
     const usage = UsageResponseV2.parse(await response.json())
     if (usage.pending === 0 && usage.summary.total === input + 20) return
     if (Date.now() >= deadline) throw new Error('Hosted fixture processing timed out')
