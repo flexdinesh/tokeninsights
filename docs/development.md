@@ -85,6 +85,10 @@ triggers cleanup. Never delete the lock file: its inode, not its contents, owns
 exclusion. Independently detached containers still require their tool's cleanup.
 The hidden `check:push:stages` task is an internal implementation detail.
 
+The pre-push hook is the full-suite gate: run `check:push` once per push through
+the hook, not separately beforehand. While changing code, run focused commands
+for the touched area instead; `AGENTS.md` maps change areas to commands.
+
 Within admission, format, lint, schema, API, toolchain and TypeScript tasks have
 bounded concurrency; race tests, benchmark smoke, CLI build, distribution,
 browser E2E and container contracts follow serially. `TOKENINSIGHTS_CHECK_CONCURRENCY`
@@ -100,8 +104,18 @@ the full-pipeline gate; avoid launching them alongside a queued full run.
 Go tasks depend on `build:web`, so one graph builds assets once. `build:web`
 records input/output digests under `packages/web/node_modules/.cache` and resyncs
 drifted embedded assets. CLI/plugin builds reuse unchanged outputs. Verification
-tasks never skip; Go runs use `-count=1` to avoid cached test results. `keep-order`
-output prints each task's output after it finishes, including phase duration.
+tasks never skip; Go runs use `-count=1` to avoid cached test results.
+
+`check:push:stages` lists stages for `tools/build/src/check-stages.ts`: each
+argument is a stage and comma-separated tasks run in parallel. The runner runs
+each phase as `mise run --no-deps --jobs 1 <task>`, writes its complete stdout and
+stderr to `.check-logs/NN-<task>.log` (ignored, cleared each run) and prints one
+line per phase, such as `ok lint 41s`. On failure it prints the last 100 log
+lines, the log path and `rerun: mise run <task>`, stops running siblings, starts
+no later stage and exits with the phase's code. `TOKENINSIGHTS_CHECK_VERBOSE=1`
+also streams phase output with `[task]` prefixes. Node, Vitest and Playwright
+tests use dot reporters and the web build logs only warnings; failures still
+print full detail.
 Checks fail fast and never repair tracked files. Regenerate stale API files and
 plugin bundles explicitly before committing and pushing. There is no pre-commit
 test suite.

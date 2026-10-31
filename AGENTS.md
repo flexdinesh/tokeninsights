@@ -86,25 +86,37 @@ Read `docs/design.md` and the relevant ADRs before non-trivial changes, especial
 `mise.toml` pins exact development tools, locked by `mise.lock`, and owns all tasks; root `package.json` keeps only `prepare`, and tasks call per-package leaf scripts. `mise tasks ls` lists them. `mise run setup` installs dependencies and Husky's pre-push hook; `mise run setup:browser` installs Chromium. Bump tools per `docs/development.md`; `check:toolchain` rejects drift. Public docs live in `docs-website/`, a Vocs pnpm workspace package run with `mise run dev:docs` and `mise run build:docs`. All locally reproducible checks except the docs build run in `check:push`, including live PostgreSQL and real-container contracts. CI runs only on main pushes and covers native Linux arm64 and macOS amd64/arm64 builds and focused storage tests; pull requests run no CI. Test/race tasks require Docker or `TOKENINSIGHTS_TEST_POSTGRES_DSN` with CREATEDB privileges; container contracts always require Docker.
 
 ```sh
-mise run check:push
 mise run format
-mise run format:check
-mise run lint
-
 mise run check-schema
-mise run bench:smoke
-mise run test
-mise run build
+mise run check-api
+mise run build:cli
+mise run check:push   # full suite; the pre-push hook runs it
 ```
 
 ## Verification
 
 - **Local checks belong in pre-push**. Add locally reproducible checks, except the docs build, to the `check:push` mise task, reached by `.husky/pre-push`; do not add or duplicate them in CI or release preparation.
-- **Queue the entire pre-push pipeline across worktrees**. Use `mise run check:push`; its repository-wide gate serializes all verification stages using the canonical Git common directory. Do not invoke internal stages to bypass admission. Only compilation of the small gate helper precedes admission. Keep test concurrency bounded and preserve critical checks on every push.
+- **Queue the entire pre-push pipeline across worktrees**. `mise run check:push`, run by the hook, is the only full-suite entry; its repository-wide gate serializes all verification stages using the canonical Git common directory. Do not invoke internal stages to bypass admission. Only compilation of the small gate helper precedes admission. Keep test concurrency bounded and preserve critical checks on every push.
 - **CI requires a concrete reason**. Before adding or expanding a CI check, identify the coverage unavailable locally and document it in the workflow and PR. Native OS/architecture coverage and validation of artifacts generated during release are valid reasons. Convenience or repeating a local check is not.
 
-- After changing code, run `mise run format`, `mise run lint`, the relevant focused tests, and `mise run test`.
-- Run `mise run build` after tests pass.
+- **The pre-push hook is the gate**. It runs the full `check:push` once per push. Do not run `check:push`, `mise run test`, `mise run lint` or `mise run build` separately before pushing.
+- **Run targeted checks while changing code**. After changing code, run `mise run format` and only the cheapest commands for the touched area:
+
+  | Change area | Command |
+  | --- | --- |
+  | Go package | `cd packages/cli && go test ./internal/<pkg>/...` (PostgreSQL tests skip without `TOKENINSIGHTS_TEST_POSTGRES_DSN`; use `mise run test:go` for them) |
+  | Go lint | `cd packages/cli && go tool -modfile=golangci-lint.mod golangci-lint run ./internal/<pkg>/...` |
+  | Go embedding web assets (`internal/server`) | `mise run build:web` once, then the Go package test |
+  | Web app | `pnpm --filter @tokeninsights/web exec vitest run <file>`; `pnpm --filter @tokeninsights/web exec tsc --noEmit` |
+  | Plugins | `mise run typecheck:plugins ::: check:plugins` |
+  | Build tools | `node --test tools/build/test/<name>.test.ts`; `pnpm --filter @tokeninsights/build-tools run typecheck` |
+  | TypeScript lint | `mise exec -- oxlint <paths>` |
+  | Schema / API contracts | `mise run check-schema` / `mise run check-api` |
+  | Server image or deployment | `mise run test:container` |
+
+- **Read check failures from logs**. `check:push` prints one line per phase and writes each phase's output to `.check-logs/NN-<task>.log`. On failure it prints the last 100 lines, the log path and `rerun: mise run <task>`; rerun only that phase, never the whole pipeline. `TOKENINSIGHTS_CHECK_VERBOSE=1` streams phase output.
+- **Never poll long checks**. Run long commands in the background and wait for the completion notification. Never poll logs or `sleep` in loops.
+- Run `mise run build:cli` only when manual CLI verification needs a fresh binary.
 - After build-tooling or web-asset changes, build directly from `packages/cli` and verify the resulting binary runs with Node, npm, and pnpm absent from `PATH`.
 - For manual CLI or TUI verification, print the following project-local command on screen and ask the user to run it and verify the result:
 
