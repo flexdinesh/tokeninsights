@@ -10,6 +10,7 @@ export default defineConfig({
   testDir: './e2e',
   fullyParallel: true,
   workers: 1,
+  reporter: 'dot',
   outputDir: resolve(runDirectory, 'artifacts'),
   globalSetup: './e2e/server.ts',
   use: {

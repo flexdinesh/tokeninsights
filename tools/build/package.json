@@ -10,7 +10,7 @@
     "sync:web": "node src/sync-web-assets.ts",
     "setup-dev-data": "node src/setup-dev-data.ts",
     "generate:homebrew": "node src/generate-homebrew-formula.ts",
-    "test": "node --test --test-concurrency=${TOKENINSIGHTS_CHECK_CONCURRENCY:-2} test/*.test.ts",
+    "test": "node --test --test-reporter=dot --test-concurrency=${TOKENINSIGHTS_CHECK_CONCURRENCY:-2} test/*.test.ts",
     "typecheck": "tsc --project tsconfig.json"
   },
   "devDependencies": {

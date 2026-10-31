@@ -231,20 +231,8 @@ description = "Internal verification stages, entered through the repository gate
 hide = true
 run = [
   "test \"$TOKENINSIGHTS_CHECK_GATE_ACTIVE\" = 1",
-  { tasks = [
-    "format:check",
-    "lint",
-    "check-schema",
-    "check-api",
-    "check:toolchain",
-    "test:js",
-  ] },
-  { task = "test:race" },
-  { task = "bench:smoke" },
-  { task = "build:cli" },
-  { task = "test:distribution" },
-  { task = "test:web-e2e" },
-  { task = "test:container" },
+  # Each argument is a stage; comma-separated tasks run in parallel. Output goes to .check-logs/.
+  "node tools/build/src/check-stages.ts format:check,lint,check-schema,check-api,check:toolchain,test:js test:race bench:smoke build:cli test:distribution test:web-e2e test:container",
 ]
 
 # Develop

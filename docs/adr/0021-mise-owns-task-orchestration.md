@@ -42,10 +42,18 @@ without race) and `check:toolchain`.
 - **Graph**: the admitted graph runs format check (including `mise fmt --check`), lint,
   schema, API, toolchain and TypeScript checks in parallel, then race tests,
   benchmark smoke, CLI build, distribution, browser E2E and container contracts
-  serially, with `keep-order` output. Go tasks depend on `build:web`, so it runs
-  once per graph and keeps its own digest skip. `build:cli` and `build:plugins`
+  serially (output per Quiet verification below). Go tasks depend on `build:web`,
+  whose digest skip builds assets at most once per run. `build:cli` and `build:plugins`
   skip on unchanged content-hashed sources and outputs. Verification tasks are
   never cached.
+- **Quiet verification** (31 October 2026): `check:push:stages` keeps the stage
+  list in `mise.toml` and passes it to `tools/build/src/check-stages.ts`, which runs
+  each phase as its own `mise run`, bounds parallel phases with
+  `TOKENINSIGHTS_CHECK_CONCURRENCY`, writes phase output to ignored
+  `.check-logs/` files and prints one line per phase. Failures print a log tail,
+  path and single-phase rerun command. `TOKENINSIGHTS_CHECK_VERBOSE=1` streams
+  output. This supersedes `keep-order` output for the admitted graph; agent
+  instructions treat the hook as the only full run per push.
 - **Outside mise**: the Dockerfile web stage runs `node tools/build/src/build-web.ts`.
   CI assets and release use `mise run build:web`. Release calls
   `node tools/build/src/generate-homebrew-formula.ts` directly so retried older
@@ -71,8 +79,8 @@ resources. Tool versions cannot drift silently across development, image and mod
   rebuild and leave stale outputs.
 - Every tool bump requires `mise lock` plus Dockerfile, `packageManager` and
   `go.mod` updates.
-- `keep-order` buffers parallel task output, hiding live progress until each
-  task finishes.
+- Phase output stays in `.check-logs/` rather than the terminal unless verbose;
+  each phase re-enters mise, and `build:web` re-checks its digest per phase.
 - The Docker image cannot use mise, so it calls leaf scripts directly and must
   track their paths.
 

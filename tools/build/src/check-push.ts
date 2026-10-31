@@ -45,7 +45,7 @@ try {
   if (process.exitCode === 0) {
     process.exitCode = await run(
       binary,
-      ['--watch-parent', 'mise', 'run', '--jobs', concurrency, 'check:push:stages'],
+      ['--watch-parent', 'mise', 'run', 'check:push:stages'],
       workspaceRoot,
     )
   }

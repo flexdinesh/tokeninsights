@@ -13,6 +13,9 @@ packages/cli/.impeccable/review/
 .impeccable/review/
 .playwright-mcp/
 
+# Per-phase check:push logs.
+.check-logs/
+
 # Local plans and disposable previews.
 .scratch/
 packages/web/previews/
