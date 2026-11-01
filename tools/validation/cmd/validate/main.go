@@ -139,6 +139,9 @@ func selected(group, path string) bool {
 		return true
 	}
 	prefixes := []string{"schema/", "packages/web/", "packages/cli/"}
+	if group == "javascript" {
+		prefixes = append(prefixes, ".agents/plugins/", ".claude-plugin/", ".husky/", ".github/")
+	}
 	if group == "contracts" || group == "javascript" || group == "browser" || group == "distribution" {
 		prefixes = append(prefixes, "packages/", "plugins/", "tests/")
 	}
