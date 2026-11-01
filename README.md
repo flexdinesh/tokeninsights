@@ -13,6 +13,8 @@ brew install flexdinesh/tap/tokeninsights
 tokeninsights web
 ```
 
+Choose a different dashboard port with `tokeninsights web --port 9000`.
+
 ## Documentation
 
 User guides live in [`docs-website/`](docs-website/README.md), a Vocs site. Run `mise run dev:docs` to serve them locally at `http://localhost:5173/`.

@@ -21,6 +21,16 @@ Ctrl+C stops its server. Startup highlights the dashboard URL in color and shows
 Ctrl+C shutdown hint. Redirected output stays plain; `NO_COLOR=1` disables terminal
 styling.
 
+To choose a different port:
+
+```sh
+tokeninsights web --port 9000
+```
+
+This opens `http://127.0.0.1:9000`. The flag overrides environment and saved
+configuration. Use `--port 0` to choose an available port; the command prints its
+URL. An occupied explicit port fails rather than choosing another port.
+
 To print the URL without opening a browser:
 
 ```sh
