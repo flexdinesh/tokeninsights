@@ -73,6 +73,7 @@ func (r runner) identity(sha, g string) (string, error) {
 }
 func (r runner) hostFormat(sha, snap, artifacts string) error {
 	// Resolve installed tools before entering the isolated home. No install task is invoked.
+	r.logPath = ""
 	_, path, err := r.hostTools(sha)
 	if err != nil {
 		return err
