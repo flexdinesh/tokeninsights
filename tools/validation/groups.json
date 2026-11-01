@@ -1,0 +1,188 @@
+{
+  "common": [
+    ".gitignore",
+    "mise.toml",
+    "mise.lock",
+    "package.json",
+    "pnpm-lock.yaml",
+    "pnpm-workspace.yaml",
+    "tools/validation/",
+    ".oxfmtrc.json",
+    ".oxlintrc.json",
+    "packages/*/package.json",
+    "tools/build/package.json",
+    "docs-website/package.json",
+    "dagger.json"
+  ],
+  "groups": {
+    "format": {
+      "inputs": [
+        "*",
+        ".agents/",
+        ".claude-plugin/",
+        ".github/",
+        ".husky/",
+        ".impeccable/",
+        "assets/",
+        "deploy/",
+        "docs-website/",
+        "docs/",
+        "packages/",
+        "schema/",
+        "tools/"
+      ],
+      "executor": "host",
+      "class": "light"
+    },
+    "static": {
+      "inputs": [
+        "packages/cli/",
+        "schema/",
+        "docs/openapi.yaml",
+        "packages/web/",
+        "tools/build/",
+        "orval.config.ts",
+        "docs-website/",
+        ".agents/plugins/",
+        ".claude-plugin/",
+        "Dockerfile",
+        "deploy/",
+        "packages/plugin-claude/",
+        "packages/plugin-codex/",
+        "packages/plugin-opencode/",
+        "packages/plugin-pi/",
+        "packages/plugin-runtime/"
+      ],
+      "executor": "dagger",
+      "class": "light"
+    },
+    "web": {
+      "inputs": [
+        "DESIGN.md",
+        "packages/web/",
+        "orval.config.ts",
+        "tools/build/src/build-web.ts",
+        "tools/build/src/sync-web-assets.ts",
+        "tools/build/src/files.ts",
+        "tools/build/src/workspace.ts"
+      ],
+      "executor": "dagger",
+      "class": "light"
+    },
+    "tooling": {
+      "inputs": [
+        "packages/cli/",
+        "schema/",
+        "docs/openapi.yaml",
+        "packages/web/",
+        "tools/build/",
+        "orval.config.ts",
+        ".husky/",
+        ".github/workflows/",
+        "deploy/",
+        "Dockerfile",
+        "compose.yaml",
+        ".agents/plugins/",
+        ".claude-plugin/",
+        "packages/plugin-claude/",
+        "packages/plugin-codex/",
+        "packages/plugin-opencode/",
+        "packages/plugin-pi/",
+        "packages/plugin-runtime/",
+        ".release-version",
+        ".gitattributes",
+        ".gitignore",
+        "LICENSE",
+        "assets/"
+      ],
+      "executor": "dagger",
+      "class": "light"
+    },
+    "go": {
+      "inputs": [
+        "packages/cli/",
+        "schema/",
+        "docs/openapi.yaml",
+        "packages/web/",
+        "orval.config.ts",
+        "tools/build/src/build-web.ts",
+        "tools/build/src/sync-web-assets.ts",
+        "tools/build/src/files.ts",
+        "tools/build/src/workspace.ts",
+        "tools/build/src/test-go.ts",
+        "tools/build/src/postgres-image.ts"
+      ],
+      "executor": "dagger",
+      "class": "heavy"
+    },
+    "benchmarks": {
+      "inputs": [
+        "packages/cli/",
+        "schema/",
+        "docs/openapi.yaml",
+        "packages/web/",
+        "orval.config.ts",
+        "tools/build/src/build-web.ts",
+        "tools/build/src/sync-web-assets.ts",
+        "tools/build/src/files.ts",
+        "tools/build/src/workspace.ts",
+        "tools/build/src/test-go.ts",
+        "tools/build/src/postgres-image.ts"
+      ],
+      "executor": "dagger",
+      "class": "heavy"
+    },
+    "distribution": {
+      "inputs": [
+        "packages/cli/",
+        "schema/",
+        "docs/openapi.yaml",
+        "packages/web/",
+        "orval.config.ts",
+        ".gitignore",
+        "tools/build/src/build-web.ts",
+        "tools/build/src/sync-web-assets.ts",
+        "tools/build/src/files.ts",
+        "tools/build/src/workspace.ts",
+        "tools/build/src/test-distribution.ts",
+        "tools/build/src/install-refs.ts"
+      ],
+      "executor": "dagger",
+      "class": "heavy"
+    },
+    "browser": {
+      "inputs": [
+        "packages/cli/",
+        "schema/",
+        "docs/openapi.yaml",
+        "packages/web/",
+        "orval.config.ts",
+        "tools/build/src/build-web.ts",
+        "tools/build/src/sync-web-assets.ts",
+        "tools/build/src/files.ts",
+        "tools/build/src/workspace.ts"
+      ],
+      "executor": "dagger",
+      "class": "heavy"
+    },
+    "deployment": {
+      "inputs": [
+        "packages/cli/",
+        "schema/",
+        "docs/openapi.yaml",
+        "packages/web/",
+        "orval.config.ts",
+        "Dockerfile",
+        ".dockerignore",
+        "deploy/",
+        "compose.yaml",
+        "tools/build/src/build-web.ts",
+        "tools/build/src/sync-web-assets.ts",
+        "tools/build/src/files.ts",
+        "tools/build/src/workspace.ts"
+      ],
+      "executor": "dagger",
+      "class": "heavy"
+    }
+  }
+}
