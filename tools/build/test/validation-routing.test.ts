@@ -15,7 +15,6 @@ function dryRun(task: string, args: string[] = []): string {
 
 void test('public checks enter isolated validation without native check commands', () => {
   for (const task of [
-    'format:check',
     'lint',
     'check-schema',
     'check-api',
@@ -40,7 +39,7 @@ void test('public checks enter isolated validation without native check commands
 
 void test('validation forwards caller flags', () => {
   assert.match(
-    dryRun('validate', ['--group', 'browser', '--force']),
+    dryRun('check:pr', ['--group', 'browser', '--force']),
     /go run \.\/cmd\/validate --group browser --force/,
   )
 })
@@ -51,4 +50,31 @@ void test('development builds retain native leaves and dependency preparation', 
   assert.match(output, /node tools\/build\/src\/build-web.ts/)
   assert.match(output, /mise deps install/)
   assert.doesNotMatch(output, /go run \.\/cmd\/validate/)
+})
+
+void test('format verification never installs dependencies or enters Dagger', () => {
+  for (const task of ['format:check', 'check:internal:format']) {
+    const output = dryRun(task)
+    assert.match(output, /format-go.ts --check/)
+    assert.match(output, /oxfmt --check/)
+    assert.doesNotMatch(output, /mise deps install|cmd\/validate|dagger/)
+  }
+})
+
+void test('container leaves never invoke public wrappers', () => {
+  for (const group of [
+    'static',
+    'web',
+    'tooling',
+    'go',
+    'benchmarks',
+    'distribution',
+    'browser',
+    'deployment',
+  ]) {
+    const output = dryRun('check:internal:' + group)
+    assert.doesNotMatch(output, /cmd\/validate|mise run (?:check:pr|test:|lint)/)
+  }
+  assert.match(dryRun('check:internal:web'), /exec vitest run/)
+  assert.doesNotMatch(dryRun('check:internal:web'), /tsc/)
 })

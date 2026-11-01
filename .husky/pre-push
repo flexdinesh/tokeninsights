@@ -1,7 +1,2 @@
-# Fixture Git commands must not inherit the repository selected by this hook.
-git_local_env=$(git rev-parse --local-env-vars) || exit
-for git_env_var in $git_local_env; do
-  unset "$git_env_var"
-done
-
-exec mise run check:push </dev/null
+# Pushes do not run validation. Run mise run check:pr before publication.
+exit 0

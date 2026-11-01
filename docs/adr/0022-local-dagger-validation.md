@@ -19,8 +19,8 @@ Pushing alone does not run the full suite. Existing CI, release and deployment
 workflows remain unchanged; no remote enforcement is introduced.
 
 The aggregate preserves existing coverage, excluding the docs production build.
-Coarse contracts, JavaScript, Go, benchmark, distribution, browser and deployment
-groups receive conservative selected inputs. Immutable preparation and generated
+Host formatting and container static, web, tooling, Go, benchmark, distribution,
+browser and deployment groups receive conservative selected inputs. Immutable preparation and generated
 assets may be shared; writable homes, temporary files, outputs and databases may
 not. Clients and fixture servers run inside containers. PostgreSQL uses service
 bindings and independent fixture databases. No application ports are published,
@@ -35,8 +35,13 @@ validity. History-only rebases can reuse unchanged inputs. Failed or interrupted
 runs never qualify as successful validation. Force reruns bypass check-result
 caches while allowing immutable dependency preparation to be reused.
 
-Machine admission bounds expensive execution independently of task dependencies.
-Logs and browser failure artifacts belong to individual runs. Cancellation stops
+Machine admission bounds actual execution independently of task dependencies.
+Only missing checks acquire slots: one heavy and two light by default, configurable
+with TOKENINSIGHTS_VALIDATION_HEAVY_SLOTS and TOKENINSIGHTS_VALIDATION_LIGHT_SLOTS.
+Status and cache hits do not queue. Coordination applies to participating tools
+using the same per-user slot directory; it does not constrain unrelated processes.
+Logs and browser failure artifacts belong to individual runs in repository-shared
+storage, with active leases and bounded retention. Cancellation stops
 only the current invocation's work, and never its shared engine.
 
 ## Engine ownership
@@ -67,7 +72,7 @@ process lifecycle inside a Dagger service. Docker-in-Docker is excluded.
 
 ## Consequences
 
-Local wrappers and agent instructions are bypassable; Git has no standard pre-PR
+Local commands and agent instructions are bypassable; Git has no standard pre-PR
 hook. Linux containers do not provide full native macOS test coverage. Existing
 CI retains native Linux arm64 and macOS build/storage coverage. Input modeling,
 resource bounds, service independence and artifact retention remain explicit

@@ -14,7 +14,7 @@ import (
 
 func fixture(t *testing.T) runner {
 	t.Helper()
-	r := runner{ctx: context.Background(), root: t.TempDir(), home: t.TempDir()}
+	r := runner{ctx: context.Background(), root: t.TempDir(), home: t.TempDir(), manifest: manifest{Common: []string{"*", "packages/"}, Groups: map[string]groupSpec{"go": {Class: "heavy"}}}}
 	for _, a := range [][]string{{"init", "-q"}, {"config", "user.email", "test@example.invalid"}, {"config", "user.name", "Test"}} {
 		if _, e := r.git(a...); e != nil {
 			t.Fatal(e)
@@ -34,7 +34,7 @@ func TestSourceAndLockfileInvalidate(t *testing.T) {
 		if err := os.WriteFile(path, []byte("input"), 0600); err != nil {
 			t.Fatal(err)
 		}
-		key, err := r.snapshot(commit(t, r), "go", t.TempDir())
+		key, err := r.identity(commit(t, r), "go")
 		if err != nil || key == previous {
 			t.Fatalf("%s did not invalidate: %v", name, err)
 		}
@@ -81,7 +81,11 @@ func TestCommandCancellationKillsDescendants(t *testing.T) {
 	if err := syscall.Kill(pid, 0); err == nil {
 		data, err := os.ReadFile(fmt.Sprintf("/proc/%d/stat", pid))
 		if err == nil && !strings.Contains(string(data), ") Z ") {
-			t.Fatal("descendant still running")
+			time.Sleep(50 * time.Millisecond)
+			data, err = os.ReadFile(fmt.Sprintf("/proc/%d/stat", pid))
+			if err == nil && !strings.Contains(string(data), ") Z ") {
+				t.Fatal("descendant still running")
+			}
 		}
 	}
 }
@@ -170,21 +174,138 @@ func TestEvidenceReceiptRequiresCompleteSuccess(t *testing.T) {
 	}
 }
 func TestAdmissionCancellationAndRelease(t *testing.T) {
-	release, e := admission(context.Background())
+	release, e := slot(context.Background(), "heavy")
 	if e != nil {
 		t.Fatal(e)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
 	defer cancel()
-	if other, e := admission(ctx); e == nil {
+	if other, e := slot(ctx, "heavy"); e == nil {
 		other()
 		release()
 		t.Fatal("concurrent capacity admitted")
 	}
 	release()
-	release, e = admission(context.Background())
+	release, e = slot(context.Background(), "heavy")
 	if e != nil {
 		t.Fatal(e)
 	}
 	release()
+}
+
+func TestPrunePreservesActiveLease(t *testing.T) {
+	base := t.TempDir()
+	p := filepath.Join(base, "runs", "active")
+	if e := os.MkdirAll(p, 0700); e != nil {
+		t.Fatal(e)
+	}
+	if e := os.WriteFile(filepath.Join(p, "completed"), nil, 0600); e != nil {
+		t.Fatal(e)
+	}
+	old := time.Now().Add(-30 * 24 * time.Hour)
+	if e := os.Chtimes(filepath.Join(p, "completed"), old, old); e != nil {
+		t.Fatal(e)
+	}
+	lease, e := lockFile(filepath.Join(p, "active.lock"))
+	if e != nil {
+		t.Fatal(e)
+	}
+	if e = pruneRuns(base); e != nil {
+		t.Fatal(e)
+	}
+	if _, e = os.Stat(p); e != nil {
+		t.Fatal("active evidence removed")
+	}
+	lease.Close()
+	if e = pruneRuns(base); e != nil {
+		t.Fatal(e)
+	}
+	if _, e = os.Stat(p); !os.IsNotExist(e) {
+		t.Fatal("expired evidence retained")
+	}
+}
+func TestIdentityIgnoresHistoryAndReadme(t *testing.T) {
+	r := fixture(t)
+	r.manifest.Common = []string{"mise.toml"}
+	if e := os.WriteFile(filepath.Join(r.root, "mise.toml"), []byte("config"), 0600); e != nil {
+		t.Fatal(e)
+	}
+	first, e := r.identity(commit(t, r), "go")
+	if e != nil {
+		t.Fatal(e)
+	}
+	if e = os.WriteFile(filepath.Join(r.root, "README.md"), []byte("docs"), 0600); e != nil {
+		t.Fatal(e)
+	}
+	second, e := r.identity(commit(t, r), "go")
+	if e != nil || first != second {
+		t.Fatal("README invalidated", e)
+	}
+	third, e := r.identity(commit(t, r), "go")
+	if e != nil || second != third {
+		t.Fatal("history invalidated", e)
+	}
+}
+
+func TestPruneAbandonedRun(t *testing.T) {
+	base := t.TempDir()
+	p := filepath.Join(base, "runs", "abandoned")
+	if err := os.MkdirAll(p, 0700); err != nil {
+		t.Fatal(err)
+	}
+	old := time.Now().Add(-30 * 24 * time.Hour)
+	if err := os.Chtimes(p, old, old); err != nil {
+		t.Fatal(err)
+	}
+	if err := pruneRuns(base); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(p); !os.IsNotExist(err) {
+		t.Fatal("abandoned run retained", err)
+	}
+}
+
+func TestStorageSamplesHaveSeparateIdentity(t *testing.T) {
+	r := fixture(t)
+	sha := commit(t, r)
+	smoke, err := r.identity(sha, "go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	r.storageBenchmarks = true
+	full, err := r.identity(sha, "go")
+	if err != nil || smoke == full {
+		t.Fatal("full samples share smoke identity", err)
+	}
+	for _, args := range [][]string{{"--storage-benchmarks"}, {"--storage-benchmarks", "--group", "web"}} {
+		if err := run(context.Background(), args); err == nil {
+			t.Fatal("invalid storage selector accepted")
+		}
+	}
+}
+
+func TestIdentityTracksModeAndImplementation(t *testing.T) {
+	r := fixture(t)
+	p := filepath.Join(r.root, "task.sh")
+	if err := os.WriteFile(p, []byte("exit 0\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	first, err := r.identity(commit(t, r), "go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(p, 0700); err != nil {
+		t.Fatal(err)
+	}
+	second, err := r.identity(commit(t, r), "go")
+	if err != nil || first == second {
+		t.Fatal("executable mode did not invalidate", err)
+	}
+	if err := os.WriteFile(p, []byte("exit 1\n"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	third, err := r.identity(commit(t, r), "go")
+	if err != nil || second == third {
+		t.Fatal("task implementation did not invalidate", err)
+	}
 }

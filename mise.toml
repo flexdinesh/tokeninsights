@@ -31,8 +31,8 @@ auto = false
 run = "pnpm install --frozen-lockfile"
 
 [vars]
-format_paths = "package.json compose.yaml pnpm-workspace.yaml orval.config.ts .agents/plugins .claude-plugin deploy docs/openapi.yaml docs-website .github/workflows packages/cli/package.json packages/web packages/plugin-codex packages/plugin-claude packages/plugin-pi packages/plugin-opencode packages/plugin-runtime tools/build"
-lint_paths = "orval.config.ts docs-website packages/web packages/plugin-pi packages/plugin-opencode packages/plugin-runtime tools/build"
+format_paths = "package.json compose.yaml pnpm-workspace.yaml orval.config.ts .agents/plugins .claude-plugin deploy docs/openapi.yaml docs-website .github/workflows packages/cli/package.json packages/web packages/plugin-codex packages/plugin-claude packages/plugin-pi packages/plugin-opencode packages/plugin-runtime tools/build tools/validation/groups.json"
+lint_paths = "orval.config.ts docs-website packages/web packages/plugin-pi packages/plugin-opencode packages/plugin-runtime tools/build tools/validation/groups.json"
 
 # Setup
 
@@ -41,14 +41,14 @@ description = "Install dependencies and local Git hooks"
 run = "mise deps install"
 
 [tasks."setup:browser"]
-depends = ["validation:build:deps"]
+depends = ["build:internal:deps"]
 description = "Install Chromium for local browser tests"
 run = "pnpm --filter @tokeninsights/web exec playwright install chromium"
 
 # Format and lint
 
 [tasks.format]
-depends = ["validation:build:deps"]
+depends = ["build:internal:deps"]
 description = "Format Go, TypeScript, config and mise files"
 run = [
   "node tools/build/src/format-go.ts",
@@ -57,39 +57,41 @@ run = [
 ]
 
 [tasks."format:check"]
-description = "Isolated contracts validation"
-dir = "{{config_root}}/tools/validation"
-run = "go run ./cmd/validate --group contracts"
+run = [
+  "node tools/build/src/format-go.ts --check",
+  "oxfmt --check {{vars.format_paths}}",
+  "mise fmt --check",
+]
 
 [tasks."lint"]
-description = "Isolated javascript, go validation"
+description = "Isolated web, tooling and Go validation"
 dir = "{{config_root}}/tools/validation"
-run = "go run ./cmd/validate --group javascript --group go"
+run = "go run ./cmd/validate --group static"
 
 [tasks."check-schema"]
-description = "Isolated contracts validation"
+description = "Isolated static validation"
 dir = "{{config_root}}/tools/validation"
-run = "go run ./cmd/validate --group contracts"
+run = "go run ./cmd/validate --group static"
 
 [tasks."check-api"]
-description = "Isolated contracts validation"
+description = "Isolated static validation"
 dir = "{{config_root}}/tools/validation"
-run = "go run ./cmd/validate --group contracts"
+run = "go run ./cmd/validate --group static"
 
 [tasks."check:toolchain"]
-description = "Isolated contracts validation"
+description = "Isolated static validation"
 dir = "{{config_root}}/tools/validation"
-run = "go run ./cmd/validate --group contracts"
+run = "go run ./cmd/validate --group static"
 
 [tasks."check:plugins"]
-description = "Isolated javascript validation"
+description = "Isolated JavaScript validation"
 dir = "{{config_root}}/tools/validation"
-run = "go run ./cmd/validate --group javascript"
+run = "go run ./cmd/validate --group static"
 
 [tasks."typecheck:plugins"]
-description = "Isolated javascript validation"
+description = "Isolated JavaScript validation"
 dir = "{{config_root}}/tools/validation"
-run = "go run ./cmd/validate --group javascript"
+run = "go run ./cmd/validate --group static"
 
 [tasks."generate:api:go"]
 description = "Regenerate Go API server code"
@@ -97,7 +99,7 @@ dir = "{{config_root}}/packages/cli"
 run = "go tool oapi-codegen -config internal/server/api/oapi-codegen.yaml ../../docs/openapi.yaml"
 
 [tasks."generate:api:web"]
-depends = ["validation:build:deps"]
+depends = ["build:internal:deps"]
 description = "Regenerate web API client"
 run = [
   "orval --config orval.config.ts",
@@ -109,14 +111,14 @@ description = "Regenerate API files"
 depends = ["generate:api:go", "generate:api:web"]
 
 [tasks."generate:homebrew"]
-depends = ["validation:build:deps"]
+depends = ["build:internal:deps"]
 description = "Generate Homebrew formula"
 run = "pnpm --filter @tokeninsights/build-tools run generate:homebrew"
 
 # Build
 
 [tasks."build:web"]
-depends = ["validation:build:deps"]
+depends = ["build:internal:deps"]
 description = "Build and sync embedded web assets; skips unchanged inputs"
 run = "node tools/build/src/build-web.ts"
 
@@ -133,7 +135,7 @@ run = [
 ]
 
 [tasks."build:plugins"]
-depends = ["validation:build:deps"]
+depends = ["build:internal:deps"]
 description = "Build plugin artifacts"
 sources = [
   "packages/plugin-opencode/src/**/*",
@@ -151,8 +153,8 @@ run = "pnpm --recursive --filter '@tokeninsights/plugin-*' run build"
 description = "Build production binaries and plugins, validating contracts"
 run = [
   { tasks = [
-    "validation:build:check-schema",
-    "validation:build:check-api",
+    "build:internal:check-schema",
+    "build:internal:check-api",
   ] },
   { tasks = [
     "build:cli",
@@ -161,7 +163,7 @@ run = [
 ]
 
 [tasks."build:docs"]
-depends = ["validation:build:deps"]
+depends = ["build:internal:deps"]
 description = "Build public documentation as static files"
 run = "pnpm --filter @tokeninsights/docs run build"
 
@@ -174,9 +176,9 @@ run = "go install ./cmd/tokeninsights ./cmd/tokeninsights-server"
 # Test
 
 [tasks."test:js"]
-description = "Isolated javascript validation"
+description = "Isolated JavaScript validation"
 dir = "{{config_root}}/tools/validation"
-run = "go run ./cmd/validate --group javascript"
+run = "go run ./cmd/validate --group web --group tooling"
 
 [tasks."test:go"]
 description = "Isolated go validation"
@@ -184,9 +186,9 @@ dir = "{{config_root}}/tools/validation"
 run = "go run ./cmd/validate --group go"
 
 [tasks."test"]
-description = "Isolated javascript, go validation"
+description = "Isolated web, tooling and Go validation"
 dir = "{{config_root}}/tools/validation"
-run = "go run ./cmd/validate --group javascript --group go"
+run = "go run ./cmd/validate --group web --group tooling --group go"
 
 [tasks."test:race"]
 description = "Isolated go validation"
@@ -199,10 +201,8 @@ dir = "{{config_root}}/tools/validation"
 run = "go run ./cmd/validate --group benchmarks"
 
 [tasks."bench:storage"]
-description = "Run storage benchmarks"
-depends = ["build:web"]
-dir = "{{config_root}}/packages/cli"
-run = "node ../../tools/build/src/test-go.ts -run ^$ -bench ^BenchmarkStorage$ -benchtime=3x -count=3 -p=1 -timeout=30m"
+dir = "{{config_root}}/tools/validation"
+run = "go run ./cmd/validate --group benchmarks --storage-benchmarks"
 
 [tasks."test:distribution"]
 description = "Isolated distribution validation"
@@ -218,19 +218,6 @@ run = "go run ./cmd/validate --group browser"
 description = "Isolated deployment validation"
 dir = "{{config_root}}/tools/validation"
 run = "go run ./cmd/validate --group deployment"
-
-[tasks."check:push"]
-description = "Full local verification before push"
-run = "node tools/build/src/check-push.ts"
-
-[tasks."check:push:stages"]
-description = "Internal verification stages, entered through the repository gate"
-hide = true
-run = [
-  "test \"$TOKENINSIGHTS_CHECK_GATE_ACTIVE\" = 1",
-  # Keep the mandatory repository gate until committed aggregate parity is verified.
-  "node tools/build/src/check-stages.ts validate",
-]
 
 # Develop
 
@@ -258,19 +245,19 @@ output = "prefix"
 run = "node tools/build/src/dev-server.ts"
 
 [tasks."dev:web"]
-depends = ["validation:build:deps"]
+depends = ["build:internal:deps"]
 description = "Run hot-reloading web app against Go API"
 output = "prefix"
 run = "pnpm --filter @tokeninsights/web run dev"
 
 [tasks."dev:web:mock"]
-depends = ["validation:build:deps"]
+depends = ["build:internal:deps"]
 description = "Run web app with synthetic API responses"
 output = "prefix"
 run = "pnpm --filter @tokeninsights/web run dev:mock"
 
 [tasks."dev:docs"]
-depends = ["validation:build:deps"]
+depends = ["build:internal:deps"]
 description = "Serve public documentation with live reload"
 output = "prefix"
 run = "pnpm --filter @tokeninsights/docs run dev"
@@ -281,83 +268,91 @@ depends = ["build:cli"]
 output = "prefix"
 run = "./packages/cli/bin/tokeninsights web"
 
-[tasks."validation:internal:contracts"]
+[tasks."check:internal:static"]
 hide = true
 run = [
-  "node tools/build/src/format-go.ts --check",
-  "oxfmt --check {{vars.format_paths}}",
-  "mise fmt --check",
   "node tools/build/src/check-schema.ts",
   "node tools/build/src/check-api.ts",
   "node tools/build/src/check-toolchain.ts",
-  "cd tools/validation && go test -count=1 contract.go main_test.go",
-  "cd tools/validation && go test -count=1 ./cmd/validate",
-]
-
-[tasks."validation:internal:javascript"]
-hide = true
-run = [
+  "cd packages/cli && go test ./internal/architecture/...",
   "oxlint {{vars.lint_paths}}",
   "pnpm --workspace-concurrency=2 --recursive --filter '@tokeninsights/plugin-*' run typecheck",
   "pnpm --workspace-concurrency=2 --recursive --filter '@tokeninsights/plugin-*' run check:build",
   "pnpm --filter @tokeninsights/build-tools run typecheck",
-  "pnpm --filter @tokeninsights/build-tools run test",
-  "pnpm --filter @tokeninsights/web run test",
-]
-
-[tasks."validation:internal:go"]
-hide = true
-run = [
+  "pnpm --filter @tokeninsights/web exec tsc --noEmit",
   "cd packages/cli && go tool -modfile=golangci-lint.mod golangci-lint run ./...",
-  "cd packages/cli && node ../../tools/build/src/test-go.ts -race",
 ]
 
-[tasks."validation:internal:benchmarks"]
+[tasks."check:internal:go"]
+hide = true
+run = ["cd packages/cli && node ../../tools/build/src/test-go.ts -race"]
+
+[tasks."check:internal:benchmarks"]
 hide = true
 run = [
   "cd packages/cli && node ../../tools/build/src/test-go.ts --benchmark-smoke",
 ]
 
-[tasks."validation:internal:distribution"]
+[tasks."check:internal:distribution"]
 hide = true
 run = ["node tools/build/src/test-distribution.ts"]
 
-[tasks."validation:internal:browser"]
+[tasks."check:internal:browser"]
 hide = true
 run = ["pnpm --filter @tokeninsights/web run test:e2e"]
 
-[tasks."validation:internal:deployment"]
+[tasks."check:internal:deployment"]
 hide = true
 run = [
   "cd packages/cli && go test ./internal/deployment -run ^TestContainerDeployment$ -count=1 -timeout=5m",
 ]
 
-[tasks."validate"]
+[tasks."check:pr"]
 dir = "{{config_root}}/tools/validation"
 run = "go run ./cmd/validate"
 
-[tasks."validate:status"]
+[tasks."check:status"]
 dir = "{{config_root}}/tools/validation"
 run = "go run ./cmd/validate --status"
 
-[tasks."pr:create"]
-dir = "{{config_root}}/tools/validation"
-run = "go run ./cmd/validate --pr-create"
-
-[tasks."pr:update"]
-dir = "{{config_root}}/tools/validation"
-run = "go run ./cmd/validate --pr-update"
-
-[tasks."validation:build:deps"]
+[tasks."build:internal:deps"]
 hide = true
 run = "mise deps install"
 
-[tasks."validation:build:check-schema"]
+[tasks."build:internal:check-schema"]
 hide = true
-depends = ["validation:build:deps"]
+depends = ["build:internal:deps"]
 run = "pnpm --filter @tokeninsights/build-tools run check:schema"
 
-[tasks."validation:build:check-api"]
+[tasks."build:internal:check-api"]
 hide = true
-depends = ["validation:build:deps"]
+depends = ["build:internal:deps"]
 run = "pnpm --filter @tokeninsights/build-tools run check:api"
+
+[tasks."check:cleanup"]
+dir = "{{config_root}}/tools/validation"
+run = "go run ./cmd/validate --prune"
+
+[tasks."check:internal:format"]
+hide = true
+run = [
+  "node tools/build/src/format-go.ts --check",
+  "oxfmt --check {{vars.format_paths}}",
+  "mise fmt --check",
+]
+
+[tasks."check:internal:web"]
+hide = true
+run = "pnpm --filter @tokeninsights/web exec vitest run"
+
+[tasks."check:internal:tooling"]
+hide = true
+run = [
+  "pnpm --filter @tokeninsights/build-tools run test",
+  "cd tools/validation && go test -count=1 contract.go main_test.go",
+  "cd tools/validation && go test -count=1 ./cmd/validate",
+]
+
+[tasks."check:internal:storage"]
+hide = true
+run = "cd packages/cli && node ../../tools/build/src/test-go.ts -run ^$ -bench ^BenchmarkStorage$ -benchtime=3x -count=3 -p=1 -timeout=30m"

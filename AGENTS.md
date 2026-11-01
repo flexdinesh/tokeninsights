@@ -83,24 +83,24 @@ Read `docs/design.md` and the relevant ADRs before non-trivial changes, especial
 
 ## Commands
 
-`mise.toml` pins exact development tools, locked by `mise.lock`, and owns all tasks; root `package.json` keeps only `prepare`, and tasks call per-package leaf scripts. `mise tasks ls` lists them. `mise run setup` installs dependencies and Husky's pre-push hook; `mise run setup:browser` installs Chromium. Bump tools per `docs/development.md`; `check:toolchain` rejects drift. Public docs live in `docs-website/`, a Vocs pnpm workspace package run with `mise run dev:docs` and `mise run build:docs`. All locally reproducible checks except the docs build run in `validate`, including live PostgreSQL and real-container contracts. CI runs only on main pushes and covers native Linux arm64 and macOS amd64/arm64 builds and focused storage tests; pull requests run no CI. Test/race tasks require Docker or `TOKENINSIGHTS_TEST_POSTGRES_DSN` with CREATEDB privileges; container contracts always require Docker.
+`mise.toml` pins exact development tools, locked by `mise.lock`, and owns all tasks; root `package.json` keeps only `prepare`, and tasks call per-package leaf scripts. `mise tasks ls` lists them. `mise run setup` installs dependencies and Husky hooks; pre-push runs no checks; `mise run setup:browser` installs Chromium. Bump tools per `docs/development.md`; `check:toolchain` rejects drift. Public docs live in `docs-website/`, a Vocs pnpm workspace package run with `mise run dev:docs` and `mise run build:docs`. All locally reproducible checks except the docs build run in `check:pr`, including live PostgreSQL and real-container contracts. CI runs only on main pushes and covers native Linux arm64 and macOS amd64/arm64 builds and focused storage tests; pull requests run no CI. Validation requires the explicitly managed Dagger engine. Tests receive private container services, never host database URLs.
 
 ```sh
 mise run format
 mise run check-schema
 mise run check-api
 mise run build:cli
-mise run validate    # full suite before PR creation/update
+mise run check:pr    # full suite before PR creation/update
 ```
 
 ## Verification
 
-- **Validate before PR creation and updates**. Run `mise run validate` on committed HEAD with clean tracked files. Pushes do not trigger the full suite. Reuse only complete successful evidence with matching inputs.
-- **Use isolated groups for targeted validation**. Run `mise run validate -- --group <name>`; groups are contracts, javascript, go, benchmarks, distribution, browser and deployment. Internal leaf tasks are implementation details, not host validation entrypoints.
+- **Validate before PR creation and updates**. Run `mise run check:pr` on committed HEAD with clean tracked files. Pushes do not trigger the full suite. Reuse only complete successful evidence with matching inputs.
+- **Use isolated groups for targeted validation**. Run `mise run check:pr -- --group <name>`; groups are format, static, web, tooling, go, benchmarks, distribution, browser and deployment. Internal leaf tasks are implementation details, not host validation entrypoints.
 - **Format before verification** with `mise run format`. Commit intended changes before HEAD validation. Do not claim uncommitted development checks validate HEAD.
 - **Preserve local execution**. CI/release/deployment workflows remain unchanged. New remote coverage requires a concrete reason unavailable locally.
 - **Protect shared engines**. Use the explicitly managed repository engine and dedicated named cache. Set `DAGGER_LEAVE_OLD_ENGINE=true` and the direct runner endpoint, including initialization. Never stop, restart, delete or prune another task's engine/volumes. Unknown ownership means leave untouched. Cancellation stops only the invocation. Upgrades/cleanup require coordination.
-- **Inspect retained artifacts** in `.check-logs/<run-id>/`. Rerun a failed group; use `--force` to bypass successful check caches. Never delete another invocation's artifacts.
+- **Inspect retained artifacts** in `<canonical Git common dir>/tokeninsights-validation/v2/runs/<run-id>/`. Rerun a failed group; use `--force` to bypass successful check caches. Never delete another invocation's artifacts.
 - **Deployment exception**: read-only-root enforcement coverage was explicitly waived because Dagger 0.21.11 does not enforce it. Preserve other deployment assertions. See ADR 0022.
 - **Never poll long checks**. Run long commands in the background and wait for the completion notification. Never poll logs or `sleep` in loops.
 - Run `mise run build:cli` only when manual CLI verification needs a fresh binary.

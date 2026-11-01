@@ -50,17 +50,26 @@ func (m *Validation) Deployment(source *dagger.Directory, prepared *dagger.Conta
 const postgresImage = "postgres:18@sha256:edb0c08dc33befd0262ab3b5cf1c4f3f8cfd8b09e88c05b45adee29d6761ddb6"
 
 // Check captures check failures as data so the host can export diagnostics.
-func (m *Validation) Check(ctx context.Context, source *dagger.Directory, group string, attempt string) (*dagger.Directory, error) {
+func (m *Validation) Check(ctx context.Context, source *dagger.Directory, group string, attempt string,
+	// Run full storage benchmark samples instead of smoke.
+	// +optional
+	storageBenchmarks bool,
+) (*dagger.Directory, error) {
 	if err := validateCheck(group, attempt); err != nil {
 		return nil, err
 	}
+	if storageBenchmarks && group != "benchmarks" {
+		return nil, fmt.Errorf("storage benchmarks require benchmarks group")
+	}
 	runner := m.prepare(source, group)
-	if group != "contracts" && group != "javascript" {
+	if group != "web" {
 		webInputs := dag.Directory().WithDirectory("/", source, dagger.DirectoryWithDirectoryOpts{Include: []string{
 			"package.json", "pnpm-lock.yaml", "pnpm-workspace.yaml", "packages/*/package.json", "docs-website/package.json",
-			"packages/web/**", "tools/build/**", ".oxfmtrc.json", ".oxlintrc.json",
+			"packages/web/**", "tools/build/package.json", "tools/build/src/build-web.ts",
+			"tools/build/src/sync-web-assets.ts", "tools/build/src/files.ts", "tools/build/src/workspace.ts",
+			".oxfmtrc.json", ".oxlintrc.json",
 		}})
-		web := m.prepare(webInputs, "javascript").WithExec([]string{"node", "tools/build/src/build-web.ts"})
+		web := m.prepare(webInputs, "web").WithExec([]string{"node", "tools/build/src/build-web.ts"})
 		runner = runner.WithDirectory("/src/packages/cli/internal/server/static", web.Directory("/src/packages/cli/internal/server/static"))
 	}
 	if group == "browser" {
@@ -84,8 +93,12 @@ func (m *Validation) Check(ctx context.Context, source *dagger.Directory, group 
 		}
 		runner = m.Deployment(source, runner, attempt)
 	}
+	executionGroup := group
+	if storageBenchmarks {
+		executionGroup = "storage"
+	}
 	result := runner.WithWorkdir("/src").WithEnvVariable("VALIDATION_ATTEMPT", attempt).
-		WithExec([]string{"sh", "-c", captureScript, "capture", group})
+		WithExec([]string{"sh", "-c", captureScript, "capture", executionGroup})
 	if _, err := result.Sync(ctx); err != nil {
 		return preparationFailure(err), nil
 	}
@@ -126,15 +139,15 @@ func (m *Validation) prepare(source *dagger.Directory, group string) *dagger.Con
 		js = js.WithExec([]string{"sh", "-c", "sed -i 's|http://deb.debian.org/debian-security|https://snapshot.debian.org/archive/debian-security/20261031T000000Z|g; s|http://deb.debian.org/debian|https://snapshot.debian.org/archive/debian/20261031T000000Z|g' /etc/apt/sources.list.d/debian.sources; printf 'Acquire::Check-Valid-Until \"false\";\n' > /etc/apt/apt.conf.d/99validation-snapshot"}).
 			WithExec([]string{"pnpm", "--filter", "@tokeninsights/web", "exec", "playwright", "install", "--with-deps", "chromium"})
 	}
-	if group == "javascript" {
+	if group == "web" {
 		return js.WithDirectory("/src", source).WithWorkdir("/src")
 	}
 	goDeps := base.WithDirectory("/deps", source, dagger.ContainerWithDirectoryOpts{Include: []string{"packages/cli/go.mod", "packages/cli/go.sum"}}).
 		WithWorkdir("/deps/packages/cli").WithExec([]string{"go", "mod", "download"})
-	if group == "go" || group == "all" {
+	if group == "static" || group == "all" {
 		goDeps = goDeps.WithDirectory("/deps", source, dagger.ContainerWithDirectoryOpts{Include: []string{"packages/cli/golangci-lint.mod", "packages/cli/golangci-lint.sum"}}).WithExec([]string{"go", "mod", "download", "-modfile=golangci-lint.mod"})
 	}
-	if group == "contracts" {
+	if group == "tooling" {
 		goDeps = goDeps.WithDirectory("/validation-deps", source, dagger.ContainerWithDirectoryOpts{Include: []string{"tools/validation/go.mod", "tools/validation/go.sum"}}).
 			WithWorkdir("/validation-deps/tools/validation").WithExec([]string{"go", "mod", "download"})
 	}

@@ -15,6 +15,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"sort"
 	"strings"
 	"syscall"
 	"time"
@@ -26,37 +27,39 @@ const version = "0.21.11"
 const engine = "tokeninsights-validation-engine-v0.21.11"
 const engineImage = "registry.dagger.io/engine@sha256:6b557cc8b5fdfee0e2e8c82d451ac922097a1255482143e1b96c0be3ff2a303c"
 const engineVolume = "tokeninsights-validation-cache-v0.21.11"
-const receiptVersion = "v1"
-
-var groups = []string{"contracts", "javascript", "go", "benchmarks", "distribution", "browser", "deployment"}
+const receiptVersion = "v2"
 
 type selection []string
 
-func (s *selection) String() string { return strings.Join(*s, ",") }
-func (s *selection) Set(v string) error {
-	for _, g := range groups {
-		if v == g {
-			*s = append(*s, v)
-			return nil
-		}
-	}
-	return fmt.Errorf("unknown group %q", v)
-}
+func (s *selection) String() string     { return strings.Join(*s, ",") }
+func (s *selection) Set(v string) error { *s = append(*s, v); return nil }
 
 type receipt struct {
 	Version, Group, Key, SHA, Tree, Artifacts string
+	Mode                                      string
 	Completed                                 time.Time
 }
 type runner struct {
-	ctx        context.Context
-	root, home string
-	logPath    string
+	ctx               context.Context
+	root, home        string
+	logPath           string
+	manifest          manifest
+	hostPath          string
+	storageBenchmarks bool
 }
 
 func (r runner) command(dir, name string, args ...string) ([]byte, error) {
+	if err := os.MkdirAll(filepath.Join(r.home, "tmp"), 0700); err != nil {
+		return nil, err
+	}
 	c := exec.Command(name, args...)
 	c.Dir = dir
 	c.Env = []string{"PATH=" + os.Getenv("PATH"), "HOME=" + r.home, "XDG_CONFIG_HOME=" + r.home + "/config", "XDG_CACHE_HOME=" + r.home + "/cache", "GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL=/dev/null", "DAGGER_LEAVE_OLD_ENGINE=true", "_EXPERIMENTAL_DAGGER_RUNNER_HOST=docker-container://" + engine, "LC_ALL=C", "GIT_TERMINAL_PROMPT=0"}
+	c.Env = append(c.Env, "TMPDIR="+filepath.Join(r.home, "tmp"))
+	if r.hostPath != "" {
+		c.Env[0] = "PATH=" + r.hostPath
+		c.Env = append(c.Env, "MISE_TRUSTED_CONFIG_PATHS="+dir, "MISE_TASK_RUN_AUTO_INSTALL=false", "GOTOOLCHAIN=local")
+	}
 	c.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	c.WaitDelay = 5 * time.Second
 	var output bytes.Buffer
@@ -67,7 +70,7 @@ func (r runner) command(dir, name string, args ...string) ([]byte, error) {
 			return nil, err
 		}
 		defer log.Close()
-		stream := io.MultiWriter(&output, log)
+		stream := io.MultiWriter(&output, log, os.Stdout)
 		c.Stdout, c.Stderr = stream, stream
 	}
 	if e := r.ctx.Err(); e != nil {
@@ -122,39 +125,6 @@ func (r runner) clean() (string, error) {
 	}
 	return r.git("rev-parse", "HEAD")
 }
-func selected(group, path string) bool {
-	if group == "contracts" {
-		return true
-	}
-	if strings.HasSuffix(path, "/package.json") || path == "docs/openapi.yaml" {
-		return true
-	}
-	if (group == "distribution" && (strings.HasPrefix(path, "docs/") || strings.HasPrefix(path, ".github/") || strings.HasPrefix(path, "deploy/"))) || (group == "javascript" && strings.HasPrefix(path, "docs-website/")) {
-		return true
-	}
-	if group == "deployment" && strings.HasPrefix(path, "packages/") {
-		return true
-	}
-	if !strings.Contains(path, "/") || strings.HasPrefix(path, "tools/") || strings.HasPrefix(path, ".mise/") {
-		return true
-	}
-	prefixes := []string{"schema/", "packages/web/", "packages/cli/"}
-	if group == "javascript" {
-		prefixes = append(prefixes, ".agents/plugins/", ".claude-plugin/", ".husky/", ".github/")
-	}
-	if group == "contracts" || group == "javascript" || group == "browser" || group == "distribution" {
-		prefixes = append(prefixes, "packages/", "plugins/", "tests/")
-	}
-	if group == "deployment" {
-		prefixes = append(prefixes, "deploy/", "docker/", "tests/")
-	}
-	for _, p := range prefixes {
-		if strings.HasPrefix(path, p) {
-			return true
-		}
-	}
-	return false
-}
 func (r runner) snapshot(sha, group, dest string) (string, error) {
 	b, e := r.command(r.root, "git", "archive", "--format=tar", sha)
 	if e != nil {
@@ -174,7 +144,7 @@ func (r runner) snapshot(sha, group, dest string) (string, error) {
 		if hdr.Typeflag == tar.TypeXGlobalHeader || hdr.Typeflag == tar.TypeXHeader {
 			continue
 		}
-		if !selected(group, hdr.Name) {
+		if !r.selected(group, hdr.Name) {
 			continue
 		}
 		p := filepath.Join(dest, filepath.FromSlash(hdr.Name))
@@ -287,40 +257,6 @@ func saveReceipt(path string, r receipt) error {
 	}
 	return os.Rename(f.Name(), path)
 }
-func admission(ctx context.Context) (func(), error) {
-	dir := filepath.Join(os.TempDir(), fmt.Sprintf("local-validation-%d", os.Getuid()))
-	if e := os.MkdirAll(dir, 0700); e != nil {
-		return nil, e
-	}
-	st, e := os.Lstat(dir)
-	if e != nil {
-		return nil, e
-	}
-	owner, ok := st.Sys().(*syscall.Stat_t)
-	if !ok || owner.Uid != uint32(os.Getuid()) || !st.IsDir() || st.Mode().Perm() != 0700 {
-		return nil, errors.New("unsafe admission directory")
-	}
-	f, e := os.OpenFile(filepath.Join(dir, "capacity.lock"), os.O_CREATE|os.O_RDWR, 0600)
-	if e != nil {
-		return nil, e
-	}
-	for {
-		e = syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB)
-		if e == nil {
-			return func() { _ = f.Close() }, nil
-		}
-		if !errors.Is(e, syscall.EWOULDBLOCK) {
-			f.Close()
-			return nil, e
-		}
-		select {
-		case <-ctx.Done():
-			f.Close()
-			return nil, ctx.Err()
-		case <-time.After(200 * time.Millisecond):
-		}
-	}
-}
 func (r runner) checkEngine(cli string, setup bool) error {
 	b, e := r.command(r.root, cli, "version")
 	if e != nil {
@@ -405,24 +341,7 @@ func (r runner) checkVolume(setup bool) error {
 	return nil
 }
 
-// Publication is a host operation. Credentials never enter validation runners.
-func (r runner) publishCommand(name string, args ...string) ([]byte, error) {
-	c := exec.CommandContext(r.ctx, name, args...)
-	c.Dir = r.root
-	allowed := []string{"PATH", "HOME", "XDG_CONFIG_HOME", "GH_CONFIG_DIR", "GH_TOKEN", "GITHUB_TOKEN", "SSH_AUTH_SOCK"}
-	for _, key := range allowed {
-		if value, ok := os.LookupEnv(key); ok {
-			c.Env = append(c.Env, key+"="+value)
-		}
-	}
-	c.Env = append(c.Env, "GIT_TERMINAL_PROMPT=0", "GH_PROMPT_DISABLED=1")
-	b, err := c.CombinedOutput()
-	if err != nil {
-		return b, fmt.Errorf("publication %s: %w", name, err)
-	}
-	return b, nil
-}
-func run(ctx context.Context, args []string) error {
+func run(ctx context.Context, args []string) (resultErr error) {
 	fs := flag.NewFlagSet("validate", flag.ContinueOnError)
 	var chosen selection
 	fs.Var(&chosen, "group", "group (repeatable)")
@@ -430,29 +349,26 @@ func run(ctx context.Context, args []string) error {
 	status := fs.Bool("status", false, "report reusable group receipts")
 	cli := fs.String("dagger", "dagger", "pinned CLI path")
 	setup := fs.Bool("setup-engine", false, "create missing managed engine")
-	create := fs.Bool("pr-create", false, "validate then push exact HEAD and create PR")
-	update := fs.Bool("pr-update", false, "validate then push exact HEAD and update PR")
+	prune := fs.Bool("prune", false, "prune inactive completed evidence")
+	storageBenchmarks := fs.Bool("storage-benchmarks", false, "full storage benchmark samples; requires only benchmarks group")
 	if e := fs.Parse(args); e != nil {
 		return e
 	}
-	if *create && *update {
-		return errors.New("choose create or update")
+	if len(fs.Args()) != 0 {
+		return errors.New("unexpected positional arguments")
 	}
-	if *status && (*create || *update || *force) {
-		return errors.New("status cannot publish or force execution")
+	if *status && *force {
+		return errors.New("status cannot force execution")
 	}
-	if (*create || *update) && len(chosen) > 0 {
-		return errors.New("PR requires all groups")
-	}
-	if len(chosen) == 0 {
-		chosen = groups
+	if *storageBenchmarks && (len(chosen) != 1 || chosen[0] != "benchmarks") {
+		return errors.New("storage benchmarks require only benchmarks group")
 	}
 	home, e := os.MkdirTemp("", "validation-home-")
 	if e != nil {
 		return e
 	}
 	defer os.RemoveAll(home)
-	r := runner{ctx: ctx, home: home}
+	r := runner{ctx: ctx, home: home, storageBenchmarks: *storageBenchmarks}
 	root, e := r.git("rev-parse", "--show-toplevel")
 	if e != nil {
 		return e
@@ -470,30 +386,71 @@ func run(ctx context.Context, args []string) error {
 	if e != nil {
 		return e
 	}
-	release, e := admission(ctx)
+	common, e = filepath.EvalSymlinks(common)
 	if e != nil {
 		return e
 	}
-	defer release()
-	if !*status {
-		if e = r.checkEngine(*cli, *setup); e != nil {
-			return e
+	base := filepath.Join(common, "tokeninsights-validation", receiptVersion)
+	if *prune {
+		return pruneRuns(base)
+	}
+	data, e := r.command(root, "git", "show", sha+":tools/validation/groups.json")
+	if e != nil {
+		return e
+	}
+	if e = json.Unmarshal(data, &r.manifest); e != nil {
+		return e
+	}
+	if len(chosen) == 0 {
+		for g := range r.manifest.Groups {
+			chosen = append(chosen, g)
+		}
+		sort.Slice(chosen, func(i, j int) bool {
+			order := map[string]int{"format": 0, "static": 1, "tooling": 2, "web": 3, "go": 4, "benchmarks": 5, "distribution": 6, "browser": 7, "deployment": 8}
+			return order[chosen[i]] < order[chosen[j]]
+		})
+	}
+	for _, g := range chosen {
+		if _, ok := r.manifest.Groups[g]; !ok {
+			return fmt.Errorf("unknown group %q", g)
 		}
 	}
 	id := uuid.NewString()
-	out := filepath.Join(root, ".check-logs", id)
-	if e = os.MkdirAll(out, 0700); e != nil {
-		return e
-	}
-	var records []receipt
-	executed := make(map[string]bool)
-	for _, g := range chosen {
-		snap, e := os.MkdirTemp("", "validation-source-")
+	out := filepath.Join(base, "runs", id)
+	if !*status {
+		if e = os.MkdirAll(out, 0700); e != nil {
+			return e
+		}
+		lease, e := lockFile(filepath.Join(out, "active.lock"))
 		if e != nil {
 			return e
 		}
-		defer os.RemoveAll(snap)
-		key, e := r.snapshot(sha, g, snap)
+		defer lease.Close()
+		defer func() {
+			_ = os.WriteFile(filepath.Join(out, "completed"), []byte(time.Now().UTC().Format(time.RFC3339)), 0600)
+		}()
+		defer pruneRuns(base)
+	}
+	var records []receipt
+	executed := make(map[string]bool)
+	if !*status {
+		defer func() {
+			outcome := "passed"
+			message := ""
+			if resultErr != nil {
+				outcome = "failed"
+				message = resultErr.Error()
+			}
+			if ctx.Err() != nil {
+				outcome = "cancelled"
+			}
+			if err := saveRun(filepath.Join(out, "run.json"), sha, tree, records, executed, chosen, outcome, message); err != nil && resultErr == nil {
+				resultErr = err
+			}
+		}()
+	}
+	for _, g := range chosen {
+		key, e := r.identity(sha, g)
 		if e != nil {
 			return e
 		}
@@ -504,22 +461,72 @@ func run(ctx context.Context, args []string) error {
 			continue
 		}
 		if ok && !*force {
-			fmt.Printf("%s reused %s\n", g, old.SHA)
-			records = append(records, old)
-			continue
+			// Pin reused artifacts until this run finishes. Retention uses an
+			// exclusive lease and cannot remove evidence beneath a consumer.
+			lease, err := os.Open(filepath.Join(filepath.Dir(old.Artifacts), "active.lock"))
+			if err == nil {
+				err = syscall.Flock(int(lease.Fd()), syscall.LOCK_SH|syscall.LOCK_NB)
+				if err == nil && evidence(old.Artifacts) == nil {
+					defer lease.Close()
+					fmt.Printf("%s reused %s\n", g, old.SHA)
+					records = append(records, old)
+					continue
+				}
+				lease.Close()
+			}
+		}
+		// A forced retry supersedes prior success. If it fails or is cancelled,
+		// status must not silently fall back to the older passing attempt.
+		if *force {
+			if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+				return err
+			}
+		}
+		release, e := slot(ctx, r.manifest.Groups[g].Class)
+		if e != nil {
+			return e
+		}
+		snap, e := os.MkdirTemp("", "validation-source-")
+		if e != nil {
+			release()
+			return e
+		}
+		_, e = r.snapshot(sha, g, snap)
+		if e != nil {
+			release()
+			os.RemoveAll(snap)
+			return e
 		}
 		artifacts := filepath.Join(out, g)
-		fmt.Printf("%s executing (logs %s)\n", g, out)
 		logged := r
 		logged.logPath = filepath.Join(out, g+"-launcher.log")
-		_, err := logged.command(root, *cli, "--mod", snap, "call", "check", "--source", snap, "--group", g, "--attempt", id, "export", "--path", artifacts)
+		var err error
+		if r.manifest.Groups[g].Executor == "host" {
+			err = logged.hostFormat(sha, snap, artifacts)
+		} else {
+			err = r.checkEngine(*cli, *setup)
+			if err == nil {
+				args := []string{"--mod", snap, "call", "check", "--source", snap, "--group", g, "--attempt", id}
+				if *storageBenchmarks {
+					args = append(args, "--storage-benchmarks")
+				}
+				args = append(args, "export", "--path", artifacts)
+				_, err = logged.command(root, *cli, args...)
+			}
+		}
+		release()
+		os.RemoveAll(snap)
 		if err != nil {
 			return err
 		}
 		if e = evidence(artifacts); e != nil {
 			return fmt.Errorf("%s: %w (artifacts %s)", g, e, artifacts)
 		}
-		rec := receipt{receiptVersion, g, key, sha, tree, artifacts, time.Now().UTC()}
+		mode := "default"
+		if *storageBenchmarks {
+			mode = "storage-samples"
+		}
+		rec := receipt{Version: receiptVersion, Group: g, Key: key, SHA: sha, Tree: tree, Artifacts: artifacts, Mode: mode, Completed: time.Now().UTC()}
 		if e = saveReceipt(path, rec); e != nil {
 			return e
 		}
@@ -529,47 +536,25 @@ func run(ctx context.Context, args []string) error {
 	if *status {
 		return nil
 	}
-	if e = saveRun(filepath.Join(out, "run.json"), sha, tree, records, executed); e != nil {
+	current, e := r.clean()
+	if e != nil {
 		return e
 	}
-	if *create || *update {
-		current, e := r.clean()
-		if e != nil {
-			return e
-		}
-		if current != sha {
-			return errors.New("HEAD moved since validation")
-		}
-		branch, e := r.git("symbolic-ref", "--short", "HEAD")
-		if e != nil {
-			return e
-		}
-		if _, e = r.publishCommand("git", "push", "origin", sha+":refs/heads/"+branch); e != nil {
-			return e
-		}
-		current, e = r.clean()
-		if e != nil {
-			return e
-		}
-		if current != sha {
-			return errors.New("HEAD moved during push")
-		}
-		if !*create {
-			return nil
-		}
-		b, e := r.publishCommand("gh", append([]string{"pr", "create", "--head", branch}, fs.Args()...)...)
-		fmt.Print(string(b))
-		return e
+	if current != sha {
+		return fmt.Errorf("validated %s; current HEAD %s differs", sha, current)
 	}
+
 	return nil
 }
-func saveRun(path, sha, tree string, records []receipt, executed map[string]bool) error {
+func saveRun(path, sha, tree string, records []receipt, executed map[string]bool, requested []string, outcome, message string) error {
 	b, e := json.MarshalIndent(struct {
 		SHA, Tree                     string
 		Groups                        []receipt
 		Executed                      map[string]bool
 		Dagger, EngineImage, Platform string
-	}{sha, tree, records, executed, version, engineImage, "linux/amd64"}, "", "  ")
+		Requested                     []string
+		Outcome, Error                string
+	}{sha, tree, records, executed, version, engineImage, "linux/amd64", requested, outcome, message}, "", "  ")
 	if e != nil {
 		return e
 	}

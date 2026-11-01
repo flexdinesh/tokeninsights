@@ -21,7 +21,7 @@ mise run setup
 mise run setup:browser
 ```
 
-Install [mise](https://mise.jdx.dev/getting-started.html) 2026.10.18 or later first. `mise trust` accepts the repository config; `mise install` installs locked tools. `setup` runs `mise deps install`, installing frozen workspace dependencies and registering the [Husky](https://typicode.github.io/husky/get-started.html) pre-push hook through pnpm's `prepare` script. `setup:browser` installs Chromium once; Linux hosts missing browser libraries can use `mise exec -- pnpm --filter @tokeninsights/web exec playwright install --with-deps chromium`.
+Install [mise](https://mise.jdx.dev/getting-started.html) 2026.10.18 first; snapshot format verification requires this pinned version. `mise trust` accepts the repository config; `mise install` installs locked tools. `setup` runs `mise deps install`, installing frozen workspace dependencies and registering [Husky](https://typicode.github.io/husky/get-started.html) hooks (pre-push performs no validation) through pnpm's `prepare` script. `setup:browser` installs Chromium once; Linux hosts missing browser libraries can use `mise exec -- pnpm --filter @tokeninsights/web exec playwright install --with-deps chromium`.
 
 ## Toolchain
 
@@ -29,7 +29,7 @@ Install [mise](https://mise.jdx.dev/getting-started.html) 2026.10.18 or later fi
 
 To bump a tool, edit `mise.toml`, run `mise lock`, then update the Dockerfile `golang`/`node` image tags and pnpm install, root `package.json` `packageManager`, and the `packages/cli/go.mod` `toolchain` line. `mise run check:toolchain`, part of validation, fails on any mismatch.
 
-mise sets `GOTOOLCHAIN=local`, so development never silently switches Go toolchains, and puts `node_modules/.bin` on `PATH`. Put personal overrides, such as `TOKENINSIGHTS_TEST_POSTGRES_DSN`, in ignored `mise.local.toml` or `mise.*.local.toml`.
+mise sets `GOTOOLCHAIN=local`, so development never silently switches Go toolchains, and puts `node_modules/.bin` on `PATH`. Put personal development overrides in ignored `mise.local.toml` or `mise.*.local.toml`. Validation does not inherit those overrides or host database URLs.
 
 `[deps.pnpm]` requires `experimental = true`. Before `mise run` or `mise exec`, it runs `pnpm install --frozen-lockfile` when `package.json` or `pnpm-lock.yaml` changed or `node_modules` is missing; `--no-deps` skips it.
 
@@ -41,7 +41,7 @@ Run commands from the repository root unless noted otherwise. `mise tasks ls` li
 
 | Purpose | Command |
 | --- | --- |
-| Full local validation before PR creation/update | `mise run validate` |
+| Full local validation before PR creation/update | `mise run check:pr` |
 | Install workspace dependencies | `mise run setup` |
 | Run Go API and hot-reloading web app | `mise run dev` |
 | Recreate sanitized fixture data | `mise run dev:data` |
@@ -73,13 +73,17 @@ Run commands from the repository root unless noted otherwise. `mise tasks ls` li
 | Build the CLI and run browser end-to-end tests | `mise run test:web-e2e` |
 | Build production binaries and plugins, validating contracts | `mise run build` |
 
-Validation runs explicitly before PR creation and updates through `mise run validate`.
+Validation runs explicitly before PR creation and updates through `mise run check:pr`.
 It requires committed HEAD and a clean tracked working tree. Untracked files and
-personal configuration are excluded. Use `--group contracts|javascript|go|benchmarks|distribution|browser|deployment`
+personal configuration are excluded. Use `--group format|static|web|tooling|go|benchmarks|distribution|browser|deployment`
 for targeted coverage, `--force` to execute checks again, and `--status` to inspect
 eligible successful receipts. Targeted success does not count as full validation.
 
-Dagger executes checks locally in Linux containers. Private homes, temporary
+Dagger executes tests and checks locally in Linux amd64 containers. Development,
+formatting and format verification stay on the host. Aggregate format verification
+uses the committed snapshot and installed pinned tools; it does not install
+dependencies or regenerate files. Run `mise install` and `mise run setup` explicitly
+when formatter tools are missing. Private homes, temporary
 directories, databases and service bindings isolate runs; fixture servers and
 browsers never use host application ports. Immutable preparation outputs may be
 reused. Go tests retain `-count=1`; force bypasses validation receipts and Dagger
@@ -96,18 +100,23 @@ Never use automatic engine provisioning or broad prune commands. Other repositor
 and worktrees may be using the same Docker daemon. Coordinate engine upgrades and
 cleanup explicitly. Canceling validation must leave the engine running.
 
-Each run retains logs and exported failure artifacts under `.check-logs/<run-id>/`.
-Successful receipts live under the canonical Git common directory in
-`tokeninsights-validation/v1/<group>/`. A receipt requires successful status and
+Each run retains logs and exported failure artifacts under the canonical Git common
+directory in `tokeninsights-validation/v2/runs/<run-id>/`. Successful receipts live
+beside runs under `tokeninsights-validation/v2/<group>/`. Evidence survives worktree
+removal. `mise run check:cleanup` prunes inactive runs, including abandoned interrupted runs using a 14-day,
+10-GiB default budget; active leases prevent deletion. Configure
+`TOKENINSIGHTS_VALIDATION_RETENTION_DAYS` and `TOKENINSIGHTS_VALIDATION_RETENTION_GIB`
+for another budget. A receipt requires successful status and
 retained check logs. Removing its artifacts causes validation to execute again.
 Source, test, dependency, task, configuration, toolchain and platform inputs determine
 reuse; branch names and commit timestamps do not. History-only changes can reuse
-matching results. Reports retain the original tested revision for reused results.
+matching results. A forced retry invalidates its previous receipt before execution. Reports retain the original tested revision for reused results.
 
-PR wrappers validate all groups and recheck HEAD and tracked cleanliness before
-pushing the exact tested commit. Publication uses host Git/gh credentials through
-an explicit environment allowlist; credentials never enter check runners. Wrappers
-and agent instructions are bypassable, and Git has no standard pre-PR hook.
+PR creation and updates are separate operations. Run `mise run check:pr`, then
+confirm HEAD and tracked cleanliness before publishing that exact revision.
+`mise run check:status` checks current input identities without starting an engine
+or acquiring execution slots. Local conventions are bypassable; Git has no
+standard pre-PR hook.
 
 Coverage remains formatting, lint, schema/API/plugin drift checks, JavaScript unit
 tests, Go race tests with live PostgreSQL, benchmark smoke, binary builds, source
@@ -287,8 +296,7 @@ git commit -m "docs: update readme [skip ci]"
 Native CI Linux arm64 and macOS amd64/arm64 jobs and release Linux/macOS amd64/arm64 jobs build with `CGO_ENABLED=0` and test on matching runners. See [design](design.md) for current storage and acceptance contracts.
 
 Live PostgreSQL verification: `mise run test` and `mise run test:race` start a pinned
-PostgreSQL 18 Docker container and remove it afterward. Alternatively set
-`TOKENINSIGHTS_TEST_POSTGRES_DSN` to a test server with CREATEDB privileges; tests
-create random databases and delete only those. Never use production credentials.
-Direct `go test` skips PostgreSQL cases without that variable; root verification
-always supplies a live database and fails if it cannot start one.
+PostgreSQL 18 service through Dagger. Runners receive only its bound service URL.
+Tests create independent databases within that private service. Host database URLs
+are not accepted by validation. Direct Go test commands can skip PostgreSQL cases;
+the public mise tasks require the live database and fail if it cannot start.
