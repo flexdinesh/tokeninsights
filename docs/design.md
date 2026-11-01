@@ -668,7 +668,7 @@ composition remains SQLite-only. See the [coverage map](collector-ingestion-test
 The real Docker image has a separate `mise run test:container` contract on both
 backends: environment configuration, secret-file startup, non-root/read-only root,
 alternate-port readiness, private admin, ingestion, replacement durability,
-revocation and SIGTERM. Local pre-push runs this alongside native deployment contracts. CI is limited to native OS/architecture coverage unavailable on one developer host; new CI checks require a documented reason.
+revocation and SIGTERM. Explicit local Dagger validation runs this alongside native deployment contracts before PR creation and updates. A test-only supervisor replaces Docker lifecycle commands. Read-only-root enforcement coverage is explicitly excluded because Dagger 0.21.11 does not enforce it; other deployment assertions remain. See ADR 0022. CI is limited to native OS/architecture coverage unavailable on one developer host; new CI checks require a documented reason.
 
 ### Runtime resource ownership
 

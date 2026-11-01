@@ -27,7 +27,7 @@ Install [mise](https://mise.jdx.dev/getting-started.html) 2026.10.18 or later fi
 
 `mise.toml` pins exact Go 1.27.3, Node 26.12.1 and pnpm 12.15.0. Committed `mise.lock` records checksums, plus GitHub attestations for pnpm, on Linux/macOS x64/arm64; installs for this project are locked. Other global mise tools are unaffected.
 
-To bump a tool, edit `mise.toml`, run `mise lock`, then update the Dockerfile `golang`/`node` image tags and pnpm install, root `package.json` `packageManager`, and the `packages/cli/go.mod` `toolchain` line. `mise run check:toolchain`, part of `check:push`, fails on any mismatch.
+To bump a tool, edit `mise.toml`, run `mise lock`, then update the Dockerfile `golang`/`node` image tags and pnpm install, root `package.json` `packageManager`, and the `packages/cli/go.mod` `toolchain` line. `mise run check:toolchain`, part of validation, fails on any mismatch.
 
 mise sets `GOTOOLCHAIN=local`, so development never silently switches Go toolchains, and puts `node_modules/.bin` on `PATH`. Put personal overrides, such as `TOKENINSIGHTS_TEST_POSTGRES_DSN`, in ignored `mise.local.toml` or `mise.*.local.toml`.
 
@@ -41,7 +41,7 @@ Run commands from the repository root unless noted otherwise. `mise tasks ls` li
 
 | Purpose | Command |
 | --- | --- |
-| Full local pre-push verification | `mise run check:push` |
+| Full local validation before PR creation/update | `mise run validate` |
 | Install workspace dependencies | `mise run setup` |
 | Run Go API and hot-reloading web app | `mise run dev` |
 | Recreate sanitized fixture data | `mise run dev:data` |
@@ -73,54 +73,58 @@ Run commands from the repository root unless noted otherwise. `mise tasks ls` li
 | Build the CLI and run browser end-to-end tests | `mise run test:web-e2e` |
 | Build production binaries and plugins, validating contracts | `mise run build` |
 
-The pre-push hook clears Git-local environment variables before running `mise run check:push`, so fixture Git commands operate on their own repositories rather than the repository being pushed. Verification covers formatting, lint, SQLite/PostgreSQL/API contracts, toolchain pins, TypeScript/web unit tests, all Go tests once under the race detector, benchmark smoke, native build, distribution and asset-publication checks, browser E2E, and real-container contracts on SQLite/PostgreSQL. Docker is required for container contracts even when an external PostgreSQL test DSN is supplied.
+Validation runs explicitly before PR creation and updates through `mise run validate`.
+It requires committed HEAD and a clean tracked working tree. Untracked files and
+personal configuration are excluded. Use `--group contracts|javascript|go|benchmarks|distribution|browser|deployment`
+for targeted coverage, `--force` to execute checks again, and `--status` to inspect
+eligible successful receipts. Targeted success does not count as full validation.
 
-The entire pipeline queues across worktrees using an OS advisory lock at
-`<canonical Git common directory>/tokeninsights-check.lock`. Both the hook and
-direct `mise run check:push` enter this gate. Only compilation of the small Go
-gate helper precedes admission. The task prints waiting, acquisition and execution
-durations separately. Canceling a waiter starts no checks; canceling an owner
-stops its process group before releasing admission. Parent-process loss also
-triggers cleanup. Never delete the lock file: its inode, not its contents, owns
-exclusion. Independently detached containers still require their tool's cleanup.
-The hidden `check:push:stages` task is an internal implementation detail.
+Dagger executes checks locally in Linux containers. Private homes, temporary
+directories, databases and service bindings isolate runs; fixture servers and
+browsers never use host application ports. Immutable preparation outputs may be
+reused. Go tests retain `-count=1`; force bypasses validation receipts and Dagger
+check execution caches while preserving reusable dependency preparation.
 
-The pre-push hook is the full-suite gate: run `check:push` once per push through
-the hook, not separately beforehand. While changing code, run focused commands
-for the touched area instead; `AGENTS.md` maps change areas to commands.
+Use the explicitly managed `tokeninsights-validation-engine-v0.21.11` with its
+dedicated `tokeninsights-validation-cache-v0.21.11` volume. The launcher verifies
+ownership labels, image digest and cache mount. `--setup-engine` creates missing
+owned resources; it never repairs, removes or restarts existing engines.
+Every Dagger invocation, including initialization, must set
+`DAGGER_LEAVE_OLD_ENGINE=true` and
+`_EXPERIMENTAL_DAGGER_RUNNER_HOST=docker-container://tokeninsights-validation-engine-v0.21.11`.
+Never use automatic engine provisioning or broad prune commands. Other repositories
+and worktrees may be using the same Docker daemon. Coordinate engine upgrades and
+cleanup explicitly. Canceling validation must leave the engine running.
 
-Within admission, format, lint, schema, API, toolchain and TypeScript tasks have
-bounded concurrency; race tests, benchmark smoke, CLI build, distribution,
-browser E2E and container contracts follow serially. `TOKENINSIGHTS_CHECK_CONCURRENCY`
-defaults to `2` for mise jobs, Node test files, plugin workspaces, Go package/test
-parallelism and default `GOMAXPROCS`. Explicit `GOMAXPROCS`/`GOFLAGS` remain supported;
-explicit Go runner `-p`/`-parallel` arguments override its defaults. Vitest defaults
-to two workers, overridable with `TOKENINSIGHTS_VITEST_WORKERS`. Chromium defaults
-to one worker; an explicit override is
-`mise exec -- pnpm --filter @tokeninsights/web exec playwright test --workers=2`.
-Standalone focused test tasks remain available without acquiring
-the full-pipeline gate; avoid launching them alongside a queued full run.
+Each run retains logs and exported failure artifacts under `.check-logs/<run-id>/`.
+Successful receipts live under the canonical Git common directory in
+`tokeninsights-validation/v1/<group>/`. A receipt requires successful status and
+retained check logs. Removing its artifacts causes validation to execute again.
+Source, test, dependency, task, configuration, toolchain and platform inputs determine
+reuse; branch names and commit timestamps do not. History-only changes can reuse
+matching results. Reports retain the original tested revision for reused results.
 
-Go tasks depend on `build:web`, so one graph builds assets once. `build:web`
-records input/output digests under `packages/web/node_modules/.cache` and resyncs
-drifted embedded assets. CLI/plugin builds reuse unchanged outputs. Verification
-tasks never skip; Go runs use `-count=1` to avoid cached test results.
+PR wrappers validate all groups and recheck HEAD and tracked cleanliness before
+pushing the exact tested commit. Publication uses host Git/gh credentials through
+an explicit environment allowlist; credentials never enter check runners. Wrappers
+and agent instructions are bypassable, and Git has no standard pre-PR hook.
 
-`check:push:stages` lists stages for `tools/build/src/check-stages.ts`: each
-argument is a stage and comma-separated tasks run in parallel. The runner runs
-each phase as `mise run --no-deps --jobs 1 <task>`, writes its complete stdout and
-stderr to `.check-logs/NN-<task>.log` (ignored, cleared each run) and prints one
-line per phase, such as `ok lint 41s`. On failure it prints the last 100 log
-lines, the log path and `rerun: mise run <task>`, stops running siblings, starts
-no later stage and exits with the phase's code. `TOKENINSIGHTS_CHECK_VERBOSE=1`
-also streams phase output with `[task]` prefixes. Node, Vitest and Playwright
-tests use dot reporters and the web build logs only warnings; failures still
-print full detail.
-Checks fail fast and never repair tracked files. Regenerate stale API files and
-plugin bundles explicitly before committing and pushing. There is no pre-commit
-test suite.
+Coverage remains formatting, lint, schema/API/plugin drift checks, JavaScript unit
+tests, Go race tests with live PostgreSQL, benchmark smoke, binary builds, source
+distribution, browser E2E and image deployment contracts. The docs production build
+remains separate. Checks do not regenerate committed files to make drift pass.
 
-Locally reproducible verification belongs in `check:push`, not CI or release preparation. New CI checks must document coverage unavailable on the developer host in both workflow and PR; rerunning local checks is not a reason. CI runs only on main pushes, never on pull requests. It builds both binaries and tests storage on Linux arm64 and macOS amd64/arm64 runners, covering platforms the Linux amd64 developer host cannot; pre-push already covers Linux amd64. Release additionally packages, validates and publishes generated artifacts. CI only verifies; development installs resolve `main` directly without publication or waiting for CI. Both workflows disable hook installation with `HUSKY=0`, and CI pushes to `edge` and release tags use `--no-verify`, so pre-push never runs in CI. Hooks run locally after dependency setup; GUI clients must have mise on PATH. mise tasks own orchestration ([ADR 0021](adr/0021-mise-owns-task-orchestration.md)); root `package.json` keeps only `prepare`, and tasks call per-package leaf scripts. Pre-push does not build docs.
+Deployment uses the actual Dockerfile image with a test-only process supervisor.
+It verifies non-root execution, healthcheck, secret files, graceful shutdown,
+persistent state, admin recovery and authentication/accounting behavior. **Read-only
+root enforcement is no longer covered:** Dagger 0.21.11 does not enforce that root
+mount option. This explicit exception is recorded in
+[ADR 0022](adr/0022-local-dagger-validation.md).
+
+Existing CI and release workflows are unchanged. Native Linux arm64 and macOS
+build/storage checks remain in CI; Linux container validation does not claim full
+native macOS coverage. New locally reproducible checks belong in validation,
+not duplicated remote enforcement.
 
 ### Local CLI installation
 
@@ -234,7 +238,7 @@ mise run bench:smoke
 
 Smoke uses small shared storage history but executes every benchmark family, so
 fixture SQL and semantic checks run even though normal tests do not run benchmarks.
-It runs in pre-push verification. No latency
+It runs in local validation. No latency
 threshold determines success. Separately, `mise run bench:storage` measures the full
 retained-history matrix with fixed iterations and sequential packages; it is not a
 CI timing gate. Use a disk-backed temporary directory as described below.

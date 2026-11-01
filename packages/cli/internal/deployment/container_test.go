@@ -3,13 +3,10 @@ package deployment_test
 import (
 	"bytes"
 	"context"
-	"crypto/rand"
 	"encoding/json"
 	"io"
 	"net/http"
 	"os"
-	"os/exec"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -17,112 +14,73 @@ import (
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/accounts"
 )
 
-func dockerOutput(t *testing.T, args ...string) string {
-	t.Helper()
-	ctx, cancel := context.WithTimeout(t.Context(), time.Minute)
-	defer cancel()
-	out, err := exec.CommandContext(ctx, "docker", args...).CombinedOutput()
-	if err != nil {
-		t.Fatalf("docker %s: %s (%v)", args[0], out, err)
-	}
-	return strings.TrimSpace(string(out))
+type fixtureReply struct {
+	UID      int    `json:"uid"`
+	ExitCode int    `json:"exitCode"`
+	Output   string `json:"output"`
 }
 
-func dockerCleanup(t *testing.T, args ...string) {
+// Control operations include the image's bounded graceful shutdown.
+var fixtureHTTP = &http.Client{Timeout: 30 * time.Second}
+
+func fixtureCall(t *testing.T, control, operation string, body interface{}) fixtureReply {
 	t.Helper()
-	t.Cleanup(func() {
-		ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
-		defer cancel()
-		_ = exec.CommandContext(ctx, "docker", args...).Run()
-	})
+	var reply fixtureReply
+	browserCallWithClient(t, fixtureHTTP, control, nil, http.MethodPost, operation, body, http.StatusOK, &reply)
+	return reply
 }
 
 func TestContainerDeployment(t *testing.T) {
-	image := os.Getenv("TOKENINSIGHTS_TEST_SERVER_IMAGE")
-	if image == "" {
-		t.Skip("run mise run test:container to build and test the server image")
-	}
-	pgImage := os.Getenv("TOKENINSIGHTS_TEST_POSTGRES_IMAGE")
-	if pgImage == "" {
-		t.Fatal("missing PostgreSQL test image")
+	if os.Getenv("TOKENINSIGHTS_TEST_SQLITE_CONTROL_URL") == "" {
+		t.Skip("run isolated deployment validation")
 	}
 	for _, backend := range []string{"sqlite", "postgres"} {
 		t.Run(backend, func(t *testing.T) {
-			name := "ti-container-" + strings.ToLower(rand.Text())
-			network, volume := name+"-net", name+"-data"
-			dockerOutput(t, "network", "create", network)
-			dockerCleanup(t, "network", "rm", network)
-			dockerOutput(t, "volume", "create", volume)
-			dockerCleanup(t, "volume", "rm", volume)
-			args := []string{"run", "--detach", "--name", name, "--network", network, "--read-only",
-				"--health-interval", "1s", "--health-start-period", "0s",
-				"--tmpfs", "/run/tokeninsights:uid=10001,gid=10001,mode=0700", "--tmpfs", "/tmp:uid=10001,gid=10001,mode=0700",
-				"--publish", "127.0.0.1::8767", "--env", "TOKENINSIGHTS_SERVER_PORT=8767",
-				"--env", "TOKENINSIGHTS_BOOTSTRAP_USERNAME=admin", "--env", "TOKENINSIGHTS_BOOTSTRAP_PASSWORD_FILE=/run/secrets/bootstrap_password", "--env", "TOKENINSIGHTS_STORAGE_BACKEND=" + backend}
-			passwordFile := filepath.Join(t.TempDir(), "bootstrap-password")
-			if err := os.WriteFile(passwordFile, []byte(containerBootstrapPassword+"\n"), 0o444); err != nil {
-				t.Fatal(err)
+			prefix := "TOKENINSIGHTS_TEST_" + strings.ToUpper(backend)
+			control, target := os.Getenv(prefix+"_CONTROL_URL"), os.Getenv(prefix+"_URL")
+			if control == "" || target == "" {
+				t.Fatal("missing fixture endpoints", backend)
 			}
-			args = append(args, "--mount", "type=bind,source="+passwordFile+",target=/run/secrets/bootstrap_password,readonly")
-			if backend == "sqlite" {
-				args = append(args, "--mount", "type=volume,source="+volume+",target=/data", "--env", "TOKENINSIGHTS_SERVER_DB_PATH=/data/server.sqlite")
-			} else {
-				pg := name + "-pg"
-				dockerCleanup(t, "rm", "-f", "-v", pg)
-				dockerOutput(t, "run", "--detach", "--name", pg, "--network", network, "--network-alias", "database", "--env", "POSTGRES_PASSWORD=container-contract", pgImage)
-				deadline := time.Now().Add(30 * time.Second)
-				for exec.CommandContext(t.Context(), "docker", "exec", pg, "pg_isready", "-h", "127.0.0.1", "-U", "postgres").Run() != nil {
-					if time.Now().After(deadline) {
-						t.Fatal("PostgreSQL startup timed out")
+			t.Cleanup(func() {
+				ctx, cancel := context.WithTimeout(context.Background(), 25*time.Second)
+				defer cancel()
+				request, err := http.NewRequestWithContext(ctx, http.MethodPost, control+"/stop", nil)
+				if err == nil {
+					response, err := fixtureHTTP.Do(request)
+					if err == nil {
+						_ = response.Body.Close()
 					}
-					time.Sleep(100 * time.Millisecond)
 				}
-				secret := filepath.Join(t.TempDir(), "dsn")
-				// Synthetic fixture secret must be readable by the image's non-root UID.
-				if err := os.WriteFile(secret, []byte("postgres://postgres:container-contract@database:5432/postgres?sslmode=disable\n"), 0o444); err != nil {
-					t.Fatal(err)
-				}
-				args = append(args, "--mount", "type=bind,source="+secret+",target=/run/secrets/postgres_dsn,readonly", "--env", "TOKENINSIGHTS_POSTGRES_DSN_FILE=/run/secrets/postgres_dsn")
-			}
-			args = append(args, image)
-			dockerCleanup(t, "rm", "-f", "-v", name)
+			})
 			start := func() string {
-				dockerOutput(t, args...)
-				address := dockerOutput(t, "port", name, "8767/tcp")
-				target := "http://" + address
+				if reply := fixtureCall(t, control, "/start", nil); reply.UID != 10001 {
+					t.Fatal("server must be non-root", reply.UID)
+				}
 				deadline := time.Now().Add(30 * time.Second)
 				for {
 					response, err := deploymentHTTP.Get(target + "/readyz")
 					if err == nil {
 						_ = response.Body.Close()
-						if response.StatusCode == 200 {
+						if response.StatusCode == http.StatusOK {
 							break
 						}
 					}
 					if time.Now().After(deadline) {
-						t.Fatal("container readiness", dockerOutput(t, "logs", name))
+						var logs fixtureReply
+						browserCall(t, control, nil, http.MethodGet, "/logs", nil, http.StatusOK, &logs)
+						t.Fatal("container readiness", logs.Output)
 					}
 					time.Sleep(100 * time.Millisecond)
 				}
-				for dockerOutput(t, "inspect", "--format", "{{.State.Health.Status}}", name) != "healthy" {
-					if time.Now().After(deadline) {
-						t.Fatal("image healthcheck never became healthy")
-					}
-					time.Sleep(100 * time.Millisecond)
-				}
-				if uid := dockerOutput(t, "exec", name, "id", "-u"); uid != "10001" {
-					t.Fatal("server must be non-root", uid)
-				}
+				fixtureCall(t, control, "/health", nil)
 				return target
 			}
 			stop := func() {
-				dockerOutput(t, "stop", "--time", "20", name)
-				if code := dockerOutput(t, "inspect", "--format", "{{.State.ExitCode}}", name); code != "0" {
-					t.Fatal("unclean SIGTERM", code, dockerOutput(t, "logs", name))
+				if reply := fixtureCall(t, control, "/stop", nil); reply.ExitCode != 0 {
+					t.Fatal("unclean SIGTERM", reply)
 				}
-				dockerOutput(t, "rm", "-v", name)
 			}
-			target := start()
+			target = start()
 			cookie := verifyBootstrapBrowser(t, target, containerBootstrapPassword)
 			var user accounts.User
 			browserCall(t, target, cookie, http.MethodGet, "/api/v2/account", nil, http.StatusOK, &user)
@@ -159,11 +117,11 @@ func TestContainerDeployment(t *testing.T) {
 				t.Fatal("container replacement changed facts")
 			}
 			// Private recovery accepts stdin and invalidates sessions; API keys remain.
-			command := exec.CommandContext(t.Context(), "docker", "exec", "-i", name, "tokeninsights-server", "admin", "user", "reset-password", user.UserID)
-			command.Stdin = strings.NewReader(containerRecoveryPassword + "\n")
-			if output, err := command.CombinedOutput(); err != nil || bytes.Contains(output, []byte(containerRecoveryPassword)) {
-				t.Fatalf("operator recovery failed or exposed password: %v", err)
+			reply := fixtureCall(t, control, "/reset", map[string]string{"userID": user.UserID, "password": containerRecoveryPassword})
+			if strings.Contains(reply.Output, containerRecoveryPassword) {
+				t.Fatal("operator recovery exposed password")
 			}
+
 			browserCall(t, target, cookie, http.MethodGet, "/api/v2/account", nil, http.StatusUnauthorized, nil)
 			cookie = verifyBootstrapBrowser(t, target, containerRecoveryPassword)
 			if after := assertUsage(t, target, 1, 120); strings.Join(ids, ",") != strings.Join(after, ",") {
@@ -196,6 +154,11 @@ const (
 
 func browserCall(t *testing.T, target string, cookie *http.Cookie, method, path string, body interface{}, status int, result interface{}) []*http.Cookie {
 	t.Helper()
+	return browserCallWithClient(t, deploymentHTTP, target, cookie, method, path, body, status, result)
+}
+
+func browserCallWithClient(t *testing.T, client *http.Client, target string, cookie *http.Cookie, method, path string, body interface{}, status int, result interface{}) []*http.Cookie {
+	t.Helper()
 	var data []byte
 	var err error
 	if body != nil {
@@ -213,7 +176,7 @@ func browserCall(t *testing.T, target string, cookie *http.Cookie, method, path 
 	if cookie != nil {
 		request.AddCookie(cookie)
 	}
-	response, err := deploymentHTTP.Do(request)
+	response, err := client.Do(request)
 	if err != nil {
 		t.Fatal(err)
 	}
