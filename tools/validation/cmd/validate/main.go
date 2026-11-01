@@ -501,6 +501,7 @@ func run(ctx context.Context, args []string) (resultErr error) {
 		logged := r
 		logged.logPath = filepath.Join(out, g+"-launcher.log")
 		var err error
+		executed[g] = true
 		if r.manifest.Groups[g].Executor == "host" {
 			err = logged.hostFormat(sha, snap, artifacts)
 		} else {
@@ -531,7 +532,6 @@ func run(ctx context.Context, args []string) (resultErr error) {
 			return e
 		}
 		records = append(records, rec)
-		executed[g] = true
 	}
 	if *status {
 		return nil

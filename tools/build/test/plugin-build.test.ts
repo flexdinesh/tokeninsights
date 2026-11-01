@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { execFile } from 'node:child_process'
-import { cp, mkdir, mkdtemp, readFile, readdir, rm, symlink } from 'node:fs/promises'
+import { cp, mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
@@ -75,6 +75,14 @@ for (const harness of ['pi', 'opencode']) {
         }),
       )
       await execute(process.execPath, [script, harness, '--check'], options)
+      const artifact = join(root, 'packages', `plugin-${harness}`, 'dist', 'runner.js')
+      const corrupt = '// deliberately stale artifact\n'
+      await writeFile(artifact, corrupt)
+      await assert.rejects(
+        execute(process.execPath, [script, harness, '--check'], options),
+        /artifact runner.js is stale/,
+      )
+      assert.equal(await readFile(artifact, 'utf8'), corrupt, 'check repaired stale output')
       assert.deepEqual(await readdir(temporary), [], 'check left temporary build artifacts')
     } finally {
       await rm(parent, { recursive: true, force: true })

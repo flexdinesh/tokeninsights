@@ -1,5 +1,6 @@
 {
   "common": [
+    ".gitignore",
     "mise.toml",
     "mise.lock",
     "package.json",
