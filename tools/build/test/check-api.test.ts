@@ -17,31 +17,37 @@ void test('API verification rejects generated drift without repairing either out
     'packages/web/src/generated/api.ts',
   ]
   try {
-    for (const path of [
-      'tools/build/src/check-api.ts',
-      'package.json',
-      '.oxfmtrc.json',
-      'orval.config.ts',
-      'docs/openapi.yaml',
-      'packages/cli/go.mod',
-      'packages/cli/go.sum',
-      'packages/cli/internal/server/api/oapi-codegen.yaml',
-      ...outputs,
-    ]) {
-      await mkdir(dirname(join(root, path)), { recursive: true })
-      await cp(join(workspace, path), join(root, path))
-    }
+    await Promise.all(
+      [
+        'tools/build/src/check-api.ts',
+        'package.json',
+        '.oxfmtrc.json',
+        'orval.config.ts',
+        'docs/openapi.yaml',
+        'packages/cli/go.mod',
+        'packages/cli/go.sum',
+        'packages/cli/internal/server/api/oapi-codegen.yaml',
+        ...outputs,
+      ].map(async (path) => {
+        await mkdir(dirname(join(root, path)), { recursive: true })
+        await cp(join(workspace, path), join(root, path))
+      }),
+    )
     await symlink(join(workspace, 'node_modules'), join(root, 'node_modules'), 'dir')
     const script = join(root, 'tools/build/src/check-api.ts')
     await execute(process.execPath, [script], { cwd: root })
-    for (const path of outputs) await writeFile(join(root, path), '// stale generated output\n')
+    await Promise.all(
+      outputs.map((path) => writeFile(join(root, path), '// stale generated output\n')),
+    )
     await assert.rejects(
       execute(process.execPath, [script], { cwd: root }),
       /generated API files are stale: .*types.gen.go, .*api.ts/,
     )
-    for (const path of outputs) {
-      assert.equal(await readFile(join(root, path), 'utf8'), '// stale generated output\n')
-    }
+    await Promise.all(
+      outputs.map(async (path) => {
+        assert.equal(await readFile(join(root, path), 'utf8'), '// stale generated output\n')
+      }),
+    )
   } finally {
     await rm(root, { recursive: true, force: true })
   }
