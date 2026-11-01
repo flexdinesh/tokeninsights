@@ -144,7 +144,8 @@
         "tools/build/src/sync-web-assets.ts",
         "tools/build/src/files.ts",
         "tools/build/src/workspace.ts",
-        "tools/build/src/test-distribution.ts"
+        "tools/build/src/test-distribution.ts",
+        "tools/build/src/install-refs.ts"
       ],
       "executor": "dagger",
       "class": "heavy"
