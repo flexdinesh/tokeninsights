@@ -58,6 +58,7 @@
     },
     "web": {
       "inputs": [
+        "DESIGN.md",
         "packages/web/",
         "orval.config.ts",
         "tools/build/src/build-web.ts",
