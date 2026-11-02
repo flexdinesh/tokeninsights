@@ -328,3 +328,70 @@ func TestWebSingleDashFlagsOverrideInvalidEnvironment(t *testing.T) {
 	}
 	assertViewMissingPath(t, settings.ServerDBPath)
 }
+
+func TestWebPortFlagBindsRequestedPort(t *testing.T) {
+	for _, form := range []string{"separate", "equals"} {
+		t.Run(form, func(t *testing.T) {
+			reservation, err := net.Listen("tcp4", "127.0.0.1:0")
+			if err != nil {
+				t.Fatal(err)
+			}
+			address := reservation.Addr().String()
+			_, port, err := net.SplitHostPort(address)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := reservation.Close(); err != nil {
+				t.Fatal(err)
+			}
+			settings := config.Defaults()
+			root := t.TempDir()
+			settings.CollectorDBPath, settings.ServerDBPath, settings.Port = filepath.Join(root, "collector.sqlite"), filepath.Join(root, "server.sqlite"), 0
+			path := localConfigForTest(t, settings)
+			t.Setenv("TOKENINSIGHTS_PORT", "not-a-port")
+			ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+			defer cancel()
+			previousOpen := openDashboard
+			t.Cleanup(func() { openDashboard = previousOpen })
+			var output bytes.Buffer
+			openDashboard = func(url string) error {
+				defer cancel()
+				if url != "http://"+address || !strings.Contains(ansi.Strip(output.String()), "Dashboard:  "+url) {
+					t.Fatalf("dashboard URL = %q, want http://%s; output = %q", url, address, output.String())
+				}
+				response, err := http.Get(url + "/api/v2/instance")
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer func() { _ = response.Body.Close() }()
+				if response.StatusCode != http.StatusOK {
+					t.Fatal(response.Status)
+				}
+				return nil
+			}
+			args := []string{"--sync=false", "--port", port}
+			if form == "equals" {
+				args = []string{"--sync=false", "--port=" + port}
+			}
+			if err := Run(ctx, append([]string{"--config-file", path, "web"}, args...), &output, io.Discard, time.Now()); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}
+
+func TestWebRejectsInvalidPortBeforeOpeningStorage(t *testing.T) {
+	for _, port := range []string{"-1", "65536", "not-a-port"} {
+		t.Run(port, func(t *testing.T) {
+			settings := config.Defaults()
+			root := t.TempDir()
+			settings.CollectorDBPath, settings.ServerDBPath = filepath.Join(root, "collector.sqlite"), filepath.Join(root, "server.sqlite")
+			err := runWeb(commandInvocation{context: t.Context(), stdout: io.Discard, stderr: io.Discard, configPath: localConfigForTest(t, settings)}, []string{"--port", port})
+			if err == nil {
+				t.Fatalf("accepted invalid port %q", port)
+			}
+			assertViewMissingPath(t, settings.CollectorDBPath)
+			assertViewMissingPath(t, settings.ServerDBPath)
+		})
+	}
+}

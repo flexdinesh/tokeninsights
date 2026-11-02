@@ -19,6 +19,9 @@ func TestHelpAliases(t *testing.T) {
 			if !strings.Contains(stdout.String(), "usage: tokeninsights <command>") {
 				t.Fatalf("expected usage in output: %q", stdout.String())
 			}
+			if !strings.Contains(stdout.String(), "web --port 9000") {
+				t.Fatalf("help missing web port example: %q", stdout.String())
+			}
 		})
 	}
 }
