@@ -143,9 +143,11 @@ void test('installs the Linux app, desktop entry and scheme handler, then upgrad
   assert.match(readFileSync(binary, 'utf8'), /echo v2/)
 })
 
-void test('rejects checksum mismatches, missing entries and unsupported hosts without installing', () => {
-  const data = (f: Fixture) => join(f.home, '.local', 'share', 'tokeninsights-desktop')
+function installedApp(f: Fixture): string {
+  return join(f.home, '.local', 'share', 'tokeninsights-desktop')
+}
 
+void test('rejects checksum mismatches, missing entries and unsupported hosts without installing', () => {
   const mismatch = fixture()
   const archive = linuxArchive(mismatch, 'echo v1')
   writeFileSync(
@@ -155,7 +157,7 @@ void test('rejects checksum mismatches, missing entries and unsupported hosts wi
   let result = mismatch.run()
   assert.notEqual(result.status, 0)
   assert.match(String(result.stderr), /checksum mismatch/)
-  assert.ok(!existsSync(data(mismatch)))
+  assert.ok(!existsSync(installedApp(mismatch)))
 
   const missing = fixture()
   linuxArchive(missing, 'echo v1')
@@ -163,7 +165,7 @@ void test('rejects checksum mismatches, missing entries and unsupported hosts wi
   result = missing.run()
   assert.notEqual(result.status, 0)
   assert.match(String(result.stderr), /no entry for tokeninsights-desktop_linux_amd64/)
-  assert.ok(!existsSync(data(missing)))
+  assert.ok(!existsSync(installedApp(missing)))
 
   const duplicate = fixture()
   const duplicated = linuxArchive(duplicate, 'echo v1')
