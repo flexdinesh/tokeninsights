@@ -15,6 +15,7 @@ func usageText() string {
 In-process:
   tui                         collect, ingest and open terminal dashboard
   web                         collect, ingest and serve browser dashboard until exit
+  web --port 9000              serve browser dashboard on a different port
   web --host 0.0.0.0          bind all IPv4 interfaces (read-only dashboard)
   tui|web --sync=false         show saved data; resume pending processing
   tui|web --full-refresh       reread sources/retry quarantine at startup
