@@ -70,6 +70,7 @@ Run commands from the repository root unless noted otherwise. `mise tasks ls` li
 | Check tool pins match Dockerfile, `packageManager` and go.mod | `mise run check:toolchain` |
 | Regenerate API files | `mise run generate:api` |
 | Build and sync embedded web assets; skips unchanged inputs | `mise run build:web` |
+| Build and package the desktop viewer for this host into `dist/` | `mise run build:desktop` |
 | Build the CLI and run browser end-to-end tests | `mise run test:web-e2e` |
 | Build production binaries and plugins, validating contracts | `mise run build` |
 

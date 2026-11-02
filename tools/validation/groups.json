@@ -37,6 +37,7 @@
     "static": {
       "inputs": [
         "packages/cli/",
+        "packages/desktop/",
         "schema/",
         "docs/openapi.yaml",
         "packages/web/",
@@ -90,6 +91,8 @@
         "packages/plugin-pi/",
         "packages/plugin-runtime/",
         ".release-version",
+        "install.sh",
+        "packages/desktop/",
         ".gitattributes",
         ".gitignore",
         "LICENSE",
@@ -101,6 +104,7 @@
     "go": {
       "inputs": [
         "packages/cli/",
+        "packages/desktop/",
         "schema/",
         "docs/openapi.yaml",
         "packages/web/",

@@ -1,0 +1,8 @@
+{
+  "name": "TokenInsights",
+  "slug": "tokeninsights-desktop",
+  "identifier": "com.flexdinesh.tokeninsights",
+  "version": "0.0.0",
+  "urlSchemes": ["tokeninsights"],
+  "out": "build"
+}

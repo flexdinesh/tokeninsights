@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"io"
 	"net/http"
@@ -13,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/browser"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/config"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/tui"
 )
@@ -35,7 +37,10 @@ func TestBrowseOpensConfiguredURLWithoutCaptureAuthenticationOrStorage(t *testin
 	previous := openDashboard
 	defer func() { openDashboard = previous }()
 	var opened string
-	openDashboard = func(url string) error { opened = url; return errors.New("unavailable") }
+	openDashboard = func(_ context.Context, _ browser.Mode, url string) (browser.Result, error) {
+		opened = url
+		return browser.Result{}, errors.New("unavailable")
+	}
 	var stdout, stderr bytes.Buffer
 	if err := Run(t.Context(), []string{"--config-file", path, "browse"}, &stdout, &stderr, time.Now()); err != nil {
 		t.Fatal(err)

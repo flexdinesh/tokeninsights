@@ -134,6 +134,10 @@ run = [
   "go build -o bin/tokeninsights-server ./cmd/tokeninsights-server",
 ]
 
+[tasks."build:desktop"]
+description = "Build and package the desktop viewer for this host into dist/"
+run = "node tools/build/src/build-desktop.ts --out dist"
+
 [tasks."build:plugins"]
 depends = ["build:internal:deps"]
 description = "Build plugin artifacts"
@@ -281,11 +285,15 @@ run = [
   "pnpm --filter @tokeninsights/build-tools run typecheck",
   "pnpm --filter @tokeninsights/web exec tsc --noEmit",
   "cd packages/cli && go tool -modfile=golangci-lint.mod golangci-lint run ./...",
+  "cd packages/desktop && go vet ./... && go tool -modfile=../cli/golangci-lint.mod golangci-lint run ./...",
 ]
 
 [tasks."check:internal:go"]
 hide = true
-run = ["cd packages/cli && node ../../tools/build/src/test-go.ts -race"]
+run = [
+  "cd packages/cli && node ../../tools/build/src/test-go.ts -race",
+  "cd packages/desktop && go test -race -count=1 ./...",
+]
 
 [tasks."check:internal:benchmarks"]
 hide = true

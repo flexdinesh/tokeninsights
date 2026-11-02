@@ -4,6 +4,8 @@ import (
 	"flag"
 	"fmt"
 	"strings"
+
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/browser"
 )
 
 var browseCommand = commandSpec{name: "browse", run: runBrowse}
@@ -12,7 +14,7 @@ func runBrowse(invocation commandInvocation, args []string) error {
 	flags := flag.NewFlagSet("tokeninsights browse", flag.ContinueOnError)
 	flags.SetOutput(invocation.stderr)
 	flags.String("server-url", "", "hosted dashboard URL")
-	open := flags.Bool("open", true, "open browser automatically")
+	flags.Var(&browser.ModeFlag{}, "open", "open dashboard: auto (desktop app, else browser), app, browser or false")
 	if err := flags.Parse(args); err != nil {
 		return fmt.Errorf("%w\n%w", err, ErrUsage)
 	}
@@ -28,8 +30,9 @@ func runBrowse(invocation commandInvocation, args []string) error {
 	}
 	url := strings.TrimRight(settings.ServerURL, "/")
 	_, _ = fmt.Fprintln(invocation.stdout, "Dashboard: "+url)
-	if *open && openDashboard(url) != nil {
-		_, _ = fmt.Fprintln(invocation.stderr, "Could not open browser; open dashboard URL above.")
+	if settings.Open != browser.ModeOff && remoteSession() {
+		_, _ = fmt.Fprintln(invocation.stdout, "App: "+browser.AppLink(url))
 	}
+	reportOpen(invocation.context, invocation, settings.Open, url)
 	return nil
 }

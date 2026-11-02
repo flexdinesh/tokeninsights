@@ -33,6 +33,29 @@ assets automatically.
 
 See [release channels and workflow](https://github.com/flexdinesh/tokeninsights/blob/main/docs/release.md).
 
+## Desktop app (optional)
+
+The desktop app is a thin viewer for macOS and Linux (amd64, arm64). With it
+installed, `tokeninsights web` and `tokeninsights browse` open the dashboard in an
+app window instead of a browser tab. The CLI still collects, stores and serves
+usage; install the CLI first.
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/flexdinesh/tokeninsights/main/install.sh | sh
+```
+
+The script downloads the app from the latest release, verifies its checksum and
+installs it for the current user:
+
+- macOS: `~/Applications/TokenInsights.app`.
+- Linux: `~/.local/share/tokeninsights-desktop/` plus a desktop entry that handles
+  `tokeninsights://` links. The app needs WebKitGTK 4.1 (`libwebkit2gtk-4.1-0` on
+  Debian/Ubuntu, `webkit2gtk4.1` on Fedora, `webkit2gtk-4.1` on Arch).
+
+Rerun the script to upgrade. The app is not notarized; install it with the script
+rather than downloading the archive in a browser, which macOS Gatekeeper blocks.
+There is no Windows app.
+
 ## Next
 
 [Open your first dashboard](/getting-started).

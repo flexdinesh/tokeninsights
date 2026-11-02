@@ -122,6 +122,19 @@ and `tokeninsights-server`. Go users install remote explicitly with
 Both embed generated assets from stable tags or `edge` and run without Node/npm/pnpm. Remote runs only when
 explicitly launched and requires `--server-db-path`; installing it starts nothing.
 
+## Desktop viewer
+
+Each release also attaches unversioned `tokeninsights-desktop_<os>_<arch>.tar.gz`
+archives (macOS/Linux, amd64/arm64) to the same GitHub release, listed in the same
+`checksums.txt`. Native release jobs run `tools/build/src/build-desktop.ts`, which
+builds `packages/desktop` with `go tool mygo build` (pure Go, `CGO_ENABLED=0`) and
+stamps the release version into a copy of `mygo.json`. macOS runners seal the app
+bundle with an ad-hoc signature; there is no Developer ID signing or notarization.
+The Homebrew formula ignores desktop archives. Users install with the raw `main`
+`install.sh`, which downloads `releases/latest/download/<archive>` and verifies its
+checksum. Unversioned names keep that URL stable. Build locally with
+`mise run build:desktop`. See [ADR 0023](adr/0023-desktop-thin-viewer.md).
+
 Native CI/release Linux/macOS amd64/arm64 jobs build with `CGO_ENABLED=0` and test on matching runners. See [design](design.md) for current acceptance/migration.
 
 Live PostgreSQL verification: `mise run test` and `mise run test:race` start a pinned

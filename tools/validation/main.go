@@ -144,6 +144,10 @@ func (m *Validation) prepare(source *dagger.Directory, group string) *dagger.Con
 	}
 	goDeps := base.WithDirectory("/deps", source, dagger.ContainerWithDirectoryOpts{Include: []string{"packages/cli/go.mod", "packages/cli/go.sum"}}).
 		WithWorkdir("/deps/packages/cli").WithExec([]string{"go", "mod", "download"})
+	if group == "static" || group == "go" || group == "all" {
+		goDeps = goDeps.WithDirectory("/deps", source, dagger.ContainerWithDirectoryOpts{Include: []string{"packages/desktop/go.mod", "packages/desktop/go.sum"}}).
+			WithWorkdir("/deps/packages/desktop").WithExec([]string{"go", "mod", "download"}).WithWorkdir("/deps/packages/cli")
+	}
 	if group == "static" || group == "all" {
 		goDeps = goDeps.WithDirectory("/deps", source, dagger.ContainerWithDirectoryOpts{Include: []string{"packages/cli/golangci-lint.mod", "packages/cli/golangci-lint.sum"}}).WithExec([]string{"go", "mod", "download", "-modfile=golangci-lint.mod"})
 	}

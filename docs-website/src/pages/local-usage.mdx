@@ -31,11 +31,37 @@ This opens `http://127.0.0.1:9000`. The flag overrides environment and saved
 configuration. Use `--port 0` to choose an available port; the command prints its
 URL. An occupied explicit port fails rather than choosing another port.
 
-To print the URL without opening a browser:
+When the [desktop app](/install#desktop-app-optional) is installed, the dashboard
+opens in its window; otherwise it opens in the browser. Choose explicitly with
+`--open` or save a default with `tokeninsights config set viewer.open MODE`:
+
+| Mode      | Behavior                                                        |
+| --------- | --------------------------------------------------------------- |
+| `auto`    | Desktop app when installed, else the browser (default)          |
+| `app`     | Desktop app only; prints the URL with an error if it is missing |
+| `browser` | Always the browser                                              |
+| `false`   | Print the URL without opening anything                          |
 
 ```sh
+tokeninsights web --open=browser
 tokeninsights web --open=false
 ```
+
+The app opens loopback dashboards directly. For any other server it asks once per
+origin before loading it and remembers the answer.
+
+### Over SSH
+
+An SSH session never opens anything on the server. `tokeninsights web` prints the
+dashboard URL, a `tokeninsights://` app link and a tunnel command:
+
+```sh
+ssh -L 8765:127.0.0.1:8765 <host>
+```
+
+Run the tunnel on your own machine, then open the dashboard URL in a browser or click
+the app link in a terminal that supports links. The app link opens the same loopback
+URL through the tunnel.
 
 To expose the read-only dashboard on all IPv4 interfaces:
 
@@ -43,7 +69,8 @@ To expose the read-only dashboard on all IPv4 interfaces:
 tokeninsights web --host 0.0.0.0
 ```
 
-With a wildcard bind, the local browser opens a loopback URL.
+With a wildcard bind, the local browser opens a loopback URL. The local dashboard has
+no authentication; prefer an SSH tunnel over exposing it on a network.
 
 The browser dashboard uses white and neutral charcoal themes, restrained blue
 accents, and locally bundled DM Sans. Compact navigation and filters wrap on smaller
