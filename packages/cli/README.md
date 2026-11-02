@@ -36,9 +36,17 @@ tokeninsights tui                       # local collect, ingest, process, direct
 tokeninsights web                       # foreground dashboard with background collection
 tokeninsights web --host 0.0.0.0         # read-only dashboard on all IPv4 interfaces
 tokeninsights web --port 0 --open=false  # select available port; print URL
+tokeninsights web --open=browser        # skip the desktop app
 tokeninsights tui --sync=false          # saved usage only
 tokeninsights web --sync=false
 ```
+
+`web` and `browse` take `--open=auto|app|browser|false` (bare `--open` means
+`auto`); `config set viewer.open MODE` saves a default. `auto` hands the dashboard
+to the desktop viewer (`tokeninsights://open?url=...`) when installed: macOS via
+`open -b com.flexdinesh.tokeninsights`, Linux via the `x-scheme-handler/tokeninsights`
+default from `xdg-mime`. Otherwise it opens the browser. Over SSH nothing opens;
+`web` prints the URL, the app link and an `ssh -L` tunnel hint.
 
 Local commands own storage and processing until exit. No daemon or ingestion HTTP.
 One viewer owns the token database; concurrent sync/plugin requests are persisted

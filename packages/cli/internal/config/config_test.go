@@ -8,6 +8,8 @@ import (
 	"strings"
 	"sync"
 	"testing"
+
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/browser"
 )
 
 func writeConfig(t *testing.T, body string) string {
@@ -228,5 +230,51 @@ func TestFlagOverridesTakePrecedenceOverInvalidEnvironment(t *testing.T) {
 	}
 	if _, err := ResolveLocal(filepath.Join(t.TempDir(), "config.json"), true, overrides); err != nil {
 		t.Fatalf("single-dash --port did not override invalid environment: %v", err)
+	}
+}
+
+func TestViewerOpenPrecedenceAndValidation(t *testing.T) {
+	empty := writeConfig(t, `{}`)
+	local, err := ResolveLocal(empty, false, Overrides{})
+	if err != nil || local.Open != browser.ModeAuto {
+		t.Fatal("default open mode", local.Open, err)
+	}
+	saved := writeConfig(t, `{"viewer":{"open":"browser"},"distributed":{"server-url":"https://remote.example"}}`)
+	local, err = ResolveLocal(saved, true, Overrides{})
+	if err != nil || local.Open != browser.ModeBrowser {
+		t.Fatal("file open mode", local.Open, err)
+	}
+	flagValue := "app"
+	browse, err := ResolveBrowse(saved, true, Overrides{Open: &flagValue})
+	if err != nil || browse.Open != browser.ModeApp {
+		t.Fatal("flag open mode", browse.Open, err)
+	}
+	invalid := writeConfig(t, `{"viewer":{"open":"sometimes"},"distributed":{"server-url":"https://remote.example"}}`)
+	if _, err := ResolveLocal(invalid, false, Overrides{}); err == nil || !strings.Contains(err.Error(), "viewer.open") {
+		t.Fatal("invalid file open mode accepted", err)
+	}
+	if _, err := ResolveBrowse(invalid, false, Overrides{}); err == nil {
+		t.Fatal("invalid file open mode accepted by browse")
+	}
+	if browse, err := ResolveBrowse(invalid, false, Overrides{Open: &flagValue}); err != nil || browse.Open != browser.ModeApp {
+		t.Fatal("flag did not override invalid file value", err)
+	}
+	var values Values
+	for _, test := range []struct{ set, want string }{{"BROWSER", "browser"}, {"true", "auto"}, {"false", "false"}, {"app", "app"}} {
+		if err := values.Set("viewer.open", test.set, false); err != nil {
+			t.Fatal(err)
+		}
+		if got, err := values.Get("viewer.open", ""); err != nil || got != test.want {
+			t.Fatalf("get after set %q = %q, %v", test.set, got, err)
+		}
+	}
+	if err := values.Set("viewer.open", "sometimes", false); err == nil || *values.Viewer.Open != "app" {
+		t.Fatal("invalid set accepted or mutated")
+	}
+	if err := values.Set("viewer.open", "", true); err != nil || values.Viewer.Open != nil {
+		t.Fatal("remove failed", err)
+	}
+	if got, _ := values.Get("viewer.open", ""); got != "auto" {
+		t.Fatal("removed open mode", got)
 	}
 }

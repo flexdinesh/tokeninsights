@@ -57,6 +57,15 @@ func TestLayerDependencies(t *testing.T) {
 			}
 		}
 	}
+	// The desktop viewer is a separate module (packages/desktop, ADR 0023);
+	// the CLI hands it links and never links its GUI framework.
+	for name, dependencies := range imports {
+		for _, dependency := range dependencies {
+			if dependency == "github.com/egoist/mygo" || strings.HasPrefix(dependency, "github.com/egoist/mygo/") || strings.HasPrefix(dependency, "github.com/flexdinesh/tokeninsights/packages/desktop") {
+				t.Errorf("%s imports desktop viewer dependency %s", name, dependency)
+			}
+		}
+	}
 	// Storage location rule (docs/design.md): composition roots select adapters;
 	// role packages and adapters share engine mechanics from persistence.
 	compositionRoots := []string{"localruntime", "remoteserver", "cmd/tokeninsights", "cmd/tokeninsights-server"}

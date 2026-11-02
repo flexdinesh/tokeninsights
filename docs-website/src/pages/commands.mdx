@@ -24,7 +24,7 @@ servers.
 | `--source-dir`                                                        | yes   | yes   | Override startup capture source directory                                  |
 | `--collector-db-path`, `--server-db-path`, `--app-db-path`            | yes   | yes   | Override database paths                                                    |
 | `--host`, `--port`                                                    |       | yes   | Bind address; default `127.0.0.1:8765`, port `0` chooses an available port |
-| `--open`                                                              |       | yes   | Open the browser automatically (default true)                              |
+| `--open=MODE`                                                         |       | yes   | `auto` (desktop app, else browser), `app`, `browser` or `false`            |
 | `--today`, `--yesterday`, `--week`, `--month`, `--year`, `--all-time` | yes   |       | Date range presets; weeks are Monday to Sunday                             |
 | `--filter-day-from`, `--filter-day-to`                                | yes   |       | Local day range, `YYYY-MM-DD`                                              |
 | `--bucket`                                                            | yes   |       | Time bucket: `day`, `week`, `month`, or `year`                             |
@@ -39,8 +39,11 @@ tokeninsights sync --wait         # wait for acceptance
 tokeninsights sync --debug        # show capture, acceptance and receipt processing
 tokeninsights sync status --json  # latest durable job status
 tokeninsights browse              # open configured hosted dashboard; no upload
-tokeninsights browse --open=false # print dashboard URL without launching browser
+tokeninsights browse --open=false # print dashboard URL without opening it
 ```
+
+`browse --open=MODE` accepts the same modes as `web`; see
+[Local usage](/local-usage#browser-dashboard).
 
 See [Distributed sync](/sync) for setup, options and job behavior.
 
@@ -54,7 +57,10 @@ tokeninsights config remove KEY
 
 Keys: `collector.db-path`, `in-process.server-db-path`, `in-process.app-db-path`,
 `in-process.host`, `in-process.port`, `distributed.server-url`,
-`distributed.server-token`.
+`distributed.server-token`, `viewer.open`.
+
+`viewer.open` sets the default `--open` mode for `web` and `browse`: `auto`, `app`,
+`browser` or `false`. It has no environment variable.
 
 Set `distributed.server-token` without a value to read it securely from the
 terminal or stdin. Passing a token value as an argument is rejected; `get` reports
@@ -68,7 +74,8 @@ private and atomically written. Select another file with `--config-file PATH` or
 {
   "collector": { "db-path": "/home/user/.local/share/tokeninsights/collector.sqlite" },
   "in-process": { "host": "127.0.0.1", "port": 8765 },
-  "distributed": { "server-url": "https://usage.example.com" }
+  "distributed": { "server-url": "https://usage.example.com" },
+  "viewer": { "open": "auto" }
 }
 ```
 

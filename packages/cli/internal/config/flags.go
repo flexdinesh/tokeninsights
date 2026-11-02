@@ -23,6 +23,8 @@ func FlagOverrides(flags *flag.FlagSet) (Overrides, error) {
 			overrides.CollectorDBPath = &value
 		case "server-url":
 			overrides.ServerURL = &value
+		case "open":
+			overrides.Open = &value
 		case "host":
 			if value == "" {
 				value = Defaults().Host

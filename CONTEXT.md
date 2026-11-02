@@ -80,6 +80,10 @@ _Avoid_: Source-token-bound session, API key in localStorage, account administra
 A typed, server-owned feature declaration exposed by the instance REST endpoint. Routes, commands and browser UI share its policy. Caller permissions separately authorize supported operations.
 _Avoid_: Client-selected feature, authentication scope
 
+**Desktop Viewer**:
+The optional macOS/Linux TokenInsights app that shows dashboards served elsewhere. `web` and `browse` hand it `tokeninsights://open?url=...` links; it owns no usage storage or collection. It keeps only approved non-loopback origins and its webview's own browser state.
+_Avoid_: Desktop server, standalone app, Electron app
+
 **Collector Progress**:
 Bounded, sanitized capture/submission attempt state published by the command-owned local collector into an in-process registry. Local TUI reads it directly; local Web reads it through a capability-gated endpoint. Hosted servers never collect or expose collector progress. Processing lag is separate and available to authorized viewers of either kind.
 _Avoid_: Server collection, global queue progress, upload completion as query freshness

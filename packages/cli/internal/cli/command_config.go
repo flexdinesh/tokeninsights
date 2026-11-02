@@ -16,7 +16,7 @@ var configCommand = commandSpec{name: "config", run: runConfig}
 
 func runConfig(invocation commandInvocation, args []string) error {
 	if len(args) == 1 && (args[0] == "--help" || args[0] == "-h") {
-		_, err := fmt.Fprintln(invocation.stdout, "usage: tokeninsights config set KEY VALUE | get KEY | remove KEY\nKeys: collector.db-path, in-process.server-db-path, in-process.app-db-path, in-process.host, in-process.port, distributed.server-url, distributed.server-token\nSet distributed.server-token without VALUE to read securely from terminal/stdin. get never prints tokens.\nRuntime precedence: flags > environment > file > defaults.")
+		_, err := fmt.Fprintln(invocation.stdout, "usage: tokeninsights config set KEY VALUE | get KEY | remove KEY\nKeys: collector.db-path, in-process.server-db-path, in-process.app-db-path, in-process.host, in-process.port, distributed.server-url, distributed.server-token, viewer.open\nSet distributed.server-token without VALUE to read securely from terminal/stdin. get never prints tokens.\nRuntime precedence: flags > environment > file > defaults.")
 		return err
 	}
 	if len(args) < 2 {

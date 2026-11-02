@@ -62,6 +62,21 @@ void test('fails when a release archive checksum is missing', async () => {
   )
 })
 
+void test('ignores desktop app archives in release checksums', async () => {
+  const workspace = await createFormulaWorkspace()
+  await writeChecksums(workspace.checksumsPath, [
+    ...completeChecksums(),
+    'eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee  tokeninsights-desktop_darwin_arm64.tar.gz',
+    'ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff  tokeninsights-desktop_linux_amd64.tar.gz',
+  ])
+
+  await runGenerator(workspace)
+
+  const formula = await readFile(workspace.outputPath, 'utf8')
+  assert.doesNotMatch(formula, /tokeninsights-desktop|eeee|ffff/)
+  assert.match(formula, /tokeninsights_0\.0\.7_darwin_arm64\.tar\.gz/)
+})
+
 void test('accepts a forwarded pnpm argument separator', async () => {
   const workspace = await createFormulaWorkspace()
   await writeChecksums(workspace.checksumsPath, completeChecksums())

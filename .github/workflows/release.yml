@@ -135,7 +135,7 @@ jobs:
           git checkout --detach "$RELEASE_COMMIT"
       - uses: jdx/mise-action@v5
         with:
-          install_args: go
+          install_args: go node
       - name: Build and smoke test native binaries
         shell: bash
         env:
@@ -161,6 +161,16 @@ jobs:
           PATH=/usr/bin:/bin "dist/${archive_dir}/tokeninsights-server" --version
           cp README.md LICENSE "dist/${archive_dir}/"
           tar -C dist -czf "dist/${archive_dir}.tar.gz" "${archive_dir}"
+      # macOS runners seal the app bundle with an ad-hoc signature (ADR 0023).
+      - name: Build desktop app
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Sources released before the desktop viewer have no desktop build.
+          if [[ ! -f tools/build/src/build-desktop.ts ]]; then exit 0; fi
+          node tools/build/src/build-desktop.ts --out dist \
+            --version "${{ needs.prepare.outputs.version }}" \
+            --platform "${{ matrix.os }}/${{ matrix.arch }}"
       - uses: actions/upload-artifact@v7
         with:
           name: native-${{ matrix.os }}-${{ matrix.arch }}

@@ -352,6 +352,36 @@ during capture and processing; committed published revisions refresh the dashboa
 Capture failures, including quarantine, preserve the dashboard and show incomplete
 refresh. A database lifetime lock excludes a second viewer.
 
+### Dashboard opening and desktop viewer
+
+[ADR 0023](adr/0023-desktop-thin-viewer.md). `web` and `browse` resolve one open
+mode, flag `--open=auto|app|browser|false` > config `viewer.open` > `auto`; there
+is no environment variable. A bare `--open` or `--open=true` means `auto`. The
+`browser` package owns the policy: SSH sessions (`SSH_CONNECTION`, `SSH_CLIENT`,
+`SSH_TTY`) open nothing; `auto` and `app` hand `tokeninsights://open?url=<escaped
+URL>` to the desktop viewer when one is registered (macOS `open -b
+com.flexdinesh.tokeninsights`; Linux with a display and an `xdg-mime`
+`x-scheme-handler/tokeninsights` default, then `xdg-open`). `auto` falls back to
+the browser; `app` reports an error and keeps the printed URL. Detection never fails
+a command and the server keeps running. The Web ready block prints the dashboard URL
+before opening. Over SSH it also prints the app link (an OSC 8 hyperlink on styled
+terminals) and, for loopback URLs, an `ssh -L <port>:127.0.0.1:<port> <host>` hint;
+`browse` prints the app link. Opening reports outcomes on stderr.
+
+The desktop viewer is the separate Go module `packages/desktop` built with MyGo
+(pure Go, system webview). It is a thin viewer: no usage storage, collection,
+ingestion or Go bindings to pages. It parses only `tokeninsights://open?url=` with
+an absolute http(s) URL without credentials, keeps one window per normalized
+origin (a new link to an open origin navigates and focuses it), and loads every
+page untrusted. Loopback origins open directly; other origins require a native
+confirmation once, remembered in `<user config>/tokeninsights-desktop/trusted-origins.json`
+(private, atomic, strict; a corrupt file is reported and never overwritten).
+Top-level navigation to another origin opens in the system browser. Launch without
+a link shows a static help page. The CLI module never imports MyGo or the desktop
+module; an architecture test enforces it. Local `web` authentication is unchanged:
+non-loopback binds remain unauthenticated, and SSH tunnels are the documented
+remote path.
+
 Distributed collectors submit to an authenticated remote hosted server in one
 container. Bearer auth selects the dataset; the server starts no collector. A
 configured HTTP listen address does not require a domain or TLS. Browser login
@@ -628,6 +658,7 @@ New role schemas belong in a top-level package; port implementations in `adapter
 | `serverruntime` | Shared worker/readiness/listener lifecycle through interfaces |
 | `remoteserver` | Authenticated remote composition |
 | `cli` | Command parsing, environment defaults and local composition; no storage adapters or SQL |
+| `browser` | Dashboard open-mode policy, desktop viewer links and browser/app launch; no MyGo |
 | `flagvalue` | Shared command-line flag values: repeatable lists and `--harness` parsing |
 | `tui` | Terminal dashboard over `queryclient.Reader` and the local runtime; no HTTP, SQL or storage adapters |
 

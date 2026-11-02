@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/charmbracelet/x/ansi"
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/browser"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/collector"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/collectorprogress"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/config"
@@ -68,7 +69,7 @@ func TestLocalWebOwnsListenerUntilCancellationAndNeverAcceptsHTTPIngestion(t *te
 	}
 	var address string
 	var stdout bytes.Buffer
-	openDashboard = func(url string) error {
+	openDashboard = func(_ context.Context, _ browser.Mode, url string) (browser.Result, error) {
 		if !strings.HasPrefix(url, "http://127.0.0.1:") {
 			t.Fatal("wrong browser address/order", url)
 		}
@@ -122,7 +123,7 @@ func TestLocalWebOwnsListenerUntilCancellationAndNeverAcceptsHTTPIngestion(t *te
 			}
 		}
 		cancel()
-		return nil
+		return browser.Result{}, nil
 	}
 	if err := runWeb(commandInvocation{context: ctx, stdout: &stdout, stderr: io.Discard, configPath: localConfigForTest(t, settings)}, []string{"--full-refresh", "--source-dir", root}); err != nil {
 		t.Fatal(err)
@@ -163,7 +164,7 @@ func TestWebReadyOutputRespectsColorEnvironment(t *testing.T) {
 			t.Setenv("NO_COLOR", test.noColor)
 			t.Setenv("CLICOLOR", test.cliColor)
 			var output bytes.Buffer
-			printWebReady(&output, url)
+			printWebReady(&output, url, false)
 			text := output.String()
 			plain := ansi.Strip(text)
 			if (text != plain) != test.styled {
@@ -205,7 +206,7 @@ func TestLocalWebCaptureFailureKeepsSavedDashboardAndShowsFailure(t *testing.T) 
 		options.SyncOptions.Progress(pipeline.SyncProgressEvent{Harness: pipeline.HarnessPi, Status: pipeline.SyncProgressFailed})
 		return collector.Result{}, errors.New("private source error")
 	}
-	openDashboard = func(url string) error {
+	openDashboard = func(_ context.Context, _ browser.Mode, url string) (browser.Result, error) {
 		deadline := time.After(10 * time.Second)
 		for {
 			progress := readWebProgress(t, url)
@@ -231,7 +232,7 @@ func TestLocalWebCaptureFailureKeepsSavedDashboardAndShowsFailure(t *testing.T) 
 			t.Fatal("saved data lost after capture failure", data, err)
 		}
 		cancel()
-		return nil
+		return browser.Result{}, nil
 	}
 	var stderr bytes.Buffer
 	if err := runWeb(commandInvocation{context: ctx, stdout: io.Discard, stderr: &stderr, configPath: localConfigForTest(t, settings)}, nil); err != nil || stderr.Len() != 0 {
@@ -251,12 +252,12 @@ func TestLocalWebSavedOnlyHasNoStartupCollection(t *testing.T) {
 		t.Error("saved-only web collected")
 		return collector.Result{}, nil
 	}
-	openDashboard = func(url string) error {
+	openDashboard = func(_ context.Context, _ browser.Mode, url string) (browser.Result, error) {
 		if progress := readWebProgress(t, url); len(progress.Attempts) != 0 {
 			t.Fatal("saved-only web created startup attempt", progress)
 		}
 		cancel()
-		return nil
+		return browser.Result{}, nil
 	}
 	if err := runWeb(commandInvocation{context: ctx, stdout: io.Discard, stderr: io.Discard, configPath: localConfigForTest(t, settings)}, []string{"--sync=false"}); err != nil {
 		t.Fatal(err)
@@ -354,7 +355,7 @@ func TestWebPortFlagBindsRequestedPort(t *testing.T) {
 			previousOpen := openDashboard
 			t.Cleanup(func() { openDashboard = previousOpen })
 			var output bytes.Buffer
-			openDashboard = func(url string) error {
+			openDashboard = func(_ context.Context, _ browser.Mode, url string) (browser.Result, error) {
 				defer cancel()
 				if url != "http://"+address || !strings.Contains(ansi.Strip(output.String()), "Dashboard:  "+url) {
 					t.Fatalf("dashboard URL = %q, want http://%s; output = %q", url, address, output.String())
@@ -367,7 +368,7 @@ func TestWebPortFlagBindsRequestedPort(t *testing.T) {
 				if response.StatusCode != http.StatusOK {
 					t.Fatal(response.Status)
 				}
-				return nil
+				return browser.Result{}, nil
 			}
 			args := []string{"--sync=false", "--port", port}
 			if form == "equals" {

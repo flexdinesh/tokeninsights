@@ -14,6 +14,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/flexdinesh/tokeninsights/packages/cli/internal/browser"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/dbpath"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/networkprefs"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/writerlock"
@@ -34,23 +35,33 @@ type DistributedValues struct {
 	ServerURL   *string `json:"server-url,omitempty"`
 	ServerToken *string `json:"server-token,omitempty"`
 }
+type ViewerValues struct {
+	Open *string `json:"open,omitempty"`
+}
 type Values struct {
 	Collector   CollectorValues   `json:"collector,omitempty"`
 	InProcess   LocalValues       `json:"in-process,omitempty"`
 	Distributed DistributedValues `json:"distributed,omitempty"`
+	Viewer      ViewerValues      `json:"viewer,omitempty"`
 }
 
 // Overrides describes flags, never the persisted configuration.
 type Overrides struct {
-	AppDBPath, ServerDBPath, CollectorDBPath, Host, ServerURL, ServerToken *string
-	Port                                                                   *int
+	AppDBPath, ServerDBPath, CollectorDBPath, Host, ServerURL, ServerToken, Open *string
+	Port                                                                         *int
 }
 type LocalSettings struct {
 	AppDBPath, ServerDBPath, CollectorDBPath, Host string
 	Port                                           int
+	// Open selects how web opens its dashboard: flag > file > auto.
+	Open browser.Mode
 }
 type SyncSettings struct{ CollectorDBPath, ServerURL, ServerToken string }
-type BrowseSettings struct{ ServerURL string }
+type BrowseSettings struct {
+	ServerURL string
+	// Open selects how browse opens its dashboard: flag > file > auto.
+	Open browser.Mode
+}
 
 func Path(explicit string) (string, error) {
 	if explicit == "" {
@@ -73,7 +84,7 @@ func Path(explicit string) (string, error) {
 // Defaults are the built-in settings before config files and environment.
 func Defaults() LocalSettings {
 	base := dataDirectory()
-	return LocalSettings{Host: networkprefs.DefaultHost, Port: networkprefs.DefaultPort,
+	return LocalSettings{Host: networkprefs.DefaultHost, Port: networkprefs.DefaultPort, Open: browser.ModeAuto,
 		CollectorDBPath: filepath.Join(base, "collector.sqlite"),
 		ServerDBPath:    filepath.Join(base, "server.sqlite")}
 }
@@ -132,7 +143,7 @@ func Read(path string) (Values, error) {
 	decoder = json.NewDecoder(bytes.NewReader(body))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&values); err != nil {
-		return Values{}, fmt.Errorf("invalid grouped config; use collector, in-process and distributed groups (flat config and mode are removed)")
+		return Values{}, fmt.Errorf("invalid grouped config; use collector, in-process, distributed and viewer groups (flat config and mode are removed)")
 	}
 	return values, nil
 }
@@ -297,7 +308,21 @@ func (v Values) local(base string, environment bool, o Overrides) (LocalSettings
 	} else if v.InProcess.Port != nil {
 		s.Port = *v.InProcess.Port
 	}
+	var err error
+	if s.Open, err = v.open(o); err != nil {
+		return s, err
+	}
 	return s, s.Validate()
+}
+
+// open resolves the viewer open mode; it has no environment variable.
+func (v Values) open(o Overrides) (browser.Mode, error) {
+	value := resolveString(string(browser.ModeAuto), v.Viewer.Open, "", o.Open, false)
+	mode, err := browser.ParseMode(value)
+	if err != nil && o.Open == nil {
+		return "", fmt.Errorf("invalid viewer.open: %w", err)
+	}
+	return mode, err
 }
 func (v Values) remote(base string, environment bool, o Overrides) SyncSettings {
 	return SyncSettings{
@@ -327,7 +352,11 @@ func ResolveBrowse(path string, environment bool, o Overrides) (BrowseSettings, 
 	if err != nil {
 		return BrowseSettings{}, err
 	}
-	return BrowseSettings{ServerURL: resolveString("", v.Distributed.ServerURL, "TOKENINSIGHTS_SERVER_URL", o.ServerURL, environment)}, nil
+	mode, err := v.open(o)
+	if err != nil {
+		return BrowseSettings{}, err
+	}
+	return BrowseSettings{ServerURL: resolveString("", v.Distributed.ServerURL, "TOKENINSIGHTS_SERVER_URL", o.ServerURL, environment), Open: mode}, nil
 }
 func (v Values) Get(key, base string) (string, error) {
 	local, err := v.local(base, false, Overrides{})
@@ -350,6 +379,9 @@ func (v Values) Get(key, base string) (string, error) {
 			return "unset", nil
 		}
 		return "configured", nil
+	case "viewer.open":
+		mode, err := v.open(Overrides{})
+		return string(mode), err
 	default:
 		return "", fmt.Errorf("unknown config key %q", key)
 	}
@@ -413,6 +445,17 @@ func (v *Values) Set(key, value string, remove bool) error {
 			}
 		}
 		v.Distributed.ServerToken = stringValue
+	case "viewer.open":
+		if remove {
+			v.Viewer.Open = nil
+			return nil
+		}
+		mode, err := browser.ParseMode(value)
+		if err != nil {
+			return err
+		}
+		canonical := string(mode)
+		v.Viewer.Open = &canonical
 	default:
 		return fmt.Errorf("unknown config key %q", key)
 	}

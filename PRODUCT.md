@@ -35,8 +35,10 @@ require a separate authenticated harness export or realtime hooks.
 
 - One native Go binary provides the CLI, TUI, and browser server. Production runs
   without Node, npm, or pnpm; browser assets are embedded and work offline.
-- `tokeninsights service` manages the local server, `tokeninsights sync` collects
-  and publishes, and `tokeninsights tui` opens the terminal dashboard.
+- `tokeninsights tui` and `tokeninsights web` own local collection, processing and
+  viewing; `tokeninsights sync` submits to a hosted server. An optional macOS/Linux
+  desktop app is a thin viewer that the CLI hands dashboard URLs to; it stores and
+  collects nothing.
 - Viewers read committed usage through shared direct/HTTP query adapters. TUI
   startup collects and publishes within a progress screen; `tui --sync=false`
   skips collection. Local Web opens after storage initialization and shows
@@ -48,10 +50,9 @@ require a separate authenticated harness export or realtime hooks.
   connection/storage failures, and individual usage/filter errors remain distinct.
 - Date ranges and dimension filters constrain displayed analytics, not which
   harnesses sync. Calendar grouping uses the serving machine's local time.
-- The browser queries the server serving its page. Explicit CLI `--server-url`
-  selects another server and skips local startup. Every non-loopback bind
-  requires a token; clients use bearer auth and browser Basic auth. Remote TLS
-  deployment, provisioning, and multi-account administration remain later work.
+- The browser queries the server serving its page. Local `web` has no
+  authentication, including non-loopback binds; hosted servers use password login
+  and API keys. SSH users reach a loopback dashboard through a tunnel.
 - Fresh `collector.sqlite` and `server.sqlite` have distinct roles. The old
   `tokeninsights.sqlite` stays untouched; previous commands/schema migrations
   are not supported. Advanced host maintenance uses the `collector` namespace.
