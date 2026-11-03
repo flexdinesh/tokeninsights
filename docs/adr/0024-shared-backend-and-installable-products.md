@@ -49,7 +49,10 @@ Collect on launcher invocation, coalescing identical overlapping requests and
 retaining bounded stronger follow-up work. No login service or periodic scan.
 `--sync=false` skips launch capture while durable processing resumes. Browser
 reload, filters and TUI reload query only. Local maintenance attaches to the
-owner instead of reopening storage.
+owner instead of reopening storage. Desktop URL handoffs attach without capture,
+preserving the originating launcher's sync/source policy. Standalone desktop
+launches collect. A tunneled personal dashboard without a matching local private
+owner opens its original URL in the browser.
 
 MyGo uses native Go UI for local totals, date/provider/model/harness filters,
 results, progress and retry. Electron loads the composed reusable dashboard

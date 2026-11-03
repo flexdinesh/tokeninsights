@@ -19,7 +19,7 @@ type localSource struct{ session *localclient.Session }
 
 func connectLocal(ctx context.Context, target string, capture bool) (dataSource, error) {
 	if target != "" {
-		// Verify link identity before requesting capture on any attached owner.
+		// Verify link identity before attaching an existing owner.
 		parsed, err := link.Dashboard(target)
 		if err != nil {
 			return nil, err
@@ -43,7 +43,11 @@ func connectLocal(ctx context.Context, target string, capture bool) (dataSource,
 			}
 			return nil, fmt.Errorf("cannot inspect local dashboard: %w", err)
 		}
-		session, err := localclient.ConnectEndpoint(ctx, parsed.Origin, capture)
+		// A URL handoff inherits its launcher's capture policy; attach only.
+		session, err := localclient.ConnectEndpoint(ctx, parsed.Origin, false)
+		if errors.Is(err, localclient.ErrEndpointMissing) {
+			return nil, &externalTarget{URL: target}
+		}
 		if err != nil {
 			return nil, err
 		}

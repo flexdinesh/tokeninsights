@@ -16,7 +16,7 @@ desktop targets return an error; `auto` tries MyGo and falls back to the browser
 
 `state.go` owns asynchronous loading and per-window session lifetime. `view.go`
 consumes presentation values through an injected connector. `core_adapter.go`
-owns localclient startup/attachment and query calls; linked URLs attach the matching existing owner without resolving default storage; `query_adapter.go` maps
+owns localclient startup/attachment and query calls; linked URLs attach the matching existing owner without capture or resolving default storage. A tunneled personal dashboard without a local owner opens its original URL in the browser. Standalone launches collect. `query_adapter.go` maps
 application values to the view. Each window owns one backend lease. Filter
 changes and refresh reuse it without capture. Retry collection requests capture
 on that lease. Closing cancels outstanding I/O and releases the lease; reopening

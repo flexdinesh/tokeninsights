@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import type { Bootstrap } from '@tokeninsights/contracts'
-import { localLaunch } from '../src/launch.ts'
+import { connectTarget, localLaunch } from '../src/launch.ts'
 
 const instance: Bootstrap = {
   apiVersion: 'v2',
@@ -60,5 +60,41 @@ void test('hosted authentication, broken local probes and remote links stay in t
       throw new Error('must not probe remote links')
     }),
     false,
+  )
+})
+
+void test('a tunneled dashboard without a private owner opens its original URL, never default storage', async () => {
+  const target = 'http://127.0.0.1:43210/models?period=week'
+  const opened: string[] = []
+  const calls: Array<string[] | undefined> = []
+  const connection = await connectTarget(
+    'backend',
+    () => {},
+    target,
+    (url) => opened.push(url),
+    async (_executable, _onExit, args) => {
+      calls.push(args)
+      throw new Error('no matching private owner')
+    },
+  )
+  assert.equal(connection, undefined)
+  assert.deepEqual(opened, [target])
+  assert.deepEqual(calls, [['connect', '--json', '--url', 'http://127.0.0.1:43210']])
+})
+
+void test('standalone startup failures remain errors for Retry rather than browser handoffs', async () => {
+  await assert.rejects(
+    connectTarget(
+      'backend',
+      () => {},
+      undefined,
+      () => {
+        assert.fail('standalone launch has no external dashboard')
+      },
+      async () => {
+        throw new Error('startup failed')
+      },
+    ),
+    /startup failed/,
   )
 })

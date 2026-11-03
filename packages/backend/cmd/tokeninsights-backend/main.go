@@ -73,7 +73,8 @@ func run(ctx context.Context, args []string) error {
 
 func connect(ctx context.Context, args []string) (*localclient.Session, error) {
 	if len(args) == 4 {
-		return localclient.ConnectEndpoint(ctx, args[3], true)
+		// The originating launcher already applied capture/source policy.
+		return localclient.ConnectEndpoint(ctx, args[3], false)
 	}
 	path, err := config.Path("")
 	if err != nil {

@@ -11,8 +11,11 @@ func TestViewerLifetimeStartupReconnectAndFinalDisconnect(t *testing.T) {
 	if s.expired(now.Add(StartupGrace - time.Nanosecond)) {
 		t.Fatal("startup grace expired early")
 	}
-	if !s.attach() || !s.attach() {
+	if !s.attach() {
 		t.Fatal("initial attachment failed")
+	}
+	if !s.attach() {
+		t.Fatal("second attachment failed")
 	}
 	if s.expired(now.Add(2 * StartupGrace)) {
 		t.Fatal("live viewers expired")

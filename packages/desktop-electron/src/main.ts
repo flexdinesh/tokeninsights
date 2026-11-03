@@ -1,9 +1,8 @@
 import { app, BrowserWindow, dialog, shell } from 'electron'
 import { join } from 'node:path'
-import { backendArguments, connectBackend } from './backend'
 import type { BackendConnection } from './backend'
 import { externalURL, launchURL, localNavigation } from './links'
-import { localLaunch } from './launch'
+import { connectTarget, localLaunch } from './launch'
 
 app.setName('TokenInsights Electron')
 app.setAppUserModelId('com.flexdinesh.tokeninsights.electron')
@@ -14,6 +13,7 @@ let connection: BackendConnection | undefined
 let quitting = false
 let cleaningUp = false
 let requestedEndpoint: string | undefined
+let requestedURL: string | undefined
 const pendingLinks: string[] = []
 
 function openExternal(value: string) {
@@ -42,6 +42,7 @@ async function handleArguments(args: string[]) {
         external = true
       } else {
         requestedEndpoint = endpoint
+        requestedURL = target.url
         local = true
       }
     } else {
@@ -54,7 +55,7 @@ async function handleArguments(args: string[]) {
 
 async function startWindow(): Promise<void> {
   try {
-    connection = await connectBackend(
+    connection = await connectTarget(
       join(process.resourcesPath, 'tokeninsights-backend'),
       () => {
         if (quitting) return
@@ -64,8 +65,15 @@ async function startWindow(): Promise<void> {
         )
         app.quit()
       },
-      backendArguments(requestedEndpoint),
+      requestedURL,
+      (url) => {
+        if (!quitting) openExternal(url)
+      },
     )
+    if (connection === undefined) {
+      app.quit()
+      return
+    }
     if (quitting) {
       connection.close()
       return

@@ -30,12 +30,14 @@ tmp="$(mktemp -d)"
 stage=
 backup=
 dest=
+link_stage=
 cleanup() {
     if [ -n "$backup" ] && [ -d "$backup" ]; then
         rm -rf "$dest"
         mv "$backup" "$dest"
     fi
     if [ -n "$stage" ]; then rm -rf "$stage"; fi
+    if [ -n "$link_stage" ]; then rm -rf "$link_stage"; fi
     rm -rf "$tmp"
 }
 trap cleanup EXIT
@@ -179,8 +181,10 @@ if [ "$os" = darwin ] && { [ "$product" = mygo ] || [ "$product" = electron ]; }
     link="$bin/$app"
     target="$dest/$app"
 fi
+publish_link=true
 if [ -e "$link" ] || [ -L "$link" ]; then
     [ -L "$link" ] && [ "$(readlink "$link")" = "$target" ] || fail "refusing to replace unowned path $link"
+    publish_link=false
 fi
 if [ "$os" = linux ] && { [ "$product" = mygo ] || [ "$product" = electron ]; }; then
     entry="$data/applications/$slug.desktop"
@@ -201,11 +205,13 @@ if [ -d "$dest" ]; then
 fi
 mv "$stage" "$dest"
 stage=
-link_stage="$(mktemp -d "$bin/.tokeninsights-link-XXXXXX")"
-ln -s "$target" "$link_stage/link"
-rm -f "$link"
-mv "$link_stage/link" "$link"
-rmdir "$link_stage"
+if [ "$publish_link" = true ]; then
+    link_stage="$(mktemp -d "$bin/.tokeninsights-link-XXXXXX")"
+    ln -s "$target" "$link_stage/link"
+    mv "$link_stage/link" "$link"
+    rmdir "$link_stage"
+    link_stage=
+fi
 if [ "$os" = linux ] && { [ "$product" = mygo ] || [ "$product" = electron ]; }; then
     mkdir -p "$data/applications"
     cat > "$dest/desktop-entry" <<EOF

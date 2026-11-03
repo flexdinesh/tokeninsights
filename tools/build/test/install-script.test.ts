@@ -248,6 +248,22 @@ void test('all product entrypoints support main; desktop products coexist', (t) 
       existsSync(join(f.home, '.local/share/applications', `tokeninsights-${product}.desktop`)),
     )
 })
+void test('upgrades retain the valid launcher without a remove-and-republish gap', (t) => {
+  const f = fixture(t)
+  f.archive()
+  assert.equal(f.run().status, 0)
+  f.archive('cli', 'v2')
+  executable(
+    join(f.bin, 'mv'),
+    'case "$1" in *.tokeninsights-link-*) exit 17 ;; *) exec /bin/mv "$@" ;; esac',
+  )
+  const result = f.run()
+  assert.equal(result.status, 0, result.stderr)
+  assert.equal(
+    execFileSync(join(f.home, '.local/bin/tokeninsights'), { encoding: 'utf8' }).trim(),
+    'v2',
+  )
+})
 for (const failure of [
   'checksum',
   'missing checksum',
@@ -300,6 +316,10 @@ for (const failure of [
     assert.match(
       readFileSync(join(f.installed('cli'), 'tokeninsights-backend'), 'utf8'),
       /backend-v1/,
+    )
+    assert.equal(
+      execFileSync(join(f.home, '.local/bin/tokeninsights'), { encoding: 'utf8' }).trim(),
+      'v1',
     )
   })
 }

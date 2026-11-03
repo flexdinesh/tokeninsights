@@ -46,7 +46,9 @@ func useSharedBackendForTest(t *testing.T) {
 		case <-ready:
 		case <-ctx.Done():
 			cancel()
-			<-finished
+			if err := <-finished; err != nil {
+				t.Logf("cancelled backend startup: %v", err)
+			}
 			return nil, ctx.Err()
 		}
 		t.Cleanup(func() {

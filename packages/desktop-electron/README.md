@@ -22,5 +22,8 @@ executable/scheme: `tokeninsights-electron`. The generic `tokeninsights` scheme
 belongs to the chosen default MyGo app. Explicit
 `tokeninsights-electron://open?url=<encoded-http-url>` links and HTTP(S) arguments
 open the system browser for hosted targets. Loopback targets are probed for
-local/hosted mode; only personal targets start the native viewer. A URL handoff attaches the matching existing private owner; it never opens default storage instead. A launch without a URL uses Go-owned default settings. Renderer navigation stays on the
-acquired backend origin.
+local/hosted mode; personal targets attach to a matching existing private owner.
+URL handoffs request no capture, preserving the launcher's sync/source policy.
+A tunneled personal dashboard without a local owner opens its original URL in
+the browser. A launch without a URL uses Go-owned default settings and collects.
+Renderer navigation stays on the acquired backend origin.
