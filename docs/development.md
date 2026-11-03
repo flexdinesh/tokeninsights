@@ -1,314 +1,151 @@
 # Development
 
-TokenInsights is a pnpm monorepo with a Go CLI and a Vite/React browser application. The public documentation site in `docs-website/` is a Vocs pnpm workspace package. `mise.toml` pins Go, Node, and pnpm for development and owns all repository tasks. Production source uses one root Go module, pinned to Go 1.27.3. Build generated web assets first; Go binaries require no C/C++ or host JavaScript runtime. The canonical go directive supplies the pin when Go omits an equal toolchain directive. Race verification requires CGO. `pnpm-workspace.yaml` enforces a 3-day minimum release age for npm packages everywhere, except the `@opencode/*` and `@earendil-works/*` harness SDKs.
+Run from repo root. `mise tasks ls` lists every task. User commands: [CLI](cli.md).
 
-## Development builds
-
-For development builds, install directly from `main`:
+## Install from main
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/flexdinesh/tokeninsights/main/install-main.sh | sh
+curl -fsSL https://raw.githubusercontent.com/flexdinesh/tokeninsights/main/install-main.sh | sh                                # CLI
+curl -fsSL https://raw.githubusercontent.com/flexdinesh/tokeninsights/main/install-mygo.sh | sh -s -- --channel=main          # MyGo
+curl -fsSL https://raw.githubusercontent.com/flexdinesh/tokeninsights/main/install-electron.sh | sh -s -- --channel=main      # Electron
+curl -fsSL https://raw.githubusercontent.com/flexdinesh/tokeninsights/main/install-server.sh | sh -s -- --channel=main        # server
+curl -fsSL https://raw.githubusercontent.com/flexdinesh/tokeninsights/main/install.sh | sh                                    # back to stable
+tokeninsights --version
+fish_add_path ~/.local/bin                     # if not on PATH
 ```
 
 ## Setup
 
 ```sh
-git clone git@github.com:flexdinesh/tokeninsights.git
-cd tokeninsights
-mise trust
-mise install
-mise run setup
-mise run setup:browser
+git clone git@github.com:flexdinesh/tokeninsights.git && cd tokeninsights
+mise trust && mise install                     # pinned Go/Node/pnpm (mise 2026.10.18)
+mise run setup                                 # deps + Husky hooks
+mise run setup:browser                         # Chromium for e2e
 ```
 
-Install [mise](https://mise.jdx.dev/getting-started.html) 2026.10.18 first; snapshot format verification requires this pinned version. `mise trust` accepts the repository config; `mise install` installs locked tools. `setup` runs `mise deps install`, installing frozen workspace dependencies and registering [Husky](https://typicode.github.io/husky/get-started.html) hooks (pre-push performs no validation) through pnpm's `prepare` script. `setup:browser` installs Chromium once; Linux hosts missing browser libraries can use `mise exec -- pnpm --filter @tokeninsights/web exec playwright install --with-deps chromium`.
-
-## Toolchain
-
-`mise.toml` pins exact Go 1.27.3, Node 26.12.1 and pnpm 12.15.0. Committed `mise.lock` records checksums, plus GitHub attestations for pnpm, on Linux/macOS x64/arm64; installs for this project are locked. Other global mise tools are unaffected.
-
-To bump a tool, edit `mise.toml`, run `mise lock`, then update the Dockerfile `golang`/`node` image tags and pnpm install, root `package.json` `packageManager`, and the root `go.mod` Go version pin. `mise run check:toolchain`, part of validation, fails on any mismatch.
-
-mise sets `GOTOOLCHAIN=local`, so development never silently switches Go toolchains, and puts `node_modules/.bin` on `PATH`. Put personal development overrides in ignored `mise.local.toml` or `mise.*.local.toml`. Validation does not inherit those overrides or host database URLs.
-
-`[deps.pnpm]` requires `experimental = true`. Before `mise run` or `mise exec`, it runs `pnpm install --frozen-lockfile` when `package.json` or `pnpm-lock.yaml` changed or `node_modules` is missing; `--no-deps` skips it.
-
-## Commands
-
-Run commands from the repository root unless noted otherwise. `mise tasks ls` lists every task with its description.
-
-### Local development
-
-| Purpose | Command |
-| --- | --- |
-| Full local validation before PR creation/update | `mise run check:pr` |
-| Installed Electron GUI with sandbox enabled on host | `mise run check:desktop` |
-| Install workspace dependencies | `mise run setup` |
-| Run Go API and hot-reloading web app | `mise run dev` |
-| Recreate sanitized fixture data | `mise run dev:data` |
-| Open TUI with fixture data | `mise run dev:cli` |
-| Run Go API with fixture data | `mise run dev:server` |
-| Run hot-reloading web app against Go API | `mise run dev:web` |
-| Run web app with synthetic API responses | `mise run dev:web:mock` |
-| Build frontend into Go and run local Web capture/dashboard | `mise run start:web` |
-| Serve public docs with live reload | `mise run dev:docs` |
-| Build public docs as static files | `mise run build:docs` |
-
-### Verification and generation
-
-| Purpose | Command |
-| --- | --- |
-| Format files | `mise run format` |
-| Check formatting | `mise run format:check` |
-| Lint Go and TypeScript | `mise run lint` |
-| Run all tests | `mise run test` |
-| Run TypeScript, plugin and web unit tests | `mise run test:js` |
-| Run Go tests without the race detector | `mise run test:go` |
-| Run Go race-detector suite | `mise run test:race` |
-| Verify real server image on both backends | `mise run test:container` |
-| Validate SQLite/PostgreSQL schema copies | `mise run check-schema` |
-| Validate generated API files | `mise run check-api` |
-| Check tool pins match Dockerfile, `packageManager` and go.mod | `mise run check:toolchain` |
-| Regenerate API files | `mise run generate:api` |
-| Build and sync embedded web assets; skips unchanged inputs | `mise run build:web` |
-| Build and package the desktop viewer for this host into `dist/` | `mise run build:desktop` |
-| Build the CLI and run browser end-to-end tests | `mise run test:web-e2e` |
-| Build production binaries and plugins, validating contracts | `mise run build` |
-
-Validation runs explicitly before PR creation and updates through `mise run check:pr`.
-It requires committed HEAD and a clean tracked working tree. Untracked files and
-personal configuration are excluded. Use `--group format|static|web|tooling|go|benchmarks|distribution|browser|deployment`
-for targeted coverage, `--force` to execute checks again, and `--status` to inspect
-eligible successful receipts. Targeted success does not count as full validation.
-
-Also run `mise run check:desktop` on that clean committed HEAD. This builds and
-installs Electron into a private fixture and checks the rendered dashboard with
-Chromium sandboxing enabled and no host JavaScript tools on the app's PATH.
-The user approved this host exception because Dagger denies unprivileged user
-namespaces. Packaging and installed-runtime checks remain in the isolated
-distribution group. On Linux without a graphical display, Ozone headless renders
-the real application window in a private compositor. Linux hosts must permit
-unprivileged user namespaces; the check never disables Chromium sandboxing.
-
-Dagger executes tests and checks locally in Linux amd64 containers. Development,
-formatting and format verification stay on the host. Aggregate format verification
-uses the committed snapshot and installed pinned tools; it does not install
-dependencies or regenerate files. Run `mise install` and `mise run setup` explicitly
-when formatter tools are missing. Private homes, temporary
-directories, databases and service bindings isolate runs; fixture servers and
-browsers never use host application ports. Immutable preparation outputs may be
-reused. Go tests retain `-count=1`; force bypasses validation receipts and Dagger
-check execution caches while preserving reusable dependency preparation.
-
-Use the explicitly managed `tokeninsights-validation-engine-v0.21.11` with its
-dedicated `tokeninsights-validation-cache-v0.21.11` volume. The launcher verifies
-ownership labels, image digest and cache mount. `--setup-engine` creates missing
-owned resources; it never repairs, removes or restarts existing engines.
-Every Dagger invocation, including initialization, must set
-`DAGGER_LEAVE_OLD_ENGINE=true` and
-`_EXPERIMENTAL_DAGGER_RUNNER_HOST=docker-container://tokeninsights-validation-engine-v0.21.11`.
-Never use automatic engine provisioning or broad prune commands. Other repositories
-and worktrees may be using the same Docker daemon. Coordinate engine upgrades and
-cleanup explicitly. Canceling validation must leave the engine running.
-
-Each run retains logs and exported failure artifacts under the canonical Git common
-directory in `tokeninsights-validation/v2/runs/<run-id>/`. Successful receipts live
-beside runs under `tokeninsights-validation/v2/<group>/`. Evidence survives worktree
-removal. `mise run check:cleanup` prunes inactive runs, including abandoned interrupted runs using a 14-day,
-10-GiB default budget; active leases prevent deletion. Configure
-`TOKENINSIGHTS_VALIDATION_RETENTION_DAYS` and `TOKENINSIGHTS_VALIDATION_RETENTION_GIB`
-for another budget. A receipt requires successful status and
-retained check logs. Removing its artifacts causes validation to execute again.
-Source, test, dependency, task, configuration, toolchain and platform inputs determine
-reuse; branch names and commit timestamps do not. History-only changes can reuse
-matching results. A forced retry invalidates its previous receipt before execution. Reports retain the original tested revision for reused results.
-
-PR creation and updates are separate operations. Run `mise run check:pr`, then
-run `mise run check:desktop`, and confirm HEAD and tracked cleanliness before
-publishing that exact revision.
-`mise run check:status` checks current input identities without starting an engine
-or acquiring execution slots. Local conventions are bypassable; Git has no
-standard pre-PR hook.
-
-Coverage remains formatting, lint, schema/API/plugin drift checks, JavaScript unit
-tests, Go race tests with live PostgreSQL, benchmark smoke, binary builds, source
-distribution, browser E2E and image deployment contracts. The docs production build
-remains separate. Checks do not regenerate committed files to make drift pass.
-
-Deployment uses the actual Dockerfile image with a test-only process supervisor.
-It verifies non-root execution, healthcheck, secret files, graceful shutdown,
-persistent state, admin recovery and authentication/accounting behavior. **Read-only
-root enforcement is no longer covered:** Dagger 0.21.11 does not enforce that root
-mount option. This explicit exception is recorded in
-[ADR 0022](adr/0022-local-dagger-validation.md).
-
-CI retains native Linux arm64 and macOS build/storage checks and builds product
-archives for source-tag releases and the rolling main prerelease. Linux container
-validation does not claim full native macOS coverage. New locally reproducible
-checks belong in validation, not duplicated remote enforcement.
-
-### Local CLI installation
-
-Install the latest stable prebuilt CLI and backend:
+## Dev loop (fixture data)
 
 ```sh
-curl -fsSL https://px0.ai/install.sh | sh
+mise run dev:data                              # recreate synthetic fixture DBs in .tokeninsights-dev/
+mise run dev                                   # Go API + hot-reload web; prints both URLs
+mise run dev -- --api-port 8765 --web-port 5173  # explicit ports; 0 = auto
+mise run dev:cli                               # TUI on fixture data
+mise run dev:server -- --api-port 0            # Go API only
+TOKENINSIGHTS_DEV_API_URL=http://127.0.0.1:PORT mise run dev:web -- --port 0  # web against that API
+mise run dev:web:mock                          # web with synthetic API, no Go
+mise run dev:docs                              # docs site at http://localhost:5173/
 ```
 
-If `tokeninsights` is not found, add the installer binary directory to `PATH`. For Fish:
-
-```fish
-fish_add_path ~/.local/bin
-```
-
-Verify the installed CLI and embedded browser application:
+## Build and run local binary
 
 ```sh
-command -v tokeninsights
-tokeninsights --version
-tokeninsights web
+mise run build:cli                             # packages/cli/bin/{tokeninsights,tokeninsights-backend}, packages/server/bin/tokeninsights-server
+./packages/cli/bin/tokeninsights tui
+./packages/cli/bin/tokeninsights tui --sync=false --all-time
+./packages/cli/bin/tokeninsights web
+./packages/cli/bin/tokeninsights web --port 0 --open=false
+./packages/cli/bin/tokeninsights web --open=browser
+./packages/cli/bin/tokeninsights web --open=mygo      # needs MyGo installed
+./packages/cli/bin/tokeninsights web --open=electron  # needs Electron installed
+mise run start:web                             # build:cli + web
 ```
 
-### Direct Go commands
+## SSH endpoint
 
-Embedded web assets are ignored on every ref ([ADR 0024](adr/0024-shared-backend-and-installable-products.md)). Generate them once before direct Go commands:
+```sh
+./packages/cli/bin/tokeninsights tui --endpoint ssh://you@devbox
+./packages/cli/bin/tokeninsights web --endpoint ssh://you@devbox
+./packages/cli/bin/tokeninsights data wait --endpoint ssh://you@devbox
+./packages/cli/bin/tokeninsights config set remote.command /home/you/.local/bin/tokeninsights  # remote binary path
+tokeninsights-mygo --endpoint=ssh://you@devbox # installed MyGo, Linux
+open -a "TokenInsights MyGo" --args --endpoint=ssh://you@devbox  # installed MyGo, macOS
+```
+
+## Desktop experiments
+
+```sh
+mise run build:desktop                         # dist/tokeninsights-{mygo,electron}_<os>_<arch>.tar.gz
+tar -xzf dist/tokeninsights-mygo_linux_amd64.tar.gz -C /tmp && /tmp/tokeninsights-mygo_linux_amd64/tokeninsights-mygo
+tar -xzf dist/tokeninsights-electron_linux_amd64.tar.gz -C /tmp && /tmp/tokeninsights-electron_linux_amd64/tokeninsights-electron
+pnpm --filter @tokeninsights/desktop-electron run install:runtime  # pinned Electron runtime
+TOKENINSIGHTS_NATIVE_CAPTURE_DIR=/tmp/mygo-shots go test ./packages/desktop-mygo/...  # MyGo PNG captures
+mise run check:desktop                         # installed Electron GUI check, sandboxed, on host
+```
+
+## Remote server
+
+```sh
+mkdir -p /tmp/ti-server && TOKENINSIGHTS_BOOTSTRAP_USERNAME=alice TOKENINSIGHTS_BOOTSTRAP_PASSWORD=change-me-please-123 \
+  ./packages/server/bin/tokeninsights-server --listen 127.0.0.1:8766 --server-db-path /tmp/ti-server/server.sqlite --admin-socket /tmp/ti-server/admin.sock
+./packages/server/bin/tokeninsights-server admin --admin-socket /tmp/ti-server/admin.sock token create USER_ID --scopes read,ingest
+TOKENINSIGHTS_BOOTSTRAP_USERNAME=alice TOKENINSIGHTS_BOOTSTRAP_PASSWORD=... docker compose up -d --build  # SQLite image on 127.0.0.1:8766
+docker compose -f deploy/compose.postgres.yaml up -d --build                     # PostgreSQL
+docker compose exec tokeninsights tokeninsights-server admin token create USER_ID --scopes read,ingest
+```
+
+Client against it, isolated config:
+
+```sh
+C="--config-file /tmp/ti-server/client.json"
+./packages/cli/bin/tokeninsights $C config set distributed.server-url http://127.0.0.1:8766
+./packages/cli/bin/tokeninsights $C config set distributed.server-token
+./packages/cli/bin/tokeninsights $C sync --wait
+./packages/cli/bin/tokeninsights $C sync --debug
+./packages/cli/bin/tokeninsights $C sync status
+./packages/cli/bin/tokeninsights $C browse
+```
+
+## Format, lint, test
+
+```sh
+mise run format
+mise run lint
+mise run test                                  # all, via Dagger, live PostgreSQL
+mise run test:js
+mise run test:go
+mise run test:race
+mise run test:web-e2e
+mise run test:container                        # after Dockerfile/deploy changes
+mise run check-schema
+mise run check-api
+mise run generate:api
+mise run build:web                             # needed before direct go build/test
+mise run build                                 # all binaries + plugins
+mise run bench:smoke
+mise run bench:storage
+```
+
+## Validate before PR
+
+Commit first; tracked tree must be clean.
+
+```sh
+mise run check:pr                              # full suite on HEAD
+mise run check:pr -- --group go                # format|static|web|tooling|go|benchmarks|distribution|browser|deployment
+mise run check:pr -- --force                   # ignore cached receipts
+mise run check:pr -- --setup-engine            # create missing managed Dagger engine
+mise run check:status                          # receipt status, no engine
+mise run check:cleanup                         # prune old run artifacts
+mise run check:desktop                         # also required before PR
+```
+
+Artifacts: `<git-common-dir>/tokeninsights-validation/v2/runs/<run-id>/`. Engine: `tokeninsights-validation-engine-v0.21.11`; never prune or restart it.
+
+## Direct Go
 
 ```sh
 mise run build:web
-cd packages/cli
-go test ./...
-go build -o bin/tokeninsights ./cmd/tokeninsights
-go build -o bin/tokeninsights-backend ../backend/cmd/tokeninsights-backend
+cd packages/cli && go test ./... && go build -o bin/tokeninsights ./cmd/tokeninsights
 ```
 
-Direct Go commands embed the last generated assets; rerun `mise run build:web` after frontend changes, or use `mise run build:cli`. Inside the repository, mise sets `GOTOOLCHAIN=local`, so direct Go commands use the pinned toolchain.
+## Toolchain bump
 
-## Local scratch files
+Edit `mise.toml`, `mise lock`, then match Dockerfile images/pnpm, root `package.json` `packageManager`, `go.mod`; `mise run check:toolchain`.
 
-Keep plans, issues, research, and temporary verification scripts in ignored `.scratch/`
-directories. Never force-add scratch files. Preserve durable contracts in `docs/`,
-with links only to tracked documentation. Disposable `packages/web/previews/` are also ignored.
-
-## Fixture Data
-
-Fixture capture uses the guarded internal local composition entrypoint, not distributed sync.
-
-The shared fixture is under `packages/cli/testdata/conformance/sync-first-basic/source/`. It contains compact, synthetic source data for all supported harnesses and excludes conversations, tool payloads, credentials, request data, user paths, and identifying values. Never commit raw local harness databases or transcripts.
-
-`dev:data` resets only the controlled `.tokeninsights-dev/collector.sqlite` and
-`server.sqlite` data tables, then recreates synthetic source/home
-subdirectories. Stop the fixture viewer first; live or unreachable ownership
-prevents recreation. Existing DB and lock inodes, unrelated files, and the old
-`tokeninsights.sqlite` are preserved. Wrong-role databases are rejected before
-either role is reset.
-
-Fixture preparation runs the shared local capture, direct ingestion and processing pipeline against sanitized sources.
-Direct delivery uses the same acceptance contract as authenticated HTTP, then waits
-for processing and releases ownership. The fixture application's database pairing
-follows its controlled reset. `dev:cli` queries the saved fixture directly;
-`dev:server` runs `web --sync=false --open=false` on an available loopback port.
-`dev` discovers that server's actual URL before starting Vite on its own available
-loopback port, then prints both URLs. Vite proxies `/api` to that exact server.
-Browser Reload never collects sources; `dev:web:mock` needs no Go server or local
-harness data.
-
-Run `mise run dev` independently in each worktree. Each owns its fixture databases
-and listeners. To choose ports explicitly, use
-`mise run dev -- --api-port 8765 --web-port 5173`; either port can be `0` for
-automatic allocation. An occupied explicit port fails without falling back.
-Stopping the command stops both processes; startup failure also cleans up the
-other process. One fixture viewer may run per worktree because it owns those
-databases. Ordinary installed CLI database and port defaults are unchanged.
-
-For separate processes, run `mise run dev:server -- --api-port 0`, then pass its
-printed URL to `TOKENINSIGHTS_DEV_API_URL=http://127.0.0.1:PORT mise run dev:web -- --port 0`.
-The standalone frontend requires an explicit API URL; it never guesses another
-worktree's backend. Mock development supports `mise run dev:web:mock -- --port 0`.
-Development binds loopback unless a standalone Vite `--host` is explicitly supplied.
-
-The [collector rebuild fixture](../packages/cli/testdata/conformance/collector-rebuild/README.md)
-pins independent logical facts and reparse/copy/streaming scenarios. Publication,
-collectorstore, ingestion, and integration tests exercise real SQLite/HTTP
-transactions, replay, receipts, compatibility, limits, and manual delivery
-recovery. See [the failure contract](collector-ingestion-tests.md) for executable
-coverage and remaining failure-test gaps. Fixtures must remain synthetic and
-semantic expected results must never be weakened to match duplication or loss.
-
-Current raw-path startup and source-writer benchmarks use temporary synthetic
-fixtures; they never open a user's collector or token database:
+## Misc
 
 ```sh
-cd packages/cli
-go test ./internal/collector -run '^$' -bench '^BenchmarkLocalStartup$' -benchtime=3x -count=3
-go test ./internal/rawcollectorstore -run '^$' -bench '^BenchmarkCaptureRecords$' -benchtime=5x -count=5
+git commit -m "docs: update readme [skip ci]"  # skip CI on docs-only main push
 ```
 
-Startup measures owner opening, capture/direct acceptance, processing visibility
-and first query for first ingest, unchanged restart and append. It excludes fixture
-setup, warm-up and owner shutdown. The small Pi fixture is not a mixed-harness or
-large-history latency claim. Writer benchmarks separate new observations from
-replay. Compare repeated samples on one machine/toolchain; optimize measured
-stages while preserving independent semantic fixtures.
-
-From the repository root, execute all benchmark bodies once (including live
-PostgreSQL) before pushing:
-
-```sh
-mise run bench:smoke
-```
-
-Smoke uses small shared storage history but executes every benchmark family, so
-fixture SQL and semantic checks run even though normal tests do not run benchmarks.
-It runs in local validation. No latency
-threshold determines success. Separately, `mise run bench:storage` measures the full
-retained-history matrix with fixed iterations and sequential packages; it is not a
-CI timing gate. Use a disk-backed temporary directory as described below.
-
-See the [storage and ingestion baseline](ingestion-performance.md) for workload
-sizes, timing boundaries, engine-specific size accounting and profiling commands.
-
-## Build Tooling
-
-The private `@tokeninsights/build-tools` workspace under `tools/build` owns schema validation, fixture preparation and safety checks, embedded web asset generation, Pi/OpenCode plugin bundles, and prebuilt product packaging/installers. The shared Pi/OpenCode collector runner lives in the private `@tokeninsights/plugin-runtime` workspace under `packages/plugin-runtime`; plugin builds copy it into each `dist/runner.js`. mise tasks are the stable entry points.
-
-Go uses `gofmt` and the repository-pinned `golangci-lint`. TypeScript, JavaScript, and React use Oxfmt and Oxlint. Node tooling is development-only; the production `tokeninsights` binary does not require a JavaScript runtime.
-
-## Web Dashboard
-
-React presentation lives in `packages/dashboard`; browser entry/HTTP adapter live in `packages/web`; shared TypeScript contracts live in `packages/contracts`. Vite stages output in ignored `packages/web/dist`; the build tooling copies it to `packages/core/server/static` for `go:embed`. That directory is ignored on `main`; No branch or tag commits generated outputs. CI attaches compiled products to source-tag releases or the rolling main-build prerelease ([ADR 0024](adr/0024-shared-backend-and-installable-products.md)).
-
-Go tests cover SQL aggregation, API behavior, raw ingestion/replay, processing generations and collector outbox/acknowledgements, assets, listener lifecycle, and date boundaries. React tests cover URL state, filtering, cancelled requests, account forms, capability/loading states, excluded evidence, retries and preference retention.
-
-Seven Chromium cases cover real-server dashboard filtering/history/pagination,
-secure hosted cookies and cross-tab account isolation, bundled chart recovery,
-pointer/keyboard resize, mobile keyboard navigation and excluded-evidence focus.
-Calendar/view/percentage/error matrices belong in React or Go tests. Full theme,
-font and screenshot matrices are intentionally omitted. Success screenshots are
-not captured; failure screenshots/traces and bounded server logs remain in unique
-per-run output directories. Browser setup binds ephemeral ports, owns private
-fixture data and account credentials, and removes runtime metadata after joining
-its children. Concurrent runs must not share `TOKENINSIGHTS_E2E_RUN` overrides.
-
-## Skipping CI
-
-Use `[skip ci]` only for a deliberate docs-only commit that should skip GitHub Actions:
-
-```sh
-git commit -m "docs: update readme [skip ci]"
-```
-
-## Reference
-
-- [Design and architecture](design.md)
-- [Docker and hosted deployment](deployment.md)
-- [CLI reference](../packages/cli/README.md)
-- [OpenAPI contract](openapi.yaml)
-- [Release guide](release.md)
-
-Native CI Linux arm64 and macOS amd64/arm64 jobs and release Linux/macOS amd64/arm64 jobs build with `CGO_ENABLED=0` and test on matching runners. See [design](design.md) for current storage and acceptance contracts.
-
-Live PostgreSQL verification: `mise run test` and `mise run test:race` start a pinned
-PostgreSQL 18 service through Dagger. Runners receive only its bound service URL.
-Tests create independent databases within that private service. Host database URLs
-are not accepted by validation. Direct Go test commands can skip PostgreSQL cases;
-the public mise tasks require the live database and fail if it cannot start.
+Scratch notes go in ignored `.scratch/`. More: [design](design.md), [deployment](deployment.md), [release](release.md), [benchmarks](ingestion-performance.md), [OpenAPI](openapi.yaml).
