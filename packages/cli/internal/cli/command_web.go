@@ -26,6 +26,7 @@ var webCommand = commandSpec{name: "web", run: runWeb}
 var openDashboard = browser.Open
 var remoteSession = browser.RemoteSession
 var connectLocalBackend = localclient.ConnectPrepared
+var connectRemoteBackend = localclient.ConnectRemote
 
 func runWeb(invocation commandInvocation, args []string) error {
 	defaults := invocation.defaults()
@@ -54,6 +55,9 @@ func runWeb(invocation commandInvocation, args []string) error {
 	}
 	if !syncBefore && fullRefresh {
 		return fmt.Errorf("--full-refresh requires startup collection\n%w", ErrUsage)
+	}
+	if !settings.Endpoint.IsLocal() {
+		return fmt.Errorf("web does not support remote endpoint %s; use tui or data, or --endpoint=local", settings.Endpoint)
 	}
 	return runLocalWeb(invocation, settings, syncBefore, pipeline.SyncOptions{Harnesses: pipeline.SupportedHarnesses, Now: invocation.now, FullRefresh: fullRefresh, SourceDir: sourceDir})
 }

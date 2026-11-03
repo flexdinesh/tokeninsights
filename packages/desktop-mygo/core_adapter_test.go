@@ -23,7 +23,7 @@ func TestExternalDashboardDoesNotResolveLocalStorage(t *testing.T) {
 	}
 	t.Setenv("TOKENINSIGHTS_CONFIG_PATH", path)
 	for _, target := range []string{"https://usage.example.com/tokens", "http://192.0.2.1:8766/"} {
-		_, err := connectLocal(t.Context(), target, true)
+		_, err := connectLocal(t.Context(), target, true, nil)
 		var external *externalTarget
 		if !errors.As(err, &external) || external.URL != target {
 			t.Fatalf("external target resolved local settings: %v", err)
@@ -70,7 +70,7 @@ func TestNativeURLHandoffPreservesLaunchCapturePolicy(t *testing.T) {
 		t.Helper()
 		// Native window startup requests capture for standalone launch. A URL
 		// handed off by web must still inherit web's already-applied policy.
-		source, err := connectLocal(t.Context(), keeper.URL, true)
+		source, err := connectLocal(t.Context(), keeper.URL, true, nil)
 		if err != nil {
 			t.Fatal("native handoff rejected launch policy", err)
 		}
@@ -99,7 +99,7 @@ func TestPersonalTunnelWithoutPrivateOwnerUsesOriginalBrowserURL(t *testing.T) {
 	}))
 	defer server.Close()
 	target := server.URL + "/models?period=week"
-	_, err := connectLocal(t.Context(), target, true)
+	_, err := connectLocal(t.Context(), target, true, nil)
 	var external *externalTarget
 	if !errors.As(err, &external) || external.URL != target {
 		t.Fatalf("personal tunnel lost browser fallback: %v", err)

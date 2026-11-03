@@ -278,3 +278,77 @@ func TestViewerOpenPrecedenceAndValidation(t *testing.T) {
 		t.Fatal("removed open mode", got)
 	}
 }
+
+func TestRemoteEndpointPrecedenceLocalEscapeAndCommand(t *testing.T) {
+	path := writeConfig(t, `{"remote":{"endpoint":"ssh://file-host","command":"/opt/ti/tokeninsights"}}`)
+	t.Setenv("TOKENINSIGHTS_ENDPOINT", "")
+	t.Setenv("TOKENINSIGHTS_REMOTE_COMMAND", "")
+	_ = os.Unsetenv("TOKENINSIGHTS_ENDPOINT")
+	_ = os.Unsetenv("TOKENINSIGHTS_REMOTE_COMMAND")
+	settings, err := ResolveLocal(path, true, Overrides{})
+	if err != nil || settings.Endpoint.String() != "ssh://file-host" || settings.Endpoint.SSH.Command != "/opt/ti/tokeninsights" {
+		t.Fatal("file endpoint not resolved", settings.Endpoint, err)
+	}
+	t.Setenv("TOKENINSIGHTS_ENDPOINT", "ssh://env-host:2222")
+	t.Setenv("TOKENINSIGHTS_REMOTE_COMMAND", "ti")
+	settings, err = ResolveLocal(path, true, Overrides{})
+	if err != nil || settings.Endpoint.String() != "ssh://env-host:2222" || settings.Endpoint.SSH.Command != "ti" {
+		t.Fatal("environment did not override file", settings.Endpoint, err)
+	}
+	flagValue := "ssh://dee@flag-host"
+	settings, err = ResolveLocal(path, true, Overrides{Endpoint: &flagValue})
+	if err != nil || settings.Endpoint.String() != flagValue {
+		t.Fatal("flag did not override environment", settings.Endpoint, err)
+	}
+	local := "local"
+	settings, err = ResolveLocal(path, true, Overrides{Endpoint: &local})
+	if err != nil || !settings.Endpoint.IsLocal() {
+		t.Fatal("--endpoint=local did not force local", settings.Endpoint, err)
+	}
+	invalid := "tcp://box:8765"
+	if _, err := ResolveLocal(path, true, Overrides{Endpoint: &invalid}); err == nil {
+		t.Fatal("tcp endpoint accepted")
+	}
+	server := "/tmp/other.sqlite"
+	if _, err := ResolveLocal(path, true, Overrides{ServerDBPath: &server}); err == nil || !strings.Contains(err.Error(), "rejects local database path flags") {
+		t.Fatal("remote endpoint accepted local storage flag", err)
+	}
+	if settings, err := ResolveLocal(path, true, Overrides{Endpoint: &local, ServerDBPath: &server}); err != nil || settings.ServerDBPath != server {
+		t.Fatal("local escape rejected storage flag", err)
+	}
+	t.Setenv("TOKENINSIGHTS_REMOTE_COMMAND", "bad\ncommand")
+	if _, err := ResolveLocal(path, true, Overrides{}); err == nil {
+		t.Fatal("control characters in remote command accepted")
+	}
+	// Sync and browse never consume remote endpoint settings.
+	if _, err := ResolveSync(path, true, Overrides{}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestRemoteConfigSetGetRemoveCanonicalizes(t *testing.T) {
+	var values Values
+	if err := values.Set("remote.endpoint", "ssh://dee@box:22/", false); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := values.Get("remote.endpoint", ""); err != nil || got != "ssh://dee@box:22" {
+		t.Fatal("endpoint not canonical", got, err)
+	}
+	for _, bad := range []string{"tcp://box", "ssh://-oProxyCommand=x"} {
+		if err := values.Set("remote.endpoint", bad, false); err == nil {
+			t.Fatal("invalid endpoint saved", bad)
+		}
+	}
+	if err := values.Set("remote.command", "/opt/ti/tokeninsights", false); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := values.Get("remote.command", ""); got != "/opt/ti/tokeninsights" {
+		t.Fatal("remote command not saved", got)
+	}
+	if err := values.Set("remote.endpoint", "", true); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := values.Get("remote.endpoint", ""); got != "local" {
+		t.Fatal("removed endpoint not local", got)
+	}
+}

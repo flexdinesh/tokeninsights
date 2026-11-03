@@ -297,7 +297,7 @@ run = ["pnpm --filter @tokeninsights/web run test:e2e"]
 [tasks."check:internal:deployment"]
 hide = true
 run = [
-  "go test ./packages/core/deployment -run ^TestContainerDeployment$ -count=1 -timeout=5m",
+  "go test ./packages/core/deployment -run '^(TestContainerDeployment|TestSSHEndpointDeployment)$' -count=1 -timeout=5m",
 ]
 
 [tasks."check:pr"]

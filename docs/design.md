@@ -344,6 +344,8 @@ Every TUI session, desktop window, foreground web command and browser tab holds 
 
 Viewer launches request capture. Desktop URL handoffs attach without another capture request, preserving the originating launcher's sync and source-directory policy. Standalone desktop launches request capture. Identical overlapping requests share an attempt; stronger compatible requests retain bounded follow-up work. Incompatible source-directory requests reject as busy rather than silently changing source scope. There is no periodic scan or login service. `--sync=false` skips launch capture, while previously accepted processing resumes. Closing one viewer does not cancel work used by another. `data reprocess|wait` attaches a finite command session and calls private owner operations.
 
+Viewers select a backend endpoint by `--endpoint`, `TOKENINSIGHTS_ENDPOINT` or `remote.endpoint`: `local` (default) or `ssh://[user@]host[:port]`; `--endpoint=local` forces local. `core/endpoint` parses endpoints and runs the system `ssh -T ... -- dest <remote.command|tokeninsights> system dial-stdio`; option-like, credential, path and query values reject. The hidden remote command always serves its own machine: it resolves local configuration, discovers or starts the owner under the startup lock, checks storage compatibility, then splices stdio with the private socket. One single-use SSH process carries prior-knowledge HTTP/2 for the lease, queries and capture; its exit releases the lease and the session reports disconnection without reconnecting. Clients check only the protocol version; bounded ssh stderr appears in errors, with a `remote.command` hint when the command is missing. TUI, MyGo (`--endpoint=` launch flag) and `data reprocess|wait` accept SSH endpoints; Electron is always local. Remote `--source-dir` must be absolute and is interpreted remotely; local database path flags reject. Remote failures never fall back to local storage.
+
 [ADR 0025](adr/0025-ssh-endpoints-and-on-demand-dashboard.md) makes the local read-only HTTP dashboard on-demand. Leases are control leases (TUI, MyGo, maintenance; no TCP port) or dashboard leases (`web`, Electron, browser tabs) that request a host/port, default 127.0.0.1:8765. The first dashboard lease binds the listener; equal requests share it; a different request while bound rejects as a settings mismatch; an occupied port rejects that lease without affecting the owner. After the last dashboard lease and the reconnect grace the listener drains, and a racing request waits then binds again. Browser tabs lease only the binding serving them. The private descriptor reports the current URL/listen request or none; each dashboard lease reports its URL as its first stream event. Explicit host/port remains authoritative; `web` holds its dashboard lease before requesting capture. The private socket also accepts prior-knowledge HTTP/2 and serves the read-only dashboard/API v2 behind its instance check. Saved usage opens before asynchronous capture and remains available through failures/quarantine. Web prints its URL and a Ctrl+C detach hint, respecting terminal styling and NO_COLOR. Ctrl+C releases that command's lease; other viewers continue.
 
 ### Dashboard opening and desktop experiments
@@ -391,8 +393,8 @@ Commands select composition: `tui` and `web` attach to local backend-owned captu
 or storage. Bare invocation prints help. No global mode, mode flag or environment
 selector exists. `data reprocess|wait` remains finite local maintenance.
 
-Client config has `collector.db-path`, `in-process` bind/token/account paths and
-`distributed` URL/token groups. Flags > environment > file > defaults. Read strict
+Client config has `collector.db-path`, `in-process` bind/token/account paths,
+`distributed` URL/token and `remote` endpoint/command groups. Flags > environment > file > defaults. Read strict
 JSON structure, then resolve/validate only consumed settings into distinct local,
 sync and browse values at the executable boundary. Missing, invalid or unreachable
 distributed settings cannot redirect or disable local viewers. Browse needs only a
@@ -446,7 +448,7 @@ empty saved snapshot says usage will appear automatically during refresh; defini
 empty-state guidance follows refresh completion. `--sync=false` skips startup
 capture and visibility waiting, but existing durable processing resumes and can
 refresh the displayed revision. TUI reload is query-only. Viewer filters never restart
-capture or select processing work. Remote TUI is unavailable. Browse opens hosted browser login without submitting.
+capture or select processing work. Hosted servers have no TUI; a personal backend on another machine is reachable over SSH ([ADR 0025](adr/0025-ssh-endpoints-and-on-demand-dashboard.md)). Browse opens hosted browser login without submitting.
 
 Local visibility reads count pending scopes and failed pending scopes in the same
 dataset/generation snapshot, using existing durable scope error codes. A recorded
@@ -612,7 +614,8 @@ New role schemas belong in a top-level package; port implementations in `adapter
 | `application` | Semantic viewer operations, normalized query policy, portable results/errors; no HTTP or storage construction |
 | `localruntime` | Local storage/processing/capture composition, direct ingestion/query and development fixtures |
 | `localbackend` | Private control, shared capture orchestration, viewer lifetime, private socket and on-demand dashboard listener |
-| `localclient` | Compatible discovery/startup and client sessions; no storage/HTTP server construction |
+| `localclient` | Compatible discovery/startup, dialer-based client sessions, SSH remote sessions and the remote stdio bridge; no storage/HTTP server construction |
+| `endpoint` | Typed local/SSH backend endpoints and single-use system-ssh stdio dialers; no HTTP, storage or local fallback |
 | `serverruntime` | Shared worker/readiness/listener lifecycle through interfaces |
 | `remoteserver` | Authenticated remote composition |
 | `cli` | Command parsing, environment defaults and local composition; no storage adapters or SQL |

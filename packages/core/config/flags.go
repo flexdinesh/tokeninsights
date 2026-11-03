@@ -25,6 +25,8 @@ func FlagOverrides(flags *flag.FlagSet) (Overrides, error) {
 			overrides.ServerURL = &value
 		case "open":
 			overrides.Open = &value
+		case "endpoint":
+			overrides.Endpoint = &value
 		case "host":
 			if value == "" {
 				value = Defaults().Host

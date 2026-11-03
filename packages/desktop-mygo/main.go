@@ -2,8 +2,10 @@
 package main
 
 import (
+	"context"
 	"log"
 	"os"
+	"strings"
 
 	"github.com/egoist/mygo"
 	"github.com/flexdinesh/tokeninsights/packages/desktop-mygo/internal/link"
@@ -14,7 +16,10 @@ func main() {
 	if !mygo.App.RequestSingleInstanceLock() {
 		return
 	}
-	v := newViewer(connectLocal)
+	endpoint := endpointFlag(os.Args[1:])
+	v := newViewer(func(ctx context.Context, target string, capture bool) (dataSource, error) {
+		return connectLocal(ctx, target, capture, endpoint)
+	})
 	mygo.App.OnOpenURL(v.open)
 	mygo.App.OnSecondInstance(func(args []string, _ string) {
 		if !hasLink(args) {
@@ -33,6 +38,17 @@ func main() {
 		log.Fatal(err)
 	}
 	v.close()
+}
+
+// endpointFlag returns the launch --endpoint=VALUE, which overrides
+// TOKENINSIGHTS_ENDPOINT and remote.endpoint for this application instance.
+func endpointFlag(args []string) *string {
+	for _, arg := range args {
+		if value, ok := strings.CutPrefix(arg, "--endpoint="); ok {
+			return &value
+		}
+	}
+	return nil
 }
 
 func hasLink(args []string) bool {

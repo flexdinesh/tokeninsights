@@ -53,7 +53,7 @@ The shared Go server core that durably accepts immutable evidence/receipts, asyn
 _Avoid_: Collector service, client-side normalization
 
 **Personal Server**:
-The wire/storage kind used by single-process local commands. One default dataset/user; direct ingestion and TUI queries. Web adds a foreground read-only HTTP listener. No daemon or personal remote deployment.
+The wire/storage kind used by single-process local commands. One default dataset/user; direct ingestion and TUI queries. Web adds a foreground read-only HTTP listener. No daemon or personal remote deployment; viewers may attach another machine's personal backend over SSH.
 _Avoid_: Simple server, prod server, local-only server
 
 **Hosted Server**:
