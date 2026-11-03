@@ -27,6 +27,13 @@ void test('matching pins report no mismatches', () => {
   assert.deepEqual(toolchainMismatches(files), [])
 })
 
+void test('canonical Go version pins work when tidy omits a redundant toolchain directive', () => {
+  assert.deepEqual(toolchainMismatches({ ...files, goMod: 'module example\n\ngo 1.27.3\n' }), [])
+  assert.deepEqual(toolchainMismatches({ ...files, goMod: 'module example\n\ngo 1.27.2\n' }), [
+    'go.mod toolchain: 1.27.2 differs from mise.toml 1.27.3',
+  ])
+})
+
 void test('each copy that drifts from mise.toml is reported', () => {
   assert.deepEqual(
     toolchainMismatches({
@@ -43,17 +50,17 @@ void test('each copy that drifts from mise.toml is reported', () => {
       'Dockerfile node image: 26.12.0 differs from mise.toml 26.12.1',
       'Dockerfile pnpm install: 12.14.0 differs from mise.toml 12.15.0',
       'package.json packageManager: 12.14.0 differs from mise.toml 12.15.0',
-      'packages/cli/go.mod toolchain: 1.27.2 differs from mise.toml 1.27.3',
+      'go.mod toolchain: 1.27.2 differs from mise.toml 1.27.3',
     ],
   )
 })
 
 void test('missing copies and pins are reported', () => {
   assert.deepEqual(
-    toolchainMismatches({ ...files, packageJson: '{}', goMod: 'module example\n\ngo 1.27.0\n' }),
+    toolchainMismatches({ ...files, packageJson: '{}', goMod: 'module example\n' }),
     [
       'package.json packageManager: version not found; expected 12.15.0',
-      'packages/cli/go.mod toolchain: version not found; expected 1.27.3',
+      'go.mod toolchain: version not found; expected 1.27.3',
     ],
   )
   assert.deepEqual(

@@ -1,7 +1,6 @@
 # Local usage
 
-Local dashboards run on your machine and read saved token usage. One viewer owns
-the local storage at a time; close it before opening the other viewer.
+Local dashboards read saved usage through one shared backend. TUI, browser, native MyGo and Electron can run together. The backend starts on demand and stops after its final viewer disconnects.
 
 import webScreenshot from '../../../assets/tokeninsights-web.png'
 import tuiScreenshot from '../../../assets/tokeninsights-tui.png'
@@ -17,8 +16,8 @@ tokeninsights web
 ```
 
 The dashboard opens at `http://127.0.0.1:8765`. The command runs in the foreground;
-Ctrl+C stops its server. Startup highlights the dashboard URL in color and shows a
-Ctrl+C shutdown hint. Redirected output stays plain; `NO_COLOR=1` disables terminal
+Ctrl+C detaches this command; other viewers keep the backend running. Startup highlights the dashboard URL in color and shows a
+Ctrl+C detach hint. Redirected output stays plain; `NO_COLOR=1` disables terminal
 styling.
 
 To choose a different port:
@@ -31,24 +30,24 @@ This opens `http://127.0.0.1:9000`. The flag overrides environment and saved
 configuration. Use `--port 0` to choose an available port; the command prints its
 URL. An occupied explicit port fails rather than choosing another port.
 
-When the [desktop app](/install#desktop-app-optional) is installed, the dashboard
-opens in its window; otherwise it opens in the browser. Choose explicitly with
-`--open` or save a default with `tokeninsights config set viewer.open MODE`:
+When a [desktop experiment](/install#desktop-experiments) is installed, choose explicitly with --open or save a default with `tokeninsights config set viewer.open MODE`:
 
-| Mode      | Behavior                                                        |
-| --------- | --------------------------------------------------------------- |
-| `auto`    | Desktop app when installed, else the browser (default)          |
-| `app`     | Desktop app only; prints the URL with an error if it is missing |
-| `browser` | Always the browser                                              |
-| `false`   | Print the URL without opening anything                          |
+| Mode       | Behavior                                    |
+| ---------- | ------------------------------------------- |
+| `auto`     | MyGo when installed, else browser (default) |
+| `mygo`     | Native MyGo app                             |
+| `electron` | Electron app using the React dashboard      |
+| `browser`  | System browser                              |
+| `false`    | Print URL without opening a viewer          |
 
 ```sh
+tokeninsights web --open=electron
+tokeninsights web --open=mygo
 tokeninsights web --open=browser
 tokeninsights web --open=false
 ```
 
-The app opens loopback dashboards directly. For any other server it asks once per
-origin before loading it and remembers the answer.
+Both desktop experiments coexist and share the backend. Hosted URLs open in the browser. There is no periodic capture: opening a viewer requests a new collection, and overlapping requests coalesce. Browser reload and filters only query saved data.
 
 ### Over SSH
 
@@ -59,9 +58,7 @@ dashboard URL, a `tokeninsights://` app link and a tunnel command:
 ssh -L 8765:127.0.0.1:8765 <host>
 ```
 
-Run the tunnel on your own machine, then open the dashboard URL in a browser or click
-the app link in a terminal that supports links. The app link opens the same loopback
-URL through the tunnel.
+Run the tunnel on your own machine, then open the dashboard URL in the browser. Desktop experiments use their configured local backend; a tunneled URL does not select another database.
 
 To expose the read-only dashboard on all IPv4 interfaces:
 

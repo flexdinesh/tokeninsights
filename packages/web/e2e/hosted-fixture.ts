@@ -3,7 +3,7 @@ import { createServer } from 'node:https'
 import { readFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { z } from 'zod'
-import { RawCapabilitiesV3, UsageResponseV2 } from '../src/generated/api.ts'
+import { RawCapabilitiesV3, UsageResponseV2 } from '@tokeninsights/contracts/generated'
 
 export const userSchema = z.object({ userId: z.string(), datasetId: z.string() })
 export const tokenSchema = z.object({ tokenId: z.string(), token: z.string() })

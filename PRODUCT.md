@@ -2,7 +2,7 @@
 
 <!-- impeccable:product-schema 1 -->
 
-Shared product context for the CLI, terminal dashboard, and browser dashboard.
+Shared product context for CLI, TUI, browser, Electron and native MyGo.
 Architecture and analytics semantics live in [docs/design.md](docs/design.md);
 terminology lives in [CONTEXT.md](CONTEXT.md). The browser visual contract is
 [DESIGN.md](DESIGN.md).
@@ -26,25 +26,17 @@ providers, harnesses, and dates.
 
 ## Positioning
 
-TokenInsights collects durable local harness data, normalizes it in host SQLite,
-and publishes session-centric facts to a canonical SQLite server. Terminal and
-browser dashboards query the same REST analytics. Manual collection does not
+TokenInsights collects durable local harness data, processes it in the local backend,
+and publishes session-centric facts to a canonical SQLite server. Every presentation consumes the same semantic application operations through transport adapters. Manual collection does not
 require a separate authenticated harness export or realtime hooks.
 
 ## Operating Context
 
-- One native Go binary provides the CLI, TUI, and browser server. Production runs
-  without Node, npm, or pnpm; browser assets are embedded and work offline.
-- `tokeninsights tui` and `tokeninsights web` own local collection, processing and
-  viewing; `tokeninsights sync` submits to a hosted server. An optional macOS/Linux
-  desktop app is a thin viewer that the CLI hands dashboard URLs to; it stores and
-  collects nothing.
-- Viewers read committed usage through shared direct/HTTP query adapters. TUI
-  startup collects and publishes within a progress screen; `tui --sync=false`
-  skips collection. Local Web opens after storage initialization and shows
-  collection/processing progress alongside saved data. Dashboard `r` reloads
-  terminal queries; the browser refreshes saved usage automatically. TUI startup errors offer
-  Retry, View saved data, and Quit; Web collection errors preserve saved-data access.
+- One shared Go backend owns local storage, capture, processing and queries. CLI/TUI, web, native MyGo and Electron attach as independent viewers. All can run together.
+- Launching a viewer requests collection; overlapping requests coalesce. No periodic scanning or login service. Saved data stays usable during collection and processing. The backend stops after the final viewer disconnects and a reconnect grace.
+- Go products run without host JavaScript tools. Electron bundles its runtime. Browser assets are embedded in the backend/server. Prebuilt GitHub Release/prerelease products install through shell scripts; compiled outputs never enter Git.
+- Native MyGo initially supports local totals, date/dimension filters, table, progress and retry. Electron reuses the browser dashboard. Hosted URLs open in the system browser. MyGo is default; explicit overrides select either desktop.
+- `tokeninsights sync` retains its finite hosted submission workflow. --sync=false skips local launch capture, while processing resumes. Filters and TUI reload query only; browser status refreshes automatically. Errors preserve access to saved data.
 - Local hostname labels identify the machine running the viewer, including before
   ingestion. They do not attribute imported history to that machine. Loading,
   connection/storage failures, and individual usage/filter errors remain distinct.
@@ -55,7 +47,7 @@ require a separate authenticated harness export or realtime hooks.
   and API keys. SSH users reach a loopback dashboard through a tunnel.
 - Fresh `collector.sqlite` and `server.sqlite` have distinct roles. The old
   `tokeninsights.sqlite` stays untouched; previous commands/schema migrations
-  are not supported. Advanced host maintenance uses the `collector` namespace.
+  are not supported. Local maintenance uses `data reprocess|wait` through the private owner contract.
 
 ## Capabilities and Constraints
 

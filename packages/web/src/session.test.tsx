@@ -1,11 +1,13 @@
+import { DashboardClientProvider } from '@tokeninsights/dashboard'
+import { httpDashboardClient } from './http-client'
 import type { ReactNode } from 'react'
 import { act, cleanup, renderHook, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { afterEach, expect, it, vi } from 'vitest'
-import { changeBrowserSession, useAnalytics } from './api'
-import { clearAccountQueries } from './session'
+import { useAnalytics } from '../../dashboard/src/api'
+import { clearAccountQueries } from '../../dashboard/src/session'
 import { mockBootstrap, mockDashboard } from './mocks/data'
-import { initialQuery } from './query'
+import { initialQuery } from '../../dashboard/src/query'
 
 afterEach(() => {
   cleanup()
@@ -28,7 +30,11 @@ it('changing accounts cancels old reads and clears all cached account data', asy
     ),
   )
   function Wrapper({ children }: { children: ReactNode }) {
-    return <QueryClientProvider client={client}>{children}</QueryClientProvider>
+    return (
+      <DashboardClientProvider client={httpDashboardClient}>
+        <QueryClientProvider client={client}>{children}</QueryClientProvider>
+      </DashboardClientProvider>
+    )
   }
   client.setQueryData(['facets', 'old'], { sessions: ['private-session'] })
   client.setQueryData(['collector-progress'], { attempts: ['private-attempt'] })
@@ -57,7 +63,11 @@ it('never uses another dataset as placeholder data while switching accounts', as
     }),
   )
   function Wrapper({ children }: { children: ReactNode }) {
-    return <QueryClientProvider client={client}>{children}</QueryClientProvider>
+    return (
+      <DashboardClientProvider client={httpDashboardClient}>
+        <QueryClientProvider client={client}>{children}</QueryClientProvider>
+      </DashboardClientProvider>
+    )
   }
   const view = renderHook(
     ({ identity }) => useAnalytics(initialQuery(mockBootstrap.defaults), 1, true, identity),
@@ -74,7 +84,7 @@ it('never uses another dataset as placeholder data while switching accounts', as
 it('exchanges password credentials in request body without persisting them', async () => {
   const fetcher = vi.fn<typeof fetch>(() => Promise.resolve(new Response(null, { status: 204 })))
   vi.stubGlobal('fetch', fetcher)
-  await changeBrowserSession({ username: 'alice', password: 'secret-password' })
+  await httpDashboardClient.changeBrowserSession({ username: 'alice', password: 'secret-password' })
   expect(fetcher).toHaveBeenCalledWith(
     '/api/v2/auth/session',
     expect.objectContaining({
@@ -83,7 +93,7 @@ it('exchanges password credentials in request body without persisting them', asy
       credentials: 'same-origin',
     }),
   )
-  await changeBrowserSession()
+  await httpDashboardClient.changeBrowserSession()
   expect(fetcher).toHaveBeenLastCalledWith(
     '/api/v2/auth/session',
     expect.objectContaining({ method: 'DELETE', body: undefined }),

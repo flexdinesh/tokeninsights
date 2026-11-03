@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/collector"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/pipeline"
+	"github.com/flexdinesh/tokeninsights/packages/core/collector"
+	"github.com/flexdinesh/tokeninsights/packages/core/pipeline"
 )
 
 func TestTerminalProgressCoalescesWithoutLosingAcknowledgements(t *testing.T) {

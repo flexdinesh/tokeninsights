@@ -5,7 +5,7 @@ import (
 	"flag"
 	"fmt"
 
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/localruntime"
+	"github.com/flexdinesh/tokeninsights/packages/core/localclient"
 )
 
 var dataCommand = commandSpec{name: "data", run: runData}
@@ -34,20 +34,15 @@ func runData(invocation commandInvocation, args []string) error {
 	if err != nil {
 		return err
 	}
-	if err := invocation.prepareLocalStorage(settings); err != nil {
-		return err
-	}
-	runtime, err := localruntime.OpenWithApp(invocation.context, settings.CollectorDBPath, settings.ServerDBPath, settings.ApplicationPath())
+	session, err := connectLocalBackend(invocation.context, localclient.Options{CollectorDBPath: settings.CollectorDBPath, ServerDBPath: settings.ServerDBPath, AppDBPath: settings.ApplicationPath(), Host: settings.Host, Port: settings.Port}, func() error { return invocation.prepareLocalStorage(settings) })
 	if err != nil {
 		return err
 	}
-	defer func() { _ = runtime.Close() }()
-	if action == "reprocess" {
-		if _, err := runtime.Store.Reprocess(invocation.context); err != nil {
-			return err
-		}
-	}
+	defer func() { _ = session.Close() }()
 	ctx, cancel := context.WithTimeout(invocation.context, localVisibilityTimeout)
 	defer cancel()
-	return runtime.WaitVisible(ctx)
+	if action == "reprocess" {
+		return session.Reprocess(ctx)
+	}
+	return session.WaitVisible(ctx)
 }

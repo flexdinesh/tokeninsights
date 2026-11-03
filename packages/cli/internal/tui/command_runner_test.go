@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/config"
+	"github.com/flexdinesh/tokeninsights/packages/core/config"
 )
 
 func replaceInteractiveProgramRunnerForTest(t *testing.T, runner func(interactiveModel, io.Writer) (interactiveModel, error)) func() {
@@ -24,7 +24,7 @@ func replaceInteractiveProgramRunnerForTest(t *testing.T, runner func(interactiv
 // over the environment and an absent config file.
 func runCommandForTest(t *testing.T, ctx context.Context, stdout io.Writer, args ...string) error {
 	t.Helper()
-	return Run(Command{Context: ctx, Args: args, Resolve: resolveForTest(t), Now: time.Now(), Stdout: stdout, Stderr: io.Discard})
+	return Run(Command{Context: ctx, Args: args, Resolve: resolveForTest(t), Connect: fixtureConnect(t), Now: time.Now(), Stdout: stdout, Stderr: io.Discard})
 }
 
 func assertCLIQueryCount(t *testing.T, database *sql.DB, query string, want int) {

@@ -32,7 +32,7 @@ Extract both supported aliases independently, including contradictory values.
 
 ## OpenCode: SQLite
 
-Source: [opencode_sqlite.go](../packages/cli/internal/pipeline/opencode_sqlite.go).
+Source: [opencode_sqlite.go](../packages/core/pipeline/opencode_sqlite.go).
 
 | Source record | Allowed transmitted leaves |
 | --- | --- |
@@ -49,7 +49,7 @@ Project IDs are metadata identifiers subject to the ID validation rule above.
 
 ## Pi: JSONL
 
-Source: [pi_jsonl.go](../packages/cli/internal/pipeline/pi_jsonl.go).
+Source: [pi_jsonl.go](../packages/core/pipeline/pi_jsonl.go).
 
 | Source record | Allowed transmitted leaves |
 | --- | --- |
@@ -67,7 +67,7 @@ objects and unrecognized session fields are excluded.
 ## Claude Code: JSONL
 
 Source:
-[claude_code_jsonl.go](../packages/cli/internal/pipeline/claude_code_jsonl.go).
+[claude_code_jsonl.go](../packages/core/pipeline/claude_code_jsonl.go).
 
 | Source record | Allowed transmitted leaves |
 | --- | --- |
@@ -85,8 +85,8 @@ excluded. No new parent/subagent fields are implied by this whitelist.
 
 ## Codex: JSONL
 
-Sources: [codex_jsonl.go](../packages/cli/internal/pipeline/codex_jsonl.go) and
-[processor/codex.go](../packages/cli/internal/processor/codex.go).
+Sources: [codex_jsonl.go](../packages/core/pipeline/codex_jsonl.go) and
+[processor/codex.go](../packages/core/processor/codex.go).
 
 | Source record | Allowed transmitted leaves |
 | --- | --- |
@@ -123,9 +123,9 @@ labels, environment values or unsanitized parse errors. Captured context is sent
 as referenced evidence rather than flattened into inferred facts.
 
 Current location handling is in
-[location.go](../packages/cli/internal/pipeline/location.go), with normalized
+[location.go](../packages/core/pipeline/location.go), with normalized
 publication in
-[publication](../packages/cli/internal/publication/). It reads local directories,
+[publication](../packages/core/publication/). It reads local directories,
 Git checkout metadata and recorded remote URLs. Those inputs stay local. If
 location grouping is retained, the raw envelope may carry explicitly marked
 extraction enrichment: opaque directory/repository keys, basename-only bounded

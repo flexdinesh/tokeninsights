@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"github.com/charmbracelet/x/ansi"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/analytics"
+	"github.com/flexdinesh/tokeninsights/packages/core/analytics"
 )
 
 func TestTableSummaryRendersFullResultTotals(t *testing.T) {

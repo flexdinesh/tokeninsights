@@ -6,9 +6,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/analytics"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/queryclient"
-	api "github.com/flexdinesh/tokeninsights/packages/cli/internal/server/api"
+	"github.com/flexdinesh/tokeninsights/packages/core/analytics"
+	"github.com/flexdinesh/tokeninsights/packages/core/application"
+	"github.com/flexdinesh/tokeninsights/packages/core/queryclient"
 )
 
 type tableRequests struct {
@@ -60,30 +60,20 @@ func tableClient(options tableOptions) (*queryclient.Client, error) {
 	return options.query, nil
 }
 
-func apiPointer[T any](value T) *T { return &value }
-
-func tableUsageParams(options tableOptions, tab tabMode) api.GetUsageParams {
-	params := api.GetUsageParams{Period: apiPointer(api.Period(options.period)), Bucket: apiPointer(api.Bucket(options.bucket)), From: apiPointer(options.filters.dayFrom), To: apiPointer(options.filters.dayTo), Provider: apiPointer([]string(options.filters.providers)), Model: apiPointer([]string(options.filters.models)), Session: apiPointer([]string(options.filters.sessionIDs)), Tab: apiPointer(api.UsageTab(tab.String()))}
-	harnesses := make([]api.Harness, 0, len(options.filters.harnesses))
-	for _, value := range options.filters.harnesses {
-		harnesses = append(harnesses, api.Harness(value))
-	}
-	params.Harness = &harnesses
+func tableUsageParams(options tableOptions, tab tabMode) analytics.Query {
+	params := analytics.Query{Selection: analytics.Selection{Period: string(options.period), Bucket: string(options.bucket), From: options.filters.dayFrom, To: options.filters.dayTo, Providers: []string(options.filters.providers), Models: []string(options.filters.models), Sessions: []string(options.filters.sessionIDs), Harnesses: []string(options.filters.harnesses)}, Tab: tab.String()}
 	if tab == tabRepo {
-		group := options.repoGroup
-		if group == "" {
-			group = analytics.RepoGroupRepository
+		params.LocationGroup = options.repoGroup
+		if params.LocationGroup == "" {
+			params.LocationGroup = analytics.RepoGroupRepository
 		}
-		params.LocationGroup = apiPointer(api.LocationGroup(group))
-		params.Repository = apiPointer([]string(options.filters.repositories))
-		params.Directory = apiPointer([]string(options.filters.directories))
+		params.RepositoryKeys, params.DirectoryKeys = []string(options.filters.repositories), []string(options.filters.directories)
 	}
 	return params
 }
 
-func tableFacetsParams(options tableOptions) api.GetUsageFacetsParams {
-	params := tableUsageParams(options, tabRepo)
-	return api.GetUsageFacetsParams{Tab: params.Tab, Period: params.Period, Bucket: params.Bucket, From: params.From, To: params.To, Provider: params.Provider, Model: params.Model, Harness: params.Harness, Session: params.Session, Repository: params.Repository, Directory: params.Directory}
+func tableFacetsParams(options tableOptions) application.FacetRequest {
+	return application.FacetRequest{Query: tableUsageParams(options, tabRepo)}
 }
 
 func formatServerIngestion(value int64, timezone string) string {
@@ -134,10 +124,10 @@ func (m interactiveModel) loadServerDashboard() reloadMsg {
 	if err != nil {
 		return reloadMsg{selection: m.selectionKey(), err: err}
 	}
-	if instance.InstanceId != result.InstanceId || instance.DataEpoch != result.DataEpoch {
+	if instance.InstanceID != result.InstanceID || instance.DatabaseID != result.DatabaseID {
 		return reloadMsg{selection: m.selectionKey(), err: queryclient.ErrSnapshotChanged}
 	}
-	rows := apiRenderRows(result.Rows, m.activeTab)
+	rows := renderUsageRows(result.Rows, m.activeTab)
 	if zone, err := servingTimezone(instance.Timezone); err == nil {
 		for index, row := range result.Rows {
 			if row.Date > 0 {
@@ -146,17 +136,11 @@ func (m interactiveModel) loadServerDashboard() reloadMsg {
 		}
 	}
 	sortRenderRows(rows, m.activeTab, m.options.sort)
-	var serverGeneration, inputRevision int64
-	if result.Generation != nil {
-		serverGeneration = *result.Generation
-	}
-	if result.InputRevision != nil {
-		inputRevision = *result.InputRevision
-	}
-	return reloadMsg{instanceID: result.InstanceId, dataEpoch: result.DataEpoch, selection: m.selectionKey(), rows: rows, revision: result.Revision, serverGeneration: serverGeneration, inputRevision: inputRevision, lastSyncMs: result.LastSynced, processingPending: result.Pending, sessionCounts: analytics.SessionCounts{Shown: result.Summary.Sessions, Synced: result.Summary.SyncedSessions}, hostname: instance.Hostname, timezone: instance.Timezone}
+	serverGeneration, inputRevision := result.Generation, result.InputRevision
+	return reloadMsg{instanceID: result.InstanceID, dataEpoch: result.DatabaseID, selection: m.selectionKey(), rows: rows, revision: result.Revision, serverGeneration: serverGeneration, inputRevision: inputRevision, lastSyncMs: result.LastSynced, processingPending: &result.Pending, sessionCounts: analytics.SessionCounts{Shown: result.Summary.SessionCount, Synced: result.Summary.SyncedSessions}, hostname: instance.Hostname, timezone: instance.Timezone}
 }
 
-func apiRenderRows(source []api.UsageRow, tab tabMode) []renderRow {
+func renderUsageRows(source []analytics.Row, tab tabMode) []renderRow {
 	result := make([]renderRow, 0, len(source))
 	for _, row := range source {
 		value := renderRow{bucket: row.Name, latest: formatLatest(row.Date), latestValue: row.Date, sessions: formatTokens(row.Sessions), sessionsValue: row.Sessions, harness: row.Harness, provider: row.Provider, model: row.Model, providers: row.Provider, harnesses: row.Harness, models: row.Model, location: row.LocationName, inputTokens: formatTokens(row.Input), inputValue: row.Input, outputTokens: formatTokens(row.Output), outputValue: row.Output, reasoningTokens: formatTokens(row.Reasoning), reasoningValue: row.Reasoning, cacheReadTokens: formatTokens(row.CacheRead), cacheReadValue: row.CacheRead, cacheWriteTokens: formatTokens(row.CacheWrite), cacheWriteValue: row.CacheWrite, totalTokens: formatTokens(row.Total), totalValue: row.Total, contextUsedTokens: formatContextTokens(row.Context), contextUsedValue: row.Context, averageContextUsedTokens: formatContextTokens(row.AverageContext), averageContextUsedValue: row.AverageContext, medianContextUsedTokens: formatContextTokens(row.MedianContext), medianContextUsedValue: row.MedianContext, maxContextUsedTokens: formatContextTokens(row.MaxContext), maxContextUsedValue: row.MaxContext}
@@ -177,29 +161,29 @@ func loadRows(ctx context.Context, options tableOptions, _ time.Time, _ groupByM
 	if err != nil {
 		return nil, err
 	}
-	rows := apiRenderRows(response.Rows, tab)
+	rows := renderUsageRows(response.Rows, tab)
 	sortRenderRows(rows, tab, options.sort)
 	return rows, nil
 }
 
-func loadFacets(ctx context.Context, options tableOptions) (api.UsageFacetsResponseV2, error) {
+func loadFacets(ctx context.Context, options tableOptions) (application.Facets, error) {
 	client, err := tableClient(options)
 	if err != nil {
-		return api.UsageFacetsResponseV2{}, err
+		return application.Facets{}, err
 	}
 	return client.Facets(ctx, tableFacetsParams(options))
 }
 
 func (m interactiveModel) loadFacetValues(options tableOptions, dimension filterDimension) filterValuesMsg {
 	response, err := loadFacets(m.ctx, options)
-	msg := filterValuesMsg{requestID: m.requestID, generation: m.publicationGeneration, selection: m.selectionKey(), dimension: dimension, instanceID: response.InstanceId, dataEpoch: response.DataEpoch, revision: response.Revision, err: err}
+	msg := filterValuesMsg{requestID: m.requestID, generation: m.publicationGeneration, selection: m.selectionKey(), dimension: dimension, instanceID: response.InstanceID, dataEpoch: response.DatabaseID, revision: response.Revision, err: err}
 	if err == nil {
 		msg.values, msg.keys, msg.err = facetValues(response, dimension)
 	}
 	return msg
 }
 
-func facetValues(response api.UsageFacetsResponseV2, dimension filterDimension) ([]string, map[string]string, error) {
+func facetValues(response application.Facets, dimension filterDimension) ([]string, map[string]string, error) {
 	switch dimension {
 	case filterProvider:
 		return response.Providers, nil, nil

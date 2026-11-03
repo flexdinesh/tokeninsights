@@ -1,13 +1,13 @@
 # Development
 
-TokenInsights is a pnpm monorepo with a Go CLI and a Vite/React browser application. The public documentation site in `docs-website/` is a Vocs pnpm workspace package. `mise.toml` pins Go, Node, and pnpm for development and owns all repository tasks. Direct Go builds require Go 1.27+, without a C/C++ or JavaScript toolchain; `packages/cli/go.mod` names toolchain `go1.27.3`, so Go 1.27.0-1.27.2 with default `GOTOOLCHAIN=auto` downloads it. Race verification requires CGO. `pnpm-workspace.yaml` enforces a 3-day minimum release age for npm packages everywhere, except the `@opencode/*` and `@earendil-works/*` harness SDKs.
+TokenInsights is a pnpm monorepo with a Go CLI and a Vite/React browser application. The public documentation site in `docs-website/` is a Vocs pnpm workspace package. `mise.toml` pins Go, Node, and pnpm for development and owns all repository tasks. Production source uses one root Go module, pinned to Go 1.27.3. Build generated web assets first; Go binaries require no C/C++ or host JavaScript runtime. The canonical go directive supplies the pin when Go omits an equal toolchain directive. Race verification requires CGO. `pnpm-workspace.yaml` enforces a 3-day minimum release age for npm packages everywhere, except the `@opencode/*` and `@earendil-works/*` harness SDKs.
 
 ## Development builds
 
 For development builds, install directly from `main`:
 
 ```sh
-go install github.com/flexdinesh/tokeninsights/packages/cli/cmd/tokeninsights@main
+curl -fsSL https://raw.githubusercontent.com/flexdinesh/tokeninsights/main/install-main.sh | sh
 ```
 
 ## Setup
@@ -27,7 +27,7 @@ Install [mise](https://mise.jdx.dev/getting-started.html) 2026.10.18 first; snap
 
 `mise.toml` pins exact Go 1.27.3, Node 26.12.1 and pnpm 12.15.0. Committed `mise.lock` records checksums, plus GitHub attestations for pnpm, on Linux/macOS x64/arm64; installs for this project are locked. Other global mise tools are unaffected.
 
-To bump a tool, edit `mise.toml`, run `mise lock`, then update the Dockerfile `golang`/`node` image tags and pnpm install, root `package.json` `packageManager`, and the `packages/cli/go.mod` `toolchain` line. `mise run check:toolchain`, part of validation, fails on any mismatch.
+To bump a tool, edit `mise.toml`, run `mise lock`, then update the Dockerfile `golang`/`node` image tags and pnpm install, root `package.json` `packageManager`, and the root `go.mod` Go version pin. `mise run check:toolchain`, part of validation, fails on any mismatch.
 
 mise sets `GOTOOLCHAIN=local`, so development never silently switches Go toolchains, and puts `node_modules/.bin` on `PATH`. Put personal development overrides in ignored `mise.local.toml` or `mise.*.local.toml`. Validation does not inherit those overrides or host database URLs.
 
@@ -42,6 +42,7 @@ Run commands from the repository root unless noted otherwise. `mise tasks ls` li
 | Purpose | Command |
 | --- | --- |
 | Full local validation before PR creation/update | `mise run check:pr` |
+| Installed Electron GUI with sandbox enabled on host | `mise run check:desktop` |
 | Install workspace dependencies | `mise run setup` |
 | Run Go API and hot-reloading web app | `mise run dev` |
 | Recreate sanitized fixture data | `mise run dev:data` |
@@ -80,6 +81,15 @@ personal configuration are excluded. Use `--group format|static|web|tooling|go|b
 for targeted coverage, `--force` to execute checks again, and `--status` to inspect
 eligible successful receipts. Targeted success does not count as full validation.
 
+Also run `mise run check:desktop` on that clean committed HEAD. This builds and
+installs Electron into a private fixture and checks the rendered dashboard with
+Chromium sandboxing enabled and no host JavaScript tools on the app's PATH.
+The user approved this host exception because Dagger denies unprivileged user
+namespaces. Packaging and installed-runtime checks remain in the isolated
+distribution group. On Linux without a graphical display, Ozone headless renders
+the real application window in a private compositor. Linux hosts must permit
+unprivileged user namespaces; the check never disables Chromium sandboxing.
+
 Dagger executes tests and checks locally in Linux amd64 containers. Development,
 formatting and format verification stay on the host. Aggregate format verification
 uses the committed snapshot and installed pinned tools; it does not install
@@ -114,7 +124,8 @@ reuse; branch names and commit timestamps do not. History-only changes can reuse
 matching results. A forced retry invalidates its previous receipt before execution. Reports retain the original tested revision for reused results.
 
 PR creation and updates are separate operations. Run `mise run check:pr`, then
-confirm HEAD and tracked cleanliness before publishing that exact revision.
+run `mise run check:desktop`, and confirm HEAD and tracked cleanliness before
+publishing that exact revision.
 `mise run check:status` checks current input identities without starting an engine
 or acquiring execution slots. Local conventions are bypassable; Git has no
 standard pre-PR hook.
@@ -131,23 +142,23 @@ root enforcement is no longer covered:** Dagger 0.21.11 does not enforce that ro
 mount option. This explicit exception is recorded in
 [ADR 0022](adr/0022-local-dagger-validation.md).
 
-Existing CI and release workflows are unchanged. Native Linux arm64 and macOS
-build/storage checks remain in CI; Linux container validation does not claim full
-native macOS coverage. New locally reproducible checks belong in validation,
-not duplicated remote enforcement.
+CI retains native Linux arm64 and macOS build/storage checks and builds product
+archives for source-tag releases and the rolling main prerelease. Linux container
+validation does not claim full native macOS coverage. New locally reproducible
+checks belong in validation, not duplicated remote enforcement.
 
 ### Local CLI installation
 
-Build the frontend, embed it in Go, and install `tokeninsights` into Go's binary directory:
+Install the latest stable prebuilt CLI and backend:
 
 ```sh
-mise run install:cli
+curl -fsSL https://px0.ai/install.sh | sh
 ```
 
-If `tokeninsights` is not found, add Go's binary directory to `PATH`. For Fish:
+If `tokeninsights` is not found, add the installer binary directory to `PATH`. For Fish:
 
 ```fish
-fish_add_path (go env GOPATH)/bin
+fish_add_path ~/.local/bin
 ```
 
 Verify the installed CLI and embedded browser application:
@@ -160,17 +171,17 @@ tokeninsights web
 
 ### Direct Go commands
 
-Embedded web assets are ignored on `main` ([ADR 0017](adr/0017-generated-assets-on-installable-refs.md)). Generate them once before direct Go commands:
+Embedded web assets are ignored on every ref ([ADR 0024](adr/0024-shared-backend-and-installable-products.md)). Generate them once before direct Go commands:
 
 ```sh
 mise run build:web
 cd packages/cli
 go test ./...
 go build -o bin/tokeninsights ./cmd/tokeninsights
-go install ./cmd/tokeninsights
+go build -o bin/tokeninsights-backend ../backend/cmd/tokeninsights-backend
 ```
 
-Direct Go commands embed the last generated assets; rerun `mise run build:web` after frontend changes, or use `mise run install:cli`. Inside the repository, mise sets `GOTOOLCHAIN=local`, so direct Go commands use the pinned toolchain.
+Direct Go commands embed the last generated assets; rerun `mise run build:web` after frontend changes, or use `mise run build:cli`. Inside the repository, mise sets `GOTOOLCHAIN=local`, so direct Go commands use the pinned toolchain.
 
 ## Local scratch files
 
@@ -258,13 +269,13 @@ sizes, timing boundaries, engine-specific size accounting and profiling commands
 
 ## Build Tooling
 
-The private `@tokeninsights/build-tools` workspace under `tools/build` owns schema validation, fixture preparation and safety checks, embedded web asset generation, Pi/OpenCode plugin bundles, and Homebrew formula generation. The shared Pi/OpenCode collector runner lives in the private `@tokeninsights/plugin-runtime` workspace under `packages/plugin-runtime`; plugin builds copy it into each `dist/runner.js`. mise tasks are the stable entry points.
+The private `@tokeninsights/build-tools` workspace under `tools/build` owns schema validation, fixture preparation and safety checks, embedded web asset generation, Pi/OpenCode plugin bundles, and prebuilt product packaging/installers. The shared Pi/OpenCode collector runner lives in the private `@tokeninsights/plugin-runtime` workspace under `packages/plugin-runtime`; plugin builds copy it into each `dist/runner.js`. mise tasks are the stable entry points.
 
 Go uses `gofmt` and the repository-pinned `golangci-lint`. TypeScript, JavaScript, and React use Oxfmt and Oxlint. Node tooling is development-only; the production `tokeninsights` binary does not require a JavaScript runtime.
 
 ## Web Dashboard
 
-React source lives in `packages/web`. Vite stages output in ignored `packages/web/dist`; the build tooling copies it to `packages/cli/internal/server/static` for `go:embed`. That directory is ignored on `main`; CI commits it only on `edge` and stable module tags ([ADR 0017](adr/0017-generated-assets-on-installable-refs.md)).
+React presentation lives in `packages/dashboard`; browser entry/HTTP adapter live in `packages/web`; shared TypeScript contracts live in `packages/contracts`. Vite stages output in ignored `packages/web/dist`; the build tooling copies it to `packages/core/server/static` for `go:embed`. That directory is ignored on `main`; No branch or tag commits generated outputs. CI attaches compiled products to source-tag releases or the rolling main-build prerelease ([ADR 0024](adr/0024-shared-backend-and-installable-products.md)).
 
 Go tests cover SQL aggregation, API behavior, raw ingestion/replay, processing generations and collector outbox/acknowledgements, assets, listener lifecycle, and date boundaries. React tests cover URL state, filtering, cancelled requests, account forms, capability/loading states, excluded evidence, retries and preference retention.
 

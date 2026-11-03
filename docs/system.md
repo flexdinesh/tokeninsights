@@ -1,12 +1,12 @@
 # System design
 
-[ADR 0009](adr/0009-single-process-and-distributed-compositions.md) defines composition;
+[ADR 0024](adr/0024-shared-backend-and-installable-products.md) defines composition;
 [design](design.md) specifies identities, schemas, processing and query contracts.
 
 | Composition | Lifetime | Transport | Storage |
 | --- | --- | --- | --- |
-| Single-process `tui` | Foreground command | Direct acceptance and queries | Separate collector, token, application and job SQLite roles |
-| Single-process `web` | Foreground command | Direct ingestion; read-only HTTP dashboard | Same local files |
+| Local backend | Until final viewer disconnects | Private control and read-only HTTP; direct ingestion | Separate collector, token and application SQLite roles |
+| TUI/web/MyGo/Electron | Viewer session | Semantic client; replaceable transport adapter | No viewer-owned usage storage |
 | Distributed collector | Finite CLI/worker | Authenticated HTTP acceptance | Collector SQLite and operational jobs SQLite |
 | Distributed server | One Docker container | Bearer ingestion/query; browser session; private admin | SQLite or PostgreSQL for paired token/account domains |
 
@@ -21,21 +21,14 @@ flowchart LR
   Q --> P[Shared processor]
   P --> T[SQLite/PostgreSQL token adapter]
   T --> R[Analytics contract]
-  R --> U[Direct TUI]
-  R --> W[HTTP web dashboard]
+  R --> U[TUI and native MyGo clients]
+  R --> W[React web and Electron dashboard]
   A[Account contract] --> AS[SQLite/PostgreSQL account adapter]
 ```
 
-Local commands own one token database and join workers on exit. TUI never needs a
-listener. Web reserves its requested listener and initializes storage, then opens
-before collecting. Its capability-gated progress endpoint shows command-owned
-startup capture; saved usage stays readable during processing.
-Web remains foreground and joins capture/processing workers before storage closes.
-One viewer owns local storage at a time. Local viewers own no sync-jobs queue.
-Distributed sync may run concurrently through the shared collector writer lock;
-its destination acknowledgements are independent of personal ingestion. Reload only queries saved usage; the
-browser toolbar control is local-only. Local machine identity is shared by direct
-and HTTP descriptors; it does not attribute captured history to this machine.
+One local backend owns the token database and joins workers after the final viewer disconnects. Any viewer launcher discovers or starts it; compatible TUI, browser, MyGo and Electron sessions coexist. A foreground web command and its browser tabs have independent leases. Closing one does not terminate others. Browser streams tolerate reload through a reconnect grace. Private local operations control capture, detailed progress and maintenance; browser pages manage only their own lifetime.
+
+The backend opens saved usage before launch-triggered capture. Identical overlapping requests coalesce; there is no periodic scan or login service. Saved history remains readable during processing and capture failures. Filters and reload query only. Distributed sync may run concurrently through the shared collector lock; its delivery progress is independent. Local machine identity describes the serving machine, not the origin of every captured fact.
 
 Distributed sync saves a job, starts a finite worker through private config/readiness
 pipes and returns after startup ACK. `--print` also submits. `--wait` ends at acceptance;
@@ -63,4 +56,4 @@ browse URL-only. Remote credentials never change local command behavior; failure
 never fall back local. Local Web defaults to 8765, hosted server to 8766.
 Personal/hosted token and account stores remain separate. Bare invocation prints
 help; `data reprocess/wait` remains local maintenance. Legacy service/server/
-collector commands and global mode selection are removed. Production remains Go-only.
+collector commands and global mode selection are removed. Go products need no host JavaScript runtime; Electron bundles its runtime. Prebuilt releases/prereleases and shell installers replace Homebrew and Go-install publication. No compiled outputs are committed.

@@ -13,8 +13,7 @@ metadata in a SQLite outbox, and submits raw batches. It owns continuity and
 local location enrichment; never normalizes new counters or resolves ancestry.
 Server durably accepts evidence, asynchronously processes typed confirmed facts/
 separate estimates, then serves SQL analytics and embedded browser assets.
-The remote server resumes processing without reading host sources. Local commands
-compose capture, acceptance, processing and queries within their own process.
+The remote server resumes processing without reading host sources. A shared local backend composes capture, acceptance, processing and queries; local viewers attach through application clients.
 
     Sources -> whitelist extraction -> Collector SQLite -> acceptance
       -> SQLite/PostgreSQL raw/receipts/scopes -> async processor -> facts/estimates -> views
@@ -175,8 +174,7 @@ reject atomically. Safe semantic problems are accepted for async diagnosis.
 request hash, contiguous range/count, acceptance revision/time.
 Collector validates acceptance independently of mutable processing status.
 
-Sync finishes at acceptance, not query visibility. Local TUI and Web read published
-history while command-owned capture, submission and processing continue. TUI refresh
+Sync finishes at acceptance, not query visibility. Local viewers read published history while backend-owned capture, submission and processing continue. TUI refresh
 completion requires processing visibility and a successful read of the current
 published revision. TUI reload queries only. Collection progress retains acknowledged evidence counts; TUI
 phase text separates submission from processing. Load failures distinguish storage,
@@ -338,49 +336,21 @@ claims in this change.
 
 ## Composition, capabilities and access
 
-Single-process `tui` owns collector, direct ingestion, processing and direct query
-adapters. `web` adds a foreground read-only HTTP listener, bound to 127.0.0.1:8765
-by default or the requested IPv4 host/port. Reserve the Web listener before capture.
-Once ready, the Web command prints a compact app heading, highlighted dashboard URL
-and Ctrl+C hint. Styling follows the output stream's terminal capabilities and
-`NO_COLOR`/`CLICOLOR`/`CLICOLOR_FORCE`; redirected output is plain by default.
-Both initialize owned storage, register startup progress and open saved usage
-before asynchronous capture. Shared local startup orchestration owns the background
-capture and progress observers; command cancellation or listener failure cancels and
-joins them before storage/listeners close. Saved published history remains readable
-during capture and processing; committed published revisions refresh the dashboard.
-Capture failures, including quarantine, preserve the dashboard and show incomplete
-refresh. A database lifetime lock excludes a second viewer.
+[ADR 0024](adr/0024-shared-backend-and-installable-products.md) supersedes command-owned local lifetimes. TUI, web, Electron and native MyGo attach to one local backend. It alone opens local collector/token/application storage, owns processing and sanitized progress, and uses direct ingestion. A lifetime lock excludes another owner, not another viewer. Hosted composition stays independent and never captures host sources.
 
-### Dashboard opening and desktop viewer
+Launchers serialize discovery/startup by canonical storage identity and connect through a private user socket with a versioned local-client contract. Each client bundles a backend; an existing compatible owner wins. Conflicting settings or protocol versions reject without a fallback process or forced restart. The backend resolves deployment settings once. Client packages never import concrete backend/storage adapters.
 
-[ADR 0023](adr/0023-desktop-thin-viewer.md). `web` and `browse` resolve one open
-mode, flag `--open=auto|app|browser|false` > config `viewer.open` > `auto`; there
-is no environment variable. A bare `--open` or `--open=true` means `auto`. The
-`browser` package owns the policy: SSH sessions (`SSH_CONNECTION`, `SSH_CLIENT`,
-`SSH_TTY`) open nothing; `auto` and `app` hand `tokeninsights://open?url=<escaped
-URL>` to the desktop viewer when one is registered (macOS `open -b
-com.flexdinesh.tokeninsights`; Linux with a display and an `xdg-mime`
-`x-scheme-handler/tokeninsights` default, then `xdg-open`). `auto` falls back to
-the browser; `app` reports an error and keeps the printed URL. Detection never fails
-a command and the server keeps running. The Web ready block prints the dashboard URL
-before opening. Over SSH it also prints the app link (an OSC 8 hyperlink on styled
-terminals) and, for loopback URLs, an `ssh -L <port>:127.0.0.1:<port> <host>` hint;
-`browse` prints the app link. Opening reports outcomes on stderr.
+Every TUI session, desktop window, foreground web command and browser tab holds a viewer lease. Local browser EventSource connections manage only their own lifetime; they expose no capture, ingestion, maintenance or progress-write operations. Connection closure releases a lease. Heartbeat streams avoid dependence on background JavaScript timers or reliable tab-close callbacks. A short reconnect grace prevents reload from stopping the owner. After the final viewer disconnects, stop admission, cancel/join capture and processing, drain listeners, close storage and release ownership. A crashed launcher before initial attachment is covered by bounded startup grace. Accepted evidence and pending projections survive shutdown.
 
-The desktop viewer is the separate Go module `packages/desktop` built with MyGo
-(pure Go, system webview). It is a thin viewer: no usage storage, collection,
-ingestion or Go bindings to pages. It parses only `tokeninsights://open?url=` with
-an absolute http(s) URL without credentials, keeps one window per normalized
-origin (a new link to an open origin navigates and focuses it), and loads every
-page untrusted. Loopback origins open directly; other origins require a native
-confirmation once, remembered in `<user config>/tokeninsights-desktop/trusted-origins.json`
-(private, atomic, strict; a corrupt file is reported and never overwritten).
-Top-level navigation to another origin opens in the system browser. Launch without
-a link shows a static help page. The CLI module never imports MyGo or the desktop
-module; an architecture test enforces it. Local `web` authentication is unchanged:
-non-loopback binds remain unauthenticated, and SSH tunnels are the documented
-remote path.
+Viewer launches request capture. Desktop URL handoffs attach without another capture request, preserving the originating launcher's sync and source-directory policy. Standalone desktop launches request capture. Identical overlapping requests share an attempt; stronger compatible requests retain bounded follow-up work. Incompatible source-directory requests reject as busy rather than silently changing source scope. There is no periodic scan or login service. `--sync=false` skips launch capture, while previously accepted processing resumes. Closing one viewer does not cancel work used by another. `data reprocess|wait` attaches a finite command session and calls private owner operations.
+
+The local read-only HTTP dashboard defaults to 127.0.0.1:8765. Explicit host/port remains authoritative; reserve the listener before capture. Saved usage opens before asynchronous capture and remains available through failures/quarantine. Web prints its URL and a Ctrl+C detach hint, respecting terminal styling and NO_COLOR. Ctrl+C releases that command's lease; other viewers continue.
+
+### Dashboard opening and desktop experiments
+
+`web` resolves flag `--open=mygo|electron|browser|auto|false` over config `viewer.open`, default `auto`. A bare `--open` means auto. MyGo is the preferred experiment; auto falls back to the browser. Explicit unavailable selections report a recoverable opener error while the backend and printed URL remain usable. SSH sessions open nothing locally and print the dashboard link/tunnel hint. A personal dashboard reached through a tunnel without a matching local private owner opens its original URL in the browser. Hosted `browse` opens the system browser and never starts local storage or capture.
+
+`packages/desktop-mygo` uses pinned MyGo native Go UI: local totals, date/provider/model/harness filters, results table, processing/collection status and retry. It performs queries off the GUI thread and holds a backend session while its window exists. `packages/desktop-electron` loads the same composed React dashboard from the acquired loopback backend. Renderers are sandboxed, have no Node integration or privileged page bindings, and cannot load arbitrary remote pages. Hosted/external URLs open in the system browser. Distinct app names, identifiers and schemes allow both experiments to coexist; old thin-viewer trust files are left untouched.
 
 Distributed collectors submit to an authenticated remote hosted server in one
 container. Bearer auth selects the dataset; the server starts no collector. A
@@ -392,24 +362,12 @@ existing SQLite/PostgreSQL processing queue remains behind dataengine's backend 
 `GET /api/v2/instance` returns serverKind, datasetId, bounded capabilities and caller
 permissions separately. `usage`, `facets`, `web-dashboard`, `raw-ingestion`,
 `terminal-dashboard`, `collector-progress`, `dashboard-reload` determine mounted routes
-and command/browser preflight. Reprocessing has no HTTP route: local `data reprocess`
-and hosted owner-socket `user reprocess` start it. Unknown feature names are ignored; absent required
+and command/browser preflight. Reprocessing has no public HTTP route: local private owner operations and hosted owner-socket `user reprocess` start it. Unknown feature names are ignored; absent required
 features/unknown kinds reject. Hosted cannot enable terminal-dashboard,
 collector-progress or dashboard-reload. Local composition still advertises the
 dashboard-reload capability, including saved-only viewers; the browser uses
 automatic refresh rather than a manual Reload control. Progress
-requires an installed command-owned registry. The localruntime observer publishes directly
-to that registry for startup capture, retaining bounded leases and
-heartbeats. Single-process TUI composition additionally enables opt-in capture
-measurements before background startup. Pipeline emits typed per-harness source
-snapshots; localruntime translates them into collectorprogress values. The registry
-remains independent of capture and owns validation, attempt isolation, snapshot
-copies and expiry. Measurements contain only approved harnesses, phases and bounded
-counters, never source identities, paths or native text. Detail snapshots are a
-Go-only contract separate from existing HTTP messages/responses. Web and distributed
-compositions leave the detail callback unset; public API and hosted capability
-policy are unchanged. Reporting does no I/O or blocking channel sends, and rejected
-observations cannot invalidate capture or delivery.
+requires the backend-owned registry. Localruntime translates pipeline snapshots into collectorprogress values. The registry remains independent of capture and owns validation, attempt isolation, immutable copies and expiry. Detailed sanitized measurements cross only the private local-client contract so TUI can retain per-harness progress. They contain approved harnesses, phases and bounded counts, never source identities, paths or native text. Hosted exposes no collection progress. Reporting performs no I/O or blocking channel sends; rejected observations cannot invalidate capture or delivery.
 Internal raw-ingestion support does not mount public HTTP ingestion:
 the local Web listener remains read-only. Server config may disable features but
 cannot disable hosted isolation. Modules consume resolved policy and injected
@@ -428,8 +386,7 @@ hostname resolved at ownership initialization. The hostname labels the local
 viewer machine; captured history can span machines. Hosted never substitutes its operating-system hostname for producer
 metadata. Connection/storage, usage and facet errors remain distinct in Web.
 
-Commands select composition: `tui` and `web` always own local capture/direct
-ingestion/processing/queries; `sync` always submits over authenticated hosted HTTP;
+Commands select composition: `tui` and `web` attach to local backend-owned capture/direct ingestion/processing/queries; `sync` always submits over authenticated hosted HTTP;
 `browse` opens the configured hosted URL without capture, authentication preflight
 or storage. Bare invocation prints help. No global mode, mode flag or environment
 selector exists. `data reprocess|wait` remains finite local maintenance.
@@ -520,8 +477,7 @@ An OS lock serializes workers without holding a jobs transaction during networki
 Later workers drain earlier queued requests with the same endpoint/credential.
 Abandoned running claims become interrupted; pending evidence stays in the outbox.
 
-Local viewers own no operational jobs store or handoff loop. Startup collection
-runs once; restart the viewer to recollect. `--sync=false` suppresses capture while
+Local viewers own no operational jobs store. Launch collection runs through the shared backend; open a viewer again to recollect. `--sync=false` suppresses capture while
 durable processing resumes; `--full-refresh` and `--source-dir` affect startup
 capture only. Viewer filters and TUI reload remain query-only. Remote plugins invoke
 `sync --harness`; TypeScript adapters coalesce overlaps and retain a follow-up
@@ -535,8 +491,7 @@ Development fixture setup uses a guarded internal capture entrypoint restricted 
 headless local-sync command is introduced.
 
 Legacy `service`, `server`, and `collector` commands and the hidden daemon runner
-are removed. Local viewers use only command-owned foreground runtimes; finite
-`data reprocess/wait` provides local maintenance. Development
+are removed. Local viewers use the shared backend; finite `data reprocess/wait` attaches private maintenance operations. Development
 fixtures use the shared database ownership locks. Public local
 web has no ingestion/admin/progress-write routes; remote admin remains private.
 
@@ -654,16 +609,18 @@ New role schemas belong in a top-level package; port implementations in `adapter
 | `adapters/sqlite`, `adapters/sqliteaccounts`, `appstore` | SQLite opening and physical application pairing |
 | `adapters/postgres`, `persistence/postgres` | Paired PostgreSQL composition, schemas, connections and ownership |
 | `syncjob` | Durable finite jobs, native detachment and delivery retries |
-| `localruntime` | Command ownership and background startup lifetime, direct ingestion/query, local requests and development fixtures |
+| `application` | Semantic viewer operations, normalized query policy, portable results/errors; no HTTP or storage construction |
+| `localruntime` | Local storage/processing/capture composition, direct ingestion/query and development fixtures |
+| `localbackend` | Private control, shared capture orchestration, viewer lifetime and local listeners |
+| `localclient` | Compatible discovery/startup and client sessions; no storage/HTTP server construction |
 | `serverruntime` | Shared worker/readiness/listener lifecycle through interfaces |
 | `remoteserver` | Authenticated remote composition |
 | `cli` | Command parsing, environment defaults and local composition; no storage adapters or SQL |
 | `browser` | Dashboard open-mode policy, desktop viewer links and browser/app launch; no MyGo |
 | `flagvalue` | Shared command-line flag values: repeatable lists and `--harness` parsing |
-| `tui` | Terminal dashboard over `queryclient.Reader` and the local runtime; no HTTP, SQL or storage adapters |
+| `tui` | Terminal dashboard over semantic query/progress/session contracts; no HTTP, SQL or storage adapters |
 
-`analytics` owns storage-independent query values and selections. Direct queries receive an
-analytics repository and instance identity; they do not construct an HTTP app.
+`analytics` owns storage-independent query values and selections. Direct application queries receive an analytics repository and instance identity; they do not construct an HTTP app. Frontends consume semantic Go/TypeScript client operations. Route types and URL construction remain in transport adapters.
 Storage supplies semantic receiver operations; `ingestionhttp` mounts HTTP routes.
 The collector requires an injected delivery adapter before capture. Single-process
 composition supplies direct delivery; distributed discovery supplies HTTP delivery.
@@ -760,18 +717,11 @@ Collector JSONL replacement, per-user DBs, organizations, external queues,
 replicas and OAuth/OIDC are out of scope. Hosted username/password signup is
 operator-controlled and defaults off.
 
-Go embeds generated web assets. `main` ignores `packages/cli/internal/server/static`;
-local mise build/test/lint tasks build the dashboard before Go checks. Direct Go commands
-require `mise run build:web` first. CI publishes a separate asset commit to `edge`
-after native checks pass, or to a stable `packages/cli/vX.Y.Z` tag during manual
-release. Stable archives build from that same asset commit. `edge` includes the
-latest stable release as an ancestor for Go pseudo-version ordering; its first
-parent identifies the tested `main` source. Stale edge runs cannot regress it.
-See [ADR 0017](adr/0017-generated-assets-on-installable-refs.md).
-Production builds use pure Go (`CGO_ENABLED=0`); native CI/release
-Linux/macOS amd64/arm64 runners. Production needs no JavaScript runtime.
-Verification: format/lint/schema/API, native semantic fixtures, full/race tests,
-native build/JS-absent smoke and browser E2E.
+Backend and hosted server embed generated web assets from ignored `packages/core/server/static`; mise builds them before Go checks. React presentation lives in `packages/dashboard`, browser composition/HTTP in `packages/web`, and shared TypeScript contracts in `packages/contracts`. One root Go module contains core and Go products; the validation tool remains a separate module.
+
+Source tags `vX.Y.Z` identify manual stable releases. Successful main checks publish a rolling `main-build` prerelease. Product archives and checksums are GitHub Release attachments; no compiled binaries, bundles, archives or generated web assets are committed on any ref. There are no generated source commits, edge publication, Homebrew automation or supported Go-install channels. Product installers verify and stage prebuilt downloads. See [release](release.md) and [ADR 0024](adr/0024-shared-backend-and-installable-products.md).
+
+Production Go builds use CGO_ENABLED=0 and need no host JavaScript runtime. Bundled Electron is the explicit runtime exception and includes its own runtime; Go never invokes Node/npm/pnpm. Native macOS/Linux amd64/arm64 builds complement local Dagger validation. Verification retains accounting/storage/tenant contracts and adds shared lifetime, client boundary, GUI, packaging and installer checks.
 
 Application pairing also persists `<canonical-token-path>.application.json`, containing
 only the application instance ID. Keep this guard with both databases in stopped

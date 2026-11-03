@@ -1,14 +1,10 @@
 import type { z } from 'zod'
-import { errorSchema } from './contracts'
+import { errorSchema } from '@tokeninsights/contracts'
 
 const datasetHeader = 'X-TokenInsights-Dataset-ID'
 
-export class AuthenticationRequired extends Error {
-  constructor() {
-    super('Sign in to view your token usage.')
-    this.name = 'AuthenticationRequired'
-  }
-}
+import { AuthenticationRequired } from '@tokeninsights/contracts'
+export { AuthenticationRequired } from '@tokeninsights/contracts'
 
 export type SendOptions = {
   method?: 'GET' | 'POST' | 'PUT' | 'DELETE'

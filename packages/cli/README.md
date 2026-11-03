@@ -5,20 +5,10 @@ Single-process and distributed token analytics. Shared Go ingestion/processing u
 ## Install
 
 ```sh
-brew install flexdinesh/tap/tokeninsights
+curl -fsSL https://raw.githubusercontent.com/flexdinesh/tokeninsights/main/install.sh | sh
 ```
 
-Alternative stable install with Go:
-
-```sh
-go install github.com/flexdinesh/tokeninsights/packages/cli/cmd/tokeninsights@latest
-```
-
-Development version from `main`:
-
-```sh
-go install github.com/flexdinesh/tokeninsights/packages/cli/cmd/tokeninsights@main
-```
+Use `install-main.sh` for the latest tested main build. Both scripts download prebuilt release/prerelease archives including the local backend. Add ~/.local/bin to PATH. No host Go/Node installation is required. See [installation](../../docs-website/src/pages/install.mdx).
 
 Supported harness IDs:
 
@@ -41,33 +31,19 @@ tokeninsights tui --sync=false          # saved usage only
 tokeninsights web --sync=false
 ```
 
-`web` and `browse` take `--open=auto|app|browser|false` (bare `--open` means
-`auto`); `config set viewer.open MODE` saves a default. `auto` hands the dashboard
-to the desktop viewer (`tokeninsights://open?url=...`) when installed: macOS via
-`open -b com.flexdinesh.tokeninsights`, Linux via the `x-scheme-handler/tokeninsights`
-default from `xdg-mime`. Otherwise it opens the browser. Over SSH nothing opens;
-`web` prints the URL, the app link and an `ssh -L` tunnel hint.
+`web` accepts --open=mygo|electron|browser|auto|false; config set viewer.open MODE saves a default. Auto prefers MyGo, then the browser. Both desktop experiments can run together with TUI and web. Hosted browse uses the browser. SSH sessions print links without opening local applications.
 
-Local commands own storage and processing until exit. No daemon or ingestion HTTP.
-One viewer owns the token database; concurrent sync/plugin requests are persisted
-and executed inside that viewer. If the owner exits, a waiting sync can take over.
-Browser Reload/TUI `r` only query; browser Reload is local-only, including
-`--sync=false`. Local Web shows collection/submission/processing progress alongside
-saved data, stays open on collection failure, and refreshes published revisions.
-Run `sync` to retry collection through the owner. The hostname labels the local
-viewer machine; captured history may include other producers. Hosted never exposes
-collector progress. TUI capture failures offer Retry/View saved/Quit.
+Local launchers attach to one backend, which owns storage, collection and processing. Each viewer holds a lease; after the final disconnect and reconnect grace the backend joins work and closes storage. Opening a viewer requests coalesced collection. --sync=false skips capture while durable processing resumes. Filters and TUI r only query. Capture errors preserve saved usage. Remote sync retains independent jobs and destination progress.
 
 ```sh
-tokeninsights config set mode distributed
-tokeninsights config set server-url https://usage.example.com
-tokeninsights config set server-token   # secure prompt/stdin, never an argument
+tokeninsights config set distributed.server-url https://usage.example.com
+tokeninsights config set distributed.server-token   # secure prompt/stdin, never an argument
 tokeninsights sync                      # durable job + finite detached worker
 tokeninsights sync --print              # also submit; stdout is URL only
 tokeninsights sync --wait               # foreground acceptance
 tokeninsights sync --debug              # foreground collection and receipt progress
 tokeninsights sync status --json
-tokeninsights web                       # sync then remote browser login
+tokeninsights browse                    # hosted browser login, no local capture
 ```
 
 Remote sync requires bearer authentication; no analytics TUI. Debug needs both read

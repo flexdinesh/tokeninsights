@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/collector"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/collectorprogress"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/pipeline"
+	"github.com/flexdinesh/tokeninsights/packages/core/collector"
+	"github.com/flexdinesh/tokeninsights/packages/core/collectorprogress"
+	"github.com/flexdinesh/tokeninsights/packages/core/pipeline"
 )
 
 func TestViewBackgroundCollectionUsesDirectDestination(t *testing.T) {
@@ -44,10 +44,13 @@ func TestViewBackgroundCollectionUsesDirectDestination(t *testing.T) {
 			t.Fatal("missing harnesses/normalization")
 		}
 		dashboard := finishCollectionForTest(t, model)
-		if dashboard.options.local == nil || dashboard.options.query != dashboard.options.local.Query || dashboard.refresh.result == nil || dashboard.refresh.result.Err != nil {
+		if dashboard.options.local == nil || dashboard.options.query != dashboard.options.local.Queries() || dashboard.refresh.result == nil || dashboard.refresh.result.Err != nil {
 			t.Fatal("wrong runtime")
 		}
-		details := dashboard.options.local.Progress.Details()
+		details, err := dashboard.options.local.Progress(t.Context())
+		if err != nil {
+			t.Fatal(err)
+		}
 		id := details.Collection.Attempts[0].AttemptID
 		if capture := details.Captures[id]["pi"]; capture.Phase != collectorprogress.CaptureComplete || capture.Checked != 2 || capture.Captured != 1 || capture.Unchanged != 1 {
 			t.Fatal("TUI composition lost source measurements", capture)

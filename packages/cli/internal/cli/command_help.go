@@ -12,14 +12,14 @@ func runHelp(invocation commandInvocation, _ []string) error {
 func usageText() string {
 	return `usage: tokeninsights <command> [options]
 
-In-process:
-  tui                         collect, ingest and open terminal dashboard
-  web                         collect, ingest and serve browser dashboard until exit
+Local viewers:
+  tui                         attach shared backend and open terminal dashboard
+  web                         attach shared backend and open browser dashboard
   web --port 9000              serve browser dashboard on a different port
   web --host 0.0.0.0          bind all IPv4 interfaces (read-only dashboard)
   tui|web --sync=false         show saved data; resume pending processing
   tui|web --full-refresh       reread sources/retry quarantine at startup
-  web|browse --open=MODE       auto (desktop app, else browser), app, browser or false
+  web --open=MODE              auto (MyGo, else browser), mygo, electron, browser or false
 
 Distributed:
   sync                        start finite background submission
@@ -36,7 +36,7 @@ Configuration:
   config set distributed.server-token  read bearer token securely from terminal/stdin
 
 Maintenance:
-  data reprocess|wait          finite local processing, no daemon
+  data reprocess|wait          finite processing through the shared local owner
   tokeninsights-server         separate authenticated container/server executable
 
 Config groups: collector.db-path; in-process.host, port, server-db-path, app-db-path;

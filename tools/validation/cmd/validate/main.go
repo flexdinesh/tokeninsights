@@ -123,7 +123,35 @@ func (r runner) clean() (string, error) {
 	if s != "" {
 		return "", errors.New("tracked worktree/index dirty")
 	}
+	files, e := r.git("ls-files", "-z")
+	if e != nil {
+		return "", e
+	}
+	for _, path := range strings.Split(files, "\x00") {
+		if generatedArtifactPath(path) {
+			return "", fmt.Errorf("generated output must remain untracked: %s", path)
+		}
+	}
 	return r.git("rev-parse", "HEAD")
+}
+
+func generatedArtifactPath(path string) bool {
+	if strings.HasPrefix(path, "dist/") || strings.HasPrefix(path, "packages/core/server/static/") || strings.Contains(path, ".app/") {
+		return true
+	}
+	for _, suffix := range []string{".tar.gz", ".tgz", ".dmg", ".deb", ".AppImage"} {
+		if strings.HasSuffix(path, suffix) {
+			return true
+		}
+	}
+	for _, product := range []string{"cli", "backend", "server", "desktop-mygo", "desktop-electron"} {
+		for _, output := range []string{"bin", "build", "dist", "out", "release", ".mygo"} {
+			if strings.HasPrefix(path, "packages/"+product+"/"+output+"/") {
+				return true
+			}
+		}
+	}
+	return false
 }
 func (r runner) snapshot(sha, group, dest string) (string, error) {
 	b, e := r.command(r.root, "git", "archive", "--format=tar", sha)

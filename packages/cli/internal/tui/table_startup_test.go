@@ -15,16 +15,9 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/ansi"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/collector"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/pipeline"
+	"github.com/flexdinesh/tokeninsights/packages/core/collector"
+	"github.com/flexdinesh/tokeninsights/packages/core/pipeline"
 )
-
-func replaceViewCollector(t *testing.T, run func(context.Context, collector.Options) (collector.Result, error)) {
-	t.Helper()
-	previous := runViewCollector
-	runViewCollector = run
-	t.Cleanup(func() { runViewCollector = previous })
-}
 
 func finishCollectionForTest(t *testing.T, model interactiveModel) interactiveModel {
 	t.Helper()
@@ -62,17 +55,21 @@ func loadRefreshStatusForTest(t *testing.T, model interactiveModel) interactiveM
 	return updated.(interactiveModel)
 }
 
-func TestTUIDefaultSyncShowsSavedUsageWhileCollectionRunsAndQuitCancels(t *testing.T) {
+func TestTUIDefaultSyncShowsSavedUsageAndQuitCancelsOnlyViewerWait(t *testing.T) {
 	options := localViewOptions(t, true)
 	if err := options.local.Close(); err != nil {
 		t.Fatal(err)
 	}
-	started, stopped := make(chan struct{}), make(chan struct{})
+	started, stopped, release := make(chan struct{}), make(chan struct{}), make(chan struct{})
+	defer close(release)
 	var calls atomic.Int64
 	replaceViewCollector(t, func(ctx context.Context, _ collector.Options) (collector.Result, error) {
 		calls.Add(1)
 		close(started)
-		<-ctx.Done()
+		select {
+		case <-ctx.Done():
+		case <-release:
+		}
 		close(stopped)
 		return collector.Result{}, ctx.Err()
 	})
@@ -107,11 +104,21 @@ func TestTUIDefaultSyncShowsSavedUsageWhileCollectionRunsAndQuitCancels(t *testi
 		if cmd == nil {
 			t.Fatal("quit unavailable during collection")
 		}
+
+		select {
+		case result := <-model.collectionDone:
+			if !errors.Is(result.Err, context.Canceled) {
+				t.Fatal("quit did not cancel viewer wait", result.Err)
+			}
+		case <-time.After(10 * time.Second):
+			t.Fatal("quit left viewer wait running")
+		}
 		select {
 		case <-stopped:
-		case <-time.After(10 * time.Second):
-			t.Fatal("quit left collection running")
+			t.Fatal("viewer quit cancelled backend capture")
+		default:
 		}
+
 		return updated.(interactiveModel), nil
 	})
 	defer restore()
@@ -143,7 +150,7 @@ func TestTUIBackgroundIngestionAndReplayPreserveUsageAndReloadOnlyQueries(t *tes
 		}
 		ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 		defer cancel()
-		if err := model.options.local.WaitVisible(ctx); err != nil {
+		if err := fixtureRuntime(t, model.options.local).WaitVisible(ctx); err != nil {
 			t.Fatal(err)
 		}
 		model = loadRefreshStatusForTest(t, model)
@@ -154,7 +161,7 @@ func TestTUIBackgroundIngestionAndReplayPreserveUsageAndReloadOnlyQueries(t *tes
 		if len(model.rows) != 1 || model.rows[0].totalValue != 100 || !strings.Contains(model.refreshLine(), "Usage refreshed") {
 			t.Fatalf("published refresh missing: rows=%+v state=%s", model.rows, model.refreshLine())
 		}
-		store := model.options.local.Store
+		store := fixtureRuntime(t, model.options.local).Store
 		assertCLIQueryCount(t, store.SQL(), "SELECT SUM(total_tokens) FROM analytics_confirmed", 100)
 		var before int
 		if err := store.SQL().QueryRowContext(t.Context(), "SELECT COUNT(*) FROM ingestion_batches").Scan(&before); err != nil {
@@ -172,10 +179,10 @@ func TestTUIBackgroundIngestionAndReplayPreserveUsageAndReloadOnlyQueries(t *tes
 		defer repeated.cancelSync()
 		repeated.width, repeated.height = model.width, model.height
 		repeated = finishCollectionForTest(t, repeated)
-		if repeated.refresh.result == nil || repeated.refresh.result.Err != nil || repeated.refresh.result.Result.Collection.Skipped == 0 {
+		if repeated.refresh.result == nil || repeated.refresh.result.Err != nil || repeated.refresh.result.Result.Skipped == 0 {
 			t.Fatalf("unchanged source not skipped: %+v", repeated.refresh.result)
 		}
-		if err := model.options.local.WaitVisible(ctx); err != nil {
+		if err := fixtureRuntime(t, model.options.local).WaitVisible(ctx); err != nil {
 			t.Fatal(err)
 		}
 		repeated = loadRefreshStatusForTest(t, repeated)
@@ -233,7 +240,7 @@ func TestTUIRefreshFailureAndQuarantinePreserveSavedUsage(t *testing.T) {
 
 func TestTUIFailedProcessingPreservesPublishedUsageWithoutCollection(t *testing.T) {
 	options := localViewOptions(t, true)
-	if err := options.local.Store.WriteTransaction(t.Context(), func(tx *sql.Tx) error {
+	if err := fixtureRuntime(t, options.local).Store.WriteTransaction(t.Context(), func(tx *sql.Tx) error {
 		if _, err := tx.Exec("UPDATE ingestion_metadata SET input_revision=input_revision+1"); err != nil {
 			return err
 		}

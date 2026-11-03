@@ -13,8 +13,8 @@ const workspace = fileURLToPath(new URL('../../../', import.meta.url))
 void test('API verification rejects generated drift without repairing either output', async () => {
   const root = await mkdtemp(join(tmpdir(), 'tokeninsights-api-check-'))
   const outputs = [
-    'packages/cli/internal/server/api/types.gen.go',
-    'packages/web/src/generated/api.ts',
+    'packages/core/server/api/types.gen.go',
+    'packages/contracts/src/generated/api.ts',
   ]
   try {
     await Promise.all(
@@ -24,9 +24,9 @@ void test('API verification rejects generated drift without repairing either out
         '.oxfmtrc.json',
         'orval.config.ts',
         'docs/openapi.yaml',
-        'packages/cli/go.mod',
-        'packages/cli/go.sum',
-        'packages/cli/internal/server/api/oapi-codegen.yaml',
+        'go.mod',
+        'go.sum',
+        'packages/core/server/api/oapi-codegen.yaml',
         ...outputs,
       ].map(async (path) => {
         await mkdir(dirname(join(root, path)), { recursive: true })

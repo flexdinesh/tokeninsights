@@ -10,9 +10,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/config"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/localruntime"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/syncjob"
+	"github.com/flexdinesh/tokeninsights/packages/core/config"
+	"github.com/flexdinesh/tokeninsights/packages/core/localruntime"
+	"github.com/flexdinesh/tokeninsights/packages/core/syncjob"
 )
 
 type commandInvocation struct {

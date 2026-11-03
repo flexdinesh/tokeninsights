@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { dashboardSchema } from '../contracts'
+import { dashboardSchema } from '@tokeninsights/contracts'
 import { mockBootstrap, mockDashboard, mockFacets, mockSyncStatus, mockTabs } from './data'
 
 describe('mock API data', () => {

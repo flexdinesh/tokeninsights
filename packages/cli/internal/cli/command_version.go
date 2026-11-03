@@ -3,7 +3,7 @@ package cli
 import (
 	"fmt"
 
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/version"
+	"github.com/flexdinesh/tokeninsights/packages/core/version"
 )
 
 var versionCommand = commandSpec{name: "version", aliases: []string{"--version"}, run: runVersion}

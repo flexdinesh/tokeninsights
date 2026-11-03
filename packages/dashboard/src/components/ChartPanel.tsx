@@ -1,0 +1,48 @@
+import { lazy, Suspense } from 'react'
+import { CatchBoundary } from '@tanstack/react-router'
+import type { Row } from '@tokeninsights/contracts'
+import { useDashboardQuery } from '../state'
+import { Alert, AlertDescription, Button, Skeleton } from '../ui'
+
+const UsageChart = lazy(() =>
+  import('./UsageChart').then((module) => ({ default: module.UsageChart })),
+)
+
+function ChartError() {
+  return (
+    <Alert className="my-3" variant="destructive" role="alert">
+      <AlertDescription>Chart couldn’t load. Reload the page to try again.</AlertDescription>
+      <Button variant="outline" onClick={() => window.location.reload()}>
+        Reload page
+      </Button>
+    </Alert>
+  )
+}
+
+export function ChartPanel({
+  rows,
+  totalTokens,
+  timezone,
+}: {
+  rows: Row[]
+  totalTokens: number
+  timezone: string
+}) {
+  const { query } = useDashboardQuery()
+  const resetKey = JSON.stringify(query)
+  return (
+    <CatchBoundary getResetKey={() => resetKey} errorComponent={ChartError}>
+      <Suspense
+        fallback={
+          <Skeleton
+            className="h-(--skeleton-chart-height)"
+            role="status"
+            aria-label="Loading chart"
+          />
+        }
+      >
+        <UsageChart rows={rows} totalTokens={totalTokens} timezone={timezone} />
+      </Suspense>
+    </CatchBoundary>
+  )
+}

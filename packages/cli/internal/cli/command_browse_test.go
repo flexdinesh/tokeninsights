@@ -14,9 +14,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/browser"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/config"
 	"github.com/flexdinesh/tokeninsights/packages/cli/internal/tui"
+	"github.com/flexdinesh/tokeninsights/packages/core/browser"
+	"github.com/flexdinesh/tokeninsights/packages/core/config"
 )
 
 func TestBrowseOpensConfiguredURLWithoutCaptureAuthenticationOrStorage(t *testing.T) {

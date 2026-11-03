@@ -99,6 +99,9 @@ func TestGroupManifestCoverage(t *testing.T) {
 	}
 	for name, group := range manifest.Groups {
 		patterns := append(append([]string{}, manifest.Common...), group.Inputs...)
+		if name == "distribution" && !matches("LICENSE", patterns) {
+			t.Error("distribution misses the license required in every product archive")
+		}
 		if !matches("tools/validation/contract.go", patterns) {
 			t.Errorf("%s misses implementation", name)
 		}
@@ -106,7 +109,7 @@ func TestGroupManifestCoverage(t *testing.T) {
 			if group.Executor != "host" {
 				t.Fatal("format must run on host")
 			}
-			for _, path := range []string{"packages/cli/internal/server/server.go", "tools/build/src/build-web.ts", "docs/design.md", ".github/workflows/ci.yml"} {
+			for _, path := range []string{"packages/core/server/server.go", "tools/build/src/build-web.ts", "docs/design.md", ".github/workflows/ci.yml"} {
 				if !matches(path, patterns) {
 					t.Errorf("format misses %s", path)
 				}

@@ -1,0 +1,150 @@
+package localruntime
+
+import (
+	"context"
+	"crypto/rand"
+	"encoding/hex"
+	"errors"
+	"sync"
+	"time"
+
+	"github.com/flexdinesh/tokeninsights/packages/core/collector"
+	"github.com/flexdinesh/tokeninsights/packages/core/collectorprogress"
+	"github.com/flexdinesh/tokeninsights/packages/core/pipeline"
+)
+
+// Observer fans progress into an optional publisher. Failures cannot
+// invalidate capture or delivery. Counts describe acknowledged work only.
+type Observer struct {
+	attemptID      string
+	mu             sync.Mutex
+	state          collectorprogress.Message
+	ctx            context.Context
+	cancel         context.CancelFunc
+	done           chan struct{}
+	publish        func(context.Context, collectorprogress.Message) error
+	publishCapture func(string, string, collectorprogress.Capture) error
+}
+
+// captureProgress keeps mode policy and registry types outside the capture module.
+// A nil callback disables detail measurement entirely in other compositions.
+func (o *Observer) captureProgress() func(pipeline.CaptureProgressEvent) {
+	if o.publishCapture == nil {
+		return nil
+	}
+	return func(event pipeline.CaptureProgressEvent) {
+		o.mu.Lock()
+		defer o.mu.Unlock()
+		_ = o.publishCapture(o.state.AttemptID, string(event.Harness), collectorprogress.Capture{
+			Phase: collectorprogress.CapturePhase(event.Phase), TotalKnown: event.TotalKnown,
+			Total: int64(event.Total), Checked: int64(event.Checked), Captured: int64(event.Captured), Unchanged: int64(event.Unchanged),
+			Failed: int64(event.Failed), Quarantined: int64(event.Quarantined), Active: int64(event.Active),
+		})
+	}
+}
+
+// newObserver publishes through the command-owned progress registry.
+func newObserver(ctx context.Context, publish func(context.Context, collectorprogress.Message) error) *Observer {
+	o := &Observer{}
+	if publish == nil {
+		return o
+	}
+	var id [16]byte
+	if _, err := rand.Read(id[:]); err != nil {
+		return o
+	}
+	o.ctx, o.cancel = context.WithCancel(ctx)
+	o.publish = publish
+	o.attemptID = hex.EncodeToString(id[:])
+	o.state = collectorprogress.Message{Operation: "begin", AttemptID: o.attemptID, Stage: "waiting", Harnesses: make(map[string]string)}
+	if o.publish(o.ctx, o.state) != nil {
+		o.cancel()
+		o.publish = nil
+		return o
+	}
+	o.done = make(chan struct{})
+	go func() {
+		defer close(o.done)
+		ticker := time.NewTicker(collectorprogress.HeartbeatInterval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-o.ctx.Done():
+				return
+			case <-ticker.C:
+				o.mu.Lock()
+				_ = o.publish(o.ctx, collectorprogress.Message{Operation: "heartbeat", AttemptID: o.state.AttemptID})
+				o.mu.Unlock()
+			}
+		}
+	}()
+	return o
+}
+
+// AttemptID is immutable after construction and identifies this exact capture.
+func (o *Observer) AttemptID() string { return o.attemptID }
+
+func (o *Observer) Collection(event pipeline.SyncProgressEvent) {
+	if o.publish == nil {
+		return
+	}
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	o.state.Operation, o.state.Stage = "update", "capturing"
+	if event.Status == pipeline.SyncProgressWaiting {
+		o.state.Stage = "waiting"
+	}
+	state := "running"
+	switch event.Status {
+	case pipeline.SyncProgressSynced:
+		state = "complete"
+	case pipeline.SyncProgressSkipped:
+		state = "skipped"
+	case pipeline.SyncProgressFailed:
+		state = "failed"
+	case pipeline.SyncProgressWaiting:
+		state = "waiting"
+	}
+	if event.Harness != "" {
+		o.state.Harnesses[string(event.Harness)] = state
+	}
+	_ = o.publish(o.ctx, o.state)
+}
+
+func (o *Observer) Delivery(progress collector.DeliveryProgress) {
+	if o.publish == nil {
+		return
+	}
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	o.state.Operation, o.state.Stage = "update", "submitting"
+	o.state.AcknowledgedBatches = progress.Batches
+	o.state.AcknowledgedEntries = progress.Accepted
+	o.state.PendingKnown, o.state.Pending = progress.PendingKnown, progress.Pending
+	_ = o.publish(o.ctx, o.state)
+}
+
+func (o *Observer) Finish(result collector.Result, err error) {
+	if o.publish == nil {
+		return
+	}
+	o.cancel()
+	<-o.done
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	o.state.Operation, o.state.Stage = "finish", "accepted"
+	o.state.AcknowledgedEntries, o.state.AcknowledgedBatches = result.Accepted, result.Batches
+	o.state.PendingKnown, o.state.Pending = result.PendingKnown, result.Pending
+	if err != nil || result.Collection.Quarantined > 0 {
+		o.state.Stage, o.state.ErrorCode = "failed", "collection_failed"
+		if result.DeliveryError != nil {
+			o.state.ErrorCode = "submission_failed"
+		}
+		if errors.Is(err, context.Canceled) {
+			o.state.Stage, o.state.ErrorCode = "interrupted", "cancelled"
+		}
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), collectorprogress.HeartbeatInterval)
+	defer cancel()
+	_ = o.publish(ctx, o.state)
+}

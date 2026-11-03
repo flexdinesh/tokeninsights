@@ -65,16 +65,16 @@ func (m *Validation) Check(ctx context.Context, source *dagger.Directory, group 
 	if group != "web" {
 		webInputs := dag.Directory().WithDirectory("/", source, dagger.DirectoryWithDirectoryOpts{Include: []string{
 			"package.json", "pnpm-lock.yaml", "pnpm-workspace.yaml", "packages/*/package.json", "docs-website/package.json",
-			"packages/web/**", "tools/build/package.json", "tools/build/src/build-web.ts",
+			"packages/web/**", "packages/dashboard/**", "packages/contracts/**", "tools/build/package.json", "tools/build/src/build-web.ts",
 			"tools/build/src/sync-web-assets.ts", "tools/build/src/files.ts", "tools/build/src/workspace.ts",
 			".oxfmtrc.json", ".oxlintrc.json",
 		}})
 		web := m.prepare(webInputs, "web").WithExec([]string{"node", "tools/build/src/build-web.ts"})
-		runner = runner.WithDirectory("/src/packages/cli/internal/server/static", web.Directory("/src/packages/cli/internal/server/static"))
+		runner = runner.WithDirectory("/src/packages/core/server/static", web.Directory("/src/packages/core/server/static"))
 	}
 	if group == "browser" {
 
-		runner = runner.WithWorkdir("/src/packages/cli").WithExec([]string{"go", "build", "-o", "bin/tokeninsights", "./cmd/tokeninsights"}).WithExec([]string{"go", "build", "-o", "bin/tokeninsights-server", "./cmd/tokeninsights-server"}).WithWorkdir("/src")
+		runner = runner.WithWorkdir("/src/packages/cli").WithExec([]string{"go", "build", "-o", "bin/tokeninsights", "./cmd/tokeninsights"}).WithExec([]string{"go", "build", "-o", "bin/tokeninsights-backend", "../backend/cmd/tokeninsights-backend"}).WithExec([]string{"go", "build", "-o", "../server/bin/tokeninsights-server", "../server/cmd/tokeninsights-server"}).WithWorkdir("/src")
 	}
 	if _, err := runner.Sync(ctx); err != nil {
 		return preparationFailure(err), nil
@@ -135,21 +135,23 @@ func (m *Validation) prepare(source *dagger.Directory, group string) *dagger.Con
 		WithExec([]string{"sh", "-c", "curl -fsSL https://github.com/jdx/mise/releases/download/v2026.10.18/mise-v2026.10.18-linux-x64.tar.gz -o /tmp/mise.tar.gz && echo '0d41b60745a6273a80089c86f80d8729042d2f57f87fda70aecc7d1c3ffbd3be  /tmp/mise.tar.gz' | sha256sum -c - && tar xzf /tmp/mise.tar.gz -C /tmp && cp /tmp/mise/bin/mise /usr/local/bin/mise"})
 	manifests := dag.Directory().WithDirectory("/", source, dagger.DirectoryWithDirectoryOpts{Include: []string{"package.json", "pnpm-lock.yaml", "pnpm-workspace.yaml", "packages/*/package.json", "tools/build/package.json", "docs-website/package.json"}})
 	js := base.WithDirectory("/src", manifests).WithWorkdir("/src").WithExec([]string{"pnpm", "install", "--frozen-lockfile"})
-	if group == "browser" {
-		js = js.WithExec([]string{"sh", "-c", "sed -i 's|http://deb.debian.org/debian-security|https://snapshot.debian.org/archive/debian-security/20261031T000000Z|g; s|http://deb.debian.org/debian|https://snapshot.debian.org/archive/debian/20261031T000000Z|g' /etc/apt/sources.list.d/debian.sources; printf 'Acquire::Check-Valid-Until \"false\";\n' > /etc/apt/apt.conf.d/99validation-snapshot"}).
-			WithExec([]string{"pnpm", "--filter", "@tokeninsights/web", "exec", "playwright", "install", "--with-deps", "chromium"})
+	if group == "browser" || group == "distribution" || group == "tooling" {
+		js = js.WithExec([]string{"sh", "-c", "sed -i 's|http://deb.debian.org/debian-security|https://snapshot.debian.org/archive/debian-security/20261031T000000Z|g; s|http://deb.debian.org/debian|https://snapshot.debian.org/archive/debian/20261031T000000Z|g' /etc/apt/sources.list.d/debian.sources; printf 'Acquire::Check-Valid-Until \"false\";\n' > /etc/apt/apt.conf.d/99validation-snapshot"})
+	}
+	if group == "tooling" {
+		js = js.WithExec([]string{"apt-get", "update"}).WithExec([]string{"apt-get", "install", "-y", "--no-install-recommends", "libarchive-tools"})
+	}
+	if group == "browser" || group == "distribution" {
+		js = js.WithExec([]string{"pnpm", "--filter", "@tokeninsights/web", "exec", "playwright", "install", "--with-deps", "chromium"}).
+			WithExec([]string{"apt-get", "install", "-y", "--no-install-recommends", "xvfb", "xauth", "x11-utils", "libgtk-3-0", "libasound2t64", "libwebkit2gtk-4.1-0"})
 	}
 	if group == "web" {
 		return js.WithDirectory("/src", source).WithWorkdir("/src")
 	}
-	goDeps := base.WithDirectory("/deps", source, dagger.ContainerWithDirectoryOpts{Include: []string{"packages/cli/go.mod", "packages/cli/go.sum"}}).
-		WithWorkdir("/deps/packages/cli").WithExec([]string{"go", "mod", "download"})
-	if group == "static" || group == "go" || group == "all" {
-		goDeps = goDeps.WithDirectory("/deps", source, dagger.ContainerWithDirectoryOpts{Include: []string{"packages/desktop/go.mod", "packages/desktop/go.sum"}}).
-			WithWorkdir("/deps/packages/desktop").WithExec([]string{"go", "mod", "download"}).WithWorkdir("/deps/packages/cli")
-	}
+	goDeps := base.WithDirectory("/deps", source, dagger.ContainerWithDirectoryOpts{Include: []string{"go.mod", "go.sum"}}).
+		WithWorkdir("/deps").WithExec([]string{"go", "mod", "download"})
 	if group == "static" || group == "all" {
-		goDeps = goDeps.WithDirectory("/deps", source, dagger.ContainerWithDirectoryOpts{Include: []string{"packages/cli/golangci-lint.mod", "packages/cli/golangci-lint.sum"}}).WithExec([]string{"go", "mod", "download", "-modfile=golangci-lint.mod"})
+		goDeps = goDeps.WithDirectory("/deps", source, dagger.ContainerWithDirectoryOpts{Include: []string{"golangci-lint.mod", "golangci-lint.sum"}}).WithExec([]string{"go", "mod", "download", "-modfile=golangci-lint.mod"})
 	}
 	if group == "tooling" {
 		goDeps = goDeps.WithDirectory("/validation-deps", source, dagger.ContainerWithDirectoryOpts{Include: []string{"tools/validation/go.mod", "tools/validation/go.sum"}}).

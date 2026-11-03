@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"testing"
 
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/config"
+	"github.com/flexdinesh/tokeninsights/packages/core/config"
 )
 
 // configurationEnvironment lists variables that outrank the config file.

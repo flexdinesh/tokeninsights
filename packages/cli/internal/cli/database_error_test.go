@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/appstore"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/localruntime"
+	"github.com/flexdinesh/tokeninsights/packages/core/appstore"
+	"github.com/flexdinesh/tokeninsights/packages/core/localruntime"
 )
 
 // Without a terminal, older local storage is reported and never reset. The
@@ -92,6 +92,7 @@ func TestLocalOlderStorageWithoutTerminalChangesNothing(t *testing.T) {
 // Confirmed resets move the guard with its application; a missing application
 // beside an intact guard still requires restoring the stopped backup set.
 func TestPairGuardStillRejectsMissingApplication(t *testing.T) {
+	useSharedBackendForTest(t)
 	nonInteractiveStorage(t)
 	root := t.TempDir()
 	collectorPath, dataPath, appPath := filepath.Join(root, "collector.sqlite"), filepath.Join(root, "server.sqlite"), filepath.Join(root, "app.sqlite")

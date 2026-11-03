@@ -1,80 +1,94 @@
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
-import { chmodSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
+import { parseTarget } from '../src/build-desktop.ts'
+import {
+  archiveName,
+  archiveRoot,
+  packageProduct,
+  products,
+  verifyProduct,
+  writeChecksums,
+} from '../src/build-products.ts'
 
-import { archiveName, parseTarget, stagePackage, writeArchive } from '../src/build-desktop.ts'
-
-function scratch(): string {
-  return mkdtempSync(join(tmpdir(), 'tokeninsights-build-desktop-'))
+for (const platform of ['linux/amd64', 'darwin/arm64']) {
+  for (const product of products) {
+    void test(`${product} ${platform} validates its independent executable/backend layout`, async (t) => {
+      const root = await mkdtemp(join(tmpdir(), 'tokeninsights-product-layout-'))
+      t.after(() => rm(root, { recursive: true, force: true }))
+      const target = parseTarget(platform)
+      const desktop = product === 'mygo' || product === 'electron'
+      const app = product === 'mygo' ? 'TokenInsights MyGo.app' : 'TokenInsights Electron.app'
+      const binaryRoot =
+        desktop && target.os === 'darwin' ? join(root, app, 'Contents/MacOS') : root
+      const backendRoot =
+        product === 'electron'
+          ? target.os === 'darwin'
+            ? join(root, app, 'Contents/Resources')
+            : join(root, 'resources')
+          : binaryRoot
+      await mkdir(binaryRoot, { recursive: true })
+      const binary = join(
+        binaryRoot,
+        product === 'cli' ? 'tokeninsights' : `tokeninsights-${product}`,
+      )
+      await writeFile(binary, 'executable', { mode: 0o755 })
+      if (product !== 'server') {
+        await mkdir(backendRoot, { recursive: true })
+        await writeFile(join(backendRoot, 'tokeninsights-backend'), 'backend', { mode: 0o755 })
+      }
+      const plist = join(root, app, 'Contents/Info.plist')
+      if (desktop && target.os === 'darwin')
+        await writeFile(plist, `<string>com.flexdinesh.tokeninsights.${product}</string>`)
+      await writeFile(join(root, 'LICENSE'), 'MIT')
+      await writeFile(join(root, 'build-info.json'), '{}')
+      await verifyProduct(root, product, target)
+      if (desktop && target.os === 'darwin') {
+        await writeFile(plist, '<string>com.example.other</string>')
+        await assert.rejects(verifyProduct(root, product, target), /incompatible desktop identity/)
+      } else {
+        await rm(product === 'server' ? binary : join(backendRoot, 'tokeninsights-backend'))
+        await assert.rejects(verifyProduct(root, product, target), /ENOENT/)
+      }
+    })
+  }
 }
 
-function linuxBuild(root: string): string {
-  const build = join(root, 'build', 'linux-amd64')
-  mkdirSync(build, { recursive: true })
-  writeFileSync(join(build, 'tokeninsights-desktop'), 'binary')
-  chmodSync(join(build, 'tokeninsights-desktop'), 0o755)
-  writeFileSync(join(build, 'tokeninsights-desktop-512x512.png'), 'png')
-  writeFileSync(join(build, 'tokeninsights-desktop.deb'), 'ignored')
-  return build
-}
-
-function darwinBuild(root: string, plist: string): string {
-  const build = join(root, 'build', 'darwin-arm64')
-  const contents = join(build, 'TokenInsights.app', 'Contents')
-  mkdirSync(join(contents, 'MacOS'), { recursive: true })
-  writeFileSync(join(contents, 'MacOS', 'TokenInsights'), 'binary')
-  chmodSync(join(contents, 'MacOS', 'TokenInsights'), 0o755)
-  writeFileSync(join(contents, 'Info.plist'), plist)
-  return build
-}
-
-void test('archive names are unversioned per OS and architecture', () => {
-  assert.equal(archiveName(parseTarget('linux/amd64')), 'tokeninsights-desktop_linux_amd64.tar.gz')
+void test('stable product names cover all supported platforms', () => {
   assert.equal(
-    archiveName(parseTarget('darwin/arm64')),
-    'tokeninsights-desktop_darwin_arm64.tar.gz',
+    archiveName('mygo', parseTarget('darwin/arm64')),
+    'tokeninsights-mygo_darwin_arm64.tar.gz',
+  )
+  assert.equal(
+    archiveName('cli', parseTarget('linux/amd64')),
+    'tokeninsights-cli_linux_amd64.tar.gz',
   )
   for (const value of ['windows/amd64', 'linux/386', 'linux', 'darwin/arm64/x'])
     assert.throws(() => parseTarget(value))
 })
-
-void test('packages the Linux executable, icon and license for install.sh', async () => {
-  const root = scratch()
+void test('local product archives include backend, deterministic source metadata and license', async (t) => {
+  const dir = await mkdtemp(join(tmpdir(), 'tokeninsights-package-'))
+  t.after(() => rm(dir, { recursive: true, force: true }))
   const target = parseTarget('linux/amd64')
-  const stage = join(root, 'stage')
-  await stagePackage(linuxBuild(root), target, stage)
-  const out = join(root, 'out')
-  mkdirSync(out)
-  const archive = writeArchive(stage, target, out)
+  const root = join(dir, archiveRoot('cli', target))
+  await mkdir(root)
+  await writeFile(join(root, 'tokeninsights'), 'binary', { mode: 0o755 })
+  await writeFile(join(root, 'tokeninsights-backend'), 'backend', { mode: 0o755 })
+  const metadata = { version: '1.2.3', commit: 'a'.repeat(40), date: '2026-11-03T00:00:00+00:00' }
+  const archive = await packageProduct(dir, 'cli', target, dir, metadata)
   const entries = execFileSync('tar', ['-tzf', archive], { encoding: 'utf8' })
-    .trim()
-    .split('\n')
-    .toSorted()
-  assert.deepEqual(entries, [
-    'tokeninsights-desktop_linux_amd64/',
-    'tokeninsights-desktop_linux_amd64/LICENSE',
-    'tokeninsights-desktop_linux_amd64/tokeninsights-desktop',
-    'tokeninsights-desktop_linux_amd64/tokeninsights-desktop.png',
-  ])
-})
-
-void test('macOS packages require the bundle identifier and URL scheme', async () => {
-  const root = scratch()
-  const target = parseTarget('darwin/arm64')
-  const valid =
-    '<string>com.flexdinesh.tokeninsights</string><array><string>tokeninsights</string></array>'
-  await stagePackage(darwinBuild(root, valid), target, join(root, 'stage'))
-
-  const other = scratch()
-  await assert.rejects(
-    stagePackage(
-      darwinBuild(other, '<string>com.flexdinesh.tokeninsights</string>'),
-      target,
-      join(other, 'stage'),
-    ),
-    /lacks tokeninsights/,
+  for (const entry of ['tokeninsights', 'tokeninsights-backend', 'LICENSE', 'build-info.json'])
+    assert.ok(entries.includes(`${archiveRoot('cli', target)}/${entry}`))
+  const info: unknown = JSON.parse(await readFile(join(root, 'build-info.json'), 'utf8'))
+  assert.deepEqual(info, { format: 1, product: 'cli', ...target, ...metadata })
+  await writeChecksums(dir)
+  assert.match(
+    await readFile(join(dir, 'checksums.txt'), 'utf8'),
+    /^[0-9a-f]{64}  tokeninsights-cli_linux_amd64\.tar\.gz\n$/,
   )
+  await rm(join(root, 'tokeninsights-backend'))
+  await assert.rejects(verifyProduct(root, 'cli', target), /tokeninsights-backend/)
 })

@@ -35,7 +35,7 @@ export default defineConfig(({ command, mode }) => {
       reporters: ['dot'],
       environment: 'jsdom',
       setupFiles: ['./src/test-setup.ts'],
-      include: ['src/**/*.test.{ts,tsx}'],
+      include: ['src/**/*.test.{ts,tsx}', '../dashboard/src/**/*.test.{ts,tsx}'],
     },
   }
 })

@@ -9,13 +9,13 @@
     "check:schema": "node src/check-schema.ts",
     "sync:web": "node src/sync-web-assets.ts",
     "setup-dev-data": "node src/setup-dev-data.ts",
-    "generate:homebrew": "node src/generate-homebrew-formula.ts",
     "test": "node --test --test-reporter=dot --test-concurrency=${TOKENINSIGHTS_CHECK_CONCURRENCY:-2} test/*.test.ts",
     "typecheck": "tsc --project tsconfig.json"
   },
   "devDependencies": {
     "@tokeninsights/plugin-runtime": "workspace:*",
     "@types/node": "26.6.5",
+    "playwright": "1.64.1",
     "typescript": "^7.0.2"
   },
   "engines": {

@@ -12,6 +12,19 @@ import (
 	"time"
 )
 
+func TestGeneratedArtifactPathsRejectBuildOutput(t *testing.T) {
+	for _, path := range []string{"dist/archive.tar.gz", "packages/core/server/static/index.html", "packages/desktop-electron/release/App.app/Contents/Info.plist", "packages/cli/bin/tokeninsights"} {
+		if !generatedArtifactPath(path) {
+			t.Errorf("accepted %s", path)
+		}
+	}
+	for _, path := range []string{"packages/core/server/server.go", "packages/desktop-mygo/resources/icon.png", "go.mod"} {
+		if generatedArtifactPath(path) {
+			t.Errorf("rejected source %s", path)
+		}
+	}
+}
+
 func fixture(t *testing.T) runner {
 	t.Helper()
 	r := runner{ctx: context.Background(), root: t.TempDir(), home: t.TempDir(), manifest: manifest{Common: []string{"*", "packages/"}, Groups: map[string]groupSpec{"go": {Class: "heavy"}}}}

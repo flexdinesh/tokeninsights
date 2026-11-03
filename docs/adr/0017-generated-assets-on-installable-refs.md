@@ -1,5 +1,7 @@
 # Generate dashboard assets on installable refs
 
+Superseded for current distribution/desktop behavior by [ADR 0024](0024-shared-backend-and-installable-products.md). Historical decisions remain below.
+
 Status: Accepted. Date: 18 October 2026.
 
 ## Decision

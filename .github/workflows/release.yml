@@ -3,9 +3,9 @@ name: Release
 on:
   workflow_dispatch:
     inputs:
-      retry_tag:
-        description: Tag created by this workflow to resume; empty releases current main
-        required: false
+      version:
+        description: Immutable stable version (x.y.z)
+        required: true
         type: string
 
 permissions:
@@ -19,308 +19,52 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  prepare:
-    name: Prepare release
+  source:
     if: github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     outputs:
-      tag: ${{ steps.tag.outputs.tag }}
-      version: ${{ steps.tag.outputs.version }}
-      source: ${{ steps.source.outputs.commit }}
-      commit: ${{ steps.assets.outputs.commit }}
-    steps:
-      - name: Checkout main
-        uses: actions/checkout@v7
-        with:
-          ref: main
-          fetch-depth: 0
-      - name: Pin source
-        id: source
-        env:
-          RETRY_TAG: ${{ inputs.retry_tag }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          if [[ -n "$RETRY_TAG" ]]; then
-            [[ "$RETRY_TAG" =~ ^packages/cli/v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]
-            release="$(git rev-parse "$RETRY_TAG^{commit}")"
-            if git merge-base --is-ancestor "$release" origin/main; then
-              echo 'retry_tag requires a generated asset commit; historical source installs remain supported.' >&2
-              exit 1
-            fi
-            source="$(git rev-parse "$release^1")"
-            git merge-base --is-ancestor "$source" origin/main
-            echo "release=$release" >> "$GITHUB_OUTPUT"
-            git checkout --detach "$source"
-          fi
-          echo "commit=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
-
-      - name: Set up build tools
-        uses: jdx/mise-action@v5
-        with:
-          install_args: go node pnpm
-      - run: mise run setup
-
-      - name: Select release version
-        id: tag
-        env:
-          RETRY_TAG: ${{ inputs.retry_tag }}
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          tag_prefix="packages/cli/v"
-          tag="$RETRY_TAG"
-          if [[ -z "$tag" ]]; then
-            tag="$(cd packages/cli && go run ./tools/release-version)"
-          fi
-          version="${tag#${tag_prefix}}"
-          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
-          echo "version=${version}" >> "$GITHUB_OUTPUT"
-
-      - run: mise run build:web
-        if: inputs.retry_tag == ''
-      - name: Prepare installable source commit
-        id: assets
-        env:
-          GITHUB_SHA: ${{ steps.source.outputs.commit }}
-          RELEASE_TAG: ${{ steps.tag.outputs.tag }}
-          EXISTING_RELEASE: ${{ steps.source.outputs.release }}
-        run: |
-          commit="$EXISTING_RELEASE"
-          if [ -z "$commit" ]; then
-            commit="$(node tools/build/src/install-refs.ts release "$RELEASE_TAG")"
-          fi
-          echo "commit=$commit" >> "$GITHUB_OUTPUT"
-          git bundle create release.bundle "$RELEASE_TAG"
-      - uses: actions/upload-artifact@v7
-        with:
-          name: release-source
-          path: release.bundle
-
-  native:
-    name: Native ${{ matrix.os }}/${{ matrix.arch }}
-    needs: prepare
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - runner: ubuntu-24.04
-            os: linux
-            arch: amd64
-          - runner: ubuntu-24.04-arm
-            os: linux
-            arch: arm64
-          - runner: macos-15-intel
-            os: darwin
-            arch: amd64
-          - runner: macos-15
-            os: darwin
-            arch: arm64
-    runs-on: ${{ matrix.runner }}
+      commit: ${{ steps.source.outputs.commit }}
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: ${{ needs.prepare.outputs.source }}
-      - uses: actions/download-artifact@v8
-        with:
-          name: release-source
-          path: .release-source
-      - name: Checkout installable source
-        env:
-          RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
-          RELEASE_COMMIT: ${{ needs.prepare.outputs.commit }}
-        run: |
-          git fetch .release-source/release.bundle "refs/tags/$RELEASE_TAG:refs/tags/$RELEASE_TAG"
-          git checkout --detach "$RELEASE_COMMIT"
+          ref: ${{ github.sha }}
+          fetch-depth: 0
       - uses: jdx/mise-action@v5
         with:
-          install_args: go node
-      - name: Build and smoke test native binaries
-        shell: bash
+          install_args: node
+      - name: Create immutable source tag
+        id: source
         env:
-          CGO_ENABLED: '0'
+          PRODUCT_VERSION: ${{ inputs.version }}
         run: |
-          set -euo pipefail
-          version="${{ needs.prepare.outputs.version }}"
-          commit="$(git rev-parse --short HEAD)"
-          date="$(git show -s --format=%cI HEAD)"
-          module="github.com/flexdinesh/tokeninsights/packages/cli/internal/version"
-          archive_dir="tokeninsights_${version}_${{ matrix.os }}_${{ matrix.arch }}"
-          mkdir -p "dist/${archive_dir}"
-          (
-            cd packages/cli
-            for binary in tokeninsights tokeninsights-server; do
-              go build -trimpath \
-                -ldflags="-s -w -X ${module}.Version=${version} -X ${module}.Commit=${commit} -X ${module}.Date=${date}" \
-                -o "../../dist/${archive_dir}/${binary}" "./cmd/${binary}"
-            done
-            go test ./internal/datastore ./internal/rawcollectorstore
-          )
-          PATH=/usr/bin:/bin "dist/${archive_dir}/tokeninsights" version
-          PATH=/usr/bin:/bin "dist/${archive_dir}/tokeninsights-server" --version
-          cp README.md LICENSE "dist/${archive_dir}/"
-          tar -C dist -czf "dist/${archive_dir}.tar.gz" "${archive_dir}"
-      # macOS runners seal the app bundle with an ad-hoc signature (ADR 0023).
-      - name: Build desktop app
-        shell: bash
-        run: |
-          set -euo pipefail
-          # Sources released before the desktop viewer have no desktop build.
-          if [[ ! -f tools/build/src/build-desktop.ts ]]; then exit 0; fi
-          node tools/build/src/build-desktop.ts --out dist \
-            --version "${{ needs.prepare.outputs.version }}" \
-            --platform "${{ matrix.os }}/${{ matrix.arch }}"
-      - uses: actions/upload-artifact@v7
-        with:
-          name: native-${{ matrix.os }}-${{ matrix.arch }}
-          path: dist/*.tar.gz
-
-  release:
-    name: Publish release
-    needs: [prepare, native]
+          node tools/build/src/publish-release.ts tag "$PRODUCT_VERSION"
+          echo "commit=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+  products:
+    needs: source
+    uses: ./.github/workflows/products.yml
+    with:
+      source: ${{ needs.source.outputs.commit }}
+      version: ${{ inputs.version }}
+  publish:
+    needs: [source, products]
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: ${{ needs.prepare.outputs.source }}
+          ref: ${{ needs.source.outputs.commit }}
           fetch-depth: 0
-      - uses: actions/download-artifact@v8
-        with:
-          name: release-source
-          path: .release-source
-      - name: Checkout verified release source
-        env:
-          RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
-          RELEASE_COMMIT: ${{ needs.prepare.outputs.commit }}
-        run: |
-          git fetch .release-source/release.bundle "refs/tags/$RELEASE_TAG:refs/tags/$RELEASE_TAG"
-          git checkout --detach "$RELEASE_COMMIT"
       - uses: jdx/mise-action@v5
-      - run: mise run setup
+        with:
+          install_args: node
       - uses: actions/download-artifact@v8
         with:
-          pattern: native-*
+          pattern: products-*
           path: dist
           merge-multiple: true
-      - name: Checksums
-        run: cd dist && shasum -a 256 *.tar.gz > checksums.txt
-      - name: Create release tag
-        env:
-          RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
-        run: git push --no-verify origin "refs/tags/$RELEASE_TAG"
-
-      - name: Publish GitHub release
+      - name: Publish complete stable release
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
-          RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
-        shell: bash
+          PRODUCT_VERSION: ${{ inputs.version }}
         run: |
-          set -euo pipefail
-
-          tag="$RELEASE_TAG"
-          version="$RELEASE_VERSION"
-          stable_pattern='^packages/cli/v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$'
-          newest="$(git tag --list --sort=-version:refname | grep -E "$stable_pattern" | sed -n '1p')"
-          make_latest=false
-          if [[ "$tag" == "$newest" ]]; then make_latest=true; fi
-
-          if gh release view "${tag}" >/dev/null 2>&1; then
-            # Resume with the original verified bytes, even after main advances.
-            previous="$(mktemp -d)"
-            gh release download "${tag}" --dir "$previous"
-            for archive in dist/*.tar.gz; do
-              test -f "$previous/$(basename "$archive")"
-              awk -v name="$(basename "$archive")" '$2 == name { count++ } END { exit count != 1 }' "$previous/checksums.txt"
-            done
-            (cd "$previous" && shasum -a 256 -c checksums.txt)
-            cp "$previous"/*.tar.gz "$previous/checksums.txt" dist/
-            gh release edit "${tag}" --draft=false --prerelease=false --latest="$make_latest"
-          else
-            gh release create "${tag}" \
-              dist/*.tar.gz \
-              dist/checksums.txt \
-              --title "tokeninsights v${version}" \
-              --verify-tag \
-              --latest="$make_latest" \
-              --generate-notes
-          fi
-
-      - name: Checkout Homebrew tap
-        uses: actions/checkout@v7
-        with:
-          repository: flexdinesh/homebrew-tap
-          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
-          path: homebrew-tap
-          fetch-depth: 0
-
-      - name: Generate Homebrew formula
-        run: |
-          # Direct script call also works for retried releases whose source predates mise tasks.
-          node tools/build/src/generate-homebrew-formula.ts \
-            --version "${{ needs.prepare.outputs.version }}" \
-            --tag "${{ needs.prepare.outputs.tag }}" \
-            --checksums "${{ github.workspace }}/dist/checksums.txt" \
-            --output "${{ github.workspace }}/homebrew-tap/Formula/tokeninsights.rb"
-
-      - name: Validate Homebrew formula syntax
-        run: ruby -c homebrew-tap/Formula/tokeninsights.rb
-
-      - name: Open Homebrew tap pull request
-        env:
-          GH_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          version="${{ needs.prepare.outputs.version }}"
-          tag="${{ needs.prepare.outputs.tag }}"
-          encoded_tag="${tag//\//%2F}"
-          branch="tokeninsights-v${version}"
-          tap_repo="flexdinesh/homebrew-tap"
-
-          cd homebrew-tap
-
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git checkout -B "${branch}"
-
-          if [[ -z "$(git status --porcelain -- Formula/tokeninsights.rb)" ]]; then
-            echo "Homebrew formula is already up to date for tokeninsights v${version}."
-            exit 0
-          fi
-
-          git add Formula/tokeninsights.rb
-          git commit -m "Update tokeninsights to v${version}"
-          git push --force-with-lease origin "HEAD:${branch}"
-
-          pr_number="$(gh pr list \
-            --repo "${tap_repo}" \
-            --head "${branch}" \
-            --state open \
-            --json number \
-            --jq '.[0].number // ""')"
-
-          pr_body="$(mktemp)"
-          cat > "${pr_body}" <<EOF
-          Updates the tokeninsights formula to v${version}.
-
-          Source release: https://github.com/flexdinesh/tokeninsights/releases/tag/${encoded_tag}
-
-          This PR was generated by the TokenInsights release workflow.
-          EOF
-
-          if [[ -n "${pr_number}" ]]; then
-            gh pr edit "${pr_number}" \
-              --repo "${tap_repo}" \
-              --title "Update tokeninsights to v${version}" \
-              --body-file "${pr_body}"
-          else
-            gh pr create \
-              --repo "${tap_repo}" \
-              --head "${branch}" \
-              --base main \
-              --title "Update tokeninsights to v${version}" \
-              --body-file "${pr_body}"
-          fi
+          node --input-type=module -e 'import { writeChecksums } from "./tools/build/src/build-products.ts"; await writeChecksums("dist")'
+          node tools/build/src/publish-release.ts stable "$PRODUCT_VERSION" dist

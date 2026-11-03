@@ -7,11 +7,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/analytics"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/config"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/flagvalue"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/localruntime"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/queryclient"
+	"github.com/flexdinesh/tokeninsights/packages/core/analytics"
+	"github.com/flexdinesh/tokeninsights/packages/core/config"
+	"github.com/flexdinesh/tokeninsights/packages/core/flagvalue"
+	"github.com/flexdinesh/tokeninsights/packages/core/queryclient"
 )
 
 type period string
@@ -64,7 +63,7 @@ type filters struct {
 }
 
 type tableOptions struct {
-	local           *localruntime.Runtime
+	local           Session
 	appDBPath       string
 	dbPath          string
 	query           *queryclient.Client
@@ -108,7 +107,7 @@ func parseViewerOptions(args []string, stderr io.Writer, requirePeriod bool, def
 	flags.StringVar(&collectorDBPath, "collector-db-path", settings.CollectorDBPath, "collector database used by startup sync")
 	flags.BoolVar(&fullRefresh, "full-refresh", false, "reread sources and retry quarantine at startup")
 	flags.StringVar(&sourceDir, "source-dir", "", "override startup capture source directory")
-	flags.BoolVar(&syncOnStart, "sync", true, "refresh usage in the background; --sync=false reads saved data only")
+	flags.BoolVar(&syncOnStart, "sync", true, "refresh usage in the background; --sync=false skips startup collection")
 	flags.BoolVar(&today, "today", false, "show today")
 	flags.BoolVar(&yesterday, "yesterday", false, "show yesterday")
 	flags.BoolVar(&week, "week", false, "show current calendar week (Mon-Sun)")

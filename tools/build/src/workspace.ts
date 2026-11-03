@@ -10,5 +10,5 @@ export function workspacePath(...segments: string[]): string {
 }
 
 // Workspace-relative, slash-separated directory that Go embeds. Generated on demand;
-// ignored on main and committed only on installable refs.
-export const embeddedAssets = 'packages/cli/internal/server/static'
+// never committed on any branch or tag.
+export const embeddedAssets = 'packages/core/server/static'

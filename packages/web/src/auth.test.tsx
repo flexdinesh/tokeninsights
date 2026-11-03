@@ -1,9 +1,11 @@
+import { DashboardClientProvider } from '@tokeninsights/dashboard'
+import { httpDashboardClient } from './http-client'
 import { afterEach, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { RouterProvider, createMemoryHistory } from '@tanstack/react-router'
-import { createAppRouter } from './router'
+import { createAppRouter } from '../../dashboard/src/router'
 import { mockBootstrap, mockDashboard, mockFacets, mockSyncStatus } from './mocks/data'
 
 afterEach(() => {
@@ -20,9 +22,11 @@ function renderApp() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   const router = createAppRouter(createMemoryHistory({ initialEntries: ['/tokens'] }))
   render(
-    <QueryClientProvider client={client}>
-      <RouterProvider router={router} />
-    </QueryClientProvider>,
+    <DashboardClientProvider client={httpDashboardClient}>
+      <QueryClientProvider client={client}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>
+    </DashboardClientProvider>,
   )
   return client
 }

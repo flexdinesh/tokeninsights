@@ -2,24 +2,20 @@ FROM node:26.12.1-trixie-slim@sha256:36793bcbb160a6a16cede1e62b93f84e26b78a972a8
 WORKDIR /src
 RUN npm install --global pnpm@12.15.0
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
-COPY packages/cli/package.json packages/cli/package.json
-COPY packages/web/package.json packages/web/package.json
-COPY packages/plugin-pi/package.json packages/plugin-pi/package.json
-COPY packages/plugin-opencode/package.json packages/plugin-opencode/package.json
-COPY tools/build/package.json tools/build/package.json
-RUN HUSKY=0 pnpm install --frozen-lockfile
-COPY packages/web/ packages/web/
+COPY packages/ packages/
 COPY tools/build/ tools/build/
+RUN HUSKY=0 pnpm install --frozen-lockfile
 RUN node tools/build/src/build-web.ts
 
 FROM golang:1.27.3-trixie@sha256:fbb7ae40b62ff8afe31662df570d39b4f5052ac32b90dae8e60d7657a20a74f4 AS build
 WORKDIR /src
 ENV CGO_ENABLED=0 GOTOOLCHAIN=local
-COPY packages/cli/go.mod packages/cli/go.sum ./
+COPY go.mod go.sum ./
 RUN go mod download
-COPY packages/cli/ ./
-COPY --from=web /src/packages/cli/internal/server/static/ ./internal/server/static/
-RUN go build -trimpath -buildvcs=false -o /out/tokeninsights-server ./cmd/tokeninsights-server
+COPY packages/core/ packages/core/
+COPY packages/server/ packages/server/
+COPY --from=web /src/packages/core/server/static/ ./packages/core/server/static/
+RUN go build -trimpath -buildvcs=false -o /out/tokeninsights-server ./packages/server/cmd/tokeninsights-server
 
 FROM debian:trixie-20261020-slim@sha256:62bd423aeee912639ca8ee681c2b762cb3e25137e0a92b20be455898a9f034ad
 RUN apt-get update \

@@ -45,7 +45,9 @@ export async function directoryDigest(
 async function inputDigest(): Promise<string> {
   const web = await directoryDigest(webRoot, generatedEntries)
   const shared = await digest(workspaceRoot, sharedInputs)
-  return `${web}:${shared}`
+  const dashboard = await directoryDigest(workspacePath('packages/dashboard'), generatedEntries)
+  const contracts = await directoryDigest(workspacePath('packages/contracts'), generatedEntries)
+  return `${web}:${dashboard}:${contracts}:${shared}`
 }
 
 async function readOptional(path: string): Promise<string | undefined> {

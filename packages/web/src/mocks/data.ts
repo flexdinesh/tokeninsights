@@ -5,8 +5,8 @@ import {
   rowSchema,
   statusSchema,
   tabSchema,
-} from '../contracts'
-import type { Bootstrap, Dashboard, Facets, Row, SyncStatus, Tab } from '../contracts'
+} from '@tokeninsights/contracts'
+import type { Bootstrap, Dashboard, Facets, Row, SyncStatus, Tab } from '@tokeninsights/contracts'
 
 const dayOne = Date.UTC(2026, 8, 12, 10)
 const dayTwo = Date.UTC(2026, 8, 13, 10)

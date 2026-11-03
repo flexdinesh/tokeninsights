@@ -8,7 +8,7 @@ packages/cli/bin/
 packages/web/test-results/
 packages/web/playwright-report/
 packages/web/dist/
-packages/cli/internal/server/static/
+packages/core/server/static/
 packages/cli/.impeccable/review/
 .impeccable/review/
 .playwright-mcp/
@@ -23,3 +23,13 @@ packages/web/previews/
 # Personal mise overrides.
 mise.local.toml
 mise.*.local.toml
+
+# Product archives and generated app bundles.
+/dist/
+packages/backend/bin/
+packages/server/bin/
+packages/desktop-mygo/build/
+packages/desktop-mygo/.mygo/
+packages/desktop-electron/dist/
+packages/desktop-electron/out/
+packages/desktop-electron/release/

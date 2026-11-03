@@ -10,11 +10,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/collector"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/datastore"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/flagvalue"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/localruntime"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/pipeline"
+	"github.com/flexdinesh/tokeninsights/packages/core/collector"
+	"github.com/flexdinesh/tokeninsights/packages/core/datastore"
+	"github.com/flexdinesh/tokeninsights/packages/core/flagvalue"
+	"github.com/flexdinesh/tokeninsights/packages/core/localruntime"
+	"github.com/flexdinesh/tokeninsights/packages/core/pipeline"
 )
 
 func TestSyncDefaultsAllHarnesses(t *testing.T) {

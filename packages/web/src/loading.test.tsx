@@ -1,10 +1,12 @@
+import { DashboardClientProvider } from '@tokeninsights/dashboard'
+import { httpDashboardClient } from './http-client'
 import { afterEach, expect, it, vi } from 'vitest'
 import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { RouterProvider, createMemoryHistory } from '@tanstack/react-router'
-import { createAppRouter } from './router'
-import type { Bootstrap, CollectorProgress, Dashboard, SyncStatus } from './contracts'
+import { createAppRouter } from '../../dashboard/src/router'
+import type { Bootstrap, CollectorProgress, Dashboard, SyncStatus } from '@tokeninsights/contracts'
 import { mockBootstrap, mockDashboard, mockFacets, mockSyncStatus } from './mocks/data'
 
 const clients: QueryClient[] = []
@@ -104,11 +106,13 @@ function mountDashboard(
   })
   vi.stubGlobal('fetch', fetcher)
   render(
-    <QueryClientProvider client={client}>
-      <RouterProvider
-        router={createAppRouter(createMemoryHistory({ initialEntries: ['/tokens'] }))}
-      />
-    </QueryClientProvider>,
+    <DashboardClientProvider client={httpDashboardClient}>
+      <QueryClientProvider client={client}>
+        <RouterProvider
+          router={createAppRouter(createMemoryHistory({ initialEntries: ['/tokens'] }))}
+        />
+      </QueryClientProvider>
+    </DashboardClientProvider>,
   )
   return { client, fetcher, state }
 }

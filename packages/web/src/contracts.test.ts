@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { bootstrapSchema, dashboardSchema, facetsSchema, statusSchema } from './contracts'
+import {
+  bootstrapSchema,
+  dashboardSchema,
+  facetsSchema,
+  statusSchema,
+} from '@tokeninsights/contracts'
 import { mockBootstrap, mockDashboard, mockFacets, mockSyncStatus } from './mocks/data'
 
 describe('analytics response identity', () => {
@@ -46,7 +51,7 @@ describe('availability response identity', () => {
 })
 
 it('accepts unknown capabilities without enabling known features', async () => {
-  const { hasCapability, showsCollectorProgress } = await import('./capabilities')
+  const { hasCapability, showsCollectorProgress } = await import('../../dashboard/src/capabilities')
   const server = bootstrapSchema.parse({ ...mockBootstrap, capabilities: ['future-feature'] })
   expect(hasCapability(server, 'usage')).toBe(false)
   expect(showsCollectorProgress(server)).toBe(false)

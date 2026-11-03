@@ -53,7 +53,7 @@ export async function syncWebAssets(): Promise<void> {
   if (!sourceInfo.isDirectory()) throw new Error(`web build output missing: ${source}`)
   if (
     basename(target) !== 'static' ||
-    dirname(target) !== workspacePath('packages', 'cli', 'internal', 'server')
+    dirname(target) !== workspacePath('packages', 'core', 'server')
   ) {
     throw new Error(`invalid embedded asset target: ${target}`)
   }

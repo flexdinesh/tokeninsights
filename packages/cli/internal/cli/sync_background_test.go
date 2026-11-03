@@ -14,17 +14,17 @@ import (
 	"testing"
 	"time"
 
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/accounts"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/adapters/sqlanalytics"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/adapters/sqliteaccounts"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/appstore"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/config"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/datastore"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/evidence"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/server"
-	api "github.com/flexdinesh/tokeninsights/packages/cli/internal/server/api"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/serverfeatures"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/syncjob"
+	"github.com/flexdinesh/tokeninsights/packages/core/accounts"
+	"github.com/flexdinesh/tokeninsights/packages/core/adapters/sqlanalytics"
+	"github.com/flexdinesh/tokeninsights/packages/core/adapters/sqliteaccounts"
+	"github.com/flexdinesh/tokeninsights/packages/core/appstore"
+	"github.com/flexdinesh/tokeninsights/packages/core/config"
+	"github.com/flexdinesh/tokeninsights/packages/core/datastore"
+	"github.com/flexdinesh/tokeninsights/packages/core/evidence"
+	"github.com/flexdinesh/tokeninsights/packages/core/server"
+	api "github.com/flexdinesh/tokeninsights/packages/core/server/api"
+	"github.com/flexdinesh/tokeninsights/packages/core/serverfeatures"
+	"github.com/flexdinesh/tokeninsights/packages/core/syncjob"
 )
 
 func TestBackgroundPrintReturnsBeforeRemoteAcceptanceAndActuallySubmits(t *testing.T) {

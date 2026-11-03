@@ -22,7 +22,7 @@ sources and real current stores.
 | Mode precedence and invalid destination rejection | `config.TestResolvedModeAndDestinationContract`, `cli.TestIngestionPreflightRejectsBeforeCapture` |
 | Dependency boundaries | `architecture.TestLayerDependencies` |
 
-Paths are relative to `packages/cli/internal`. Pure `processor` and `publication`
+Paths are relative to `packages/core`. Pure `processor` and `publication`
 tests retain independent semantic oracles for accounting, native identity, ambiguity,
 token components and time bounds. They complement boundary tests.
 

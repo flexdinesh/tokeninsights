@@ -2,7 +2,7 @@ package cli
 
 import (
 	"context"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/syncjob"
+	"github.com/flexdinesh/tokeninsights/packages/core/syncjob"
 	"os"
 	"path/filepath"
 	"testing"

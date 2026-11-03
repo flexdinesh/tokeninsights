@@ -1,6 +1,6 @@
 # TokenInsights
 
-TokenInsights is a token usage dashboard for OpenCode, Pi, Codex, and Claude Code. A Go collector captures sanitized evidence in SQLite. Shared ingestion and processing store token data in SQLite inside local commands, or SQLite/PostgreSQL in an authenticated remote server.
+TokenInsights is a token usage dashboard for OpenCode, Pi, Codex, and Claude Code. A Go collector captures sanitized evidence in SQLite. Shared ingestion and processing store token data in SQLite inside a shared local backend, or SQLite/PostgreSQL in an authenticated remote server.
 
 | Web                                                                                  | TUI                                                                       |
 | ------------------------------------------------------------------------------------ | ------------------------------------------------------------------------- |
@@ -9,25 +9,27 @@ TokenInsights is a token usage dashboard for OpenCode, Pi, Codex, and Claude Cod
 ## Quickstart
 
 ```sh
-brew install flexdinesh/tap/tokeninsights
+curl -fsSL https://raw.githubusercontent.com/flexdinesh/tokeninsights/main/install.sh | sh
 tokeninsights web
 ```
 
 Choose a different dashboard port with `tokeninsights web --port 9000`.
 
-Optional macOS/Linux desktop viewer: `tokeninsights web` opens in it when installed
-(`--open=browser` keeps the browser).
+Optional macOS/Linux desktop experiments share the same local backend. MyGo uses native Go UI; Electron reuses the React dashboard. Choose with `--open=mygo|electron|browser`.
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/flexdinesh/tokeninsights/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/flexdinesh/tokeninsights/main/install-mygo.sh | sh
+curl -fsSL https://raw.githubusercontent.com/flexdinesh/tokeninsights/main/install-electron.sh | sh
 ```
+
+TUI, web and both desktops can run together. Collection starts on viewer launch; the backend stops after the last viewer disconnects. Main-channel installer: `install-main.sh`. Compiled artifacts are release downloads, never Git commits.
 
 ## Documentation
 
 User guides live in [`docs-website/`](docs-website/README.md), a Vocs site. Run `mise run dev:docs` to serve them locally at `http://localhost:5173/`.
 
 - [Overview](docs-website/src/pages/index.mdx)
-- [Install](docs-website/src/pages/install.mdx): Homebrew, Go, and release channels.
+- [Install](docs-website/src/pages/install.mdx): shell installers and release channels.
 - [Getting started](docs-website/src/pages/getting-started.mdx)
 - [Local usage](docs-website/src/pages/local-usage.mdx): browser and terminal dashboards.
 - [Commands](docs-website/src/pages/commands.mdx): viewers, sync, configuration, and maintenance.
@@ -38,7 +40,7 @@ User guides live in [`docs-website/`](docs-website/README.md), a Vocs site. Run 
 
 Internal engineering docs remain in `docs/`.
 
-[ADR 0009](docs/adr/0009-single-process-and-distributed-compositions.md) records the approved runtime composition; the [development guide](docs/development.md) defines verification gates.
+[ADR 0024](docs/adr/0024-shared-backend-and-installable-products.md) records the shared backend and product boundaries; the [development guide](docs/development.md) defines verification gates.
 
 - [CLI reference](packages/cli/README.md)
 - [Development guide](docs/development.md)
