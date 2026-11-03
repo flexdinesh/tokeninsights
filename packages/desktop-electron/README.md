@@ -8,7 +8,8 @@ Use `mise run build:desktop` for the shared product packaging flow. It builds th
 Go backend and Electron main process for the native target, then creates the
 prebuilt product archives. The Electron bundle includes
 Electron's runtime and the backend beside its resources. No host Node, npm, pnpm
-or Go is needed. Generated output stays ignored.
+or Go is needed. Packaging explicitly downloads the pinned Electron runtime;
+dependency installation alone supplies JavaScript/types. Generated output stays ignored.
 
 The shell invokes the sibling resource as `tokeninsights-backend connect --json`.
 Go owns configuration, database discovery and backend lifetime. The connector

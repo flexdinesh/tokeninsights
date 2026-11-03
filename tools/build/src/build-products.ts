@@ -104,6 +104,12 @@ export async function packageProduct(
   return archive
 }
 async function buildElectron(target: DesktopTarget, root: string): Promise<void> {
+  // Electron installs its runtime explicitly; dependency installation provides
+  // JavaScript/types only. Keep local, release and isolated product builds alike.
+  execFileSync('pnpm', ['--filter', '@tokeninsights/desktop-electron', 'run', 'install:runtime'], {
+    cwd: workspaceRoot,
+    stdio: 'inherit',
+  })
   execFileSync('pnpm', ['--filter', '@tokeninsights/desktop-electron', 'run', 'build'], {
     cwd: workspaceRoot,
     stdio: 'inherit',
