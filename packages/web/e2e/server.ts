@@ -75,8 +75,13 @@ function localEnvironment(home: string): NodeJS.ProcessEnv {
   }
 }
 
-function startChild(executable: string, args: string[], environment: NodeJS.ProcessEnv) {
-  const child = spawn(resolve('../cli/bin', executable), args, {
+function startChild(
+  executable: 'tokeninsights' | 'tokeninsights-server',
+  args: string[],
+  environment: NodeJS.ProcessEnv,
+) {
+  const binaryDirectory = executable === 'tokeninsights-server' ? '../server/bin' : '../cli/bin'
+  const child = spawn(resolve(binaryDirectory, executable), args, {
     stdio: ['ignore', 'pipe', 'pipe'],
     env: environment,
   })
