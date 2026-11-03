@@ -17,7 +17,9 @@ import (
 
 type localSource struct{ session *localclient.Session }
 
-func connectLocal(ctx context.Context, target string, capture bool) (dataSource, error) {
+// connectLocal attaches the configured backend. endpoint, when non-nil, is the
+// launch --endpoint flag; URL handoffs always attach this machine's owner.
+func connectLocal(ctx context.Context, target string, capture bool, endpoint *string) (dataSource, error) {
 	if target != "" {
 		// Verify link identity before attaching an existing owner.
 		parsed, err := link.Dashboard(target)
@@ -57,9 +59,16 @@ func connectLocal(ctx context.Context, target string, capture bool) (dataSource,
 	if err != nil {
 		return nil, err
 	}
-	settings, err := config.ResolveLocal(path, true, config.Overrides{})
+	settings, err := config.ResolveLocal(path, true, config.Overrides{Endpoint: endpoint})
 	if err != nil {
 		return nil, err
+	}
+	if remote := settings.Endpoint.SSH; remote != nil {
+		session, err := localclient.ConnectRemote(ctx, remote.Dialer(""), localclient.RemoteOptions{Capture: capture})
+		if err != nil {
+			return nil, err
+		}
+		return &localSource{session: session}, nil
 	}
 	options := localclient.Options{
 		CollectorDBPath: settings.CollectorDBPath, ServerDBPath: settings.ServerDBPath,

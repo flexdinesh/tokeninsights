@@ -6,10 +6,12 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/flexdinesh/tokeninsights/packages/core/config"
+	"github.com/flexdinesh/tokeninsights/packages/core/localclient"
 	"github.com/flexdinesh/tokeninsights/packages/core/serverfeatures"
 )
 
@@ -45,6 +47,9 @@ func Run(command Command) error {
 		return err
 	}
 	options.appDBPath, options.dbPath, options.collectorDBPath = settings.AppDBPath, settings.ServerDBPath, settings.CollectorDBPath
+	if !settings.Endpoint.IsLocal() && options.sourceDir != "" && !filepath.IsAbs(options.sourceDir) {
+		return localclient.ErrRelativeRemoteSource
+	}
 	connect := command.Connect
 	if connect == nil {
 		connect = connectSession

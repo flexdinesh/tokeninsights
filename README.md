@@ -22,7 +22,7 @@ curl -fsSL https://raw.githubusercontent.com/flexdinesh/tokeninsights/main/insta
 curl -fsSL https://raw.githubusercontent.com/flexdinesh/tokeninsights/main/install-electron.sh | sh
 ```
 
-TUI, web and both desktops can run together. Collection starts on viewer launch; the backend stops after the last viewer disconnects. Main-channel installer: `install-main.sh`. Compiled artifacts are release downloads, never Git commits.
+TUI, web and both desktops can run together. Collection starts on viewer launch; the backend stops after the last viewer disconnects. View another machine's usage over SSH with `tokeninsights tui --endpoint ssh://you@devbox`. Main-channel installer: `install-main.sh`. Compiled artifacts are release downloads, never Git commits.
 
 ## Documentation
 

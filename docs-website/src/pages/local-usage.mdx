@@ -49,6 +49,17 @@ tokeninsights web --open=false
 
 Both desktop experiments coexist and share the backend. Hosted URLs open in the browser. There is no periodic capture: opening a viewer requests a new collection, and overlapping requests coalesce. Browser reload and filters only query saved data.
 
+### Remote machines
+
+View usage collected on another machine without copying its data. The terminal dashboard, MyGo and `data reprocess|wait` attach that machine's backend through your normal SSH configuration:
+
+```sh
+tokeninsights tui --endpoint ssh://you@devbox
+tokeninsights data wait --endpoint ssh://you@devbox:2222
+```
+
+The remote machine needs TokenInsights installed. SSH runs `tokeninsights system dial-stdio` there; if `tokeninsights` is not on the non-interactive PATH, set its path with `tokeninsights config set remote.command /home/you/.local/bin/tokeninsights`. Save a default endpoint with `tokeninsights config set remote.endpoint ssh://you@devbox` or `TOKENINSIGHTS_ENDPOINT`; `--endpoint=local` overrides it. Capture and `--source-dir` (absolute) run on the remote machine. If SSH disconnects, relaunch to reconnect; TokenInsights never falls back to local data.
+
 ### Over SSH
 
 An SSH session never opens anything on the server. `tokeninsights web` prints the

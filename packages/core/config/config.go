@@ -16,6 +16,7 @@ import (
 
 	"github.com/flexdinesh/tokeninsights/packages/core/browser"
 	"github.com/flexdinesh/tokeninsights/packages/core/dbpath"
+	"github.com/flexdinesh/tokeninsights/packages/core/endpoint"
 	"github.com/flexdinesh/tokeninsights/packages/core/networkprefs"
 	"github.com/flexdinesh/tokeninsights/packages/core/writerlock"
 )
@@ -38,23 +39,34 @@ type DistributedValues struct {
 type ViewerValues struct {
 	Open *string `json:"open,omitempty"`
 }
+
+// RemoteValues select where viewers attach a personal backend. They never
+// affect hosted sync or browse.
+type RemoteValues struct {
+	Endpoint *string `json:"endpoint,omitempty"`
+	Command  *string `json:"command,omitempty"`
+}
 type Values struct {
 	Collector   CollectorValues   `json:"collector,omitempty"`
 	InProcess   LocalValues       `json:"in-process,omitempty"`
 	Distributed DistributedValues `json:"distributed,omitempty"`
 	Viewer      ViewerValues      `json:"viewer,omitempty"`
+	Remote      RemoteValues      `json:"remote,omitempty"`
 }
 
 // Overrides describes flags, never the persisted configuration.
 type Overrides struct {
-	AppDBPath, ServerDBPath, CollectorDBPath, Host, ServerURL, ServerToken, Open *string
-	Port                                                                         *int
+	AppDBPath, ServerDBPath, CollectorDBPath, Host, ServerURL, ServerToken, Open, Endpoint *string
+	Port                                                                                   *int
 }
 type LocalSettings struct {
 	AppDBPath, ServerDBPath, CollectorDBPath, Host string
 	Port                                           int
 	// Open selects how web opens its dashboard: flag > file > auto.
 	Open browser.Mode
+	// Endpoint selects the backend viewers attach: flag > env > file > local.
+	// A remote endpoint carries its resolved remote command.
+	Endpoint endpoint.Endpoint
 }
 type SyncSettings struct{ CollectorDBPath, ServerURL, ServerToken string }
 type BrowseSettings struct {
@@ -143,7 +155,7 @@ func Read(path string) (Values, error) {
 	decoder = json.NewDecoder(bytes.NewReader(body))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&values); err != nil {
-		return Values{}, fmt.Errorf("invalid grouped config; use collector, in-process, distributed and viewer groups (flat config and mode are removed)")
+		return Values{}, fmt.Errorf("invalid grouped config; use collector, in-process, distributed, viewer and remote groups (flat config and mode are removed)")
 	}
 	return values, nil
 }
@@ -312,7 +324,28 @@ func (v Values) local(base string, environment bool, o Overrides) (LocalSettings
 	if s.Open, err = v.open(o); err != nil {
 		return s, err
 	}
+	if s.Endpoint, err = v.endpoint(environment, o); err != nil {
+		return s, err
+	}
+	// A remote backend uses its own configuration; local paths cannot apply.
+	if !s.Endpoint.IsLocal() && (o.CollectorDBPath != nil || o.ServerDBPath != nil || o.AppDBPath != nil) {
+		return s, fmt.Errorf("--endpoint %s rejects local database path flags; the remote uses its own configuration", s.Endpoint)
+	}
 	return s, s.Validate()
+}
+
+// endpoint resolves remote.endpoint and, for SSH endpoints, remote.command.
+func (v Values) endpoint(environment bool, o Overrides) (endpoint.Endpoint, error) {
+	selected, err := endpoint.Parse(resolveString(endpoint.Local, v.Remote.Endpoint, "TOKENINSIGHTS_ENDPOINT", o.Endpoint, environment))
+	if err != nil || selected.IsLocal() {
+		return selected, err
+	}
+	command := resolveString(endpoint.DefaultCommand, v.Remote.Command, "TOKENINSIGHTS_REMOTE_COMMAND", nil, environment)
+	if err := endpoint.ValidateCommand(command); err != nil {
+		return endpoint.Endpoint{}, err
+	}
+	selected.SSH.Command = command
+	return selected, nil
 }
 
 // open resolves the viewer open mode; it has no environment variable.
@@ -382,6 +415,11 @@ func (v Values) Get(key, base string) (string, error) {
 	case "viewer.open":
 		mode, err := v.open(Overrides{})
 		return string(mode), err
+	case "remote.endpoint":
+		selected, err := endpoint.Parse(resolveString(endpoint.Local, v.Remote.Endpoint, "", nil, false))
+		return selected.String(), err
+	case "remote.command":
+		return resolveString(endpoint.DefaultCommand, v.Remote.Command, "", nil, false), nil
 	default:
 		return "", fmt.Errorf("unknown config key %q", key)
 	}
@@ -456,6 +494,24 @@ func (v *Values) Set(key, value string, remove bool) error {
 		}
 		canonical := string(mode)
 		v.Viewer.Open = &canonical
+	case "remote.endpoint":
+		if remove {
+			v.Remote.Endpoint = nil
+			return nil
+		}
+		selected, err := endpoint.Parse(value)
+		if err != nil {
+			return err
+		}
+		canonical := selected.String()
+		v.Remote.Endpoint = &canonical
+	case "remote.command":
+		if !remove {
+			if err := endpoint.ValidateCommand(value); err != nil {
+				return err
+			}
+		}
+		v.Remote.Command = stringValue
 	default:
 		return fmt.Errorf("unknown config key %q", key)
 	}

@@ -107,6 +107,7 @@ func parseViewerOptions(args []string, stderr io.Writer, requirePeriod bool, def
 	flags.StringVar(&collectorDBPath, "collector-db-path", settings.CollectorDBPath, "collector database used by startup sync")
 	flags.BoolVar(&fullRefresh, "full-refresh", false, "reread sources and retry quarantine at startup")
 	flags.StringVar(&sourceDir, "source-dir", "", "override startup capture source directory")
+	flags.String("endpoint", "", "backend: local (default) or ssh://[user@]host[:port]")
 	flags.BoolVar(&syncOnStart, "sync", true, "refresh usage in the background; --sync=false skips startup collection")
 	flags.BoolVar(&today, "today", false, "show today")
 	flags.BoolVar(&yesterday, "yesterday", false, "show yesterday")

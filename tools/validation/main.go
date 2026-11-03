@@ -39,7 +39,7 @@ func (m *Validation) Deployment(source *dagger.Directory, prepared *dagger.Conta
 		WithServiceBinding("postgres", postgres).
 		WithEnvVariable("TOKENINSIGHTS_POSTGRES_DSN_FILE", "/data/postgres_dsn").
 		WithEnvVariable("TOKENINSIGHTS_FIXTURE_POSTGRES_DSN", "postgres://postgres:validation-private@postgres:5432/postgres?sslmode=disable").AsService()
-	return prepared.WithServiceBinding("sqlite", sqlite).WithServiceBinding("pg", pg).
+	return withSSHRemote(prepared, attempt).WithServiceBinding("sqlite", sqlite).WithServiceBinding("pg", pg).
 		WithEnvVariable("VALIDATION_ATTEMPT", attempt).
 		WithEnvVariable("TOKENINSIGHTS_TEST_SQLITE_CONTROL_URL", "http://sqlite:9876").
 		WithEnvVariable("TOKENINSIGHTS_TEST_SQLITE_URL", "http://sqlite:8767").
@@ -48,6 +48,40 @@ func (m *Validation) Deployment(source *dagger.Directory, prepared *dagger.Conta
 }
 
 const postgresImage = "postgres:18@sha256:edb0c08dc33befd0262ab3b5cf1c4f3f8cfd8b09e88c05b45adee29d6761ddb6"
+const goImage = "golang:1.27.3-trixie@sha256:fbb7ae40b62ff8afe31662df570d39b4f5052ac32b90dae8e60d7657a20a74f4"
+const aptSnapshot = "sed -i 's|http://deb.debian.org/debian-security|https://snapshot.debian.org/archive/debian-security/20261031T000000Z|g; s|http://deb.debian.org/debian|https://snapshot.debian.org/archive/debian/20261031T000000Z|g' /etc/apt/sources.list.d/debian.sources; printf 'Acquire::Check-Valid-Until \"false\";\n' > /etc/apt/apt.conf.d/99validation-snapshot"
+
+// withSSHRemote binds a real OpenSSH server running the CLI built from source,
+// installed on the remote's default non-interactive PATH, for SSH endpoint
+// contracts. The runner gets a private key and pins the host on first use.
+func withSSHRemote(prepared *dagger.Container, attempt string) *dagger.Container {
+	binaries := prepared.WithWorkdir("/src/packages/cli").WithEnvVariable("CGO_ENABLED", "0").
+		WithExec([]string{"go", "build", "-o", "/out/tokeninsights", "./cmd/tokeninsights"}).
+		WithExec([]string{"go", "build", "-o", "/out/tokeninsights-backend", "../backend/cmd/tokeninsights-backend"}).Directory("/out")
+	keys := dag.Container(dagger.ContainerOpts{Platform: "linux/amd64"}).From(goImage).
+		WithEnvVariable("VALIDATION_ATTEMPT", attempt).
+		WithExec([]string{"sh", "-c", "mkdir -p /keys && ssh-keygen -q -t ed25519 -N '' -C validation -f /keys/id"}).Directory("/keys")
+	sshd := dag.Container(dagger.ContainerOpts{Platform: "linux/amd64"}).From(goImage).
+		WithExec([]string{"sh", "-c", aptSnapshot}).
+		WithExec([]string{"apt-get", "update"}).
+		WithExec([]string{"apt-get", "install", "-y", "--no-install-recommends", "openssh-server"}).
+		WithExec([]string{"useradd", "--create-home", "--shell", "/bin/sh", "remote"}).
+		WithDirectory("/opt/tokeninsights", binaries).
+		WithExec([]string{"ln", "-s", "/opt/tokeninsights/tokeninsights", "/usr/local/bin/tokeninsights"}).
+		WithExec([]string{"install", "-d", "-m", "700", "-o", "remote", "-g", "remote", "/home/remote/.ssh"}).
+		WithFile("/home/remote/.ssh/authorized_keys", keys.File("id.pub"), dagger.ContainerWithFileOpts{Owner: "remote", Permissions: 0o600}).
+		WithExec([]string{"sh", "-c", "ssh-keygen -A && mkdir -p /run/sshd"}).
+		WithEnvVariable("VALIDATION_ATTEMPT", attempt).
+		WithExposedPort(22).
+		AsService(dagger.ContainerAsServiceOpts{Args: []string{"/usr/sbin/sshd", "-D", "-e"}})
+	// OpenSSH reads the passwd home (/root), not $HOME.
+	config := "Host sshd\n  IdentityFile /root/.ssh/id\n  IdentitiesOnly yes\n  StrictHostKeyChecking accept-new\n  UserKnownHostsFile /root/.ssh/known_hosts\n  BatchMode yes\n"
+	return prepared.WithExec([]string{"install", "-d", "-m", "700", "/root/.ssh"}).
+		WithFile("/root/.ssh/id", keys.File("id"), dagger.ContainerWithFileOpts{Permissions: 0o600}).
+		WithNewFile("/root/.ssh/config", config, dagger.ContainerWithNewFileOpts{Permissions: 0o600}).
+		WithServiceBinding("sshd", sshd).
+		WithEnvVariable("TOKENINSIGHTS_TEST_SSH_ENDPOINT", "ssh://remote@sshd")
+}
 
 // Check captures check failures as data so the host can export diagnostics.
 func (m *Validation) Check(ctx context.Context, source *dagger.Directory, group string, attempt string,
@@ -121,7 +155,7 @@ func (m *Validation) Prepare(source *dagger.Directory) *dagger.Container {
 
 func (m *Validation) prepare(source *dagger.Directory, group string) *dagger.Container {
 	node := dag.Container(dagger.ContainerOpts{Platform: "linux/amd64"}).From("node:26.12.1-trixie-slim@sha256:36793bcbb160a6a16cede1e62b93f84e26b78a972a8a4c0b879c1c12f22761ec")
-	base := dag.Container(dagger.ContainerOpts{Platform: "linux/amd64"}).From("golang:1.27.3-trixie@sha256:fbb7ae40b62ff8afe31662df570d39b4f5052ac32b90dae8e60d7657a20a74f4").
+	base := dag.Container(dagger.ContainerOpts{Platform: "linux/amd64"}).From(goImage).
 		WithDirectory("/usr/local", node.Directory("/usr/local")).
 		WithEnvVariable("PATH", "/usr/local/bin:/usr/local/go/bin:/usr/bin:/bin").
 		WithEnvVariable("GOTOOLCHAIN", "local").WithEnvVariable("GOFLAGS", "-mod=readonly -buildvcs=false").
@@ -136,7 +170,7 @@ func (m *Validation) prepare(source *dagger.Directory, group string) *dagger.Con
 	manifests := dag.Directory().WithDirectory("/", source, dagger.DirectoryWithDirectoryOpts{Include: []string{"package.json", "pnpm-lock.yaml", "pnpm-workspace.yaml", "packages/*/package.json", "tools/build/package.json", "docs-website/package.json"}})
 	js := base.WithDirectory("/src", manifests).WithWorkdir("/src").WithExec([]string{"pnpm", "install", "--frozen-lockfile"})
 	if group == "browser" || group == "distribution" || group == "tooling" {
-		js = js.WithExec([]string{"sh", "-c", "sed -i 's|http://deb.debian.org/debian-security|https://snapshot.debian.org/archive/debian-security/20261031T000000Z|g; s|http://deb.debian.org/debian|https://snapshot.debian.org/archive/debian/20261031T000000Z|g' /etc/apt/sources.list.d/debian.sources; printf 'Acquire::Check-Valid-Until \"false\";\n' > /etc/apt/apt.conf.d/99validation-snapshot"})
+		js = js.WithExec([]string{"sh", "-c", aptSnapshot})
 	}
 	if group == "tooling" {
 		js = js.WithExec([]string{"apt-get", "update"}).WithExec([]string{"apt-get", "install", "-y", "--no-install-recommends", "libarchive-tools"})

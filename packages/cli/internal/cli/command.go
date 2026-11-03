@@ -64,6 +64,10 @@ func Run(ctx context.Context, args []string, stdout io.Writer, stderr io.Writer,
 	if err != nil {
 		return err
 	}
+	// Hidden remote end of `--endpoint ssh://`; stdout carries protocol bytes.
+	if len(args) == 2 && args[0] == "system" && args[1] == "dial-stdio" {
+		return runDialStdio(invocation)
+	}
 	if len(args) > 0 {
 		if _, ok := commandByName(args[0]); !ok {
 			if strings.HasPrefix(args[0], "-") {

@@ -20,6 +20,8 @@ Local viewers:
   tui|web --sync=false         show saved data; resume pending processing
   tui|web --full-refresh       reread sources/retry quarantine at startup
   web --open=MODE              auto (MyGo, else browser), mygo, electron, browser or false
+  tui|data --endpoint ssh://[user@]host[:port]
+                              attach that machine's backend over SSH; --endpoint=local forces local
 
 Distributed:
   sync                        start finite background submission
@@ -40,7 +42,8 @@ Maintenance:
   tokeninsights-server         separate authenticated container/server executable
 
 Config groups: collector.db-path; in-process.host, port, server-db-path, app-db-path;
-distributed.server-url, server-token; viewer.open. No mode setting or flag.
+distributed.server-url, server-token; viewer.open; remote.endpoint, command.
+No mode setting or flag. TOKENINSIGHTS_ENDPOINT / TOKENINSIGHTS_REMOTE_COMMAND.
 Config: --config-file PATH / TOKENINSIGHTS_CONFIG_PATH; default XDG config.json.
 Precedence: flags > environment > file > defaults. get reads saved preferences.
 Local web defaults to 127.0.0.1:8765; hosted server defaults to 0.0.0.0:8766.
