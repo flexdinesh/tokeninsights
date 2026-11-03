@@ -12,7 +12,12 @@ for (const [key, value] of Object.entries(process.env)) if (value !== undefined)
 delete env.ELECTRON_RUN_AS_NODE
 // The app and its Go backend must work without host JavaScript tools on PATH.
 env.PATH = ''
-const application = await _electron.launch({ executablePath: executable, env, timeout: 30_000 })
+const application = await _electron.launch({
+  executablePath: executable,
+  env,
+  chromiumSandbox: true,
+  timeout: 30_000,
+})
 try {
   const page = await application.firstWindow()
   await page.getByRole('region', { name: 'Dashboard filters' }).waitFor({ state: 'visible' })

@@ -86,6 +86,9 @@ try {
       await chmod(fixture, 0o755)
       if (runAsOrdinaryUser) {
         await chown(gui, ordinaryUser, ordinaryUser)
+        // The installer keeps its product directory private to the installing
+        // user. Transfer that directory to the user exercising this fixture.
+        await chown(join(installed, 'electron'), ordinaryUser, ordinaryUser)
         // Committed snapshots use private directories. The unprivileged smoke
         // runner needs traversal to its public source and installed dependencies.
         for (const path of ['', 'tools', 'tools/build', 'tools/build/src'])
