@@ -84,7 +84,13 @@ try {
     const runAsOrdinaryUser = process.getuid?.() === 0
     try {
       await chmod(fixture, 0o755)
-      if (runAsOrdinaryUser) await chown(gui, ordinaryUser, ordinaryUser)
+      if (runAsOrdinaryUser) {
+        await chown(gui, ordinaryUser, ordinaryUser)
+        // Committed snapshots use private directories. The unprivileged smoke
+        // runner needs traversal to its public source and installed dependencies.
+        for (const path of ['', 'tools', 'tools/build', 'tools/build/src'])
+          await chmod(workspacePath(path), 0o755)
+      }
       const args = [
         process.execPath,
         workspacePath('tools/build/src/smoke-electron.ts'),
@@ -92,7 +98,7 @@ try {
         screenshot,
       ]
       execFileSync(
-        runAsOrdinaryUser ? 'runuser' : 'xvfb-run',
+        runAsOrdinaryUser ? '/usr/sbin/runuser' : 'xvfb-run',
         runAsOrdinaryUser
           ? ['--preserve-environment', '-u', 'nobody', '--', 'xvfb-run', '-a', ...args]
           : ['-a', ...args],
