@@ -6,6 +6,8 @@ import (
 	"net/http/httptest"
 	"testing"
 	"time"
+
+	"github.com/flexdinesh/tokeninsights/packages/core/localprotocol"
 )
 
 func TestViewerOriginAliasesWildcardAndTunnels(t *testing.T) {
@@ -26,7 +28,7 @@ func TestViewerOriginAliasesWildcardAndTunnels(t *testing.T) {
 			r := httptest.NewRequest("GET", "http://"+scenario.host+"/api/local/v1/viewers", nil)
 			r.Header.Set("Origin", scenario.origin)
 			r.Header.Set("Sec-Fetch-Site", scenario.site)
-			if viewerRequestAllowed(r, scenario.bind) != scenario.allowed {
+			if localprotocol.ViewerRequestAllowed(r, scenario.bind) != scenario.allowed {
 				t.Fatal("viewer origin policy differs")
 			}
 		})

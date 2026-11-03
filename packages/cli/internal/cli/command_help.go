@@ -20,8 +20,9 @@ Local viewers:
   tui|web --sync=false         show saved data; resume pending processing
   tui|web --full-refresh       reread sources/retry quarantine at startup
   web --open=MODE              auto (MyGo, else browser), mygo, electron, browser or false
-  tui|data --endpoint ssh://[user@]host[:port]
+  tui|web|data --endpoint ssh://[user@]host[:port]
                               attach that machine's backend over SSH; --endpoint=local forces local
+                              (web serves its dashboard through a local read-only proxy)
 
 Distributed:
   sync                        start finite background submission

@@ -128,6 +128,8 @@ func TestLayerDependencies(t *testing.T) {
 		{"serverruntime", []string{"database/sql", prefix + "datastore", prefix + "appstore", prefix + "collectordb", prefix + "adapters"}},
 		// SSH endpoints select and dial a remote backend; they never open
 		// storage, speak HTTP or substitute local composition.
+		// The remote web proxy forwards read-only dashboard requests only.
+		{"dashboardproxy", []string{"database/sql", prefix + "datastore", prefix + "appstore", prefix + "collectordb", prefix + "localruntime", prefix + "localbackend", prefix + "localclient", prefix + "server", prefix + "pipeline", prefix + "remoteserver", prefix + "collector"}},
 		{"endpoint", []string{"database/sql", "net/http", prefix + "datastore", prefix + "appstore", prefix + "collectordb", prefix + "localruntime", prefix + "localbackend", prefix + "localclient", prefix + "server", prefix + "pipeline", prefix + "remoteserver"}},
 		// Remote servers accept and process evidence; they never capture host
 		// sources or reset storage.

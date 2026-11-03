@@ -9,7 +9,6 @@ import (
 	"io"
 	"net"
 	"net/http"
-	"net/netip"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -83,7 +82,7 @@ func serve(parent context.Context, settings localprotocol.Settings, log io.Write
 				data.ServeHTTP(w, r)
 				return
 			}
-			if !viewerRequestAllowed(r, binding.bindHost) {
+			if !localprotocol.ViewerRequestAllowed(r, binding.bindHost) {
 				http.Error(w, "forbidden", http.StatusForbidden)
 				return
 			}
@@ -109,24 +108,6 @@ func serve(parent context.Context, settings localprotocol.Settings, log io.Write
 		}
 		return nil
 	})
-}
-
-func viewerRequestAllowed(r *http.Request, bindHost string) bool {
-	if origin := r.Header.Get("Origin"); origin != "" && origin != "http://"+r.Host {
-		return false
-	}
-	if r.Header.Get("Sec-Fetch-Site") == "cross-site" {
-		return false
-	}
-	if bind, err := netip.ParseAddr(bindHost); err == nil && bind.IsLoopback() {
-		host, _, err := net.SplitHostPort(r.Host)
-		if err != nil {
-			host = r.Host
-		}
-		address, err := netip.ParseAddr(host)
-		return host == "localhost" || err == nil && address.IsLoopback()
-	}
-	return true
 }
 
 func (b *backend) lifetime(ctx context.Context, cancel context.CancelFunc) {

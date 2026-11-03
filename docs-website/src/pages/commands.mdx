@@ -22,7 +22,7 @@ servers.
 | `--full-refresh`                                                      | yes   | yes   | Reread sources and retry quarantine at startup                             |
 | `--source-dir`                                                        | yes   | yes   | Override startup capture source directory                                  |
 | `--collector-db-path`, `--server-db-path`, `--app-db-path`            | yes   | yes   | Override database paths                                                    |
-| `--endpoint`                                                          | yes   |       | `local` (default) or `ssh://[user@]host[:port]`; also `data`               |
+| `--endpoint`                                                          | yes   | yes   | `local` (default) or `ssh://[user@]host[:port]`; also `data`               |
 | `--host`, `--port`                                                    |       | yes   | Bind address; default `127.0.0.1:8765`, port `0` chooses an available port |
 | `--open=MODE`                                                         |       | yes   | `auto` (MyGo, else browser), `mygo`, `electron`, `browser` or `false`      |
 | `--today`, `--yesterday`, `--week`, `--month`, `--year`, `--all-time` | yes   |       | Date range presets; weeks are Monday to Sunday                             |

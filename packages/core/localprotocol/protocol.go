@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"net/http"
 	"net/netip"
 	"net/url"
 	"os"
@@ -221,4 +222,32 @@ type CollectionResult struct {
 	RawFacts     int    `json:"rawFacts"`
 	Skipped      int    `json:"skipped"`
 	ErrorCode    string `json:"errorCode,omitempty"`
+}
+
+// HostAllowed rejects DNS-rebinding hosts on loopback-bound dashboards: their
+// requests must name localhost or a loopback address. Broader binds accept any
+// host; their exposure is the operator's explicit choice.
+func HostAllowed(r *http.Request, bindHost string) bool {
+	bind, err := netip.ParseAddr(bindHost)
+	if err != nil || !bind.IsLoopback() {
+		return true
+	}
+	host, _, err := net.SplitHostPort(r.Host)
+	if err != nil {
+		host = r.Host
+	}
+	address, err := netip.ParseAddr(host)
+	return host == "localhost" || err == nil && address.IsLoopback()
+}
+
+// ViewerRequestAllowed admits a browser lease only from its own dashboard
+// origin, never a cross-site page.
+func ViewerRequestAllowed(r *http.Request, bindHost string) bool {
+	if origin := r.Header.Get("Origin"); origin != "" && origin != "http://"+r.Host {
+		return false
+	}
+	if r.Header.Get("Sec-Fetch-Site") == "cross-site" {
+		return false
+	}
+	return HostAllowed(r, bindHost)
 }
