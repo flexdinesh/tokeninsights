@@ -276,3 +276,43 @@ func TestRunJoinsInjectedWorkerAfterStartupFailure(t *testing.T) {
 		t.Fatal("startup failure lost", err)
 	}
 }
+
+type alwaysReady struct{}
+
+func (alwaysReady) Ready(context.Context) error { return nil }
+
+func TestStartedBindingDrainsAndJoinsWithoutStoppingOthers(t *testing.T) {
+	first, second := listen(t), listen(t)
+	handler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusNoContent) })
+	if _, err := Start(t.Context(), alwaysReady{}, Binding{Listener: first}); err == nil {
+		t.Fatal("binding without handler accepted")
+	}
+	a, err := Start(t.Context(), alwaysReady{}, Binding{Listener: first, Handler: handler})
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := Start(t.Context(), alwaysReady{}, Binding{Listener: second, Handler: handler, UnencryptedHTTP2: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = b.Shutdown(context.Background()) }()
+	if err := a.Shutdown(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	await(t, first.closed)
+	if response, err := http.Get("http://" + first.Addr().String()); err == nil {
+		_ = response.Body.Close()
+		t.Fatal("shut down binding still serving")
+	}
+	protocols := new(http.Protocols)
+	protocols.SetUnencryptedHTTP2(true)
+	client := &http.Client{Transport: &http.Transport{Protocols: protocols}}
+	response, err := client.Get("http://" + second.Addr().String())
+	if err != nil {
+		t.Fatal("other binding stopped", err)
+	}
+	_ = response.Body.Close()
+	if response.ProtoMajor != 2 {
+		t.Fatal("prior-knowledge HTTP/2 not accepted", response.Proto)
+	}
+}

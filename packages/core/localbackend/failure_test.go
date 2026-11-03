@@ -22,7 +22,7 @@ import (
 
 func TestFailedSharedCaptureKeepsSavedPublicUsageAndSanitizedDetails(t *testing.T) {
 	root := t.TempDir()
-	settings := localprotocol.Settings{CollectorDBPath: filepath.Join(root, "collector.sqlite"), ServerDBPath: filepath.Join(root, "server.sqlite"), AppDBPath: filepath.Join(root, "app.sqlite"), Host: "127.0.0.1"}
+	settings := localprotocol.Settings{CollectorDBPath: filepath.Join(root, "collector.sqlite"), ServerDBPath: filepath.Join(root, "server.sqlite"), AppDBPath: filepath.Join(root, "app.sqlite")}
 	runtime, err := localruntime.OpenWithApp(t.Context(), settings.CollectorDBPath, settings.ServerDBPath, settings.AppDBPath)
 	if err != nil {
 		t.Fatal(err)
@@ -67,8 +67,8 @@ func TestFailedSharedCaptureKeepsSavedPublicUsageAndSanitizedDetails(t *testing.
 			t.Error(err)
 		}
 	})
-	descriptor := <-ready
-	session, err := localclient.Connect(t.Context(), localclient.Options{CollectorDBPath: settings.CollectorDBPath, ServerDBPath: settings.ServerDBPath, AppDBPath: settings.AppDBPath, Host: settings.Host})
+	<-ready
+	session, err := localclient.Connect(t.Context(), localclient.Options{CollectorDBPath: settings.CollectorDBPath, ServerDBPath: settings.ServerDBPath, AppDBPath: settings.AppDBPath, Host: "127.0.0.1", Dashboard: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -88,7 +88,7 @@ func TestFailedSharedCaptureKeepsSavedPublicUsageAndSanitizedDetails(t *testing.
 	if err != nil || strings.Contains(string(encoded), "private source") || strings.Contains(string(encoded), "prompt") {
 		t.Fatal("capture leaked private failure", err)
 	}
-	public, err := queryclient.New(descriptor.URL, nil)
+	public, err := queryclient.New(session.URL, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

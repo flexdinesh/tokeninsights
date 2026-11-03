@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -34,7 +35,7 @@ func serveForTest(t *testing.T, options Options) (localprotocol.Descriptor, <-ch
 	joined := make(chan struct{})
 	go func() {
 		defer close(joined)
-		finished <- localbackend.Serve(ctx, localprotocol.Settings{CollectorDBPath: options.CollectorDBPath, ServerDBPath: options.ServerDBPath, AppDBPath: options.AppDBPath, Host: options.Host, Port: options.Port}, io.Discard, func(d localprotocol.Descriptor) error { ready <- d; return nil })
+		finished <- localbackend.Serve(ctx, localprotocol.Settings{CollectorDBPath: options.CollectorDBPath, ServerDBPath: options.ServerDBPath, AppDBPath: options.AppDBPath}, io.Discard, func(d localprotocol.Descriptor) error { ready <- d; return nil })
 	}()
 	t.Cleanup(func() { cancel(); <-joined })
 	select {
@@ -48,9 +49,25 @@ func serveForTest(t *testing.T, options Options) (localprotocol.Descriptor, <-ch
 	return localprotocol.Descriptor{}, finished
 }
 
+// dashboardForTest holds a dashboard lease, binding the public listener.
+func dashboardForTest(t *testing.T, options Options) *Session {
+	t.Helper()
+	options.Dashboard = true
+	session, err := Connect(t.Context(), options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = session.Close() })
+	if _, err := localprotocol.HTTPOrigin(session.URL, false); err != nil {
+		t.Fatal("dashboard lease returned no listener", session.URL)
+	}
+	return session
+}
+
 func TestViewerStreamsReconnectAndPrivateMaintenance(t *testing.T) {
 	options := testOptions(t)
 	descriptor, finished := serveForTest(t, options)
+	options.Dashboard = true
 	first, err := Connect(t.Context(), options)
 	if err != nil {
 		t.Fatal(err)
@@ -69,8 +86,8 @@ func TestViewerStreamsReconnectAndPrivateMaintenance(t *testing.T) {
 		t.Fatal("reconnection failed", err)
 	}
 	defer func() { _ = second.Close() }()
-	if second.InstanceID != descriptor.InstanceID {
-		t.Fatal("browser lease lost backend")
+	if second.InstanceID != descriptor.InstanceID || second.URL != first.URL {
+		t.Fatal("browser lease lost backend or its listener", second.URL, first.URL)
 	}
 	if err := second.Reprocess(t.Context()); err != nil {
 		t.Fatal("owner maintenance failed", err)
@@ -114,6 +131,7 @@ func TestViewerStreamsReconnectAndPrivateMaintenance(t *testing.T) {
 func TestSettingsMismatchNeverPreparesOrFallsBack(t *testing.T) {
 	options := testOptions(t)
 	_, _ = serveForTest(t, options)
+	options.Dashboard = true
 	session, err := Connect(t.Context(), options)
 	if err != nil {
 		t.Fatal(err)
@@ -122,7 +140,7 @@ func TestSettingsMismatchNeverPreparesOrFallsBack(t *testing.T) {
 	for _, changed := range []Options{
 		func() Options { s := options; s.CollectorDBPath += ".other"; return s }(),
 		func() Options { s := options; s.AppDBPath += ".other"; return s }(),
-		func() Options { s := options; s.Port = 8765; return s }(),
+		func() Options { s := options; s.Host = "0.0.0.0"; return s }(),
 	} {
 		_, err := ConnectPrepared(t.Context(), changed, func() error { t.Error("mismatch attempted storage preparation"); return nil })
 		if !errors.Is(err, localprotocol.ErrSettingsMismatch) {
@@ -134,7 +152,7 @@ func TestSettingsMismatchNeverPreparesOrFallsBack(t *testing.T) {
 	}
 }
 
-func TestPartialStartupFailurePreservesOccupiedPortAndReleasesOwnership(t *testing.T) {
+func TestOccupiedDashboardPortRejectsLeaseAndPreservesOwner(t *testing.T) {
 	options := testOptions(t)
 	listener, err := net.Listen("tcp4", "127.0.0.1:0")
 	if err != nil {
@@ -146,24 +164,130 @@ func TestPartialStartupFailurePreservesOccupiedPortAndReleasesOwnership(t *testi
 		t.Fatal("not TCP")
 	}
 	options.Port = address.Port
-	settings := localprotocol.Settings{CollectorDBPath: options.CollectorDBPath, ServerDBPath: options.ServerDBPath, AppDBPath: options.AppDBPath, Host: options.Host, Port: options.Port}
-	if err := localbackend.Serve(t.Context(), settings, io.Discard, func(localprotocol.Descriptor) error { t.Error("ACK before listener ready"); return nil }); err == nil {
-		t.Fatal("occupied port accepted")
+	descriptor, _ := serveForTest(t, options)
+	occupied := options
+	occupied.Dashboard = true
+	if session, err := Connect(t.Context(), occupied); !errors.Is(err, localprotocol.ErrListenUnavailable) {
+		if session != nil {
+			_ = session.Close()
+		}
+		t.Fatal("occupied dashboard port accepted", err)
 	}
 	if err := listener.Close(); err != nil {
 		t.Fatal("another listener was stopped", err)
 	}
-	runtime, err := localruntime.OpenWithApp(t.Context(), options.CollectorDBPath, options.ServerDBPath, options.AppDBPath)
-	if err != nil {
-		t.Fatal("partial startup leaked owner", err)
-	}
-	_ = runtime.Close()
-	socket, err := localprotocol.SocketPath(settings)
+	// Control sessions never need the public port and keep the owner usable.
+	session, err := Connect(t.Context(), options)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := os.Lstat(socket); !errors.Is(err, os.ErrNotExist) {
-		t.Fatal("partial startup left socket", err)
+	defer func() { _ = session.Close() }()
+	if session.URL != "" || session.InstanceID != descriptor.InstanceID {
+		t.Fatal("control session bound a dashboard or lost its owner", session.URL)
+	}
+	if _, err := session.Query.Instance(t.Context()); err != nil {
+		t.Fatal("failed dashboard lease damaged owner", err)
+	}
+}
+
+func TestControlSessionsBindNoDashboardAndLastDashboardLeaseUnbinds(t *testing.T) {
+	options := testOptions(t)
+	_, _ = serveForTest(t, options)
+	control, err := Connect(t.Context(), options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = control.Close() }()
+	descriptor, err := control.descriptor(t.Context())
+	if err != nil || descriptor.URL != "" || descriptor.Listen != nil {
+		t.Fatal("control session bound a public listener", descriptor.URL, err)
+	}
+	options.Dashboard = true
+	dashboard, err := Connect(t.Context(), options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if descriptor, err = control.descriptor(t.Context()); err != nil || descriptor.URL != dashboard.URL || descriptor.Listen == nil || *descriptor.Listen != (localprotocol.Listen{Host: options.Host, Port: options.Port}) {
+		t.Fatal("descriptor omits bound dashboard", descriptor, err)
+	}
+	url := dashboard.URL
+	if err := dashboard.Close(); err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(localbackend.ReconnectGrace + 10*time.Second)
+	for {
+		descriptor, err = control.descriptor(t.Context())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if descriptor.URL == "" {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("dashboard listener survived its last lease")
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	if response, err := http.Get(url + "/api/v2/instance"); err == nil {
+		_ = response.Body.Close()
+		t.Fatal("unbound dashboard still serving")
+	}
+	// Changed listen settings are accepted once nothing is bound.
+	options.Host = "0.0.0.0"
+	rebound := dashboardForTest(t, options)
+	if rebound.URL == "" || rebound.InstanceID != control.InstanceID {
+		t.Fatal("dashboard did not rebind on the same owner")
+	}
+}
+
+func TestPrivateSocketServesReadOnlyDashboardOverUnencryptedHTTP2(t *testing.T) {
+	options := testOptions(t)
+	descriptor, _ := serveForTest(t, options)
+	socket, err := localprotocol.SocketPath(descriptor.Settings)
+	if err != nil {
+		t.Fatal(err)
+	}
+	session := newSession(SocketDialer(socket), true)
+	defer session.transport.CloseIdleConnections()
+	get := func(path, instance string) *http.Response {
+		t.Helper()
+		request, err := http.NewRequestWithContext(t.Context(), http.MethodGet, "http://localhost"+path, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		request.Header.Set("X-TokenInsights-Instance", instance)
+		response, err := session.client.Do(request)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, _ = io.Copy(io.Discard, response.Body)
+		_ = response.Body.Close()
+		return response
+	}
+	for _, path := range []string{"/api/v2/instance", "/"} {
+		response := get(path, descriptor.InstanceID)
+		if response.StatusCode != http.StatusOK || response.ProtoMajor != 2 {
+			t.Fatal("private dashboard unavailable over h2c", path, response.StatusCode, response.Proto)
+		}
+	}
+	if response := get("/api/v2/instance", "other"); response.StatusCode != http.StatusConflict {
+		t.Fatal("private dashboard ignored instance pinning", response.StatusCode)
+	}
+	request, err := http.NewRequestWithContext(t.Context(), http.MethodPost, "http://localhost/api/v3/ingestion/batches", strings.NewReader("{}"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	request.Header.Set("X-TokenInsights-Instance", descriptor.InstanceID)
+	response, err := session.client.Do(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = response.Body.Close()
+	if response.StatusCode < 400 {
+		t.Fatal("private dashboard mount enabled ingestion")
+	}
+	if descriptor, err := session.descriptor(t.Context()); err != nil || descriptor.URL != "" {
+		t.Fatal("private dashboard bound a public listener", err)
 	}
 }
 
@@ -198,6 +322,7 @@ func TestRealProcessConcurrentStartupCanonicalAliasesAndFinalShutdown(t *testing
 				selected.ServerDBPath = filepath.Join(alias, "server.sqlite")
 				selected.AppDBPath = filepath.Join(alias, "app.sqlite")
 			}
+			selected.Dashboard = true
 			session, err := Connect(ctx, selected)
 			if err != nil {
 				failures <- err
@@ -225,7 +350,7 @@ func TestRealProcessConcurrentStartupCanonicalAliasesAndFinalShutdown(t *testing
 		t.Fatalf("attached %d clients, want %d", len(attached), clients)
 	}
 	for _, session := range attached {
-		if session.InstanceID != attached[0].InstanceID || session.URL != attached[0].URL {
+		if session.InstanceID != attached[0].InstanceID || session.URL == "" || session.URL != attached[0].URL {
 			t.Fatal("multiple backend owners")
 		}
 	}

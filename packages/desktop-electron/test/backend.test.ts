@@ -11,7 +11,7 @@ import { localBackendDescriptorSchema } from '@tokeninsights/contracts/local'
 const descriptor = {
   url: 'http://127.0.0.1:12345/',
   instanceId: 'test-instance',
-  protocolVersion: 1,
+  protocolVersion: 2,
 }
 
 void test('URL handoffs attach the requested owner instead of configured default storage', () => {
@@ -37,10 +37,12 @@ void test('backend descriptor rejects remote origins, credentials and incompatib
   ]) {
     assert.equal(localBackendDescriptorSchema.safeParse({ ...descriptor, url }).success, false)
   }
-  assert.equal(
-    localBackendDescriptorSchema.safeParse({ ...descriptor, protocolVersion: 2 }).success,
-    false,
-  )
+  for (const protocolVersion of [1, 3]) {
+    assert.equal(
+      localBackendDescriptorSchema.safeParse({ ...descriptor, protocolVersion }).success,
+      false,
+    )
+  }
 })
 
 void test('connector keeps stdin open until the window closes', { timeout: 5_000 }, async () => {

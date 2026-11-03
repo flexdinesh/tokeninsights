@@ -1,6 +1,6 @@
 # Local usage
 
-Local dashboards read saved usage through one shared backend. TUI, browser, native MyGo and Electron can run together. The backend starts on demand and stops after its final viewer disconnects.
+Local dashboards read saved usage through one shared backend. TUI, browser, native MyGo and Electron can run together. The backend starts on demand and stops after its final viewer disconnects. Only browser and Electron dashboards open a local HTTP port; it closes shortly after the last of them disconnects, while the TUI and MyGo use a private socket.
 
 import webScreenshot from '../../../assets/tokeninsights-web.png'
 import tuiScreenshot from '../../../assets/tokeninsights-tui.png'

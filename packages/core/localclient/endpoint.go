@@ -20,8 +20,9 @@ const endpointProbeTimeout = 250 * time.Millisecond
 var ErrEndpointMissing = errors.New("local dashboard endpoint has no matching private owner")
 
 // ConnectEndpoint attaches an existing local owner identified by URL and public
-// instance. It never resolves default settings or starts another backend.
-func ConnectEndpoint(parent context.Context, targetURL string, capture bool) (*Session, error) {
+// instance. It never resolves default settings or starts another backend. A
+// dashboard session also leases that listener, keeping the URL serving.
+func ConnectEndpoint(parent context.Context, targetURL string, capture, dashboard bool) (*Session, error) {
 	target, err := localprotocol.HTTPOrigin(targetURL, true)
 	if err != nil {
 		return nil, errors.New("desktop endpoint must be a loopback HTTP origin")
@@ -75,9 +76,18 @@ func ConnectEndpoint(parent context.Context, targetURL string, capture bool) (*S
 			session.transport.CloseIdleConnections()
 			return nil, err
 		}
-		if err := session.attach(parent, ctx, descriptor, capture, false, ""); err != nil {
+		options := attachOptions{Capture: capture}
+		if dashboard {
+			// Share the bound listener; a different binding is not this endpoint.
+			options.Listen = descriptor.Listen
+		}
+		if err := session.attach(parent, ctx, descriptor, options); err != nil {
 			session.transport.CloseIdleConnections()
 			return nil, err
+		}
+		if dashboard && session.URL != target {
+			_ = session.Close()
+			return nil, ErrEndpointMissing
 		}
 		return session, nil
 	}

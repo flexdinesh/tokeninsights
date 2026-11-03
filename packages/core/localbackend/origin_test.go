@@ -52,7 +52,7 @@ func TestViewerStreamRemovesOnlyItsWriteDeadlineAndReleasesLease(t *testing.T) {
 	defer cancel()
 	writer := &deadlineWriter{ResponseRecorder: httptest.NewRecorder(), cancel: cancel, deadline: time.Now().Add(time.Second)}
 	b := &backend{viewers: newViewers()}
-	b.stream(writer, httptest.NewRequest(http.MethodGet, "/api/local/v1/viewers", nil).WithContext(ctx))
+	b.stream(writer, httptest.NewRequest(http.MethodGet, "/api/local/v1/viewers", nil).WithContext(ctx), "")
 	if !writer.set || !writer.deadline.IsZero() || writer.Code != http.StatusOK || writer.Header().Get("Content-Type") != "text/event-stream" {
 		t.Fatal("stream retained ordinary HTTP deadline", writer.set, writer.deadline, writer.Code)
 	}

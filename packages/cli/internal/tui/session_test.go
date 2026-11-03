@@ -24,7 +24,7 @@ func TestTUIProductionSessionAttachesWithoutPreparingOwnedStorage(t *testing.T) 
 	backendContext, cancelBackend := context.WithCancel(t.Context())
 	ready, finished := make(chan struct{}), make(chan error, 1)
 	go func() {
-		finished <- localbackend.Serve(backendContext, localprotocol.Settings{CollectorDBPath: settings.CollectorDBPath, ServerDBPath: settings.ServerDBPath, AppDBPath: settings.AppDBPath, Host: settings.Host}, io.Discard,
+		finished <- localbackend.Serve(backendContext, localprotocol.Settings{CollectorDBPath: settings.CollectorDBPath, ServerDBPath: settings.ServerDBPath, AppDBPath: settings.AppDBPath}, io.Discard,
 			func(localprotocol.Descriptor) error { close(ready); return nil })
 	}()
 	defer func() {
