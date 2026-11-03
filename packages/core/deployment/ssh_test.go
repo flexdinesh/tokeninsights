@@ -1,8 +1,10 @@
 package deployment_test
 
 import (
+	"bufio"
 	"bytes"
 	"context"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -75,6 +77,41 @@ func TestSSHEndpointDeployment(t *testing.T) {
 	output, err := run("/opt/absent/tokeninsights", "data", "wait", "--endpoint", target)
 	if err == nil || !strings.Contains(output, "/opt/absent/tokeninsights") {
 		t.Fatalf("missing remote command lost diagnostics: %v\n%s", err, output)
+	}
+	// web --endpoint serves the remote dashboard through a local proxy.
+	web := exec.CommandContext(ctx, cli, "web", "--endpoint", target, "--sync=false", "--open=false", "--port", "0")
+	web.Env = append(os.Environ(), "NO_COLOR=1")
+	stdout, err := web.StdoutPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := web.Start(); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = web.Process.Kill(); _ = web.Wait() }()
+	scanner := bufio.NewScanner(stdout)
+	dashboard := ""
+	for dashboard == "" && scanner.Scan() {
+		if _, after, ok := strings.Cut(scanner.Text(), "Dashboard:"); ok {
+			dashboard = strings.TrimSpace(after)
+		}
+	}
+	if dashboard == "" {
+		t.Fatal("remote web printed no dashboard URL", scanner.Err())
+	}
+	response, err := http.Get(dashboard + "/api/v2/status")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		t.Fatal("proxied remote status unavailable", response.StatusCode)
+	}
+	if err := web.Process.Signal(os.Interrupt); err != nil {
+		t.Fatal(err)
+	}
+	if err := web.Wait(); err != nil {
+		t.Fatal("remote web did not detach cleanly", err)
 	}
 	if _, err := os.Stat(filepath.Join(root, "data", "tokeninsights")); !os.IsNotExist(err) {
 		t.Fatal("remote endpoint created local storage", err)

@@ -43,6 +43,7 @@ func runWeb(invocation commandInvocation, args []string) error {
 	flags.BoolVar(&syncBefore, "sync", true, "refresh usage in the background; --sync=false reads saved data")
 	flags.BoolVar(&fullRefresh, "full-refresh", false, "reread sources and retry quarantine at startup")
 	flags.StringVar(&sourceDir, "source-dir", "", "override startup capture source directory")
+	flags.String("endpoint", "", "backend: local (default) or ssh://[user@]host[:port]; remote serves a local proxy")
 	if err := flags.Parse(args); err != nil {
 		return fmt.Errorf("%w\n%w", err, ErrUsage)
 	}
@@ -56,10 +57,11 @@ func runWeb(invocation commandInvocation, args []string) error {
 	if !syncBefore && fullRefresh {
 		return fmt.Errorf("--full-refresh requires startup collection\n%w", ErrUsage)
 	}
+	options := pipeline.SyncOptions{Harnesses: pipeline.SupportedHarnesses, Now: invocation.now, FullRefresh: fullRefresh, SourceDir: sourceDir}
 	if !settings.Endpoint.IsLocal() {
-		return fmt.Errorf("web does not support remote endpoint %s; use tui or data, or --endpoint=local", settings.Endpoint)
+		return runRemoteWeb(invocation, settings, syncBefore, options)
 	}
-	return runLocalWeb(invocation, settings, syncBefore, pipeline.SyncOptions{Harnesses: pipeline.SupportedHarnesses, Now: invocation.now, FullRefresh: fullRefresh, SourceDir: sourceDir})
+	return runLocalWeb(invocation, settings, syncBefore, options)
 }
 
 func runLocalWeb(invocation commandInvocation, settings config.LocalSettings, syncBefore bool, capture pipeline.SyncOptions) error {

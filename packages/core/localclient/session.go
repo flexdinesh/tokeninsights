@@ -28,6 +28,11 @@ import (
 const StartupTimeout = 15 * time.Second
 const operationTimeout = 35 * time.Second
 
+// privateHost names the backend's private endpoint in request URLs. Every
+// request uses it so transports share one connection, which single-use
+// dialers such as SSH bridges require.
+const privateHost = "local"
+
 // maxLeaseEventBytes bounds the dashboard event preceding lease heartbeats.
 const maxLeaseEventBytes = 4096
 
@@ -233,7 +238,7 @@ func (s *Session) Reprocess(ctx context.Context) error {
 }
 
 func (s *Session) request(ctx context.Context, method, path string, body io.Reader) (*http.Request, error) {
-	r, err := http.NewRequestWithContext(ctx, method, "http://local/api/local/v1"+path, body)
+	r, err := http.NewRequestWithContext(ctx, method, "http://"+privateHost+"/api/local/v1"+path, body)
 	if err == nil {
 		r.Header.Set("X-TokenInsights-Instance", s.InstanceID)
 		r.Header.Set("Content-Type", "application/json")
@@ -289,4 +294,24 @@ func failure(response *http.Response, fallback string) error {
 		return localprotocol.ErrShuttingDown
 	}
 	return errors.New(fallback)
+}
+
+// PrivateRoundTripper sends requests over this session's private connection,
+// pinned to its backend instance. Callers own routing policy and must forward
+// only read-only dashboard requests and browser leases.
+func (s *Session) PrivateRoundTripper() http.RoundTripper {
+	return instanceTransport{session: s}
+}
+
+type instanceTransport struct{ session *Session }
+
+func (t instanceTransport) RoundTrip(r *http.Request) (*http.Response, error) {
+	r = r.Clone(r.Context())
+	// Keep the caller's Host header, but reuse the session's connection.
+	if r.Host == "" {
+		r.Host = r.URL.Host
+	}
+	r.URL.Scheme, r.URL.Host = "http", privateHost
+	r.Header.Set("X-TokenInsights-Instance", t.session.InstanceID)
+	return t.session.transport.RoundTrip(r)
 }
