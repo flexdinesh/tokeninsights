@@ -5,7 +5,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { z } from 'zod'
-import { CollectorProgressResponse, StatusResponseV2 } from '../src/generated/api.ts'
+import { CollectorProgressResponse, StatusResponseV2 } from '@tokeninsights/contracts/generated'
 import {
   adminRequest,
   seedHostedUser,

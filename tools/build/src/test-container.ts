@@ -12,14 +12,14 @@ try {
     'go',
     [
       'test',
-      './internal/deployment',
+      './packages/core/deployment',
       '-run',
       '^TestContainerDeployment$',
       '-count=1',
       '-timeout=5m',
     ],
     {
-      cwd: 'packages/cli',
+      cwd: '.',
       stdio: 'inherit',
       env: {
         ...process.env,

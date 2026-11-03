@@ -1,145 +1,49 @@
-# Releases
+# Releases and installation
+
+Install prebuilt products from GitHub Releases. No Go, Node, npm, pnpm or repository checkout is required on the user's machine. Electron includes its own runtime.
 
 ## Install
 
-Stable:
+CLI, TUI, browser launcher and their backend, latest stable:
 
 ```sh
-brew install flexdinesh/tap/tokeninsights
+curl -fsSL https://raw.githubusercontent.com/flexdinesh/tokeninsights/main/install.sh | sh
 ```
 
-Alternative stable install with Go:
+Latest main build that passed checks:
 
 ```sh
-go install github.com/flexdinesh/tokeninsights/packages/cli/cmd/tokeninsights@latest
+curl -fsSL https://raw.githubusercontent.com/flexdinesh/tokeninsights/main/install-main.sh | sh
 ```
 
-Specific stable version:
+Separate products:
 
 ```sh
-go install github.com/flexdinesh/tokeninsights/packages/cli/cmd/tokeninsights@v0.1.3
+curl -fsSL https://raw.githubusercontent.com/flexdinesh/tokeninsights/main/install-server.sh | sh
+curl -fsSL https://raw.githubusercontent.com/flexdinesh/tokeninsights/main/install-mygo.sh | sh
+curl -fsSL https://raw.githubusercontent.com/flexdinesh/tokeninsights/main/install-electron.sh | sh
 ```
 
-Latest `main` source that passed native CI:
+Product scripts default to stable. Pass `sh -s -- --channel=main` to choose main. Rerun to upgrade. Both desktops coexist; stable/main replace the selected product. Installers verify a unique SHA-256 checksum, product identity and archive layout, then stage replacement in user-owned storage. An incomplete download or checksum failure leaves the installed product intact. `TOKENINSIGHTS_DOWNLOAD_URL` overrides the download base for local release fixtures.
 
-```sh
-go install github.com/flexdinesh/tokeninsights/packages/cli/cmd/tokeninsights@edge
-```
+Product files live under `${XDG_DATA_HOME:-~/.local/share}/tokeninsights/products/`. Command links use `~/.local/bin`; macOS apps use `~/Applications`. Add `~/.local/bin` to PATH if needed. Installation starts no background service. Each client product contains its own backend; removing another client cannot remove that dependency. Close viewers before upgrading an incompatible local-client version. Installers never terminate running viewers.
 
-Go resolves `@latest` from stable module tags (`packages/cli/vX.Y.Z`), independently of GitHub's Latest badge. `edge` is a moving source branch published after native CI succeeds for a main push. It contains that source plus generated dashboard assets. Its latest stable release ancestry makes its Go pseudo-version sort above that release. Module proxies may briefly cache branch lookups; rerun the install after publication to update.
+Homebrew and versioned `go install` delivery are no longer supported. Historical releases/tags remain downloadable. Building source remains a development workflow through mise.
 
-`main`, feature branches and their source SHAs omit generated assets, so direct
-versioned installs from them fail on the missing Go embed input. For local builds:
+## Publish
 
-```sh
-mise run setup
-mise run build:web
-cd packages/cli
-GOWORK=off go build ./cmd/tokeninsights ./cmd/tokeninsights-server
-```
+Stable: dispatch **Release** from main with an explicit semantic version. The workflow builds the selected source, creates an immutable root `vX.Y.Z` source tag, stages complete archives/checksums in a draft, then publishes the stable release. Reruns must retain the same source identity; published stable bytes are not overwritten.
 
-mise build/test/lint tasks generate assets before invoking Go.
-An existing binary runs without Node/npm/pnpm. Source installs report Go's resolved
-module version; archive binaries include explicit release version/commit metadata.
+Main: successful required main checks publish the rolling `main-build` prerelease. It is never marked Latest. Failed or obsolete builds cannot replace a newer successful build. A rolling release is not an atomic download snapshot: an installer racing publication may fail checksum verification and can be rerun; its previous installation remains intact.
 
-## Release
+All products share release version/source metadata. Archives are named `tokeninsights-<cli|server|mygo|electron>_<darwin|linux>_<amd64|arm64>.tar.gz`, with `checksums.txt`. CLI and desktop archives contain the required Go backend. The hosted server is independent and never collects host sources.
 
-Required secret:
+No compiled executables, desktop bundles, archives or generated dashboard assets are committed to any branch or tag. Source tags point to source commits. Build tooling generates embedded browser assets before building Go; release attachments contain compiled output. No generated asset commits, edge branch, tap token or tap PR automation remain. See [ADR 0024](adr/0024-shared-backend-and-installable-products.md).
 
-- `HOMEBREW_TAP_TOKEN`: fine-grained token with contents write and pull request write access to `flexdinesh/homebrew-tap`.
+## Runtime and verification
 
-1. Merge the release-ready code to `main`.
-2. Run the **Release** workflow from GitHub Actions with branch `main` selected. Dispatches from other refs are skipped. The workflow checks out the latest `main` when it starts; that commit is verified and released even if `main` advances during the run.
-3. The workflow selects the next patch version, builds the dashboard, and creates an asset commit with the resolved main source as its first parent. Native jobs build macOS/Linux amd64/arm64 archives from that same commit. After verification, it pushes only the Go module tag, writes `checksums.txt`, and publishes a stable GitHub Release explicitly marked Latest. New versions and GitHub releases are published only through this manual workflow.
-4. The workflow generates `Formula/tokeninsights.rb` from the local release checksums and opens or updates a pull request against `flexdinesh/homebrew-tap`.
+Backend, CLI, hosted server and MyGo use Go with `CGO_ENABLED=0`. Backend/server embed browser assets and never invoke JavaScript tools. Electron is the explicit bundled-runtime exception; it requires no host Node/npm/pnpm. macOS/Linux amd64/arm64 archives are built on matching native runners. Desktop signing/notarization and auto-update are outside this experiment.
 
-`.release-version` contains the active `major.minor` release series. It is currently `0.1`; releases increment the highest existing patch in that series. A rerun against the same source reuses its existing tag, identified by the tag commit's first parent. Existing published tags never move. Completed release archives/checksums are downloaded, verified and reused during recovery.
+Local verification uses `mise run format`, then `mise run check:pr` on committed HEAD with clean tracked files. Distribution contracts exercise real product archives, installer rejection/replacement, source metadata and runtime without host build tools. Existing accounting, storage, replay, dataset isolation, browser and deployment contracts remain required. Inspect retained validation artifacts; no PR checks run remotely.
 
-To resume a release created by this workflow after main advances,
-dispatch **Release** from `main` with `retry_tag` set to its full module tag.
-Historical tags directly on main remain installable but cannot use this recovery path.
-This uses the original tagged source
-and version. Retrying an older version preserves the newer Latest release.
-If an existing GitHub release has incomplete assets, recovery stops;
-restore the original native workflow artifacts and checksum manifest before retrying.
-
-To begin a new minor or major series, change `.release-version`. For example, changing it to `0.2` makes the next release `packages/cli/v0.2.0`; changing it to `1.0` makes the next release `packages/cli/v1.0.0`. Later releases automatically increment that series' patch number.
-
-React assets under `packages/cli/internal/server/static` are ignored on `main` and embedded with `go:embed` after generation. CI alone commits them on `edge` and stable tags; source branch history stays free of bundle updates. Edge publication uses an observed-ref lease and rejects obsolete runs. Repository rulesets must allow the workflow identity to update `edge` and create `packages/cli/v*` tags. No `dev` archive channel is added. See [ADR 0017](adr/0017-generated-assets-on-installable-refs.md).
-
-Formatting, schema/API consistency, full/race tests, benchmarks, browser tests,
-container contracts and isolated source-install checks run in local pre-push.
-CI/release native jobs build both binaries and test storage on each supported
-OS/architecture, covering platforms unavailable on one developer host. Release
-validates generated archives and the Homebrew formula. The private
-`@tokeninsights/build-tools` workspace package owns asset generation, installable
-refs, local publication tests and Homebrew formula generation; it is build tooling.
-
-Release artifacts contain only the two native Go binaries and documentation. Production hosts need no Node.js, npm, pnpm, `node_modules`, repository JavaScript tooling, or separate web files. Go serves the embedded browser JavaScript as bytes; it executes only in the browser, and the Go runtime never invokes a JavaScript runtime.
-
-The tap branch is deterministic per version, such as `tokeninsights-v0.0.1`, so rerunning the release updates the same tap pull request. If the tap pull request cannot be created or updated, the release workflow fails after publishing the GitHub Release so the Homebrew update can be repaired manually.
-
-The tap repository owns Homebrew-native validation. Its CI should run style, audit, install, and formula test checks for changed formulae before merging the generated pull request.
-
-## Verify Locally
-
-### Database Compatibility
-
-Collector SQLite 20, token SQLite 1, PostgreSQL token/account 1/2, personal application
-SQLite 2, hosted application SQLite 3 and jobs SQLite 1 have
-distinct roles. Only current contracts are supported. Incompatible, newer or corrupt
-contracts reject without mutation. There are no migrations or legacy imports.
-
-Sync captures evidence and waits for durable acceptance; processing runs
-asynchronously. Local maintenance uses `data reprocess|wait` with command-owned storage.
-
-Verification preserves native contribution identities, all token components, exact
-receipt replay, source continuity, separate estimates, dataset-local generation
-cutover and colliding multi-user identities. Verify auth/revocation, capability gates,
-local progress and container persistence/shutdown. Both binaries must work without
-Node/npm/pnpm. See [design](design.md) for the complete contract.
-
-### Checks
-
-```sh
-mise run check-schema
-mise run test
-mise run build
-mise run test:distribution
-```
-
-## Version
-
-```sh
-tokeninsights --version
-```
-
-## Separate server executable
-
-The existing release archives and Homebrew formula contain both `tokeninsights`
-and `tokeninsights-server`. Go users install remote explicitly with
-`go install github.com/flexdinesh/tokeninsights/packages/cli/cmd/tokeninsights-server@latest`.
-Both embed generated assets from stable tags or `edge` and run without Node/npm/pnpm. Remote runs only when
-explicitly launched and requires `--server-db-path`; installing it starts nothing.
-
-## Desktop viewer
-
-Each release also attaches unversioned `tokeninsights-desktop_<os>_<arch>.tar.gz`
-archives (macOS/Linux, amd64/arm64) to the same GitHub release, listed in the same
-`checksums.txt`. Native release jobs run `tools/build/src/build-desktop.ts`, which
-builds `packages/desktop` with `go tool mygo build` (pure Go, `CGO_ENABLED=0`) and
-stamps the release version into a copy of `mygo.json`. macOS runners seal the app
-bundle with an ad-hoc signature; there is no Developer ID signing or notarization.
-The Homebrew formula ignores desktop archives. Users install with the raw `main`
-`install.sh`, which downloads `releases/latest/download/<archive>` and verifies its
-checksum. Unversioned names keep that URL stable. Build locally with
-`mise run build:desktop`. See [ADR 0023](adr/0023-desktop-thin-viewer.md).
-
-Native CI/release Linux/macOS amd64/arm64 jobs build with `CGO_ENABLED=0` and test on matching runners. See [design](design.md) for current acceptance/migration.
-
-Live PostgreSQL verification: `mise run test` and `mise run test:race` start a pinned
-PostgreSQL 18 Docker container and remove it afterward. Alternatively set
-`TOKENINSIGHTS_TEST_POSTGRES_DSN` to a test server with CREATEDB privileges; tests
-create random databases and delete only those. Never use production credentials.
-Direct `go test` skips PostgreSQL cases without that variable; root verification
-always supplies a live database and fails if it cannot start one.
+Only current database contracts are supported. This release changes no SQL schemas or schema versions. Installers never migrate, reset or delete usage data. The backend owns local stores while viewers are connected and shuts down after the last viewer's reconnect grace; pending accepted work resumes with the next owner. See [design](design.md).

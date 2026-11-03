@@ -3,28 +3,127 @@ package cli
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
+	"github.com/flexdinesh/tokeninsights/packages/core/localprotocol"
 	"io"
 	"net"
 	"net/http"
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/charmbracelet/x/ansi"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/browser"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/collector"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/collectorprogress"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/config"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/localruntime"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/pipeline"
-	api "github.com/flexdinesh/tokeninsights/packages/cli/internal/server/api"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/serverruntime"
+	"github.com/flexdinesh/tokeninsights/packages/core/browser"
+	"github.com/flexdinesh/tokeninsights/packages/core/config"
+	"github.com/flexdinesh/tokeninsights/packages/core/localbackend"
+	"github.com/flexdinesh/tokeninsights/packages/core/localclient"
 )
+
+// The CLI tests exercise a real owner and Unix attachment without depending on
+// a built adjacent executable. Real child startup is covered by localclient.
+func useSharedBackendForTest(t *testing.T) {
+	t.Helper()
+	previous := connectLocalBackend
+	t.Cleanup(func() { connectLocalBackend = previous })
+	connectLocalBackend = func(ctx context.Context, options localclient.Options, prepare func() error) (*localclient.Session, error) {
+		if prepare != nil {
+			if err := prepare(); err != nil {
+				return nil, err
+			}
+		}
+		ownerCtx, cancel := context.WithCancel(t.Context())
+		ready, finished := make(chan struct{}), make(chan error, 1)
+		settings := localprotocol.Settings{CollectorDBPath: options.CollectorDBPath, ServerDBPath: options.ServerDBPath, AppDBPath: options.AppDBPath, Host: options.Host, Port: options.Port}
+		go func() {
+			finished <- localbackend.Serve(ownerCtx, settings, io.Discard, func(localprotocol.Descriptor) error { close(ready); return nil })
+		}()
+		select {
+		case err := <-finished:
+			cancel()
+			return nil, err
+		case <-ready:
+		case <-ctx.Done():
+			cancel()
+			<-finished
+			return nil, ctx.Err()
+		}
+		t.Cleanup(func() {
+			cancel()
+			if err := <-finished; err != nil {
+				t.Error(err)
+			}
+		})
+		return localclient.Connect(ctx, options)
+	}
+}
+
+func TestWebClosingCommandPreservesAnotherViewerAndPrivateMaintenance(t *testing.T) {
+	root := t.TempDir()
+	settings := config.Defaults()
+	settings.CollectorDBPath, settings.ServerDBPath, settings.Port = filepath.Join(root, "collector.sqlite"), filepath.Join(root, "server.sqlite"), 0
+	useSharedBackendForTest(t)
+	keeper, err := connectLocalBackend(t.Context(), localclient.Options{CollectorDBPath: settings.CollectorDBPath, ServerDBPath: settings.ServerDBPath, AppDBPath: settings.ApplicationPath(), Host: settings.Host, Port: settings.Port}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = keeper.Close() }()
+	connectLocalBackend = func(ctx context.Context, options localclient.Options, prepare func() error) (*localclient.Session, error) {
+		return localclient.ConnectPrepared(ctx, options, func() error { t.Error("attached command inspected owned storage"); return nil })
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	previousOpen := openDashboard
+	t.Cleanup(func() { openDashboard = previousOpen })
+	var stdout bytes.Buffer
+	openDashboard = func(_ context.Context, _ browser.Mode, url string) (browser.Result, error) {
+		if url != keeper.URL || !strings.Contains(ansi.Strip(stdout.String()), "Dashboard:  "+url) {
+			t.Error("web did not attach to shared dashboard")
+		}
+		for _, path := range []string{"/api/v3/ingestion/batches", "/api/local/v1/capture", "/api/local/v1/reprocess"} {
+			response, err := http.Post(url+path, "application/json", strings.NewReader("{}"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			_ = response.Body.Close()
+			if response.StatusCode < 400 {
+				t.Error("public mutation enabled", path)
+			}
+		}
+		cancel()
+		return browser.Result{}, nil
+	}
+	invocation := commandInvocation{context: ctx, stdout: &stdout, stderr: io.Discard, configPath: localConfigForTest(t, settings)}
+	if err := runWeb(invocation, []string{"--sync=false"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := keeper.Query.Instance(t.Context()); err != nil {
+		t.Fatal("closing web stopped another viewer", err)
+	}
+	invocation.context = t.Context()
+	if err := runData(invocation, []string{"reprocess"}); err != nil {
+		t.Fatal("maintenance failed while viewer attached", err)
+	}
+}
+
+func TestWebPassesLaunchCaptureSettings(t *testing.T) {
+	root := t.TempDir()
+	settings := config.Defaults()
+	settings.CollectorDBPath, settings.ServerDBPath = filepath.Join(root, "collector.sqlite"), filepath.Join(root, "server.sqlite")
+	previous := connectLocalBackend
+	t.Cleanup(func() { connectLocalBackend = previous })
+	expected := errors.New("launch inspected")
+	connectLocalBackend = func(_ context.Context, options localclient.Options, _ func() error) (*localclient.Session, error) {
+		if !options.Capture || !options.FullRefresh || options.SourceDir != root {
+			t.Error("launch capture controls lost", options)
+		}
+		return nil, expected
+	}
+	if err := runWeb(commandInvocation{context: t.Context(), stdout: io.Discard, stderr: io.Discard, configPath: localConfigForTest(t, settings)}, []string{"--full-refresh", "--source-dir", root}); !errors.Is(err, expected) {
+		t.Fatal(err)
+	}
+}
 
 func TestConfigTokenStdinAndMaskedGet(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.json")
@@ -39,110 +138,6 @@ func TestConfigTokenStdinAndMaskedGet(t *testing.T) {
 	if err := runConfig(invocation, []string{"set", "distributed.server-token", "secret"}); !errors.Is(err, ErrUsage) {
 		t.Fatal("token argument accepted")
 	}
-}
-
-func TestLocalWebOwnsListenerUntilCancellationAndNeverAcceptsHTTPIngestion(t *testing.T) {
-	settings := config.Defaults()
-	root := t.TempDir()
-	settings.ServerDBPath, settings.CollectorDBPath = filepath.Join(root, "server.sqlite"), filepath.Join(root, "collector.sqlite")
-	settings.Host, settings.Port = "0.0.0.0", 0
-	ctx, cancel := context.WithCancel(t.Context())
-	defer cancel()
-	previousOpen, previousCollector := openDashboard, runWebCollector
-	t.Cleanup(func() { openDashboard, runWebCollector = previousOpen, previousCollector })
-	started, finished := make(chan struct{}), make(chan struct{})
-	runWebCollector = func(ctx context.Context, options collector.Options) (collector.Result, error) {
-		if !options.SyncOptions.FullRefresh || options.SyncOptions.SourceDir != root {
-			t.Error("web lost startup capture controls")
-		}
-		if options.Destination == nil || options.Destination.Transport == nil || !options.Destination.Local {
-			t.Error("web used HTTP ingestion")
-			close(started)
-			close(finished)
-			return collector.Result{}, errors.New("web used HTTP ingestion")
-		}
-		options.SyncOptions.Progress(pipeline.SyncProgressEvent{Harness: pipeline.HarnessPi, Status: pipeline.SyncProgressSyncing})
-		close(started)
-		defer close(finished)
-		<-ctx.Done()
-		return collector.Result{}, ctx.Err()
-	}
-	var address string
-	var stdout bytes.Buffer
-	openDashboard = func(_ context.Context, _ browser.Mode, url string) (browser.Result, error) {
-		if !strings.HasPrefix(url, "http://127.0.0.1:") {
-			t.Fatal("wrong browser address/order", url)
-		}
-		if output := ansi.Strip(stdout.String()); !strings.Contains(output, "Dashboard:  "+url) || !strings.Contains(output, "Ctrl+C") {
-			t.Fatal("ready output missing browser URL or shutdown hint", output)
-		}
-		select {
-		case <-started:
-		case <-time.After(10 * time.Second):
-			t.Fatal("collection did not start")
-		}
-		select {
-		case <-finished:
-			t.Fatal("browser waited for collection")
-		default:
-		}
-		address = url
-		response, err := http.Get(url + "/api/v2/instance")
-		if err != nil {
-			t.Fatal(err)
-		}
-		var instance api.InstanceResponseV2
-		if err := json.NewDecoder(response.Body).Decode(&instance); err != nil {
-			t.Fatal(err)
-		}
-		_ = response.Body.Close()
-		if response.StatusCode != http.StatusOK {
-			t.Fatal(response.Status)
-		}
-		hostname, err := os.Hostname()
-		if err != nil || instance.Hostname != hostname {
-			t.Fatal("local identity unavailable", instance.Hostname, err)
-		}
-		for _, capability := range []string{"usage", "facets", "web-dashboard", "collector-progress", "dashboard-reload"} {
-			if !slices.Contains(instance.Capabilities, capability) {
-				t.Fatal("local web capability missing", capability, instance.Capabilities)
-			}
-		}
-		progress := readWebProgress(t, url)
-		if progress.InstanceID != instance.InstanceId || len(progress.Attempts) != 1 || progress.Attempts[0].Stage != "capturing" || progress.Attempts[0].Harnesses["pi"] != "running" {
-			t.Fatal("startup progress unavailable", progress)
-		}
-		for _, path := range []string{"/api/v3/ingestion/batches", "/api/v2/processing/reprocess", "/control/v1/collector-progress", "/api/v2/collector-progress"} {
-			response, err = http.Post(url+path, "application/json", strings.NewReader("{}"))
-			if err != nil {
-				t.Fatal(err)
-			}
-			_ = response.Body.Close()
-			if response.StatusCode < 400 {
-				t.Fatal("public mutation enabled", path)
-			}
-		}
-		cancel()
-		return browser.Result{}, nil
-	}
-	if err := runWeb(commandInvocation{context: ctx, stdout: &stdout, stderr: io.Discard, configPath: localConfigForTest(t, settings)}, []string{"--full-refresh", "--source-dir", root}); err != nil {
-		t.Fatal(err)
-	}
-	select {
-	case <-finished:
-	default:
-		t.Fatal("collection not joined")
-	}
-	client := &http.Client{Timeout: time.Second}
-	if response, err := client.Get(address + "/api/v2/instance"); err == nil {
-		_ = response.Body.Close()
-		t.Fatal("listener survived command")
-	}
-	runtime, err := localruntime.Open(t.Context(), settings.CollectorDBPath, settings.ServerDBPath)
-	if err != nil {
-		t.Fatal("command retained database ownership", err)
-	}
-	_ = runtime.Close()
 }
 
 func TestWebReadyOutputRespectsColorEnvironment(t *testing.T) {
@@ -177,134 +172,6 @@ func TestWebReadyOutputRespectsColorEnvironment(t *testing.T) {
 	}
 }
 
-func readWebProgress(t *testing.T, url string) collectorprogress.Snapshot {
-	t.Helper()
-	response, err := http.Get(url + "/api/v2/collector-progress")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = response.Body.Close() }()
-	if response.StatusCode != http.StatusOK {
-		t.Fatal(response.Status)
-	}
-	var progress collectorprogress.Snapshot
-	if err := json.NewDecoder(response.Body).Decode(&progress); err != nil {
-		t.Fatal(err)
-	}
-	return progress
-}
-
-func TestLocalWebCaptureFailureKeepsSavedDashboardAndShowsFailure(t *testing.T) {
-	collectorPath, serverPath := seedLocalUsage(t)
-	settings := config.Defaults()
-	settings.CollectorDBPath, settings.ServerDBPath, settings.Port = collectorPath, serverPath, 0
-	ctx, cancel := context.WithCancel(t.Context())
-	defer cancel()
-	previousOpen, previousCollector := openDashboard, runWebCollector
-	t.Cleanup(func() { openDashboard, runWebCollector = previousOpen, previousCollector })
-	runWebCollector = func(_ context.Context, options collector.Options) (collector.Result, error) {
-		options.SyncOptions.Progress(pipeline.SyncProgressEvent{Harness: pipeline.HarnessPi, Status: pipeline.SyncProgressFailed})
-		return collector.Result{}, errors.New("private source error")
-	}
-	openDashboard = func(_ context.Context, _ browser.Mode, url string) (browser.Result, error) {
-		deadline := time.After(10 * time.Second)
-		for {
-			progress := readWebProgress(t, url)
-			if len(progress.Attempts) == 1 && progress.Attempts[0].Stage == "failed" {
-				if progress.Attempts[0].ErrorCode != "collection_failed" {
-					t.Fatal("unsafe failure status", progress)
-				}
-				break
-			}
-			select {
-			case <-deadline:
-				t.Fatal("failure not published")
-			case <-time.After(time.Millisecond):
-			}
-		}
-		response, err := http.Get(url + "/api/v2/usage?period=all")
-		if err != nil {
-			t.Fatal(err)
-		}
-		defer func() { _ = response.Body.Close() }()
-		var data api.UsageResponseV2
-		if err := json.NewDecoder(response.Body).Decode(&data); err != nil || data.Summary.Total != 100 {
-			t.Fatal("saved data lost after capture failure", data, err)
-		}
-		cancel()
-		return browser.Result{}, nil
-	}
-	var stderr bytes.Buffer
-	if err := runWeb(commandInvocation{context: ctx, stdout: io.Discard, stderr: &stderr, configPath: localConfigForTest(t, settings)}, nil); err != nil || stderr.Len() != 0 {
-		t.Fatal("terminal blocked or capture failure stopped dashboard", err, stderr.String())
-	}
-}
-
-func TestLocalWebSavedOnlyHasNoStartupCollection(t *testing.T) {
-	settings := config.Defaults()
-	root := t.TempDir()
-	settings.CollectorDBPath, settings.ServerDBPath, settings.Port = filepath.Join(root, "collector.sqlite"), filepath.Join(root, "data.sqlite"), 0
-	ctx, cancel := context.WithCancel(t.Context())
-	defer cancel()
-	previousOpen, previousCollector := openDashboard, runWebCollector
-	t.Cleanup(func() { openDashboard, runWebCollector = previousOpen, previousCollector })
-	runWebCollector = func(context.Context, collector.Options) (collector.Result, error) {
-		t.Error("saved-only web collected")
-		return collector.Result{}, nil
-	}
-	openDashboard = func(_ context.Context, _ browser.Mode, url string) (browser.Result, error) {
-		if progress := readWebProgress(t, url); len(progress.Attempts) != 0 {
-			t.Fatal("saved-only web created startup attempt", progress)
-		}
-		cancel()
-		return browser.Result{}, nil
-	}
-	if err := runWeb(commandInvocation{context: ctx, stdout: io.Discard, stderr: io.Discard, configPath: localConfigForTest(t, settings)}, []string{"--sync=false"}); err != nil {
-		t.Fatal(err)
-	}
-	assertViewMissingPath(t, settings.CollectorDBPath)
-}
-
-type failedWebListener struct {
-	net.Listener
-	err error
-}
-
-func (l failedWebListener) Accept() (net.Conn, error) { return nil, l.err }
-
-func TestLocalWebHTTPFailureCancelsAndJoinsCollection(t *testing.T) {
-	settings := config.Defaults()
-	root := t.TempDir()
-	settings.CollectorDBPath, settings.ServerDBPath, settings.Port = filepath.Join(root, "collector.sqlite"), filepath.Join(root, "data.sqlite"), 0
-	previousCollector, previousServe := runWebCollector, serveLocalWeb
-	t.Cleanup(func() { runWebCollector, serveLocalWeb = previousCollector, previousServe })
-	finished := make(chan struct{})
-	runWebCollector = func(ctx context.Context, _ collector.Options) (collector.Result, error) {
-		defer close(finished)
-		<-ctx.Done()
-		return collector.Result{}, ctx.Err()
-	}
-	expected := errors.New("listener unavailable")
-	serveLocalWeb = func(ctx context.Context, store serverruntime.Readiness, bindings []serverruntime.Binding, ready func() error) error {
-		bindings[0].Listener = failedWebListener{Listener: bindings[0].Listener, err: expected}
-		return serverruntime.Serve(ctx, store, bindings, ready)
-	}
-	err := runWeb(commandInvocation{context: t.Context(), stdout: io.Discard, stderr: io.Discard, configPath: localConfigForTest(t, settings)}, []string{"--open=false"})
-	if !errors.Is(err, expected) {
-		t.Fatal("HTTP failure lost", err)
-	}
-	select {
-	case <-finished:
-	default:
-		t.Fatal("HTTP failure left collector running")
-	}
-	runtime, err := localruntime.Open(t.Context(), settings.CollectorDBPath, settings.ServerDBPath)
-	if err != nil {
-		t.Fatal("ownership leaked", err)
-	}
-	_ = runtime.Close()
-}
-
 // Commands parse their own flags once, so every flag form outranks the
 // environment, including single-dash forms a separate pre-scan would miss.
 func TestWebSingleDashFlagsOverrideInvalidEnvironment(t *testing.T) {
@@ -315,12 +182,16 @@ func TestWebSingleDashFlagsOverrideInvalidEnvironment(t *testing.T) {
 	t.Setenv("TOKENINSIGHTS_PORT", "not-a-port")
 	t.Setenv("TOKENINSIGHTS_COLLECTOR_DB_PATH", settings.CollectorDBPath)
 	flagCollector, flagServer := filepath.Join(root, "collector.sqlite"), filepath.Join(root, "server.sqlite")
-	previousServe := serveLocalWeb
-	t.Cleanup(func() { serveLocalWeb = previousServe })
-	serveLocalWeb = func(context.Context, serverruntime.Readiness, []serverruntime.Binding, func() error) error {
-		return nil
+	useSharedBackendForTest(t)
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	previousOpen := openDashboard
+	t.Cleanup(func() { openDashboard = previousOpen })
+	openDashboard = func(context.Context, browser.Mode, string) (browser.Result, error) {
+		cancel()
+		return browser.Result{}, nil
 	}
-	err := Run(t.Context(), []string{"--config-file", path, "web", "--sync=false", "--open=false", "-port", "0", "-collector-db-path", flagCollector, "-server-db-path", flagServer}, io.Discard, io.Discard, time.Now())
+	err := Run(ctx, []string{"--config-file", path, "web", "--sync=false", "-port", "0", "-collector-db-path", flagCollector, "-server-db-path", flagServer}, io.Discard, io.Discard, time.Now())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -331,6 +202,7 @@ func TestWebSingleDashFlagsOverrideInvalidEnvironment(t *testing.T) {
 }
 
 func TestWebPortFlagBindsRequestedPort(t *testing.T) {
+	useSharedBackendForTest(t)
 	for _, form := range []string{"separate", "equals"} {
 		t.Run(form, func(t *testing.T) {
 			reservation, err := net.Listen("tcp4", "127.0.0.1:0")

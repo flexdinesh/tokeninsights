@@ -1,0 +1,79 @@
+name: Product archives
+
+on:
+  workflow_call:
+    inputs:
+      source:
+        required: true
+        type: string
+      version:
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+env:
+  HUSKY: '0'
+
+jobs:
+  assets:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.source }}
+      - uses: jdx/mise-action@v5
+        with:
+          install_args: node pnpm
+      - run: mise run build:web
+      - uses: actions/upload-artifact@v7
+        with:
+          name: dashboard-assets
+          path: packages/core/server/static
+          if-no-files-found: error
+
+  native:
+    needs: assets
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            os: linux
+            arch: amd64
+          - runner: ubuntu-24.04-arm
+            os: linux
+            arch: arm64
+          - runner: macos-15-intel
+            os: darwin
+            arch: amd64
+          - runner: macos-15
+            os: darwin
+            arch: arm64
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.source }}
+      - uses: jdx/mise-action@v5
+        with:
+          install_args: go node pnpm
+      - run: mise run setup
+      - uses: actions/download-artifact@v8
+        with:
+          name: dashboard-assets
+          path: packages/core/server/static
+      - name: Native storage and presentation checks
+        env:
+          CGO_ENABLED: '0'
+        run: go test ./packages/core/datastore ./packages/core/rawcollectorstore ./packages/desktop-mygo/...
+      - name: Build self-contained products
+        env:
+          PRODUCT_VERSION: ${{ inputs.version }}
+        run: node tools/build/src/build-products.ts "$PRODUCT_VERSION" dist
+      - uses: actions/upload-artifact@v7
+        with:
+          name: products-${{ matrix.os }}-${{ matrix.arch }}
+          path: dist/*.tar.gz
+          if-no-files-found: error

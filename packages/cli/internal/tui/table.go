@@ -9,14 +9,12 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/analytics"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/collectorprogress"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/flagvalue"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/localruntime"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/pipeline"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/queryclient"
+	"github.com/flexdinesh/tokeninsights/packages/core/analytics"
+	"github.com/flexdinesh/tokeninsights/packages/core/capture"
+	"github.com/flexdinesh/tokeninsights/packages/core/collectorprogress"
+	"github.com/flexdinesh/tokeninsights/packages/core/flagvalue"
+	"github.com/flexdinesh/tokeninsights/packages/core/queryclient"
 )
 
 type reloadMsg struct {
@@ -50,17 +48,6 @@ type filterValuesMsg struct {
 	err                   error
 }
 
-type syncProgressMsg struct {
-	event pipeline.SyncProgressEvent
-}
-
-type syncDoneMsg struct {
-	summary pipeline.Summary
-	err     error
-}
-
-type snapshotMsg struct{ reloadMsg }
-
 type sharedSyncMsg struct {
 	refreshStatus         *analytics.ProcessingStatus
 	collection            *collectorprogress.Snapshot
@@ -73,10 +60,6 @@ type sharedSyncMsg struct {
 	status                analytics.SyncStatus
 	err                   error
 }
-
-type startDashboardLoadMsg struct{}
-
-type syncAnimationTickMsg struct{}
 
 type popupMode int
 
@@ -112,7 +95,7 @@ const (
 type interactiveModel struct {
 	refresh               tuiRefresh
 	refreshAnimating      bool
-	collectionDone        <-chan localruntime.CollectionResult
+	collectionDone        <-chan collectionResult
 	instanceID, dataEpoch string
 	publicationGeneration uint64
 	observedRevision      int64
@@ -152,27 +135,11 @@ type interactiveModel struct {
 	err                   error
 	loading               bool
 	reloadInFlight        bool
-	syncing               bool
-	showingSnapshot       bool
-	snapshotAllowed       bool
-	syncInFlight          bool
-	syncMessages          <-chan tea.Msg
-	syncProgressRows      []syncProgressRow
-	syncStatus            pipeline.SyncProgressStatus
 	syncFrame             int
-	syncSummary           pipeline.Summary
-	syncErr               error
 	lastSyncMs            int64
 	cachedWidth           int
 	baseHeight            int
 	perRowHeight          int
-}
-
-type syncProgressRow struct {
-	harness     pipeline.Harness
-	label       string
-	status      pipeline.SyncProgressStatus
-	quarantined int
 }
 
 var aggregationTabs = []tabMode{tabTokens, tabModels, tabProviders, tabHarnesses, tabSessions, tabContext, tabRepo}
@@ -187,27 +154,15 @@ const syncAnimationInterval = 120 * time.Millisecond
 
 var syncSpinnerFrames = []string{"|", "/", "-", "\\"}
 
-func initialSyncProgressRows() []syncProgressRow {
-	rows := make([]syncProgressRow, 0, len(pipeline.SupportedHarnesses))
-	for _, harness := range pipeline.SupportedHarnesses {
-		rows = append(rows, syncProgressRow{
-			harness: harness,
-			label:   syncHarnessDisplayName(harness),
-			status:  "pending",
-		})
-	}
-	return rows
-}
-
-func syncHarnessDisplayName(harness pipeline.Harness) string {
+func syncHarnessDisplayName(harness capture.Harness) string {
 	switch harness {
-	case pipeline.HarnessOpenCode:
+	case capture.HarnessOpenCode:
 		return "OpenCode"
-	case pipeline.HarnessPi:
+	case capture.HarnessPi:
 		return "Pi"
-	case pipeline.HarnessCodex:
+	case capture.HarnessCodex:
 		return "Codex"
-	case pipeline.HarnessClaudeCode:
+	case capture.HarnessClaudeCode:
 		return "Claude Code"
 	default:
 		return string(harness)
@@ -215,10 +170,28 @@ func syncHarnessDisplayName(harness pipeline.Harness) string {
 }
 
 func (m interactiveModel) Init() tea.Cmd {
-	if m.collectionDone == nil {
-		return nil
+	var commands []tea.Cmd
+	if m.options.local != nil {
+		commands = append(commands, func() tea.Msg {
+			select {
+			case <-m.ctx.Done():
+				return sessionDisconnectedMsg{}
+			case <-m.options.local.Done():
+				return sessionDisconnectedMsg{}
+			}
+		})
 	}
-	return tea.Batch(func() tea.Msg { return collectionFinishedMsg{result: <-m.collectionDone} }, refreshAnimationCmd())
+	if m.collectionDone != nil {
+		commands = append(commands, func() tea.Msg {
+			select {
+			case <-m.ctx.Done():
+				return nil
+			case result := <-m.collectionDone:
+				return collectionFinishedMsg{result: result}
+			}
+		}, refreshAnimationCmd())
+	}
+	return tea.Batch(commands...)
 }
 
 func newInteractiveModel(ctx context.Context, options tableOptions, now time.Time, hostname string) interactiveModel {
@@ -239,9 +212,6 @@ func newInteractiveModel(ctx context.Context, options tableOptions, now time.Tim
 		popupCursor:      0,
 		filterSelections: make(map[string]bool),
 		loading:          true,
-		syncing:          false,
-		snapshotAllowed:  true,
-		syncProgressRows: initialSyncProgressRows(),
 	}
 	m.statusline = newStatuslineModel(statuslineDateRangeLabel(options), string(options.bucket), string(activeSort(tabTokens, options.sort)), hostname, 0)
 	m.tableSummary = newTableSummaryModel(nil, m.activeTab, m.loading)
@@ -309,11 +279,6 @@ func (m interactiveModel) deferredReloadCmd(delay time.Duration) tea.Cmd {
 	})
 }
 
-func (m interactiveModel) snapshotCmd() tea.Cmd {
-	m.ctx, m.requestID = m.queryContext(m.queries)
-	return func() tea.Msg { return snapshotMsg{m.loadDashboard()} }
-}
-
 func (m interactiveModel) loadDashboard() reloadMsg {
 	result := m.loadServerDashboard()
 	result.requestID = m.requestID
@@ -354,7 +319,7 @@ func (m interactiveModel) transitionPublication(instanceID, dataEpoch string, re
 		m.refresh.loaded = false
 		m.refresh.displayedRevision, m.refresh.inputRevision, m.refresh.serverGeneration = 0, 0, 0
 		m.refresh.displayedToken, m.refresh.queryErr = "", nil
-		m.showingSnapshot, m.reloadInFlight = false, false
+		m.reloadInFlight = false
 		if fromStatus {
 			m.loading = true
 		}
@@ -548,10 +513,19 @@ func (m interactiveModel) tableContentWidth(rows []renderRow) int {
 
 func (m interactiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case sessionDisconnectedMsg:
+		if m.ctx.Err() != nil {
+			m.err = m.ctx.Err()
+			return m, tea.Quit
+		}
+		m.err = errSessionDisconnected
+		m.cancelSync()
+		return m, tea.Quit
 	case collectionFinishedMsg:
 		m.collectionDone = nil
 		m.refresh.collectionPending = false
 		m.refresh.result = &msg.result
+		m.refresh.startupAttemptID = msg.result.Result.AttemptID
 		m.refresh.statusKnown = false
 		return m, m.sharedSyncCmdAfter(0)
 	case refreshAnimationTickMsg:
@@ -576,7 +550,7 @@ func (m interactiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.queries.invalidate()
 				m.filterQueries.invalidate()
 				m.rows, m.coverage, m.filterValues, m.filterValueKeys = nil, nil, nil, nil
-				m.showingSnapshot, m.reloadInFlight = false, false
+				m.reloadInFlight = false
 			}
 			m.serviceReadiness = msg.readiness
 			m.loading, m.filterLoading = false, false
@@ -597,12 +571,8 @@ func (m interactiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.pendingRefresh = msg.pending
 		m = m.observeRefresh(msg)
 		if !m.reloadInFlight && (advanced || previousReadiness != "ready" || m.err != nil || m.refreshNeedsRead()) {
-			m.snapshotAllowed, m.reloadInFlight = true, true
-			if m.syncing {
-				commands = append(commands, m.snapshotCmd())
-			} else {
-				commands = append(commands, m.refreshCmd())
-			}
+			m.reloadInFlight = true
+			commands = append(commands, m.refreshCmd())
 		}
 		if m.refreshBusy() && !m.refreshAnimating {
 			m.refreshAnimating = true
@@ -610,42 +580,6 @@ func (m interactiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		commands = append(commands, m.sharedSyncCmd())
 		return m, tea.Batch(commands...)
-	case syncProgressMsg:
-		m = m.withSyncProgress(msg.event)
-		if m.syncing && m.syncInFlight && m.syncMessages != nil {
-			return m, readSyncProgressCmd(m.syncMessages)
-		}
-		return m, nil
-	case syncAnimationTickMsg:
-		m.syncFrame++
-		if m.syncing {
-			return m, syncAnimationCmd()
-		}
-		return m, nil
-	case syncDoneMsg:
-		if msg.err != nil {
-			m.syncSummary = msg.summary
-			m.syncErr = msg.err
-			m.syncing = false
-			m.syncInFlight = false
-			m.reloadInFlight = true
-			return m, m.reloadCmd()
-		}
-		m.syncSummary = msg.summary
-		m.syncInFlight = false
-		m.syncStatus = pipeline.SyncProgressLoading
-		return m, m.deferredDashboardLoadCmd(initialLoadingPaintDelay)
-	case startDashboardLoadMsg:
-		m.syncing = false
-		if m.showingSnapshot {
-			m.reloadInFlight = true
-			return m, m.reloadCmd()
-		}
-		m.loading = true
-		m = m.reconcileTableSummary()
-		m.reloadInFlight = true
-		m = m.measureHeights()
-		return m, m.reloadCmd()
 	case reloadMsg:
 		if msg.generation != m.publicationGeneration || !m.queries.current(msg.requestID) {
 			return m, nil
@@ -695,37 +629,6 @@ func (m interactiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m = m.resetRowPosition()
 		}
 		m = m.clampHorizontalOffset()
-		return m, tea.Batch(commands...)
-	case snapshotMsg:
-		if msg.generation != m.publicationGeneration || !m.queries.current(msg.requestID) {
-			return m, nil
-		}
-		if msg.selection != "" && msg.selection != m.selectionKey() {
-			return m, nil
-		}
-		m.reloadInFlight = false
-		if !m.syncing || !m.snapshotAllowed || msg.err != nil {
-			return m, nil
-		}
-		if msg.instanceID == "" || msg.dataEpoch == "" || msg.revision < 0 || msg.instanceID == m.instanceID && msg.dataEpoch == m.dataEpoch && msg.revision < m.observedRevision {
-			return m, nil
-		}
-		wasShowing := m.showingSnapshot
-		var commands []tea.Cmd
-		m, commands = m.transitionPublication(msg.instanceID, msg.dataEpoch, msg.revision, false)
-		m.showingSnapshot = true
-		m.rows = msg.rows
-		m.coverage = nil
-		m.sessionCounts = msg.sessionCounts
-		m.lastSyncMs, m.timezone = msg.lastSyncMs, msg.timezone
-		m.statusline = m.statusline.withValue(statuslineHostname, normalizeHostname(msg.hostname, nil))
-		m = m.reconcileStatusline()
-		m = m.reconcileTableSummary()
-		if wasShowing {
-			m = m.ensureCursorVisible()
-		} else {
-			m = m.resetRowPosition()
-		}
 		return m, tea.Batch(commands...)
 	case filterValuesMsg:
 		if msg.generation != m.publicationGeneration || !m.filterQueries.current(msg.requestID) {
@@ -796,13 +699,6 @@ func (m interactiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.Type == tea.KeyCtrlC {
 			m.cancelSync()
 			return m, tea.Quit
-		}
-		if m.syncing && !m.snapshotAllowed && msg.String() != "u" && msg.String() != "r" {
-			if msg.String() == "q" {
-				m.cancelSync()
-				return m, tea.Quit
-			}
-			return m, nil
 		}
 		if m.popup != popupNone {
 			return m.handlePopupKey(msg)
@@ -934,43 +830,6 @@ func (m interactiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, poll
 	}
 	return m, nil
-}
-
-func (m interactiveModel) withSyncProgress(event pipeline.SyncProgressEvent) interactiveModel {
-	if event.Harness == "" {
-		m.syncStatus = event.Status
-		return m
-	}
-	for i, row := range m.syncProgressRows {
-		if row.harness == event.Harness {
-			m.syncProgressRows[i].status = event.Status
-			m.syncProgressRows[i].quarantined = event.Quarantined
-			return m
-		}
-	}
-	return m
-}
-
-func (m interactiveModel) deferredDashboardLoadCmd(delay time.Duration) tea.Cmd {
-	return tea.Tick(delay, func(time.Time) tea.Msg {
-		return startDashboardLoadMsg{}
-	})
-}
-
-func syncAnimationCmd() tea.Cmd {
-	return tea.Tick(syncAnimationInterval, func(time.Time) tea.Msg {
-		return syncAnimationTickMsg{}
-	})
-}
-
-func readSyncProgressCmd(messages <-chan tea.Msg) tea.Cmd {
-	return func() tea.Msg {
-		msg, ok := <-messages
-		if !ok {
-			return nil
-		}
-		return msg
-	}
 }
 
 func indexOfPeriod(value period) int {
@@ -1434,9 +1293,6 @@ func filterDimensionLabel(dimension filterDimension) string {
 }
 
 func (m interactiveModel) View() string {
-	if m.syncing && !m.showingSnapshot {
-		return m.renderSyncProgress()
-	}
 	view := m.renderDesk()
 	if m.popup != popupNone {
 		view = m.renderDeskDrawer(view)
@@ -1464,81 +1320,11 @@ func renderFooterLine(left string, right string, width int) string {
 	return footerStyle.Render(line)
 }
 
-func (m interactiveModel) renderSyncProgress() string {
-	width := max(1, m.width)
-	height := max(1, m.height)
-	title := titleStyle.Render("Syncing data")
-	subtitle := hintStyle.Render("Refreshing all supported harnesses")
-	lines := []string{title, subtitle}
-	rawRows := make([]string, 0, len(m.syncProgressRows)+2)
-	for _, row := range m.syncProgressRows {
-		rawRows = append(rawRows, fmt.Sprintf("%s %-12s  %s", m.syncProgressStatusIcon(row.status), row.label, row.status))
-	}
-	if m.syncStatus != "" {
-		rawRows = append(rawRows, "", fmt.Sprintf("%s %s", m.syncProgressStatusIcon(m.syncStatus), m.syncStatus))
-	}
-	lines = append(lines, "", m.syncWorkLabel())
-	lines = append(lines, rawRows...)
-	return renderSyncProgressOnAppSurface(lines, width, height)
-}
-
-func (m interactiveModel) syncProgressStatusIcon(status pipeline.SyncProgressStatus) string {
-	switch status {
-	case "", "pending":
-		return syncSkipStyle.Render(padSyncProgressIcon(syncPendingDots(m.syncFrame)))
-	case pipeline.SyncProgressDiscovering, pipeline.SyncProgressSyncing, pipeline.SyncProgressLoading:
-		return syncBusyStyle.Render(padSyncProgressIcon(syncSpinnerFrame(m.syncFrame)))
-	case pipeline.SyncProgressSynced:
-		return syncOKStyle.Render(padSyncProgressIcon("✓"))
-	case pipeline.SyncProgressSkipped:
-		return syncSkipStyle.Render(padSyncProgressIcon("-"))
-	case pipeline.SyncProgressFailed:
-		return syncFailStyle.Render(padSyncProgressIcon("✗"))
-	default:
-		return syncSkipStyle.Render(padSyncProgressIcon("?"))
-	}
-}
-
-func syncPendingDots(frame int) string {
-	count := frame%3 + 1
-	return strings.Repeat(".", count) + strings.Repeat(" ", 3-count)
-}
-
 func syncSpinnerFrame(frame int) string {
 	if len(syncSpinnerFrames) == 0 {
 		return ""
 	}
 	return syncSpinnerFrames[frame%len(syncSpinnerFrames)]
-}
-
-func padSyncProgressIcon(value string) string {
-	width := 3
-	padding := width - lipgloss.Width(value)
-	if padding <= 0 {
-		return value
-	}
-	return value + strings.Repeat(" ", padding)
-}
-
-func renderSyncProgressOnAppSurface(lines []string, width int, height int) string {
-	contentWidth := 0
-	for _, line := range lines {
-		contentWidth = max(contentWidth, lipgloss.Width(line))
-	}
-	leftPadding := max(0, (width-contentWidth)/2)
-	topPadding := max(0, (height-len(lines))/2)
-	rendered := make([]string, 0, height)
-	for row := 0; row < height; row++ {
-		contentIndex := row - topPadding
-		if contentIndex < 0 || contentIndex >= len(lines) {
-			rendered = append(rendered, strings.Repeat(" ", width))
-			continue
-		}
-		line := lines[contentIndex]
-		rightPadding := max(0, width-leftPadding-lipgloss.Width(line))
-		rendered = append(rendered, strings.Repeat(" ", leftPadding)+line+strings.Repeat(" ", rightPadding))
-	}
-	return renderOnAppSurface(strings.Join(rendered, "\n"), width, height)
 }
 
 func activeFiltersLabel(f filters) string {

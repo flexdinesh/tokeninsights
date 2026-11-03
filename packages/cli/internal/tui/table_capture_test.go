@@ -6,15 +6,14 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/collectorprogress"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/localruntime"
+	"github.com/flexdinesh/tokeninsights/packages/core/collectorprogress"
 	"github.com/muesli/termenv"
 )
 
 func detailedRefreshModel(t *testing.T) interactiveModel {
 	t.Helper()
 	m := savedRefreshModel(t)
-	m.options.local = &localruntime.Runtime{}
+	m.options.local = &fixtureSession{}
 	m.options.syncOnStart = true
 	m.refresh.attempt = &collectorprogress.Attempt{AttemptID: "current", Stage: "capturing", Harnesses: map[string]string{
 		"opencode": "complete", "pi": "complete", "codex": "running", "claude-code": "waiting",

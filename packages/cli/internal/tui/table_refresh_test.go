@@ -10,12 +10,11 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/analytics"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/collector"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/collectorprogress"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/dataengine"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/flagvalue"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/localruntime"
+	"github.com/flexdinesh/tokeninsights/packages/core/analytics"
+	"github.com/flexdinesh/tokeninsights/packages/core/collectorprogress"
+	"github.com/flexdinesh/tokeninsights/packages/core/dataengine"
+	"github.com/flexdinesh/tokeninsights/packages/core/flagvalue"
+	"github.com/flexdinesh/tokeninsights/packages/core/localprotocol"
 	"github.com/muesli/termenv"
 )
 
@@ -103,7 +102,7 @@ func TestRefreshSummaryUsesSuccessOnlyAfterDisplayedPublication(t *testing.T) {
 			m = updated.(interactiveModel)
 			assertColor("Usage refreshed", themeSuccess)
 			m.refresh.startupAttemptID = m.refresh.attempt.AttemptID
-			m.refresh.result = &localruntime.CollectionResult{Result: collector.Result{}}
+			m.refresh.result = &collectionResult{Result: localprotocol.CollectionResult{}}
 			assertColor("no new usage", themeMuted)
 			m.refresh.queryErr = errors.New("query failure")
 			assertColor("Display update failed", themeDanger)

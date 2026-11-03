@@ -1,10 +1,12 @@
+import { DashboardClientProvider } from '@tokeninsights/dashboard'
+import { httpDashboardClient } from './http-client'
 import type { ReactNode } from 'react'
 import { cleanup, renderHook, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { afterEach, expect, it, vi } from 'vitest'
-import { useAnalytics, useFacets } from './api'
+import { useAnalytics, useFacets } from '../../dashboard/src/api'
 import { mockBootstrap, mockDashboard, mockFacets, mockSyncStatus } from './mocks/data'
-import { initialQuery } from './query'
+import { initialQuery } from '../../dashboard/src/query'
 
 afterEach(() => {
   cleanup()
@@ -42,7 +44,11 @@ for (const kind of ['usage', 'facets']) {
         vi.fn<typeof fetch>(() => Promise.resolve(new Response(JSON.stringify(response)))),
       )
       function Wrapper({ children }: { children: ReactNode }) {
-        return <QueryClientProvider client={client}>{children}</QueryClientProvider>
+        return (
+          <DashboardClientProvider client={httpDashboardClient}>
+            <QueryClientProvider client={client}>{children}</QueryClientProvider>
+          </DashboardClientProvider>
+        )
       }
       const query = initialQuery(mockBootstrap.defaults)
       const identity = `${mockBootstrap.instanceId}/${mockBootstrap.dataEpoch}/${mockBootstrap.datasetId}/1`

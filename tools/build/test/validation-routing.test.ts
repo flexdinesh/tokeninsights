@@ -73,7 +73,7 @@ void test('container leaves never invoke public wrappers', () => {
     'deployment',
   ]) {
     const output = dryRun('check:internal:' + group)
-    assert.doesNotMatch(output, /cmd\/validate|mise run (?:check:pr|test:|lint)/)
+    assert.doesNotMatch(output, /go run \.\/cmd\/validate|mise run (?:check:pr|test:|lint)/)
   }
   assert.match(dryRun('check:internal:web'), /exec vitest run/)
   assert.doesNotMatch(dryRun('check:internal:web'), /tsc/)

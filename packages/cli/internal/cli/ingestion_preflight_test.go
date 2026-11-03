@@ -10,10 +10,10 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/config"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/evidence"
-	api "github.com/flexdinesh/tokeninsights/packages/cli/internal/server/api"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/serverfeatures"
+	"github.com/flexdinesh/tokeninsights/packages/core/config"
+	"github.com/flexdinesh/tokeninsights/packages/core/evidence"
+	api "github.com/flexdinesh/tokeninsights/packages/core/server/api"
+	"github.com/flexdinesh/tokeninsights/packages/core/serverfeatures"
 )
 
 func TestIngestionPreflightRejectsBeforeCapture(t *testing.T) {

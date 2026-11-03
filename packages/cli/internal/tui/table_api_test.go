@@ -7,16 +7,19 @@ import (
 	"testing"
 	"time"
 
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/flagvalue"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/queryclient"
-	api "github.com/flexdinesh/tokeninsights/packages/cli/internal/server/api"
+	"github.com/flexdinesh/tokeninsights/packages/core/analytics"
+	"github.com/flexdinesh/tokeninsights/packages/core/application"
+	"github.com/flexdinesh/tokeninsights/packages/core/flagvalue"
+	"github.com/flexdinesh/tokeninsights/packages/core/queryclient"
+	"github.com/flexdinesh/tokeninsights/packages/core/serverfeatures"
 )
 
 func TestReloadCancelsObsoleteSameSelectionAndRejectsLateError(t *testing.T) {
 	reader := staticReader{
-		instance: api.InstanceResponseV2{DatasetId: "default", ServerKind: "personal", Capabilities: []string{"usage", "facets"}, Permissions: []api.InstanceResponseV2Permissions{"read"}, ApiVersion: api.V2, InstanceId: "instance", DataEpoch: "epoch", DataReadiness: api.InstanceResponseV2DataReadinessReady, Hostname: "producer", Timezone: "UTC +00:00"},
-		usage:    api.UsageResponseV2{DatasetId: "default", InstanceId: "instance", DataEpoch: "epoch", Revision: 1, Page: 1, PageSize: 200, RowCount: 1, Rows: []api.UsageRow{{Key: "one", Name: "2026-01-01", Total: 42}}, Summary: api.UsageSummary{Total: 42, Sessions: 1, SyncedSessions: 1}},
+		instance: application.Instance{DatasetID: "default", Kind: "personal", Capabilities: serverfeatures.Capabilities{"usage", "facets"}, Permissions: serverfeatures.Permissions{"read"}, InstanceID: "instance", DatabaseID: "epoch", Readiness: "ready", Hostname: "producer", Timezone: "UTC +00:00"},
+		usage:    application.Usage{InstanceID: "instance", Dashboard: analytics.Dashboard{DatasetID: "default", DatabaseID: "epoch", Revision: 1, Page: 1, PageSize: 200, RowCount: 1, Rows: []analytics.Row{{Key: "one", Name: "2026-01-01", Total: 42}}, Summary: analytics.ViewerSummaryRow{TotalTokens: 42, SessionCount: 1, SyncedSessions: 1}}},
 	}
+
 	m := newInteractiveModel(t.Context(), tableOptions{query: queryclient.NewDirect(reader), dbPath: "/unusable/local/path", period: periodAllTime, bucket: bucketDay}, time.Now(), "unknown")
 	defer m.cancelSync()
 	oldRequest := m.reloadCmd()

@@ -61,7 +61,11 @@ export function toolchainMismatches(files: ToolchainFiles): string[] {
     compare('Dockerfile node image', node, /^FROM node:([^-@\s]+)/m.exec(files.dockerfile)?.[1]),
     compare('Dockerfile pnpm install', pnpm, /\bpnpm@([^\s]+)/.exec(files.dockerfile)?.[1]),
     compare('package.json packageManager', pnpm, packageManager(files.packageJson)),
-    compare('packages/cli/go.mod toolchain', go, /^toolchain go(\S+)$/m.exec(files.goMod)?.[1]),
+    compare(
+      'go.mod toolchain',
+      go,
+      /^toolchain go(\S+)$/m.exec(files.goMod)?.[1] ?? /^go (\S+)$/m.exec(files.goMod)?.[1],
+    ),
   ].filter((mismatch) => mismatch !== undefined)
 }
 
@@ -70,7 +74,7 @@ export async function readToolchainFiles(): Promise<ToolchainFiles> {
     readFile(workspacePath('mise.toml'), 'utf8'),
     readFile(workspacePath('Dockerfile'), 'utf8'),
     readFile(workspacePath('package.json'), 'utf8'),
-    readFile(workspacePath('packages', 'cli', 'go.mod'), 'utf8'),
+    readFile(workspacePath('go.mod'), 'utf8'),
   ])
   return { miseToml, dockerfile, packageJson, goMod }
 }

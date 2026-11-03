@@ -1,12 +1,14 @@
+import { DashboardClientProvider } from '@tokeninsights/dashboard'
+import { httpDashboardClient } from './http-client'
 import { afterEach, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { RouterProvider, createMemoryHistory } from '@tanstack/react-router'
-import { createAppRouter } from './router'
+import { createAppRouter } from '../../dashboard/src/router'
 import { mockBootstrap, mockDashboard, mockFacets, mockSyncStatus } from './mocks/data'
-import { validPassword } from './account'
-import type { APIKeyInfo } from './contracts'
+import { validPassword } from '../../dashboard/src/account'
+import type { APIKeyInfo } from '@tokeninsights/contracts'
 
 afterEach(() => {
   cleanup()
@@ -110,9 +112,11 @@ function fixture({
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   const router = createAppRouter(createMemoryHistory({ initialEntries: [path] }))
   render(
-    <QueryClientProvider client={client}>
-      <RouterProvider router={router} />
-    </QueryClientProvider>,
+    <DashboardClientProvider client={httpDashboardClient}>
+      <QueryClientProvider client={client}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>
+    </DashboardClientProvider>,
   )
   return { client, fetcher }
 }

@@ -1,5 +1,7 @@
 # Desktop thin viewer
 
+Superseded for current distribution/desktop behavior by [ADR 0024](0024-shared-backend-and-installable-products.md). Historical decisions remain below.
+
 Status: Accepted. Date: 3 November 2026. User approved the plan.
 
 ## Context

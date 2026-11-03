@@ -1,1 +1,1 @@
-packages/cli/internal/server/static/assets/*.js -whitespace
+packages/core/server/static/assets/*.js -whitespace

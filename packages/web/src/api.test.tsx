@@ -1,13 +1,15 @@
+import { DashboardClientProvider } from '@tokeninsights/dashboard'
+import { httpDashboardClient } from './http-client'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { RouterProvider, createMemoryHistory } from '@tanstack/react-router'
-import { useAnalytics } from './api'
-import { createAppRouter } from './router'
-import { initialQuery } from './query'
-import type { QueryState } from './query'
-import type { Bootstrap, Dashboard, SyncStatus } from './contracts'
+import { useAnalytics } from '../../dashboard/src/api'
+import { createAppRouter } from '../../dashboard/src/router'
+import { initialQuery } from '../../dashboard/src/query'
+import type { QueryState } from '../../dashboard/src/query'
+import type { Bootstrap, Dashboard, SyncStatus } from '@tokeninsights/contracts'
 
 const testIdentity = {
   instanceId: 'test-instance',
@@ -110,9 +112,11 @@ it('uses server defaults on first load', async () => {
   )
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   render(
-    <QueryClientProvider client={client}>
-      <RouterProvider router={testRouter} />
-    </QueryClientProvider>,
+    <DashboardClientProvider client={httpDashboardClient}>
+      <QueryClientProvider client={client}>
+        <RouterProvider router={testRouter} />
+      </QueryClientProvider>
+    </DashboardClientProvider>,
   )
 
   expect(await screen.findByRole('button', { name: 'Date range: Weekly' })).toBeVisible()
@@ -178,9 +182,11 @@ it('shows saved ingested usage without a collector', async () => {
   })
   vi.stubGlobal('fetch', fetcher)
   render(
-    <QueryClientProvider client={client}>
-      <RouterProvider router={testRouter} />
-    </QueryClientProvider>,
+    <DashboardClientProvider client={httpDashboardClient}>
+      <QueryClientProvider client={client}>
+        <RouterProvider router={testRouter} />
+      </QueryClientProvider>
+    </DashboardClientProvider>,
   )
 
   await waitFor(() =>
@@ -243,9 +249,11 @@ it('removes the final route filter after direct load', async () => {
     }),
   )
   render(
-    <QueryClientProvider client={client}>
-      <RouterProvider router={directRouter} />
-    </QueryClientProvider>,
+    <DashboardClientProvider client={httpDashboardClient}>
+      <QueryClientProvider client={client}>
+        <RouterProvider router={directRouter} />
+      </QueryClientProvider>
+    </DashboardClientProvider>,
   )
 
   await userEvent.click(await screen.findByRole('button', { name: 'Remove model model-a' }))
@@ -314,9 +322,11 @@ it('refreshes producer labels when ingestion commits a new revision', async () =
     }),
   )
   render(
-    <QueryClientProvider client={client}>
-      <RouterProvider router={testRouter} />
-    </QueryClientProvider>,
+    <DashboardClientProvider client={httpDashboardClient}>
+      <QueryClientProvider client={client}>
+        <RouterProvider router={testRouter} />
+      </QueryClientProvider>
+    </DashboardClientProvider>,
   )
   const header = await screen.findByRole('banner')
   expect(within(header).getByText('unknown')).toBeVisible()
@@ -332,9 +342,11 @@ it('offers retry when the page server is unavailable', async () => {
   vi.stubGlobal('fetch', fetcher)
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   render(
-    <QueryClientProvider client={client}>
-      <RouterProvider router={testRouter} />
-    </QueryClientProvider>,
+    <DashboardClientProvider client={httpDashboardClient}>
+      <QueryClientProvider client={client}>
+        <RouterProvider router={testRouter} />
+      </QueryClientProvider>
+    </DashboardClientProvider>,
   )
   expect(
     await screen.findByRole('heading', { name: `Couldn’t connect to ${window.location.host}` }),
@@ -396,15 +408,19 @@ it('cancels obsolete filter requests and only renders the current result', async
     sessions: [],
   })
   const view = render(
-    <QueryClientProvider client={client}>
-      <AnalyticsExample query={base} />
-    </QueryClientProvider>,
+    <DashboardClientProvider client={httpDashboardClient}>
+      <QueryClientProvider client={client}>
+        <AnalyticsExample query={base} />
+      </QueryClientProvider>
+    </DashboardClientProvider>,
   )
   await waitFor(() => expect(fetcher).toHaveBeenCalledTimes(1))
   view.rerender(
-    <QueryClientProvider client={client}>
-      <AnalyticsExample query={{ ...base, models: ['new'] }} />
-    </QueryClientProvider>,
+    <DashboardClientProvider client={httpDashboardClient}>
+      <QueryClientProvider client={client}>
+        <AnalyticsExample query={{ ...base, models: ['new'] }} />
+      </QueryClientProvider>
+    </DashboardClientProvider>,
   )
   await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('123'))
   expect(aborted).toBe(true)
@@ -439,31 +455,41 @@ it('retains current results for sorting and valid summaries across views', async
     sessions: [],
   })
   const view = render(
-    <QueryClientProvider client={client}>
-      <AnalyticsExample query={query} />
-    </QueryClientProvider>,
+    <DashboardClientProvider client={httpDashboardClient}>
+      <QueryClientProvider client={client}>
+        <AnalyticsExample query={query} />
+      </QueryClientProvider>
+    </DashboardClientProvider>,
   )
   expect(await screen.findByText('111')).toBeVisible()
 
   view.rerender(
-    <QueryClientProvider client={client}>
-      <AnalyticsExample query={{ ...query, sort: 'total' }} />
-    </QueryClientProvider>,
+    <DashboardClientProvider client={httpDashboardClient}>
+      <QueryClientProvider client={client}>
+        <AnalyticsExample query={{ ...query, sort: 'total' }} />
+      </QueryClientProvider>
+    </DashboardClientProvider>,
   )
   expect(screen.getByRole('status')).toHaveAttribute('data-tab', 'tokens')
   expect(screen.getByRole('status')).toHaveAttribute('data-placeholder', 'true')
 
   view.rerender(
-    <QueryClientProvider client={client}>
-      <AnalyticsExample query={{ ...query, tab: 'models', sort: 'total' }} />
-    </QueryClientProvider>,
+    <DashboardClientProvider client={httpDashboardClient}>
+      <QueryClientProvider client={client}>
+        <AnalyticsExample query={{ ...query, tab: 'models', sort: 'total' }} />
+      </QueryClientProvider>
+    </DashboardClientProvider>,
   )
   expect(screen.getByRole('status')).toHaveTextContent('111')
 
   view.rerender(
-    <QueryClientProvider client={client}>
-      <AnalyticsExample query={{ ...query, tab: 'models', sort: 'total', models: ['different'] }} />
-    </QueryClientProvider>,
+    <DashboardClientProvider client={httpDashboardClient}>
+      <QueryClientProvider client={client}>
+        <AnalyticsExample
+          query={{ ...query, tab: 'models', sort: 'total', models: ['different'] }}
+        />
+      </QueryClientProvider>
+    </DashboardClientProvider>,
   )
   expect(screen.getByRole('status')).toHaveTextContent('Loading')
   client.clear()

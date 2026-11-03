@@ -6,17 +6,15 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/ansi"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/analytics"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/collectorprogress"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/localruntime"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/pipeline"
+	"github.com/flexdinesh/tokeninsights/packages/core/analytics"
+	"github.com/flexdinesh/tokeninsights/packages/core/collectorprogress"
 )
 
 // Collection, processing, and the displayed publication are separate contracts.
 // Neither an accepted attempt nor a drained queue alone means the UI is current.
 type tuiRefresh struct {
 	requested, collectionPending bool
-	result                       *localruntime.CollectionResult
+	result                       *collectionResult
 	startupAttemptID             string
 	attempt                      *collectorprogress.Attempt
 	capture                      map[string]collectorprogress.Capture
@@ -31,18 +29,19 @@ type tuiRefresh struct {
 	queryErr                     error
 }
 
-type collectionFinishedMsg struct{ result localruntime.CollectionResult }
+type collectionFinishedMsg struct{ result collectionResult }
 type refreshAnimationTickMsg struct{}
 
 func (m interactiveModel) startCollection() interactiveModel {
 	m.refresh.requested, m.refresh.collectionPending = true, true
 	m.refreshAnimating = true
-	m.collectionDone = m.options.local.StartCollection(m.ctx, pipeline.SyncOptions{
-		Harnesses: pipeline.SupportedHarnesses, Now: m.now, FullRefresh: m.options.fullRefresh, SourceDir: m.options.sourceDir,
-	}, runViewCollector)
-	if attempt := currentCollection(m.options.local.Progress.Snapshot()); attempt != nil {
-		m.refresh.startupAttemptID = attempt.AttemptID
-	}
+	done := make(chan collectionResult, 1)
+	m.collectionDone = done
+	go func() {
+		result, err := m.options.local.Collect(m.ctx, m.options.fullRefresh, m.options.sourceDir)
+		done <- collectionResult{Result: result, Err: err}
+		close(done)
+	}()
 	return m
 }
 
@@ -120,13 +119,16 @@ func (m interactiveModel) processingFailed() bool {
 }
 
 func (m interactiveModel) collectionFailed() bool {
+	if m.refresh.result != nil && m.refresh.result.Err != nil {
+		return true
+	}
 	if attempt := m.refresh.attempt; attempt != nil {
-		if attempt.AttemptID == m.refresh.startupAttemptID && m.refresh.result != nil && m.refresh.result.Result.Collection.Quarantined > 0 {
+		if attempt.AttemptID == m.refresh.startupAttemptID && m.refresh.result != nil && (m.refresh.result.Result.Quarantined > 0 || m.refresh.result.Result.Failed > 0 || m.refresh.result.Result.ErrorCode != "") {
 			return true
 		}
 		return attempt.Stage == "failed" || attempt.Stage == "interrupted"
 	}
-	return m.refresh.result != nil && (m.refresh.result.Err != nil || m.refresh.result.Result.Collection.Quarantined > 0)
+	return m.refresh.result != nil && (m.refresh.result.Err != nil || m.refresh.result.Result.ErrorCode != "" || m.refresh.result.Result.Failed > 0 || m.refresh.result.Result.Quarantined > 0)
 }
 
 func (m interactiveModel) refreshBusy() bool {
@@ -171,7 +173,7 @@ func (m interactiveModel) refreshLine() string {
 		}
 	case m.collectionFailed():
 		text, compact, failed = "Refresh incomplete · showing saved usage · restart tokeninsights tui", "Refresh incomplete · saved usage", true
-		if m.refresh.result != nil && m.refresh.result.Result.Collection.Quarantined > 0 {
+		if m.refresh.result != nil && m.refresh.result.Result.Quarantined > 0 {
 			text = "Refresh incomplete · restart: tokeninsights tui --full-refresh"
 		}
 	case m.pendingRefresh || m.sharedSync.Running:
@@ -185,7 +187,7 @@ func (m interactiveModel) refreshLine() string {
 	case m.refresh.statusKnown && m.refresh.loaded && m.refresh.token != "":
 		text, compact = "Usage refreshed", "Usage refreshed"
 		refreshed = true
-		if m.refresh.result != nil && m.refresh.attempt != nil && m.refresh.attempt.AttemptID == m.refresh.startupAttemptID && m.refresh.result.Result.Accepted == 0 && m.refresh.result.Result.Collection.RawFacts == 0 {
+		if m.refresh.result != nil && m.refresh.attempt != nil && m.refresh.attempt.AttemptID == m.refresh.startupAttemptID && m.refresh.result.Result.Accepted == 0 && m.refresh.result.Result.RawFacts == 0 {
 			text, compact = "Usage checked · no new usage", "No new usage"
 			refreshed = false
 		}

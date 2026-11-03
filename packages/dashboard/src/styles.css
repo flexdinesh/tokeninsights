@@ -1,0 +1,66 @@
+@import 'tailwindcss';
+@source './';
+@import 'tw-animate-css';
+@import './ui/tokens/palette.css';
+@import './ui/tokens/semantic.css';
+@import './ui/tokens/theme.css';
+@import './ui/utilities.css';
+
+/*
+ * Document base only. Appearance and interaction states belong to src/ui
+ * primitives; features compose them with Tailwind layout utilities.
+ */
+@font-face {
+  font-family: 'DM Sans';
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url('/fonts/dm-sans-latin-variable.woff2') format('woff2');
+}
+
+@layer base {
+  html {
+    scrollbar-color: var(--line-strong) var(--surface);
+    scrollbar-width: thin;
+  }
+  body {
+    background: var(--surface);
+    color: var(--ink);
+    font-family: var(--font-sans);
+    font-size: var(--text-body);
+    line-height: var(--leading-normal);
+    -webkit-font-smoothing: antialiased;
+  }
+  strong {
+    font-weight: var(--font-weight-semibold);
+  }
+  button:not(:disabled),
+  [role='button']:not(:disabled) {
+    cursor: pointer;
+  }
+  :focus-visible {
+    outline: var(--focus-width) solid var(--focus);
+    outline-offset: var(--focus-offset);
+  }
+  ::selection {
+    background: var(--action);
+    color: var(--action-ink);
+  }
+  input,
+  textarea {
+    caret-color: var(--action);
+  }
+  a {
+    text-underline-offset: var(--underline-offset);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+    scroll-behavior: auto !important;
+  }
+}

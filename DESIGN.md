@@ -233,7 +233,7 @@ repeated inspection. Preserve the TokenInsights text wordmark, offline assets, e
 states, and existing analytical behavior.
 
 This browser contract derives from the token layers and primitives in
-[`packages/web/src/ui/`](packages/web/src/ui/). Frontmatter colors record each
+[`packages/dashboard/src/ui/`](packages/dashboard/src/ui/). Frontmatter colors record each
 semantic role's light value and its `dark-` counterpart, resolved through the
 palette; the design guard test fails when they drift. Architecture remains in
 [docs/design.md](docs/design.md); terminal styling in

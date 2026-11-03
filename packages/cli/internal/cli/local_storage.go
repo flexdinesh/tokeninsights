@@ -10,9 +10,9 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/x/term"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/config"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/localstorage"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/storagecompat"
+	"github.com/flexdinesh/tokeninsights/packages/core/config"
+	"github.com/flexdinesh/tokeninsights/packages/core/localstorage"
+	"github.com/flexdinesh/tokeninsights/packages/core/storagecompat"
 )
 
 const storageUnchanged = "TokenInsights did not change any files."

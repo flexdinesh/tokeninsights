@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/evidence"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/localruntime"
+	"github.com/flexdinesh/tokeninsights/packages/core/evidence"
+	"github.com/flexdinesh/tokeninsights/packages/core/localruntime"
 )
 
 func isolateViewSources(t *testing.T, root string) {

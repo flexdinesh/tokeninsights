@@ -6,8 +6,8 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/collectorprogress"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/pipeline"
+	"github.com/flexdinesh/tokeninsights/packages/core/capture"
+	"github.com/flexdinesh/tokeninsights/packages/core/collectorprogress"
 )
 
 const (
@@ -33,8 +33,8 @@ func (m interactiveModel) captureRows() []string {
 	if paired {
 		cellWidth = (width - tuiColGap) / 2
 	}
-	rows := make([]string, 0, len(pipeline.SupportedHarnesses))
-	for _, harness := range pipeline.SupportedHarnesses {
+	rows := make([]string, 0, len(capture.SupportedHarnesses))
+	for _, harness := range capture.SupportedHarnesses {
 		rows = append(rows, m.captureRow(harness, cellWidth, paired))
 	}
 	if !paired {
@@ -50,12 +50,12 @@ func padCaptureCell(text string, width int) string {
 	return text + strings.Repeat(" ", max(0, width-ansi.StringWidth(text)))
 }
 
-func (m interactiveModel) captureRow(harness pipeline.Harness, width int, compact bool) string {
+func (m interactiveModel) captureRow(harness capture.Harness, width int, compact bool) string {
 	label := syncHarnessDisplayName(harness)
 	labelWidth, stateWidth := captureHarnessWidth, capturePhaseWidth
 	if compact {
 		labelWidth, stateWidth = captureCompactHarnessWidth, captureCompactPhaseWidth
-		if harness == pipeline.HarnessClaudeCode {
+		if harness == capture.HarnessClaudeCode {
 			label = "Claude"
 		}
 	}
@@ -156,7 +156,7 @@ func (m interactiveModel) captureState(harness string) (string, lipgloss.Style) 
 		case "skipped":
 			return "Skipped", hintStyle
 		default:
-			if attempt.AttemptID == m.refresh.startupAttemptID && (attempt.Stage == "waiting" || attempt.Stage == "capturing") {
+			if (attempt.AttemptID == m.refresh.startupAttemptID || m.refresh.collectionPending) && (attempt.Stage == "waiting" || attempt.Stage == "capturing") {
 				return "Waiting", hintStyle
 			}
 			return "Not requested", hintStyle

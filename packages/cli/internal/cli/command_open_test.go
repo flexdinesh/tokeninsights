@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/charmbracelet/x/ansi"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/browser"
+	"github.com/flexdinesh/tokeninsights/packages/core/browser"
 )
 
 func TestWebReadyRemoteOutputPrintsAppLinkAndTunnel(t *testing.T) {
@@ -58,6 +58,7 @@ func TestWebReadyRemoteAppLinkIsHyperlinkOnStyledTerminals(t *testing.T) {
 }
 
 func TestWebOpenModeUsesFlagThenConfigThenAuto(t *testing.T) {
+	useSharedBackendForTest(t)
 	for _, test := range []struct {
 		name  string
 		saved string
@@ -99,7 +100,7 @@ func TestWebOpenModeUsesFlagThenConfigThenAuto(t *testing.T) {
 			if got != test.want {
 				t.Fatalf("open mode = %q, want %q", got, test.want)
 			}
-			if !strings.Contains(stderr.String(), "Opened in the TokenInsights app.") {
+			if !strings.Contains(stderr.String(), "Opened in TokenInsights MyGo.") {
 				t.Fatalf("app result not reported: %q", stderr.String())
 			}
 		})
@@ -113,14 +114,14 @@ func TestBrowseOpenModesAndRemoteLink(t *testing.T) {
 	var got browser.Mode
 	openDashboard = func(_ context.Context, mode browser.Mode, _ string) (browser.Result, error) {
 		got = mode
-		return browser.Result{}, browser.ErrAppUnavailable
+		return browser.Result{}, errors.New("browser launcher failed")
 	}
 	remoteSession = func() bool { return false }
 	var stdout, stderr bytes.Buffer
 	if err := Run(t.Context(), []string{"--config-file", path, "browse"}, &stdout, &stderr, time.Now()); err != nil {
 		t.Fatal(err)
 	}
-	if got != browser.ModeApp || stdout.String() != "Dashboard: https://usage.example.com\n" || !strings.Contains(stderr.String(), browser.ErrAppUnavailable.Error()) {
+	if got != browser.ModeBrowser || stdout.String() != "Dashboard: https://usage.example.com\n" || !strings.Contains(stderr.String(), "Could not open browser") {
 		t.Fatalf("mode %q stdout %q stderr %q", got, stdout.String(), stderr.String())
 	}
 

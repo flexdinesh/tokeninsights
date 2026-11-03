@@ -31,8 +31,8 @@ auto = false
 run = "pnpm install --frozen-lockfile"
 
 [vars]
-format_paths = "package.json compose.yaml pnpm-workspace.yaml orval.config.ts .agents/plugins .claude-plugin deploy docs/openapi.yaml docs-website .github/workflows packages/cli/package.json packages/web packages/plugin-codex packages/plugin-claude packages/plugin-pi packages/plugin-opencode packages/plugin-runtime tools/build tools/validation/groups.json"
-lint_paths = "orval.config.ts docs-website packages/web packages/plugin-pi packages/plugin-opencode packages/plugin-runtime tools/build tools/validation/groups.json"
+format_paths = "package.json compose.yaml pnpm-workspace.yaml orval.config.ts .agents/plugins .claude-plugin deploy docs/openapi.yaml docs-website .github/workflows packages/cli/package.json packages/backend packages/server packages/desktop-mygo/mygo.json packages/desktop-electron packages/dashboard packages/contracts packages/web packages/plugin-codex packages/plugin-claude packages/plugin-pi packages/plugin-opencode packages/plugin-runtime tools/build tools/validation/groups.json"
+lint_paths = "orval.config.ts docs-website packages/desktop-electron packages/dashboard packages/contracts packages/web packages/plugin-pi packages/plugin-opencode packages/plugin-runtime tools/build tools/validation/groups.json"
 
 # Setup
 
@@ -95,25 +95,19 @@ run = "go run ./cmd/validate --group static"
 
 [tasks."generate:api:go"]
 description = "Regenerate Go API server code"
-dir = "{{config_root}}/packages/cli"
-run = "go tool oapi-codegen -config internal/server/api/oapi-codegen.yaml ../../docs/openapi.yaml"
+run = "go tool oapi-codegen -config packages/core/server/api/oapi-codegen.yaml docs/openapi.yaml"
 
 [tasks."generate:api:web"]
 depends = ["build:internal:deps"]
 description = "Regenerate web API client"
 run = [
   "orval --config orval.config.ts",
-  "oxfmt packages/web/src/generated/api.ts",
+  "oxfmt packages/contracts/src/generated/api.ts",
 ]
 
 [tasks."generate:api"]
 description = "Regenerate API files"
 depends = ["generate:api:go", "generate:api:web"]
-
-[tasks."generate:homebrew"]
-depends = ["build:internal:deps"]
-description = "Generate Homebrew formula"
-run = "pnpm --filter @tokeninsights/build-tools run generate:homebrew"
 
 # Build
 
@@ -123,20 +117,19 @@ description = "Build and sync embedded web assets; skips unchanged inputs"
 run = "node tools/build/src/build-web.ts"
 
 [tasks."build:cli"]
-description = "Build tokeninsights and tokeninsights-server into packages/cli/bin"
+description = "Build CLI, local backend and hosted server"
 depends = ["build:web"]
 dir = "{{config_root}}/packages/cli"
-# Relative to dir. Includes embedded assets synced by build:web.
-sources = ["**/*", "!bin/**", "../../mise.lock"]
-outputs = ["bin/tokeninsights", "bin/tokeninsights-server"]
 run = [
   "go build -o bin/tokeninsights ./cmd/tokeninsights",
-  "go build -o bin/tokeninsights-server ./cmd/tokeninsights-server",
+  "go build -o bin/tokeninsights-backend ../backend/cmd/tokeninsights-backend",
+  "go build -o ../server/bin/tokeninsights-server ../server/cmd/tokeninsights-server",
 ]
 
 [tasks."build:desktop"]
-description = "Build and package the desktop viewer for this host into dist/"
-run = "node tools/build/src/build-desktop.ts --out dist"
+description = "Build self-contained native and Electron product archives"
+depends = ["build:web"]
+run = "node tools/build/src/build-products.ts 0.0.0 dist"
 
 [tasks."build:plugins"]
 depends = ["build:internal:deps"]
@@ -170,12 +163,6 @@ run = [
 depends = ["build:internal:deps"]
 description = "Build public documentation as static files"
 run = "pnpm --filter @tokeninsights/docs run build"
-
-[tasks."install:cli"]
-description = "Install tokeninsights binaries into Go's bin directory"
-depends = ["build:web"]
-dir = "{{config_root}}/packages/cli"
-run = "go install ./cmd/tokeninsights ./cmd/tokeninsights-server"
 
 # Test
 
@@ -278,28 +265,26 @@ run = [
   "node tools/build/src/check-schema.ts",
   "node tools/build/src/check-api.ts",
   "node tools/build/src/check-toolchain.ts",
-  "cd packages/cli && go test ./internal/architecture/...",
+  "go test ./packages/core/architecture/...",
   "oxlint {{vars.lint_paths}}",
   "pnpm --workspace-concurrency=2 --recursive --filter '@tokeninsights/plugin-*' run typecheck",
   "pnpm --workspace-concurrency=2 --recursive --filter '@tokeninsights/plugin-*' run check:build",
   "pnpm --filter @tokeninsights/build-tools run typecheck",
   "pnpm --filter @tokeninsights/web exec tsc --noEmit",
-  "cd packages/cli && go tool -modfile=golangci-lint.mod golangci-lint run ./...",
-  "cd packages/desktop && go vet ./... && go tool -modfile=../cli/golangci-lint.mod golangci-lint run ./...",
+  "pnpm --filter @tokeninsights/dashboard run check",
+  "pnpm --filter @tokeninsights/contracts run check",
+  "pnpm --filter @tokeninsights/desktop-electron exec tsc --noEmit",
+  "node tools/build/src/check-artifacts.ts",
+  "go tool -modfile=golangci-lint.mod golangci-lint run --config packages/cli/.golangci.yml ./...",
 ]
 
 [tasks."check:internal:go"]
 hide = true
-run = [
-  "cd packages/cli && node ../../tools/build/src/test-go.ts -race",
-  "cd packages/desktop && go test -race -count=1 ./...",
-]
+run = ["node tools/build/src/test-go.ts -race"]
 
 [tasks."check:internal:benchmarks"]
 hide = true
-run = [
-  "cd packages/cli && node ../../tools/build/src/test-go.ts --benchmark-smoke",
-]
+run = ["node tools/build/src/test-go.ts --benchmark-smoke"]
 
 [tasks."check:internal:distribution"]
 hide = true
@@ -312,7 +297,7 @@ run = ["pnpm --filter @tokeninsights/web run test:e2e"]
 [tasks."check:internal:deployment"]
 hide = true
 run = [
-  "cd packages/cli && go test ./internal/deployment -run ^TestContainerDeployment$ -count=1 -timeout=5m",
+  "go test ./packages/core/deployment -run ^TestContainerDeployment$ -count=1 -timeout=5m",
 ]
 
 [tasks."check:pr"]
@@ -351,7 +336,10 @@ run = [
 
 [tasks."check:internal:web"]
 hide = true
-run = "pnpm --filter @tokeninsights/web exec vitest run"
+run = [
+  "pnpm --filter @tokeninsights/web exec vitest run",
+  "pnpm --filter @tokeninsights/desktop-electron run test",
+]
 
 [tasks."check:internal:tooling"]
 hide = true
@@ -363,4 +351,4 @@ run = [
 
 [tasks."check:internal:storage"]
 hide = true
-run = "cd packages/cli && node ../../tools/build/src/test-go.ts -run ^$ -bench ^BenchmarkStorage$ -benchtime=3x -count=3 -p=1 -timeout=30m"
+run = "node tools/build/src/test-go.ts -run ^$ -bench ^BenchmarkStorage$ -benchtime=3x -count=3 -p=1 -timeout=30m"

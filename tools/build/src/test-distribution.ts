@@ -1,297 +1,186 @@
+// Exercise real host product builds and prebuilt installation, never source installs.
 import assert from 'node:assert/strict'
-import { execFileSync, spawn, spawnSync } from 'node:child_process'
-import {
-  constants,
-  cpSync,
-  existsSync,
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from 'node:fs'
+import { execFileSync, spawn } from 'node:child_process'
+import { chmod, chown, cp, mkdir, mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join, relative } from 'node:path'
-import { pathToFileURL } from 'node:url'
+import { join } from 'node:path'
+import { buildProducts } from './build-products.ts'
+import { checkArtifacts } from './check-artifacts.ts'
+import { workspacePath } from './workspace.ts'
 
-import { embeddedAssets, workspacePath } from './workspace.ts'
-
-// Real source installs through Git, with disposable publication refs, configuration,
-// module cache and databases. The repository and public remote remain untouched.
-const fixture = mkdtempSync(join(tmpdir(), 'tokeninsights-distribution-'))
-const checkout = join(fixture, 'checkout')
-const remote = join(fixture, 'remote.git')
-const modulePath = 'github.com/flexdinesh/tokeninsights/packages/cli'
-const commandPath = `${modulePath}/cmd/tokeninsights`
-// Resolve the selected compiler before isolating its module cache. Otherwise an
-// explicit GOTOOLCHAIN attempts to download itself with checksum verification off.
-const selectedGoRoot = execFileSync('go', ['env', 'GOROOT'], { encoding: 'utf8' }).trim()
-const goBinary = join(selectedGoRoot, 'bin', 'go')
-const env = { ...process.env }
-for (const name of execFileSync('git', ['rev-parse', '--local-env-vars'], { encoding: 'utf8' })
-  .trim()
-  .split('\n')) {
-  delete env[name]
-}
-for (const name of Object.keys(env)) {
-  if (name.startsWith('TOKENINSIGHTS_')) delete env[name]
-}
+const fixture = await mkdtemp(join(tmpdir(), 'tokeninsights-distribution-'))
+const out = join(fixture, 'release')
+const metadata = { version: '0.0.0', commit: '1'.repeat(40), date: '2026-11-03T00:00:00Z' }
+const env: NodeJS.ProcessEnv = { ...process.env }
+for (const name of Object.keys(env)) if (name.startsWith('TOKENINSIGHTS_')) delete env[name]
 Object.assign(env, {
-  GIT_CONFIG_GLOBAL: join(fixture, 'gitconfig'),
-  GIT_CONFIG_NOSYSTEM: '1',
-  GIT_TERMINAL_PROMPT: '0',
-  GOPROXY: 'direct',
-  GOSUMDB: 'off',
-  GOWORK: 'off',
-  GOTOOLCHAIN: 'local',
-  GOROOT: selectedGoRoot,
-  GOFLAGS: '',
-  GOMODCACHE: join(fixture, 'modules'),
-  GOBIN: join(fixture, 'bin'),
-  CGO_ENABLED: '0',
+  HOME: fixture,
   XDG_CONFIG_HOME: join(fixture, 'config'),
   XDG_DATA_HOME: join(fixture, 'data'),
-  NO_COLOR: '1',
+  XDG_CACHE_HOME: join(fixture, 'cache'),
+  TOKENINSIGHTS_PORT: '0',
+  TOKENINSIGHTS_DOWNLOAD_URL: `file://${out}`,
 })
-
-function run(command: string, args: string[], cwd = checkout): string {
-  return execFileSync(command, args, {
-    cwd,
-    env,
-    encoding: 'utf8',
-    stdio: ['ignore', 'pipe', 'pipe'],
-  }).trim()
-}
-
-function git(...args: string[]): string {
-  return run('git', args)
-}
-
-function publish(mode: 'edge' | 'release', source: string, tag?: string): string {
-  const args = [join(checkout, 'tools/build/src/install-refs.ts'), mode]
-  if (tag !== undefined) args.push(tag)
-  return execFileSync(process.execPath, args, {
-    cwd: checkout,
-    env: { ...env, GITHUB_SHA: source },
-    encoding: 'utf8',
-    stdio: ['ignore', 'pipe', 'pipe'],
-  }).trim()
-}
-
-function seedDependencyDownloads(): void {
-  const goRoot = workspacePath('packages', 'cli')
-  const cache = execFileSync('go', ['env', 'GOMODCACHE'], { cwd: goRoot, encoding: 'utf8' }).trim()
-  const modules = execFileSync('go', ['list', '-m', '-f', '{{.Path}} {{.Version}}', 'all'], {
-    cwd: goRoot,
-    encoding: 'utf8',
-    env: { ...process.env, GOWORK: 'off' },
+try {
+  checkArtifacts()
+  await buildProducts(out, metadata)
+  const { writeChecksums } = await import('./build-products.ts')
+  await writeChecksums(out)
+  for (const script of [
+    'install.sh',
+    'install-server.sh',
+    'install-mygo.sh',
+    'install-electron.sh',
+  ])
+    execFileSync('sh', [workspacePath(script)], { env, stdio: 'inherit' })
+  const installed = join(fixture, 'data/tokeninsights/products')
+  for (const [product, binary] of [
+    ['cli', 'tokeninsights'],
+    ['server', 'tokeninsights-server'],
+  ]) {
+    const output = execFileSync(join(installed, product ?? '', binary ?? ''), ['--version'], {
+      env: { ...env, PATH: '' },
+      encoding: 'utf8',
+    })
+    assert.ok(output.includes(metadata.version) && output.includes(metadata.commit), output)
+  }
+  // Direct package build stays supported when generated embed inputs exist.
+  execFileSync('go', ['build', '-o', join(fixture, 'direct-cli'), './cmd/tokeninsights'], {
+    cwd: workspacePath('packages/cli'),
+    stdio: 'inherit',
   })
-  for (const module of modules.trim().split('\n')) {
-    const [path, version] = module.trim().split(' ')
-    if (path === undefined || version === undefined || path === modulePath) continue
-    const escapedPath = path.replace(/[A-Z]/g, (letter) => `!${letter.toLowerCase()}`)
-    const escapedVersion = version.replace(/[A-Z]/g, (letter) => `!${letter.toLowerCase()}`)
-    const source = join(cache, 'cache/download', escapedPath, '@v')
-    const target = join(fixture, 'modules/cache/download', escapedPath, '@v')
-    mkdirSync(target, { recursive: true })
-    for (const suffix of ['.info', '.mod', '.zip', '.ziphash']) {
-      const name = `${escapedVersion}${suffix}`
-      if (existsSync(join(source, name))) {
-        cpSync(join(source, name), join(target, name), { mode: constants.COPYFILE_FICLONE })
-      }
+  execFileSync(join(fixture, 'direct-cli'), ['--help'], {
+    env: { ...env, PATH: '' },
+    stdio: 'inherit',
+  })
+  // The packaged Electron binary supplies its own runtime without host Node.
+  const electron =
+    process.platform === 'darwin'
+      ? join(installed, 'electron/TokenInsights Electron.app/Contents/MacOS/tokeninsights-electron')
+      : join(installed, 'electron/tokeninsights-electron')
+  assert.match(
+    execFileSync(electron, ['--version'], {
+      env: { ...env, PATH: '', ELECTRON_RUN_AS_NODE: '1' },
+      encoding: 'utf8',
+    }),
+    /^v\d+/,
+  )
+  if (process.platform === 'linux') {
+    execFileSync(
+      'xvfb-run',
+      [
+        '-a',
+        process.execPath,
+        workspacePath('tools/build/src/smoke-native.ts'),
+        join(installed, 'mygo/tokeninsights-mygo'),
+      ],
+      { env, stdio: 'inherit' },
+    )
+    // Exercise the installed Electron app and rendered dashboard, not merely
+    // its runtime version. Keep the production renderer sandbox enabled.
+    const gui = await mkdtemp(join(tmpdir(), 'tokeninsights-electron-gui-'))
+    const screenshot = join(gui, 'electron.png')
+    const ordinaryUser = 65534 // Debian's nobody account inside validation.
+    const runAsOrdinaryUser = process.getuid?.() === 0
+    try {
+      await chmod(fixture, 0o755)
+      if (runAsOrdinaryUser) await chown(gui, ordinaryUser, ordinaryUser)
+      const args = [
+        process.execPath,
+        workspacePath('tools/build/src/smoke-electron.ts'),
+        electron,
+        screenshot,
+      ]
+      execFileSync(
+        runAsOrdinaryUser ? 'runuser' : 'xvfb-run',
+        runAsOrdinaryUser
+          ? ['--preserve-environment', '-u', 'nobody', '--', 'xvfb-run', '-a', ...args]
+          : ['-a', ...args],
+        {
+          env: {
+            ...env,
+            HOME: gui,
+            XDG_CONFIG_HOME: join(gui, 'config'),
+            XDG_DATA_HOME: join(gui, 'data'),
+            XDG_CACHE_HOME: join(gui, 'cache'),
+            TMPDIR: gui,
+          },
+          stdio: 'inherit',
+        },
+      )
+      const artifacts = workspacePath('.check-logs')
+      await mkdir(artifacts, { recursive: true })
+      await cp(screenshot, join(artifacts, 'electron.png'))
+    } finally {
+      await rm(gui, { recursive: true, force: true })
     }
   }
-}
-
-async function dashboard(binary: string, channel: string): Promise<void> {
-  const state = mkdtempSync(join(fixture, `${channel}-`))
-  const config = join(state, 'config.json')
-  writeFileSync(config, '{}\n')
-  const child = spawn(
-    binary,
-    [
-      '--config-file',
-      config,
-      'web',
-      '--sync=false',
-      '--open=false',
-      '--host=127.0.0.1',
-      '--port=0',
-      '--collector-db-path',
-      join(state, 'collector.sqlite'),
-      '--server-db-path',
-      join(state, 'server.sqlite'),
-      '--app-db-path',
-      join(state, 'app.sqlite'),
-    ],
-    { cwd: state, env: { ...env, PATH: '' }, stdio: ['ignore', 'pipe', 'pipe'] },
-  )
-  let output = ''
-  let closed = false
-  const stopped = new Promise<number | null>((resolve, reject) => {
-    child.on('error', reject)
-    child.on('close', (code) => {
-      closed = true
-      resolve(code)
-    })
+  // Launch the installed backend through its private connector, then read embedded assets.
+  const child = spawn(join(installed, 'cli/tokeninsights-backend'), ['connect', '--json'], {
+    env: { ...env, PATH: '' },
+    stdio: ['pipe', 'pipe', 'pipe'],
   })
-  const ready = new Promise<string>((resolve, reject) => {
-    const timer = globalThis.setTimeout(() => {
-      reject(new Error(`installed ${channel} dashboard did not start: ${output}`))
-    }, 15_000)
-    child.stdout.on('data', (data: Buffer) => {
-      output += data.toString()
-      const url = /Dashboard:\s+(http:\/\/127\.0\.0\.1:\d+)/.exec(output)?.[1]
-      if (url !== undefined) {
-        globalThis.clearTimeout(timer)
-        resolve(url)
-      }
-    })
-    child.once('close', () => {
-      globalThis.clearTimeout(timer)
-      reject(new Error(`installed ${channel} dashboard exited before readiness: ${output}`))
-    })
-    child.once('error', (error) => {
-      globalThis.clearTimeout(timer)
-      reject(error)
-    })
+  let output = ''
+  const stopped = new Promise<void>((resolve, reject) => {
+    child.once('error', reject)
+    child.once('exit', (code) =>
+      code === 0 ? resolve() : reject(new Error(`connector exited ${code}: ${output}`)),
+    )
   })
   child.stderr.on('data', (data: Buffer) => {
     output += data.toString()
   })
   try {
-    const url = await ready
-    const response = await fetch(url, { signal: AbortSignal.timeout(5000) })
+    const descriptor = await new Promise<unknown>((resolve, reject) => {
+      let text = ''
+      const timeout = setTimeout(
+        () => reject(new Error(`backend readiness timeout: ${output}`)),
+        30000,
+      )
+      child.stdout.on('data', (data: Buffer) => {
+        text += data.toString()
+        const line = text.split('\n')[0]
+        if (!text.includes('\n') || line === undefined) return
+        clearTimeout(timeout)
+        try {
+          resolve(JSON.parse(line))
+        } catch (error) {
+          reject(error)
+        }
+      })
+      child.once('error', (error) => {
+        clearTimeout(timeout)
+        reject(error)
+      })
+      child.once('exit', () => {
+        clearTimeout(timeout)
+        reject(new Error(`backend exited before readiness: ${output}`))
+      })
+    })
+    assert.ok(
+      typeof descriptor === 'object' &&
+        descriptor !== null &&
+        'url' in descriptor &&
+        typeof descriptor.url === 'string',
+    )
+    const response = await fetch(descriptor.url, { signal: AbortSignal.timeout(5000) })
     assert.equal(response.status, 200)
     assert.equal(
       await response.text(),
-      readFileSync(workspacePath(embeddedAssets, 'index.html'), 'utf8'),
-    )
-    const asset = /src="(\/assets\/[^"]+\.js)"/.exec(
-      readFileSync(workspacePath(embeddedAssets, 'index.html'), 'utf8'),
-    )?.[1]
-    assert.ok(asset, 'production index must reference its bundled JavaScript')
-    const script = await fetch(`${url}${asset}`, { signal: AbortSignal.timeout(5000) })
-    assert.equal(script.status, 200)
-    assert.equal(
-      await script.text(),
-      readFileSync(workspacePath(embeddedAssets, asset.slice(1)), 'utf8'),
+      await readFile(workspacePath('packages/core/server/static/index.html'), 'utf8'),
     )
   } finally {
-    if (!closed) child.kill('SIGTERM')
-    const timer = globalThis.setTimeout(() => child.kill('SIGKILL'), 5000)
+    child.stdin.end()
+    const timeout = setTimeout(() => child.kill('SIGKILL'), 10000)
     try {
-      assert.equal(await stopped, 0, `installed ${channel} dashboard shutdown: ${output}`)
+      await stopped
     } finally {
-      globalThis.clearTimeout(timer)
+      clearTimeout(timeout)
     }
   }
-}
-
-async function install(channel: string, version: RegExp): Promise<string> {
-  console.log(`Installing ${commandPath}@${channel} through isolated Git`)
-  run(
-    goBinary,
-    ['install', `${commandPath}@${channel}`, `${modulePath}/cmd/tokeninsights-server@${channel}`],
-    fixture,
-  )
-  const binary = join(fixture, 'bin/tokeninsights')
-  const output = run(binary, ['--version'], fixture)
-  assert.match(output, version)
-  console.log(output)
-  const serverOutput = execFileSync(join(fixture, 'bin/tokeninsights-server'), ['--version'], {
-    cwd: fixture,
-    env: { ...env, PATH: '' },
-    encoding: 'utf8',
-  }).trim()
-  assert.equal(serverOutput, output.replace(/^tokeninsights /, 'tokeninsights-server '))
-  console.log(serverOutput)
-  await dashboard(binary, channel)
-  return output
-}
-
-try {
-  assert.ok(
-    existsSync(workspacePath(embeddedAssets, 'index.html')),
-    'run mise run build:web before distribution verification',
-  )
-  mkdirSync(checkout)
-  writeFileSync(join(fixture, 'gitconfig'), '')
-  git(
-    'config',
-    '--global',
-    `url.${pathToFileURL(remote).href}.insteadOf`,
-    'https://github.com/flexdinesh/tokeninsights',
-  )
-  git('init', '--bare', '--initial-branch=main', remote)
-  git('init', '--initial-branch=main')
-  git('config', 'user.name', 'Distribution fixture')
-  git('config', 'user.email', 'fixture@example.invalid')
-  git('config', 'commit.gpgsign', 'false')
-  git('config', 'tag.gpgsign', 'false')
-  git('config', 'core.hooksPath', join(fixture, 'no-hooks'))
-  git('remote', 'add', 'origin', remote)
-  cpSync(workspacePath('packages/cli'), join(checkout, 'packages/cli'), {
-    recursive: true,
-    filter: (path) => {
-      const name = relative(workspacePath('packages/cli'), path)
-      return (
-        name !== 'bin' &&
-        !name.startsWith('bin/') &&
-        name !== 'node_modules' &&
-        !name.startsWith('node_modules/') &&
-        name !== 'internal/server/static' &&
-        !name.startsWith('internal/server/static/')
-      )
-    },
-  })
-  const tools = join(checkout, 'tools/build/src')
-  mkdirSync(tools, { recursive: true })
-  for (const source of ['install-refs.ts', 'workspace.ts'])
-    cpSync(workspacePath('tools/build/src', source), join(tools, source))
-  writeFileSync(join(checkout, 'package.json'), '{"type":"module"}\n')
-  writeFileSync(join(checkout, '.gitignore'), `${embeddedAssets}/\n`)
-  git('add', '.')
-  git('commit', '-m', 'source without generated assets')
-  git('push', 'origin', 'main')
-  cpSync(workspacePath(embeddedAssets), join(checkout, embeddedAssets), { recursive: true })
-  seedDependencyDownloads()
-
-  const first = git('rev-parse', 'HEAD')
-  publish('edge', first)
-  await install('edge', /^tokeninsights v0\.0\.0-\d{14}-[0-9a-f]{12}(?:\s|$)/)
-
-  const tag = 'packages/cli/v0.1.0'
-  const release = publish('release', first, tag)
-  assert.equal(publish('release', first, tag), release)
-  git('push', 'origin', tag)
-  writeFileSync(join(checkout, 'after-release.txt'), 'new main source\n')
-  git('add', 'after-release.txt')
-  git('commit', '-m', 'source after stable release')
-  git('push', 'origin', 'main')
-  const newer = git('rev-parse', 'HEAD')
-  const edge = publish('edge', newer)
-  assert.equal(publish('edge', first), 'edge publication skipped')
-  assert.equal(git('ls-remote', '--heads', 'origin', 'edge').split('\t')[0], edge)
-  await install('edge', /^tokeninsights v0\.1\.1-0\.\d{14}-[0-9a-f]{12}(?:\s|$)/)
-  await install('v0.1.0', /^tokeninsights v0\.1\.0(?:\s|$)/)
-  await install('latest', /^tokeninsights v0\.1\.0(?:\s|$)/)
-  const main = spawnSync(goBinary, ['install', `${commandPath}@main`], {
-    cwd: fixture,
-    env,
-    encoding: 'utf8',
-  })
-  assert.notEqual(main.status, 0, '@main must fail without generated assets')
-  assert.match(
-    `${main.stdout}${main.stderr}`,
-    /pattern (?:all:)?static[^\n]*no matching files found/,
-  )
-  assert.equal(git('ls-tree', '-r', '--name-only', 'main', '--', embeddedAssets), '')
   console.log(
-    'Distribution verified: first edge, release rerun, edge ordering, stable/latest, dashboard assets, and missing assets on main.',
+    'Verified prebuilt products, installers, bundled runtimes, native window and embedded dashboard.',
   )
 } finally {
-  // Go extracts dependencies read-only, so removal must restore directory permissions.
-  execFileSync('chmod', ['-R', 'u+w', fixture])
-  rmSync(fixture, { recursive: true, force: true })
+  await rm(fixture, { recursive: true, force: true })
 }

@@ -106,7 +106,7 @@ func TestGroupManifestCoverage(t *testing.T) {
 			if group.Executor != "host" {
 				t.Fatal("format must run on host")
 			}
-			for _, path := range []string{"packages/cli/internal/server/server.go", "tools/build/src/build-web.ts", "docs/design.md", ".github/workflows/ci.yml"} {
+			for _, path := range []string{"packages/core/server/server.go", "tools/build/src/build-web.ts", "docs/design.md", ".github/workflows/ci.yml"} {
 				if !matches(path, patterns) {
 					t.Errorf("format misses %s", path)
 				}

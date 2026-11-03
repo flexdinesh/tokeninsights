@@ -6,8 +6,7 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/analytics"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/serverfeatures"
+	"github.com/flexdinesh/tokeninsights/packages/core/analytics"
 )
 
 const sharedSyncInterval = time.Second
@@ -20,7 +19,7 @@ func (m interactiveModel) cancelSync() {
 
 func (m interactiveModel) sharedSyncCmd() tea.Cmd {
 	interval := 5 * time.Second
-	if m.syncInFlight || m.sharedSync.Running || m.refreshBusy() {
+	if m.sharedSync.Running || m.refreshBusy() {
 		interval = sharedSyncInterval
 	}
 	return m.sharedSyncCmdAfter(interval)
@@ -37,21 +36,26 @@ func (m interactiveModel) loadSharedSync() sharedSyncMsg {
 		message.err = context.Canceled
 		return message
 	}
-	if runtime := m.options.local; runtime != nil {
-		// Read collection before processing: an accepted attempt then observes a
-		// status snapshot taken after acceptance, never an earlier empty queue.
-		if runtime.Policy.Capabilities.Has(serverfeatures.CollectorProgress) {
-			details := runtime.Progress.Details()
-			message.collection, message.capture = &details.Collection, details.Captures
+	if session := m.options.local; session != nil {
+		// Read collection before processing so acceptance cannot observe an older
+		// empty queue. Progress failures must not claim a completed refresh.
+		details, err := session.Progress(m.ctx)
+		if err != nil {
+			message.err = err
+			return message
 		}
-		state, err := runtime.ProcessingStatus(m.ctx)
+		message.collection, message.capture = &details.Collection, details.Captures
+		state, err := session.ProcessingStatus(m.ctx)
 		message.err = err
 		if err == nil {
 			message.refreshStatus = &state
 			pending := state.Pending > 0 || state.Metadata.Generation != state.Metadata.TargetGeneration
 			message.status = analytics.SyncStatus{Revision: state.Metadata.Revision, Running: pending}
 			message.pending = pending
-			message.instanceID, message.dataEpoch, message.readiness = runtime.InstanceID, state.Metadata.DatabaseID, "ready"
+			// Query identity belongs to the same application client as the table reads.
+			instance, err := session.Queries().Instance(m.ctx)
+			message.err = err
+			message.instanceID, message.dataEpoch, message.readiness = instance.InstanceID, state.Metadata.DatabaseID, instance.Readiness
 		}
 		return message
 	}
@@ -65,17 +69,10 @@ func (m interactiveModel) loadSharedSync() sharedSyncMsg {
 		message.err = err
 		return message
 	}
-	message.status = analytics.SyncStatus{Revision: state.Revision, Running: state.Pending > 0 || state.Generation != state.TargetGeneration}
+	message.status = analytics.SyncStatus{Revision: state.Metadata.Revision, Running: state.Pending > 0 || state.Metadata.Generation != state.Metadata.TargetGeneration}
 	message.pending = message.status.Running
-	message.instanceID, message.dataEpoch, message.readiness = state.InstanceId, state.DataEpoch, string(state.DataReadiness)
+	message.instanceID, message.dataEpoch, message.readiness = state.InstanceID, state.Metadata.DatabaseID, state.Readiness
 	return message
-}
-
-func (m interactiveModel) syncWorkLabel() string {
-	if m.sharedSync.Running {
-		return "Processing accepted usage · r Reload"
-	}
-	return "Saved server data · r Reload"
 }
 
 func (m interactiveModel) currentDayRows(rows []renderRow) []renderRow {

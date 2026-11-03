@@ -13,11 +13,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/collectordb"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/config"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/localruntime"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/serverownership"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/syncjob"
+	"github.com/flexdinesh/tokeninsights/packages/core/collectordb"
+	"github.com/flexdinesh/tokeninsights/packages/core/config"
+	"github.com/flexdinesh/tokeninsights/packages/core/localruntime"
+	"github.com/flexdinesh/tokeninsights/packages/core/serverownership"
+	"github.com/flexdinesh/tokeninsights/packages/core/syncjob"
 )
 
 func nonInteractiveStorage(t *testing.T) {
@@ -110,6 +110,7 @@ func (f storageFixture) invocation(t *testing.T, answer string, stderr io.Writer
 }
 
 func TestConfirmedResetMovesOlderCollectorAndCommandRecovers(t *testing.T) {
+	useSharedBackendForTest(t)
 	interactiveStorage(t)
 	f := newStorageFixture(t)
 	f.version(t, f.settings.CollectorDBPath, collectordb.SupportedSchemaVersion-1)
@@ -141,7 +142,9 @@ func TestConfirmedResetMovesOlderCollectorAndCommandRecovers(t *testing.T) {
 	if _, err := os.Stat(f.settings.CollectorDBPath + ".v19.bak"); err != nil {
 		t.Fatal(err)
 	}
-	args := []string{"--config-file", filepath.Join(f.root, "config.json"), "data", "wait", "--collector-db-path", f.settings.CollectorDBPath, "--server-db-path", f.settings.ServerDBPath, "--app-db-path", f.settings.AppDBPath}
+	f.settings.Port = 0
+	f.settings.Host = "127.0.0.1"
+	args := []string{"--config-file", localConfigForTest(t, f.settings), "data", "wait", "--collector-db-path", f.settings.CollectorDBPath, "--server-db-path", f.settings.ServerDBPath, "--app-db-path", f.settings.AppDBPath}
 	if err := Run(t.Context(), args, io.Discard, io.Discard, time.Now()); err != nil {
 		t.Fatal("command did not recover", err)
 	}

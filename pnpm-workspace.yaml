@@ -1,6 +1,9 @@
 packages:
   - 'packages/cli'
   - 'packages/web'
+  - 'packages/dashboard'
+  - 'packages/contracts'
+  - 'packages/desktop-electron'
   - 'packages/plugin-pi'
   - 'packages/plugin-opencode'
   - 'packages/plugin-runtime'
@@ -11,6 +14,7 @@ allowBuilds:
   '@google/genai': true
   es5-ext: false
   esbuild: true
+  electron: true
   koffi: true
   msgpackr-extract: true
   msw: true

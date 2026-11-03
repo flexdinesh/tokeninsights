@@ -13,22 +13,25 @@ import (
 	"testing"
 	"time"
 
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/collector"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/datastore"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/evidence"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/flagvalue"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/localruntime"
+	"github.com/flexdinesh/tokeninsights/packages/core/collector"
+	"github.com/flexdinesh/tokeninsights/packages/core/datastore"
+	"github.com/flexdinesh/tokeninsights/packages/core/evidence"
+	"github.com/flexdinesh/tokeninsights/packages/core/flagvalue"
+	"github.com/flexdinesh/tokeninsights/packages/core/localruntime"
 )
 
 func localViewOptions(t *testing.T, withUsage bool) tableOptions {
 	t.Helper()
 	root := t.TempDir()
 	options := tableOptions{dbPath: filepath.Join(root, "server.sqlite"), collectorDBPath: filepath.Join(root, "collector.sqlite"), period: periodAllTime, bucket: bucketDay}
-	runtime, err := localruntime.Open(t.Context(), options.collectorDBPath, options.dbPath)
+	runtime, err := localruntime.OpenWithAppOptions(t.Context(), options.collectorDBPath, options.dbPath, filepath.Join(root, "app.sqlite"), localruntime.Options{CaptureDetails: true})
 	if err != nil {
 		t.Fatal(err)
 	}
-	options.local, options.query = runtime, runtime.Query
+	backend := &fixtureBackend{runtime: runtime, ctx: t.Context()}
+	fixtureBackends[options.dbPath] = backend
+	options.local, options.query = &fixtureSession{backend: backend, done: make(chan struct{})}, runtime.Query
+	t.Cleanup(func() { delete(fixtureBackends, options.dbPath) })
 	t.Cleanup(func() { _ = runtime.Close() })
 	if withUsage {
 		metadata, err := runtime.Store.Metadata(t.Context())
@@ -64,7 +67,7 @@ func TestTUIReadsSavedUsageDirectlyWithoutCollection(t *testing.T) {
 		return collector.Result{}, nil
 	})
 	restore := replaceInteractiveProgramRunnerForTest(t, func(model interactiveModel, _ io.Writer) (interactiveModel, error) {
-		if model.options.local == nil || model.options.query != model.options.local.Query {
+		if model.options.local == nil || model.options.query != model.options.local.Queries() {
 			t.Fatal("not direct query")
 		}
 		hostname, err := os.Hostname()
@@ -190,14 +193,22 @@ func assertViewMissingPath(t *testing.T, path string) {
 	}
 }
 
-func TestViewOwnedDatabaseDoesNotLaunchSecondViewer(t *testing.T) {
+func TestViewAttachesToCompatibleSharedSession(t *testing.T) {
 	options := localViewOptions(t, false)
 	restore := replaceInteractiveProgramRunnerForTest(t, func(model interactiveModel, _ io.Writer) (interactiveModel, error) {
-		t.Fatal("second viewer started")
+		if model.options.query != options.query {
+			t.Fatal("viewer did not share backend queries")
+		}
+		if err := options.local.Close(); err != nil {
+			t.Fatal(err)
+		}
+		if result := model.loadDashboard(); result.err != nil {
+			t.Fatal("closing another viewer disrupted queries", result.err)
+		}
 		return model, nil
 	})
 	defer restore()
-	if err := runCommandForTest(t, t.Context(), io.Discard, "--sync=false", "--server-db-path", options.dbPath, "--collector-db-path", options.collectorDBPath); !errors.Is(err, localruntime.ErrOwned) {
+	if err := runCommandForTest(t, t.Context(), io.Discard, "--sync=false", "--server-db-path", options.dbPath, "--collector-db-path", options.collectorDBPath); err != nil {
 		t.Fatal(err)
 	}
 }

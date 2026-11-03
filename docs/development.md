@@ -1,13 +1,13 @@
 # Development
 
-TokenInsights is a pnpm monorepo with a Go CLI and a Vite/React browser application. The public documentation site in `docs-website/` is a Vocs pnpm workspace package. `mise.toml` pins Go, Node, and pnpm for development and owns all repository tasks. Direct Go builds require Go 1.27+, without a C/C++ or JavaScript toolchain; `packages/cli/go.mod` names toolchain `go1.27.3`, so Go 1.27.0-1.27.2 with default `GOTOOLCHAIN=auto` downloads it. Race verification requires CGO. `pnpm-workspace.yaml` enforces a 3-day minimum release age for npm packages everywhere, except the `@opencode/*` and `@earendil-works/*` harness SDKs.
+TokenInsights is a pnpm monorepo with a Go CLI and a Vite/React browser application. The public documentation site in `docs-website/` is a Vocs pnpm workspace package. `mise.toml` pins Go, Node, and pnpm for development and owns all repository tasks. Production source uses one root Go module, pinned to Go 1.27.3. Build generated web assets first; Go binaries require no C/C++ or host JavaScript runtime. The canonical go directive supplies the pin when Go omits an equal toolchain directive. Race verification requires CGO. `pnpm-workspace.yaml` enforces a 3-day minimum release age for npm packages everywhere, except the `@opencode/*` and `@earendil-works/*` harness SDKs.
 
 ## Development builds
 
 For development builds, install directly from `main`:
 
 ```sh
-go install github.com/flexdinesh/tokeninsights/packages/cli/cmd/tokeninsights@main
+curl -fsSL https://raw.githubusercontent.com/flexdinesh/tokeninsights/main/install-main.sh | sh
 ```
 
 ## Setup
@@ -27,7 +27,7 @@ Install [mise](https://mise.jdx.dev/getting-started.html) 2026.10.18 first; snap
 
 `mise.toml` pins exact Go 1.27.3, Node 26.12.1 and pnpm 12.15.0. Committed `mise.lock` records checksums, plus GitHub attestations for pnpm, on Linux/macOS x64/arm64; installs for this project are locked. Other global mise tools are unaffected.
 
-To bump a tool, edit `mise.toml`, run `mise lock`, then update the Dockerfile `golang`/`node` image tags and pnpm install, root `package.json` `packageManager`, and the `packages/cli/go.mod` `toolchain` line. `mise run check:toolchain`, part of validation, fails on any mismatch.
+To bump a tool, edit `mise.toml`, run `mise lock`, then update the Dockerfile `golang`/`node` image tags and pnpm install, root `package.json` `packageManager`, and the root `go.mod` Go version pin. `mise run check:toolchain`, part of validation, fails on any mismatch.
 
 mise sets `GOTOOLCHAIN=local`, so development never silently switches Go toolchains, and puts `node_modules/.bin` on `PATH`. Put personal development overrides in ignored `mise.local.toml` or `mise.*.local.toml`. Validation does not inherit those overrides or host database URLs.
 
@@ -167,10 +167,10 @@ mise run build:web
 cd packages/cli
 go test ./...
 go build -o bin/tokeninsights ./cmd/tokeninsights
-go install ./cmd/tokeninsights
+go build -o bin/tokeninsights ./cmd/tokeninsights
 ```
 
-Direct Go commands embed the last generated assets; rerun `mise run build:web` after frontend changes, or use `mise run install:cli`. Inside the repository, mise sets `GOTOOLCHAIN=local`, so direct Go commands use the pinned toolchain.
+Direct Go commands embed the last generated assets; rerun `mise run build:web` after frontend changes, or use `mise run build:cli`. Inside the repository, mise sets `GOTOOLCHAIN=local`, so direct Go commands use the pinned toolchain.
 
 ## Local scratch files
 
@@ -258,13 +258,13 @@ sizes, timing boundaries, engine-specific size accounting and profiling commands
 
 ## Build Tooling
 
-The private `@tokeninsights/build-tools` workspace under `tools/build` owns schema validation, fixture preparation and safety checks, embedded web asset generation, Pi/OpenCode plugin bundles, and Homebrew formula generation. The shared Pi/OpenCode collector runner lives in the private `@tokeninsights/plugin-runtime` workspace under `packages/plugin-runtime`; plugin builds copy it into each `dist/runner.js`. mise tasks are the stable entry points.
+The private `@tokeninsights/build-tools` workspace under `tools/build` owns schema validation, fixture preparation and safety checks, embedded web asset generation, Pi/OpenCode plugin bundles, and prebuilt product packaging/installers. The shared Pi/OpenCode collector runner lives in the private `@tokeninsights/plugin-runtime` workspace under `packages/plugin-runtime`; plugin builds copy it into each `dist/runner.js`. mise tasks are the stable entry points.
 
 Go uses `gofmt` and the repository-pinned `golangci-lint`. TypeScript, JavaScript, and React use Oxfmt and Oxlint. Node tooling is development-only; the production `tokeninsights` binary does not require a JavaScript runtime.
 
 ## Web Dashboard
 
-React source lives in `packages/web`. Vite stages output in ignored `packages/web/dist`; the build tooling copies it to `packages/cli/internal/server/static` for `go:embed`. That directory is ignored on `main`; CI commits it only on `edge` and stable module tags ([ADR 0017](adr/0017-generated-assets-on-installable-refs.md)).
+React presentation lives in `packages/dashboard`; browser entry/HTTP adapter live in `packages/web`; shared TypeScript contracts live in `packages/contracts`. Vite stages output in ignored `packages/web/dist`; the build tooling copies it to `packages/core/server/static` for `go:embed`. That directory is ignored on `main`; No branch or tag commits generated outputs. CI attaches compiled products to source-tag releases or the rolling main-build prerelease ([ADR 0024](adr/0024-shared-backend-and-installable-products.md)).
 
 Go tests cover SQL aggregation, API behavior, raw ingestion/replay, processing generations and collector outbox/acknowledgements, assets, listener lifecycle, and date boundaries. React tests cover URL state, filtering, cancelled requests, account forms, capability/loading states, excluded evidence, retries and preference retention.
 

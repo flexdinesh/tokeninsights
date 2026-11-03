@@ -2,9 +2,11 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { RouterProvider } from '@tanstack/react-router'
-import { router } from './router'
-import { AuthenticationRequired } from './http'
-import './styles.css'
+import { AuthenticationRequired } from '@tokeninsights/contracts'
+import { DashboardClientProvider, router } from '@tokeninsights/dashboard'
+import { httpDashboardClient } from './http-client'
+import { BrowserViewer } from './viewer'
+import '@tokeninsights/dashboard/styles.css'
 
 if (import.meta.env.MODE === 'mock') {
   const { worker } = await import('./mocks/browser')
@@ -26,7 +28,7 @@ if (!root) throw new Error('Application root missing')
 // The design catalog renders outside the app router because the root route
 // requires a server bootstrap. Production builds drop this branch and chunk.
 if (import.meta.env.DEV && window.location.pathname === '/_design') {
-  const { DesignCatalog } = await import('./design/DesignCatalog')
+  const { DesignCatalog } = await import('../../dashboard/src/design/DesignCatalog')
   createRoot(root).render(
     <StrictMode>
       <DesignCatalog />
@@ -35,9 +37,12 @@ if (import.meta.env.DEV && window.location.pathname === '/_design') {
 } else {
   createRoot(root).render(
     <StrictMode>
-      <QueryClientProvider client={client}>
-        <RouterProvider router={router} />
-      </QueryClientProvider>
+      <DashboardClientProvider client={httpDashboardClient}>
+        <QueryClientProvider client={client}>
+          <BrowserViewer />
+          <RouterProvider router={router} />
+        </QueryClientProvider>
+      </DashboardClientProvider>
     </StrictMode>,
   )
 }

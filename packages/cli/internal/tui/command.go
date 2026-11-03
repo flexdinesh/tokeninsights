@@ -9,10 +9,8 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/collector"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/config"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/localruntime"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/serverfeatures"
+	"github.com/flexdinesh/tokeninsights/packages/core/config"
+	"github.com/flexdinesh/tokeninsights/packages/core/serverfeatures"
 )
 
 // Command is one `tokeninsights tui` invocation. Resolve applies explicitly
@@ -21,6 +19,8 @@ type Command struct {
 	Context context.Context
 	Args    []string
 	Resolve func(config.Overrides) (config.LocalSettings, error)
+	Prepare func(config.LocalSettings) error
+	Connect func(context.Context, config.LocalSettings, func() error) (Session, error)
 	Now     time.Time
 	Stdout  io.Writer
 	Stderr  io.Writer
@@ -33,10 +33,8 @@ type UsageError struct{ Err error }
 func (e *UsageError) Error() string { return e.Err.Error() }
 func (e *UsageError) Unwrap() error { return e.Err }
 
-var runViewCollector = collector.Run
-
-// Run owns the terminal dashboard composition: it opens command-owned local
-// storage, starts optional background capture and runs the interactive program.
+// Run attaches one terminal viewer to the shared backend. The backend owns
+// storage and capture; closing this viewer cancels only its requests and lease.
 func Run(command Command) error {
 	options, err := parseViewerOptions(command.Args, command.Stderr, false, periodMonth, nil)
 	if err != nil {
@@ -47,18 +45,31 @@ func Run(command Command) error {
 		return err
 	}
 	options.appDBPath, options.dbPath, options.collectorDBPath = settings.AppDBPath, settings.ServerDBPath, settings.CollectorDBPath
-	runtime, err := localruntime.OpenWithAppOptions(command.Context, settings.CollectorDBPath, settings.ServerDBPath, settings.ApplicationPath(), localruntime.Options{CaptureDetails: true})
+	connect := command.Connect
+	if connect == nil {
+		connect = connectSession
+	}
+	session, err := connect(command.Context, settings, func() error {
+		if command.Prepare != nil {
+			return command.Prepare(settings)
+		}
+		return nil
+	})
 	if err != nil {
 		return err
 	}
-	defer func() { _ = runtime.Close() }()
+	defer func() { _ = session.Close() }()
+	instance, err := session.Queries().Instance(command.Context)
+	if err != nil {
+		return err
+	}
 	for _, capability := range []serverfeatures.Capability{serverfeatures.TerminalDashboard, serverfeatures.Usage, serverfeatures.Facets} {
-		if !runtime.Policy.Capabilities.Has(capability) {
+		if !instance.Capabilities.Has(capability) {
 			return fmt.Errorf("tui requires %s capability", capability)
 		}
 	}
-	options.local, options.query = runtime, runtime.Query
-	model := newInteractiveModel(command.Context, options, command.Now, runtime.Hostname)
+	options.local, options.query = session, session.Queries()
+	model := newInteractiveModel(command.Context, options, command.Now, instance.Hostname)
 	if options.syncOnStart {
 		model = model.startCollection()
 	}

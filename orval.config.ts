@@ -1,6 +1,6 @@
 import { defineConfig } from 'orval'
 
-const target = process.env.TOKENINSIGHTS_API_OUTPUT ?? './packages/web/src/generated/api.ts'
+const target = process.env.TOKENINSIGHTS_API_OUTPUT ?? './packages/contracts/src/generated/api.ts'
 
 export default defineConfig({
   api: {

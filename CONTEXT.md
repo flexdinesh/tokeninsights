@@ -85,12 +85,10 @@ The optional macOS/Linux TokenInsights app that shows dashboards served elsewher
 _Avoid_: Desktop server, standalone app, Electron app
 
 **Collector Progress**:
-Bounded, sanitized capture/submission attempt state published by the command-owned local collector into an in-process registry. Local TUI reads it directly; local Web reads it through a capability-gated endpoint. Hosted servers never collect or expose collector progress. Processing lag is separate and available to authorized viewers of either kind.
-_Avoid_: Server collection, global queue progress, upload completion as query freshness
+Bounded, sanitized capture/submission attempt state owned by the shared local backend. Viewers read it through semantic clients; detailed capture measurements use the private local-client contract. Hosted servers never collect or expose collector progress. Processing lag remains separate.
 
 **Read-only View**:
-Local `tui` and `web` open saved committed usage after storage initialization while command-owned capture/submission/processing continues in background. TUI queries directly and keeps a visible refresh strip; published revisions refresh both viewers automatically. Refresh completion requires processing visibility and a successful current dashboard read; failures preserve saved usage. `browse` opens the configured hosted dashboard without collecting or submitting. `--sync=false` skips startup collection, while durable processing resumes. The local-only dashboard Reload and TUI `r` request queries only; viewer filters remain display constraints.
-_Avoid_: Implicit View Sync, dashboard source refresh
+TUI, web, Electron and native MyGo attach to one local backend and read saved committed usage while capture/submission/processing continues. Viewer launches request coalesced capture; filters and reload query only. Completion requires visible processing and a current dashboard read; failures preserve saved usage. --sync=false skips capture while durable processing resumes. Viewer leases keep the owner alive; it stops after the final disconnect and reconnect grace. Browse opens the configured hosted browser without local capture or storage.
 
 **Durable Publication**:
 Immutable raw outbox and saved batches, acknowledged per endpoint/database/dataset binding after server acceptance. Later manual sync retries pending delivery with exact saved bytes.

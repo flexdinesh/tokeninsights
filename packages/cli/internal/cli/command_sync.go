@@ -10,11 +10,11 @@ import (
 	"os"
 	"strings"
 
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/collector"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/config"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/flagvalue"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/pipeline"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/syncjob"
+	"github.com/flexdinesh/tokeninsights/packages/core/collector"
+	"github.com/flexdinesh/tokeninsights/packages/core/config"
+	"github.com/flexdinesh/tokeninsights/packages/core/flagvalue"
+	"github.com/flexdinesh/tokeninsights/packages/core/pipeline"
+	"github.com/flexdinesh/tokeninsights/packages/core/syncjob"
 )
 
 var syncCommand = commandSpec{name: "sync", run: runSync}

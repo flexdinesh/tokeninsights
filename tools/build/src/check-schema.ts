@@ -4,13 +4,11 @@ import { fileURLToPath } from 'node:url'
 
 const SCHEMA_SQL_PATH = new URL('../../../schema/schema.sql', import.meta.url).pathname
 const EMBEDDED_SCHEMA_SQL_PATH = new URL(
-  '../../../packages/cli/internal/collectordb/schema/schema.sql',
+  '../../../packages/core/collectordb/schema/schema.sql',
   import.meta.url,
 ).pathname
-const SCHEMA_GO_PATH = new URL(
-  '../../../packages/cli/internal/collectordb/schema.go',
-  import.meta.url,
-).pathname
+const SCHEMA_GO_PATH = new URL('../../../packages/core/collectordb/schema.go', import.meta.url)
+  .pathname
 
 const SQL_KEYWORDS = new Set([
   'PRIMARY',
@@ -200,37 +198,27 @@ async function main() {
   )
   const [dataSQL, embeddedDataSQL, dataGo] = await Promise.all([
     readText(new URL('../../../schema/data.sql', import.meta.url).pathname),
-    readText(
-      new URL('../../../packages/cli/internal/datastore/schema/data.sql', import.meta.url).pathname,
-    ),
-    readText(
-      new URL('../../../packages/cli/internal/datastore/store.go', import.meta.url).pathname,
-    ),
+    readText(new URL('../../../packages/core/datastore/schema/data.sql', import.meta.url).pathname),
+    readText(new URL('../../../packages/core/datastore/store.go', import.meta.url).pathname),
   ])
   const [appSQL, embeddedAppSQL, appGo] = await Promise.all([
     readText(new URL('../../../schema/app.sql', import.meta.url).pathname),
-    readText(
-      new URL('../../../packages/cli/internal/appstore/schema/app.sql', import.meta.url).pathname,
-    ),
-    readText(new URL('../../../packages/cli/internal/appstore/store.go', import.meta.url).pathname),
+    readText(new URL('../../../packages/core/appstore/schema/app.sql', import.meta.url).pathname),
+    readText(new URL('../../../packages/core/appstore/store.go', import.meta.url).pathname),
   ])
   const [hostedAppSQL, embeddedHostedAppSQL, postgresGo] = await Promise.all([
     readText(new URL('../../../schema/app.hosted.sql', import.meta.url).pathname),
     readText(
-      new URL('../../../packages/cli/internal/appstore/schema/app.hosted.sql', import.meta.url)
-        .pathname,
+      new URL('../../../packages/core/appstore/schema/app.hosted.sql', import.meta.url).pathname,
     ),
     readText(
-      new URL('../../../packages/cli/internal/persistence/postgres/store.go', import.meta.url)
-        .pathname,
+      new URL('../../../packages/core/persistence/postgres/store.go', import.meta.url).pathname,
     ),
   ])
   const [jobsSQL, embeddedJobsSQL, jobsGo] = await Promise.all([
     readText(new URL('../../../schema/jobs.sql', import.meta.url).pathname),
-    readText(
-      new URL('../../../packages/cli/internal/syncjob/schema/jobs.sql', import.meta.url).pathname,
-    ),
-    readText(new URL('../../../packages/cli/internal/syncjob/store.go', import.meta.url).pathname),
+    readText(new URL('../../../packages/core/syncjob/schema/jobs.sql', import.meta.url).pathname),
+    readText(new URL('../../../packages/core/syncjob/store.go', import.meta.url).pathname),
   ])
   const postgresCopies = await Promise.all(
     ['data', 'app'].map(async (role) => {
@@ -238,10 +226,8 @@ async function main() {
         new URL(`../../../schema/${role}.postgres.sql`, import.meta.url).pathname,
       )
       const embedded = await readText(
-        new URL(
-          `../../../packages/cli/internal/persistence/postgres/schema/${role}.sql`,
-          import.meta.url,
-        ).pathname,
+        new URL(`../../../packages/core/persistence/postgres/schema/${role}.sql`, import.meta.url)
+          .pathname,
       )
       const versionMatch = authoritative.match(/CHECK\(schema_version=(\d+)\)/)
       const version = versionMatch ? Number(versionMatch[1]) : undefined

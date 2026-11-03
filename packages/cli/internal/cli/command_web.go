@@ -13,14 +13,10 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/browser"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/collector"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/config"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/localruntime"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/pipeline"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/processusage"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/server"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/serverruntime"
+	"github.com/flexdinesh/tokeninsights/packages/core/browser"
+	"github.com/flexdinesh/tokeninsights/packages/core/config"
+	"github.com/flexdinesh/tokeninsights/packages/core/localclient"
+	"github.com/flexdinesh/tokeninsights/packages/core/pipeline"
 	"github.com/muesli/termenv"
 )
 
@@ -29,8 +25,7 @@ const localVisibilityTimeout = 30 * time.Second
 var webCommand = commandSpec{name: "web", run: runWeb}
 var openDashboard = browser.Open
 var remoteSession = browser.RemoteSession
-var runWebCollector = collector.Run
-var serveLocalWeb = serverruntime.Serve
+var connectLocalBackend = localclient.ConnectPrepared
 
 func runWeb(invocation commandInvocation, args []string) error {
 	defaults := invocation.defaults()
@@ -38,7 +33,7 @@ func runWeb(invocation commandInvocation, args []string) error {
 	flags.SetOutput(invocation.stderr)
 	var syncBefore, fullRefresh bool
 	var sourceDir string
-	flags.Var(&browser.ModeFlag{}, "open", "open dashboard: auto (desktop app, else browser), app, browser or false")
+	flags.Var(&browser.ModeFlag{}, "open", "open dashboard: mygo, electron, browser, auto or false")
 	flags.String("app-db-path", defaults.AppDBPath, "application SQLite database")
 	flags.String("server-db-path", defaults.ServerDBPath, "local server database")
 	flags.String("collector-db-path", defaults.CollectorDBPath, "collector database")
@@ -60,46 +55,26 @@ func runWeb(invocation commandInvocation, args []string) error {
 	if !syncBefore && fullRefresh {
 		return fmt.Errorf("--full-refresh requires startup collection\n%w", ErrUsage)
 	}
-	if err := invocation.prepareLocalStorage(settings); err != nil {
-		return err
-	}
 	return runLocalWeb(invocation, settings, syncBefore, pipeline.SyncOptions{Harnesses: pipeline.SupportedHarnesses, Now: invocation.now, FullRefresh: fullRefresh, SourceDir: sourceDir})
 }
 
 func runLocalWeb(invocation commandInvocation, settings config.LocalSettings, syncBefore bool, capture pipeline.SyncOptions) error {
 	ctx, cancel := context.WithCancel(invocation.context)
 	defer cancel()
-	listener, err := net.Listen("tcp4", net.JoinHostPort(settings.Host, fmt.Sprint(settings.Port)))
+	session, err := connectLocalBackend(ctx, localclient.Options{CollectorDBPath: settings.CollectorDBPath, ServerDBPath: settings.ServerDBPath, AppDBPath: settings.ApplicationPath(), Host: settings.Host, Port: settings.Port, Capture: syncBefore, FullRefresh: capture.FullRefresh, SourceDir: capture.SourceDir}, func() error { return invocation.prepareLocalStorage(settings) })
 	if err != nil {
 		return err
 	}
-	defer func() { _ = listener.Close() }()
-	runtime, err := localruntime.OpenWithApp(ctx, settings.CollectorDBPath, settings.ServerDBPath, settings.ApplicationPath())
-	if err != nil {
-		return err
-	}
-	defer func() { _ = runtime.Close() }()
-	if syncBefore {
-		runtime.StartCollection(ctx, capture, runWebCollector)
-	}
-	host, port, err := net.SplitHostPort(listener.Addr().String())
-	if err != nil {
-		return err
-	}
-	if host == "0.0.0.0" {
-		host = "127.0.0.1"
-	}
-	url := "http://" + net.JoinHostPort(host, port)
-	handler := server.NewDataHandlerWithOptions(ctx, runtime.DataSource(), invocation.stderr, server.DataHandlerOptions{
-		Host: settings.Host, InstanceID: runtime.InstanceID, Hostname: runtime.Hostname,
-		Policy: runtime.Policy, Progress: runtime.Progress, ProcessUsage: processusage.New(),
-	})
-	return serveLocalWeb(ctx, runtime.Store, []serverruntime.Binding{{Listener: listener, Handler: handler}}, func() error {
-		remote := settings.Open != browser.ModeOff && remoteSession()
-		printWebReady(invocation.stdout, url, remote)
-		reportOpen(ctx, invocation, settings.Open, url)
+	defer func() { _ = session.Close() }()
+	remote := settings.Open != browser.ModeOff && remoteSession()
+	printWebReady(invocation.stdout, session.URL, remote)
+	reportOpen(ctx, invocation, settings.Open, session.URL)
+	select {
+	case <-ctx.Done():
 		return nil
-	})
+	case <-session.Done():
+		return errors.New("local backend disconnected")
+	}
 }
 
 // reportOpen opens the dashboard; failures leave the printed URL as recovery.
@@ -109,12 +84,14 @@ func reportOpen(ctx context.Context, invocation commandInvocation, mode browser.
 	}
 	result, err := openDashboard(ctx, mode, url)
 	switch {
-	case errors.Is(err, browser.ErrAppUnavailable):
+	case errors.Is(err, browser.ErrAppUnavailable), errors.Is(err, browser.ErrElectronUnavailable):
 		_, _ = fmt.Fprintln(invocation.stderr, err.Error()+"; open dashboard URL above.")
 	case err != nil:
 		_, _ = fmt.Fprintln(invocation.stderr, "Could not open browser; open dashboard URL above.")
 	case result.Via == browser.ViaApp:
-		_, _ = fmt.Fprintln(invocation.stderr, "Opened in the TokenInsights app. Use --open=browser for the browser.")
+		_, _ = fmt.Fprintln(invocation.stderr, "Opened in TokenInsights MyGo. Use --open=browser for the browser.")
+	case result.Via == browser.ViaElectron:
+		_, _ = fmt.Fprintln(invocation.stderr, "Opened in TokenInsights Electron. Use --open=browser for the browser.")
 	}
 }
 

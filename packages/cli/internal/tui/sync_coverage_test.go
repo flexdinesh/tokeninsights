@@ -12,8 +12,8 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/ansi"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/flagvalue"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/queryclient"
+	"github.com/flexdinesh/tokeninsights/packages/core/flagvalue"
+	"github.com/flexdinesh/tokeninsights/packages/core/queryclient"
 )
 
 func TestReadOnlyViewerLoadsSavedUsageWithoutSourceCoverage(t *testing.T) {
@@ -23,8 +23,8 @@ func TestReadOnlyViewerLoadsSavedUsageWithoutSourceCoverage(t *testing.T) {
 	options := tableOptions{query: queryclient.NewDirect(reader), dbPath: filepath.Join(root, "unopened.sqlite"), collectorDBPath: filepath.Join(root, "collector.sqlite"), period: periodAllTime, bucket: bucketDay}
 	model := newInteractiveModel(context.Background(), options, time.Now(), "unknown")
 	defer model.cancelSync()
-	if model.syncing || model.syncInFlight || !model.loading {
-		t.Fatalf("initial read state: syncing=%v collection=%v loading=%v", model.syncing, model.syncInFlight, model.loading)
+	if !model.loading {
+		t.Fatalf("initial read state: loading=%v", model.loading)
 	}
 	loaded := model.loadDashboard()
 	if loaded.err != nil {
@@ -80,7 +80,7 @@ func TestViewerOldSyncShortcutDoesNotCollect(t *testing.T) {
 	before := reader.reads.Load()
 	updated, cmd := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'u'}})
 	model = updated.(interactiveModel)
-	if cmd != nil || model.syncing || model.syncInFlight || reader.reads.Load() != before {
+	if cmd != nil || model.refresh.requested || model.collectionDone != nil || reader.reads.Load() != before {
 		t.Fatal("obsolete sync shortcut triggered work")
 	}
 }

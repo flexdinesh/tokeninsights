@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { calendarRange, calendarRangeLabel, isCalendarRange, shiftCalendarRange } from './dateRange'
+import {
+  calendarRange,
+  calendarRangeLabel,
+  isCalendarRange,
+  shiftCalendarRange,
+} from '../../dashboard/src/dateRange'
 
 it('accepts only complete aligned calendar ranges with real ordered ISO dates', () => {
   expect(isCalendarRange('today', '2024-02-29', '2024-02-29')).toBe(true)

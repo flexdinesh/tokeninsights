@@ -1,11 +1,9 @@
 name: CI
 
-# Pull requests run no CI: Linux amd64 checks run locally in pre-push.
-# Main pushes cover platforms the developer host cannot.
+# Native archives require macOS and both architectures. Local Dagger owns full validation.
 on:
   push:
-    branches:
-      - main
+    branches: [main]
 
 permissions:
   contents: read
@@ -18,52 +16,23 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # Generate shared build inputs once; native runners need only Go.
-  assets:
-    name: Build dashboard assets
+  source:
     runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.version.outputs.value }}
     steps:
-      - uses: actions/checkout@v7
-      - uses: jdx/mise-action@v5
-        with:
-          install_args: node pnpm
-      # The pnpm deps provider installs the frozen lockfile before the task runs.
-      - run: mise run build:web
-      - uses: actions/upload-artifact@v7
-        with:
-          name: dashboard-assets
-          path: packages/cli/internal/server/static
-
-  # Native OS/architecture coverage cannot be reproduced on the Linux amd64
-  # developer host, which already covers that platform in pre-push.
-  native:
-    name: Native ${{ matrix.runner }}
-    needs: assets
-    strategy:
-      fail-fast: false
-      matrix:
-        runner: [ubuntu-24.04-arm, macos-15-intel, macos-15]
-    runs-on: ${{ matrix.runner }}
-    steps:
-      - uses: actions/checkout@v7
-      - uses: jdx/mise-action@v5
-        with:
-          install_args: go
-      - uses: actions/download-artifact@v8
-        with:
-          name: dashboard-assets
-          path: packages/cli/internal/server/static
-      - name: Build and verify storage
-        working-directory: packages/cli
+      - id: version
         env:
-          CGO_ENABLED: '0'
-        run: |
-          go build ./cmd/tokeninsights ./cmd/tokeninsights-server
-          go test ./internal/datastore ./internal/rawcollectorstore
-
-  edge:
-    name: Publish edge source
-    needs: native
+          SOURCE: ${{ github.sha }}
+        run: echo "value=main.${SOURCE:0:12}" >> "$GITHUB_OUTPUT"
+  products:
+    needs: source
+    uses: ./.github/workflows/products.yml
+    with:
+      source: ${{ github.sha }}
+      version: ${{ needs.source.outputs.version }}
+  publish:
+    needs: [source, products]
     runs-on: ubuntu-24.04
     permissions:
       contents: write
@@ -77,8 +46,13 @@ jobs:
           install_args: node
       - uses: actions/download-artifact@v8
         with:
-          name: dashboard-assets
-          path: packages/cli/internal/server/static
-      # Publication is CI-owned. Its Git/install contracts run locally in check:push.
-      - name: Publish tested source with assets
-        run: node tools/build/src/install-refs.ts edge
+          pattern: products-*
+          path: dist
+          merge-multiple: true
+      - name: Publish verified main build
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PRODUCT_VERSION: ${{ needs.source.outputs.version }}
+        run: |
+          node --input-type=module -e 'import { writeChecksums } from "./tools/build/src/build-products.ts"; await writeChecksums("dist")'
+          node tools/build/src/publish-release.ts main "$PRODUCT_VERSION" dist

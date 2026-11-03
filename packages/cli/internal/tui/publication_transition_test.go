@@ -7,9 +7,9 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/analytics"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/flagvalue"
-	"github.com/flexdinesh/tokeninsights/packages/cli/internal/queryclient"
+	"github.com/flexdinesh/tokeninsights/packages/core/analytics"
+	"github.com/flexdinesh/tokeninsights/packages/core/flagvalue"
+	"github.com/flexdinesh/tokeninsights/packages/core/queryclient"
 )
 
 func TestInitialFilterWaitsForValidatedPublication(t *testing.T) {
@@ -19,24 +19,6 @@ func TestInitialFilterWaitsForValidatedPublication(t *testing.T) {
 	m = updated.(interactiveModel)
 	if cmd != nil || !m.filterLoading || len(m.filterValues) != 0 {
 		t.Fatal("initial filter queried before publication identity was established")
-	}
-}
-
-func TestSnapshotReplacementUsesTheSamePublicationTransition(t *testing.T) {
-	m := newInteractiveModel(t.Context(), tableOptions{}, time.Now(), "unknown")
-	defer m.cancelSync()
-	m.instanceID, m.dataEpoch, m.observedRevision = "old", "old-epoch", 9
-	m.syncing, m.snapshotAllowed = true, true
-	_, sequence := m.queryContext(m.queries)
-	updated, cmd := m.Update(snapshotMsg{reloadMsg{requestID: sequence, instanceID: "new", dataEpoch: "new-epoch", revision: 1, rows: []renderRow{{bucket: "new"}}}})
-	m = updated.(interactiveModel)
-	if cmd != nil || m.instanceID != "new" || m.observedRevision != 1 || !m.showingSnapshot || m.reloadInFlight || len(m.rows) != 1 || m.rows[0].bucket != "new" {
-		t.Fatal("snapshot replacement bypassed publication transition or queued a retry")
-	}
-	updated, cmd = m.Update(snapshotMsg{reloadMsg{requestID: sequence, instanceID: "old", dataEpoch: "old-epoch", revision: 9}})
-	m = updated.(interactiveModel)
-	if cmd != nil || m.instanceID != "new" || len(m.rows) != 1 {
-		t.Fatal("late snapshot reverted the publication")
 	}
 }
 

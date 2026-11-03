@@ -1,6 +1,6 @@
 import { afterEach, expect, it, vi } from 'vitest'
 import { z } from 'zod'
-import { changeBrowserSession } from './api'
+import { httpDashboardClient } from './http-client'
 import { AuthenticationRequired, request } from './http'
 
 afterEach(() => {
@@ -42,19 +42,19 @@ it('surfaces server error messages when changing the browser session', async () 
       { status: 400 },
     ),
   )
-  await expect(changeBrowserSession({ username: '', password: 'secret-password' })).rejects.toThrow(
-    'Username must not be empty.',
-  )
+  await expect(
+    httpDashboardClient.changeBrowserSession({ username: '', password: 'secret-password' }),
+  ).rejects.toThrow('Username must not be empty.')
 })
 
 it('falls back to the session status without an error body', async () => {
   respond(new Response(null, { status: 500 }))
-  await expect(changeBrowserSession()).rejects.toThrow('Sign in failed (500)')
+  await expect(httpDashboardClient.changeBrowserSession()).rejects.toThrow('Sign in failed (500)')
 })
 
 it('treats rejected credentials as an authentication requirement', async () => {
   respond(new Response(null, { status: 401 }))
   await expect(
-    changeBrowserSession({ username: 'alice', password: 'wrong-password' }),
+    httpDashboardClient.changeBrowserSession({ username: 'alice', password: 'wrong-password' }),
   ).rejects.toBeInstanceOf(AuthenticationRequired)
 })

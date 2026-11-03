@@ -4,12 +4,12 @@ import { join } from 'node:path'
 import { spawnSync } from 'node:child_process'
 
 const ROOT = new URL('../../../', import.meta.url).pathname
-const GO_MODULE = 'packages/cli'
-const GO_CONFIG = 'internal/server/api/oapi-codegen.yaml'
+const GO_MODULE = '.'
+const GO_CONFIG = 'packages/core/server/api/oapi-codegen.yaml'
 // Output path configured in GO_CONFIG, relative to the Go module.
-const GO_GENERATED = 'internal/server/api/types.gen.go'
-const GO_OUTPUT = `${GO_MODULE}/${GO_GENERATED}`
-const WEB_OUTPUT = 'packages/web/src/generated/api.ts'
+const GO_GENERATED = 'packages/core/server/api/types.gen.go'
+const GO_OUTPUT = GO_GENERATED
+const WEB_OUTPUT = 'packages/contracts/src/generated/api.ts'
 
 function run(command: string, args: string[], cwd: string, env = process.env): string {
   const result = spawnSync(command, args, { cwd, encoding: 'utf8', env })

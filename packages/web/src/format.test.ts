@@ -1,5 +1,9 @@
 import { expect, it } from 'vitest'
-import { formatServerDate, formatServerDateTime, serverTimeZoneLabel } from './format'
+import {
+  formatServerDate,
+  formatServerDateTime,
+  serverTimeZoneLabel,
+} from '../../dashboard/src/format'
 
 it('uses the server calendar across a browser/server midnight boundary', () => {
   const instant = Date.parse('2026-01-01T00:30:00Z')

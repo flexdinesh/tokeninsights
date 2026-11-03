@@ -1,9 +1,11 @@
+import { DashboardClientProvider } from '@tokeninsights/dashboard'
+import { httpDashboardClient } from './http-client'
 import type { ReactNode } from 'react'
 import { act, cleanup, renderHook, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { afterEach, expect, it, vi } from 'vitest'
-import type { SyncStatus } from './contracts'
-import { useDashboardSync } from './useDashboardSync'
+import type { SyncStatus } from '@tokeninsights/contracts'
+import { useDashboardSync } from '../../dashboard/src/useDashboardSync'
 
 afterEach(() => {
   cleanup()
@@ -28,7 +30,11 @@ function setup(initial: SyncStatus | null = ready) {
   })
   if (initial) client.setQueryData(['sync'], initial)
   function Wrapper({ children }: { children: ReactNode }) {
-    return <QueryClientProvider client={client}>{children}</QueryClientProvider>
+    return (
+      <DashboardClientProvider client={httpDashboardClient}>
+        <QueryClientProvider client={client}>{children}</QueryClientProvider>
+      </DashboardClientProvider>
+    )
   }
   return { client, ...renderHook(useDashboardSync, { wrapper: Wrapper }) }
 }

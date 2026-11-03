@@ -1,7 +1,7 @@
+import { apiQueryParams } from './http-query'
 import { describe, expect, it } from 'vitest'
-import type { Selection } from './contracts'
+import type { Selection } from '@tokeninsights/contracts'
 import {
-  apiQueryParams,
   initialQuery,
   parseDashboardSearch,
   parseDashboardSearchParams,
@@ -9,8 +9,8 @@ import {
   reduceQuery,
   searchFromQuery,
   stringifyDashboardSearch,
-} from './query'
-import type { QueryState } from './query'
+} from '../../dashboard/src/query'
+import type { QueryState } from '../../dashboard/src/query'
 
 const defaults: Selection = {
   period: 'week',
