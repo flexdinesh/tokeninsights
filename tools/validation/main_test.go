@@ -99,6 +99,9 @@ func TestGroupManifestCoverage(t *testing.T) {
 	}
 	for name, group := range manifest.Groups {
 		patterns := append(append([]string{}, manifest.Common...), group.Inputs...)
+		if name == "distribution" && !matches("LICENSE", patterns) {
+			t.Error("distribution misses the license required in every product archive")
+		}
 		if !matches("tools/validation/contract.go", patterns) {
 			t.Errorf("%s misses implementation", name)
 		}

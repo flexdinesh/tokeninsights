@@ -178,6 +178,7 @@
     },
     "distribution": {
       "inputs": [
+        "LICENSE",
         "packages/cli/",
         "schema/",
         "docs/openapi.yaml",
