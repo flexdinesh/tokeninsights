@@ -108,6 +108,7 @@ try {
         {
           env: {
             ...env,
+            DEBUG: 'pw:browser',
             HOME: gui,
             XDG_CONFIG_HOME: join(gui, 'config'),
             XDG_DATA_HOME: join(gui, 'data'),
