@@ -44,7 +44,7 @@ func connectLocal(ctx context.Context, target string, capture bool) (dataSource,
 			return nil, fmt.Errorf("cannot inspect local dashboard: %w", err)
 		}
 		// A URL handoff inherits its launcher's capture policy; attach only.
-		session, err := localclient.ConnectEndpoint(ctx, parsed.Origin, false)
+		session, err := localclient.ConnectEndpoint(ctx, parsed.Origin, false, false)
 		if errors.Is(err, localclient.ErrEndpointMissing) {
 			return nil, &externalTarget{URL: target}
 		}

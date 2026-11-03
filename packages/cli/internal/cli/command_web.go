@@ -61,7 +61,7 @@ func runWeb(invocation commandInvocation, args []string) error {
 func runLocalWeb(invocation commandInvocation, settings config.LocalSettings, syncBefore bool, capture pipeline.SyncOptions) error {
 	ctx, cancel := context.WithCancel(invocation.context)
 	defer cancel()
-	session, err := connectLocalBackend(ctx, localclient.Options{CollectorDBPath: settings.CollectorDBPath, ServerDBPath: settings.ServerDBPath, AppDBPath: settings.ApplicationPath(), Host: settings.Host, Port: settings.Port, Capture: syncBefore, FullRefresh: capture.FullRefresh, SourceDir: capture.SourceDir}, func() error { return invocation.prepareLocalStorage(settings) })
+	session, err := connectLocalBackend(ctx, localclient.Options{CollectorDBPath: settings.CollectorDBPath, ServerDBPath: settings.ServerDBPath, AppDBPath: settings.ApplicationPath(), Host: settings.Host, Port: settings.Port, Capture: syncBefore, FullRefresh: capture.FullRefresh, SourceDir: capture.SourceDir, Dashboard: true}, func() error { return invocation.prepareLocalStorage(settings) })
 	if err != nil {
 		return err
 	}

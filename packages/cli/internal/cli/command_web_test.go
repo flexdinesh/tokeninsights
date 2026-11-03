@@ -35,7 +35,7 @@ func useSharedBackendForTest(t *testing.T) {
 		}
 		ownerCtx, cancel := context.WithCancel(t.Context())
 		ready, finished := make(chan struct{}), make(chan error, 1)
-		settings := localprotocol.Settings{CollectorDBPath: options.CollectorDBPath, ServerDBPath: options.ServerDBPath, AppDBPath: options.AppDBPath, Host: options.Host, Port: options.Port}
+		settings := localprotocol.Settings{CollectorDBPath: options.CollectorDBPath, ServerDBPath: options.ServerDBPath, AppDBPath: options.AppDBPath}
 		go func() {
 			finished <- localbackend.Serve(ownerCtx, settings, io.Discard, func(localprotocol.Descriptor) error { close(ready); return nil })
 		}()
@@ -66,7 +66,7 @@ func TestWebClosingCommandPreservesAnotherViewerAndPrivateMaintenance(t *testing
 	settings := config.Defaults()
 	settings.CollectorDBPath, settings.ServerDBPath, settings.Port = filepath.Join(root, "collector.sqlite"), filepath.Join(root, "server.sqlite"), 0
 	useSharedBackendForTest(t)
-	keeper, err := connectLocalBackend(t.Context(), localclient.Options{CollectorDBPath: settings.CollectorDBPath, ServerDBPath: settings.ServerDBPath, AppDBPath: settings.ApplicationPath(), Host: settings.Host, Port: settings.Port}, nil)
+	keeper, err := connectLocalBackend(t.Context(), localclient.Options{CollectorDBPath: settings.CollectorDBPath, ServerDBPath: settings.ServerDBPath, AppDBPath: settings.ApplicationPath(), Host: settings.Host, Port: settings.Port, Dashboard: true}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

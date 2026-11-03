@@ -9,34 +9,34 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/flexdinesh/tokeninsights/packages/core/localprotocol"
 	"io"
 	"net"
 	"net/http"
-	"os"
+	"net/url"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/flexdinesh/tokeninsights/packages/core/analytics"
 	"github.com/flexdinesh/tokeninsights/packages/core/collectorprogress"
+	"github.com/flexdinesh/tokeninsights/packages/core/localprotocol"
 	"github.com/flexdinesh/tokeninsights/packages/core/queryclient"
-	"github.com/flexdinesh/tokeninsights/packages/core/serverownership"
-	"github.com/flexdinesh/tokeninsights/packages/core/writerlock"
 )
 
 const StartupTimeout = 15 * time.Second
 const operationTimeout = 35 * time.Second
 
-type Options struct {
-	CollectorDBPath, ServerDBPath, AppDBPath, Host string
-	Port                                           int
-	BackendPath                                    string
-	Capture, FullRefresh                           bool
-	SourceDir                                      string
-}
+// maxLeaseEventBytes bounds the dashboard event preceding lease heartbeats.
+const maxLeaseEventBytes = 4096
 
+// Dialer opens one connection to a backend's private control endpoint. The
+// launcher owns discovery; the Session owns HTTP and the viewer lease.
+type Dialer func(context.Context) (net.Conn, error)
+
+// Session is one viewer lease over private backend operations. URL is set only
+// for sessions holding a dashboard lease.
 type Session struct {
 	Query      *queryclient.Client
 	URL        string
@@ -49,126 +49,101 @@ type Session struct {
 	once       sync.Once
 }
 
-func Connect(parent context.Context, options Options) (*Session, error) {
-	return ConnectPrepared(parent, options, nil)
+// attachOptions describe one lease and its optional launch capture.
+type attachOptions struct {
+	Capture, FullRefresh bool
+	SourceDir            string
+	Listen               *localprotocol.Listen
 }
 
-// ConnectPrepared runs legacy local-storage recovery only when starting an
-// unowned backend, under startup serialization. Attached viewers never inspect
-// or reopen the owner's stores. A nil preparation leaves recovery to the caller.
-func ConnectPrepared(parent context.Context, options Options, prepare func() error) (*Session, error) {
-	settings := localprotocol.Settings{CollectorDBPath: options.CollectorDBPath, ServerDBPath: options.ServerDBPath, AppDBPath: options.AppDBPath, Host: options.Host, Port: options.Port}
-	if settings.AppDBPath == "" {
-		server, _, err := serverownership.Identify(settings.ServerDBPath)
-		if err != nil {
-			return nil, err
-		}
-		settings.AppDBPath = filepath.Join(filepath.Dir(server), "app.sqlite")
+func newSession(dial Dialer, unencryptedHTTP2 bool) *Session {
+	transport := &http.Transport{DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) { return dial(ctx) }}
+	if unencryptedHTTP2 {
+		protocols := new(http.Protocols)
+		protocols.SetUnencryptedHTTP2(true)
+		transport.Protocols = protocols
 	}
-	settings, err := settings.Canonical()
-	if err != nil {
-		return nil, err
-	}
-	if options.FullRefresh && !options.Capture {
-		return nil, errors.New("full refresh requires capture")
-	}
-	if options.SourceDir != "" {
-		options.SourceDir, err = filepath.Abs(options.SourceDir)
-		if err != nil {
-			return nil, err
-		}
-	}
-	socket, err := localprotocol.SocketPath(settings)
-	if err != nil {
-		return nil, err
-	}
-	startup, cancelStartup := context.WithTimeout(parent, StartupTimeout)
-	defer cancelStartup()
-	release, err := writerlock.Acquire(startup, socket+".startup")
-	if err != nil {
-		return nil, err
-	}
-	defer release()
-	s := socketSession(socket)
-	attached := false
-	defer func() {
-		if !attached {
-			s.transport.CloseIdleConnections()
-		}
-	}()
+	client := &http.Client{Transport: transport, CheckRedirect: func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }}
+	return &Session{client: client, transport: transport, done: make(chan struct{})}
+}
+
+func (s *Session) descriptor(ctx context.Context) (localprotocol.Descriptor, error) {
 	var descriptor localprotocol.Descriptor
-	err = s.call(startup, http.MethodGet, "/descriptor", nil, &descriptor)
-	if err != nil {
-		// A reachable but incompatible or corrupt endpoint must never trigger
-		// fallback. Only a failed Unix connection permits owner inspection.
-		var connection *net.OpError
-		if !errors.As(err, &connection) {
-			return nil, err
-		}
-		owner, held, ownerErr := serverownership.Lifetime(settings.ServerDBPath, false)
-		if ownerErr != nil {
-			return nil, ownerErr
-		}
-		if owner != nil {
-			_ = owner.Close()
-		}
-		if held {
-			return nil, localprotocol.ErrOwned
-		}
-		if prepare != nil {
-			if err := prepare(); err != nil {
-				return nil, err
-			}
-		}
-		if err := start(startup, options.BackendPath, settings); err != nil {
-			return nil, err
-		}
-		if err := s.call(startup, http.MethodGet, "/descriptor", nil, &descriptor); err != nil {
-			return nil, err
-		}
-	}
-	if err := descriptor.Compatible(settings); err != nil {
-		return nil, err
-	}
-	if err := s.attach(parent, startup, descriptor, options.Capture, options.FullRefresh, options.SourceDir); err != nil {
-		return nil, err
-	}
-	attached = true
-	return s, nil
+	err := s.call(ctx, http.MethodGet, "/descriptor", nil, &descriptor)
+	return descriptor, err
 }
 
-func (s *Session) attach(parent, startup context.Context, descriptor localprotocol.Descriptor, capture, fullRefresh bool, sourceDir string) error {
-	s.URL, s.InstanceID = descriptor.URL, descriptor.InstanceID
+func (s *Session) attach(parent, startup context.Context, descriptor localprotocol.Descriptor, options attachOptions) error {
+	s.InstanceID = descriptor.InstanceID
 	s.Query = queryclient.NewDirect(privateReader{session: s})
 	leaseCtx, cancelLease := context.WithCancel(parent)
 	s.cancel = cancelLease
-	request, err := s.request(leaseCtx, http.MethodGet, "/viewers", nil)
+	path := "/viewers"
+	if options.Listen != nil {
+		query := url.Values{"host": {options.Listen.Host}, "port": {strconv.Itoa(options.Listen.Port)}}
+		path += "?" + query.Encode()
+	}
+	request, err := s.request(leaseCtx, http.MethodGet, path, nil)
 	if err != nil {
 		cancelLease()
 		return err
 	}
-	// Stream headers are bounded independently from its indefinite lifetime.
+	// Stream headers and the dashboard event are bounded independently from
+	// the lease's indefinite lifetime.
 	stop := context.AfterFunc(startup, cancelLease)
 	response, err := s.client.Do(request)
-	stop()
 	if err != nil {
+		stop()
 		cancelLease()
 		return err
 	}
 	if response.StatusCode != http.StatusOK {
+		err := failure(response, "local backend viewer attachment rejected")
 		_ = response.Body.Close()
+		stop()
 		cancelLease()
-		return errors.New("local backend viewer attachment rejected")
+		return err
 	}
+	reader := bufio.NewReader(response.Body)
+	if options.Listen != nil {
+		dashboard, err := readDashboard(reader)
+		if err != nil {
+			_ = response.Body.Close()
+			stop()
+			cancelLease()
+			return err
+		}
+		s.URL = dashboard.URL
+	}
+	stop()
 	s.lease = response.Body
-	go func() { _, _ = io.Copy(io.Discard, response.Body); close(s.done) }()
-	if capture {
-		if err := s.Capture(startup, fullRefresh, sourceDir); err != nil {
+	go func() { _, _ = io.Copy(io.Discard, reader); close(s.done) }()
+	if options.Capture {
+		if err := s.Capture(startup, options.FullRefresh, options.SourceDir); err != nil {
 			_ = s.Close()
 			return err
 		}
 	}
 	return nil
+}
+
+// readDashboard reads the first lease event, which names the bound listener.
+func readDashboard(reader *bufio.Reader) (localprotocol.Dashboard, error) {
+	var dashboard localprotocol.Dashboard
+	limited := bufio.NewScanner(io.LimitReader(reader, maxLeaseEventBytes))
+	for limited.Scan() {
+		line := limited.Text()
+		if data, ok := strings.CutPrefix(line, "data: "); ok {
+			if err := json.Unmarshal([]byte(data), &dashboard); err != nil {
+				return dashboard, localprotocol.ErrIncompatible
+			}
+			if _, err := localprotocol.HTTPOrigin(dashboard.URL, false); err != nil {
+				return dashboard, localprotocol.ErrIncompatible
+			}
+			return dashboard, nil
+		}
+	}
+	return dashboard, errors.New("local backend dashboard lease disconnected")
 }
 
 // Done closes when this viewer loses its backend connection.
@@ -285,19 +260,7 @@ func (s *Session) call(parent context.Context, method, path string, body, target
 	}
 	defer func() { _ = response.Body.Close() }()
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		var failure struct {
-			Error string `json:"error"`
-		}
-		_ = json.NewDecoder(io.LimitReader(response.Body, 4096)).Decode(&failure)
-		switch failure.Error {
-		case "capture_busy":
-			return localprotocol.ErrCaptureBusy
-		case "processing_failed":
-			return localprotocol.ErrProcessingFailed
-		case "processing_timeout":
-			return localprotocol.ErrProcessingTimeout
-		}
-		return fmt.Errorf("local backend operation rejected (HTTP %d)", response.StatusCode)
+		return failure(response, fmt.Sprintf("local backend operation rejected (HTTP %d)", response.StatusCode))
 	}
 	if target != nil {
 		return json.NewDecoder(io.LimitReader(response.Body, 1<<20)).Decode(target)
@@ -305,23 +268,25 @@ func (s *Session) call(parent context.Context, method, path string, body, target
 	return nil
 }
 
-// BundledBackend resolves the adjacent binary. No PATH or remote fallback.
-func BundledBackend() (string, error) {
-	executable, err := os.Executable()
-	if err != nil {
-		return "", err
+// failure maps a sanitized backend error code to its protocol error.
+func failure(response *http.Response, fallback string) error {
+	var body struct {
+		Error string `json:"error"`
 	}
-	executable, err = filepath.EvalSymlinks(executable)
-	if err != nil {
-		return "", err
+	_ = json.NewDecoder(io.LimitReader(response.Body, 4096)).Decode(&body)
+	switch body.Error {
+	case "capture_busy":
+		return localprotocol.ErrCaptureBusy
+	case "processing_failed":
+		return localprotocol.ErrProcessingFailed
+	case "processing_timeout":
+		return localprotocol.ErrProcessingTimeout
+	case "listen_conflict":
+		return localprotocol.ErrSettingsMismatch
+	case "listen_unavailable":
+		return localprotocol.ErrListenUnavailable
+	case "shutting_down":
+		return localprotocol.ErrShuttingDown
 	}
-	return filepath.Join(filepath.Dir(executable), "tokeninsights-backend"), nil
-}
-
-func socketSession(socket string) *Session {
-	transport := &http.Transport{DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
-		return (&net.Dialer{}).DialContext(ctx, "unix", socket)
-	}}
-	client := &http.Client{Transport: transport, CheckRedirect: func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }}
-	return &Session{client: client, transport: transport, done: make(chan struct{})}
+	return errors.New(fallback)
 }

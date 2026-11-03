@@ -24,6 +24,10 @@ type Binding struct {
 	Listener net.Listener
 	Handler  http.Handler
 	Health   bool
+	// UnencryptedHTTP2 additionally accepts prior-knowledge HTTP/2 without TLS.
+	// Only private, already-authenticated transports such as a mode-0600 Unix
+	// socket and its stdio bridges enable it.
+	UnencryptedHTTP2 bool
 }
 
 // Readiness checks initialized storage, not processing-queue emptiness.
@@ -103,6 +107,52 @@ func Serve(parent context.Context, store Readiness, bindings []Binding, ready fu
 	return serve(parent, store, bindings, ready, ShutdownTimeout)
 }
 
+func newServer(ctx context.Context, store Readiness, binding Binding) *http.Server {
+	handler := binding.Handler
+	if binding.Health {
+		handler = health(store, handler)
+	}
+	httpServer := &http.Server{Handler: handler, BaseContext: func(net.Listener) context.Context { return ctx }, ReadHeaderTimeout: readHeaderTimeout, ReadTimeout: requestTimeout, WriteTimeout: requestTimeout, IdleTimeout: idleTimeout}
+	if binding.UnencryptedHTTP2 {
+		protocols := new(http.Protocols)
+		protocols.SetHTTP1(true)
+		protocols.SetUnencryptedHTTP2(true)
+		httpServer.Protocols = protocols
+	}
+	return httpServer
+}
+
+// Listening is one started binding whose lifetime is shorter than its
+// composition, such as an on-demand dashboard listener.
+type Listening struct {
+	server *http.Server
+	done   chan error
+}
+
+// Start serves one binding until Shutdown or ctx cancellation. It uses the
+// same timeouts as Run/Serve; the composition still owns storage and workers.
+func Start(ctx context.Context, store Readiness, binding Binding) (*Listening, error) {
+	if err := validate(store, []Binding{binding}); err != nil {
+		return nil, err
+	}
+	l := &Listening{server: newServer(ctx, store, binding), done: make(chan error, 1)}
+	go func() { l.done <- l.server.Serve(binding.Listener) }()
+	return l, nil
+}
+
+// Shutdown closes the listener, drains requests within ctx, then force-closes
+// remaining connections. It returns after the serve loop has joined.
+func (l *Listening) Shutdown(ctx context.Context) error {
+	err := l.server.Shutdown(ctx)
+	if err != nil {
+		_ = l.server.Close()
+	}
+	if serveErr := <-l.done; !errors.Is(serveErr, http.ErrServerClosed) {
+		err = errors.Join(err, serveErr)
+	}
+	return err
+}
+
 func serve(parent context.Context, store Readiness, bindings []Binding, ready func() error, shutdownTimeout time.Duration) error {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
@@ -110,11 +160,7 @@ func serve(parent context.Context, store Readiness, bindings []Binding, ready fu
 	failures := make(chan error, len(bindings))
 	var listeners sync.WaitGroup
 	for _, binding := range bindings {
-		handler := binding.Handler
-		if binding.Health {
-			handler = health(store, handler)
-		}
-		httpServer := &http.Server{Handler: handler, BaseContext: func(net.Listener) context.Context { return ctx }, ReadHeaderTimeout: readHeaderTimeout, ReadTimeout: requestTimeout, WriteTimeout: requestTimeout, IdleTimeout: idleTimeout}
+		httpServer := newServer(ctx, store, binding)
 		servers = append(servers, httpServer)
 		listeners.Go(func() { failures <- httpServer.Serve(binding.Listener) })
 	}

@@ -17,7 +17,7 @@ export const localBackendDescriptorSchema = z
       )
     }, 'Expected an HTTP loopback backend origin'),
     instanceId: z.string().min(1),
-    protocolVersion: z.literal(1),
+    protocolVersion: z.literal(2),
   })
   .strict()
 export type LocalBackendDescriptor = z.output<typeof localBackendDescriptorSchema>
