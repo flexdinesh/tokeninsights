@@ -83,19 +83,20 @@ Read `docs/design.md` and the relevant ADRs before non-trivial changes, especial
 
 ## Commands
 
-`mise.toml` pins exact development tools, locked by `mise.lock`, and owns all tasks; root `package.json` keeps only `prepare`, and tasks call per-package leaf scripts. `mise tasks ls` lists them. `mise run setup` installs dependencies and Husky hooks; pre-push runs no checks; `mise run setup:browser` installs Chromium. Bump tools per `docs/development.md`; `check:toolchain` rejects drift. Public docs live in `docs-website/`, a Vocs pnpm workspace package run with `mise run dev:docs` and `mise run build:docs`. All locally reproducible checks except the docs build run in `check:pr`, including live PostgreSQL and real-container contracts. CI runs only on main pushes and covers native Linux arm64 and macOS amd64/arm64 builds and focused storage tests; pull requests run no CI. Validation requires the explicitly managed Dagger engine. Tests receive private container services, never host database URLs.
+`mise.toml` pins exact development tools, locked by `mise.lock`, and owns all tasks; root `package.json` keeps only `prepare`, and tasks call per-package leaf scripts. `mise tasks ls` lists them. `mise run setup` installs dependencies and Husky hooks; pre-push runs no checks; `mise run setup:browser` installs Chromium. Bump tools per `docs/development.md`; `check:toolchain` rejects drift. Public docs live in `docs-website/`, a Vocs pnpm workspace package run with `mise run dev:docs` and `mise run build:docs`. Locally reproducible checks run in `check:pr`, including live PostgreSQL and real-container contracts; docs build and approved host Electron GUI `check:desktop` remain separate. CI runs only on main pushes and covers native Linux arm64 and macOS amd64/arm64 builds and focused storage tests; pull requests run no CI. Validation requires the explicitly managed Dagger engine. Tests receive private container services, never host database URLs.
 
 ```sh
 mise run format
 mise run check-schema
 mise run check-api
 mise run build:cli
-mise run check:pr    # full suite before PR creation/update
+mise run check:pr    # isolated suite before PR creation/update
+mise run check:desktop # sandboxed Electron GUI on host, ADR 0024
 ```
 
 ## Verification
 
-- **Validate before PR creation and updates**. Run `mise run check:pr` on committed HEAD with clean tracked files. Pushes do not trigger the full suite. Reuse only complete successful evidence with matching inputs.
+- **Validate before PR creation and updates**. Run `mise run check:pr` and `mise run check:desktop` on committed HEAD with clean tracked files. The user approved host Electron GUI validation because the managed Dagger container denies unprivileged user namespaces; retain Chromium sandboxing. Pushes do not trigger the full suite. Reuse only complete successful evidence with matching inputs.
 - **Use isolated groups for targeted validation**. Run `mise run check:pr -- --group <name>`; groups are format, static, web, tooling, go, benchmarks, distribution, browser and deployment. Internal leaf tasks are implementation details, not host validation entrypoints.
 - **Format before verification** with `mise run format`. Commit intended changes before HEAD validation. Do not claim uncommitted development checks validate HEAD.
 - **Preserve local execution**. Preserve existing validation ownership; approved product packaging/release changes are specified in ADR 0024. New remote coverage requires a concrete reason unavailable locally.

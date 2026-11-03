@@ -1,7 +1,7 @@
 // Exercise real host product builds and prebuilt installation, never source installs.
 import assert from 'node:assert/strict'
 import { execFileSync, spawn } from 'node:child_process'
-import { chmod, chown, cp, mkdir, mkdtemp, readFile, rm } from 'node:fs/promises'
+import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { buildProducts } from './build-products.ts'
@@ -76,54 +76,8 @@ try {
       ],
       { env, stdio: 'inherit' },
     )
-    // Exercise the installed Electron app and rendered dashboard, not merely
-    // its runtime version. Keep the production renderer sandbox enabled.
-    const gui = await mkdtemp(join(tmpdir(), 'tokeninsights-electron-gui-'))
-    const screenshot = join(gui, 'electron.png')
-    const ordinaryUser = 65534 // Debian's nobody account inside validation.
-    const runAsOrdinaryUser = process.getuid?.() === 0
-    try {
-      await chmod(fixture, 0o755)
-      if (runAsOrdinaryUser) {
-        await chown(gui, ordinaryUser, ordinaryUser)
-        // The installer keeps its product directory private to the installing
-        // user. Transfer that directory to the user exercising this fixture.
-        await chown(join(installed, 'electron'), ordinaryUser, ordinaryUser)
-        // Committed snapshots use private directories. The unprivileged smoke
-        // runner needs traversal to its public source and installed dependencies.
-        for (const path of ['', 'tools', 'tools/build', 'tools/build/src'])
-          await chmod(workspacePath(path), 0o755)
-      }
-      const args = [
-        process.execPath,
-        workspacePath('tools/build/src/smoke-electron.ts'),
-        electron,
-        screenshot,
-      ]
-      execFileSync(
-        runAsOrdinaryUser ? '/usr/sbin/runuser' : 'xvfb-run',
-        runAsOrdinaryUser
-          ? ['--preserve-environment', '-u', 'nobody', '--', 'xvfb-run', '-a', ...args]
-          : ['-a', ...args],
-        {
-          env: {
-            ...env,
-            DEBUG: 'pw:browser',
-            HOME: gui,
-            XDG_CONFIG_HOME: join(gui, 'config'),
-            XDG_DATA_HOME: join(gui, 'data'),
-            XDG_CACHE_HOME: join(gui, 'cache'),
-            TMPDIR: gui,
-          },
-          stdio: 'inherit',
-        },
-      )
-      const artifacts = workspacePath('.check-logs')
-      await mkdir(artifacts, { recursive: true })
-      await cp(screenshot, join(artifacts, 'electron.png'))
-    } finally {
-      await rm(gui, { recursive: true, force: true })
-    }
+    // Sandboxed Electron GUI runs through check:desktop on the host because
+    // the managed container denies unprivileged user namespaces (ADR 0024).
   }
   // Launch the installed backend through its private connector, then read embedded assets.
   const child = spawn(join(installed, 'cli/tokeninsights-backend'), ['connect', '--json'], {

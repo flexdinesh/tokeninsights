@@ -28,3 +28,10 @@ URL handoffs request no capture, preserving the launcher's sync/source policy.
 A tunneled personal dashboard without a local owner opens its original URL in
 the browser. A launch without a URL uses Go-owned default settings and collects.
 Renderer navigation stays on the acquired backend origin.
+
+`mise run check:desktop` builds and installs the Electron product into a private
+temporary home, then checks the actual dashboard with Chromium sandboxing enabled
+and no host JavaScript tools on the app's `PATH`. Linux requires unprivileged user
+namespaces. Hosts without a display use Chromium's headless Ozone compositor; the
+same BrowserWindow renders the dashboard and an ignored screenshot. Dagger keeps
+the packaging checks; its namespace restrictions prevent this sandboxed GUI check.

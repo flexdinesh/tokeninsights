@@ -98,4 +98,12 @@ installer failure atomicity and packaged runtime without host build tools.
 Use existing local Dagger validation; native platform builds cover environments
 unavailable on the developer host.
 
+The user approved running installed Electron GUI smoke on the host through
+`mise run check:desktop`, in addition to `mise run check:pr` on clean committed
+HEAD. Dagger denies unprivileged user namespaces, which a user-owned Linux
+installation needs for Chromium sandboxing without a privileged setuid helper.
+Keep the renderer sandbox enabled. Packaging, installation, bundled-runtime,
+native-window and backend HTTP checks remain isolated. No shared engine changes
+or unsandboxed renderer fallback are introduced.
+
 Unresolved questions: none.

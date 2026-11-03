@@ -12,7 +12,7 @@
 **/node_modules/
 **/bin/
 **/dist/
-**/build/
+packages/**/build/
 **/.mygo/
 **/out/
 **/.scratch/

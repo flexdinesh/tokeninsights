@@ -42,6 +42,7 @@ Run commands from the repository root unless noted otherwise. `mise tasks ls` li
 | Purpose | Command |
 | --- | --- |
 | Full local validation before PR creation/update | `mise run check:pr` |
+| Installed Electron GUI with sandbox enabled on host | `mise run check:desktop` |
 | Install workspace dependencies | `mise run setup` |
 | Run Go API and hot-reloading web app | `mise run dev` |
 | Recreate sanitized fixture data | `mise run dev:data` |
@@ -80,6 +81,15 @@ personal configuration are excluded. Use `--group format|static|web|tooling|go|b
 for targeted coverage, `--force` to execute checks again, and `--status` to inspect
 eligible successful receipts. Targeted success does not count as full validation.
 
+Also run `mise run check:desktop` on that clean committed HEAD. This builds and
+installs Electron into a private fixture and checks the rendered dashboard with
+Chromium sandboxing enabled and no host JavaScript tools on the app's PATH.
+The user approved this host exception because Dagger denies unprivileged user
+namespaces. Packaging and installed-runtime checks remain in the isolated
+distribution group. On Linux without a graphical display, Ozone headless renders
+the real application window in a private compositor. Linux hosts must permit
+unprivileged user namespaces; the check never disables Chromium sandboxing.
+
 Dagger executes tests and checks locally in Linux amd64 containers. Development,
 formatting and format verification stay on the host. Aggregate format verification
 uses the committed snapshot and installed pinned tools; it does not install
@@ -114,7 +124,8 @@ reuse; branch names and commit timestamps do not. History-only changes can reuse
 matching results. A forced retry invalidates its previous receipt before execution. Reports retain the original tested revision for reused results.
 
 PR creation and updates are separate operations. Run `mise run check:pr`, then
-confirm HEAD and tracked cleanliness before publishing that exact revision.
+run `mise run check:desktop`, and confirm HEAD and tracked cleanliness before
+publishing that exact revision.
 `mise run check:status` checks current input identities without starting an engine
 or acquiring execution slots. Local conventions are bypassable; Git has no
 standard pre-PR hook.
@@ -131,23 +142,23 @@ root enforcement is no longer covered:** Dagger 0.21.11 does not enforce that ro
 mount option. This explicit exception is recorded in
 [ADR 0022](adr/0022-local-dagger-validation.md).
 
-Existing CI and release workflows are unchanged. Native Linux arm64 and macOS
-build/storage checks remain in CI; Linux container validation does not claim full
-native macOS coverage. New locally reproducible checks belong in validation,
-not duplicated remote enforcement.
+CI retains native Linux arm64 and macOS build/storage checks and builds product
+archives for source-tag releases and the rolling main prerelease. Linux container
+validation does not claim full native macOS coverage. New locally reproducible
+checks belong in validation, not duplicated remote enforcement.
 
 ### Local CLI installation
 
-Build the frontend, embed it in Go, and install `tokeninsights` into Go's binary directory:
+Install the latest stable prebuilt CLI and backend:
 
 ```sh
-mise run install:cli
+curl -fsSL https://px0.ai/install.sh | sh
 ```
 
-If `tokeninsights` is not found, add Go's binary directory to `PATH`. For Fish:
+If `tokeninsights` is not found, add the installer binary directory to `PATH`. For Fish:
 
 ```fish
-fish_add_path (go env GOPATH)/bin
+fish_add_path ~/.local/bin
 ```
 
 Verify the installed CLI and embedded browser application:
@@ -160,14 +171,14 @@ tokeninsights web
 
 ### Direct Go commands
 
-Embedded web assets are ignored on `main` ([ADR 0017](adr/0017-generated-assets-on-installable-refs.md)). Generate them once before direct Go commands:
+Embedded web assets are ignored on every ref ([ADR 0024](adr/0024-shared-backend-and-installable-products.md)). Generate them once before direct Go commands:
 
 ```sh
 mise run build:web
 cd packages/cli
 go test ./...
 go build -o bin/tokeninsights ./cmd/tokeninsights
-go build -o bin/tokeninsights ./cmd/tokeninsights
+go build -o bin/tokeninsights-backend ../backend/cmd/tokeninsights-backend
 ```
 
 Direct Go commands embed the last generated assets; rerun `mise run build:web` after frontend changes, or use `mise run build:cli`. Inside the repository, mise sets `GOTOOLCHAIN=local`, so direct Go commands use the pinned toolchain.

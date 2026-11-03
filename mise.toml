@@ -304,6 +304,11 @@ run = [
 dir = "{{config_root}}/tools/validation"
 run = "go run ./cmd/validate"
 
+[tasks."check:desktop"]
+description = "Verify installed Electron with its sandbox on the host"
+depends = ["build:web"]
+run = "node tools/build/src/test-electron.ts"
+
 [tasks."check:status"]
 dir = "{{config_root}}/tools/validation"
 run = "go run ./cmd/validate --status"
