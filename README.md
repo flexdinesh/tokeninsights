@@ -12,7 +12,7 @@ macOS/Linux, amd64/arm64. Binaries go to `~/.local/bin`.
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/flexdinesh/tokeninsights/main/install.sh | sh          # CLI, TUI, web
-curl -fsSL https://raw.githubusercontent.com/flexdinesh/tokeninsights/main/install-mygo.sh | sh     # native desktop (experimental)
+curl -fsSL https://raw.githubusercontent.com/flexdinesh/tokeninsights/main/install-mygo.sh | sh     # desktop app (experimental)
 curl -fsSL https://raw.githubusercontent.com/flexdinesh/tokeninsights/main/install-electron.sh | sh # Electron desktop (experimental)
 curl -fsSL https://raw.githubusercontent.com/flexdinesh/tokeninsights/main/install-server.sh | sh   # hosted server
 ```

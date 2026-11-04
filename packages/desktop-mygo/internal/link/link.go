@@ -15,8 +15,8 @@ import (
 // Scheme is the URL scheme the desktop viewer registers.
 const Scheme = "tokeninsights"
 
-// NativeScheme identifies MyGo independently of Electron.
-const NativeScheme = "tokeninsights-mygo"
+// MyGoScheme identifies MyGo independently of Electron.
+const MyGoScheme = "tokeninsights-mygo"
 
 const (
 	openAction = "open"
@@ -43,7 +43,7 @@ type Target struct {
 // Parse validates a tokeninsights://open?url=... link.
 func Parse(raw string) (Target, error) {
 	u, err := url.Parse(raw)
-	if err != nil || (!strings.EqualFold(u.Scheme, Scheme) && !strings.EqualFold(u.Scheme, NativeScheme)) || u.Opaque != "" || u.User != nil || u.Fragment != "" {
+	if err != nil || (!strings.EqualFold(u.Scheme, Scheme) && !strings.EqualFold(u.Scheme, MyGoScheme)) || u.Opaque != "" || u.User != nil || u.Fragment != "" {
 		return Target{}, ErrMalformed
 	}
 	if !strings.EqualFold(u.Host, openAction) || (u.Path != "" && u.Path != "/") {

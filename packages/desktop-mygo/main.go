@@ -1,4 +1,4 @@
-// Command tokeninsights-mygo presents local usage through MyGo's native Go UI.
+// Command tokeninsights-mygo presents the shared web dashboard in a MyGo webview window.
 package main
 
 import (
@@ -17,8 +17,8 @@ func main() {
 		return
 	}
 	endpoint := endpointFlag(os.Args[1:])
-	v := newViewer(func(ctx context.Context, target string, capture bool) (dataSource, error) {
-		return connectLocal(ctx, target, capture, endpoint)
+	v := newViewer(func(ctx context.Context, target string) (*dashboard, error) {
+		return connectDashboard(ctx, target, endpoint)
 	})
 	mygo.App.OnOpenURL(v.open)
 	mygo.App.OnSecondInstance(func(args []string, _ string) {

@@ -2,6 +2,7 @@
 
 The always-bound public listener and listener settings as backend compatibility
 are superseded by [ADR 0025](0025-ssh-endpoints-and-on-demand-dashboard.md).
+MyGo's native Go UI is superseded by [ADR 0026](0026-mygo-webview-shell.md).
 
 Status: Accepted. Date: 3 November 2026. User approved the execution plan and
 the versioned local-client contract.

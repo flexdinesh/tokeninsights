@@ -1,4 +1,4 @@
-// Native MyGo packaging. The root module and source files remain untouched.
+// MyGo packaging. The root module and source files remain untouched.
 import { execFileSync } from 'node:child_process'
 import { cp, mkdir, mkdtemp, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'

@@ -86,7 +86,6 @@ mise run build:desktop                         # dist/tokeninsights-{mygo,electr
 tar -xzf dist/tokeninsights-mygo_linux_amd64.tar.gz -C /tmp && /tmp/tokeninsights-mygo_linux_amd64/tokeninsights-mygo
 tar -xzf dist/tokeninsights-electron_linux_amd64.tar.gz -C /tmp && /tmp/tokeninsights-electron_linux_amd64/tokeninsights-electron
 pnpm --filter @tokeninsights/desktop-electron run install:runtime  # pinned Electron runtime
-TOKENINSIGHTS_NATIVE_CAPTURE_DIR=/tmp/mygo-shots go test ./packages/desktop-mygo/...  # MyGo PNG captures
 mise run check:desktop                         # installed Electron GUI check, sandboxed, on host
 ```
 

@@ -71,7 +71,7 @@ try {
       [
         '-a',
         process.execPath,
-        workspacePath('tools/build/src/smoke-native.ts'),
+        workspacePath('tools/build/src/smoke-mygo.ts'),
         join(installed, 'mygo/tokeninsights-mygo'),
       ],
       { env, stdio: 'inherit' },
