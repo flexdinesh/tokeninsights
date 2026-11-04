@@ -147,7 +147,7 @@ mise run check:cleanup                         # prune old run artifacts
 mise run check:desktop                         # also required before PR
 ```
 
-Artifacts: `<git-common-dir>/tokeninsights-validation/v2/runs/<run-id>/`. Engine: `tokeninsights-validation-engine-v0.21.11`; never prune or restart it.
+Artifacts: `<git-common-dir>/tokeninsights-validation/v2/runs/<run-id>/`. Engine: `tokeninsights-validation-engine-v0.21.11`; never prune or restart it. Apt steps run under a guard (memory cap, timeout, log filter, backoff retries) and reuse `tokeninsights-validation-apt-<suite>-<snapshot>` cache volumes inside that engine; rename them with the snapshot date.
 
 ## Direct Go
 
