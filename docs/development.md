@@ -10,8 +10,26 @@ curl -fsSL https://raw.githubusercontent.com/flexdinesh/tokeninsights/main/insta
 curl -fsSL https://raw.githubusercontent.com/flexdinesh/tokeninsights/main/install-electron.sh | sh -s -- --channel=main      # Electron
 curl -fsSL https://raw.githubusercontent.com/flexdinesh/tokeninsights/main/install-server.sh | sh -s -- --channel=main        # server
 curl -fsSL https://raw.githubusercontent.com/flexdinesh/tokeninsights/main/install.sh | sh                                    # back to stable
-tokeninsights --version
 fish_add_path ~/.local/bin                     # if not on PATH
+```
+
+## Run main build
+
+Main replaces stable at `~/.local/bin/tokeninsights`; same commands as [CLI](cli.md).
+
+```sh
+tokeninsights --version                        # confirm main build
+cat ~/.local/share/tokeninsights/products/cli/.channel  # stable|main
+tokeninsights tui
+tokeninsights tui --sync=false
+tokeninsights web
+tokeninsights web --open=mygo                  # MyGo installed from main
+tokeninsights web --open=electron              # Electron installed from main
+tokeninsights web --open=browser
+tokeninsights tui --endpoint ssh://you@devbox  # remote needs matching protocol version
+tokeninsights web --endpoint ssh://you@devbox
+tokeninsights sync --wait
+tokeninsights-server --version                 # server installed from main
 ```
 
 ## Setup
