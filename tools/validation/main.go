@@ -49,7 +49,49 @@ func (m *Validation) Deployment(source *dagger.Directory, prepared *dagger.Conta
 
 const postgresImage = "postgres:18@sha256:edb0c08dc33befd0262ab3b5cf1c4f3f8cfd8b09e88c05b45adee29d6761ddb6"
 const goImage = "golang:1.27.3-trixie@sha256:fbb7ae40b62ff8afe31662df570d39b4f5052ac32b90dae8e60d7657a20a74f4"
-const aptSnapshot = "sed -i 's|http://deb.debian.org/debian-security|https://snapshot.debian.org/archive/debian-security/20261031T000000Z|g; s|http://deb.debian.org/debian|https://snapshot.debian.org/archive/debian/20261031T000000Z|g' /etc/apt/sources.list.d/debian.sources; printf 'Acquire::Check-Valid-Until \"false\";\n' > /etc/apt/apt.conf.d/99validation-snapshot"
+const aptSnapshot = "sed -i 's|http://deb.debian.org/debian-security|https://snapshot.debian.org/archive/debian-security/20261031T000000Z|g; s|http://deb.debian.org/debian|https://snapshot.debian.org/archive/debian/20261031T000000Z|g' /etc/apt/sources.list.d/debian.sources; rm -f /etc/apt/apt.conf.d/docker-clean; printf 'Acquire::Check-Valid-Until \"false\";\nBinary::apt::APT::Keep-Downloaded-Packages \"true\";\n' > /etc/apt/apt.conf.d/99validation-snapshot"
+
+// aptCache names the shared apt caches for the pinned snapshot above; change it
+// with the snapshot date. Caches are accelerators only (ADR 0022): they keep
+// downloaded packages and indexes across runs and failed attempts, so a
+// transient snapshot mirror failure retries without refetching everything.
+const aptCache = "tokeninsights-validation-apt-trixie-20261031"
+
+// aptGuardPath shadows apt-get on PATH while apt runs, including the apt-get
+// that Playwright's --with-deps starts.
+const aptGuardPath = "/usr/local/bin/apt-get"
+
+// aptGuard bounds apt under snapshot rate limiting, where it has flooded
+// gigabytes of "delayed item" warnings and reached 30 GB RSS, taking down the
+// host (the engine has no memory limit). Each attempt gets a 4 GiB address
+// space cap and a 10 minute timeout, the flood is dropped before it reaches
+// Dagger's log capture, and failures retry with backoff, reusing packages
+// already in the cache.
+const aptGuard = `#!/bin/bash
+for wait in 30 90 0; do
+  (ulimit -v 4194304; exec timeout 600 /usr/bin/apt-get "$@") 2>&1 | grep --line-buffered -v 'Tried to start delayed item'
+  code=${PIPESTATUS[0]}
+  [ "$code" -eq 0 ] && exit 0
+  [ "$wait" -eq 0 ] && exit "$code"
+  echo "apt-get exited $code; retrying in ${wait}s" >&2
+  sleep "$wait"
+done
+`
+
+// withApt pins the snapshot, installs the guard and mounts the shared apt
+// caches, locked so concurrent groups never write one cache at once. withoutApt
+// removes the guard and mounts so prepared containers carry neither.
+func withApt(c *dagger.Container) *dagger.Container {
+	locked := dagger.ContainerWithMountedCacheOpts{Sharing: dagger.CacheSharingModeLocked}
+	return c.WithMountedCache("/var/cache/apt", dag.CacheVolume(aptCache+"-archives"), locked).
+		WithMountedCache("/var/lib/apt/lists", dag.CacheVolume(aptCache+"-lists"), locked).
+		WithNewFile(aptGuardPath, aptGuard, dagger.ContainerWithNewFileOpts{Permissions: 0o755}).
+		WithExec([]string{"sh", "-c", aptSnapshot})
+}
+
+func withoutApt(c *dagger.Container) *dagger.Container {
+	return c.WithoutFile(aptGuardPath).WithoutMount("/var/cache/apt").WithoutMount("/var/lib/apt/lists")
+}
 
 // withSSHRemote binds a real OpenSSH server running the CLI built from source,
 // installed on the remote's default non-interactive PATH, for SSH endpoint
@@ -61,10 +103,9 @@ func withSSHRemote(prepared *dagger.Container, attempt string) *dagger.Container
 	keys := dag.Container(dagger.ContainerOpts{Platform: "linux/amd64"}).From(goImage).
 		WithEnvVariable("VALIDATION_ATTEMPT", attempt).
 		WithExec([]string{"sh", "-c", "mkdir -p /keys && ssh-keygen -q -t ed25519 -N '' -C validation -f /keys/id"}).Directory("/keys")
-	sshd := dag.Container(dagger.ContainerOpts{Platform: "linux/amd64"}).From(goImage).
-		WithExec([]string{"sh", "-c", aptSnapshot}).
+	sshd := withoutApt(withApt(dag.Container(dagger.ContainerOpts{Platform: "linux/amd64"}).From(goImage)).
 		WithExec([]string{"apt-get", "update"}).
-		WithExec([]string{"apt-get", "install", "-y", "--no-install-recommends", "openssh-server"}).
+		WithExec([]string{"apt-get", "install", "-y", "--no-install-recommends", "openssh-server"})).
 		WithExec([]string{"useradd", "--create-home", "--shell", "/bin/sh", "remote"}).
 		WithDirectory("/opt/tokeninsights", binaries).
 		WithExec([]string{"ln", "-s", "/opt/tokeninsights/tokeninsights", "/usr/local/bin/tokeninsights"}).
@@ -170,7 +211,7 @@ func (m *Validation) prepare(source *dagger.Directory, group string) *dagger.Con
 	manifests := dag.Directory().WithDirectory("/", source, dagger.DirectoryWithDirectoryOpts{Include: []string{"package.json", "pnpm-lock.yaml", "pnpm-workspace.yaml", "packages/*/package.json", "tools/build/package.json", "docs-website/package.json"}})
 	js := base.WithDirectory("/src", manifests).WithWorkdir("/src").WithExec([]string{"pnpm", "install", "--frozen-lockfile"})
 	if group == "browser" || group == "distribution" || group == "tooling" {
-		js = js.WithExec([]string{"sh", "-c", aptSnapshot})
+		js = withApt(js)
 	}
 	if group == "tooling" {
 		js = js.WithExec([]string{"apt-get", "update"}).WithExec([]string{"apt-get", "install", "-y", "--no-install-recommends", "libarchive-tools"})
@@ -178,6 +219,9 @@ func (m *Validation) prepare(source *dagger.Directory, group string) *dagger.Con
 	if group == "browser" || group == "distribution" {
 		js = js.WithExec([]string{"pnpm", "--filter", "@tokeninsights/web", "exec", "playwright", "install", "--with-deps", "chromium"}).
 			WithExec([]string{"apt-get", "install", "-y", "--no-install-recommends", "xvfb", "xauth", "x11-utils", "libgtk-3-0", "libasound2t64", "libwebkit2gtk-4.1-0"})
+	}
+	if group == "browser" || group == "distribution" || group == "tooling" {
+		js = withoutApt(js)
 	}
 	if group == "web" {
 		return js.WithDirectory("/src", source).WithWorkdir("/src")
