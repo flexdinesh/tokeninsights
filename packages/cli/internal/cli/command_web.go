@@ -50,7 +50,6 @@ func runWeb(invocation commandInvocation, args []string) error {
 	if err != nil {
 		return err
 	}
-	overrides.Open = nil
 	settings, err := invocation.resolveLocalOverrides(overrides)
 	if err != nil {
 		return err

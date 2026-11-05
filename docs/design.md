@@ -7,8 +7,8 @@ The [whitelist](raw-ingestion-whitelist.md) defines metadata-only extraction.
 ## Ownership
 
 One personal Go backend per canonical storage identity owns capture, direct
-acceptance, durable processing, queries and shutdown. TUI, web, MyGo and Electron
-hold sessions; they never open usage stores. MyGo is the default desktop.
+acceptance, durable processing, queries and shutdown. TUI, web and MyGo
+hold sessions; they never open usage stores. MyGo is the only desktop.
 Collector discovery reads OpenCode/Pi/Codex/Claude Code Durable Sources, captures
 whitelisted metadata into SQLite and preserves continuity and local location
 enrichment. The processor alone normalizes counters and resolves ancestry.
@@ -337,17 +337,17 @@ capture only. No source paths, maintenance or general private control are expose
 Browser JavaScript never receives a TCP credential. The caller owns the session
 and bridge lifetime. `web --host` accepts loopback only; use `remote` for TCP access.
 
-Bare `tokeninsights` opens MyGo. `--open=mygo|electron` or `viewer.open` chooses
-desktop; `web` explicitly opens a browser and `web --open=false` prints its URL
-without opening one. Unavailable selected desktops fail with repair guidance.
+Bare `tokeninsights` opens MyGo; `web` explicitly opens a browser and
+`web --open=false` prints its URL without opening one. An unavailable desktop
+fails with repair guidance.
 No browser, transport or local-data fallback is permitted.
 
 `desktoplaunch` owns native Unix-socket rendezvous. The launch specification and
 TCP secret stay native; the OS URL carries only an opaque rendezvous ID. Launch
-returns after the selected desktop acknowledges a live requested session, not
+returns after the desktop acknowledges a live requested session, not
 after the OS opener exits. No credential files are written. Each window keeps its
-own target/session. MyGo and Electron compose the shared dashboard/bridge without
-owning storage; Electron retains renderer sandboxing and no Node integration.
+own target/session. MyGo composes the shared dashboard/bridge without
+owning storage.
 
 ## Packages and contracts
 
@@ -367,7 +367,7 @@ cancellation and ownership; ADR 0027 supersedes their retired product boundaries
 | `endpoint`, `sshtransport`, `tcptransport` | Pure target values and explicit transport adapters |
 | `remoteaccess` | Temporary authenticated TLS gateway over one session |
 | `dashboardproxy`, `desktoplaunch` | Loopback dashboard bridge and private acknowledged launch |
-| CLI/TUI/MyGo/Electron | Executable preferences and presentation composition |
+| CLI/TUI/MyGo | Executable preferences and presentation composition |
 
 Resolve executable flags/env once into typed settings. Domains neither read
 deployment settings nor construct another layer's adapters. Keep SQL/driver types
@@ -438,14 +438,14 @@ progress, metadata and immutable receipts; retry/replay must publish exactly onc
 ## Configuration, products and verification
 
 Supported settings: `collector.db-path`, `in-process.server-db-path`,
-`in-process.host`, `in-process.port`, `viewer.open`, `remote.command`.
+`in-process.host`, `in-process.port`, `remote.command`.
 Storage names and defaults stay unchanged. Retired application/distributed settings,
-implicit endpoints and obsolete viewer modes return actionable errors without
+implicit endpoints and saved viewer settings return actionable errors without
 printing values, rewriting configuration or deleting files. Users repair their
 configuration explicitly. There is no automatic migration.
 
-MyGo installation includes CLI/backend. CLI-only and Electron products remain.
-Go products need no host JavaScript runtime; Electron bundles its runtime.
+MyGo installation includes CLI/backend. The CLI-only product remains.
+Go products need no host JavaScript runtime.
 Shared React presentation lives in packages/dashboard, browser composition in
 packages/web and TypeScript contracts in packages/contracts. The backend embeds
 ignored generated browser assets. No binaries/bundles/generated assets are committed.
@@ -461,6 +461,6 @@ reopen, query/Refresh parity, bad pin/token/expired URI/protocol mismatch, servi
 TCP, native secret handoff/desktop acknowledgement and unavailable-app checks.
 
 Format/lint before verification. Final PR evidence requires committed clean HEAD:
-full `mise run check:pr`, sandboxed host `mise run check:desktop`, and
+full `mise run check:pr` and
 `mise run build:docs`. Never replace these with uncommitted checks. Use retained
 artifacts; never poll long checks or interfere with another engine/invocation.

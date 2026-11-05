@@ -19,8 +19,8 @@ func TestLaunchRequiresDesktopAcknowledgementAndKeepsSecretsOffURL(t *testing.T)
 	finished := make(chan error, 1)
 	spec := Spec{Connection: "private-token", SourceDir: "private-source", Capture: false}
 	go func() {
-		finished <- launch(ctx, browser.ModeElectron, spec, func(ctx context.Context, mode browser.Mode, raw string) error {
-			if mode != browser.ModeElectron || !strings.HasPrefix(raw, "tokeninsights-electron://launch?id=") || strings.Contains(raw, "private") {
+		finished <- launch(ctx, spec, func(ctx context.Context, raw string) error {
+			if !strings.HasPrefix(raw, "tokeninsights-mygo://launch?id=") || strings.Contains(raw, "private") {
 				return errors.New("secret or wrong app in OS link")
 			}
 			links <- raw
@@ -45,7 +45,7 @@ func TestLaunchRequiresDesktopAcknowledgementAndKeepsSecretsOffURL(t *testing.T)
 		t.Fatal("opener success returned before live-session ack", err)
 	default:
 	}
-	if err := handoff.Acknowledge(browser.ModeElectron); err != nil {
+	if err := handoff.Acknowledge(browser.ModeMyGo); err != nil {
 		t.Fatal(err)
 	}
 	if err := <-finished; err != nil {
@@ -68,7 +68,7 @@ func TestLaunchRequiresDesktopAcknowledgementAndKeepsSecretsOffURL(t *testing.T)
 func TestFailedOrCancelledDesktopNeverReportsSuccess(t *testing.T) {
 	for _, reject := range []bool{true, false} {
 		ctx, cancel := context.WithCancel(t.Context())
-		err := launch(ctx, browser.ModeMyGo, Spec{}, func(ctx context.Context, _ browser.Mode, raw string) error {
+		err := launch(ctx, Spec{}, func(ctx context.Context, raw string) error {
 			if !reject {
 				cancel()
 				return nil
@@ -91,21 +91,21 @@ func TestFailedOrCancelledDesktopNeverReportsSuccess(t *testing.T) {
 	}
 }
 func TestUnavailableApplicationPreservesActionableError(t *testing.T) {
-	err := launch(t.Context(), browser.ModeMyGo, Spec{}, func(context.Context, browser.Mode, string) error { return browser.ErrAppUnavailable })
+	err := launch(t.Context(), Spec{}, func(context.Context, string) error { return browser.ErrAppUnavailable })
 	if !errors.Is(err, browser.ErrAppUnavailable) {
 		t.Fatal(err)
 	}
 }
 
 func TestWrongDesktopCannotAcknowledgeSelectedApplication(t *testing.T) {
-	err := launch(t.Context(), browser.ModeMyGo, Spec{}, func(ctx context.Context, _ browser.Mode, raw string) error {
+	err := launch(t.Context(), Spec{}, func(ctx context.Context, raw string) error {
 		go func() {
 			handoff, err := Receive(ctx, raw)
 			if err != nil {
 				t.Error(err)
 				return
 			}
-			_ = handoff.Acknowledge(browser.ModeElectron)
+			_ = handoff.Acknowledge(browser.ModeBrowser)
 		}()
 		return nil
 	})

@@ -31,12 +31,10 @@ func (f *fakeSystem) system(platform string) system {
 			return nil
 		}}
 }
-func TestSelectedDesktopNeverFallsBack(t *testing.T) {
+func TestUnavailableDesktopNeverFallsBack(t *testing.T) {
 	fake := fakeSystem{}
-	for _, mode := range []Mode{ModeMyGo, ModeElectron} {
-		if fake.system("darwin").openApp(t.Context(), mode, "opaque-link") {
-			t.Fatal("unavailable app opened")
-		}
+	if fake.system("darwin").openApp(t.Context(), "opaque-link") {
+		t.Fatal("unavailable app opened")
 	}
 	for _, call := range fake.calls {
 		if len(call) < 3 || call[1] != "-b" {
@@ -44,12 +42,12 @@ func TestSelectedDesktopNeverFallsBack(t *testing.T) {
 		}
 	}
 }
-func TestDistinctDesktopRegistrations(t *testing.T) {
+func TestDesktopRegistration(t *testing.T) {
 	fake := fakeSystem{appBundle: true}
-	if !fake.system("darwin").openApp(t.Context(), ModeMyGo, "mygo-link") || !fake.system("darwin").openApp(t.Context(), ModeElectron, "electron-link") {
+	if !fake.system("darwin").openApp(t.Context(), "mygo-link") {
 		t.Fatal("desktop unavailable")
 	}
-	if fake.calls[0][2] != appBundleID || fake.calls[1][2] != electronBundleID {
+	if fake.calls[0][2] != appBundleID {
 		t.Fatal(fake.calls)
 	}
 }
@@ -63,18 +61,5 @@ func TestExplicitBrowserAndSSHBehavior(t *testing.T) {
 	result, err = fake.system("linux").open(t.Context(), ModeBrowser, "http://127.0.0.1:1234/")
 	if err != nil || !result.Remote || len(fake.calls) != 0 {
 		t.Fatal(result, err, fake.calls)
-	}
-}
-func TestOpenModes(t *testing.T) {
-	for value, want := range map[string]Mode{"": ModeMyGo, "mygo": ModeMyGo, "electron": ModeElectron, "browser": ModeBrowser, "false": ModeOff} {
-		mode, err := ParseMode(value)
-		if err != nil || mode != want {
-			t.Fatal(value, mode, err)
-		}
-	}
-	for _, value := range []string{"auto", "app", "unknown"} {
-		if _, err := ParseMode(value); err == nil {
-			t.Fatal("accepted", value)
-		}
 	}
 }

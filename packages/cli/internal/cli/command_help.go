@@ -11,9 +11,8 @@ func runHelp(invocation commandInvocation, _ []string) error {
 func usageText() string {
 	return `usage: tokeninsights [command] [options]
 
-  tokeninsights               open local desktop (MyGo by default)
-  --open=mygo|electron        select installed desktop
-  connect URI                 open exact local, ssh://host or tokeninsights://connect/v1 connection
+  tokeninsights               open local MyGo desktop
+  connect URI                open exact local, ssh://host or tokeninsights://connect/v1 connection
   remote                      foreground temporary TCP gateway; print connect command
   remote --listen HOST:PORT --advertise HOST
   tui                         local terminal dashboard, also inside SSH
@@ -25,7 +24,7 @@ func usageText() string {
   data reprocess|wait          finite local/SSH maintenance; --connection supported
   config set KEY VALUE|get KEY|remove KEY
 
-Config: collector.db-path; in-process.server-db-path, host, port; viewer.open; remote.command.
+Config: collector.db-path; in-process.server-db-path, host, port; remote.command.
 Connections are explicit. No implicit remote default. No transport or browser fallback.
 Config: --config-file PATH / TOKENINSIGHTS_CONFIG_PATH; default XDG config.json.
 Precedence: flags > environment > file > defaults. Reload/filter query saved data.`

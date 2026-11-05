@@ -31,11 +31,11 @@ type acknowledgement struct {
 
 // Launch returns only after the desktop acknowledges ownership of the live
 // requested session. An OS opener accepting a URL is insufficient.
-func Launch(ctx context.Context, mode browser.Mode, spec Spec) error {
-	return launch(ctx, mode, spec, browser.Launch)
+func Launch(ctx context.Context, spec Spec) error {
+	return launch(ctx, spec, browser.Launch)
 }
 
-func launch(ctx context.Context, mode browser.Mode, spec Spec, open func(context.Context, browser.Mode, string) error) error {
+func launch(ctx context.Context, spec Spec, open func(context.Context, string) error) error {
 	ctx, cancel := context.WithTimeout(ctx, acknowledgementTimeout)
 	defer cancel()
 	directory, err := rendezvousDirectory()
@@ -58,16 +58,12 @@ func launch(ctx context.Context, mode browser.Mode, spec Spec, open func(context
 	}
 	stop := context.AfterFunc(ctx, func() { _ = listener.Close() })
 	defer stop()
-	scheme := browser.MyGoScheme
-	if mode == browser.ModeElectron {
-		scheme = browser.ElectronScheme
-	}
-	if err := open(ctx, mode, scheme+"://launch?id="+id); err != nil {
+	if err := open(ctx, browser.MyGoScheme+"://launch?id="+id); err != nil {
 		return err
 	}
 	conn, err := listener.Accept()
 	if err != nil {
-		return errors.New("desktop did not acknowledge a live session; open or reinstall the selected desktop application and retry")
+		return errors.New("desktop did not acknowledge a live session; open or reinstall the desktop application and retry")
 	}
 	defer func() { _ = conn.Close() }()
 	deadline, _ := ctx.Deadline()
@@ -75,12 +71,12 @@ func launch(ctx context.Context, mode browser.Mode, spec Spec, open func(context
 	stopConn := context.AfterFunc(ctx, func() { _ = conn.Close() })
 	defer stopConn()
 	if err := json.NewEncoder(conn).Encode(spec); err != nil {
-		return errors.New("desktop handoff failed; retry the selected desktop application")
+		return errors.New("desktop handoff failed; retry the desktop application")
 	}
 	var ack acknowledgement
 	decoder := json.NewDecoder(io.LimitReader(conn, messageLimit))
 	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&ack); err != nil || !ack.Ready || ack.Application != mode {
+	if err := decoder.Decode(&ack); err != nil || !ack.Ready || ack.Application != browser.ModeMyGo {
 		return errors.New("desktop could not hold the requested session; check the desktop error and retry")
 	}
 	return nil
@@ -140,7 +136,7 @@ func Receive(ctx context.Context, raw string) (*Handoff, error) {
 
 func ID(raw string) (string, error) {
 	u, err := url.Parse(raw)
-	if err == nil && u != nil && (u.Scheme == browser.MyGoScheme || u.Scheme == browser.ElectronScheme) && u.Host == "launch" && u.Path == "" && u.Fragment == "" && u.User == nil {
+	if err == nil && u != nil && u.Scheme == browser.MyGoScheme && u.Host == "launch" && u.Path == "" && u.Fragment == "" && u.User == nil {
 		values, queryErr := url.ParseQuery(u.RawQuery)
 		id := values.Get("id")
 		decoded, decodeErr := hex.DecodeString(id)

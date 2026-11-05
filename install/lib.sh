@@ -7,9 +7,9 @@ product=cli
 channel=stable
 for arg in "$@"; do
     case "$arg" in
-        --product=cli|--product=mygo|--product=electron) product="${arg#*=}" ;;
+        --product=cli|--product=mygo) product="${arg#*=}" ;;
         --channel=stable|--channel=main) channel="${arg#*=}" ;;
-        --help) printf '%s\n' 'Usage: install[-main|-mygo|-electron].sh [--channel=stable|main]'; exit 0 ;;
+        --help) printf '%s\n' 'Usage: install[-main|-mygo].sh [--channel=stable|main]'; exit 0 ;;
         *) fail "unknown option $arg" ;;
     esac
 done
@@ -166,18 +166,14 @@ find "$src" -type l -exec sh -c '
 case "$product" in
     cli) binary=tokeninsights ;;
     mygo) binary=tokeninsights-mygo; app='TokenInsights MyGo.app'; identity=com.flexdinesh.tokeninsights.mygo ;;
-    electron) binary=tokeninsights-electron; app='TokenInsights Electron.app'; identity=com.flexdinesh.tokeninsights.electron ;;
 esac
-if [ "$os" = darwin ] && { [ "$product" = mygo ] || [ "$product" = electron ]; }; then
+if [ "$os" = darwin ] && [ "$product" = mygo ]; then
     executable="$src/$app/Contents/MacOS/$binary"
     grep -F "<string>$identity</string>" "$src/$app/Contents/Info.plist" >/dev/null || fail 'incompatible app identity'
     backend="$src/$app/Contents/MacOS/tokeninsights-backend"
 else
     executable="$src/$binary"
     backend="$src/tokeninsights-backend"
-fi
-if [ "$product" = electron ]; then
-    if [ "$os" = darwin ]; then backend="$src/$app/Contents/Resources/tokeninsights-backend"; else backend="$src/resources/tokeninsights-backend"; fi
 fi
 [ -f "$executable" ] && [ -x "$executable" ] || fail "archive lacks executable $binary"
 [ -f "$backend" ] && [ -x "$backend" ] || fail 'archive lacks executable tokeninsights-backend'
@@ -196,7 +192,7 @@ fi
 bin="$HOME/.local/bin"
 link="$bin/$binary"
 target="$dest/$binary"
-if [ "$os" = darwin ] && { [ "$product" = mygo ] || [ "$product" = electron ]; }; then
+if [ "$os" = darwin ] && [ "$product" = mygo ]; then
     bin="$HOME/Applications"
     link="$bin/$app"
     target="$dest/$app"
@@ -231,7 +227,7 @@ if [ "$product" = mygo ]; then
         else fail "refusing to replace unowned path $cli_link"; fi
     else publish_cli=true; fi
 fi
-if [ "$os" = linux ] && { [ "$product" = mygo ] || [ "$product" = electron ]; }; then
+if [ "$os" = linux ] && [ "$product" = mygo ]; then
     entry="$data/applications/$slug.desktop"
     case "$dest" in *[\"\`\$\\%]*) fail 'install path cannot be represented in a desktop entry' ;; esac
     if [ -e "$entry" ] || [ -L "$entry" ]; then
@@ -268,7 +264,7 @@ if [ "$publish_cli" = true ]; then
     rmdir "$link_stage"
     link_stage=
 fi
-if [ "$os" = linux ] && { [ "$product" = mygo ] || [ "$product" = electron ]; }; then
+if [ "$os" = linux ] && [ "$product" = mygo ]; then
     mkdir -p "$data/applications"
     cat > "$dest/desktop-entry" <<EOF
 [Desktop Entry]
@@ -287,7 +283,7 @@ EOF
         xdg-mime default "$slug.desktop" "x-scheme-handler/tokeninsights-$product" || printf 'warning: open the app once to register links\n' >&2
     fi
 fi
-if [ "$os" = darwin ] && { [ "$product" = mygo ] || [ "$product" = electron ]; }; then
+if [ "$os" = darwin ] && [ "$product" = mygo ]; then
     register=/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister
     if [ -x "$register" ]; then "$register" -f "$dest/$app" || printf 'warning: open the app once to register links\n' >&2; fi
 fi
@@ -298,9 +294,7 @@ if [ -n "$previous_cli" ]; then
     printf 'tokeninsights now runs the MyGo CLI; rerun install.sh to return to CLI-only\n'
 fi
 # Retired Homebrew and Go installs can stay ahead of the published link.
-if [ "$product" != electron ]; then
-    resolved="$(command -v tokeninsights || true)"
-    if [ ! "$resolved" -ef "$cli_link" ]; then
-        printf 'warning: PATH runs %s instead of %s; put ~/.local/bin first and remove any older tokeninsights\n' "${resolved:-nothing}" "$cli_link" >&2
-    fi
+resolved="$(command -v tokeninsights || true)"
+if [ ! "$resolved" -ef "$cli_link" ]; then
+    printf 'warning: PATH runs %s instead of %s; put ~/.local/bin first and remove any older tokeninsights\n' "${resolved:-nothing}" "$cli_link" >&2
 fi

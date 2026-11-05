@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-func TestConfigCommandsPersistDesktopPreferenceWithoutBackend(t *testing.T) {
+func TestConfigCommandsPersistPreferenceWithoutBackend(t *testing.T) {
 	root := t.TempDir()
 	path := filepath.Join(root, "config.json")
 	var output bytes.Buffer
@@ -18,20 +18,20 @@ func TestConfigCommandsPersistDesktopPreferenceWithoutBackend(t *testing.T) {
 		output.Reset()
 		return Run(t.Context(), append([]string{"--config-file", path, "config"}, args...), &output, &output, time.Now())
 	}
-	if err := run("get", "viewer.open"); err != nil || output.String() != "mygo\n" {
+	if err := run("get", "remote.command"); err != nil || output.String() != "tokeninsights\n" {
 		t.Fatal(output.String(), err)
 	}
 	if _, err := os.Stat(path); !os.IsNotExist(err) {
 		t.Fatal("get created config", err)
 	}
-	if err := run("set", "viewer.open", "electron"); err != nil {
+	if err := run("set", "remote.command", "/opt/tokeninsights"); err != nil {
 		t.Fatal(err)
 	}
 	before, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, args := range [][]string{{"set", "viewer.open", "browser"}, {"set", "distributed.server-token", "private-secret"}, {"set", "remote.endpoint", "ssh://host"}, {"get", "viewer.open", "extra"}} {
+	for _, args := range [][]string{{"set", "viewer.open", "mygo"}, {"set", "distributed.server-token", "private-secret"}, {"set", "remote.endpoint", "ssh://host"}, {"get", "remote.command", "extra"}} {
 		if err := run(args...); err == nil || strings.Contains(err.Error(), "private-secret") {
 			t.Fatal(err)
 		}
@@ -40,10 +40,10 @@ func TestConfigCommandsPersistDesktopPreferenceWithoutBackend(t *testing.T) {
 			t.Fatal("invalid update mutated config", err)
 		}
 	}
-	if err := run("remove", "viewer.open"); err != nil {
+	if err := run("remove", "remote.command"); err != nil {
 		t.Fatal(err)
 	}
-	if err := run("get", "viewer.open"); err != nil || output.String() != "mygo\n" {
+	if err := run("get", "remote.command"); err != nil || output.String() != "tokeninsights\n" {
 		t.Fatal(output.String(), err)
 	}
 }

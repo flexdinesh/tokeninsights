@@ -1,24 +1,13 @@
 import { execFileSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import {
-  cp,
-  mkdir,
-  mkdtemp,
-  readFile,
-  readdir,
-  rename,
-  rm,
-  stat,
-  writeFile,
-} from 'node:fs/promises'
-import { createRequire } from 'node:module'
+import { cp, mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { dirname, join, resolve } from 'node:path'
+import { join, resolve } from 'node:path'
 import { buildMygo, hostTarget, mygoApp, type DesktopTarget } from './build-desktop.ts'
 import { workspacePath, workspaceRoot } from './workspace.ts'
 
-export type Product = 'cli' | 'mygo' | 'electron'
-export const products: readonly Product[] = ['cli', 'mygo', 'electron']
+export type Product = 'cli' | 'mygo'
+export const products: readonly Product[] = ['cli', 'mygo']
 export interface BuildMetadata {
   version: string
   commit: string
@@ -53,25 +42,15 @@ export async function verifyProduct(
   product: Product,
   target: DesktopTarget,
 ): Promise<void> {
-  const desktop = product === 'mygo' || product === 'electron'
+  const desktop = product === 'mygo'
   const binary = product === 'cli' ? 'tokeninsights' : `tokeninsights-${product}`
-  const app = product === 'mygo' ? mygoApp : 'TokenInsights Electron.app'
   const executableRoot =
-    desktop && target.os === 'darwin' ? join(root, app, 'Contents/MacOS') : root
+    desktop && target.os === 'darwin' ? join(root, mygoApp, 'Contents/MacOS') : root
   await executable(join(executableRoot, binary))
   if (product === 'mygo') await executable(join(executableRoot, 'tokeninsights'))
-  await executable(
-    join(
-      product === 'electron'
-        ? target.os === 'darwin'
-          ? join(root, app, 'Contents/Resources')
-          : join(root, 'resources')
-        : executableRoot,
-      'tokeninsights-backend',
-    ),
-  )
+  await executable(join(executableRoot, 'tokeninsights-backend'))
   if (desktop && target.os === 'darwin') {
-    const plist = await readFile(join(root, app, 'Contents/Info.plist'), 'utf8')
+    const plist = await readFile(join(root, mygoApp, 'Contents/Info.plist'), 'utf8')
     if (!plist.includes(`<string>com.flexdinesh.tokeninsights.${product}</string>`))
       throw new Error('incompatible desktop identity')
   }
@@ -102,67 +81,6 @@ export async function packageProduct(
     stdio: 'inherit',
   })
   return archive
-}
-async function buildElectron(target: DesktopTarget, root: string): Promise<void> {
-  // Electron installs its runtime explicitly; dependency installation provides
-  // JavaScript/types only. Keep local, release and isolated product builds alike.
-  execFileSync('pnpm', ['--filter', '@tokeninsights/desktop-electron', 'run', 'install:runtime'], {
-    cwd: workspaceRoot,
-    stdio: 'inherit',
-  })
-  execFileSync('pnpm', ['--filter', '@tokeninsights/desktop-electron', 'run', 'build'], {
-    cwd: workspaceRoot,
-    stdio: 'inherit',
-  })
-  const source = workspacePath('packages/desktop-electron')
-  const require = createRequire(join(source, 'package.json'))
-  const runtime = join(dirname(require.resolve('electron/package.json')), 'dist')
-  let resources: string
-  if (target.os === 'darwin') {
-    const app = join(root, 'TokenInsights Electron.app')
-    await cp(join(runtime, 'Electron.app'), app, { recursive: true, verbatimSymlinks: true })
-    await rename(
-      join(app, 'Contents/MacOS/Electron'),
-      join(app, 'Contents/MacOS/tokeninsights-electron'),
-    )
-    const plist = join(app, 'Contents/Info.plist')
-    const text = await readFile(plist, 'utf8')
-    await writeFile(
-      plist,
-      text
-        .replace(
-          /(<key>CFBundleIdentifier<\/key>\s*<string>)[^<]+/,
-          '$1com.flexdinesh.tokeninsights.electron',
-        )
-        .replace(/(<key>CFBundleExecutable<\/key>\s*<string>)[^<]+/, '$1tokeninsights-electron')
-        .replace(/(<key>CFBundleName<\/key>\s*<string>)[^<]+/, '$1TokenInsights Electron')
-        .replace(
-          /<\/dict>\s*<\/plist>/,
-          '<key>CFBundleURLTypes</key><array><dict><key>CFBundleURLSchemes</key><array><string>tokeninsights-electron</string></array></dict></array></dict></plist>',
-        ),
-    )
-    resources = join(app, 'Contents/Resources')
-  } else {
-    await cp(runtime, root, { recursive: true, verbatimSymlinks: true })
-    await rename(join(root, 'electron'), join(root, 'tokeninsights-electron'))
-    resources = join(root, 'resources')
-  }
-  await rm(join(resources, 'default_app.asar'), { force: true })
-  const app = join(resources, 'app')
-  await mkdir(app, { recursive: true })
-  await cp(join(source, 'dist'), join(app, 'dist'), { recursive: true })
-  const config: unknown = JSON.parse(await readFile(join(source, 'package.json'), 'utf8'))
-  if (
-    typeof config !== 'object' ||
-    config === null ||
-    !('main' in config) ||
-    typeof config.main !== 'string'
-  )
-    throw new Error('Electron package needs a main entrypoint')
-  await writeFile(
-    join(app, 'package.json'),
-    `${JSON.stringify({ name: 'tokeninsights-electron', main: config.main, type: 'module' })}\n`,
-  )
 }
 function runBuildTool(command: string, args: string[]): void {
   execFileSync(command, args, {
@@ -224,33 +142,19 @@ export async function buildProducts(
             ? join(root, mygoApp, 'Contents/MacOS/tokeninsights')
             : join(root, 'tokeninsights'),
         )
-      } else if (product === 'electron') {
-        // eslint-disable-next-line no-await-in-loop
-        await buildElectron(target, root)
       } else {
         const binary = 'tokeninsights'
         // eslint-disable-next-line no-await-in-loop
         await cp(join(binaries, binary), join(root, binary))
       }
-      const app = product === 'mygo' ? mygoApp : 'TokenInsights Electron.app'
       const dest =
-        product === 'electron'
-          ? target.os === 'darwin'
-            ? join(root, app, 'Contents/Resources/tokeninsights-backend')
-            : join(root, 'resources/tokeninsights-backend')
-          : target.os === 'darwin' && product === 'mygo'
-            ? join(root, app, 'Contents/MacOS/tokeninsights-backend')
-            : join(root, 'tokeninsights-backend')
+        target.os === 'darwin' && product === 'mygo'
+          ? join(root, mygoApp, 'Contents/MacOS/tokeninsights-backend')
+          : join(root, 'tokeninsights-backend')
       // eslint-disable-next-line no-await-in-loop
       await cp(join(binaries, 'tokeninsights-backend'), dest)
-      if (target.os === 'darwin' && (product === 'mygo' || product === 'electron'))
-        runBuildTool('codesign', [
-          '--force',
-          '--deep',
-          '--sign',
-          '-',
-          join(root, product === 'mygo' ? mygoApp : 'TokenInsights Electron.app'),
-        ])
+      if (target.os === 'darwin' && product === 'mygo')
+        runBuildTool('codesign', ['--force', '--deep', '--sign', '-', join(root, mygoApp)])
       // eslint-disable-next-line no-await-in-loop
       await packageProduct(temporary, product, target, out, metadata)
     }

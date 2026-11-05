@@ -14,7 +14,6 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/flexdinesh/tokeninsights/packages/core/browser"
 	"github.com/flexdinesh/tokeninsights/packages/core/endpoint"
 	"github.com/flexdinesh/tokeninsights/packages/core/networkprefs"
 	"github.com/flexdinesh/tokeninsights/packages/core/writerlock"
@@ -30,26 +29,21 @@ type LocalValues struct {
 	Host         *string `json:"host,omitempty"`
 	Port         *int    `json:"port,omitempty"`
 }
-type ViewerValues struct {
-	Open *string `json:"open,omitempty"`
-}
 type RemoteValues struct {
 	Command *string `json:"command,omitempty"`
 }
 type Values struct {
 	Collector CollectorValues `json:"collector,omitempty"`
 	InProcess LocalValues     `json:"in-process,omitempty"`
-	Viewer    ViewerValues    `json:"viewer,omitempty"`
 	Remote    RemoteValues    `json:"remote,omitempty"`
 }
 type Overrides struct {
-	ServerDBPath, CollectorDBPath, Host, Open, Connection *string
-	Port                                                  *int
+	ServerDBPath, CollectorDBPath, Host, Connection *string
+	Port                                            *int
 }
 type LocalSettings struct {
 	ServerDBPath, CollectorDBPath, Host string
 	Port                                int
-	Open                                browser.Mode
 	Endpoint                            endpoint.Endpoint
 }
 
@@ -74,7 +68,7 @@ func Path(explicit string) (string, error) {
 // Defaults are the built-in settings before config files and environment.
 func Defaults() LocalSettings {
 	base := dataDirectory()
-	return LocalSettings{Host: networkprefs.DefaultHost, Port: 0, Open: browser.ModeMyGo,
+	return LocalSettings{Host: networkprefs.DefaultHost, Port: 0,
 		CollectorDBPath: filepath.Join(base, "collector.sqlite"),
 		ServerDBPath:    filepath.Join(base, "server.sqlite")}
 }
@@ -133,7 +127,7 @@ func Read(path string) (Values, error) {
 	decoder = json.NewDecoder(bytes.NewReader(body))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&values); err != nil {
-		return Values{}, fmt.Errorf("obsolete or invalid config; remove application/distributed settings and remote.endpoint; use --connection explicitly (config unchanged)")
+		return Values{}, fmt.Errorf("obsolete or invalid config; remove application/distributed settings, remote.endpoint and viewer.open; use --connection explicitly (config unchanged)")
 	}
 	return values, nil
 }
@@ -254,9 +248,6 @@ func (v Values) local(base string, environment bool, o Overrides) (LocalSettings
 		s.Port = *v.InProcess.Port
 	}
 	var err error
-	if s.Open, err = v.open(o); err != nil {
-		return s, err
-	}
 	if s.Endpoint, err = v.endpoint(environment, o); err != nil {
 		return s, err
 	}
@@ -292,18 +283,6 @@ func (v Values) endpoint(environment bool, o Overrides) (endpoint.Endpoint, erro
 	return selected, nil
 }
 
-// open resolves the viewer open mode; it has no environment variable.
-func (v Values) open(o Overrides) (browser.Mode, error) {
-	value := resolveString(string(browser.ModeMyGo), v.Viewer.Open, "", o.Open, false)
-	mode, err := browser.ParseMode(value)
-	if err == nil && mode != browser.ModeMyGo && mode != browser.ModeElectron {
-		err = fmt.Errorf("viewer.open must be mygo or electron")
-	}
-	if err != nil && o.Open == nil {
-		return "", fmt.Errorf("invalid viewer.open: %w", err)
-	}
-	return mode, err
-}
 func ResolveLocal(path string, environment bool, o Overrides) (LocalSettings, error) {
 	v, err := Read(path)
 	if err != nil {
@@ -322,9 +301,6 @@ func (v Values) Get(key, base string) (string, error) {
 		return local.Host, err
 	case "in-process.port":
 		return strconv.Itoa(local.Port), err
-	case "viewer.open":
-		mode, err := v.open(Overrides{})
-		return string(mode), err
 	case "remote.command":
 		return resolveString(endpoint.DefaultCommand, v.Remote.Command, "", nil, false), nil
 	default:
@@ -373,20 +349,6 @@ func (v *Values) Set(key, value string, remove bool) error {
 			}
 			v.InProcess.Port = &port
 		}
-	case "viewer.open":
-		if remove {
-			v.Viewer.Open = nil
-			return nil
-		}
-		mode, err := browser.ParseMode(value)
-		if err == nil && mode != browser.ModeMyGo && mode != browser.ModeElectron {
-			err = fmt.Errorf("viewer.open must be mygo or electron")
-		}
-		if err != nil {
-			return err
-		}
-		canonical := string(mode)
-		v.Viewer.Open = &canonical
 	case "remote.command":
 		if !remove {
 			if err := endpoint.ValidateCommand(value); err != nil {

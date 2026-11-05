@@ -73,25 +73,13 @@ function fixture(t: TestContext) {
     rmSync(dir, { recursive: true, force: true })
     mkdirSync(dir, { recursive: true })
     const binary = product === 'cli' ? 'tokeninsights' : `tokeninsights-${product}`
-    const app = product === 'mygo' ? 'TokenInsights MyGo.app' : 'TokenInsights Electron.app'
-    const binaryDir =
-      os === 'darwin' && (product === 'mygo' || product === 'electron')
-        ? join(dir, app, 'Contents/MacOS')
-        : dir
+    const app = 'TokenInsights MyGo.app'
+    const binaryDir = os === 'darwin' && product === 'mygo' ? join(dir, app, 'Contents/MacOS') : dir
     mkdirSync(binaryDir, { recursive: true })
     executable(join(binaryDir, binary), `echo ${version}`)
-    {
-      const backendDir =
-        product === 'electron'
-          ? os === 'darwin'
-            ? join(dir, app, 'Contents/Resources')
-            : join(dir, 'resources')
-          : binaryDir
-      mkdirSync(backendDir, { recursive: true })
-      executable(join(backendDir, 'tokeninsights-backend'), `echo backend-${version}`)
-    }
+    executable(join(binaryDir, 'tokeninsights-backend'), `echo backend-${version}`)
     if (product === 'mygo') executable(join(binaryDir, 'tokeninsights'), `echo cli-${version}`)
-    if (os === 'darwin' && (product === 'mygo' || product === 'electron'))
+    if (os === 'darwin' && product === 'mygo')
       writeFileSync(
         join(dir, app, 'Contents/Info.plist'),
         `<string>com.flexdinesh.tokeninsights.${product}</string>`,
@@ -133,26 +121,23 @@ const archiveTools =
 for (const tar of archiveTools) {
   void test(`${tar} installs a macOS framework with contained symlink chains and hardlinks`, (t) => {
     const f = fixture(t)
-    const framework = 'TokenInsights Electron.app/Contents/Frameworks/Electron Framework.framework'
-    f.archive('electron', 'v1', 'darwin', (root) => {
+    const framework = 'TokenInsights MyGo.app/Contents/Frameworks/Bundled Framework.framework'
+    f.archive('mygo', 'v1', 'darwin', (root) => {
       const version = join(root, framework, 'Versions/A')
       mkdirSync(join(version, 'Resources'), { recursive: true })
-      writeFileSync(join(version, 'Electron Framework'), 'framework-binary')
+      writeFileSync(join(version, 'Bundled Framework'), 'framework-binary')
       writeFileSync(join(version, 'Resources/Info.plist'), 'framework-metadata')
       symlinkSync('A', join(root, framework, 'Versions/Current'))
-      symlinkSync(
-        'Versions/Current/Electron Framework',
-        join(root, framework, 'Electron Framework'),
-      )
+      symlinkSync('Versions/Current/Bundled Framework', join(root, framework, 'Bundled Framework'))
       symlinkSync('Versions/Current/Resources', join(root, framework, 'Resources'))
-      linkSync(join(version, 'Electron Framework'), join(version, 'Framework hardlink'))
+      linkSync(join(version, 'Bundled Framework'), join(version, 'Framework hardlink'))
     })
     executable(join(f.bin, 'tar'), `exec ${tar} "$@"`)
-    const result = f.run('install-electron.sh', [], { TEST_OS: 'Darwin' })
+    const result = f.run('install-mygo.sh', [], { TEST_OS: 'Darwin' })
     assert.equal(result.status, 0, result.stderr)
-    const installed = join(f.installed('electron'), framework)
+    const installed = join(f.installed('mygo'), framework)
     assert.equal(readlinkSync(join(installed, 'Versions/Current')), 'A')
-    assert.equal(readFileSync(join(installed, 'Electron Framework'), 'utf8'), 'framework-binary')
+    assert.equal(readFileSync(join(installed, 'Bundled Framework'), 'utf8'), 'framework-binary')
     assert.equal(
       readFileSync(join(installed, 'Resources/Info.plist'), 'utf8'),
       'framework-metadata',
@@ -235,19 +220,13 @@ void test('default CLI stable and main installers replace a whole product includ
   assert.match(urls, /releases\/latest\/download\/tokeninsights-cli/)
   assert.match(urls, /releases\/download\/main-build\/tokeninsights-cli/)
 })
-void test('all product entrypoints support main; desktop products coexist', (t) => {
+void test('MyGo entrypoint supports main and registers its desktop entry', (t) => {
   const f = fixture(t)
-  const selected: readonly Product[] = ['mygo', 'electron']
-  for (const product of selected) {
-    f.archive(product)
-    const result = f.run(`install-${product}.sh`, ['--channel=main'])
-    assert.equal(result.status, 0, result.stderr)
-    assert.equal(readFileSync(join(f.installed(product), '.channel'), 'utf8'), 'main\n')
-  }
-  for (const product of ['mygo', 'electron'])
-    assert.ok(
-      existsSync(join(f.home, '.local/share/applications', `tokeninsights-${product}.desktop`)),
-    )
+  f.archive('mygo')
+  const result = f.run('install-mygo.sh', ['--channel=main'])
+  assert.equal(result.status, 0, result.stderr)
+  assert.equal(readFileSync(join(f.installed('mygo'), '.channel'), 'utf8'), 'main\n')
+  assert.ok(existsSync(join(f.home, '.local/share/applications/tokeninsights-mygo.desktop')))
 })
 void test('upgrades retain the valid launcher without a remove-and-republish gap', (t) => {
   const f = fixture(t)
@@ -334,19 +313,15 @@ void test('refuses unowned products and executable paths', (t) => {
   executable(join(f.home, '.local/bin/tokeninsights'), 'echo foreign')
   assert.match(f.run().stderr, /unowned path/)
 })
-void test('macOS desktop bundles have distinct identities and support replacement', (t) => {
+void test('macOS desktop bundle supports replacement', (t) => {
   const f = fixture(t)
-  const selected: readonly Product[] = ['mygo', 'electron']
-  for (const product of selected) {
-    f.archive(product, 'v1', 'darwin')
-    const result = f.run(`install-${product}.sh`, [], { TEST_OS: 'Darwin' })
-    assert.equal(result.status, 0, result.stderr)
-    f.archive(product, 'v2', 'darwin')
-    const upgrade = f.run(`install-${product}.sh`, [], { TEST_OS: 'Darwin' })
-    assert.equal(upgrade.status, 0, upgrade.stderr)
-  }
+  f.archive('mygo', 'v1', 'darwin')
+  const result = f.run('install-mygo.sh', [], { TEST_OS: 'Darwin' })
+  assert.equal(result.status, 0, result.stderr)
+  f.archive('mygo', 'v2', 'darwin')
+  const upgrade = f.run('install-mygo.sh', [], { TEST_OS: 'Darwin' })
+  assert.equal(upgrade.status, 0, upgrade.stderr)
   assert.ok(existsSync(join(f.home, 'Applications/TokenInsights MyGo.app')))
-  assert.ok(existsSync(join(f.home, 'Applications/TokenInsights Electron.app')))
 })
 for (const os of ['linux', 'darwin']) {
   void test(`${os} MyGo requires its bundled CLI before installation`, (t) => {
@@ -461,8 +436,6 @@ void test('installers warn only when PATH does not run the published command', (
   const shadowed = f.run('install-mygo.sh', [], { PATH: `${system}:${local}` })
   assert.equal(shadowed.status, 0, shadowed.stderr)
   assert.match(shadowed.stderr, /warning: PATH runs .*\/bin\/tokeninsights instead of/)
-  f.archive('electron')
-  assert.doesNotMatch(f.run('install-electron.sh').stderr, /warning: PATH/)
 })
 void test('rejects unsupported host and channel before download', (t) => {
   const f = fixture(t)

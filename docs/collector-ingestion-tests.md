@@ -50,8 +50,8 @@ Local Dagger validation must retain real OpenSSH and isolated network access,
 including TCP on the serving machine, bad pins/tokens, expired strings and exact
 protocol mismatch. Prove query/Refresh parity across local/SSH/TCP and shared
 owner/startup/final lease behavior. Use installed apps for native handoff/unavailable
-selection, Node-free Go runtime and Electron sandbox checks.
+app and Node-free Go runtime checks.
 
-Before PR creation/update: full `mise run check:pr`, `mise run check:desktop` and
+Before PR creation/update: full `mise run check:pr` and
 `mise run build:docs` on clean committed HEAD. Root owns aggregate validation
 during concurrent implementation.

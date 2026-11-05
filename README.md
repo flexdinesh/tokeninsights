@@ -12,8 +12,7 @@ macOS/Linux, amd64/arm64. MyGo includes the CLI and Go backend.
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/flexdinesh/tokeninsights/main/install-mygo.sh | sh
-curl -fsSL https://raw.githubusercontent.com/flexdinesh/tokeninsights/main/install.sh | sh          # CLI, TUI, web
-curl -fsSL https://raw.githubusercontent.com/flexdinesh/tokeninsights/main/install-electron.sh | sh # Electron
+curl -fsSL https://raw.githubusercontent.com/flexdinesh/tokeninsights/main/install.sh | sh # CLI, TUI, web
 ```
 
 Rerun to update. Latest main build: `install-main.sh` for CLI, or append
@@ -23,7 +22,6 @@ Rerun to update. Latest main build: `install-main.sh` for CLI, or append
 
 ```sh
 tokeninsights                                 # MyGo desktop
-tokeninsights --open=electron
 tokeninsights tui
 tokeninsights web
 tokeninsights connect ssh://you@devbox
@@ -34,7 +32,7 @@ tokeninsights remote                          # temporary TLS gateway; prints co
 Viewers share one SQLite backend on the selected machine. Launch captures usage;
 explicit **Refresh** captures again. Filters and query reload read saved usage.
 There is no periodic scanning. `--capture=false` skips launch capture while pending
-processing resumes. An unavailable selected desktop returns an actionable error.
+processing resumes. An unavailable desktop returns an actionable error.
 
 SSH can start the backend on the target. TCP requires a running `remote` gateway;
 its printed connection string expires when the gateway stops. Connections are

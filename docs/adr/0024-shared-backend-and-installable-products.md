@@ -16,7 +16,7 @@ the versioned local-client contract.
 
 ## Decision
 
-TUI, browser, Electron and native MyGo are presentations of the same application.
+TUI, browser and native MyGo are presentations of the same application.
 A shared local Go backend owns capture, direct acceptance, durable processing,
 queries, storage and shutdown. Hosted composition retains its independent
 authenticated SQLite/PostgreSQL server and never captures host sources.
@@ -32,9 +32,8 @@ retains its own module. `packages/core` owns domain/application behavior and
 adapters; `packages/cli`, `packages/backend`, `packages/server` and
 `packages/desktop-mygo` own executable composition. `packages/dashboard` owns
 reusable React presentation; `packages/web` owns its browser HTTP adapter;
-`packages/contracts` owns TypeScript contracts; `packages/desktop-electron`
-owns the Electron shell. Shells cannot select storage adapters or import another
-shell. Interface and dependency tests enforce these boundaries.
+`packages/contracts` owns TypeScript contracts. Shells cannot select storage
+adapters or import another shell. Interface and dependency tests enforce these boundaries.
 
 Application operations describe queries, status, progress, capture, maintenance
 and viewer lifetime without HTTP request types. HTTP owns routing, encoding,
@@ -66,11 +65,9 @@ launches collect. A tunneled personal dashboard without a matching local private
 owner opens its original URL in the browser.
 
 MyGo uses native Go UI for local totals, date/provider/model/harness filters,
-results, progress and retry. Electron loads the composed reusable dashboard
-through the local backend, with sandboxed renderers and no Node integration or
-privileged page bindings. Hosted URLs open in the system browser. Distinct names,
-identifiers and schemes allow both experiments to coexist. MyGo is the default;
-`--open=mygo|electron|browser|auto|false` and `viewer.open` select presentation.
+results, progress and retry. Hosted URLs open in the system browser. MyGo is the
+default; `--open` values `mygo|browser|auto|false` and `viewer.open` select
+presentation.
 
 ## Distribution
 
@@ -78,7 +75,7 @@ Stable releases use immutable source tags `vX.Y.Z`, with an explicit version
 supplied to the manual release workflow. A rolling `main-build` GitHub prerelease
 contains the latest main build that passed required checks. Both channels contain
 prebuilt macOS/Linux amd64/arm64 archives and checksums. Product installers select
-CLI, hosted server, MyGo or Electron; clients bundle their required backend.
+CLI, hosted server or MyGo; clients bundle their required backend.
 Install to user-owned paths, verify checksums/layout and stage replacements before
 publishing them. Stable/main replace that product; rerun the installer to update.
 
@@ -89,32 +86,26 @@ source commits, `edge` publication and supported `go install` delivery. Existing
 published releases and tags remain untouched. No automatic updater or new hosted
 installer domain is required.
 
-Go applications require no host JavaScript runtime. Bundled Electron is the
-explicit production exception; it includes its runtime and never requires host
-Node/npm/pnpm. Go runtime code never launches JavaScript development tooling.
+Go applications require no host JavaScript runtime. Go runtime code never
+launches JavaScript development tooling.
 
 ## Tradeoffs and verification
 
 Shared ownership adds discovery, compatibility and disconnect handling, while
 allowing every presentation to run together. The first live compatible backend
 owns the configured stores; upgrades never force-stop its users. MyGo remains a
-pinned experimental toolkit. Desktop packages are larger because each includes
-its backend; their removal remains independent.
+pinned experimental toolkit. The desktop package is larger because it includes
+its backend; its removal remains independent.
 
 Prove startup races, rejection, disconnect/reconnect, final-viewer shutdown,
 capture coalescing, maintenance and durable reopen with real processes/storage.
 Preserve direct/HTTP parity and all accounting/tenant/receipt contracts. Verify
-React client injection, native UI state, Electron isolation, archive hygiene,
+React client injection, native UI state, archive hygiene,
 installer failure atomicity and packaged runtime without host build tools.
 Use existing local Dagger validation; native platform builds cover environments
 unavailable on the developer host.
 
-The user approved running installed Electron GUI smoke on the host through
-`mise run check:desktop`, in addition to `mise run check:pr` on clean committed
-HEAD. Dagger denies unprivileged user namespaces, which a user-owned Linux
-installation needs for Chromium sandboxing without a privileged setuid helper.
-Keep the renderer sandbox enabled. Packaging, installation, bundled-runtime,
-native-window and backend HTTP checks remain isolated. No shared engine changes
-or unsandboxed renderer fallback are introduced.
+Packaging, installation, native-window and backend HTTP checks remain isolated.
+No shared engine changes are introduced.
 
 Unresolved questions: none.

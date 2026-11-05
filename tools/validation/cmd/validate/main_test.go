@@ -13,7 +13,7 @@ import (
 )
 
 func TestGeneratedArtifactPathsRejectBuildOutput(t *testing.T) {
-	for _, path := range []string{"dist/archive.tar.gz", "packages/core/server/static/index.html", "packages/desktop-electron/release/App.app/Contents/Info.plist", "packages/cli/bin/tokeninsights"} {
+	for _, path := range []string{"dist/archive.tar.gz", "packages/core/server/static/index.html", "packages/desktop-mygo/build/App.app/Contents/Info.plist", "packages/cli/bin/tokeninsights"} {
 		if !generatedArtifactPath(path) {
 			t.Errorf("accepted %s", path)
 		}

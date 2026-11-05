@@ -7,11 +7,10 @@ Run from repo root. `mise tasks ls` lists tasks. User commands: [CLI](cli.md).
 ```sh
 curl -fsSL https://raw.githubusercontent.com/flexdinesh/tokeninsights/main/install-mygo.sh | sh -s -- --channel=main
 curl -fsSL https://raw.githubusercontent.com/flexdinesh/tokeninsights/main/install-main.sh | sh
-curl -fsSL https://raw.githubusercontent.com/flexdinesh/tokeninsights/main/install-electron.sh | sh -s -- --channel=main
 fish_add_path ~/.local/bin
 ```
 
-MyGo includes CLI/backend. CLI-only supports TUI/web; Electron remains separate. Main has no macOS Intel build.
+MyGo includes CLI/backend. CLI-only supports TUI/web. Main has no macOS Intel build.
 Use `tokeninsights --version` to inspect the installed version.
 Stable/main replace the selected product. Installation never terminates viewers.
 
@@ -42,13 +41,12 @@ mise run build:cli
 ./packages/cli/bin/tokeninsights tui
 ./packages/cli/bin/tokeninsights tui --capture=false --all-time
 ./packages/cli/bin/tokeninsights web --port 0 --open=false
-./packages/cli/bin/tokeninsights --open=mygo
-./packages/cli/bin/tokeninsights --open=electron
+./packages/cli/bin/tokeninsights
 mise run build:desktop
 mise run build:docs
 ```
 
-Desktop selection requires the installed selected app. No browser fallback.
+The desktop requires the installed app. No browser fallback.
 `build:cli` produces CLI/backend in packages/cli/bin; browser assets are generated
 before Go compilation. After tooling/web-asset changes also build directly from
 packages/cli and run the binary with Node/npm/pnpm absent from PATH.
@@ -88,13 +86,11 @@ Before PR creation/update, commit intended changes and require clean tracked HEA
 
 ```sh
 mise run check:pr
-mise run check:desktop
 mise run build:docs
 ```
 
 Full successful evidence must match inputs. No PR CI runs; main/release CI builds
-and publishes products only. Electron GUI validation runs on the host with Chromium
-sandboxing enabled because managed Dagger denies unprivileged user namespaces.
+and publishes products only.
 Packaging/runtime/SSH/network checks remain isolated. Never weaken accounting,
 privacy, receipt replay or restart assertions to accommodate a failure.
 
