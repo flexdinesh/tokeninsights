@@ -10,7 +10,7 @@ CLI, TUI, browser launcher and their backend, latest stable:
 curl -fsSL https://raw.githubusercontent.com/flexdinesh/tokeninsights/main/install.sh | sh
 ```
 
-Latest main build that passed checks:
+Latest main build:
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/flexdinesh/tokeninsights/main/install-main.sh | sh
@@ -34,7 +34,7 @@ Homebrew and versioned `go install` delivery are no longer supported. Historical
 
 Stable: dispatch **Release** from main with an explicit semantic version. The workflow builds the selected source, creates an immutable root `vX.Y.Z` source tag, stages complete archives/checksums in a draft, then publishes the stable release. Reruns must retain the same source identity; published stable bytes are not overwritten.
 
-Main: successful required main checks publish the rolling `main-build` prerelease. It is never marked Latest. Failed or obsolete builds cannot replace a newer successful build. A rolling release is not an atomic download snapshot: an installer racing publication may fail checksum verification and can be rerun; its previous installation remains intact.
+Main: each push to main builds and publishes the rolling `main-build` prerelease. CI runs no checks; validate locally first and test other platforms by hand from this channel. It is never marked Latest. Failed or obsolete builds cannot replace a newer successful build. A rolling release is not an atomic download snapshot: an installer racing publication may fail checksum verification and can be rerun; its previous installation remains intact.
 
 All products share release version/source metadata. Archives are named `tokeninsights-<cli|server|mygo|electron>_<darwin|linux>_<amd64|arm64>.tar.gz`, with `checksums.txt`. CLI and desktop archives contain the required Go backend. The hosted server is independent and never collects host sources.
 

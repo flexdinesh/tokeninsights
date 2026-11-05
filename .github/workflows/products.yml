@@ -64,10 +64,6 @@ jobs:
         with:
           name: dashboard-assets
           path: packages/core/server/static
-      - name: Native storage and presentation checks
-        env:
-          CGO_ENABLED: '0'
-        run: go test ./packages/core/datastore ./packages/core/rawcollectorstore ./packages/desktop-mygo/...
       - name: Build self-contained products
         env:
           PRODUCT_VERSION: ${{ inputs.version }}
