@@ -151,17 +151,27 @@ type stdioConn struct {
 
 func (c *stdioConn) Read(p []byte) (int, error) {
 	n, err := c.stdout.Read(p)
+	return n, c.remoteError(err)
+}
+
+func (c *stdioConn) Write(p []byte) (int, error) {
+	n, err := c.stdin.Write(p)
+	return n, c.remoteError(err)
+}
+
+// Either side of the HTTP/2 exchange may observe process exit first. Join the
+// bounded stderr drain for both paths so a write-side broken pipe cannot hide
+// the remote failure. Pipe deadlines keep their original classification.
+func (c *stdioConn) remoteError(err error) error {
 	if err != nil && !errors.Is(err, os.ErrDeadlineExceeded) {
 		select {
 		case <-c.exited:
 		case <-time.After(exitGrace):
 		}
-		return n, &RemoteError{Endpoint: endpoint.Endpoint{SSH: &c.target}.String(), Stderr: c.stderr.String(), Err: err}
+		return &RemoteError{Endpoint: endpoint.Endpoint{SSH: &c.target}.String(), Stderr: c.stderr.String(), Err: err}
 	}
-	return n, err
+	return err
 }
-
-func (c *stdioConn) Write(p []byte) (int, error) { return c.stdin.Write(p) }
 
 // Close ends the session: closing stdin lets the remote bridge exit cleanly;
 // ssh is killed if it outlives the grace period.

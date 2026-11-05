@@ -304,6 +304,9 @@ Unsafe SSH option tokens, password-bearing authorities and query settings reject
 `remote.command` / `TOKENINSIGHTS_REMOTE_COMMAND` selects a locally configured
 remote executable path, never a command from a connection string.
 Remote source overrides must be absolute; local database path flags reject.
+Read and write failures preserve bounded SSH stderr and remote-command repair
+guidance after waiting at most the existing exit grace for process/stderr completion.
+Pipe deadline errors retain their timeout classification.
 
 TCP uses a running foreground `remote` gateway and pinned TLS through
 `tcptransport`. The self-contained versioned URI is:

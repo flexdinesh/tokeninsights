@@ -39,6 +39,7 @@ processing resumes. An unavailable desktop returns an actionable error.
 SSH can start the backend on the target. TCP requires a running `remote` gateway;
 its printed connection string expires when the gateway stops. Connections are
 explicit and never fall back to another machine's data.
+Missing SSH commands report remote diagnostics and guidance to set `remote.command`.
 
 ## Docs
 

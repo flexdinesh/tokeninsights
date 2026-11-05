@@ -49,8 +49,8 @@ trading wall time for unbounded memory or CPU contention.
 ## Consequences
 
 Performance regressions require explicit benchmark runs. Correctness remains
-mandatory. No runtime, token semantics, storage schema, connection policy or
-release enforcement changes. Dagger engine ownership and local isolation from
+mandatory. Validation policy does not change token semantics, storage schema,
+connection policy or release enforcement. Dagger engine ownership and local isolation from
 ADRs 0022/0027 remain in force.
 
 Unresolved questions: none.
