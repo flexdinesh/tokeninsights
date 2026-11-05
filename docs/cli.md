@@ -1,7 +1,7 @@
 # CLI reference
 
-`tokeninsights --help` lists commands. Bare invocation opens the MyGo desktop
-(MyGo default). Install MyGo for that default, or use `tui`/`web` from CLI-only.
+`tokeninsights --help` lists commands. Bare invocation opens the desktop
+app. Install desktop for that default, or use `tui`/`web` from CLI-only.
 
 ## Viewers
 

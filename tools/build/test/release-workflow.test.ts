@@ -102,7 +102,7 @@ void test('artifact guard rejects generated files and compiled binary signatures
   for (const path of [
     'dist/product.tar.gz',
     'packages/core/server/static/index.html',
-    'packages/desktop-mygo/build/main.js',
+    'packages/desktop/build/main.js',
     'packages/cli/bin/tokeninsights',
     'bundle/Thing.app/Contents/Info.plist',
   ])
@@ -110,7 +110,7 @@ void test('artifact guard rejects generated files and compiled binary signatures
   for (const magic of ['7f454c46', 'cffaedfe', '4d5a0000'])
     assert.ok(generatedArtifact('unexpected-output', Buffer.from(magic, 'hex')))
   assert.ok(
-    !generatedArtifact('packages/desktop-mygo/resources/icon.png', Buffer.from('89504e47', 'hex')),
+    !generatedArtifact('packages/desktop/resources/icon.png', Buffer.from('89504e47', 'hex')),
   )
 })
 void test('workflows publish only prebuilt source releases without generated commits', () => {

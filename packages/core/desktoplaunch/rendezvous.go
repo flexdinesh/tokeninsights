@@ -58,7 +58,7 @@ func launch(ctx context.Context, spec Spec, open func(context.Context, string) e
 	}
 	stop := context.AfterFunc(ctx, func() { _ = listener.Close() })
 	defer stop()
-	if err := open(ctx, browser.MyGoScheme+"://launch?id="+id); err != nil {
+	if err := open(ctx, browser.DesktopScheme+"://launch?id="+id); err != nil {
 		return err
 	}
 	conn, err := listener.Accept()
@@ -76,7 +76,7 @@ func launch(ctx context.Context, spec Spec, open func(context.Context, string) e
 	var ack acknowledgement
 	decoder := json.NewDecoder(io.LimitReader(conn, messageLimit))
 	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&ack); err != nil || !ack.Ready || ack.Application != browser.ModeMyGo {
+	if err := decoder.Decode(&ack); err != nil || !ack.Ready || ack.Application != browser.ModeDesktop {
 		return errors.New("desktop could not hold the requested session; check the desktop error and retry")
 	}
 	return nil
@@ -136,7 +136,7 @@ func Receive(ctx context.Context, raw string) (*Handoff, error) {
 
 func ID(raw string) (string, error) {
 	u, err := url.Parse(raw)
-	if err == nil && u != nil && u.Scheme == browser.MyGoScheme && u.Host == "launch" && u.Path == "" && u.Fragment == "" && u.User == nil {
+	if err == nil && u != nil && u.Scheme == browser.DesktopScheme && u.Host == "launch" && u.Path == "" && u.Fragment == "" && u.User == nil {
 		values, queryErr := url.ParseQuery(u.RawQuery)
 		id := values.Get("id")
 		decoded, decodeErr := hex.DecodeString(id)

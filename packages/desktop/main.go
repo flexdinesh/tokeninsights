@@ -1,4 +1,4 @@
-// Command tokeninsights-mygo presents the shared web dashboard in a MyGo webview window.
+// Command tokeninsights-desktop presents the shared web dashboard in a MyGo webview window.
 package main
 
 import (

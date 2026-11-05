@@ -73,13 +73,14 @@ function fixture(t: TestContext) {
     rmSync(dir, { recursive: true, force: true })
     mkdirSync(dir, { recursive: true })
     const binary = product === 'cli' ? 'tokeninsights' : `tokeninsights-${product}`
-    const app = 'TokenInsights MyGo.app'
-    const binaryDir = os === 'darwin' && product === 'mygo' ? join(dir, app, 'Contents/MacOS') : dir
+    const app = 'TokenInsights Desktop.app'
+    const binaryDir =
+      os === 'darwin' && product === 'desktop' ? join(dir, app, 'Contents/MacOS') : dir
     mkdirSync(binaryDir, { recursive: true })
     executable(join(binaryDir, binary), `echo ${version}`)
     executable(join(binaryDir, 'tokeninsights-backend'), `echo backend-${version}`)
-    if (product === 'mygo') executable(join(binaryDir, 'tokeninsights'), `echo cli-${version}`)
-    if (os === 'darwin' && product === 'mygo')
+    if (product === 'desktop') executable(join(binaryDir, 'tokeninsights'), `echo cli-${version}`)
+    if (os === 'darwin' && product === 'desktop')
       writeFileSync(
         join(dir, app, 'Contents/Info.plist'),
         `<string>com.flexdinesh.tokeninsights.${product}</string>`,
@@ -121,8 +122,8 @@ const archiveTools =
 for (const tar of archiveTools) {
   void test(`${tar} installs a macOS framework with contained symlink chains and hardlinks`, (t) => {
     const f = fixture(t)
-    const framework = 'TokenInsights MyGo.app/Contents/Frameworks/Bundled Framework.framework'
-    f.archive('mygo', 'v1', 'darwin', (root) => {
+    const framework = 'TokenInsights Desktop.app/Contents/Frameworks/Bundled Framework.framework'
+    f.archive('desktop', 'v1', 'darwin', (root) => {
       const version = join(root, framework, 'Versions/A')
       mkdirSync(join(version, 'Resources'), { recursive: true })
       writeFileSync(join(version, 'Bundled Framework'), 'framework-binary')
@@ -133,9 +134,9 @@ for (const tar of archiveTools) {
       linkSync(join(version, 'Bundled Framework'), join(version, 'Framework hardlink'))
     })
     executable(join(f.bin, 'tar'), `exec ${tar} "$@"`)
-    const result = f.run('install-mygo.sh', [], { TEST_OS: 'Darwin' })
+    const result = f.run('install-desktop.sh', [], { TEST_OS: 'Darwin' })
     assert.equal(result.status, 0, result.stderr)
-    const installed = join(f.installed('mygo'), framework)
+    const installed = join(f.installed('desktop'), framework)
     assert.equal(readlinkSync(join(installed, 'Versions/Current')), 'A')
     assert.equal(readFileSync(join(installed, 'Bundled Framework'), 'utf8'), 'framework-binary')
     assert.equal(
@@ -220,13 +221,13 @@ void test('default CLI stable and main installers replace a whole product includ
   assert.match(urls, /releases\/latest\/download\/tokeninsights-cli/)
   assert.match(urls, /releases\/download\/main-build\/tokeninsights-cli/)
 })
-void test('MyGo entrypoint supports main and registers its desktop entry', (t) => {
+void test('desktop entrypoint supports main and registers its desktop entry', (t) => {
   const f = fixture(t)
-  f.archive('mygo')
-  const result = f.run('install-mygo.sh', ['--channel=main'])
+  f.archive('desktop')
+  const result = f.run('install-desktop.sh', ['--channel=main'])
   assert.equal(result.status, 0, result.stderr)
-  assert.equal(readFileSync(join(f.installed('mygo'), '.channel'), 'utf8'), 'main\n')
-  assert.ok(existsSync(join(f.home, '.local/share/applications/tokeninsights-mygo.desktop')))
+  assert.equal(readFileSync(join(f.installed('desktop'), '.channel'), 'utf8'), 'main\n')
+  assert.ok(existsSync(join(f.home, '.local/share/applications/tokeninsights-desktop.desktop')))
 })
 void test('upgrades retain the valid launcher without a remove-and-republish gap', (t) => {
   const f = fixture(t)
@@ -315,40 +316,40 @@ void test('refuses unowned products and executable paths', (t) => {
 })
 void test('macOS desktop bundle supports replacement', (t) => {
   const f = fixture(t)
-  f.archive('mygo', 'v1', 'darwin')
-  const result = f.run('install-mygo.sh', [], { TEST_OS: 'Darwin' })
+  f.archive('desktop', 'v1', 'darwin')
+  const result = f.run('install-desktop.sh', [], { TEST_OS: 'Darwin' })
   assert.equal(result.status, 0, result.stderr)
-  f.archive('mygo', 'v2', 'darwin')
-  const upgrade = f.run('install-mygo.sh', [], { TEST_OS: 'Darwin' })
+  f.archive('desktop', 'v2', 'darwin')
+  const upgrade = f.run('install-desktop.sh', [], { TEST_OS: 'Darwin' })
   assert.equal(upgrade.status, 0, upgrade.stderr)
-  assert.ok(existsSync(join(f.home, 'Applications/TokenInsights MyGo.app')))
+  assert.ok(existsSync(join(f.home, 'Applications/TokenInsights Desktop.app')))
 })
 for (const os of ['linux', 'darwin']) {
-  void test(`${os} MyGo requires its bundled CLI before installation`, (t) => {
+  void test(`${os} desktop requires its bundled CLI before installation`, (t) => {
     const f = fixture(t)
     const platform = os === 'darwin' ? 'darwin' : 'linux'
-    f.archive('mygo', 'v1', platform, (root) =>
+    f.archive('desktop', 'v1', platform, (root) =>
       rmSync(
         join(
           root,
           platform === 'darwin'
-            ? 'TokenInsights MyGo.app/Contents/MacOS/tokeninsights'
+            ? 'TokenInsights Desktop.app/Contents/MacOS/tokeninsights'
             : 'tokeninsights',
         ),
       ),
     )
-    const rejected = f.run('install-mygo.sh', [], os === 'darwin' ? { TEST_OS: 'Darwin' } : {})
+    const rejected = f.run('install-desktop.sh', [], os === 'darwin' ? { TEST_OS: 'Darwin' } : {})
     assert.notEqual(rejected.status, 0)
     assert.match(rejected.stderr, /archive lacks executable tokeninsights/)
-    assert.ok(!existsSync(f.installed('mygo')))
+    assert.ok(!existsSync(f.installed('desktop')))
   })
-  void test(`${os} latest CLI or MyGo install owns the command`, (t) => {
+  void test(`${os} latest CLI or desktop install owns the command`, (t) => {
     const f = fixture(t)
     const platform = os === 'darwin' ? 'darwin' : 'linux'
     const overrides = os === 'darwin' ? { TEST_OS: 'Darwin' } : {}
     const command = join(f.home, '.local/bin/tokeninsights')
-    f.archive('mygo', 'v1', platform)
-    const installed = f.run('install-mygo.sh', [], overrides)
+    f.archive('desktop', 'v1', platform)
+    const installed = f.run('install-desktop.sh', [], overrides)
     assert.equal(installed.status, 0, installed.stderr)
     assert.equal(execFileSync(command, { encoding: 'utf8' }).trim(), 'cli-v1')
     const bundled = readlinkSync(command)
@@ -357,41 +358,41 @@ for (const os of ['linux', 'darwin']) {
     assert.equal(standalone.status, 0, standalone.stderr)
     assert.equal(readlinkSync(command), join(f.installed('cli'), 'tokeninsights'))
     assert.notEqual(readlinkSync(command), bundled)
-    f.archive('mygo', 'v2', platform)
-    const upgrade = f.run('install-mygo.sh', [], overrides)
+    f.archive('desktop', 'v2', platform)
+    const upgrade = f.run('install-desktop.sh', [], overrides)
     assert.equal(upgrade.status, 0, upgrade.stderr)
-    assert.match(upgrade.stdout, /now runs the MyGo CLI/)
+    assert.match(upgrade.stdout, /now runs the desktop CLI/)
     assert.equal(execFileSync(command, { encoding: 'utf8' }).trim(), 'cli-v2')
     assert.ok(existsSync(join(f.installed('cli'), 'tokeninsights')))
-    const steady = f.run('install-mygo.sh', [], overrides)
+    const steady = f.run('install-desktop.sh', [], overrides)
     assert.equal(steady.status, 0, steady.stderr)
-    assert.doesNotMatch(steady.stdout, /now runs the MyGo CLI/)
+    assert.doesNotMatch(steady.stdout, /now runs the desktop CLI/)
   })
-  void test(`${os} MyGo rejects an unrelated command before replacing its product`, (t) => {
+  void test(`${os} desktop rejects an unrelated command before replacing its product`, (t) => {
     const f = fixture(t)
     const platform = os === 'darwin' ? 'darwin' : 'linux'
     const overrides = os === 'darwin' ? { TEST_OS: 'Darwin' } : {}
-    f.archive('mygo', 'v1', platform)
-    assert.equal(f.run('install-mygo.sh', [], overrides).status, 0)
+    f.archive('desktop', 'v1', platform)
+    assert.equal(f.run('install-desktop.sh', [], overrides).status, 0)
     const command = join(f.home, '.local/bin/tokeninsights')
     rmSync(command)
     executable(command, 'echo unrelated')
-    f.archive('mygo', 'v2', platform)
-    const rejected = f.run('install-mygo.sh', [], overrides)
+    f.archive('desktop', 'v2', platform)
+    const rejected = f.run('install-desktop.sh', [], overrides)
     assert.notEqual(rejected.status, 0)
     assert.match(rejected.stderr, /unowned path/)
     assert.equal(execFileSync(command, { encoding: 'utf8' }).trim(), 'unrelated')
     const binary =
       platform === 'darwin'
-        ? join(f.installed('mygo'), 'TokenInsights MyGo.app/Contents/MacOS/tokeninsights')
-        : join(f.installed('mygo'), 'tokeninsights')
+        ? join(f.installed('desktop'), 'TokenInsights Desktop.app/Contents/MacOS/tokeninsights')
+        : join(f.installed('desktop'), 'tokeninsights')
     assert.equal(execFileSync(binary, { encoding: 'utf8' }).trim(), 'cli-v1')
   })
 }
-void test('failed CLI command handover restores owned MyGo command and product state', (t) => {
+void test('failed CLI command handover restores owned desktop command and product state', (t) => {
   const f = fixture(t)
-  f.archive('mygo')
-  assert.equal(f.run('install-mygo.sh').status, 0)
+  f.archive('desktop')
+  assert.equal(f.run('install-desktop.sh').status, 0)
   const command = join(f.home, '.local/bin/tokeninsights')
   const original = readlinkSync(command)
   f.archive('cli')
@@ -405,35 +406,40 @@ void test('failed CLI command handover restores owned MyGo command and product s
   assert.ok(!existsSync(f.installed('cli')))
   assert.equal(execFileSync(command, { encoding: 'utf8' }).trim(), 'cli-v1')
 })
-void test('failed MyGo install restores the CLI-only command', (t) => {
+void test('failed desktop install restores the CLI-only command', (t) => {
   const f = fixture(t)
   f.archive('cli', 'cli-only')
   assert.equal(f.run().status, 0)
   const command = join(f.home, '.local/bin/tokeninsights')
   const original = readlinkSync(command)
-  f.archive('mygo')
+  f.archive('desktop')
   executable(
     join(f.bin, 'cp'),
     'case "$*" in *desktop-entry*) exit 17 ;; *) exec /bin/cp "$@" ;; esac',
   )
-  const result = f.run('install-mygo.sh')
+  const result = f.run('install-desktop.sh')
   assert.notEqual(result.status, 0)
   assert.equal(readlinkSync(command), original)
-  assert.ok(!existsSync(f.installed('mygo')))
+  assert.ok(!existsSync(f.installed('desktop')))
   assert.equal(execFileSync(command, { encoding: 'utf8' }).trim(), 'cli-only')
 })
 void test('installers warn only when PATH does not run the published command', (t) => {
   const f = fixture(t)
   const local = join(f.home, '.local/bin')
   const system = `${f.bin}:/usr/bin:/bin`
-  f.archive('mygo')
+  f.archive('desktop')
   assert.equal(
-    f.run('install-mygo.sh', [], { PATH: `${local}:${system}` }).stderr.includes('warning: PATH'),
+    f
+      .run('install-desktop.sh', [], { PATH: `${local}:${system}` })
+      .stderr.includes('warning: PATH'),
     false,
   )
-  assert.match(f.run('install-mygo.sh', [], { PATH: system }).stderr, /warning: PATH runs nothing/)
+  assert.match(
+    f.run('install-desktop.sh', [], { PATH: system }).stderr,
+    /warning: PATH runs nothing/,
+  )
   executable(join(f.bin, 'tokeninsights'), 'echo retired')
-  const shadowed = f.run('install-mygo.sh', [], { PATH: `${system}:${local}` })
+  const shadowed = f.run('install-desktop.sh', [], { PATH: `${system}:${local}` })
   assert.equal(shadowed.status, 0, shadowed.stderr)
   assert.match(shadowed.stderr, /warning: PATH runs .*\/bin\/tokeninsights instead of/)
 })
@@ -448,7 +454,10 @@ void test('main channel rejects macOS Intel before download; Apple Silicon and s
   const f = fixture(t)
   const intel = { TEST_OS: 'Darwin' }
   assert.match(f.run('install-main.sh', [], intel).stderr, /no macOS Intel build/)
-  assert.match(f.run('install-mygo.sh', ['--channel=main'], intel).stderr, /no macOS Intel build/)
+  assert.match(
+    f.run('install-desktop.sh', ['--channel=main'], intel).stderr,
+    /no macOS Intel build/,
+  )
   assert.ok(!existsSync(f.log))
   f.run('install-main.sh', [], { ...intel, TEST_ARCH: 'arm64' })
   assert.match(readFileSync(f.log, 'utf8'), /main-build\/tokeninsights-cli_darwin_arm64\.tar\.gz/)

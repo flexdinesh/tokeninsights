@@ -7,8 +7,8 @@ The [whitelist](raw-ingestion-whitelist.md) defines metadata-only extraction.
 ## Ownership
 
 One personal Go backend per canonical storage identity owns capture, direct
-acceptance, durable processing, queries and shutdown. TUI, web and MyGo
-hold sessions; they never open usage stores. MyGo is the only desktop.
+acceptance, durable processing, queries and shutdown. TUI, web and desktop
+hold sessions; they never open usage stores.
 Collector discovery reads OpenCode/Pi/Codex/Claude Code Durable Sources, captures
 whitelisted metadata into SQLite and preserves continuity and local location
 enrichment. The processor alone normalizes counters and resolves ancestry.
@@ -337,7 +337,7 @@ capture only. No source paths, maintenance or general private control are expose
 Browser JavaScript never receives a TCP credential. The caller owns the session
 and bridge lifetime. `web --host` accepts loopback only; use `remote` for TCP access.
 
-Bare `tokeninsights` opens MyGo; `web` explicitly opens a browser and
+Bare `tokeninsights` opens desktop; `web` explicitly opens a browser and
 `web --open=false` prints its URL without opening one. An unavailable desktop
 fails with repair guidance.
 No browser, transport or local-data fallback is permitted.
@@ -346,7 +346,7 @@ No browser, transport or local-data fallback is permitted.
 TCP secret stay native; the OS URL carries only an opaque rendezvous ID. Launch
 returns after the desktop acknowledges a live requested session, not
 after the OS opener exits. No credential files are written. Each window keeps its
-own target/session. MyGo composes the shared dashboard/bridge without
+own target/session. Desktop composes the shared dashboard/bridge without
 owning storage.
 
 ## Packages and contracts
@@ -367,7 +367,7 @@ cancellation and ownership; ADR 0027 supersedes their retired product boundaries
 | `endpoint`, `sshtransport`, `tcptransport` | Pure target values and explicit transport adapters |
 | `remoteaccess` | Temporary authenticated TLS gateway over one session |
 | `dashboardproxy`, `desktoplaunch` | Loopback dashboard bridge and private acknowledged launch |
-| CLI/TUI/MyGo | Executable preferences and presentation composition |
+| CLI/TUI/desktop | Executable preferences and presentation composition |
 
 Resolve executable flags/env once into typed settings. Domains neither read
 deployment settings nor construct another layer's adapters. Keep SQL/driver types
@@ -444,7 +444,7 @@ implicit endpoints and saved viewer settings return actionable errors without
 printing values, rewriting configuration or deleting files. Users repair their
 configuration explicitly. There is no automatic migration.
 
-MyGo installation includes CLI/backend. The CLI-only product remains.
+Desktop installation includes CLI/backend. The CLI-only product remains.
 Go products need no host JavaScript runtime.
 Shared React presentation lives in packages/dashboard, browser composition in
 packages/web and TypeScript contracts in packages/contracts. The backend embeds

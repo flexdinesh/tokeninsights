@@ -3,16 +3,16 @@
 macOS/Linux, amd64/arm64. Products are prebuilt GitHub Release downloads.
 No Go or Node installation is required.
 
-## MyGo desktop
+## Desktop
 
-MyGo is the desktop app. Its installer includes the CLI and backend:
+The desktop installer includes the CLI and backend:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/flexdinesh/tokeninsights/main/install-mygo.sh | sh
+curl -fsSL https://raw.githubusercontent.com/flexdinesh/tokeninsights/main/install-desktop.sh | sh
 tokeninsights
 ```
 
-MyGo uses WKWebView on macOS and WebKitGTK 4.1 on Linux. It shows
+Desktop uses WKWebView on macOS and WebKitGTK 4.1 on Linux. It shows
 the same dashboard as the browser and can coexist with TUI/web.
 
 ## CLI, TUI and browser
@@ -24,14 +24,14 @@ tokeninsights web
 ```
 
 The CLI-only product includes the backend. Bare `tokeninsights` still opens
-MyGo, so install that app or explicitly use TUI/web.
+desktop, so install that app or explicitly use TUI/web.
 
 An unavailable desktop fails with installation guidance, without opening a browser.
 
 ## Paths, channels and updates
 
 Command links use `~/.local/bin`; add it to PATH if needed. The most recent CLI or
-MyGo install owns `tokeninsights`, and both warn when PATH runs another command.
+desktop install owns `tokeninsights`, and both warn when PATH runs another command.
 macOS apps appear in
 `~/Applications`; Linux apps have distinct desktop entries. Product files live
 under `${XDG_DATA_HOME:-~/.local/share}/tokeninsights/products/`.
@@ -42,7 +42,7 @@ Every product script accepts `--channel=stable` (default) or `--channel=main`.
 Main has no macOS Intel build:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/flexdinesh/tokeninsights/main/install-mygo.sh | sh -s -- --channel=main
+curl -fsSL https://raw.githubusercontent.com/flexdinesh/tokeninsights/main/install-desktop.sh | sh -s -- --channel=main
 ```
 
 CLI's latest main build also has `install-main.sh`. Rerun to update.

@@ -8,10 +8,10 @@ Local token usage dashboard for OpenCode, Pi, Codex, and Claude Code.
 
 ## Install
 
-macOS/Linux, amd64/arm64. MyGo includes the CLI and Go backend.
+macOS/Linux, amd64/arm64. Desktop includes the CLI and Go backend.
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/flexdinesh/tokeninsights/main/install-mygo.sh | sh
+curl -fsSL https://raw.githubusercontent.com/flexdinesh/tokeninsights/main/install-desktop.sh | sh
 curl -fsSL https://raw.githubusercontent.com/flexdinesh/tokeninsights/main/install.sh | sh # CLI, TUI, web
 ```
 
@@ -21,7 +21,7 @@ Rerun to update. Latest main build: `install-main.sh` for CLI, or append
 ## Use
 
 ```sh
-tokeninsights                                 # MyGo desktop
+tokeninsights                                 # desktop
 tokeninsights tui
 tokeninsights web
 tokeninsights connect ssh://you@devbox

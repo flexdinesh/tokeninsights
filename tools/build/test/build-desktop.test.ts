@@ -20,8 +20,8 @@ for (const platform of ['linux/amd64', 'darwin/arm64']) {
       const root = await mkdtemp(join(tmpdir(), 'tokeninsights-product-layout-'))
       t.after(() => rm(root, { recursive: true, force: true }))
       const target = parseTarget(platform)
-      const desktop = product === 'mygo'
-      const app = 'TokenInsights MyGo.app'
+      const desktop = product === 'desktop'
+      const app = 'TokenInsights Desktop.app'
       const binaryRoot =
         desktop && target.os === 'darwin' ? join(root, app, 'Contents/MacOS') : root
       const backendRoot = binaryRoot
@@ -35,7 +35,7 @@ for (const platform of ['linux/amd64', 'darwin/arm64']) {
         await mkdir(backendRoot, { recursive: true })
         await writeFile(join(backendRoot, 'tokeninsights-backend'), 'backend', { mode: 0o755 })
       }
-      if (product === 'mygo')
+      if (product === 'desktop')
         await writeFile(join(binaryRoot, 'tokeninsights'), 'cli', { mode: 0o755 })
       const plist = join(root, app, 'Contents/Info.plist')
       if (desktop && target.os === 'darwin')
@@ -43,7 +43,7 @@ for (const platform of ['linux/amd64', 'darwin/arm64']) {
       await writeFile(join(root, 'LICENSE'), 'MIT')
       await writeFile(join(root, 'build-info.json'), '{}')
       await verifyProduct(root, product, target)
-      if (product === 'mygo') {
+      if (product === 'desktop') {
         await rm(join(binaryRoot, 'tokeninsights'))
         await assert.rejects(verifyProduct(root, product, target), /tokeninsights/)
         await writeFile(join(binaryRoot, 'tokeninsights'), 'cli', { mode: 0o755 })
@@ -61,8 +61,8 @@ for (const platform of ['linux/amd64', 'darwin/arm64']) {
 
 void test('stable product names cover all supported platforms', () => {
   assert.equal(
-    archiveName('mygo', parseTarget('darwin/arm64')),
-    'tokeninsights-mygo_darwin_arm64.tar.gz',
+    archiveName('desktop', parseTarget('darwin/arm64')),
+    'tokeninsights-desktop_darwin_arm64.tar.gz',
   )
   assert.equal(
     archiveName('cli', parseTarget('linux/amd64')),

@@ -20,7 +20,7 @@ func TestLaunchRequiresDesktopAcknowledgementAndKeepsSecretsOffURL(t *testing.T)
 	spec := Spec{Connection: "private-token", SourceDir: "private-source", Capture: false}
 	go func() {
 		finished <- launch(ctx, spec, func(ctx context.Context, raw string) error {
-			if !strings.HasPrefix(raw, "tokeninsights-mygo://launch?id=") || strings.Contains(raw, "private") {
+			if !strings.HasPrefix(raw, "tokeninsights-desktop://launch?id=") || strings.Contains(raw, "private") {
 				return errors.New("secret or wrong app in OS link")
 			}
 			links <- raw
@@ -45,7 +45,7 @@ func TestLaunchRequiresDesktopAcknowledgementAndKeepsSecretsOffURL(t *testing.T)
 		t.Fatal("opener success returned before live-session ack", err)
 	default:
 	}
-	if err := handoff.Acknowledge(browser.ModeMyGo); err != nil {
+	if err := handoff.Acknowledge(browser.ModeDesktop); err != nil {
 		t.Fatal(err)
 	}
 	if err := <-finished; err != nil {
@@ -116,19 +116,19 @@ func TestWrongDesktopCannotAcknowledgeSelectedApplication(t *testing.T) {
 func TestRendezvousRejectsCredentialAndDuplicateURLFields(t *testing.T) {
 	const id = "0123456789abcdef0123456789abcdef"
 	for _, raw := range []string{
-		"tokeninsights-mygo://launch?id=" + id + "&id=" + id,
-		"tokeninsights-mygo://launch?id=" + id + "&token=secret",
-		"tokeninsights-mygo://launch?id=" + id + "#secret",
-		"tokeninsights-mygo://user@launch?id=" + id,
-		"tokeninsights-mygo://launch?id=../socket",
+		"tokeninsights-desktop://launch?id=" + id + "&id=" + id,
+		"tokeninsights-desktop://launch?id=" + id + "&token=secret",
+		"tokeninsights-desktop://launch?id=" + id + "#secret",
+		"tokeninsights-desktop://user@launch?id=" + id,
+		"tokeninsights-desktop://launch?id=../socket",
 		"tokeninsights://connect/v1?address=host:1#token=secret",
-		"tokeninsights-mygo://open?url=http://localhost",
+		"tokeninsights-desktop://open?url=http://localhost",
 	} {
 		if _, err := ID(raw); err == nil {
 			t.Fatal("accepted", raw)
 		}
 	}
-	if _, err := Receive(t.Context(), "tokeninsights-mygo://launch?id="+id); err == nil || !strings.Contains(err.Error(), "expired") {
+	if _, err := Receive(t.Context(), "tokeninsights-desktop://launch?id="+id); err == nil || !strings.Contains(err.Error(), "expired") {
 		t.Fatal(err)
 	}
 }

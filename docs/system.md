@@ -6,7 +6,7 @@ composition; [design](design.md) specifies storage, identity and accounting.
 | Component | Lifetime | Transport | Storage |
 | --- | --- | --- | --- |
 | Personal backend | Until final lease plus reconnect grace | Private Unix HTTP/2 protocol 3 | Collector 20 and token 1 SQLite |
-| TUI/web/MyGo | Per viewer session/window | Explicit local/SSH/TCP session | No usage storage |
+| TUI/web/desktop | Per viewer session/window | Explicit local/SSH/TCP session | No usage storage |
 | Web/desktop bridge | Caller-owned session | Loopback HTTP | None |
 | Temporary remote gateway | Foreground command | Pinned TLS with ephemeral token | None |
 

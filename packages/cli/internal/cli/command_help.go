@@ -11,7 +11,7 @@ func runHelp(invocation commandInvocation, _ []string) error {
 func usageText() string {
 	return `usage: tokeninsights [command] [options]
 
-  tokeninsights               open local MyGo desktop
+  tokeninsights               open local desktop app
   connect URI                open exact local, ssh://host or tokeninsights://connect/v1 connection
   remote                      foreground temporary TCP gateway; print connect command
   remote --listen HOST:PORT --advertise HOST

@@ -6,11 +6,11 @@ import (
 
 	"github.com/egoist/mygo"
 	"github.com/flexdinesh/tokeninsights/packages/core/desktoplaunch"
-	"github.com/flexdinesh/tokeninsights/packages/desktop-mygo/internal/link"
+	"github.com/flexdinesh/tokeninsights/packages/desktop/internal/link"
 )
 
 const (
-	appName      = "TokenInsights MyGo"
+	appName      = "TokenInsights Desktop"
 	windowWidth  = 1280
 	windowHeight = 850
 	minWidth     = 360
@@ -95,7 +95,7 @@ func (v *viewer) finish(key, target string, connected *dashboard, err error) {
 
 func (v *viewer) retry(err error) bool {
 	result, dialogErr := mygo.Dialog.Message(mygo.MessageOptions{
-		Type: mygo.MessageError, Title: appName, Message: "Couldn't start TokenInsights MyGo", Detail: err.Error(),
+		Type: mygo.MessageError, Title: appName, Message: "Couldn't start TokenInsights Desktop", Detail: err.Error(),
 		Buttons: []string{"Retry", "Quit"}, DefaultButton: 0, CancelButton: 1,
 	})
 	return dialogErr == nil && result.Button == 0
@@ -156,7 +156,7 @@ func (v *viewer) show(connected *dashboard) {
 				if closed || v.ctx.Err() != nil {
 					return
 				}
-				v.fail("Backend disconnected", "Reopen TokenInsights MyGo to reconnect. Saved usage remains available.")
+				v.fail("Backend disconnected", "Reopen TokenInsights Desktop to reconnect. Saved usage remains available.")
 				window.Close()
 			})
 		}

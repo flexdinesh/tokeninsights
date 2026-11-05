@@ -1,6 +1,6 @@
-# TokenInsights MyGo
+# TokenInsights Desktop
 
-Thin MyGo webview shell over the shared dashboard. MyGo is the only desktop.
+Thin MyGo webview shell over the shared dashboard.
 `tokeninsights` opens local data; `tokeninsights connect URI` opens
 the explicit local, SSH or temporary TCP target. No transport or browser fallback.
 
@@ -15,5 +15,5 @@ window's bridge origin; other HTTP(S) navigation opens the browser. Closing the
 window releases bridge and session. The adjacent bundled backend requires no
 host JavaScript runtime. Linux requires system WebKitGTK 4.1.
 
-Identity: `com.flexdinesh.tokeninsights.mygo`; scheme: `tokeninsights-mygo`.
+Identity: `com.flexdinesh.tokeninsights.desktop`; scheme: `tokeninsights-desktop`.
 The shared dashboard owns all visual presentation. See ADR 0027.

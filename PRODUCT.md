@@ -2,7 +2,7 @@
 
 <!-- impeccable:product-schema 1 -->
 
-Shared product context for CLI, TUI, browser and native MyGo.
+Shared product context for CLI, TUI, browser and native desktop.
 Architecture and analytics semantics live in [docs/design.md](docs/design.md);
 terminology lives in [CONTEXT.md](CONTEXT.md). The browser visual contract is
 [DESIGN.md](DESIGN.md).
@@ -32,10 +32,10 @@ require a separate authenticated harness export or realtime hooks.
 
 ## Operating Context
 
-- One shared Go backend owns local storage, capture, processing and queries. CLI/TUI, web and native MyGo attach as independent viewers. All can run together.
+- One shared Go backend owns local storage, capture, processing and queries. CLI/TUI, web and native desktop attach as independent viewers. All can run together.
 - Launching a viewer requests collection; overlapping requests coalesce. No periodic scanning or login service. Saved data stays usable during collection and processing. The backend stops after the final viewer disconnects and a reconnect grace.
 - Go products run without host JavaScript tools. Browser assets are embedded in the backend/server. Prebuilt GitHub Release/prerelease products install through shell scripts; compiled outputs never enter Git.
-- Native MyGo initially supports local totals, date/dimension filters, table, progress and retry. Hosted URLs open in the system browser. MyGo is the only desktop.
+- Native desktop initially supports local totals, date/dimension filters, table, progress and retry. Hosted URLs open in the system browser.
 - `tokeninsights sync` retains its finite hosted submission workflow. --sync=false skips local launch capture, while processing resumes. Filters and TUI reload query only; browser status refreshes automatically. Errors preserve access to saved data.
 - Local hostname labels identify the machine running the viewer, including before
   ingestion. They do not attribute imported history to that machine. Loading,

@@ -31,7 +31,7 @@ auto = false
 run = "pnpm install --frozen-lockfile"
 
 [vars]
-format_paths = "package.json pnpm-workspace.yaml orval.config.ts docs/openapi.yaml docs-website .github/workflows packages/cli/package.json packages/backend packages/desktop-mygo/mygo.json packages/dashboard packages/contracts packages/web tools/build tools/validation/groups.json"
+format_paths = "package.json pnpm-workspace.yaml orval.config.ts docs/openapi.yaml docs-website .github/workflows packages/cli/package.json packages/backend packages/desktop/mygo.json packages/dashboard packages/contracts packages/web tools/build tools/validation/groups.json"
 lint_paths = "orval.config.ts docs-website packages/dashboard packages/contracts packages/web tools/build tools/validation/groups.json"
 
 # Setup
