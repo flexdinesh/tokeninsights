@@ -18,7 +18,7 @@ type Mode string
 const (
 	// ModeAuto prefers MyGo and falls back to the browser.
 	ModeAuto Mode = "auto"
-	// ModeMyGo requires the native MyGo application.
+	// ModeMyGo requires the MyGo application.
 	ModeMyGo Mode = "mygo"
 	// ModeElectron requires the Electron application.
 	ModeElectron Mode = "electron"

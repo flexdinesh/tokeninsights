@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/flexdinesh/tokeninsights/packages/core/localbackend"
@@ -23,7 +24,7 @@ func TestExternalDashboardDoesNotResolveLocalStorage(t *testing.T) {
 	}
 	t.Setenv("TOKENINSIGHTS_CONFIG_PATH", path)
 	for _, target := range []string{"https://usage.example.com/tokens", "http://192.0.2.1:8766/"} {
-		_, err := connectLocal(t.Context(), target, true, nil)
+		_, err := connectDashboard(t.Context(), target, nil)
 		var external *externalTarget
 		if !errors.As(err, &external) || external.URL != target {
 			t.Fatalf("external target resolved local settings: %v", err)
@@ -31,7 +32,9 @@ func TestExternalDashboardDoesNotResolveLocalStorage(t *testing.T) {
 	}
 }
 
-func TestNativeURLHandoffPreservesLaunchCapturePolicy(t *testing.T) {
+// serveBackend runs a real backend and a keeper session that holds its dashboard.
+func serveBackend(t *testing.T) *localclient.Session {
+	t.Helper()
 	root := t.TempDir()
 	t.Setenv("HOME", root)
 	t.Setenv("XDG_DATA_HOME", filepath.Join(root, "data"))
@@ -46,7 +49,6 @@ func TestNativeURLHandoffPreservesLaunchCapturePolicy(t *testing.T) {
 		finished <- localbackend.Serve(ctx, settings, io.Discard, func(d localprotocol.Descriptor) error { ready <- d; return nil })
 	}()
 	t.Cleanup(func() { cancel(); <-joined })
-
 	select {
 	case <-ready:
 	case err := <-finished:
@@ -54,11 +56,16 @@ func TestNativeURLHandoffPreservesLaunchCapturePolicy(t *testing.T) {
 	case <-t.Context().Done():
 		t.Fatal(t.Context().Err())
 	}
-	keeper, err := localclient.Connect(t.Context(), localclient.Options{CollectorDBPath: settings.CollectorDBPath, ServerDBPath: settings.ServerDBPath, AppDBPath: settings.AppDBPath, Host: "127.0.0.1", Dashboard: true})
+	keeper, err := localclient.Connect(t.Context(), localclient.Options{CollectorDBPath: settings.CollectorDBPath, ServerDBPath: settings.ServerDBPath, AppDBPath: settings.AppDBPath, Host: "127.0.0.1", Port: 0, Dashboard: true})
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() { _ = keeper.Close() }()
+	t.Cleanup(func() { _ = keeper.Close() })
+	return keeper
+}
+
+func TestURLHandoffKeepsItsPageAndLaunchCapturePolicy(t *testing.T) {
+	keeper := serveBackend(t)
 	assertAttempts := func(want int) {
 		t.Helper()
 		progress, err := keeper.Progress(t.Context())
@@ -66,26 +73,44 @@ func TestNativeURLHandoffPreservesLaunchCapturePolicy(t *testing.T) {
 			t.Fatalf("capture attempts = %d, want %d: %v", len(progress.Collection.Attempts), want, err)
 		}
 	}
-	handoff := func() {
-		t.Helper()
-		// Native window startup requests capture for standalone launch. A URL
-		// handed off by web must still inherit web's already-applied policy.
-		source, err := connectLocal(t.Context(), keeper.URL, true, nil)
-		if err != nil {
-			t.Fatal("native handoff rejected launch policy", err)
-		}
-		if err := source.Close(); err != nil {
-			t.Fatal(err)
-		}
+	assertAttempts(0)
+	target := keeper.URL + "/models?period=week"
+	connected, err := connectDashboard(t.Context(), target, nil)
+	if err != nil {
+		t.Fatal("handoff rejected:", err)
 	}
-	assertAttempts(0)
-	handoff()
-	assertAttempts(0)
-	if err := keeper.Capture(t.Context(), false, t.TempDir()); err != nil {
+	if connected.URL != target {
+		t.Fatalf("URL = %q, want the linked page %q", connected.URL, target)
+	}
+	if err := connected.Close(); err != nil {
 		t.Fatal(err)
 	}
-	handoff()
-	assertAttempts(1)
+	// A URL handed off by web inherits web's already-applied capture policy.
+	assertAttempts(0)
+}
+
+func TestHandoffLeaseKeepsTheDashboardServing(t *testing.T) {
+	keeper := serveBackend(t)
+	connected, err := connectDashboard(t.Context(), keeper.URL, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = connected.Close() }()
+	if err := keeper.Close(); err != nil {
+		t.Fatal(err)
+	}
+	response, err := http.Get(connected.URL + "/")
+	if err != nil {
+		t.Fatal("the window's lease lost the listener:", err)
+	}
+	defer func() { _ = response.Body.Close() }()
+	body, err := io.ReadAll(response.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if response.StatusCode != http.StatusOK || !strings.Contains(string(body), "<title>TokenInsights</title>") {
+		t.Fatalf("dashboard page: status %d, body %.200q", response.StatusCode, body)
+	}
 }
 
 func TestPersonalTunnelWithoutPrivateOwnerUsesOriginalBrowserURL(t *testing.T) {
@@ -99,9 +124,25 @@ func TestPersonalTunnelWithoutPrivateOwnerUsesOriginalBrowserURL(t *testing.T) {
 	}))
 	defer server.Close()
 	target := server.URL + "/models?period=week"
-	_, err := connectLocal(t.Context(), target, true, nil)
+	_, err := connectDashboard(t.Context(), target, nil)
 	var external *externalTarget
 	if !errors.As(err, &external) || external.URL != target {
 		t.Fatalf("personal tunnel lost browser fallback: %v", err)
+	}
+}
+
+func TestNavigationStaysOnTheDashboardOrigin(t *testing.T) {
+	const origin = "http://127.0.0.1:8765"
+	for raw, want := range map[string]navigation{
+		"http://127.0.0.1:8765/models?period=week": navigateStay,
+		"http://127.0.0.1:9999/":                   navigateBrowser,
+		"http://localhost:8765/":                   navigateBrowser,
+		"https://usage.example.com/":               navigateBrowser,
+		"file:///etc/passwd":                       navigateDeny,
+		"javascript:alert(1)":                      navigateDeny,
+	} {
+		if got := navigationFor(raw, origin); got != want {
+			t.Errorf("navigationFor(%q) = %d, want %d", raw, got, want)
+		}
 	}
 }

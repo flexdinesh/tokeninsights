@@ -1,6 +1,7 @@
 # SSH endpoints and on-demand local dashboard listener
 
 Status: Accepted. Date: 3 November 2026. User approved the execution plan.
+MyGo's control lease is superseded by [ADR 0026](0026-mygo-webview-shell.md).
 
 ## Decision
 

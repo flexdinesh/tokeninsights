@@ -20,19 +20,19 @@ Ensure `~/.local/bin` is on PATH, then run `tokeninsights tui` or `tokeninsights
 
 ## Desktop experiments
 
-Native MyGo:
+MyGo, using the system webview (Linux needs WebKitGTK 4.1):
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/flexdinesh/tokeninsights/main/install-mygo.sh | sh
 ```
 
-Electron, using the same React dashboard as the browser:
+Electron, bundling its own browser engine:
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/flexdinesh/tokeninsights/main/install-electron.sh | sh
 ```
 
-Both apps include their backend and can run together with TUI/web. MyGo is the default for `tokeninsights web`; override with `--open=electron`, `--open=mygo` or `--open=browser`. Save the selection with `tokeninsights config set viewer.open MODE`. Hosted URLs open in the browser.
+Both apps show the same dashboard as the browser, include their backend and can run together with TUI/web. MyGo is the default for `tokeninsights web`; override with `--open=electron`, `--open=mygo` or `--open=browser`. Save the selection with `tokeninsights config set viewer.open MODE`. Hosted URLs open in the browser.
 
 macOS apps appear in `~/Applications`; Linux apps have distinct desktop entries. No login service is installed. The shared backend starts when a viewer opens and stops after the last viewer disconnects. Linux MyGo needs GTK 3 and a supported graphics environment; it uses native Go UI, not WebKit.
 
