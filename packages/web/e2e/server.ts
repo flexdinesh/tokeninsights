@@ -137,7 +137,7 @@ export default async function setup() {
   let cleanup: Promise<void> | undefined
   const stop = () => {
     cleanup ??= (async () => {
-      const stopped = await Promise.allSettled([...children.map(({ child }) => stopChild(child))])
+      const stopped = await Promise.allSettled(children.map(({ child }) => stopChild(child)))
       const finalized = await Promise.allSettled([
         ...children.map((child, index) =>
           writeFile(join(directory, `server-${index}.log`), child.output(), { mode: 0o600 }),

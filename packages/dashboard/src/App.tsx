@@ -35,9 +35,11 @@ import {
 export function App() {
   const bootstrap = useBootstrap()
   const connection = useConnection()
+  const { refetch: refetchBootstrap } = bootstrap
+  const { refetch: refetchConnection } = connection
   const retryConnection = useCallback(async () => {
-    await Promise.all([bootstrap.refetch(), connection.refetch()])
-  }, [bootstrap.refetch, connection.refetch])
+    await Promise.all([refetchBootstrap(), refetchConnection()])
+  }, [refetchBootstrap, refetchConnection])
   const identity = useMemo(
     () =>
       bootstrap.data

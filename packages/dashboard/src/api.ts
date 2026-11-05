@@ -1,9 +1,15 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useEffect, useState } from 'react'
+import { skipToken, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import type { Dashboard } from '@tokeninsights/contracts'
 import { useDashboardClient } from './client'
 import type { QueryState } from './query'
 
 const dashboardPollIntervalMs = 5_000
+
+type AnalyticsSnapshot = {
+  dashboard: Dashboard
+  tab: QueryState['tab']
+  locationGroup: QueryState['locationGroup']
+}
 
 export function useConnection(enabled = true) {
   const api = useDashboardClient()
@@ -81,6 +87,10 @@ export function useAnalytics(q: QueryState, revision: number, enabled: boolean, 
     repositories: q.tab === 'repo' ? q.repositories : [],
     directories: q.tab === 'repo' ? q.directories : [],
   })
+  // A subscribed saved snapshot survives failed publication reads while this
+  // selection is open. Other selections/backends use separate cache entries.
+  const savedKey = ['saved-usage', summaryScope, identity]
+  const saved = useQuery<AnalyticsSnapshot>({ queryKey: savedKey, queryFn: skipToken })
   const result = useQuery({
     queryKey: ['usage', summaryScope, q, revision, identity],
     queryFn: async ({ signal }) => {
@@ -90,7 +100,9 @@ export function useAnalytics(q: QueryState, revision: number, enabled: boolean, 
         throw new Error('Data changed. Refreshing service status.')
       }
       if (dashboard.revision > revision) void client.invalidateQueries({ queryKey: ['sync'] })
-      return { dashboard, tab: q.tab, locationGroup: q.locationGroup }
+      const snapshot = { dashboard, tab: q.tab, locationGroup: q.locationGroup }
+      client.setQueryData(savedKey, snapshot)
+      return snapshot
     },
     refetchOnWindowFocus: false,
     refetchOnReconnect: false,
@@ -104,12 +116,7 @@ export function useAnalytics(q: QueryState, revision: number, enabled: boolean, 
   })
   // A failed query for a new published revision must keep the last saved result
   // for this selection and backend. Changed selections never borrow old totals.
-  const savedKey = `${summaryScope}/${identity}`
-  const [saved, setSaved] = useState<{ key: string; data: typeof result.data }>()
-  useEffect(() => {
-    if (result.data) setSaved({ key: savedKey, data: result.data })
-  }, [result.data, savedKey])
-  const retained = saved?.key === savedKey ? saved.data : undefined
+  const retained = saved.data
   return {
     ...result,
     data: result.data ?? retained,
