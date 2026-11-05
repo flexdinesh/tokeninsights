@@ -178,7 +178,7 @@ func (m interactiveModel) refreshLine() string {
 			compact = fmt.Sprintf("Processing · %d accepted · %d pending", attempt.AcknowledgedEntries, attempt.Pending)
 		}
 	case m.collectionFailed():
-		text, compact, failed = "Refresh incomplete · showing saved usage · restart tokeninsights tui", "Refresh incomplete · saved usage", true
+		text, compact, failed = "Refresh incomplete · showing saved usage · R Retry", "Refresh incomplete · saved usage", true
 		if m.refresh.result != nil && m.refresh.result.Result.Quarantined > 0 {
 			text = "Refresh incomplete · restart: tokeninsights tui --full-refresh"
 		}
