@@ -1,5 +1,9 @@
 import { test, expect } from './fixture'
 
+// Capture and publication are asynchronous; status/progress poll every five
+// seconds. Allow the same visibility window as finite local maintenance.
+const captureVisibilityTimeoutMs = 30_000
+
 test('Refresh requests capture once while filters and page reload query saved data', async ({
   page,
 }) => {
@@ -17,8 +21,12 @@ test('Refresh requests capture once while filters and page reload query saved da
   await expect(page.getByLabel('Total tokens: 344,000')).toBeVisible()
   expect(refreshes).toEqual([])
   await page.getByRole('button', { name: 'Refresh', exact: true }).click()
-  await expect(page.getByRole('button', { name: 'Refresh', exact: true })).toBeEnabled()
-  await expect(page.getByRole('button', { name: 'Backend status: Ready' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Refresh', exact: true })).toBeEnabled({
+    timeout: captureVisibilityTimeoutMs,
+  })
+  await expect(page.getByRole('button', { name: 'Backend status: Ready' })).toBeVisible({
+    timeout: captureVisibilityTimeoutMs,
+  })
   expect(refreshes).toEqual(['POST'])
   await expect(page.getByLabel('Total tokens: 344,000')).toBeVisible()
 })
