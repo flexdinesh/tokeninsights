@@ -97,7 +97,34 @@ function fixture(t: TestContext) {
     writeFileSync(join(release, 'checksums.txt'), checksum)
     return { filename, checksum, dir }
   }
-  return { root, home, release, bin, log, run, runPiped, installed, archive }
+  const retiredMyGo = (os: 'linux' | 'darwin') => {
+    const product = join(home, '.local/share/tokeninsights/products/mygo')
+    const binaryDir =
+      os === 'darwin' ? join(product, 'TokenInsights MyGo.app/Contents/MacOS') : product
+    mkdirSync(binaryDir, { recursive: true })
+    const marker = join(product, '.installed-by-tokeninsights')
+    writeFileSync(marker, 'tokeninsights-product:mygo\n')
+    const cli = join(binaryDir, 'tokeninsights')
+    executable(cli, 'echo retired-cli')
+    executable(join(binaryDir, 'tokeninsights-backend'), 'echo retired-backend')
+    const launcher =
+      os === 'darwin'
+        ? join(home, 'Applications/TokenInsights MyGo.app')
+        : join(home, '.local/bin/tokeninsights-mygo')
+    if (os === 'linux') executable(join(binaryDir, 'tokeninsights-mygo'), 'echo retired-app')
+    mkdirSync(join(home, '.local/bin'), { recursive: true })
+    mkdirSync(join(home, 'Applications'), { recursive: true })
+    symlinkSync(
+      os === 'darwin'
+        ? join(product, 'TokenInsights MyGo.app')
+        : join(binaryDir, 'tokeninsights-mygo'),
+      launcher,
+    )
+    const command = join(home, '.local/bin/tokeninsights')
+    symlinkSync(cli, command)
+    return { product, marker, cli, command, launcher }
+  }
+  return { root, home, release, bin, log, run, runPiped, installed, archive, retiredMyGo }
 }
 
 void test('piped entrypoint ignores a hostile working-directory helper', (t) => {
@@ -388,6 +415,67 @@ for (const os of ['linux', 'darwin']) {
         : join(f.installed('desktop'), 'tokeninsights')
     assert.equal(execFileSync(binary, { encoding: 'utf8' }).trim(), 'cli-v1')
   })
+}
+for (const platform of ['linux', 'darwin']) {
+  const os = platform === 'darwin' ? 'darwin' : 'linux'
+  const overrides = os === 'darwin' ? { TEST_OS: 'Darwin' } : {}
+  for (const product of ['cli', 'desktop']) {
+    const current = product === 'desktop' ? 'desktop' : 'cli'
+    const script = current === 'desktop' ? 'install-desktop.sh' : 'install.sh'
+    void test(`${os} ${product} takes command ownership from the renamed MyGo product`, (t) => {
+      const f = fixture(t)
+      const retired = f.retiredMyGo(os)
+      const launcherTarget = readlinkSync(retired.launcher)
+      f.archive(current, 'v2', os)
+      const result = f.run(script, os === 'linux' ? ['--channel=main'] : [], overrides)
+      assert.equal(result.status, 0, result.stderr)
+      assert.equal(
+        execFileSync(retired.command, { encoding: 'utf8' }).trim(),
+        current === 'desktop' ? 'cli-v2' : 'v2',
+      )
+      assert.equal(readFileSync(retired.marker, 'utf8'), 'tokeninsights-product:mygo\n')
+      assert.equal(execFileSync(retired.cli, { encoding: 'utf8' }).trim(), 'retired-cli')
+      assert.equal(readlinkSync(retired.launcher), launcherTarget)
+      const steady = f.run(script, [], overrides)
+      assert.equal(steady.status, 0, steady.stderr)
+    })
+    void test(`${os} failed ${product} handover restores the MyGo command`, (t) => {
+      const f = fixture(t)
+      const retired = f.retiredMyGo(os)
+      f.archive(current, 'v2', os)
+      executable(
+        join(f.bin, 'rmdir'),
+        'case "$1" in *.tokeninsights-link-*) if [ "$(readlink "$HOME/.local/bin/tokeninsights")" != "$TEST_RETIRED_CLI" ]; then echo injected-publication-failure >&2; exit 17; fi ;; esac\nexec /bin/rmdir "$@"',
+      )
+      const result = f.run(script, [], { ...overrides, TEST_RETIRED_CLI: retired.cli })
+      assert.notEqual(result.status, 0)
+      assert.match(result.stderr, /injected-publication-failure/)
+      assert.equal(readlinkSync(retired.command), retired.cli)
+      assert.equal(execFileSync(retired.command, { encoding: 'utf8' }).trim(), 'retired-cli')
+      assert.ok(!existsSync(f.installed(current)))
+    })
+    for (const ownership of ['missing marker', 'wrong marker', 'symlinked product']) {
+      void test(`${os} ${product} rejects a MyGo command with ${ownership}`, (t) => {
+        const f = fixture(t)
+        const retired = f.retiredMyGo(os)
+        if (ownership === 'missing marker') rmSync(retired.marker)
+        if (ownership === 'wrong marker')
+          writeFileSync(retired.marker, 'tokeninsights-product:desktop\n')
+        if (ownership === 'symlinked product') {
+          const foreign = join(f.root, 'foreign')
+          execFileSync('mv', [retired.product, foreign])
+          symlinkSync(foreign, retired.product)
+        }
+        f.archive(current, 'v2', os)
+        const result = f.run(script, [], overrides)
+        assert.notEqual(result.status, 0)
+        assert.match(result.stderr, /refusing to replace unowned path/)
+        assert.equal(readlinkSync(retired.command), retired.cli)
+        assert.equal(execFileSync(retired.command, { encoding: 'utf8' }).trim(), 'retired-cli')
+        assert.ok(!existsSync(f.installed(current)))
+      })
+    }
+  }
 }
 void test('failed CLI command handover restores owned desktop command and product state', (t) => {
   const f = fixture(t)

@@ -445,6 +445,10 @@ printing values, rewriting configuration or deleting files. Users repair their
 configuration explicitly. There is no automatic migration.
 
 Desktop installation includes CLI/backend. The CLI-only product remains.
+Either installer can take command ownership from the former MyGo product only
+when the CLI symlink targets its known bundled path and its product directory has
+the matching installer ownership marker. Retired product files and launchers remain
+untouched; failed publication restores the previous command.
 Go products need no host JavaScript runtime.
 Shared React presentation lives in packages/dashboard, browser composition in
 packages/web and TypeScript contracts in packages/contracts. The backend embeds
