@@ -13,11 +13,11 @@ self-contained connection credentials or prove the requested app was ready.
 ## Decision
 
 One personal Go backend per storage identity owns SQLite capture, direct acceptance,
-durable processing, queries and shutdown. MyGo is the only desktop product; TUI
-and explicit web remain. MyGo installation includes CLI/backend; the CLI-only
+durable processing, queries and shutdown. Desktop, built on MyGo, is the only desktop product; TUI
+and explicit web remain. Desktop installation includes CLI/backend; the CLI-only
 product remains. `tokeninsights-backend` exposes only `internal-serve`.
 
-Bare `tokeninsights` opens MyGo. `connect STRING` opens exactly
+Bare `tokeninsights` opens desktop. `connect STRING` opens exactly
 local/SSH/TCP; `tui|web --connection STRING` explicitly selects a target. No saved
 remote default, transport fallback, local-data fallback or browser fallback.
 An unavailable desktop fails with actionable guidance.

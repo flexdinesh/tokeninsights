@@ -27,7 +27,7 @@ func (d *dashboard) acknowledge() error {
 	default:
 	}
 	if d.handoff != nil {
-		return d.handoff.Acknowledge(browser.ModeMyGo)
+		return d.handoff.Acknowledge(browser.ModeDesktop)
 	}
 	return nil
 }

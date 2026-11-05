@@ -69,7 +69,7 @@ func TestLayerDependencies(t *testing.T) {
 	}
 	// Presentation dependencies stay inside their independently removable shell.
 	for name, dependencies := range imports {
-		if strings.HasPrefix(name, "packages/desktop-mygo") {
+		if strings.HasPrefix(name, "packages/desktop") {
 			continue
 		}
 		for _, dependency := range dependencies {

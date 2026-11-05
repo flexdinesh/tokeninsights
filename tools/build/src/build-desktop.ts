@@ -1,4 +1,4 @@
-// MyGo packaging. The root module and source files remain untouched.
+// Desktop packaging. The root module and source files remain untouched.
 import { execFileSync } from 'node:child_process'
 import { cp, mkdir, mkdtemp, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -11,8 +11,8 @@ export interface DesktopTarget {
   os: DesktopOS
   arch: DesktopArch
 }
-export const mygoApp = 'TokenInsights MyGo.app'
-export const mygoBinary = 'tokeninsights-mygo'
+export const desktopApp = 'TokenInsights Desktop.app'
+export const desktopBinary = 'tokeninsights-desktop'
 
 export function hostTarget(): DesktopTarget {
   const os = process.platform
@@ -30,33 +30,33 @@ export function parseTarget(value: string): DesktopTarget {
   return { os, arch }
 }
 
-export async function buildMygo(
+export async function buildDesktop(
   target: DesktopTarget,
   version: string,
   ldflags: string,
   output: string,
 ): Promise<void> {
-  const temporary = await mkdtemp(join(tmpdir(), 'tokeninsights-mygo-'))
+  const temporary = await mkdtemp(join(tmpdir(), 'tokeninsights-desktop-'))
   try {
     await Promise.all(
       ['go.mod', 'go.sum'].map((file) => cp(workspacePath(file), join(temporary, file))),
     )
     await Promise.all(
-      ['core', 'desktop-mygo'].map((name) =>
+      ['core', 'desktop'].map((name) =>
         cp(workspacePath('packages', name), join(temporary, 'packages', name), {
           recursive: true,
           filter: (path) => !/[/\\](node_modules|build|\.mygo)$/.test(path),
         }),
       ),
     )
-    const project = join(temporary, 'packages/desktop-mygo')
+    const project = join(temporary, 'packages/desktop')
     const configPath = join(project, 'mygo.json')
     const config: unknown = JSON.parse(await readFile(configPath, 'utf8'))
     if (typeof config !== 'object' || config === null || Array.isArray(config))
       throw new Error('invalid mygo.json')
     await writeFile(
       configPath,
-      `${JSON.stringify({ ...config, name: 'TokenInsights MyGo', slug: mygoBinary, identifier: 'com.flexdinesh.tokeninsights.mygo', version })}\n`,
+      `${JSON.stringify({ ...config, name: 'TokenInsights Desktop', slug: desktopBinary, identifier: 'com.flexdinesh.tokeninsights.desktop', version })}\n`,
     )
     // Resolve the pinned tool from the root module before entering the temporary copy.
     const tool = execFileSync('go', ['tool', '-n', 'mygo'], {
@@ -75,23 +75,23 @@ export async function buildMygo(
     const built = join(project, 'build', `${target.os}-${target.arch}`)
     await mkdir(output, { recursive: true })
     if (target.os === 'darwin') {
-      await cp(join(built, mygoApp), join(output, mygoApp), {
+      await cp(join(built, desktopApp), join(output, desktopApp), {
         recursive: true,
         verbatimSymlinks: true,
       })
       await rename(
-        join(output, mygoApp, 'Contents/MacOS/TokenInsights MyGo'),
-        join(output, mygoApp, 'Contents/MacOS', mygoBinary),
+        join(output, desktopApp, 'Contents/MacOS/TokenInsights Desktop'),
+        join(output, desktopApp, 'Contents/MacOS', desktopBinary),
       )
-      const plist = join(output, mygoApp, 'Contents/Info.plist')
+      const plist = join(output, desktopApp, 'Contents/Info.plist')
       await writeFile(
         plist,
         (await readFile(plist, 'utf8')).replace(
           /(<key>CFBundleExecutable<\/key>\s*<string>)[^<]+/,
-          `$1${mygoBinary}`,
+          `$1${desktopBinary}`,
         ),
       )
-    } else await cp(join(built, mygoBinary), join(output, mygoBinary))
+    } else await cp(join(built, desktopBinary), join(output, desktopBinary))
   } finally {
     await rm(temporary, { recursive: true, force: true })
   }

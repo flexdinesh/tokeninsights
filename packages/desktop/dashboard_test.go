@@ -59,21 +59,21 @@ func TestExpiredHandoffDoesNotOpenDefaultStorage(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("TOKENINSIGHTS_CONFIG_PATH", path)
-	_, err := connectDashboard(t.Context(), "tokeninsights-mygo://launch?id=0123456789abcdef0123456789abcdef", nil)
+	_, err := connectDashboard(t.Context(), "tokeninsights-desktop://launch?id=0123456789abcdef0123456789abcdef", nil)
 	if err == nil || !strings.Contains(err.Error(), "expired") {
 		t.Fatal("expired handoff resolved default configuration", err)
 	}
-	if _, err := desktoplaunch.ID("tokeninsights-mygo://open?url=http://localhost"); err == nil {
+	if _, err := desktoplaunch.ID("tokeninsights-desktop://open?url=http://localhost"); err == nil {
 		t.Fatal("retired URL handoff accepted")
 	}
 }
 func TestStandaloneArgumentsCannotSilentlySelectLocalData(t *testing.T) {
-	for _, args := range [][]string{{"--endpoint=ssh://host"}, {"--connection", "ssh://host"}, {"tokeninsights-mygo://open?url=http://localhost"}} {
+	for _, args := range [][]string{{"--endpoint=ssh://host"}, {"--connection", "ssh://host"}, {"tokeninsights-desktop://open?url=http://localhost"}} {
 		if err := validateArguments(args); err == nil {
 			t.Fatal("unsupported request fell through to standalone local capture", args)
 		}
 	}
-	if err := validateArguments([]string{"tokeninsights-mygo://launch?id=0123456789abcdef0123456789abcdef"}); err != nil {
+	if err := validateArguments([]string{"tokeninsights-desktop://launch?id=0123456789abcdef0123456789abcdef"}); err != nil {
 		t.Fatal(err)
 	}
 }

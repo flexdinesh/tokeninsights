@@ -1,4 +1,4 @@
-// Package browser opens dashboards in MyGo or the system browser.
+// Package browser opens dashboards in desktop or the system browser.
 package browser
 
 import (
@@ -14,22 +14,22 @@ import (
 type Mode string
 
 const (
-	// ModeMyGo requires the MyGo application.
-	ModeMyGo Mode = "mygo"
+	// ModeDesktop requires the desktop application.
+	ModeDesktop Mode = "desktop"
 	// ModeBrowser always uses the system browser.
 	ModeBrowser Mode = "browser"
 	// ModeOff prints the dashboard URL without opening anything.
 	ModeOff Mode = "false"
 )
 
-// Desktop identity registered by the MyGo installer.
+// Desktop identity registered by the desktop installer.
 const (
-	MyGoScheme  = "tokeninsights-mygo"
-	appBundleID = "com.flexdinesh.tokeninsights.mygo"
+	DesktopScheme = "tokeninsights-desktop"
+	appBundleID   = "com.flexdinesh.tokeninsights.desktop"
 )
 
-// ErrAppUnavailable reports an unavailable MyGo target.
-var ErrAppUnavailable = errors.New("TokenInsights MyGo is unavailable; install the MyGo product or run tokeninsights tui")
+// ErrAppUnavailable reports an unavailable desktop target.
+var ErrAppUnavailable = errors.New("TokenInsights Desktop is unavailable; install the desktop product or run tokeninsights tui")
 
 // Via names what opened a dashboard.
 type Via int
@@ -133,7 +133,7 @@ func (s system) openApp(ctx context.Context, link string) bool {
 		if !s.display() {
 			return false
 		}
-		handler, err := s.output(ctx, "xdg-mime", "query", "default", "x-scheme-handler/"+MyGoScheme)
+		handler, err := s.output(ctx, "xdg-mime", "query", "default", "x-scheme-handler/"+DesktopScheme)
 		if err != nil || strings.TrimSpace(string(handler)) == "" {
 			return false
 		}
@@ -156,7 +156,7 @@ func (s system) browserCommand(dashboardURL string) []string {
 	return nil
 }
 
-// Launch sends an opaque rendezvous link to the installed MyGo desktop.
+// Launch sends an opaque rendezvous link to the installed desktop app.
 // The caller must separately await the desktop's live-session acknowledgement.
 func Launch(ctx context.Context, link string) error {
 	if hostSystem().openApp(ctx, link) {

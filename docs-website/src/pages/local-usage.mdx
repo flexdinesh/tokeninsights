@@ -1,6 +1,6 @@
 # Local usage
 
-MyGo, browser and TUI share one personal backend. It owns capture,
+Desktop, browser and TUI share one personal backend. It owns capture,
 processing and SQLite storage; each viewer holds a lease. After the final
 disconnect and reconnect grace it stops, leaving accepted work durable for next time.
 
@@ -17,7 +17,7 @@ import tuiScreenshot from '../../../assets/tokeninsights-tui.png'
 tokeninsights
 ```
 
-MyGo is the desktop. Launch succeeds only
+Desktop launch succeeds only
 after it acknowledges a live requested session. If unavailable,
 it fails with repair guidance. Each window keeps its selected connection and shows
 requested target/transport, verified backend hostname/identity and state.

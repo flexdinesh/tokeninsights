@@ -142,7 +142,7 @@ func TestNativeHandoffOwnsRequestedLiveSessionAfterLauncherReturns(t *testing.T)
 				failures <- err
 				return
 			}
-			if err := handoff.Acknowledge(browser.ModeMyGo); err != nil {
+			if err := handoff.Acknowledge(browser.ModeDesktop); err != nil {
 				_ = dashboard.Close()
 				failures <- err
 				return
@@ -186,7 +186,7 @@ func TestExistingDesktopHandoffsKeepDistinctRequestedBackends(t *testing.T) {
 				t.Error(err)
 				return
 			}
-			if err := handoff.Acknowledge(browser.ModeMyGo); err != nil {
+			if err := handoff.Acknowledge(browser.ModeDesktop); err != nil {
 				_ = dashboard.Close()
 				t.Error(err)
 				return

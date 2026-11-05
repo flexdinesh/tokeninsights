@@ -3,11 +3,11 @@ import { createHash } from 'node:crypto'
 import { cp, mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
-import { buildMygo, hostTarget, mygoApp, type DesktopTarget } from './build-desktop.ts'
+import { buildDesktop, hostTarget, desktopApp, type DesktopTarget } from './build-desktop.ts'
 import { workspacePath, workspaceRoot } from './workspace.ts'
 
-export type Product = 'cli' | 'mygo'
-export const products: readonly Product[] = ['cli', 'mygo']
+export type Product = 'cli' | 'desktop'
+export const products: readonly Product[] = ['cli', 'desktop']
 export interface BuildMetadata {
   version: string
   commit: string
@@ -42,15 +42,15 @@ export async function verifyProduct(
   product: Product,
   target: DesktopTarget,
 ): Promise<void> {
-  const desktop = product === 'mygo'
+  const desktop = product === 'desktop'
   const binary = product === 'cli' ? 'tokeninsights' : `tokeninsights-${product}`
   const executableRoot =
-    desktop && target.os === 'darwin' ? join(root, mygoApp, 'Contents/MacOS') : root
+    desktop && target.os === 'darwin' ? join(root, desktopApp, 'Contents/MacOS') : root
   await executable(join(executableRoot, binary))
-  if (product === 'mygo') await executable(join(executableRoot, 'tokeninsights'))
+  if (product === 'desktop') await executable(join(executableRoot, 'tokeninsights'))
   await executable(join(executableRoot, 'tokeninsights-backend'))
   if (desktop && target.os === 'darwin') {
-    const plist = await readFile(join(root, mygoApp, 'Contents/Info.plist'), 'utf8')
+    const plist = await readFile(join(root, desktopApp, 'Contents/Info.plist'), 'utf8')
     if (!plist.includes(`<string>com.flexdinesh.tokeninsights.${product}</string>`))
       throw new Error('incompatible desktop identity')
   }
@@ -105,7 +105,7 @@ export async function buildProducts(
       ['tokeninsights-backend', './packages/backend/cmd/tokeninsights-backend'],
     ])
     for (const [binary, command] of commands) {
-      if (binary === 'tokeninsights' && !selected.includes('cli') && !selected.includes('mygo'))
+      if (binary === 'tokeninsights' && !selected.includes('cli') && !selected.includes('desktop'))
         continue
       runBuildTool('go', [
         'build',
@@ -127,9 +127,9 @@ export async function buildProducts(
       // Package construction is deliberately sequential, sharing one backend build.
       // eslint-disable-next-line no-await-in-loop
       await mkdir(root)
-      if (product === 'mygo') {
+      if (product === 'desktop') {
         // eslint-disable-next-line no-await-in-loop
-        await buildMygo(
+        await buildDesktop(
           target,
           metadata.version.startsWith('main.') ? '0.0.0' : metadata.version,
           linkerFlags(metadata),
@@ -139,7 +139,7 @@ export async function buildProducts(
         await cp(
           join(binaries, 'tokeninsights'),
           target.os === 'darwin'
-            ? join(root, mygoApp, 'Contents/MacOS/tokeninsights')
+            ? join(root, desktopApp, 'Contents/MacOS/tokeninsights')
             : join(root, 'tokeninsights'),
         )
       } else {
@@ -148,13 +148,13 @@ export async function buildProducts(
         await cp(join(binaries, binary), join(root, binary))
       }
       const dest =
-        target.os === 'darwin' && product === 'mygo'
-          ? join(root, mygoApp, 'Contents/MacOS/tokeninsights-backend')
+        target.os === 'darwin' && product === 'desktop'
+          ? join(root, desktopApp, 'Contents/MacOS/tokeninsights-backend')
           : join(root, 'tokeninsights-backend')
       // eslint-disable-next-line no-await-in-loop
       await cp(join(binaries, 'tokeninsights-backend'), dest)
-      if (target.os === 'darwin' && product === 'mygo')
-        runBuildTool('codesign', ['--force', '--deep', '--sign', '-', join(root, mygoApp)])
+      if (target.os === 'darwin' && product === 'desktop')
+        runBuildTool('codesign', ['--force', '--deep', '--sign', '-', join(root, desktopApp)])
       // eslint-disable-next-line no-await-in-loop
       await packageProduct(temporary, product, target, out, metadata)
     }

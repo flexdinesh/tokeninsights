@@ -5,12 +5,12 @@ Run from repo root. `mise tasks ls` lists tasks. User commands: [CLI](cli.md).
 ## Install main
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/flexdinesh/tokeninsights/main/install-mygo.sh | sh -s -- --channel=main
+curl -fsSL https://raw.githubusercontent.com/flexdinesh/tokeninsights/main/install-desktop.sh | sh -s -- --channel=main
 curl -fsSL https://raw.githubusercontent.com/flexdinesh/tokeninsights/main/install-main.sh | sh
 fish_add_path ~/.local/bin
 ```
 
-MyGo includes CLI/backend. CLI-only supports TUI/web. Main has no macOS Intel build.
+Desktop includes CLI/backend. CLI-only supports TUI/web. Main has no macOS Intel build.
 Use `tokeninsights --version` to inspect the installed version.
 Stable/main replace the selected product. Installation never terminates viewers.
 

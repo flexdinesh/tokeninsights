@@ -39,7 +39,7 @@
     "static": {
       "inputs": [
         "packages/cli/",
-        "packages/desktop-mygo/",
+        "packages/desktop/",
         "schema/",
         "docs/openapi.yaml",
         "packages/web/",
@@ -68,7 +68,7 @@
         "tools/build/src/workspace.ts",
         "packages/core/",
         "packages/backend/",
-        "packages/desktop-mygo/",
+        "packages/desktop/",
         "packages/dashboard/",
         "packages/contracts/"
       ],
@@ -86,7 +86,7 @@
         ".husky/",
         ".github/workflows/",
         "install.sh",
-        "packages/desktop-mygo/",
+        "packages/desktop/",
         ".gitattributes",
         ".gitignore",
         "LICENSE",
@@ -104,7 +104,7 @@
     "go": {
       "inputs": [
         "packages/cli/",
-        "packages/desktop-mygo/",
+        "packages/desktop/",
         "schema/",
         "docs/openapi.yaml",
         "packages/web/",
@@ -136,7 +136,7 @@
         "tools/build/src/test-go.ts",
         "packages/core/",
         "packages/backend/",
-        "packages/desktop-mygo/",
+        "packages/desktop/",
         "packages/dashboard/",
         "packages/contracts/"
       ],
@@ -159,7 +159,7 @@
         "tools/build/src/test-distribution.ts",
         "packages/core/",
         "packages/backend/",
-        "packages/desktop-mygo/",
+        "packages/desktop/",
         "packages/dashboard/",
         "packages/contracts/",
         "install/",
@@ -183,7 +183,7 @@
         "tools/build/src/workspace.ts",
         "packages/core/",
         "packages/backend/",
-        "packages/desktop-mygo/",
+        "packages/desktop/",
         "packages/dashboard/",
         "packages/contracts/"
       ],
@@ -205,7 +205,7 @@
         "tools/build/src/workspace.ts",
         "packages/core/",
         "packages/backend/",
-        "packages/desktop-mygo/",
+        "packages/desktop/",
         "packages/dashboard/",
         "packages/contracts/"
       ],

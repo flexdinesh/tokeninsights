@@ -1,8 +1,0 @@
-{
-  "name": "TokenInsights MyGo",
-  "slug": "tokeninsights-mygo",
-  "identifier": "com.flexdinesh.tokeninsights.mygo",
-  "version": "0.0.0",
-  "urlSchemes": ["tokeninsights", "tokeninsights-mygo"],
-  "out": "build"
-}

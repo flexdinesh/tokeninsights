@@ -1,4 +1,4 @@
-# TokenInsights MyGo
+# TokenInsights Desktop
 
 The shared dashboard owns layout, theme and behavior. Default window 1280×850,
 minimum 360×480. Connection failures use native dialogs.

@@ -44,7 +44,7 @@ func TestUnavailableDesktopNeverFallsBack(t *testing.T) {
 }
 func TestDesktopRegistration(t *testing.T) {
 	fake := fakeSystem{appBundle: true}
-	if !fake.system("darwin").openApp(t.Context(), "mygo-link") {
+	if !fake.system("darwin").openApp(t.Context(), "desktop-link") {
 		t.Fatal("desktop unavailable")
 	}
 	if fake.calls[0][2] != appBundleID {

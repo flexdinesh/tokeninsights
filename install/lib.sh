@@ -7,9 +7,9 @@ product=cli
 channel=stable
 for arg in "$@"; do
     case "$arg" in
-        --product=cli|--product=mygo) product="${arg#*=}" ;;
+        --product=cli|--product=desktop) product="${arg#*=}" ;;
         --channel=stable|--channel=main) channel="${arg#*=}" ;;
-        --help) printf '%s\n' 'Usage: install[-main|-mygo].sh [--channel=stable|main]'; exit 0 ;;
+        --help) printf '%s\n' 'Usage: install[-main|-desktop].sh [--channel=stable|main]'; exit 0 ;;
         *) fail "unknown option $arg" ;;
     esac
 done
@@ -165,9 +165,9 @@ find "$src" -type l -exec sh -c '
 [ -f "$src/product.txt" ] && [ "$(cat "$src/product.txt")" = "tokeninsights-product-v1 $product $os $arch" ] || fail 'incompatible product archive'
 case "$product" in
     cli) binary=tokeninsights ;;
-    mygo) binary=tokeninsights-mygo; app='TokenInsights MyGo.app'; identity=com.flexdinesh.tokeninsights.mygo ;;
+    desktop) binary=tokeninsights-desktop; app='TokenInsights Desktop.app'; identity=com.flexdinesh.tokeninsights.desktop ;;
 esac
-if [ "$os" = darwin ] && [ "$product" = mygo ]; then
+if [ "$os" = darwin ] && [ "$product" = desktop ]; then
     executable="$src/$app/Contents/MacOS/$binary"
     grep -F "<string>$identity</string>" "$src/$app/Contents/Info.plist" >/dev/null || fail 'incompatible app identity'
     backend="$src/$app/Contents/MacOS/tokeninsights-backend"
@@ -177,7 +177,7 @@ else
 fi
 [ -f "$executable" ] && [ -x "$executable" ] || fail "archive lacks executable $binary"
 [ -f "$backend" ] && [ -x "$backend" ] || fail 'archive lacks executable tokeninsights-backend'
-if [ "$product" = mygo ]; then
+if [ "$product" = desktop ]; then
     cli_source="$(dirname "$executable")/tokeninsights"
     [ -f "$cli_source" ] && [ -x "$cli_source" ] || fail 'archive lacks executable tokeninsights'
 fi
@@ -192,7 +192,7 @@ fi
 bin="$HOME/.local/bin"
 link="$bin/$binary"
 target="$dest/$binary"
-if [ "$os" = darwin ] && [ "$product" = mygo ]; then
+if [ "$os" = darwin ] && [ "$product" = desktop ]; then
     bin="$HOME/Applications"
     link="$bin/$app"
     target="$dest/$app"
@@ -203,31 +203,31 @@ owned_product() {
         [ -f "$products/$1/.installed-by-tokeninsights" ] &&
         [ "$(cat "$products/$1/.installed-by-tokeninsights")" = "tokeninsights-product:$1" ]
 }
-mygo_cli="$products/mygo/tokeninsights"
-if [ "$os" = darwin ]; then mygo_cli="$products/mygo/TokenInsights MyGo.app/Contents/MacOS/tokeninsights"; fi
+desktop_cli="$products/desktop/tokeninsights"
+if [ "$os" = darwin ]; then desktop_cli="$products/desktop/TokenInsights Desktop.app/Contents/MacOS/tokeninsights"; fi
 if [ -e "$link" ] || [ -L "$link" ]; then
     [ -L "$link" ] || fail "refusing to replace unowned path $link"
     previous_link="$(readlink "$link")"
     if [ "$previous_link" = "$target" ]; then publish_link=false
-    elif [ "$product" = cli ] && [ "$previous_link" = "$mygo_cli" ] && owned_product mygo; then
-        : # An explicitly installed CLI takes command ownership from bundled MyGo.
+    elif [ "$product" = cli ] && [ "$previous_link" = "$desktop_cli" ] && owned_product desktop; then
+        : # An explicitly installed CLI takes command ownership from bundled desktop.
     else fail "refusing to replace unowned path $link"; fi
 fi
-# The most recent CLI or MyGo install owns the command, so neither leaves a stale one.
+# The most recent CLI or desktop install owns the command, so neither leaves a stale one.
 cli_link="$HOME/.local/bin/tokeninsights"
 publish_cli=false
-if [ "$product" = mygo ]; then
+if [ "$product" = desktop ]; then
     if [ -e "$cli_link" ] || [ -L "$cli_link" ]; then
         [ -L "$cli_link" ] || fail "refusing to replace unowned path $cli_link"
         existing_cli="$(readlink "$cli_link")"
         if [ "$existing_cli" = "$products/cli/tokeninsights" ] && owned_product cli; then
             previous_cli="$existing_cli"
             publish_cli=true
-        elif [ "$existing_cli" = "$mygo_cli" ] && owned_product mygo; then :
+        elif [ "$existing_cli" = "$desktop_cli" ] && owned_product desktop; then :
         else fail "refusing to replace unowned path $cli_link"; fi
     else publish_cli=true; fi
 fi
-if [ "$os" = linux ] && [ "$product" = mygo ]; then
+if [ "$os" = linux ] && [ "$product" = desktop ]; then
     entry="$data/applications/$slug.desktop"
     case "$dest" in *[\"\`\$\\%]*) fail 'install path cannot be represented in a desktop entry' ;; esac
     if [ -e "$entry" ] || [ -L "$entry" ]; then
@@ -258,13 +258,13 @@ fi
 if [ "$publish_cli" = true ]; then
     mkdir -p "$HOME/.local/bin"
     link_stage="$(mktemp -d "$HOME/.local/bin/.tokeninsights-link-XXXXXX")"
-    ln -s "$mygo_cli" "$link_stage/link"
+    ln -s "$desktop_cli" "$link_stage/link"
     mv "$link_stage/link" "$cli_link"
     published_cli="$cli_link"
     rmdir "$link_stage"
     link_stage=
 fi
-if [ "$os" = linux ] && [ "$product" = mygo ]; then
+if [ "$os" = linux ] && [ "$product" = desktop ]; then
     mkdir -p "$data/applications"
     cat > "$dest/desktop-entry" <<EOF
 [Desktop Entry]
@@ -283,7 +283,7 @@ EOF
         xdg-mime default "$slug.desktop" "x-scheme-handler/tokeninsights-$product" || printf 'warning: open the app once to register links\n' >&2
     fi
 fi
-if [ "$os" = darwin ] && [ "$product" = mygo ]; then
+if [ "$os" = darwin ] && [ "$product" = desktop ]; then
     register=/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister
     if [ -x "$register" ]; then "$register" -f "$dest/$app" || printf 'warning: open the app once to register links\n' >&2; fi
 fi
@@ -291,7 +291,7 @@ if [ -n "$backup" ]; then rm -rf "$backup"; backup=; fi
 complete=true
 printf 'Installed %s (%s): %s\n' "$product" "$channel" "$link"
 if [ -n "$previous_cli" ]; then
-    printf 'tokeninsights now runs the MyGo CLI; rerun install.sh to return to CLI-only\n'
+    printf 'tokeninsights now runs the desktop CLI; rerun install.sh to return to CLI-only\n'
 fi
 # Retired Homebrew and Go installs can stay ahead of the published link.
 resolved="$(command -v tokeninsights || true)"

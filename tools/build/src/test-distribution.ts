@@ -29,15 +29,15 @@ try {
   await buildProducts(out, metadata)
   const { writeChecksums } = await import('./build-products.ts')
   await writeChecksums(out)
-  for (const script of ['install.sh', 'install-mygo.sh'])
+  for (const script of ['install.sh', 'install-desktop.sh'])
     execFileSync('sh', [workspacePath(script)], { env, stdio: 'inherit' })
   const installed = join(fixture, 'data/tokeninsights/products')
   for (const [product, binary] of [
     ['cli', 'tokeninsights'],
     [
-      'mygo',
+      'desktop',
       process.platform === 'darwin'
-        ? 'TokenInsights MyGo.app/Contents/MacOS/tokeninsights'
+        ? 'TokenInsights Desktop.app/Contents/MacOS/tokeninsights'
         : 'tokeninsights',
     ],
   ]) {
@@ -62,8 +62,8 @@ try {
       [
         '-a',
         process.execPath,
-        workspacePath('tools/build/src/smoke-mygo.ts'),
-        join(installed, 'mygo/tokeninsights-mygo'),
+        workspacePath('tools/build/src/smoke-desktop.ts'),
+        join(installed, 'desktop/tokeninsights-desktop'),
       ],
       { env, stdio: 'inherit' },
     )

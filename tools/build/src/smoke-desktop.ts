@@ -7,7 +7,7 @@ const startupInterval = 500
 // The window starts with the app name; the page's own title proves it loaded.
 const dashboardTitle = /"TokenInsights":/
 const executable = process.argv[2]
-if (executable === undefined) throw new Error('MyGo executable required')
+if (executable === undefined) throw new Error('desktop executable required')
 const child = spawn(executable, [], { stdio: ['ignore', 'pipe', 'pipe'] })
 let output = ''
 child.stdout.on('data', (bytes: Buffer) => {

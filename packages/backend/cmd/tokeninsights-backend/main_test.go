@@ -9,7 +9,7 @@ func TestBackendRejectsEverythingExceptInternalServe(t *testing.T) {
 	for _, args := range [][]string{
 		nil,
 		{"connect", "--json"},
-		{"connect", "--json", "--launch", "tokeninsights-mygo://launch?id=0123456789abcdef0123456789abcdef"},
+		{"connect", "--json", "--launch", "tokeninsights-desktop://launch?id=0123456789abcdef0123456789abcdef"},
 		{"internal-serve", "extra"},
 		{"serve"},
 	} {
