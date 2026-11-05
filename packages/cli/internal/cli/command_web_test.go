@@ -46,7 +46,9 @@ func useSharedBackendForTest(t *testing.T) {
 			return err
 		case <-ctx.Done():
 			cancel()
-			_ = <-finished
+			if err := <-finished; err != nil {
+				return errors.Join(ctx.Err(), err)
+			}
 			return ctx.Err()
 		case <-ready:
 		}
