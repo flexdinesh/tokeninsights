@@ -42,7 +42,7 @@ func TestBuildInfoFallback(t *testing.T) {
 		{name: "no module metadata", version: "dev", info: &debug.BuildInfo{}, want: "tokeninsights dev"},
 		{name: "explicit release version", version: "0.1.7", info: buildInfo("v0.1.8", true), want: "tokeninsights 0.1.7"},
 		{name: "explicit linker metadata", version: "dev", commit: "override", date: "today", info: buildInfo("v0.1.7", true), want: "tokeninsights v0.1.7 override today"},
-		{name: "server source install", command: "tokeninsights-server", version: "dev", info: buildInfo("v0.1.7", false), want: "tokeninsights-server v0.1.7 abc123 2026-10-18T00:00:00Z"},
+		{name: "backend source install", command: "tokeninsights-backend", version: "dev", info: buildInfo("v0.1.7", false), want: "tokeninsights-backend v0.1.7 abc123 2026-10-18T00:00:00Z"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			command := test.command
