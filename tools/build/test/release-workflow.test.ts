@@ -89,7 +89,7 @@ void test('artifact guard rejects generated files and compiled binary signatures
     !generatedArtifact('packages/desktop-mygo/resources/icon.png', Buffer.from('89504e47', 'hex')),
   )
 })
-void test('workflows publish only tested prebuilt source releases without generated commits', () => {
+void test('workflows publish only prebuilt source releases without generated commits', () => {
   const ci = readFileSync(workspacePath('.github/workflows/ci.yml'), 'utf8')
   const release = readFileSync(workspacePath('.github/workflows/release.yml'), 'utf8')
   assert.match(ci, /needs: \[source, products\]/)
