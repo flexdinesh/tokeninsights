@@ -240,7 +240,7 @@ run = [
   "node tools/build/src/check-schema.ts",
   "node tools/build/src/check-api.ts",
   "node tools/build/src/check-toolchain.ts",
-  "go test ./packages/core/architecture/...",
+  "go test -count=1 ./packages/core/architecture/...",
   "oxlint {{vars.lint_paths}}",
   "pnpm --filter @tokeninsights/build-tools run typecheck",
   "pnpm --filter @tokeninsights/web exec tsc --noEmit",
