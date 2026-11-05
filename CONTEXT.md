@@ -73,14 +73,14 @@ A typed, server-owned feature declaration exposed by the instance REST endpoint.
 _Avoid_: Client-selected feature, authentication scope
 
 **Desktop Viewer**:
-A MyGo or Electron window over a selected backend session and a loopback dashboard bridge. Bare CLI opens MyGo by default. Native launch handoff carries secrets over a private rendezvous socket; the OS URL contains only its ID. Launch succeeds after the selected desktop acknowledges a live requested session. An unavailable desktop fails without browser fallback.
+A MyGo window over a selected backend session and a loopback dashboard bridge. Bare CLI opens MyGo. Native launch handoff carries secrets over a private rendezvous socket; the OS URL contains only its ID. Launch succeeds after the desktop acknowledges a live requested session. An unavailable desktop fails without browser fallback.
 _Avoid_: Viewer-owned storage, credential-bearing OS URL
 
 **Collector Progress**:
 Bounded, sanitized capture/submission attempt state owned by the shared local backend. Viewers read it through semantic clients; detailed capture measurements use the private local-client contract. Processing lag remains separate.
 
 **Viewer Session**:
-TUI, web, Electron and MyGo read saved usage from one backend. Launch and explicit Refresh request coalesced capture; filters and query reload only read. Completion requires visible processing and a current dashboard read; failures preserve saved usage. `--capture=false` skips launch capture while processing resumes. Each session holds a lease; final disconnect plus reconnect grace stops the owner.
+TUI, web and MyGo read saved usage from one backend. Launch and explicit Refresh request coalesced capture; filters and query reload only read. Completion requires visible processing and a current dashboard read; failures preserve saved usage. `--capture=false` skips launch capture while processing resumes. Each session holds a lease; final disconnect plus reconnect grace stops the owner.
 
 **Durable Publication**:
 Immutable collector outbox and saved batches, acknowledged after direct backend acceptance. Replay retains exact bytes, stable evidence, receipts and totals.

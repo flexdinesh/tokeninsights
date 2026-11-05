@@ -20,7 +20,7 @@ dashboard feature would pay it again.
 ## Decision
 
 MyGo is a thin desktop shell. It loads the dashboard the backend serves in the
-system webview, as Electron does. `packages/dashboard` and `packages/web` are the
+system webview. `packages/dashboard` and `packages/web` are the
 only dashboard presentation; `packages/desktop-mygo` contains no views.
 
 This supersedes, from ADR 0024, MyGo's native Go UI, and from ADR 0025, MyGo's
@@ -39,12 +39,12 @@ the dashboard origin; other http(s) pages open in the browser.
 
 ## Consequences
 
-- Dashboard features reach browser, Electron and MyGo together, and agents verify
+- Dashboard features reach browser and MyGo together, and agents verify
   them with browser tooling.
 - Rendering depends on system WebKit: WKWebView on macOS and WebKitGTK 4.1 on
   Linux. The dashboard's browser tests run in Chromium only, so WebKit differences
   surface only through the distribution smoke test and manual checks.
-- MyGo opens a local TCP port while a window is open, as browser and Electron do.
+- MyGo opens a local TCP port while a window is open, as the browser dashboard does.
 - No schema, wire protocol, read API or storage contract changes.
 
 ## Verification

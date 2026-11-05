@@ -28,7 +28,7 @@ unchanged.
 
 Backend compatibility covers storage identity only. Each viewer lease is a
 control lease or a dashboard lease. TUI, MyGo and maintenance hold control
-leases and bind no TCP port. `web`, Electron, browser tabs and the remote web
+leases and bind no TCP port. `web`, browser tabs and the remote web
 proxy hold dashboard leases that request a host/port. The first dashboard lease
 binds the public read-only listener; equal requests share it; a different
 request while bound rejects as a settings mismatch. After the last dashboard
@@ -53,7 +53,7 @@ private socket. One SSH process carries the lease, queries and capture over
 HTTP/2; its exit releases the lease, and the session never reconnects silently.
 TUI, MyGo, `data reprocess|wait` and `web` accept remote endpoints. Remote `web`
 binds a local loopback proxy that forwards only read-only dashboard requests and
-browser leases, and opens the browser only. Electron stays local. Remote
+browser leases, and opens the browser only. Remote
 failures never fall back to local storage. Remote `--source-dir` must be
 absolute and is interpreted on the remote machine. Local storage path flags
 reject with a remote endpoint.

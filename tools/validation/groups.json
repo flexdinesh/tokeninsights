@@ -48,7 +48,6 @@
         "docs-website/",
         "packages/core/",
         "packages/backend/",
-        "packages/desktop-electron/",
         "packages/dashboard/",
         "packages/contracts/",
         "install/",
@@ -70,7 +69,6 @@
         "packages/core/",
         "packages/backend/",
         "packages/desktop-mygo/",
-        "packages/desktop-electron/",
         "packages/dashboard/",
         "packages/contracts/"
       ],
@@ -95,7 +93,6 @@
         "assets/",
         "packages/core/",
         "packages/backend/",
-        "packages/desktop-electron/",
         "packages/dashboard/",
         "packages/contracts/",
         "install/",
@@ -119,7 +116,6 @@
         "tools/build/src/test-go.ts",
         "packages/core/",
         "packages/backend/",
-        "packages/desktop-electron/",
         "packages/dashboard/",
         "packages/contracts/"
       ],
@@ -141,7 +137,6 @@
         "packages/core/",
         "packages/backend/",
         "packages/desktop-mygo/",
-        "packages/desktop-electron/",
         "packages/dashboard/",
         "packages/contracts/"
       ],
@@ -165,7 +160,6 @@
         "packages/core/",
         "packages/backend/",
         "packages/desktop-mygo/",
-        "packages/desktop-electron/",
         "packages/dashboard/",
         "packages/contracts/",
         "install/",
@@ -190,7 +184,6 @@
         "packages/core/",
         "packages/backend/",
         "packages/desktop-mygo/",
-        "packages/desktop-electron/",
         "packages/dashboard/",
         "packages/contracts/"
       ],
@@ -213,7 +206,6 @@
         "packages/core/",
         "packages/backend/",
         "packages/desktop-mygo/",
-        "packages/desktop-electron/",
         "packages/dashboard/",
         "packages/contracts/"
       ],

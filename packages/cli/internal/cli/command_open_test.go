@@ -16,22 +16,21 @@ func TestBareDesktopAndExplicitConnectionCarryExactPolicy(t *testing.T) {
 	old := launchDesktop
 	defer func() { launchDesktop = old }()
 	t.Setenv("SSH_CONNECTION", "192.0.2.1 123 192.0.2.2 22")
-	path := writeConfigForTest(t, map[string]string{"viewer.open": "electron"})
+	path := writeConfigForTest(t, nil)
 	for _, test := range []struct {
 		args    []string
 		target  string
 		capture bool
-		mode    browser.Mode
 	}{
-		{nil, "local", true, browser.ModeElectron},
-		{[]string{"--capture=false", "--open=mygo"}, "local", false, browser.ModeMyGo},
-		{[]string{"connect", "ssh://alice@host:2222", "--source-dir=/remote/logs"}, "ssh://alice@host:2222", true, browser.ModeElectron},
+		{nil, "local", true},
+		{[]string{"--capture=false"}, "local", false},
+		{[]string{"connect", "ssh://alice@host:2222", "--source-dir=/remote/logs"}, "ssh://alice@host:2222", true},
 	} {
 		called := false
-		launchDesktop = func(_ context.Context, mode browser.Mode, spec desktoplaunch.Spec) error {
+		launchDesktop = func(_ context.Context, spec desktoplaunch.Spec) error {
 			called = true
-			if mode != test.mode || spec.Connection != test.target || spec.Capture != test.capture {
-				t.Fatal(mode, spec)
+			if spec.Connection != test.target || spec.Capture != test.capture {
+				t.Fatal(spec)
 			}
 			return nil
 		}
@@ -44,7 +43,7 @@ func TestBareDesktopAndExplicitConnectionCarryExactPolicy(t *testing.T) {
 func TestUnavailableDesktopHasNoFallback(t *testing.T) {
 	old := launchDesktop
 	defer func() { launchDesktop = old }()
-	launchDesktop = func(context.Context, browser.Mode, desktoplaunch.Spec) error { return browser.ErrAppUnavailable }
+	launchDesktop = func(context.Context, desktoplaunch.Spec) error { return browser.ErrAppUnavailable }
 	path := writeConfigForTest(t, nil)
 	err := Run(t.Context(), []string{"--config-file", path}, io.Discard, io.Discard, time.Now())
 	if !errors.Is(err, browser.ErrAppUnavailable) {
@@ -55,7 +54,7 @@ func TestUnavailableDesktopHasNoFallback(t *testing.T) {
 func TestInvalidConnectionAndCaptureFlagsNeverLaunch(t *testing.T) {
 	old := launchDesktop
 	defer func() { launchDesktop = old }()
-	launchDesktop = func(context.Context, browser.Mode, desktoplaunch.Spec) error {
+	launchDesktop = func(context.Context, desktoplaunch.Spec) error {
 		t.Fatal("invalid request launched desktop")
 		return nil
 	}
@@ -64,7 +63,7 @@ func TestInvalidConnectionAndCaptureFlagsNeverLaunch(t *testing.T) {
 		{"connect", "https://user:private-secret@example.test"},
 		{"connect", "ssh://host", "--connection=local"},
 		{"--capture=false", "--full-refresh"},
-		{"--open=browser"},
+		{"--open=mygo"},
 		{"--sync=false"},
 	} {
 		err := Run(t.Context(), append([]string{"--config-file", path}, args...), io.Discard, io.Discard, time.Now())

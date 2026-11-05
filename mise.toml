@@ -31,8 +31,8 @@ auto = false
 run = "pnpm install --frozen-lockfile"
 
 [vars]
-format_paths = "package.json pnpm-workspace.yaml orval.config.ts docs/openapi.yaml docs-website .github/workflows packages/cli/package.json packages/backend packages/desktop-mygo/mygo.json packages/desktop-electron packages/dashboard packages/contracts packages/web tools/build tools/validation/groups.json"
-lint_paths = "orval.config.ts docs-website packages/desktop-electron packages/dashboard packages/contracts packages/web tools/build tools/validation/groups.json"
+format_paths = "package.json pnpm-workspace.yaml orval.config.ts docs/openapi.yaml docs-website .github/workflows packages/cli/package.json packages/backend packages/desktop-mygo/mygo.json packages/dashboard packages/contracts packages/web tools/build tools/validation/groups.json"
+lint_paths = "orval.config.ts docs-website packages/dashboard packages/contracts packages/web tools/build tools/validation/groups.json"
 
 # Setup
 
@@ -117,7 +117,7 @@ run = [
 ]
 
 [tasks."build:desktop"]
-description = "Build self-contained native and Electron product archives"
+description = "Build self-contained native product archives"
 depends = ["build:web"]
 run = "node tools/build/src/build-products.ts 0.0.0 dist"
 
@@ -246,7 +246,6 @@ run = [
   "pnpm --filter @tokeninsights/web exec tsc --noEmit",
   "pnpm --filter @tokeninsights/dashboard run check",
   "pnpm --filter @tokeninsights/contracts run check",
-  "pnpm --filter @tokeninsights/desktop-electron exec tsc --noEmit",
   "node tools/build/src/check-artifacts.ts",
   "go tool -modfile=golangci-lint.mod golangci-lint run --config packages/cli/.golangci.yml ./...",
 ]
@@ -277,11 +276,6 @@ run = [
 [tasks."check:pr"]
 dir = "{{config_root}}/tools/validation"
 run = "go run ./cmd/validate"
-
-[tasks."check:desktop"]
-description = "Verify installed Electron with its sandbox on the host"
-depends = ["build:web"]
-run = "node tools/build/src/test-electron.ts"
 
 [tasks."check:status"]
 dir = "{{config_root}}/tools/validation"
@@ -315,10 +309,7 @@ run = [
 
 [tasks."check:internal:web"]
 hide = true
-run = [
-  "pnpm --filter @tokeninsights/web exec vitest run",
-  "pnpm --filter @tokeninsights/desktop-electron run test",
-]
+run = ["pnpm --filter @tokeninsights/web exec vitest run"]
 
 [tasks."check:internal:tooling"]
 hide = true

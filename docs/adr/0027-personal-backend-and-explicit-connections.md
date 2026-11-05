@@ -13,14 +13,18 @@ self-contained connection credentials or prove the requested app was ready.
 ## Decision
 
 One personal Go backend per storage identity owns SQLite capture, direct acceptance,
-durable processing, queries and shutdown. MyGo is the default desktop; TUI, explicit
-web and Electron remain. MyGo installation includes CLI/backend; CLI-only and
-Electron products remain.
+durable processing, queries and shutdown. MyGo is the only desktop product; TUI
+and explicit web remain. MyGo installation includes CLI/backend; the CLI-only
+product remains. `tokeninsights-backend` exposes only `internal-serve`.
 
-Bare `tokeninsights` opens the selected desktop. `connect STRING` opens exactly
+Bare `tokeninsights` opens MyGo. `connect STRING` opens exactly
 local/SSH/TCP; `tui|web --connection STRING` explicitly selects a target. No saved
 remote default, transport fallback, local-data fallback or browser fallback.
-An unavailable selected desktop fails with actionable guidance.
+An unavailable desktop fails with actionable guidance.
+
+There is no desktop selector: `--open` on bare/`connect` and `viewer.open` are
+removed; `web --open` stays boolean. A saved `viewer` config block fails with
+obsolete-config manual repair guidance, file unchanged.
 
 Local sessions use private Unix HTTP/2 protocol 3, requiring exact equality.
 The descriptor carries protocol, instance ID and collector/token settings only.
@@ -87,8 +91,8 @@ oracles. Prove local/SSH/TCP query and Refresh parity, real OpenSSH/network acce
 same-host TCP, bad token/pin/expiry/protocol rejection, shared startup/final leases,
 native secret handoff/acknowledgement, unavailable apps and installed product boundaries.
 
-Format/lint first. Final validation requires full local `check:pr`, sandboxed host
-`check:desktop` and docs build on clean committed HEAD. Keep managed Dagger and
+Format/lint first. Final validation requires full local `check:pr` and docs build on
+clean committed HEAD. Keep managed Dagger and
 dedicated caches; never interfere with another invocation or poll long checks.
 
 Unresolved questions: none.

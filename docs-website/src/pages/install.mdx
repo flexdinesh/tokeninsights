@@ -1,18 +1,18 @@
 # Install
 
 macOS/Linux, amd64/arm64. Products are prebuilt GitHub Release downloads.
-No Go or Node installation is required; Electron bundles its own runtime.
+No Go or Node installation is required.
 
 ## MyGo desktop
 
-MyGo is the default desktop. Its installer includes the CLI and backend:
+MyGo is the desktop app. Its installer includes the CLI and backend:
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/flexdinesh/tokeninsights/main/install-mygo.sh | sh
 tokeninsights
 ```
 
-MyGo uses WKWebView on macOS and WebKitGTK 4.1 on Linux. Both desktop shells show
+MyGo uses WKWebView on macOS and WebKitGTK 4.1 on Linux. It shows
 the same dashboard as the browser and can coexist with TUI/web.
 
 ## CLI, TUI and browser
@@ -23,19 +23,10 @@ tokeninsights tui
 tokeninsights web
 ```
 
-The CLI-only product includes the backend. Bare `tokeninsights` still selects
+The CLI-only product includes the backend. Bare `tokeninsights` still opens
 MyGo, so install that app or explicitly use TUI/web.
 
-## Electron desktop
-
-```sh
-curl -fsSL https://raw.githubusercontent.com/flexdinesh/tokeninsights/main/install-electron.sh | sh
-tokeninsights --open=electron
-tokeninsights config set viewer.open electron
-```
-
-Desktop choices are `mygo` and `electron`. An unavailable selected desktop fails
-with installation guidance, without opening a browser.
+An unavailable desktop fails with installation guidance, without opening a browser.
 
 ## Paths, channels and updates
 

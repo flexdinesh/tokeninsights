@@ -1,13 +1,12 @@
 # Commands
 
-`tokeninsights --help` lists commands. Bare invocation opens the selected desktop
+`tokeninsights --help` lists commands. Bare invocation opens the MyGo desktop
 (MyGo default). Install MyGo for that default, or use `tui`/`web` from CLI-only.
 
 ## Viewers
 
 ```sh
 tokeninsights
-tokeninsights --open=electron
 tokeninsights connect local
 tokeninsights connect ssh://you@devbox
 tokeninsights tui
@@ -17,9 +16,8 @@ tokeninsights web --open=false
 tokeninsights web --host 127.0.0.1 --port 9000
 ```
 
-Desktop `--open=mygo|electron` selects an installed app. Unavailable selection
-fails; no browser fallback. Launch returns after the selected app acknowledges a
-live requested session. `web --open` is boolean: true opens the system browser,
+An unavailable desktop fails; no browser fallback. Launch returns after the app
+acknowledges a live requested session. `web --open` is boolean: true opens the system browser,
 false prints its loopback URL. Web's default port is 0 (available port); host must
 be loopback. The command stays foreground and Ctrl+C releases its lease.
 
@@ -81,7 +79,6 @@ tokeninsights config set KEY VALUE
 tokeninsights config get KEY
 tokeninsights config remove KEY
 tokeninsights --config-file PATH tui
-tokeninsights config set viewer.open electron
 ```
 
 | Key                         | Environment                       | Default                            |
@@ -90,12 +87,12 @@ tokeninsights config set viewer.open electron
 | `in-process.server-db-path` | `TOKENINSIGHTS_SERVER_DB_PATH`    | server.sqlite in data directory    |
 | `in-process.host`           | `TOKENINSIGHTS_HOST`              | 127.0.0.1                          |
 | `in-process.port`           | `TOKENINSIGHTS_PORT`              | 0                                  |
-| `viewer.open`               | None                              | mygo; also electron                |
 | `remote.command`            | `TOKENINSIGHTS_REMOTE_COMMAND`    | tokeninsights on remote PATH       |
 
 Flags > environment > config > defaults. Config defaults to
 `${XDG_CONFIG_HOME:-~/.config}/tokeninsights/config.json`;
 `--config-file` or `TOKENINSIGHTS_CONFIG_PATH` overrides it.
+A saved `viewer.open` is obsolete: remove it by hand; the file stays unchanged.
 Connections are invocation-only; there is no saved remote endpoint.
 
 Retired application/distributed settings, `remote.endpoint`, old endpoint/access

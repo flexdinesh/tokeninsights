@@ -29,7 +29,7 @@ try {
   await buildProducts(out, metadata)
   const { writeChecksums } = await import('./build-products.ts')
   await writeChecksums(out)
-  for (const script of ['install.sh', 'install-mygo.sh', 'install-electron.sh'])
+  for (const script of ['install.sh', 'install-mygo.sh'])
     execFileSync('sh', [workspacePath(script)], { env, stdio: 'inherit' })
   const installed = join(fixture, 'data/tokeninsights/products')
   for (const [product, binary] of [
@@ -56,18 +56,6 @@ try {
     env: { ...env, PATH: '' },
     stdio: 'inherit',
   })
-  // The packaged Electron binary supplies its own runtime without host Node.
-  const electron =
-    process.platform === 'darwin'
-      ? join(installed, 'electron/TokenInsights Electron.app/Contents/MacOS/tokeninsights-electron')
-      : join(installed, 'electron/tokeninsights-electron')
-  assert.match(
-    execFileSync(electron, ['--version'], {
-      env: { ...env, PATH: '', ELECTRON_RUN_AS_NODE: '1' },
-      encoding: 'utf8',
-    }),
-    /^v\d+/,
-  )
   if (process.platform === 'linux') {
     execFileSync(
       'xvfb-run',
@@ -79,41 +67,39 @@ try {
       ],
       { env, stdio: 'inherit' },
     )
-    // Sandboxed Electron GUI runs through check:desktop on the host because
-    // the managed container denies unprivileged user namespaces (ADR 0024).
   }
-  // Launch the installed backend through its private connector, then read embedded assets.
-  const child = spawn(join(installed, 'cli/tokeninsights-backend'), ['connect', '--json'], {
-    env: { ...env, PATH: '' },
-    stdio: ['pipe', 'pipe', 'pipe'],
-  })
+  // Serve the installed web dashboard through its bundled backend, then read embedded assets.
+  const child = spawn(
+    join(installed, 'cli/tokeninsights'),
+    ['web', '--open=false', '--port', '0'],
+    {
+      env: { ...env, PATH: '' },
+      stdio: ['ignore', 'pipe', 'pipe'],
+    },
+  )
   let output = ''
   const stopped = new Promise<void>((resolve, reject) => {
     child.once('error', reject)
     child.once('exit', (code) =>
-      code === 0 ? resolve() : reject(new Error(`connector exited ${code}: ${output}`)),
+      code === 0 ? resolve() : reject(new Error(`web exited ${code}: ${output}`)),
     )
   })
   child.stderr.on('data', (data: Buffer) => {
     output += data.toString()
   })
   try {
-    const descriptor = await new Promise<unknown>((resolve, reject) => {
+    const dashboard = await new Promise<string>((resolve, reject) => {
       let text = ''
       const timeout = setTimeout(
-        () => reject(new Error(`backend readiness timeout: ${output}`)),
+        () => reject(new Error(`dashboard readiness timeout: ${output}`)),
         30000,
       )
       child.stdout.on('data', (data: Buffer) => {
         text += data.toString()
-        const line = text.split('\n')[0]
-        if (!text.includes('\n') || line === undefined) return
+        const url = /^Dashboard: (\S+)$/m.exec(text)?.[1]
+        if (url === undefined) return
         clearTimeout(timeout)
-        try {
-          resolve(JSON.parse(line))
-        } catch (error) {
-          reject(error)
-        }
+        resolve(url)
       })
       child.once('error', (error) => {
         clearTimeout(timeout)
@@ -121,23 +107,17 @@ try {
       })
       child.once('exit', () => {
         clearTimeout(timeout)
-        reject(new Error(`backend exited before readiness: ${output}`))
+        reject(new Error(`web exited before readiness: ${output}`))
       })
     })
-    assert.ok(
-      typeof descriptor === 'object' &&
-        descriptor !== null &&
-        'url' in descriptor &&
-        typeof descriptor.url === 'string',
-    )
-    const response = await fetch(descriptor.url, { signal: AbortSignal.timeout(5000) })
+    const response = await fetch(dashboard, { signal: AbortSignal.timeout(5000) })
     assert.equal(response.status, 200)
     assert.equal(
       await response.text(),
       await readFile(workspacePath('packages/core/server/static/index.html'), 'utf8'),
     )
   } finally {
-    child.stdin.end()
+    child.kill('SIGINT')
     const timeout = setTimeout(() => child.kill('SIGKILL'), 10000)
     try {
       await stopped
@@ -145,9 +125,7 @@ try {
       clearTimeout(timeout)
     }
   }
-  console.log(
-    'Verified prebuilt products, installers, bundled runtimes, native window and embedded dashboard.',
-  )
+  console.log('Verified prebuilt products, installers, native window and embedded dashboard.')
 } finally {
   await rm(fixture, { recursive: true, force: true })
 }

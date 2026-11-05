@@ -19,8 +19,6 @@ func FlagOverrides(flags *flag.FlagSet) (Overrides, error) {
 			overrides.ServerDBPath = &value
 		case "collector-db-path":
 			overrides.CollectorDBPath = &value
-		case "open":
-			overrides.Open = &value
 		case "connection":
 			overrides.Connection = &value
 		case "host":

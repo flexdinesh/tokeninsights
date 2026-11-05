@@ -190,7 +190,7 @@ func (m *Validation) prepare(source *dagger.Directory, group string) *dagger.Con
 	}
 	if group == "browser" || group == "distribution" {
 		js = js.WithExec([]string{"pnpm", "--filter", "@tokeninsights/web", "exec", "playwright", "install", "--with-deps", "chromium"}).
-			WithExec([]string{"apt-get", "install", "-y", "--no-install-recommends", "xvfb", "xauth", "x11-utils", "libgtk-3-0", "libasound2t64", "libwebkit2gtk-4.1-0"})
+			WithExec([]string{"apt-get", "install", "-y", "--no-install-recommends", "xvfb", "xauth", "x11-utils", "libgtk-3-0", "libwebkit2gtk-4.1-0"})
 	}
 	if group == "browser" || group == "distribution" || group == "tooling" {
 		js = withoutApt(js)

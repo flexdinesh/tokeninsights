@@ -29,6 +29,3 @@ mise.*.local.toml
 packages/backend/bin/
 packages/desktop-mygo/build/
 packages/desktop-mygo/.mygo/
-packages/desktop-electron/dist/
-packages/desktop-electron/out/
-packages/desktop-electron/release/

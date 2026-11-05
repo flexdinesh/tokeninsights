@@ -65,7 +65,7 @@ void test('publication requires complete unique verified product assets', async 
   for (const name of expectedArchives('stable')) writeFileSync(join(dir, name), `archive ${name}`)
   await writeChecksums(dir)
   await verifyReleaseAssets(dir, 'stable')
-  await assert.rejects(verifyReleaseAssets(dir, 'main'), /main release requires exactly 9/)
+  await assert.rejects(verifyReleaseAssets(dir, 'main'), /main release requires exactly 6/)
   const first = expectedArchives('stable')[0]
   assert.ok(first)
   const checksums = readFileSync(join(dir, 'checksums.txt'), 'utf8')
@@ -75,7 +75,7 @@ void test('publication requires complete unique verified product assets', async 
   writeFileSync(join(dir, first), 'corrupt')
   await assert.rejects(verifyReleaseAssets(dir, 'stable'), /checksum mismatch/)
   rmSync(join(dir, first))
-  await assert.rejects(verifyReleaseAssets(dir, 'stable'), /stable release requires exactly 12/)
+  await assert.rejects(verifyReleaseAssets(dir, 'stable'), /stable release requires exactly 8/)
 })
 void test('main publication accepts its archives and stable rejects them', async (t) => {
   const dir = mkdtempSync(join(tmpdir(), 'tokeninsights-main-assets-'))
@@ -83,7 +83,7 @@ void test('main publication accepts its archives and stable rejects them', async
   for (const name of expectedArchives('main')) writeFileSync(join(dir, name), `archive ${name}`)
   await writeChecksums(dir)
   await verifyReleaseAssets(dir, 'main')
-  await assert.rejects(verifyReleaseAssets(dir, 'stable'), /stable release requires exactly 12/)
+  await assert.rejects(verifyReleaseAssets(dir, 'stable'), /stable release requires exactly 8/)
 })
 void test('workflow build matrices match each channel release contract', () => {
   const workflows: ReadonlyArray<readonly [string, ReleaseChannel]> = [
@@ -102,7 +102,7 @@ void test('artifact guard rejects generated files and compiled binary signatures
   for (const path of [
     'dist/product.tar.gz',
     'packages/core/server/static/index.html',
-    'packages/desktop-electron/out/main.js',
+    'packages/desktop-mygo/build/main.js',
     'packages/cli/bin/tokeninsights',
     'bundle/Thing.app/Contents/Info.plist',
   ])

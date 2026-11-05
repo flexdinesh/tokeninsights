@@ -42,12 +42,6 @@ void test('validation forwards caller flags', () => {
   )
 })
 
-void test('approved Electron GUI exception runs on the host', () => {
-  const output = dryRun('check:desktop')
-  assert.match(output, /node tools\/build\/src\/test-electron.ts/)
-  assert.doesNotMatch(output, /cmd\/validate|dagger/)
-})
-
 void test('development builds retain native leaves and dependency preparation', () => {
   const output = dryRun('build')
   assert.match(output, /go build -o bin\/tokeninsights/)

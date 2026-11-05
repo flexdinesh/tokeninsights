@@ -51,7 +51,7 @@ access token:
 tokeninsights://connect/v1?address=HOST:PORT#pin=HEX_SHA256_SPKI&token=BASE64URL_SECRET
 ```
 
-Use the complete URI, including fragment. `connect` opens the selected desktop;
+Use the complete URI, including fragment. `connect` opens the desktop;
 `tui|web --connection 'URI'` selects the same target for those presentations.
 The native client verifies the pinned TLS key before sending the credential and
 authenticates every request. Same-host use still traverses TCP.
@@ -69,7 +69,7 @@ a wildcard `web --host`; use the temporary TLS gateway for network access.
 Browser JavaScript receives only redacted connection metadata, never the TCP token.
 Refresh requires same-origin JSON and forwards only default capture.
 
-MyGo/Electron launch specifications stay native. OS links contain only a private
-rendezvous ID; launch succeeds after the selected desktop acknowledges its live
+MyGo launch specifications stay native. OS links contain only a private
+rendezvous ID; launch succeeds after the desktop acknowledges its live
 requested session. An unavailable app fails with repair guidance, without browser
 fallback. See [CLI](cli.md) and [design](design.md).

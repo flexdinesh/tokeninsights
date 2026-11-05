@@ -11,7 +11,7 @@ var configCommand = commandSpec{name: "config", run: runConfig}
 
 func runConfig(invocation commandInvocation, args []string) error {
 	if len(args) == 1 && (args[0] == "--help" || args[0] == "-h") {
-		_, err := fmt.Fprintln(invocation.stdout, "usage: tokeninsights config set KEY VALUE | get KEY | remove KEY\nKeys: collector.db-path, in-process.server-db-path, in-process.host, in-process.port, viewer.open, remote.command\nviewer.open: mygo (default) or electron. Connections use explicit --connection.\nRuntime precedence: flags > environment > file > defaults.")
+		_, err := fmt.Fprintln(invocation.stdout, "usage: tokeninsights config set KEY VALUE | get KEY | remove KEY\nKeys: collector.db-path, in-process.server-db-path, in-process.host, in-process.port, remote.command\nConnections use explicit --connection.\nRuntime precedence: flags > environment > file > defaults.")
 		return err
 	}
 	if len(args) < 2 {

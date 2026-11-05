@@ -1,10 +1,9 @@
-// Package browser opens dashboards in MyGo, Electron or the system browser.
+// Package browser opens dashboards in MyGo or the system browser.
 package browser
 
 import (
 	"context"
 	"errors"
-	"fmt"
 	"os"
 	"os/exec"
 	"runtime"
@@ -17,44 +16,20 @@ type Mode string
 const (
 	// ModeMyGo requires the MyGo application.
 	ModeMyGo Mode = "mygo"
-	// ModeElectron requires the Electron application.
-	ModeElectron Mode = "electron"
 	// ModeBrowser always uses the system browser.
 	ModeBrowser Mode = "browser"
 	// ModeOff prints the dashboard URL without opening anything.
 	ModeOff Mode = "false"
 )
 
-// Desktop identities remain distinct so both applications can coexist.
+// Desktop identity registered by the MyGo installer.
 const (
-	MyGoScheme       = "tokeninsights-mygo"
-	ElectronScheme   = "tokeninsights-electron"
-	appBundleID      = "com.flexdinesh.tokeninsights.mygo"
-	electronBundleID = "com.flexdinesh.tokeninsights.electron"
+	MyGoScheme  = "tokeninsights-mygo"
+	appBundleID = "com.flexdinesh.tokeninsights.mygo"
 )
 
-// ErrAppUnavailable reports an unavailable explicit MyGo target.
+// ErrAppUnavailable reports an unavailable MyGo target.
 var ErrAppUnavailable = errors.New("TokenInsights MyGo is unavailable; install the MyGo product or run tokeninsights tui")
-
-// ErrElectronUnavailable reports an unavailable explicit Electron target.
-var ErrElectronUnavailable = errors.New("TokenInsights Electron is unavailable; install the Electron product or run tokeninsights tui")
-
-// ParseMode accepts explicit desktop, browser and saved-URL modes.
-func ParseMode(value string) (Mode, error) {
-	switch strings.ToLower(strings.TrimSpace(value)) {
-	case "", "true":
-		return ModeMyGo, nil
-	case string(ModeMyGo):
-		return ModeMyGo, nil
-	case string(ModeElectron):
-		return ModeElectron, nil
-	case string(ModeBrowser):
-		return ModeBrowser, nil
-	case string(ModeOff):
-		return ModeOff, nil
-	}
-	return "", fmt.Errorf("invalid open mode %q; use mygo, electron, browser or false", value)
-}
 
 // Via names what opened a dashboard.
 type Via int
@@ -149,20 +124,16 @@ func (s system) display() bool {
 }
 
 // openApp hands link to the desktop viewer when one is registered.
-func (s system) openApp(ctx context.Context, mode Mode, link string) bool {
-	bundleID, scheme := appBundleID, MyGoScheme
-	if mode == ModeElectron {
-		bundleID, scheme = electronBundleID, ElectronScheme
-	}
+func (s system) openApp(ctx context.Context, link string) bool {
 	switch s.platform {
 	case "darwin":
 		// open -b fails when no application has the bundle identifier.
-		return s.run(ctx, "open", "-b", bundleID, link) == nil
+		return s.run(ctx, "open", "-b", appBundleID, link) == nil
 	case "linux":
 		if !s.display() {
 			return false
 		}
-		handler, err := s.output(ctx, "xdg-mime", "query", "default", "x-scheme-handler/"+scheme)
+		handler, err := s.output(ctx, "xdg-mime", "query", "default", "x-scheme-handler/"+MyGoScheme)
 		if err != nil || strings.TrimSpace(string(handler)) == "" {
 			return false
 		}
@@ -185,17 +156,11 @@ func (s system) browserCommand(dashboardURL string) []string {
 	return nil
 }
 
-// Launch sends an opaque rendezvous link to the selected installed desktop.
+// Launch sends an opaque rendezvous link to the installed MyGo desktop.
 // The caller must separately await the desktop's live-session acknowledgement.
-func Launch(ctx context.Context, mode Mode, link string) error {
-	if mode != ModeMyGo && mode != ModeElectron {
-		return errors.New("desktop must be mygo or electron")
-	}
-	if hostSystem().openApp(ctx, mode, link) {
+func Launch(ctx context.Context, link string) error {
+	if hostSystem().openApp(ctx, link) {
 		return nil
-	}
-	if mode == ModeElectron {
-		return ErrElectronUnavailable
 	}
 	return ErrAppUnavailable
 }

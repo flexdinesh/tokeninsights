@@ -9,8 +9,6 @@ import (
 	"strings"
 	"sync"
 	"testing"
-
-	"github.com/flexdinesh/tokeninsights/packages/core/browser"
 )
 
 func writeConfig(t *testing.T, body string) string {
@@ -23,9 +21,9 @@ func writeConfig(t *testing.T, body string) string {
 }
 
 func TestLocalStoragePathsAndExplicitPrecedence(t *testing.T) {
-	path := writeConfig(t, `{"collector":{"db-path":"collector.sqlite"},"in-process":{"server-db-path":"server.sqlite","port":1234},"viewer":{"open":"electron"}}`)
+	path := writeConfig(t, `{"collector":{"db-path":"collector.sqlite"},"in-process":{"server-db-path":"server.sqlite","port":1234}}`)
 	saved, err := ResolveLocal(path, false, Overrides{})
-	if err != nil || saved.ServerDBPath != filepath.Join(filepath.Dir(path), "server.sqlite") || saved.Open != browser.ModeElectron || !saved.Endpoint.IsLocal() {
+	if err != nil || saved.ServerDBPath != filepath.Join(filepath.Dir(path), "server.sqlite") || !saved.Endpoint.IsLocal() {
 		t.Fatal(saved, err)
 	}
 	t.Setenv("TOKENINSIGHTS_SERVER_DB_PATH", "/environment/server.sqlite")
@@ -42,12 +40,13 @@ func TestObsoleteSettingsRequireManualRepairWithoutMutationOrSecrets(t *testing.
 		`{"distributed":{"server-token":"private-secret"}}`,
 		`{"in-process":{"app-db-path":"private-secret"}}`,
 		`{"remote":{"endpoint":"ssh://private-secret"}}`,
+		`{"viewer":{"open":"private-secret"}}`,
 	} {
 		path := writeConfig(t, body)
-		if _, err := ResolveLocal(path, false, Overrides{}); err == nil || strings.Contains(err.Error(), "private-secret") || !strings.Contains(err.Error(), "config unchanged") {
+		if _, err := ResolveLocal(path, false, Overrides{}); err == nil || strings.Contains(err.Error(), "private-secret") || !strings.Contains(err.Error(), "config unchanged") || !strings.Contains(err.Error(), "viewer.open") {
 			t.Fatal(err)
 		}
-		if err := Update(t.Context(), path, func(v *Values) error { return v.Set("viewer.open", "mygo", false) }); err == nil {
+		if err := Update(t.Context(), path, func(v *Values) error { return v.Set("remote.command", "/opt/tokeninsights", false) }); err == nil {
 			t.Fatal("obsolete config rewritten")
 		}
 		actual, err := os.ReadFile(path)
@@ -83,27 +82,18 @@ func TestConnectionIsInvocationOnlyAndSSHCommandIsLocalPreference(t *testing.T) 
 	}
 }
 
-func TestViewerOpenRequiresSelectedDesktop(t *testing.T) {
-	path := writeConfig(t, "{}")
-	settings, err := ResolveLocal(path, false, Overrides{})
-	if err != nil || settings.Open != browser.ModeMyGo {
-		t.Fatal(settings, err)
+func TestViewerOpenIsNotAConfigKey(t *testing.T) {
+	var v Values
+	if err := v.Set("viewer.open", "mygo", false); err == nil {
+		t.Fatal("accepted viewer.open")
 	}
-	for _, value := range []string{"browser", "auto", "false", "app"} {
-		var v Values
-		if err := v.Set("viewer.open", value, false); err == nil {
-			t.Fatal("accepted", value)
-		}
-	}
-	value := "electron"
-	settings, err = ResolveLocal(path, false, Overrides{Open: &value})
-	if err != nil || settings.Open != browser.ModeElectron {
-		t.Fatal(settings, err)
+	if _, err := v.Get("viewer.open", t.TempDir()); err == nil {
+		t.Fatal("read viewer.open")
 	}
 }
 
 func TestConfigRejectsMalformedDuplicateAndUnknownDocuments(t *testing.T) {
-	for _, body := range []string{`{"viewer":{"open":"mygo","open":"electron"}}`, `{"unknown":"private"}`, `{"viewer":null}`, `{}{}`, `[]`} {
+	for _, body := range []string{`{"remote":{"command":"first","command":"second"}}`, `{"unknown":"private"}`, `{"remote":null}`, `{}{}`, `[]`} {
 		path := writeConfig(t, body)
 		if _, err := Read(path); err == nil {
 			t.Fatal("accepted", body)
@@ -118,7 +108,7 @@ func TestConfigRejectsMalformedDuplicateAndUnknownDocuments(t *testing.T) {
 func TestConcurrentSettersPreserveUpdates(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.json")
 	var workers sync.WaitGroup
-	for key, value := range map[string]string{"viewer.open": "electron", "remote.command": "/opt/tokeninsights", "in-process.port": "0"} {
+	for key, value := range map[string]string{"in-process.host": "127.0.0.2", "remote.command": "/opt/tokeninsights", "in-process.port": "0"} {
 		workers.Go(func() {
 			if err := Update(context.Background(), path, func(v *Values) error { return v.Set(key, value, false) }); err != nil {
 				t.Error(err)
@@ -130,7 +120,7 @@ func TestConcurrentSettersPreserveUpdates(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for key, expected := range map[string]string{"viewer.open": "electron", "remote.command": "/opt/tokeninsights", "in-process.port": "0"} {
+	for key, expected := range map[string]string{"in-process.host": "127.0.0.2", "remote.command": "/opt/tokeninsights", "in-process.port": "0"} {
 		actual, err := values.Get(key, filepath.Dir(path))
 		if err != nil || actual != expected {
 			t.Fatal(key, actual, err)

@@ -19,7 +19,6 @@ func runConnect(invocation commandInvocation, args []string) error {
 
 func runDesktop(invocation commandInvocation, args []string, connection *string) error {
 	flags, capture, full, source := viewerFlags(invocation, "tokeninsights")
-	flags.String("open", "mygo", "desktop: mygo or electron")
 	if err := flags.Parse(args); err != nil {
 		return fmt.Errorf("%w\n%w", err, ErrUsage)
 	}
@@ -43,5 +42,5 @@ func runDesktop(invocation commandInvocation, args []string, connection *string)
 	if err != nil {
 		return err
 	}
-	return launchDesktop(invocation.context, settings.Open, desktoplaunch.Specification(settings, *capture, *full, *source))
+	return launchDesktop(invocation.context, desktoplaunch.Specification(settings, *capture, *full, *source))
 }

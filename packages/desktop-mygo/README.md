@@ -1,7 +1,7 @@
 # TokenInsights MyGo
 
-Thin MyGo webview shell over the shared dashboard. MyGo is the default desktop.
-`tokeninsights --open=mygo` opens local data; `tokeninsights connect URI` opens
+Thin MyGo webview shell over the shared dashboard. MyGo is the only desktop.
+`tokeninsights` opens local data; `tokeninsights connect URI` opens
 the explicit local, SSH or temporary TCP target. No transport or browser fallback.
 
 Every window holds its own native backend session and loopback dashboard bridge.

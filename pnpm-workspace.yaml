@@ -3,14 +3,12 @@ packages:
   - 'packages/web'
   - 'packages/dashboard'
   - 'packages/contracts'
-  - 'packages/desktop-electron'
   - 'tools/build'
   - 'docs-website'
 injectWorkspacePackages: true
 allowBuilds:
   es5-ext: false
   esbuild: true
-  electron: true
   msw: true
   vue-demi: false
 # Dependencies must be at least 3 days old.

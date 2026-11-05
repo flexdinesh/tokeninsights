@@ -20,16 +20,11 @@ for (const platform of ['linux/amd64', 'darwin/arm64']) {
       const root = await mkdtemp(join(tmpdir(), 'tokeninsights-product-layout-'))
       t.after(() => rm(root, { recursive: true, force: true }))
       const target = parseTarget(platform)
-      const desktop = product === 'mygo' || product === 'electron'
-      const app = product === 'mygo' ? 'TokenInsights MyGo.app' : 'TokenInsights Electron.app'
+      const desktop = product === 'mygo'
+      const app = 'TokenInsights MyGo.app'
       const binaryRoot =
         desktop && target.os === 'darwin' ? join(root, app, 'Contents/MacOS') : root
-      const backendRoot =
-        product === 'electron'
-          ? target.os === 'darwin'
-            ? join(root, app, 'Contents/Resources')
-            : join(root, 'resources')
-          : binaryRoot
+      const backendRoot = binaryRoot
       await mkdir(binaryRoot, { recursive: true })
       const binary = join(
         binaryRoot,

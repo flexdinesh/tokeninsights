@@ -77,9 +77,7 @@ process lifecycle inside a Dagger service. Docker-in-Docker is excluded.
 
 ## Consequences
 
-ADR 0024 adds an approved exception: installed Electron GUI smoke runs on the
-host with Chromium sandboxing enabled. The managed container denies unprivileged
-user namespaces. Product packaging/install/runtime checks remain isolated.
+Product packaging/install/runtime checks remain isolated.
 
 Local commands and agent instructions are bypassable; Git has no standard pre-PR
 hook. Linux containers do not provide full native macOS test coverage. Existing

@@ -18,7 +18,7 @@ Build static HTML, CSS, JavaScript, and assets:
 mise run build:docs
 ```
 
-`renderStrategy: 'full-static'` writes plain files to `docs-website/dist/public/`, ignored by Git. The build fails on dead internal links. Both tasks call this package's `dev` and `build` scripts. Before PR creation/update, root runs the docs build plus full `check:pr` and sandboxed host `check:desktop` on clean committed HEAD. Pre-push runs no checks.
+`renderStrategy: 'full-static'` writes plain files to `docs-website/dist/public/`, ignored by Git. The build fails on dead internal links. Both tasks call this package's `dev` and `build` scripts. Before PR creation/update, root runs the docs build plus full `check:pr` on clean committed HEAD. Pre-push runs no checks.
 
 Edit public user guides in `src/pages/` as Markdown or MDX. Each page's `# H1` sets its title; `vocs.config.ts` controls the sidebar labels and order. Run `mise run format` and `mise run lint` from the root to format and lint pages and configuration.
 
