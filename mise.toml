@@ -240,7 +240,7 @@ run = [
   "node tools/build/src/check-schema.ts",
   "node tools/build/src/check-api.ts",
   "node tools/build/src/check-toolchain.ts",
-  "go test ./packages/core/architecture/...",
+  "go test -count=1 ./packages/core/architecture/...",
   "oxlint {{vars.lint_paths}}",
   "pnpm --filter @tokeninsights/build-tools run typecheck",
   "pnpm --filter @tokeninsights/web exec tsc --noEmit",
@@ -316,7 +316,7 @@ hide = true
 run = [
   "pnpm --filter @tokeninsights/build-tools run test",
   "cd tools/validation && go test -count=1 contract.go main_test.go",
-  "cd tools/validation && go test -count=1 ./cmd/validate",
+  "cd tools/validation && go test -race -count=1 ./cmd/validate",
 ]
 
 [tasks."check:internal:storage"]

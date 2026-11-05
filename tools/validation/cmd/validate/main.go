@@ -15,8 +15,8 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
-	"sort"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -370,6 +370,7 @@ func (r runner) checkVolume(setup bool) error {
 }
 
 func run(ctx context.Context, args []string) (resultErr error) {
+	started := time.Now().UTC()
 	fs := flag.NewFlagSet("validate", flag.ContinueOnError)
 	var chosen selection
 	fs.Var(&chosen, "group", "group (repeatable)")
@@ -430,14 +431,9 @@ func run(ctx context.Context, args []string) (resultErr error) {
 		return e
 	}
 	if len(chosen) == 0 {
-		for g := range r.manifest.Groups {
-			chosen = append(chosen, g)
-		}
-		sort.Slice(chosen, func(i, j int) bool {
-			order := map[string]int{"format": 0, "static": 1, "tooling": 2, "web": 3, "go": 4, "benchmarks": 5, "distribution": 6, "browser": 7, "deployment": 8}
-			return order[chosen[i]] < order[chosen[j]]
-		})
+		chosen = defaultGroups()
 	}
+	chosen = uniqueGroups(chosen)
 	for _, g := range chosen {
 		if _, ok := r.manifest.Groups[g]; !ok {
 			return fmt.Errorf("unknown group %q", g)
@@ -461,6 +457,7 @@ func run(ctx context.Context, args []string) (resultErr error) {
 	}
 	var records []receipt
 	executed := make(map[string]bool)
+	timings := make(map[string]groupTiming)
 	if !*status {
 		defer func() {
 			outcome := "passed"
@@ -472,11 +469,13 @@ func run(ctx context.Context, args []string) (resultErr error) {
 			if ctx.Err() != nil {
 				outcome = "cancelled"
 			}
-			if err := saveRun(filepath.Join(out, "run.json"), sha, tree, records, executed, chosen, outcome, message); err != nil && resultErr == nil {
+			if err := saveRun(filepath.Join(out, "run.json"), sha, tree, records, executed, chosen, outcome, message, started, timings); err != nil && resultErr == nil {
 				resultErr = err
 			}
 		}()
 	}
+	keys := make(map[string]string)
+	var pending []string
 	for _, g := range chosen {
 		key, e := r.identity(sha, g)
 		if e != nil {
@@ -488,6 +487,7 @@ func run(ctx context.Context, args []string) (resultErr error) {
 			fmt.Printf("%s reusable=%t key=%s\n", g, ok, key)
 			continue
 		}
+		keys[g] = key
 		if ok && !*force {
 			// Pin reused artifacts until this run finishes. Retention uses an
 			// exclusive lease and cannot remove evidence beneath a consumer.
@@ -498,71 +498,35 @@ func run(ctx context.Context, args []string) (resultErr error) {
 					defer lease.Close()
 					fmt.Printf("%s reused %s\n", g, old.SHA)
 					records = append(records, old)
+					timings[g] = groupTiming{Reused: true}
 					continue
 				}
 				lease.Close()
 			}
 		}
-		// A forced retry supersedes prior success. If it fails or is cancelled,
-		// status must not silently fall back to the older passing attempt.
-		if *force {
-			if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
-				return err
-			}
-		}
-		release, e := slot(ctx, r.manifest.Groups[g].Class)
-		if e != nil {
-			return e
-		}
-		snap, e := os.MkdirTemp("", "validation-source-")
-		if e != nil {
-			release()
-			return e
-		}
-		_, e = r.snapshot(sha, g, snap)
-		if e != nil {
-			release()
-			os.RemoveAll(snap)
-			return e
-		}
-		artifacts := filepath.Join(out, g)
-		logged := r
-		logged.logPath = filepath.Join(out, g+"-launcher.log")
-		var err error
-		executed[g] = true
-		if r.manifest.Groups[g].Executor == "host" {
-			err = logged.hostFormat(sha, snap, artifacts)
-		} else {
-			err = r.checkEngine(*cli, *setup)
-			if err == nil {
-				args := []string{"--mod", snap, "call", "check", "--source", snap, "--group", g, "--attempt", id}
-				if *storageBenchmarks {
-					args = append(args, "--storage-benchmarks")
-				}
-				args = append(args, "export", "--path", artifacts)
-				_, err = logged.command(root, *cli, args...)
-			}
-		}
-		release()
-		os.RemoveAll(snap)
-		if err != nil {
-			return err
-		}
-		if e = evidence(artifacts); e != nil {
-			return fmt.Errorf("%s: %w (artifacts %s)", g, e, artifacts)
-		}
-		mode := "default"
-		if *storageBenchmarks {
-			mode = "storage-samples"
-		}
-		rec := receipt{Version: receiptVersion, Group: g, Key: key, SHA: sha, Tree: tree, Artifacts: artifacts, Mode: mode, Completed: time.Now().UTC()}
-		if e = saveReceipt(path, rec); e != nil {
-			return e
-		}
-		records = append(records, rec)
+		pending = append(pending, g)
 	}
 	if *status {
 		return nil
+	}
+	var engineOnce sync.Once
+	var engineErr error
+	err := scheduleChecks(ctx, pending, func(ctx context.Context, group string) groupResult {
+		local := r
+		local.ctx = ctx
+		return local.executeGroup(sha, tree, group, keys[group], out, base, id, *cli, *force, func() error {
+			engineOnce.Do(func() { engineErr = local.checkEngine(*cli, *setup) })
+			return engineErr
+		})
+	}, func(group string, result groupResult) {
+		timings[group] = result.timing
+		executed[group] = result.executed
+		if result.err == nil {
+			records = append(records, result.receipt)
+		}
+	})
+	if err != nil {
+		return err
 	}
 	current, e := r.clean()
 	if e != nil {
@@ -574,7 +538,7 @@ func run(ctx context.Context, args []string) (resultErr error) {
 
 	return nil
 }
-func saveRun(path, sha, tree string, records []receipt, executed map[string]bool, requested []string, outcome, message string) error {
+func saveRun(path, sha, tree string, records []receipt, executed map[string]bool, requested []string, outcome, message string, started time.Time, timings map[string]groupTiming) error {
 	b, e := json.MarshalIndent(struct {
 		SHA, Tree                     string
 		Groups                        []receipt
@@ -582,7 +546,9 @@ func saveRun(path, sha, tree string, records []receipt, executed map[string]bool
 		Dagger, EngineImage, Platform string
 		Requested                     []string
 		Outcome, Error                string
-	}{sha, tree, records, executed, version, engineImage, "linux/amd64", requested, outcome, message}, "", "  ")
+		Started, Completed            time.Time
+		Timings                       map[string]groupTiming
+	}{sha, tree, records, executed, version, engineImage, "linux/amd64", requested, outcome, message, started, time.Now().UTC(), timings}, "", "  ")
 	if e != nil {
 		return e
 	}

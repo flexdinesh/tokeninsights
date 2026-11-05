@@ -5,6 +5,10 @@ supersedes retired hosted/PostgreSQL/Docker product coverage. Local task/engine
 ownership, isolation, retained artifacts and sandboxed desktop validation remain.
 The original decision below is preserved as history.
 
+[ADR 0028](0028-focused-validation-and-cache-reuse.md) updates this decision:
+correctness groups remain mandatory, benchmarks are opt-in, independent checks
+run under bounded admission, and compiler/download caches accelerate preparation.
+
 Status: Accepted. Date: 1 November 2026.
 
 ## Context

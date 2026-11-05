@@ -33,9 +33,25 @@ export default defineConfig(({ command, mode }) => {
     test: {
       maxWorkers: Number(testWorkers),
       reporters: ['dot'],
-      environment: 'jsdom',
-      setupFiles: ['./src/test-setup.ts'],
-      include: ['src/**/*.test.{ts,tsx}', '../dashboard/src/**/*.test.{ts,tsx}'],
+      projects: [
+        {
+          extends: true,
+          test: {
+            name: 'node',
+            environment: 'node',
+            include: ['src/**/*.test.ts', '../dashboard/src/**/*.test.ts'],
+          },
+        },
+        {
+          extends: true,
+          test: {
+            name: 'dom',
+            environment: 'jsdom',
+            setupFiles: ['./src/test-setup.ts'],
+            include: ['src/**/*.test.tsx', '../dashboard/src/**/*.test.tsx'],
+          },
+        },
+      ],
     },
   }
 })

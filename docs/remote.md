@@ -27,6 +27,8 @@ tokeninsights config set remote.command /home/you/.local/bin/tokeninsights
 This locally configured executable path is never supplied by a connection string.
 The target uses its own storage configuration. Local database path flags reject.
 An SSH `--source-dir` override must be absolute and refers to the target machine.
+SSH read/write failures retain remote diagnostics. Missing-command errors include
+guidance to set `remote.command`; timeouts remain timeouts.
 Running bare `tokeninsights tui` inside an SSH shell still opens that machine's TUI.
 
 ## Temporary TCP access

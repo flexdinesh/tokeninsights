@@ -6,7 +6,6 @@ import { join } from 'node:path'
 import test from 'node:test'
 import { parseTarget } from '../src/build-desktop.ts'
 import {
-  archiveName,
   archiveRoot,
   packageProduct,
   products,
@@ -59,15 +58,7 @@ for (const platform of ['linux/amd64', 'darwin/arm64']) {
   }
 }
 
-void test('stable product names cover all supported platforms', () => {
-  assert.equal(
-    archiveName('desktop', parseTarget('darwin/arm64')),
-    'tokeninsights-desktop_darwin_arm64.tar.gz',
-  )
-  assert.equal(
-    archiveName('cli', parseTarget('linux/amd64')),
-    'tokeninsights-cli_linux_amd64.tar.gz',
-  )
+void test('unsupported or malformed product targets reject', () => {
   for (const value of ['windows/amd64', 'linux/386', 'linux', 'darwin/arm64/x'])
     assert.throws(() => parseTarget(value))
 })

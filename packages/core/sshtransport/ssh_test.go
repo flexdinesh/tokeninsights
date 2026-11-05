@@ -69,6 +69,14 @@ func TestDialerCarriesOneStdioSessionAndRejectsRedial(t *testing.T) {
 	if conn.RemoteAddr().String() != "ssh://box" {
 		t.Fatal("remote address lost endpoint", conn.RemoteAddr())
 	}
+	if err := conn.SetWriteDeadline(time.Now().Add(-time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	_, err = conn.Write([]byte("late"))
+	var remote *RemoteError
+	if !errors.Is(err, os.ErrDeadlineExceeded) || errors.As(err, &remote) {
+		t.Fatal("write deadline misclassified as remote failure", err)
+	}
 	if err := conn.Close(); err != nil {
 		t.Fatal(err)
 	}
@@ -88,6 +96,12 @@ func TestDialerReportsBoundedRemoteDiagnostics(t *testing.T) {
 	var remote *RemoteError
 	if !errors.As(err, &remote) || !strings.Contains(err.Error(), "not found") || !strings.Contains(err.Error(), "remote.command") || len(remote.Stderr) > maxStderrBytes {
 		t.Fatal("remote failure lost or unbounded diagnostics", err)
+	}
+	// Read above joins the real process exit, making the write-side failure
+	// deterministic rather than depending on which HTTP/2 goroutine wins.
+	_, err = conn.Write([]byte("request after remote exit"))
+	if !errors.As(err, &remote) || !strings.Contains(err.Error(), "not found") || !strings.Contains(err.Error(), "remote.command") || len(remote.Stderr) > maxStderrBytes {
+		t.Fatal("write-side remote failure lost or unbounded diagnostics", err)
 	}
 }
 

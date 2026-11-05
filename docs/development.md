@@ -82,6 +82,15 @@ mise run check:pr -- --group deployment
 Groups: format, static, web, tooling, go, benchmarks, distribution, browser,
 deployment. Internal leaf tasks are implementation details.
 
+Default `check:pr` runs every correctness group, including Go race detection,
+real SSH/TCP, browser workflows and installed-product checks. Performance
+benchmarks are opt-in through `bench:smoke`, `bench:storage` or explicit
+`--group benchmarks`; default success does not claim benchmark coverage.
+Formatting completes first, then independent groups run concurrently under the
+shared admission limits: one heavy and two light groups by default. Cached
+successes need no slot. Each executing group has a private home and test state;
+failure cancels and joins only that invocation's work.
+
 Before PR creation/update, commit intended changes and require clean tracked HEAD:
 
 ```sh
@@ -104,6 +113,27 @@ Inspect failed retained artifacts; rerun the failed group. `--force` bypasses
 successful check caches. Never poll long checks or delete another invocation's
 artifacts. Status/setup are exposed by `check:status` and
 `check:pr -- --setup-engine`; engine upgrades/cleanup require coordination.
+
+`run.json` records start/completion times, selected groups, cache reuse and
+per-group `QueueMS`, `PreparationMS`, `ExecutionMS` and `TotalMS`.
+Dagger groups also export `timing.json`; preparation includes dependency setup,
+immutable builds and service startup; execution measures the check command.
+Total time also includes snapshot, launcher, teardown and artifact overhead. A reused
+group records `Reused=true` without claiming a new execution duration.
+
+Persistent repository-scoped caches retain Go modules/compiler output,
+golangci-lint analysis and pnpm downloads. Explicit cache paths survive test
+changes to `HOME`. Lockfile-based install layers and filtered immutable browser
+assets/binaries are shared across compatible consumers. Test commands still run
+fresh on a cache miss or `--force`; writable databases, credentials and fixture
+processes are never cached. Backend-only edits do not invalidate web unit tests;
+frontend/contracts edits do. Installed-product builds retain their release flags.
+
+To measure changes, use equivalent explicit correctness groups and `--force`
+before/after, then repeat unchanged inputs to observe receipt reuse. Test backend
+and frontend edits separately. Never clear shared engine caches for a cold-run
+measurement or confuse cache hits with fresh test execution. Review
+[test coverage](agents/test-coverage.md) before deleting assertions.
 
 ## Benchmarks and toolchain
 
