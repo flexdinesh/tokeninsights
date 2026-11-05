@@ -174,6 +174,9 @@ func capacity(name string, fallback int) int {
 	return fallback
 }
 func slot(ctx context.Context, class string) (func(), error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	count := 1
 	if class == "light" {
 		count = 2
@@ -195,6 +198,9 @@ func slot(ctx context.Context, class string) (func(), error) {
 		return nil, fmt.Errorf("unsafe admission directory %s", dir)
 	}
 	for {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
 		for i := 0; i < count; i++ {
 			f, e := lockFile(filepath.Join(dir, fmt.Sprintf("%s-%d.lock", class, i)))
 			if e == nil {

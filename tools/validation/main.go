@@ -7,6 +7,7 @@ import (
 	"dagger/validation/internal/dagger"
 	"errors"
 	"fmt"
+	"time"
 )
 
 type Validation struct{}
@@ -19,6 +20,24 @@ const aptSnapshot = "sed -i 's|http://deb.debian.org/debian-security|https://sna
 // downloaded packages and indexes across runs and failed attempts, so a
 // transient snapshot mirror failure retries without refetching everything.
 const aptCache = "tokeninsights-validation-apt-trixie-20261031"
+
+const goBuildCachePath = "/cache/go-build"
+const goModuleCachePath = "/cache/go-mod"
+const goLintCachePath = "/cache/golangci-lint"
+const pnpmStorePath = "/cache/pnpm"
+const serviceStopTimeout = 30 * time.Second
+
+// Only tool caches persist. Explicit paths keep Go compilation/module reuse
+// when fixtures replace HOME or XDG_CACHE_HOME; homes, databases and credentials
+// remain private. Go and golangci-lint coordinate concurrent cache writers.
+func withGoCaches(c *dagger.Container) *dagger.Container {
+	return c.WithEnvVariable("GOCACHE", goBuildCachePath).
+		WithEnvVariable("GOMODCACHE", goModuleCachePath).
+		WithEnvVariable("GOLANGCI_LINT_CACHE", goLintCachePath).
+		WithMountedCache(goBuildCachePath, dag.CacheVolume("tokeninsights-validation-go-build-1.27.3-linux-amd64")).
+		WithMountedCache(goModuleCachePath, dag.CacheVolume("tokeninsights-validation-go-mod-1.27.3")).
+		WithMountedCache(goLintCachePath, dag.CacheVolume("tokeninsights-validation-golangci-lint-go1.27.3-linux-amd64"))
+}
 
 // aptGuardPath shadows apt-get on PATH while apt runs, including the apt-get
 // that Playwright's --with-deps starts.
@@ -59,10 +78,7 @@ func withoutApt(c *dagger.Container) *dagger.Container {
 // withSSHRemote binds a real OpenSSH server running the CLI built from source,
 // installed on the remote's default non-interactive PATH, for SSH endpoint
 // contracts. The runner gets a private key and pins the host on first use.
-func withSSHRemote(prepared *dagger.Container, attempt string) *dagger.Container {
-	binaries := prepared.WithWorkdir("/src/packages/cli").WithEnvVariable("CGO_ENABLED", "0").
-		WithExec([]string{"go", "build", "-o", "/out/tokeninsights", "./cmd/tokeninsights"}).
-		WithExec([]string{"go", "build", "-o", "/out/tokeninsights-backend", "../backend/cmd/tokeninsights-backend"}).Directory("/out")
+func withSSHRemote(prepared *dagger.Container, binaries *dagger.Directory, attempt string) (*dagger.Container, *dagger.Service) {
 	keys := dag.Container(dagger.ContainerOpts{Platform: "linux/amd64"}).From(goImage).
 		WithEnvVariable("VALIDATION_ATTEMPT", attempt).
 		WithExec([]string{"sh", "-c", "mkdir -p /keys && ssh-keygen -q -t ed25519 -N '' -C validation -f /keys/id"}).Directory("/keys")
@@ -74,7 +90,7 @@ func withSSHRemote(prepared *dagger.Container, attempt string) *dagger.Container
 		WithExec([]string{"ln", "-s", "/opt/tokeninsights/tokeninsights", "/usr/local/bin/tokeninsights"}).
 		WithExec([]string{"install", "-d", "-m", "700", "-o", "remote", "-g", "remote", "/home/remote/.ssh"}).
 		WithFile("/home/remote/.ssh/authorized_keys", keys.File("id.pub"), dagger.ContainerWithFileOpts{Owner: "remote", Permissions: 0o600}).
-		WithExec([]string{"sh", "-c", "ssh-keygen -A && mkdir -p /run/sshd"}).
+		WithExec([]string{"sh", "-c", "rm -f /etc/ssh/ssh_host_* && ssh-keygen -A && mkdir -p /run/sshd"}).
 		WithEnvVariable("VALIDATION_ATTEMPT", attempt).
 		WithExposedPort(22).
 		AsService(dagger.ContainerAsServiceOpts{Args: []string{"/usr/sbin/sshd", "-D", "-e"}})
@@ -84,18 +100,22 @@ func withSSHRemote(prepared *dagger.Container, attempt string) *dagger.Container
 		WithFile("/root/.ssh/id", keys.File("id"), dagger.ContainerWithFileOpts{Permissions: 0o600}).
 		WithNewFile("/root/.ssh/config", config, dagger.ContainerWithNewFileOpts{Permissions: 0o600}).
 		WithServiceBinding("sshd", sshd).
-		WithEnvVariable("TOKENINSIGHTS_TEST_SSH_ENDPOINT", "ssh://remote@sshd")
+		WithEnvVariable("TOKENINSIGHTS_TEST_SSH_ENDPOINT", "ssh://remote@sshd"), sshd
 }
 
 // withPersonalRemote exercises the real CLI gateway across an isolated network.
 // The control service and its temporary credentials belong to this invocation.
-func withPersonalRemote(prepared *dagger.Container, attempt string) *dagger.Container {
-	binaries := prepared.WithEnvVariable("CGO_ENABLED", "0").
-		WithExec([]string{"go", "build", "-o", "/out/tokeninsights", "./packages/cli/cmd/tokeninsights"}).
-		WithExec([]string{"go", "build", "-o", "/out/tokeninsights-backend", "./packages/backend/cmd/tokeninsights-backend"}).
-		WithExec([]string{"go", "build", "-o", "/out/personal-fixture", "./tools/validation/fixtures/personal/main.go"}).Directory("/out")
+func withPersonalRemote(prepared *dagger.Container, binaries *dagger.Directory, fixture *dagger.File, attempt string) (*dagger.Container, *dagger.Service) {
+	// This standard-library-only supervisor has an independent build input, so
+	// fixture changes never invalidate the shared production binaries.
+	supervisor := withGoCaches(dag.Container(dagger.ContainerOpts{Platform: "linux/amd64"}).From(goImage)).
+		WithEnvVariable("CGO_ENABLED", "0").WithEnvVariable("GOTOOLCHAIN", "local").
+		WithEnvVariable("GOMAXPROCS", "2").WithEnvVariable("GOFLAGS", "-mod=readonly -buildvcs=false").
+		WithFile("/src/main.go", fixture).
+		WithExec([]string{"go", "build", "-o", "/out/personal-fixture", "/src/main.go"}).File("/out/personal-fixture")
 	service := dag.Container(dagger.ContainerOpts{Platform: "linux/amd64"}).From(goImage).
 		WithDirectory("/opt/tokeninsights", binaries).
+		WithFile("/opt/tokeninsights/personal-fixture", supervisor).
 		WithEnvVariable("VALIDATION_ATTEMPT", attempt).
 		WithEnvVariable("HOME", "/private/home").
 		WithEnvVariable("XDG_DATA_HOME", "/private/data").
@@ -103,8 +123,28 @@ func withPersonalRemote(prepared *dagger.Container, attempt string) *dagger.Cont
 		WithExposedPort(8767).WithExposedPort(9876).
 		AsService(dagger.ContainerAsServiceOpts{Args: []string{"/opt/tokeninsights/personal-fixture"}})
 	return prepared.WithServiceBinding("personal", service).
-		WithDirectory("/src/packages/cli/bin", binaries, dagger.ContainerWithDirectoryOpts{Include: []string{"tokeninsights", "tokeninsights-backend"}}).
-		WithEnvVariable("TOKENINSIGHTS_TEST_PERSONAL_CONTROL_URL", "http://personal:9876")
+		WithEnvVariable("TOKENINSIGHTS_TEST_PERSONAL_CONTROL_URL", "http://personal:9876"), service
+}
+
+func (m *Validation) webAssets(source *dagger.Directory) *dagger.Directory {
+	inputs := dag.Directory().WithDirectory("/", source, dagger.DirectoryWithDirectoryOpts{Include: webBuildInputs(), Exclude: webBuildExcludes()})
+	return m.prepare(inputs, "web").WithExec([]string{"node", "tools/build/src/build-web.ts"}).Directory("/src/packages/core/server/static")
+}
+
+// Browser, SSH and TCP use identical pure-Go builds. Distribution intentionally
+// uses build-products.ts instead: its release linker metadata is part of coverage.
+func (m *Validation) binaries(source *dagger.Directory, assets *dagger.Directory) *dagger.Directory {
+	inputs := dag.Directory().WithDirectory("/", source, dagger.DirectoryWithDirectoryOpts{Include: goBuildInputs(), Exclude: goBuildExcludes()})
+	return m.prepare(inputs, "go").WithDirectory("/src/packages/core/server/static", assets).
+		WithEnvVariable("CGO_ENABLED", "0").
+		WithExec([]string{"go", "build", "-o", "/out/tokeninsights", "./packages/cli/cmd/tokeninsights"}).
+		WithExec([]string{"go", "build", "-o", "/out/tokeninsights-backend", "./packages/backend/cmd/tokeninsights-backend"}).Directory("/out")
+}
+
+func stopService(ctx context.Context, service *dagger.Service) {
+	cleanup, cancel := context.WithTimeout(context.WithoutCancel(ctx), serviceStopTimeout)
+	defer cancel()
+	_, _ = service.Stop(cleanup)
 }
 
 // Check captures check failures as data so the host can export diagnostics.
@@ -119,46 +159,63 @@ func (m *Validation) Check(ctx context.Context, source *dagger.Directory, group 
 	if storageBenchmarks && group != "benchmarks" {
 		return nil, fmt.Errorf("storage benchmarks require benchmarks group")
 	}
+	preparationStart := time.Now()
+	var timing checkTiming
+	var services []*dagger.Service
 	runner := m.prepare(source, group)
-	if group != "web" {
-		webInputs := dag.Directory().WithDirectory("/", source, dagger.DirectoryWithDirectoryOpts{Include: []string{
-			"package.json", "pnpm-lock.yaml", "pnpm-workspace.yaml", "packages/*/package.json", "docs-website/package.json",
-			"packages/web/**", "packages/dashboard/**", "packages/contracts/**", "tools/build/package.json", "tools/build/src/build-web.ts",
-			"tools/build/src/sync-web-assets.ts", "tools/build/src/files.ts", "tools/build/src/workspace.ts",
-			".oxfmtrc.json", ".oxlintrc.json",
-		}})
-		web := m.prepare(webInputs, "web").WithExec([]string{"node", "tools/build/src/build-web.ts"})
-		runner = runner.WithDirectory("/src/packages/core/server/static", web.Directory("/src/packages/core/server/static"))
-	}
-	if group == "browser" {
-
-		runner = runner.WithWorkdir("/src/packages/cli").WithExec([]string{"go", "build", "-o", "bin/tokeninsights", "./cmd/tokeninsights"}).WithExec([]string{"go", "build", "-o", "bin/tokeninsights-backend", "../backend/cmd/tokeninsights-backend"}).WithWorkdir("/src")
+	if needsWebAssets(group) {
+		assets := m.webAssets(source)
+		runner = runner.WithDirectory("/src/packages/core/server/static", assets)
+		if group == "browser" || group == "deployment" {
+			binaries := m.binaries(source, assets)
+			runner = runner.WithDirectory("/src/packages/cli/bin", binaries)
+			if group == "deployment" {
+				var sshd, personal *dagger.Service
+				runner, sshd = withSSHRemote(runner, binaries, attempt)
+				runner, personal = withPersonalRemote(runner, binaries, source.File("tools/validation/fixtures/personal/main.go"), attempt)
+				services = append(services, sshd, personal)
+			}
+		}
 	}
 	if _, err := runner.Sync(ctx); err != nil {
-		return preparationFailure(err), nil
+		timing.PreparationMS = time.Since(preparationStart).Milliseconds()
+		return preparationFailure(err, timing), nil
 	}
-	if group == "deployment" {
-		runner = withPersonalRemote(withSSHRemote(runner, attempt), attempt)
+	// Service startup belongs to preparation. Keep these invocation-owned
+	// services alive until execution finishes, including partial-startup failure.
+	for _, service := range services {
+		defer stopService(ctx, service)
+		if _, err := service.Start(ctx); err != nil {
+			timing.PreparationMS = time.Since(preparationStart).Milliseconds()
+			return preparationFailure(err, timing), nil
+		}
 	}
+	timing.PreparationMS = time.Since(preparationStart).Milliseconds()
 	executionGroup := group
 	if storageBenchmarks {
 		executionGroup = "storage"
 	}
+	// Introduce the nonce only after immutable preparation. Persistent compiler
+	// caches never substitute for executing the checks (Go retains -count=1).
+	executionStart := time.Now()
 	result := runner.WithWorkdir("/src").WithEnvVariable("VALIDATION_ATTEMPT", attempt).
 		WithExec([]string{"sh", "-c", captureScript, "capture", executionGroup})
-	if _, err := result.Sync(ctx); err != nil {
-		return preparationFailure(err), nil
+	_, err := result.Sync(ctx)
+	timing.ExecutionMS = time.Since(executionStart).Milliseconds()
+	if err != nil {
+		return preparationFailure(err, timing), nil
 	}
-	return result.Directory("/evidence"), nil
+	return result.Directory("/evidence").WithNewFile("timing.json", timing.JSON()), nil
 }
 
-func preparationFailure(err error) *dagger.Directory {
-	log := "Validation preparation or service startup failed: " + err.Error() + "\n"
+func preparationFailure(err error, timing checkTiming) *dagger.Directory {
+	log := "Validation preparation, service startup or execution failed: " + err.Error() + "\n"
 	var execution *dagger.ExecError
 	if errors.As(err, &execution) {
 		log += fmt.Sprintf("Command: %q\nExit code: %d\nStdout:\n%s\nStderr:\n%s\n", execution.Cmd, execution.ExitCode, execution.Stdout, execution.Stderr)
 	}
-	return dag.Directory().WithNewFile("status.json", "{\"exitCode\":1}\n").WithNewFile("check.log", log)
+	return dag.Directory().WithNewFile("status.json", "{\"exitCode\":1}\n").WithNewFile("check.log", log).
+		WithNewFile("timing.json", timing.JSON())
 }
 
 // Prepare caches dependency graphs independently from application source.
@@ -180,8 +237,10 @@ func (m *Validation) prepare(source *dagger.Directory, group string) *dagger.Con
 		WithExec([]string{"mkdir", "-p", "/private/home", "/private/config", "/private/data", "/private/cache", "/private/tmp"}).
 		WithExec([]string{"npm", "install", "--global", "pnpm@12.15.0"}).
 		WithExec([]string{"sh", "-c", "curl -fsSL https://github.com/jdx/mise/releases/download/v2026.10.18/mise-v2026.10.18-linux-x64.tar.gz -o /tmp/mise.tar.gz && echo '0d41b60745a6273a80089c86f80d8729042d2f57f87fda70aecc7d1c3ffbd3be  /tmp/mise.tar.gz' | sha256sum -c - && tar xzf /tmp/mise.tar.gz -C /tmp && cp /tmp/mise/bin/mise /usr/local/bin/mise"})
-	manifests := dag.Directory().WithDirectory("/", source, dagger.DirectoryWithDirectoryOpts{Include: []string{"package.json", "pnpm-lock.yaml", "pnpm-workspace.yaml", "packages/*/package.json", "tools/build/package.json", "docs-website/package.json"}})
-	js := base.WithDirectory("/src", manifests).WithWorkdir("/src").WithExec([]string{"pnpm", "install", "--frozen-lockfile"})
+	base = withGoCaches(base)
+	manifests := dag.Directory().WithDirectory("/", source, dagger.DirectoryWithDirectoryOpts{Include: dependencyManifestInputs()})
+	js := base.WithMountedCache(pnpmStorePath, dag.CacheVolume("tokeninsights-validation-pnpm-12.15.0-linux-amd64")).
+		WithDirectory("/src", manifests).WithWorkdir("/src").WithExec([]string{"pnpm", "install", "--frozen-lockfile", "--store-dir", pnpmStorePath})
 	if group == "browser" || group == "distribution" || group == "tooling" {
 		js = withApt(js)
 	}
@@ -207,5 +266,8 @@ func (m *Validation) prepare(source *dagger.Directory, group string) *dagger.Con
 		goDeps = goDeps.WithDirectory("/validation-deps", source, dagger.ContainerWithDirectoryOpts{Include: []string{"tools/validation/go.mod", "tools/validation/go.sum"}}).
 			WithWorkdir("/validation-deps/tools/validation").WithExec([]string{"go", "mod", "download"})
 	}
-	return js.WithDirectory("/go/pkg/mod", goDeps.Directory("/go/pkg/mod")).WithDirectory("/src", source).WithWorkdir("/src")
+	// Materialize dependency preparation without copying a mounted cache into an
+	// immutable layer. Both branches mount the same module cache; /deps preserves
+	// the download dependency before application source enters the graph.
+	return js.WithDirectory("/deps", goDeps.Directory("/deps")).WithDirectory("/src", source).WithWorkdir("/src")
 }

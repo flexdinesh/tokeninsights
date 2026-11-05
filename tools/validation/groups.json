@@ -12,11 +12,7 @@
     "packages/*/package.json",
     "tools/build/package.json",
     "docs-website/package.json",
-    "dagger.json",
-    "go.mod",
-    "go.sum",
-    "golangci-lint.mod",
-    "golangci-lint.sum"
+    "dagger.json"
   ],
   "groups": {
     "format": {
@@ -38,6 +34,10 @@
     },
     "static": {
       "inputs": [
+        "go.mod",
+        "go.sum",
+        "golangci-lint.mod",
+        "golangci-lint.sum",
         "packages/cli/",
         "packages/desktop/",
         "schema/",
@@ -66,9 +66,6 @@
         "tools/build/src/sync-web-assets.ts",
         "tools/build/src/files.ts",
         "tools/build/src/workspace.ts",
-        "packages/core/",
-        "packages/backend/",
-        "packages/desktop/",
         "packages/dashboard/",
         "packages/contracts/"
       ],
@@ -77,6 +74,8 @@
     },
     "tooling": {
       "inputs": [
+        "go.mod",
+        "go.sum",
         "packages/cli/",
         "schema/",
         "docs/openapi.yaml",
@@ -103,6 +102,8 @@
     },
     "go": {
       "inputs": [
+        "go.mod",
+        "go.sum",
         "packages/cli/",
         "packages/desktop/",
         "schema/",
@@ -124,6 +125,8 @@
     },
     "benchmarks": {
       "inputs": [
+        "go.mod",
+        "go.sum",
         "packages/cli/",
         "schema/",
         "docs/openapi.yaml",
@@ -145,6 +148,8 @@
     },
     "distribution": {
       "inputs": [
+        "go.mod",
+        "go.sum",
         "LICENSE",
         "packages/cli/",
         "schema/",
@@ -172,6 +177,8 @@
     },
     "browser": {
       "inputs": [
+        "go.mod",
+        "go.sum",
         "packages/cli/",
         "schema/",
         "docs/openapi.yaml",
@@ -192,6 +199,8 @@
     },
     "deployment": {
       "inputs": [
+        "go.mod",
+        "go.sum",
         "tools/build/src/test-personal-network.ts",
         "tools/build/src/dev-lifecycle.ts",
         "packages/cli/",
