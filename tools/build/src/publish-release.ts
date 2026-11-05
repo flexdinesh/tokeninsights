@@ -11,8 +11,14 @@ export function releaseTag(version: string): string {
   if (!stableVersion.test(version)) throw new Error('version must be x.y.z without leading zeros')
   return `v${version}`
 }
-export function expectedArchives(): string[] {
-  return ['linux/amd64', 'linux/arm64', 'darwin/amd64', 'darwin/arm64']
+export type ReleaseChannel = 'stable' | 'main'
+export function releasePlatforms(channel: ReleaseChannel): string[] {
+  return channel === 'main'
+    ? ['linux/amd64', 'linux/arm64', 'darwin/arm64']
+    : ['linux/amd64', 'linux/arm64', 'darwin/amd64', 'darwin/arm64']
+}
+export function expectedArchives(channel: ReleaseChannel): string[] {
+  return releasePlatforms(channel)
     .flatMap((platform) => products.map((product) => archiveName(product, parseTarget(platform))))
     .toSorted()
 }
@@ -56,16 +62,20 @@ export function verifyArchiveMetadata(
 }
 export async function verifyReleaseAssets(
   out: string,
+  channel: ReleaseChannel,
   metadata?: { version: string; commit: string },
 ): Promise<void> {
+  const archives = expectedArchives(channel)
   const names = (await readdir(out)).toSorted()
-  const expected = [...expectedArchives(), 'checksums.txt'].toSorted()
+  const expected = [...archives, 'checksums.txt'].toSorted()
   if (JSON.stringify(names) !== JSON.stringify(expected))
-    throw new Error('release requires exactly twelve product archives and checksums.txt')
+    throw new Error(
+      `${channel} release requires exactly ${archives.length} product archives and checksums.txt`,
+    )
   const checksums = (await readFile(join(out, 'checksums.txt'), 'utf8')).trim().split('\n')
-  if (checksums.length !== expectedArchives().length) throw new Error('unexpected checksum count')
+  if (checksums.length !== archives.length) throw new Error('unexpected checksum count')
   await Promise.all(
-    expectedArchives().map(async (name) => {
+    archives.map(async (name) => {
       const entries = checksums
         .map((line) => /^([0-9a-f]{64})  (\S+)$/.exec(line))
         .filter((entry) => entry?.[2] === name)
@@ -94,7 +104,7 @@ export function prepareTag(version: string, cwd = workspaceRoot): string {
   return tag
 }
 export async function publish(
-  channel: 'stable' | 'main',
+  channel: ReleaseChannel,
   version: string,
   out: string,
   cwd = workspaceRoot,
@@ -102,7 +112,7 @@ export async function publish(
   const git = (...args: string[]) => execFileSync('git', args, { cwd, encoding: 'utf8' }).trim()
   const gh = (...args: string[]) => execFileSync('gh', args, { cwd, stdio: 'inherit' })
   const source = git('rev-parse', 'HEAD')
-  await verifyReleaseAssets(out, { version, commit: source })
+  await verifyReleaseAssets(out, channel, { version, commit: source })
   const tag = channel === 'stable' ? releaseTag(version) : 'main-build'
   const existing = spawnSync(
     'gh',
@@ -139,7 +149,7 @@ export async function publish(
     'release',
     'upload',
     tag,
-    ...[...expectedArchives(), 'checksums.txt'].map((name) => join(out, name)),
+    ...[...expectedArchives(channel), 'checksums.txt'].map((name) => join(out, name)),
     '--clobber',
   )
   gh(

@@ -7,7 +7,10 @@ import { workspacePath } from '../src/workspace.ts'
 
 void test('remaining products have standalone installers and a complete native release matrix', () => {
   assert.deepEqual(products, ['cli', 'mygo', 'electron'])
-  assert.equal(expectedArchives().length, 12)
+  assert.equal(expectedArchives('stable').length, 12)
+  assert.equal(expectedArchives('main').length, 9)
+  assert.ok(expectedArchives('stable').some((name) => name.includes('_darwin_amd64')))
+  assert.ok(!expectedArchives('main').some((name) => name.includes('_darwin_amd64')))
   for (const product of products) {
     const path = workspacePath(product === 'cli' ? 'install.sh' : `install-${product}.sh`)
     assert.match(readFileSync(path, 'utf8'), new RegExp(`--product=${product}`))

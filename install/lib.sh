@@ -18,6 +18,7 @@ case "$(uname -s)" in Darwin) os=darwin ;; Linux) os=linux ;; *) fail 'unsupport
 machine="$(uname -m)"
 if [ "$os" = darwin ] && [ "$(sysctl -n hw.optional.arm64 2>/dev/null || echo 0)" = 1 ]; then machine=arm64; fi
 case "$machine" in x86_64|amd64) arch=amd64 ;; arm64|aarch64) arch=arm64 ;; *) fail "unsupported architecture $machine" ;; esac
+if [ "$channel" = main ] && [ "$os" = darwin ] && [ "$arch" = amd64 ]; then fail 'main channel has no macOS Intel build; use --channel=stable'; fi
 case "$channel" in
     stable) base=https://github.com/flexdinesh/tokeninsights/releases/latest/download ;;
     main) base=https://github.com/flexdinesh/tokeninsights/releases/download/main-build ;;

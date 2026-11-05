@@ -33,15 +33,15 @@ Homebrew and versioned `go install` delivery are no longer supported. Historical
 
 Stable: dispatch **Release** from main with an explicit semantic version. The workflow builds the selected source, creates an immutable root `vX.Y.Z` source tag, stages complete archives/checksums in a draft, then publishes the stable release. Reruns must retain the same source identity; published stable bytes are not overwritten.
 
-Main: each push to main builds and publishes the rolling `main-build` prerelease. CI runs no checks; validate locally first and test other platforms by hand from this channel. It is never marked Latest. Failed or obsolete builds cannot replace a newer successful build. A rolling release is not an atomic download snapshot: an installer racing publication may fail checksum verification and can be rerun; its previous installation remains intact.
+Main: each push to main builds and publishes the rolling `main-build` prerelease. CI runs no checks; validate locally first and test other platforms by hand from this channel. It omits macOS Intel, whose archives first build during a stable release and cannot be hand-tested beforehand; installers reject that host on main. It is never marked Latest. Failed or obsolete builds cannot replace a newer successful build. A rolling release is not an atomic download snapshot: an installer racing publication may fail checksum verification and can be rerun; its previous installation remains intact.
 
-All products share release version/source metadata. Archives are named `tokeninsights-<cli|mygo|electron>_<darwin|linux>_<amd64|arm64>.tar.gz`, with `checksums.txt`. CLI and desktop archives contain the required Go backend. There is no hosted server product or server installer.
+All products share release version/source metadata. Archives are named `tokeninsights-<cli|mygo|electron>_<darwin|linux>_<amd64|arm64>.tar.gz`, with `checksums.txt`; main has no `darwin_amd64` archives. CLI and desktop archives contain the required Go backend. There is no hosted server product or server installer.
 
 No compiled executables, desktop bundles, archives or generated dashboard assets are committed to any branch or tag. Source tags point to source commits. Build tooling generates embedded browser assets before building Go; release attachments contain compiled output. No generated asset commits, edge branch, tap token or tap PR automation remain. See [ADR 0027](adr/0027-personal-backend-and-explicit-connections.md).
 
 ## Runtime and verification
 
-Backend, CLI and MyGo use Go with `CGO_ENABLED=0`. The backend embeds browser assets and never invoke JavaScript tools. Electron is the explicit bundled-runtime exception; it requires no host Node/npm/pnpm. macOS/Linux amd64/arm64 archives are built on matching native runners. Desktop signing/notarization and auto-update are outside this experiment.
+Backend, CLI and MyGo use Go with `CGO_ENABLED=0`. The backend embeds browser assets and never invoke JavaScript tools. Electron is the explicit bundled-runtime exception; it requires no host Node/npm/pnpm. Each channel's archives are built on matching native runners. Desktop signing/notarization and auto-update are outside this experiment.
 
 Local verification uses `mise run format`, then full `mise run check:pr`, sandboxed host `mise run check:desktop` and `mise run build:docs` on committed HEAD with clean tracked files. Distribution contracts exercise real product archives, installer rejection/replacement, source metadata and runtime without host build tools. Existing accounting, storage, replay, retained identity boundaries, browser and real SSH/network contracts remain required. Inspect retained validation artifacts; no PR checks run remotely.
 

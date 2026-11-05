@@ -7,7 +7,9 @@ import test from 'node:test'
 import {
   expectedArchives,
   prepareTag,
+  releasePlatforms,
   releaseTag,
+  type ReleaseChannel,
   verifyReleaseAssets,
 } from '../src/publish-release.ts'
 import { writeChecksums } from '../src/build-products.ts'
@@ -60,19 +62,41 @@ void test('source tags point directly at source, retries preserve them and anoth
 void test('publication requires complete unique verified product assets', async (t) => {
   const dir = mkdtempSync(join(tmpdir(), 'tokeninsights-release-assets-'))
   t.after(() => rmSync(dir, { recursive: true, force: true }))
-  for (const name of expectedArchives()) writeFileSync(join(dir, name), `archive ${name}`)
+  for (const name of expectedArchives('stable')) writeFileSync(join(dir, name), `archive ${name}`)
   await writeChecksums(dir)
-  await verifyReleaseAssets(dir)
-  const first = expectedArchives()[0]
+  await verifyReleaseAssets(dir, 'stable')
+  await assert.rejects(verifyReleaseAssets(dir, 'main'), /main release requires exactly 9/)
+  const first = expectedArchives('stable')[0]
   assert.ok(first)
   const checksums = readFileSync(join(dir, 'checksums.txt'), 'utf8')
   writeFileSync(join(dir, 'checksums.txt'), checksums + checksums.split('\n')[0] + '\n')
-  await assert.rejects(verifyReleaseAssets(dir), /checksum count/)
+  await assert.rejects(verifyReleaseAssets(dir, 'stable'), /checksum count/)
   writeFileSync(join(dir, 'checksums.txt'), checksums)
   writeFileSync(join(dir, first), 'corrupt')
-  await assert.rejects(verifyReleaseAssets(dir), /checksum mismatch/)
+  await assert.rejects(verifyReleaseAssets(dir, 'stable'), /checksum mismatch/)
   rmSync(join(dir, first))
-  await assert.rejects(verifyReleaseAssets(dir), /twelve product archives/)
+  await assert.rejects(verifyReleaseAssets(dir, 'stable'), /stable release requires exactly 12/)
+})
+void test('main publication accepts its archives and stable rejects them', async (t) => {
+  const dir = mkdtempSync(join(tmpdir(), 'tokeninsights-main-assets-'))
+  t.after(() => rmSync(dir, { recursive: true, force: true }))
+  for (const name of expectedArchives('main')) writeFileSync(join(dir, name), `archive ${name}`)
+  await writeChecksums(dir)
+  await verifyReleaseAssets(dir, 'main')
+  await assert.rejects(verifyReleaseAssets(dir, 'stable'), /stable release requires exactly 12/)
+})
+void test('workflow build matrices match each channel release contract', () => {
+  const workflows: ReadonlyArray<readonly [string, ReleaseChannel]> = [
+    ['ci.yml', 'main'],
+    ['release.yml', 'stable'],
+  ]
+  for (const [file, channel] of workflows) {
+    const workflow = readFileSync(workspacePath(`.github/workflows/${file}`), 'utf8')
+    const platforms = [...workflow.matchAll(/"os":"(\w+)","arch":"(\w+)"/g)].map(
+      (match) => `${match[1]}/${match[2]}`,
+    )
+    assert.deepEqual(platforms.toSorted(), releasePlatforms(channel).toSorted())
+  }
 })
 void test('artifact guard rejects generated files and compiled binary signatures', () => {
   for (const path of [
@@ -113,8 +137,9 @@ for (const scenario of [
     const stage = join(dir, 'stage')
     for (const path of [out, bin, stage]) mkdirSync(path)
     const commit = 'a'.repeat(40)
-    const version = scenario.includes('main') ? `main.${commit.slice(0, 12)}` : '1.2.3'
-    for (const name of expectedArchives()) {
+    const channel = scenario.includes('main') ? 'main' : 'stable'
+    const version = channel === 'main' ? `main.${commit.slice(0, 12)}` : '1.2.3'
+    for (const name of expectedArchives(channel)) {
       const root = name.replace(/\.tar\.gz$/, '')
       const [slug, os, arch] = root.split('_')
       const path = join(stage, root)
@@ -159,7 +184,7 @@ if (args[1] === 'upload' && process.env.FAIL_UPLOAD === '1') process.exit(23);
       [
         '--input-type=module',
         '-e',
-        `import { writeChecksums } from ${JSON.stringify(workspacePath('tools/build/src/build-products.ts'))}; import { publish } from ${JSON.stringify(workspacePath('tools/build/src/publish-release.ts'))}; await writeChecksums(${JSON.stringify(out)}); await publish(${JSON.stringify(scenario.includes('main') ? 'main' : 'stable')}, ${JSON.stringify(version)}, ${JSON.stringify(out)});`,
+        `import { writeChecksums } from ${JSON.stringify(workspacePath('tools/build/src/build-products.ts'))}; import { publish } from ${JSON.stringify(workspacePath('tools/build/src/publish-release.ts'))}; await writeChecksums(${JSON.stringify(out)}); await publish(${JSON.stringify(channel)}, ${JSON.stringify(version)}, ${JSON.stringify(out)});`,
       ],
       {
         encoding: 'utf8',
@@ -194,6 +219,10 @@ if (args[1] === 'upload' && process.env.FAIL_UPLOAD === '1') process.exit(23);
     } else {
       assert.ok(create >= 0 && upload > create)
       assert.ok(calls[create]?.includes('--draft'))
+      assert.equal(
+        calls[upload]?.some((arg) => arg.includes('_darwin_amd64')),
+        channel === 'stable',
+      )
       if (scenario === 'upload failure') {
         assert.notEqual(result.status, 0)
         assert.equal(edit, -1)
