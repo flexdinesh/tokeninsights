@@ -17,6 +17,8 @@ curl -fsSL https://raw.githubusercontent.com/flexdinesh/tokeninsights/main/insta
 
 Rerun to update. Latest main build: `install-main.sh` for CLI, or append
 `| sh -s -- --channel=main` to a product script. Main has no macOS Intel build.
+Updates recognize installer-owned MyGo CLI links from before the desktop rename,
+without deleting the old product files.
 
 ## Use
 

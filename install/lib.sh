@@ -205,11 +205,18 @@ owned_product() {
 }
 desktop_cli="$products/desktop/tokeninsights"
 if [ "$os" = darwin ]; then desktop_cli="$products/desktop/TokenInsights Desktop.app/Contents/MacOS/tokeninsights"; fi
+# The desktop rename must not strand commands published by the MyGo installer.
+mygo_cli="$products/mygo/tokeninsights"
+if [ "$os" = darwin ]; then mygo_cli="$products/mygo/TokenInsights MyGo.app/Contents/MacOS/tokeninsights"; fi
+owned_bundled_cli() {
+    { [ "$1" = "$desktop_cli" ] && owned_product desktop; } ||
+        { [ "$1" = "$mygo_cli" ] && owned_product mygo; }
+}
 if [ -e "$link" ] || [ -L "$link" ]; then
     [ -L "$link" ] || fail "refusing to replace unowned path $link"
     previous_link="$(readlink "$link")"
     if [ "$previous_link" = "$target" ]; then publish_link=false
-    elif [ "$product" = cli ] && [ "$previous_link" = "$desktop_cli" ] && owned_product desktop; then
+    elif [ "$product" = cli ] && owned_bundled_cli "$previous_link"; then
         : # An explicitly installed CLI takes command ownership from bundled desktop.
     else fail "refusing to replace unowned path $link"; fi
 fi
@@ -220,10 +227,10 @@ if [ "$product" = desktop ]; then
     if [ -e "$cli_link" ] || [ -L "$cli_link" ]; then
         [ -L "$cli_link" ] || fail "refusing to replace unowned path $cli_link"
         existing_cli="$(readlink "$cli_link")"
-        if [ "$existing_cli" = "$products/cli/tokeninsights" ] && owned_product cli; then
+        if [ "$existing_cli" = "$desktop_cli" ] && owned_product desktop; then :
+        elif { [ "$existing_cli" = "$products/cli/tokeninsights" ] && owned_product cli; } || owned_bundled_cli "$existing_cli"; then
             previous_cli="$existing_cli"
             publish_cli=true
-        elif [ "$existing_cli" = "$desktop_cli" ] && owned_product desktop; then :
         else fail "refusing to replace unowned path $cli_link"; fi
     else publish_cli=true; fi
 fi

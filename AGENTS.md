@@ -27,7 +27,7 @@ Full architecture, schema contract, pipelines, and invariants are in [`docs/desi
 - **Direct acceptance uses sanitized raw evidence**. Source paths/cursors stay local. Evidence/receipts/scopes commit together; asynchronous facts/provenance/outcomes commit together in SQLite. Replay after collector deletion preserves stable IDs and totals.
 - **Raw storage is metadata-only**. Do not store prompt text, assistant text, tool arguments, tool output, request headers, secrets, raw provider payloads, or full source paths.
 - **Production core is Go**. One root Go module contains production Go packages. CLI/backend/desktop need no host JavaScript runtime; Go never invokes Node/npm/pnpm. React presentation lives in packages/dashboard, browser composition in packages/web, TypeScript contracts in packages/contracts. Backend embeds ignored generated assets from packages/core/server/static. No compiled binaries, bundles, archives or generated web assets are committed on any branch/tag. Publish prebuilt products only as stable releases or the rolling main-build prerelease; source tags point to source commits. Shell installers replace Homebrew/Go-install/edge publication. See [ADR 0027](docs/adr/0027-personal-backend-and-explicit-connections.md).
-- **Format and lint before verification**. Use `gofmt` and the repository-pinned `golangci-lint` for Go. Use Oxfmt and Oxlint for TypeScript, JavaScript, and React. Run them through mise tasks.
+- **Format and lint before required verification**. Apply the check scope in Verification below. Use `gofmt` and the repository-pinned `golangci-lint` for Go. Use Oxfmt and Oxlint for TypeScript, JavaScript, and React. Run them through mise tasks.
 - **Write for maintainability**. Do not use magic numbers in calculations for quick fixes that violate code discipline.
 - **Propose refactoring**. When you see an opportunity to refactor to strongly adhere to guidelines and quality, suggest it to the user.
 
@@ -90,12 +90,13 @@ mise run format
 mise run check-schema
 mise run check-api
 mise run build:cli
-mise run check:pr    # isolated suite before PR creation/update
+mise run check:pr    # before PR creation/update for app feature or runtime-behavior changes
 ```
 
 ## Verification
 
-- **Validate before PR creation and updates**. Run full `mise run check:pr` and `mise run build:docs` on committed HEAD with clean tracked files. Pushes do not trigger the full suite. Reuse only complete successful evidence with matching inputs.
+- **Run checks only for app feature or runtime-behavior changes**, including bug fixes affecting CLI/TUI, web, desktop, backend, storage or token accounting. Documentation, agent guidance, formatting-only changes, and installer/release/development-tooling changes that do not alter app runtime behavior do not require checks. Do not launch tests, lint, builds or validation suites for those changes unless the user explicitly requests them; report that checks were skipped. Apply this scope to the validation guidance below and in linked docs.
+- **Validate app changes before PR creation and updates**. When the change affects app features or runtime behavior, run full `mise run check:pr` and `mise run build:docs` on committed HEAD with clean tracked files. Pushes do not trigger the full suite. Reuse only complete successful evidence with matching inputs.
 - **Use isolated groups for targeted validation**. Run `mise run check:pr -- --group <name>`; groups are format, static, web, tooling, go, benchmarks, distribution, browser and deployment. Internal leaf tasks are implementation details, not host validation entrypoints.
 - **Format before verification** with `mise run format`. Commit intended changes before HEAD validation. Do not claim uncommitted development checks validate HEAD.
 - **Preserve local execution**. Preserve existing validation ownership; approved product/connection changes are specified in ADR 0027. New remote coverage requires a concrete reason unavailable locally.
@@ -104,7 +105,7 @@ mise run check:pr    # isolated suite before PR creation/update
 - **Local infrastructure**: retain explicitly managed Dagger and real SSH/network tests. Retired hosted/Docker product coverage is superseded by ADR 0027; ADR 0022 retains engine ownership and isolation rules.
 - **Never poll long checks**. Run long commands in the background and wait for the completion notification. Never poll logs or `sleep` in loops.
 - Run `mise run build:cli` only when manual CLI verification needs a fresh binary.
-- After build-tooling or web-asset changes, build directly from `packages/cli` and verify the resulting binary runs with Node, npm, and pnpm absent from `PATH`.
+- When build-tooling or web-asset changes affect app runtime behavior, build directly from `packages/cli` and verify the resulting binary runs with Node, npm, and pnpm absent from `PATH`.
 - For manual CLI or TUI verification, print the following project-local command on screen and ask the user to run it and verify the result:
 
   ```sh
