@@ -17,7 +17,7 @@ curl -fsSL https://raw.githubusercontent.com/flexdinesh/tokeninsights/main/insta
 ```
 
 Rerun to update. Latest main build: `install-main.sh` for CLI, or append
-`| sh -s -- --channel=main` to a product script.
+`| sh -s -- --channel=main` to a product script. Main has no macOS Intel build.
 
 ## Use
 

@@ -11,7 +11,7 @@ curl -fsSL https://raw.githubusercontent.com/flexdinesh/tokeninsights/main/insta
 fish_add_path ~/.local/bin
 ```
 
-MyGo includes CLI/backend. CLI-only supports TUI/web; Electron remains separate.
+MyGo includes CLI/backend. CLI-only supports TUI/web; Electron remains separate. Main has no macOS Intel build.
 Use `tokeninsights --version` to inspect the installed version.
 Stable/main replace the selected product. Installation never terminates viewers.
 

@@ -432,3 +432,17 @@ void test('rejects unsupported host and channel before download', (t) => {
   assert.match(f.run('install.sh', ['--channel=edge']).stderr, /unknown option/)
   assert.ok(!existsSync(f.log))
 })
+void test('main channel rejects macOS Intel before download; Apple Silicon and stable proceed', (t) => {
+  const f = fixture(t)
+  const intel = { TEST_OS: 'Darwin' }
+  assert.match(f.run('install-main.sh', [], intel).stderr, /no macOS Intel build/)
+  assert.match(f.run('install-mygo.sh', ['--channel=main'], intel).stderr, /no macOS Intel build/)
+  assert.ok(!existsSync(f.log))
+  f.run('install-main.sh', [], { ...intel, TEST_ARCH: 'arm64' })
+  assert.match(readFileSync(f.log, 'utf8'), /main-build\/tokeninsights-cli_darwin_arm64\.tar\.gz/)
+  f.run('install.sh', [], intel)
+  assert.match(
+    readFileSync(f.log, 'utf8'),
+    /latest\/download\/tokeninsights-cli_darwin_amd64\.tar\.gz/,
+  )
+})

@@ -45,7 +45,8 @@ under `${XDG_DATA_HOME:-~/.local/share}/tokeninsights/products/`.
 No login service is installed. The backend starts on demand and stops after its
 last lease and reconnect grace.
 
-Every product script accepts `--channel=stable` (default) or `--channel=main`:
+Every product script accepts `--channel=stable` (default) or `--channel=main`.
+Main has no macOS Intel build:
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/flexdinesh/tokeninsights/main/install-mygo.sh | sh -s -- --channel=main
