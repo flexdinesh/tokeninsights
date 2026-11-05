@@ -22,7 +22,7 @@ func TestRemovedCommandsRejectWithoutStorageOrServiceSideEffects(t *testing.T) {
 	if err := os.WriteFile(path, contents, 0600); err != nil {
 		t.Fatal(err)
 	}
-	for _, name := range []string{"view", "serve", "service", "server", "collector", "normalize", "reset-canonical", "reset-all", "__service-run"} {
+	for _, name := range []string{"sync", "browse", "view", "serve", "service", "server", "collector", "normalize", "reset-canonical", "reset-all", "__service-run"} {
 		if _, exists := commandByName(name); exists {
 			t.Fatalf("removed command %s still registered", name)
 		}

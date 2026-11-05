@@ -3,7 +3,6 @@ package collector_test
 import (
 	"context"
 	"fmt"
-	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -11,18 +10,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/flexdinesh/tokeninsights/packages/core/accounts"
 	"github.com/flexdinesh/tokeninsights/packages/core/adapters/sqlanalytics"
-	"github.com/flexdinesh/tokeninsights/packages/core/adapters/sqliteaccounts"
 	"github.com/flexdinesh/tokeninsights/packages/core/analytics"
-	"github.com/flexdinesh/tokeninsights/packages/core/appstore"
 	"github.com/flexdinesh/tokeninsights/packages/core/collector"
 	"github.com/flexdinesh/tokeninsights/packages/core/dataengine"
 	"github.com/flexdinesh/tokeninsights/packages/core/datastore"
 	"github.com/flexdinesh/tokeninsights/packages/core/evidence"
 	"github.com/flexdinesh/tokeninsights/packages/core/pipeline"
-	"github.com/flexdinesh/tokeninsights/packages/core/server"
-	"github.com/flexdinesh/tokeninsights/packages/core/serverfeatures"
 	"github.com/flexdinesh/tokeninsights/packages/core/storagecontract"
 )
 
@@ -75,44 +69,6 @@ func (m *measuredDelivery) Submit(ctx context.Context, protocol int, body []byte
 	return response, err
 }
 
-func ingestionDestination(b *testing.B, store *datastore.Store, root, transport string) (*datastore.Store, collector.Delivery, func()) {
-	b.Helper()
-	if transport == "Direct" {
-		return store, collector.DirectDelivery{Receiver: store}, func() {}
-	}
-	identity, err := store.DatabaseIdentity(b.Context())
-	if err != nil {
-		b.Fatal(err)
-	}
-	app, err := appstore.Open(b.Context(), filepath.Join(root, "app.sqlite"), identity, datastore.KindHosted)
-	if err != nil {
-		b.Fatal(err)
-	}
-	b.Cleanup(func() { _ = app.Close() })
-	service := accounts.New(sqliteaccounts.NewSQLite(app, store))
-	user, err := service.CreateUser(b.Context(), "benchmark")
-	if err != nil {
-		b.Fatal(err)
-	}
-	token, err := service.CreateToken(b.Context(), user.UserID, []string{accounts.Read, accounts.Ingest}, nil)
-	if err != nil {
-		b.Fatal(err)
-	}
-	policy, err := serverfeatures.New(serverfeatures.Hosted, false)
-	if err != nil {
-		b.Fatal(err)
-	}
-	remote := httptest.NewServer(server.NewDataHandlerWithOptions(b.Context(), sqlanalytics.Source{Store: store}, nil, server.DataHandlerOptions{
-		Host: "127.0.0.1", InstanceID: "benchmark", AllowIngestion: true,
-		Policy: policy, Accounts: service, PublicURL: "https://benchmark.example",
-	}))
-	b.Cleanup(remote.Close)
-	return store.ForDataset(user.DatasetID), collector.HTTPDelivery{URL: remote.URL, Token: token.Secret, Client: remote.Client()}, func() {
-		remote.Close()
-		_ = app.Close()
-	}
-}
-
 func ingestionSources(b *testing.B, sessions, messages int) string {
 	b.Helper()
 	root := b.TempDir()
@@ -152,8 +108,8 @@ func ingestionVisible(ctx context.Context, store *datastore.Store) error {
 }
 
 // Real storage, capture, adapters and the production two-worker dispatcher.
-// HTTP includes hosted authentication/admission on loopback, without TLS or
-// network latency. Storage opening and provisioning are outside the timed region;
+// Direct acceptance preserves immutable outbox requests and receipts.
+// Storage opening is outside the timed region;
 // BenchmarkLocalStartup measures command-owned opening separately.
 func BenchmarkIngestion(b *testing.B) {
 	for _, shape := range []struct {
@@ -173,7 +129,7 @@ func BenchmarkIngestion(b *testing.B) {
 			shape.messages = min(shape.messages, 20)
 			name += "-Smoke"
 		}
-		for _, transport := range []string{"Direct", "HTTP"} {
+		for _, transport := range []string{"Direct"} {
 			b.Run(name+"/"+transport, func(b *testing.B) {
 				b.ReportAllocs()
 				b.StopTimer()
@@ -189,18 +145,13 @@ func BenchmarkIngestion(b *testing.B) {
 						} else {
 							sources = ingestionSources(b, shape.sessions, shape.messages)
 						}
-						kind := datastore.KindPersonal
-						if transport == "HTTP" {
-							kind = datastore.KindHosted
-						}
 						dataPath := filepath.Join(root, "server.sqlite")
-						store, err := datastore.OpenKind(b.Context(), dataPath, kind)
+						store, err := datastore.Open(b.Context(), dataPath)
 						if err != nil {
 							b.Fatal(err)
 						}
 						defer func() { _ = store.Close() }()
-						scoped, delivery, closeDestination := ingestionDestination(b, store, root, transport)
-						defer closeDestination()
+						scoped, delivery := store, collector.DirectDelivery{Receiver: store}
 						caps, err := delivery.Capabilities(b.Context())
 						if err != nil {
 							b.Fatal(err)
@@ -217,7 +168,7 @@ func BenchmarkIngestion(b *testing.B) {
 						}()
 						var captured time.Time
 						options := collector.Options{CollectorDBPath: filepath.Join(root, "collector.sqlite"), ServerDBPath: dataPath,
-							Destination: &collector.Destination{Identity: "http://benchmark", DatabaseID: caps.DatabaseID, DatasetID: caps.DatasetID, Local: transport == "Direct", Transport: observed},
+							Destination: &collector.Destination{Identity: "http://benchmark", DatabaseID: caps.DatabaseID, DatasetID: caps.DatasetID, Local: true, Transport: observed},
 							SyncOptions: pipeline.SyncOptions{SourceDir: sources, Harnesses: harnesses},
 							DeliveryProgress: func(collector.DeliveryProgress) {
 								if captured.IsZero() {

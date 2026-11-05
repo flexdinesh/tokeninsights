@@ -513,7 +513,7 @@ export function DesignCatalog() {
                 <PageHeader title="/ Models">
                   <span className="text-label font-semibold">controlbox</span>
                   <HeaderDivider />
-                  <Button variant="quiet" size="icon-compact" aria-label="Local status: Ready">
+                  <Button variant="quiet" size="icon-compact" aria-label="Backend status: Ready">
                     <StatusIcon state="ready" />
                   </Button>
                   <Button variant="quiet" size="icon-compact" aria-label="Theme: light">

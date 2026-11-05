@@ -7,47 +7,10 @@ import (
 	"dagger/validation/internal/dagger"
 	"errors"
 	"fmt"
-	"slices"
-	"strings"
 )
 
 type Validation struct{}
 
-// Deployment connects the existing semantic assertions to supervisors mounted
-// into the actual production image. Attempt must be unique for every execution.
-func (m *Validation) Deployment(source *dagger.Directory, prepared *dagger.Container, attempt string) *dagger.Container {
-	if strings.TrimSpace(attempt) == "" {
-		panic("attempt is required")
-	}
-	fixture := prepared.WithWorkdir("/src/packages/cli").
-		WithEnvVariable("CGO_ENABLED", "0").
-		WithExec([]string{"go", "build", "-o", "/out/deployment-fixture", "./tools/deployment-fixture"}).File("/out/deployment-fixture")
-	postgres := dag.Container(dagger.ContainerOpts{Platform: "linux/amd64"}).From("postgres:18@sha256:edb0c08dc33befd0262ab3b5cf1c4f3f8cfd8b09e88c05b45adee29d6761ddb6").
-		WithEnvVariable("POSTGRES_PASSWORD", "validation-private").
-		WithEnvVariable("VALIDATION_ATTEMPT", attempt).
-		WithExposedPort(5432).AsService()
-	image := source.DockerBuild().WithoutDockerHealthcheck().WithoutExposedPort(8766).WithFile("/usr/local/bin/deployment-fixture", fixture).
-		WithEntrypoint([]string{"/usr/local/bin/deployment-fixture"}).
-		WithEnvVariable("VALIDATION_ATTEMPT", attempt).
-		WithEnvVariable("TOKENINSIGHTS_SERVER_PORT", "8767").
-		WithEnvVariable("TOKENINSIGHTS_BOOTSTRAP_USERNAME", "admin").
-		WithEnvVariable("TOKENINSIGHTS_BOOTSTRAP_PASSWORD_FILE", "/data/bootstrap_password").
-		WithExposedPort(9876)
-	sqlite := image.WithEnvVariable("TOKENINSIGHTS_STORAGE_BACKEND", "sqlite").
-		WithEnvVariable("TOKENINSIGHTS_SERVER_DB_PATH", "/data/server.sqlite").AsService()
-	pg := image.WithEnvVariable("TOKENINSIGHTS_STORAGE_BACKEND", "postgres").
-		WithServiceBinding("postgres", postgres).
-		WithEnvVariable("TOKENINSIGHTS_POSTGRES_DSN_FILE", "/data/postgres_dsn").
-		WithEnvVariable("TOKENINSIGHTS_FIXTURE_POSTGRES_DSN", "postgres://postgres:validation-private@postgres:5432/postgres?sslmode=disable").AsService()
-	return withSSHRemote(prepared, attempt).WithServiceBinding("sqlite", sqlite).WithServiceBinding("pg", pg).
-		WithEnvVariable("VALIDATION_ATTEMPT", attempt).
-		WithEnvVariable("TOKENINSIGHTS_TEST_SQLITE_CONTROL_URL", "http://sqlite:9876").
-		WithEnvVariable("TOKENINSIGHTS_TEST_SQLITE_URL", "http://sqlite:8767").
-		WithEnvVariable("TOKENINSIGHTS_TEST_POSTGRES_CONTROL_URL", "http://pg:9876").
-		WithEnvVariable("TOKENINSIGHTS_TEST_POSTGRES_URL", "http://pg:8767")
-}
-
-const postgresImage = "postgres:18@sha256:edb0c08dc33befd0262ab3b5cf1c4f3f8cfd8b09e88c05b45adee29d6761ddb6"
 const goImage = "golang:1.27.3-trixie@sha256:fbb7ae40b62ff8afe31662df570d39b4f5052ac32b90dae8e60d7657a20a74f4"
 const aptSnapshot = "sed -i 's|http://deb.debian.org/debian-security|https://snapshot.debian.org/archive/debian-security/20261031T000000Z|g; s|http://deb.debian.org/debian|https://snapshot.debian.org/archive/debian/20261031T000000Z|g' /etc/apt/sources.list.d/debian.sources; rm -f /etc/apt/apt.conf.d/docker-clean; printf 'Acquire::Check-Valid-Until \"false\";\nBinary::apt::APT::Keep-Downloaded-Packages \"true\";\n' > /etc/apt/apt.conf.d/99validation-snapshot"
 
@@ -124,6 +87,26 @@ func withSSHRemote(prepared *dagger.Container, attempt string) *dagger.Container
 		WithEnvVariable("TOKENINSIGHTS_TEST_SSH_ENDPOINT", "ssh://remote@sshd")
 }
 
+// withPersonalRemote exercises the real CLI gateway across an isolated network.
+// The control service and its temporary credentials belong to this invocation.
+func withPersonalRemote(prepared *dagger.Container, attempt string) *dagger.Container {
+	binaries := prepared.WithEnvVariable("CGO_ENABLED", "0").
+		WithExec([]string{"go", "build", "-o", "/out/tokeninsights", "./packages/cli/cmd/tokeninsights"}).
+		WithExec([]string{"go", "build", "-o", "/out/tokeninsights-backend", "./packages/backend/cmd/tokeninsights-backend"}).
+		WithExec([]string{"go", "build", "-o", "/out/personal-fixture", "./tools/validation/fixtures/personal/main.go"}).Directory("/out")
+	service := dag.Container(dagger.ContainerOpts{Platform: "linux/amd64"}).From(goImage).
+		WithDirectory("/opt/tokeninsights", binaries).
+		WithEnvVariable("VALIDATION_ATTEMPT", attempt).
+		WithEnvVariable("HOME", "/private/home").
+		WithEnvVariable("XDG_DATA_HOME", "/private/data").
+		WithEnvVariable("XDG_CONFIG_HOME", "/private/config").
+		WithExposedPort(8767).WithExposedPort(9876).
+		AsService(dagger.ContainerAsServiceOpts{Args: []string{"/opt/tokeninsights/personal-fixture"}})
+	return prepared.WithServiceBinding("personal", service).
+		WithDirectory("/src/packages/cli/bin", binaries, dagger.ContainerWithDirectoryOpts{Include: []string{"tokeninsights", "tokeninsights-backend"}}).
+		WithEnvVariable("TOKENINSIGHTS_TEST_PERSONAL_CONTROL_URL", "http://personal:9876")
+}
+
 // Check captures check failures as data so the host can export diagnostics.
 func (m *Validation) Check(ctx context.Context, source *dagger.Directory, group string, attempt string,
 	// Run full storage benchmark samples instead of smoke.
@@ -149,24 +132,13 @@ func (m *Validation) Check(ctx context.Context, source *dagger.Directory, group 
 	}
 	if group == "browser" {
 
-		runner = runner.WithWorkdir("/src/packages/cli").WithExec([]string{"go", "build", "-o", "bin/tokeninsights", "./cmd/tokeninsights"}).WithExec([]string{"go", "build", "-o", "bin/tokeninsights-backend", "../backend/cmd/tokeninsights-backend"}).WithExec([]string{"go", "build", "-o", "../server/bin/tokeninsights-server", "../server/cmd/tokeninsights-server"}).WithWorkdir("/src")
+		runner = runner.WithWorkdir("/src/packages/cli").WithExec([]string{"go", "build", "-o", "bin/tokeninsights", "./cmd/tokeninsights"}).WithExec([]string{"go", "build", "-o", "bin/tokeninsights-backend", "../backend/cmd/tokeninsights-backend"}).WithWorkdir("/src")
 	}
 	if _, err := runner.Sync(ctx); err != nil {
 		return preparationFailure(err), nil
 	}
-	if group == "go" || group == "benchmarks" {
-		pg := dag.Container(dagger.ContainerOpts{Platform: "linux/amd64"}).From(postgresImage).WithEnvVariable("POSTGRES_PASSWORD", "validation-private").WithEnvVariable("VALIDATION_ATTEMPT", attempt).WithExposedPort(5432).AsService()
-		runner = runner.WithServiceBinding("postgres", pg).WithEnvVariable("TOKENINSIGHTS_TEST_POSTGRES_DSN", "postgres://postgres:validation-private@postgres:5432/postgres?sslmode=disable")
-	}
 	if group == "deployment" {
-		args, err := source.DockerBuild().DockerHealthcheck().Args(ctx)
-		if err != nil {
-			return preparationFailure(err), nil
-		}
-		if !slices.Equal(args, []string{"/usr/local/bin/tokeninsights-server", "healthcheck"}) {
-			return nil, fmt.Errorf("unexpected image healthcheck: %v", args)
-		}
-		runner = m.Deployment(source, runner, attempt)
+		runner = withPersonalRemote(withSSHRemote(runner, attempt), attempt)
 	}
 	executionGroup := group
 	if storageBenchmarks {

@@ -1,5 +1,12 @@
 # Storage adapter contracts
 
+Superseded where conflicting by [ADR 0027](0027-personal-backend-and-explicit-connections.md).
+Current product: one personal SQLite backend, explicit local/SSH/temporary TCP
+connections. Hosted/accounts/PostgreSQL/sync/plugins and conflicting listener,
+opener or distribution choices below are historical. Applicable accounting,
+privacy, identity, transaction and lifecycle principles remain.
+The original decision below is preserved as history.
+
 Engine details below are historical; [ADR 0012](0012-sqlite-and-postgres-persistence.md) supersedes them with SQLite/PostgreSQL.
 Source-token-bound browser sessions are superseded by [ADR 0016](0016-hosted-user-management.md); the remaining adapter boundaries are retained.
 Status: Accepted. Date: 10 October 2026.

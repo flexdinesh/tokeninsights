@@ -28,7 +28,7 @@ try {
   await page.setViewportSize({ width: 1280, height: 850 })
   await page.getByRole('region', { name: 'Dashboard filters' }).waitFor({ state: 'visible' })
   await page
-    .getByText('No usage saved yet. Restart tokeninsights web to collect usage.', { exact: true })
+    .getByText('No usage saved yet. Use Refresh to collect usage.', { exact: true })
     .waitFor({ state: 'visible' })
   assert.match(await page.title(), /TokenInsights/)
   assert.deepEqual(

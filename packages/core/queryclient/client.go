@@ -50,15 +50,7 @@ type Client struct {
 	direct  Reader
 	base    url.URL
 	http    http.Client
-	token   string
 	dataset string
-}
-
-// WithToken returns a client copy authenticated by a bearer token.
-func (c *Client) WithToken(token string) *Client {
-	copy := *c
-	copy.token = token
-	return &copy
 }
 
 // New accepts an HTTP(S) origin or path prefix without URL credentials or queries.
@@ -297,9 +289,6 @@ func (c *Client) get(ctx context.Context, endpoint string, values url.Values, ta
 		return errors.New("cannot create server query")
 	}
 	req.Header.Set("Accept", "application/json")
-	if c.token != "" {
-		req.Header.Set("Authorization", "Bearer "+c.token)
-	}
 	response, err := c.http.Do(req)
 	if err != nil {
 		if ctx.Err() != nil {
@@ -351,7 +340,7 @@ func (c *Client) get(ctx context.Context, endpoint string, values url.Values, ta
 	return nil
 }
 
-// WithDataset pins reads to one authenticated dataset for every read.
+// WithDataset pins every read to the selected backend's dataset identity.
 func (c *Client) WithDataset(dataset string) *Client {
 	copy := *c
 	copy.dataset = dataset

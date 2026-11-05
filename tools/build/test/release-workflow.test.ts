@@ -72,7 +72,7 @@ void test('publication requires complete unique verified product assets', async 
   writeFileSync(join(dir, first), 'corrupt')
   await assert.rejects(verifyReleaseAssets(dir), /checksum mismatch/)
   rmSync(join(dir, first))
-  await assert.rejects(verifyReleaseAssets(dir), /sixteen product archives/)
+  await assert.rejects(verifyReleaseAssets(dir), /twelve product archives/)
 })
 void test('artifact guard rejects generated files and compiled binary signatures', () => {
   for (const path of [

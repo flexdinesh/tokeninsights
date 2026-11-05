@@ -5,8 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"net/http"
-	"net/http/httptest"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -15,8 +13,6 @@ import (
 	"github.com/flexdinesh/tokeninsights/packages/core/collector"
 	"github.com/flexdinesh/tokeninsights/packages/core/datastore"
 	"github.com/flexdinesh/tokeninsights/packages/core/evidence"
-	"github.com/flexdinesh/tokeninsights/packages/core/ingestionhttp"
-	"github.com/flexdinesh/tokeninsights/packages/core/publication"
 )
 
 func acceptanceStore(t testing.TB) *datastore.Store {
@@ -89,14 +85,6 @@ func TestAcceptanceValidationPreservesRejectionBoundaries(t *testing.T) {
 			if !errors.As(err, &failure) || failure.Stage != "validation" || failure.Code != test.code {
 				t.Fatal("direct rejection", err)
 			}
-			request := httptest.NewRequest(http.MethodPost, ingestionhttp.IngestionPrefix+"batches", bytes.NewReader(test.body))
-			request.Header.Set("Content-Type", "application/json")
-			response := httptest.NewRecorder()
-			ingestionhttp.Handler(store, ingestionhttp.IngestionPrefix, test.protocol).ServeHTTP(response, request)
-			var rejected publication.ErrorResponse
-			if err := json.Unmarshal(response.Body.Bytes(), &rejected); err != nil || response.Code != test.status || rejected.Stage != "validation" || rejected.Code != test.code {
-				t.Fatal("HTTP rejection", response.Code, rejected, err)
-			}
 			after, err := store.Metadata(t.Context())
 			var writes int
 			countErr := store.SQL().QueryRow(`SELECT (SELECT COUNT(*) FROM raw_evidence)+(SELECT COUNT(*) FROM ingestion_batches)+(SELECT COUNT(*) FROM ingestion_items)+(SELECT COUNT(*) FROM ingestion_batch_items)+(SELECT COUNT(*) FROM processing_scopes)+(SELECT COUNT(*) FROM processing_dependencies)`).Scan(&writes)
@@ -114,9 +102,7 @@ func TestAcceptanceValidationPreservesRejectionBoundaries(t *testing.T) {
 		defer release()
 	}
 	direct := collector.DirectDelivery{Receiver: store}
-	remote := httptest.NewServer(ingestionhttp.Handler(store, ingestionhttp.IngestionPrefix, evidence.ProtocolVersion))
-	defer remote.Close()
-	for _, delivery := range []collector.Delivery{direct, collector.HTTPDelivery{URL: remote.URL}} {
+	for _, delivery := range []collector.Delivery{direct} {
 		_, err := delivery.Submit(t.Context(), evidence.ProtocolVersion, []byte(`{`))
 		var failure *collector.StageError
 		if !errors.As(err, &failure) || failure.Stage != "admission" || failure.Code != "busy" {
@@ -126,15 +112,10 @@ func TestAcceptanceValidationPreservesRejectionBoundaries(t *testing.T) {
 }
 
 func TestAcceptancePreservesExactBytesAndLargeNativeNumbers(t *testing.T) {
-	for _, mode := range []string{"Direct", "HTTP"} {
+	for _, mode := range []string{"Direct"} {
 		t.Run(mode, func(t *testing.T) {
 			store := acceptanceStore(t)
 			var delivery collector.Delivery = collector.DirectDelivery{Receiver: store}
-			if mode == "HTTP" {
-				remote := httptest.NewServer(ingestionhttp.Handler(store, ingestionhttp.IngestionPrefix, evidence.ProtocolVersion))
-				defer remote.Close()
-				delivery = collector.HTTPDelivery{URL: remote.URL}
-			}
 			// Unsafe counters are accepted as raw evidence for later diagnostics, not rounded.
 			body := append([]byte("\n "), acceptanceBody(t, store, 1)...)
 			body = bytes.Replace(body, []byte(`"input":100`), []byte(`"input":9007199254740993`), 1)

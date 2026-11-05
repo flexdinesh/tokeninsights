@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -99,6 +100,18 @@ func TestGroupManifestCoverage(t *testing.T) {
 	}
 	for name, group := range manifest.Groups {
 		patterns := append(append([]string{}, manifest.Common...), group.Inputs...)
+		if name == "deployment" {
+			for _, path := range []string{"tools/build/src/test-personal-network.ts", "tools/build/src/dev-lifecycle.ts", "tools/validation/fixtures/personal/main.go"} {
+				if !matches(path, patterns) {
+					t.Errorf("deployment misses %s", path)
+				}
+			}
+		}
+		for _, retired := range []string{"Dockerfile", ".dockerignore", "compose.yaml", "deploy/", "packages/server/", "tools/build/src/postgres-image.ts", "packages/plugin-runtime/"} {
+			if slices.Contains(group.Inputs, retired) {
+				t.Errorf("%s retains retired input %s", name, retired)
+			}
+		}
 		if name == "distribution" && !matches("LICENSE", patterns) {
 			t.Error("distribution misses the license required in every product archive")
 		}

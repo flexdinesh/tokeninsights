@@ -23,29 +23,24 @@ import (
 const SchemaVersion = 1
 const ApplicationID = 1414091604
 const KindPersonal = "personal"
-const KindHosted = "hosted"
 const DatasetID = evidence.PersonalDatasetID
 
 //go:embed schema/data.sql
 var Schema string
 
 type Store struct {
-	database     *sql.DB
-	writeDB      *sql.DB
-	beginWrite   func(context.Context) (*sql.Tx, error)
-	closeStorage func() error
-	checkStorage func(context.Context) error
-	postgres     bool
-	writer       *sync.Mutex
-	worker       *dataengine.Worker
-	admissions   chan struct{}
-	path         string
-	fileInfo     os.FileInfo
-	datasetID    string
-	kind         string
-	root         bool
-	nextDataset  *string
-	selection    *sync.Mutex
+	database    *sql.DB
+	writeDB     *sql.DB
+	writer      *sync.Mutex
+	worker      *dataengine.Worker
+	admissions  chan struct{}
+	path        string
+	fileInfo    os.FileInfo
+	datasetID   string
+	kind        string
+	root        bool
+	nextDataset *string
+	selection   *sync.Mutex
 }
 
 func (s *Store) SQL() *sql.DB { return s.database }
@@ -53,25 +48,13 @@ func (s *Store) Close() error {
 	if !s.root {
 		return nil
 	}
-	if s.closeStorage != nil {
-		return s.closeStorage()
-	}
 	return errors.Join(s.writeDB.Close(), s.database.Close())
 }
 func (s *Store) BeginRead(ctx context.Context) (*sql.Tx, error) {
 	if err := s.checkFile(); err != nil {
 		return nil, err
 	}
-	if s.checkStorage != nil {
-		if err := s.checkStorage(ctx); err != nil {
-			return nil, err
-		}
-	}
-	options := &sql.TxOptions{ReadOnly: true}
-	if s.postgres {
-		options.Isolation = sql.LevelRepeatableRead
-	}
-	return s.database.BeginTx(ctx, options)
+	return s.database.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
 }
 
 type metadataReader interface {
@@ -100,7 +83,7 @@ func ReadMetadataForDataset(ctx context.Context, reader metadataReader, datasetI
  COUNT(*) FILTER (WHERE g.state='active'),MAX(g.processor_version)
  FROM ingestion_metadata m LEFT JOIN analytics_generations g ON g.dataset_id=m.dataset_id
  WHERE m.dataset_id=? GROUP BY m.dataset_id,m.role,m.schema_version,m.database_id,m.server_kind,m.generation,m.target_generation,m.input_revision,m.revision,m.last_ingestion_at_ms,m.created_at_ms`), datasetID).Scan(&role, &version, &m.DatabaseID, &m.DatasetID, &m.Kind, &m.Generation, &m.TargetGeneration, &m.InputRevision, &m.Revision, &m.LastIngestionAtMs, &m.CreatedAtMs, &activeState, &targetState, &activeCount, &newestProcessor)
-	if err == nil && (role != "server-data" || version != SchemaVersion || m.DatasetID == "" || (m.Kind != KindPersonal && m.Kind != KindHosted) || m.DatabaseID == "" || m.Generation < 1 || m.TargetGeneration < m.Generation || m.TargetGeneration > publication.SafeInteger || m.InputRevision < 0 || m.InputRevision > publication.SafeInteger || m.Revision < 0 || m.Revision > publication.SafeInteger) {
+	if err == nil && (role != "server-data" || version != SchemaVersion || m.DatasetID == "" || m.Kind != KindPersonal || m.DatabaseID == "" || m.Generation < 1 || m.TargetGeneration < m.Generation || m.TargetGeneration > publication.SafeInteger || m.InputRevision < 0 || m.InputRevision > publication.SafeInteger || m.Revision < 0 || m.Revision > publication.SafeInteger) {
 		err = errors.New("incompatible_server_data")
 	}
 	if err == nil {
@@ -147,7 +130,7 @@ func (s *Store) WriteTransaction(ctx context.Context, operation func(*sql.Tx) er
 	}
 	s.writer.Lock()
 	defer s.writer.Unlock()
-	tx, err := s.beginWrite(ctx)
+	tx, err := s.writeDB.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
@@ -157,11 +140,8 @@ func (s *Store) WriteTransaction(ctx context.Context, operation func(*sql.Tx) er
 	}
 	return tx.Commit()
 }
-func (s *Store) CreateDataset(ctx context.Context, datasetID string) error {
-	return s.WriteTransaction(ctx, func(tx *sql.Tx) error { return s.CreateDatasetInTx(ctx, tx, datasetID) })
-}
-func (s *Store) CreateDatasetInTx(ctx context.Context, tx *sql.Tx, datasetID string) error {
-	if datasetID == "" || (s.kind == KindPersonal && datasetID != DatasetID) {
+func (s *Store) createDatasetInTx(ctx context.Context, tx *sql.Tx, datasetID string) error {
+	if datasetID != DatasetID {
 		return errors.New("invalid_dataset")
 	}
 	var databaseID string
@@ -237,7 +217,7 @@ func OpenWithOptions(ctx context.Context, path string, options Options) (*Store,
 	if kind == "" {
 		kind = KindPersonal
 	}
-	if kind != KindPersonal && kind != KindHosted {
+	if kind != KindPersonal {
 		return nil, errors.New("invalid_server_kind")
 	}
 
@@ -309,7 +289,6 @@ func OpenWithOptions(ctx context.Context, path string, options Options) (*Store,
 		_ = database.Close()
 		return nil, err
 	}
-	store.beginWrite = func(ctx context.Context) (*sql.Tx, error) { return store.writeDB.BeginTx(ctx, nil) }
 	store.fileInfo, err = os.Stat(abs)
 	if err != nil {
 		_ = store.Close()
@@ -338,10 +317,8 @@ func (s *Store) initialize(ctx context.Context) error {
 	if _, err := tx.ExecContext(ctx, sqlutil.Bind("INSERT INTO ingestion_instance VALUES(1,'server-data',?,?,?,?)"), SchemaVersion, id, s.kind, now); err != nil {
 		return err
 	}
-	if s.kind == KindPersonal {
-		if err := s.CreateDatasetInTx(ctx, tx, DatasetID); err != nil {
-			return err
-		}
+	if err := s.createDatasetInTx(ctx, tx, DatasetID); err != nil {
+		return err
 	}
 	return tx.Commit()
 }
@@ -398,7 +375,7 @@ func (s *Store) Reprocess(ctx context.Context) (int64, error) {
 	}
 	s.writer.Lock()
 	defer s.writer.Unlock()
-	tx, err := s.beginWrite(ctx)
+	tx, err := s.writeDB.BeginTx(ctx, nil)
 	if err != nil {
 		return 0, err
 	}
@@ -487,7 +464,7 @@ func (s *Store) Accept(ctx context.Context, protocol int, body []byte) (evidence
 	}
 	s.writer.Lock()
 	defer s.writer.Unlock()
-	tx, err := s.beginWrite(ctx)
+	tx, err := s.writeDB.BeginTx(ctx, nil)
 	if err != nil {
 		return evidence.Response{}, err
 	}
@@ -831,7 +808,7 @@ func (s *Store) PublishProjection(ctx context.Context, work dataengine.Work, pro
 	s = s.ForDataset(work.DatasetID)
 	s.writer.Lock()
 	defer s.writer.Unlock()
-	tx, err := s.beginWrite(ctx)
+	tx, err := s.writeDB.BeginTx(ctx, nil)
 	if err != nil {
 		return false, err
 	}

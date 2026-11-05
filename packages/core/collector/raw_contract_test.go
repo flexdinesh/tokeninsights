@@ -2,10 +2,8 @@ package collector_test
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
-	"io"
-	"net/http"
-	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -14,7 +12,6 @@ import (
 	"github.com/flexdinesh/tokeninsights/packages/core/collector"
 	"github.com/flexdinesh/tokeninsights/packages/core/datastore"
 	"github.com/flexdinesh/tokeninsights/packages/core/evidence"
-	"github.com/flexdinesh/tokeninsights/packages/core/ingestionhttp"
 	"github.com/flexdinesh/tokeninsights/packages/core/pipeline"
 )
 
@@ -76,30 +73,12 @@ func TestRawCollectorNativeGoldenRebuildAndLostAcknowledgement(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = store.Close() }()
-	lose := true
-	handler := ingestionhttp.Handler(store, ingestionhttp.IngestionPrefix, evidence.ProtocolVersion)
-	httpServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodPost && r.URL.Path == ingestionhttp.IngestionPrefix+"batches" && lose {
-			lose = false
-			body, err := io.ReadAll(r.Body)
-			if err != nil {
-				t.Error(err)
-				return
-			}
-			if _, err := store.Accept(r.Context(), evidence.ProtocolVersion, body); err != nil {
-				t.Error(err)
-			}
-			http.Error(w, "lost acknowledgement", http.StatusServiceUnavailable)
-			return
-		}
-		handler.ServeHTTP(w, r)
-	}))
-	defer httpServer.Close()
+	delivery := &lostDirectReply{Delivery: collector.DirectDelivery{Receiver: store}}
 	metadata, err := store.Metadata(t.Context())
 	if err != nil {
 		t.Fatal(err)
 	}
-	options := collector.Options{CollectorDBPath: filepath.Join(root, "collector.sqlite"), Destination: &collector.Destination{Identity: httpServer.URL, DatabaseID: metadata.DatabaseID, DatasetID: metadata.DatasetID, Transport: collector.HTTPDelivery{URL: httpServer.URL}}, SyncOptions: pipeline.SyncOptions{SourceDir: acceptanceSources(t), Harnesses: pipeline.SupportedHarnesses}}
+	options := collector.Options{CollectorDBPath: filepath.Join(root, "collector.sqlite"), ServerDBPath: filepath.Join(root, "server.sqlite"), Destination: &collector.Destination{Identity: "http://local", Local: true, DatabaseID: metadata.DatabaseID, DatasetID: metadata.DatasetID, Transport: delivery}, SyncOptions: pipeline.SyncOptions{SourceDir: acceptanceSources(t), Harnesses: pipeline.SupportedHarnesses}}
 	first, err := collector.Run(t.Context(), options)
 	if err == nil || first.CollectionError != nil || !first.PendingKnown || first.Pending == 0 {
 		t.Fatalf("lost receipt unexpectedly acknowledged %+v %v", first, err)
@@ -187,27 +166,13 @@ func TestRawCollectorKeepsPrivateContentOutOfTransportAndStorage(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = store.Close() }()
-	handler := ingestionhttp.Handler(store, ingestionhttp.IngestionPrefix, evidence.ProtocolVersion)
-	remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodPost {
-			body, err := io.ReadAll(r.Body)
-			if err != nil {
-				t.Error(err)
-				return
-			}
-			assertPrivate("HTTP request", body)
-			r.Body = io.NopCloser(bytes.NewReader(body))
-		}
-		handler.ServeHTTP(w, r)
-	}))
-	defer remote.Close()
 	caps, err := store.RawCapabilities(t.Context())
 	if err != nil {
 		t.Fatal(err)
 	}
 	collectorPath := filepath.Join(root, "collector.sqlite")
-	options := collector.Options{CollectorDBPath: collectorPath,
-		Destination: &collector.Destination{Identity: remote.URL, DatabaseID: caps.DatabaseID, DatasetID: caps.DatasetID, Transport: collector.HTTPDelivery{URL: remote.URL}},
+	options := collector.Options{CollectorDBPath: collectorPath, ServerDBPath: path,
+		Destination: &collector.Destination{Identity: "http://local", Local: true, DatabaseID: caps.DatabaseID, DatasetID: caps.DatasetID, Transport: inspectingDelivery{Delivery: collector.DirectDelivery{Receiver: store}, inspect: func(body []byte) { assertPrivate("direct request", body) }}},
 		SyncOptions: pipeline.SyncOptions{SourceDir: sources, Harnesses: pipeline.SupportedHarnesses}}
 	if _, err := collector.Run(t.Context(), options); err != nil {
 		t.Fatal(err)
@@ -224,4 +189,15 @@ func TestRawCollectorKeepsPrivateContentOutOfTransportAndStorage(t *testing.T) {
 		}
 		assertPrivate(filepath.Base(file), body)
 	}
+}
+
+// inspectingDelivery observes the exact saved request at the direct acceptance boundary.
+type inspectingDelivery struct {
+	collector.Delivery
+	inspect func([]byte)
+}
+
+func (d inspectingDelivery) Submit(ctx context.Context, protocol int, body []byte) ([]byte, error) {
+	d.inspect(body)
+	return d.Delivery.Submit(ctx, protocol, body)
 }

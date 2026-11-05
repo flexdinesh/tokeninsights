@@ -33,12 +33,18 @@ type collectionFinishedMsg struct{ result collectionResult }
 type refreshAnimationTickMsg struct{}
 
 func (m interactiveModel) startCollection() interactiveModel {
+	return m.collect(m.options.fullRefresh, m.options.sourceDir)
+}
+
+func (m interactiveModel) collect(fullRefresh bool, sourceDir string) interactiveModel {
+	m.refresh.result, m.refresh.attempt, m.refresh.statusErr, m.refresh.queryErr = nil, nil, nil, nil
+	m.refresh.startupAttemptID = ""
 	m.refresh.requested, m.refresh.collectionPending = true, true
 	m.refreshAnimating = true
 	done := make(chan collectionResult, 1)
 	m.collectionDone = done
 	go func() {
-		result, err := m.options.local.Collect(m.ctx, m.options.fullRefresh, m.options.sourceDir)
+		result, err := m.options.local.Collect(m.ctx, fullRefresh, sourceDir)
 		done <- collectionResult{Result: result, Err: err}
 		close(done)
 	}()
@@ -172,7 +178,7 @@ func (m interactiveModel) refreshLine() string {
 			compact = fmt.Sprintf("Processing · %d accepted · %d pending", attempt.AcknowledgedEntries, attempt.Pending)
 		}
 	case m.collectionFailed():
-		text, compact, failed = "Refresh incomplete · showing saved usage · restart tokeninsights tui", "Refresh incomplete · saved usage", true
+		text, compact, failed = "Refresh incomplete · showing saved usage · R Retry", "Refresh incomplete · saved usage", true
 		if m.refresh.result != nil && m.refresh.result.Result.Quarantined > 0 {
 			text = "Refresh incomplete · restart: tokeninsights tui --full-refresh"
 		}
@@ -243,4 +249,15 @@ func (m interactiveModel) restoreRowFocus(key string) interactiveModel {
 		}
 	}
 	return m
+}
+
+func (m interactiveModel) collectionWaitCmd() tea.Cmd {
+	return func() tea.Msg {
+		select {
+		case <-m.ctx.Done():
+			return nil
+		case result := <-m.collectionDone:
+			return collectionFinishedMsg{result: result}
+		}
+	}
 }

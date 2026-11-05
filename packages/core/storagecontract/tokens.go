@@ -26,8 +26,9 @@ type Dataset struct {
 	Reprocess  func(context.Context) (int64, error)
 }
 
-// Reopen closes the current fixture and opens the same durable storage. It must
-// register cleanup for each opened resource, including on test failure.
+// Fixture IDs select independent personal stores, each with dataset default.
+// Reopen closes and reopens those same durable stores. Fixtures register cleanup
+// for each opened resource, including on test failure.
 type Tokens struct {
 	Dataset       func(string) Dataset
 	EnsureDataset func(context.Context, string) error
@@ -201,6 +202,19 @@ func acceptance(t *testing.T, store Tokens) {
 	before, err := a.Queries.Status(t.Context())
 	if err != nil {
 		t.Fatal(err)
+	}
+	foreign := initial
+	foreign.DatasetID = "foreign"
+	foreign.BatchID = "foreign"
+	foreignBody, err := json.Marshal(foreign)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.Receiver.Accept(t.Context(), evidence.ProtocolVersion, foreignBody); err == nil {
+		t.Fatal("foreign dataset accepted into personal history")
+	}
+	if _, err := a.Receiver.Receipt(t.Context(), "batch", "foreign"); !errors.Is(err, evidence.ErrReceiptNotFound) {
+		t.Fatal("foreign dataset retained receipt", err)
 	}
 	conflict := batch(t, a, "batch", record("different"))
 	if _, err := a.Receiver.Accept(t.Context(), evidence.ProtocolVersion, conflict); err == nil {

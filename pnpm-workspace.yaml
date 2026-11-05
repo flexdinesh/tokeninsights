@@ -4,25 +4,14 @@ packages:
   - 'packages/dashboard'
   - 'packages/contracts'
   - 'packages/desktop-electron'
-  - 'packages/plugin-pi'
-  - 'packages/plugin-opencode'
-  - 'packages/plugin-runtime'
   - 'tools/build'
   - 'docs-website'
 injectWorkspacePackages: true
 allowBuilds:
-  '@google/genai': true
   es5-ext: false
   esbuild: true
   electron: true
-  koffi: true
-  msgpackr-extract: true
   msw: true
-  protobufjs: true
   vue-demi: false
-# Supply-chain policy applied everywhere (local, CI, Docker): packages must be
-# 3 days old, except harness SDKs tracked as soon as they ship.
+# Dependencies must be at least 3 days old.
 minimumReleaseAge: 4320
-minimumReleaseAgeExclude:
-  - '@opencode/*'
-  - '@earendil-works/*'

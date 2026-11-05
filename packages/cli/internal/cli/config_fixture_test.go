@@ -47,20 +47,5 @@ func localConfigForTest(t *testing.T, settings config.LocalSettings) string {
 		"in-process.host":           settings.Host,
 		"in-process.port":           strconv.Itoa(settings.Port),
 	}
-	if settings.AppDBPath != "" {
-		values["in-process.app-db-path"] = settings.AppDBPath
-	}
-	return writeConfigForTest(t, values)
-}
-
-func syncConfigForTest(t *testing.T, settings config.SyncSettings) string {
-	t.Helper()
-	values := map[string]string{"collector.db-path": settings.CollectorDBPath}
-	if settings.ServerURL != "" {
-		values["distributed.server-url"] = settings.ServerURL
-	}
-	if settings.ServerToken != "" {
-		values["distributed.server-token"] = settings.ServerToken
-	}
 	return writeConfigForTest(t, values)
 }

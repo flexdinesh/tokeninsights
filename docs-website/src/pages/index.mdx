@@ -1,19 +1,20 @@
 # TokenInsights
 
-Track token usage across OpenCode, Pi, Codex, and Claude Code from one dashboard.
-TokenInsights reads usage metadata from your local coding harnesses and lets you
-explore it in a terminal or browser.
+Track token usage across OpenCode, Pi, Codex, and Claude Code in MyGo, Electron,
+a browser or a terminal. One personal backend reads durable usage metadata and
+keeps SQLite history on the machine where the harnesses run.
 
 ## Start here
 
-1. [Install TokenInsights](/install) with the shell installer.
-2. [Open a local dashboard](/local-usage) to inspect your usage.
-3. [Understand what is collected](/privacy) and how your data stays local.
+1. [Install MyGo](/install) for the default desktop, or choose CLI-only/Electron.
+2. [Open a dashboard](/getting-started) and explore saved usage.
+3. [Understand collected metadata](/privacy).
+4. [Connect to another machine](/remote) with explicit SSH or temporary TCP.
 
-## What you can explore
+Compare usage by time, repository, model, provider, harness and session. Inspect
+prompt-side session context load alongside token totals. Confirmed usage and
+ambiguous excluded usage stay separate.
 
-Compare usage by model, provider, harness, and session. Use date ranges to focus
-on a period, and inspect session context load alongside token totals.
-
-Local dashboards collect and process usage in the background while displaying
-saved data. You do not need to start a separate server or daemon.
+Launch captures usage while saved history stays readable. Explicit **Refresh**
+captures again; filters and reload only query. There is no periodic scanning,
+account setup or separately managed server.

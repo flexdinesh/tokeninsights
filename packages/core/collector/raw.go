@@ -93,7 +93,7 @@ func publishRaw(ctx context.Context, options Options, result *Result) error {
 		var saved *rawcollectorstore.SavedBatch
 		err := withPublicationLock(ctx, path, func() error {
 			var err error
-			destination, err = store.ResolveDestination(ctx, identity, capabilities.DatabaseID, capabilities.DatasetID, local)
+			destination, err = store.ResolveDestination(ctx, identity, capabilities.DatabaseID, capabilities.DatasetID)
 			if err != nil {
 				return failure("binding", "server_database_changed", err)
 			}

@@ -1,17 +1,10 @@
 import type { z } from 'zod'
 import { errorSchema } from '@tokeninsights/contracts'
 
-const datasetHeader = 'X-TokenInsights-Dataset-ID'
-
-import { AuthenticationRequired } from '@tokeninsights/contracts'
-export { AuthenticationRequired } from '@tokeninsights/contracts'
-
 export type SendOptions = {
-  method?: 'GET' | 'POST' | 'PUT' | 'DELETE'
+  method?: 'GET' | 'POST'
   body?: unknown
   signal?: AbortSignal
-  // Dataset the caller expects; 409 then means the session now serves another user.
-  datasetId?: string
   // Prefix for the status-based message when the server sends no error body.
   failure?: string
 }
@@ -27,12 +20,11 @@ async function errorMessage(response: Response, failure: string): Promise<string
   return parsed.success ? parsed.data.message : `${failure} (${response.status})`
 }
 
-// Sends a same-origin API request and rejects session loss and server errors.
+// Sends a same-origin API request and rejects transport and server failures.
 export async function send(path: string, options: SendOptions = {}): Promise<Response> {
-  const { method = 'GET', body, signal, datasetId, failure = 'Request failed' } = options
+  const { method = 'GET', body, signal, failure = 'Request failed' } = options
   const headers: Record<string, string> = {}
   if (body !== undefined) headers['Content-Type'] = 'application/json'
-  if (datasetId !== undefined) headers[datasetHeader] = datasetId
   const response = await fetch(path, {
     signal,
     method,
@@ -40,8 +32,6 @@ export async function send(path: string, options: SendOptions = {}): Promise<Res
     headers: Object.keys(headers).length === 0 ? undefined : headers,
     body: body === undefined ? undefined : JSON.stringify(body),
   })
-  if (response.status === 401 || (datasetId !== undefined && response.status === 409))
-    throw new AuthenticationRequired()
   if (!response.ok) throw new Error(await errorMessage(response, failure))
   return response
 }
@@ -60,7 +50,6 @@ export async function request<T>(
   path: string,
   schema: z.ZodType<T>,
   signal?: AbortSignal,
-  expectedDatasetId?: string,
 ): Promise<T> {
-  return parseBody(await send(path, { signal, datasetId: expectedDatasetId }), schema)
+  return parseBody(await send(path, { signal }), schema)
 }

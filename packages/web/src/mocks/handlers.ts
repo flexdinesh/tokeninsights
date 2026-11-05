@@ -1,9 +1,11 @@
 import { delay, http, HttpResponse } from 'msw'
-import { mockBootstrap, mockDashboard, mockFacets, mockSyncStatus } from './data'
+import { mockBootstrap, mockConnection, mockDashboard, mockFacets, mockSyncStatus } from './data'
 
 const revision = 1
 
 export const handlers = [
+  http.get('*/api/viewer/connection', () => HttpResponse.json(mockConnection)),
+  http.post('*/api/viewer/refresh', () => new HttpResponse(null, { status: 202 })),
   http.get('*/api/v2/instance', async () => {
     await delay(100)
     return HttpResponse.json(mockBootstrap)

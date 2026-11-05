@@ -34,8 +34,7 @@ func (s *Store) checkFile() error {
 	return nil
 }
 
-// Ready verifies the initialized owner contract without assuming a default
-// dataset exists. Hosted stores are ready before the first user is provisioned.
+// Ready verifies the initialized personal storage owner contract.
 func (s *Store) Ready(ctx context.Context) error {
 	tx, err := s.BeginRead(ctx)
 	if err != nil {
@@ -55,7 +54,7 @@ func (s *Store) Ready(ctx context.Context) error {
 
 // InspectKind validates the current storage contract read-only.
 func InspectKind(ctx context.Context, path, kind string) error {
-	if kind != KindPersonal && kind != KindHosted {
+	if kind != KindPersonal {
 		return errors.New("invalid_server_kind")
 	}
 	if _, err := os.Stat(path); errors.Is(err, os.ErrNotExist) {

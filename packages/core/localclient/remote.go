@@ -16,6 +16,7 @@ type RemoteOptions struct {
 	Capture, FullRefresh bool
 	// SourceDir is interpreted on the remote machine and must be absolute.
 	SourceDir string
+	Token     string
 }
 
 var ErrRelativeRemoteSource = errors.New("remote --source-dir must be an absolute path on the remote machine")
@@ -34,6 +35,7 @@ func ConnectRemote(parent context.Context, dial Dialer, options RemoteOptions) (
 	startup, cancel := context.WithTimeout(parent, StartupTimeout)
 	defer cancel()
 	s := newSession(dial, true)
+	s.token = options.Token
 	descriptor, err := s.descriptor(startup)
 	if err != nil {
 		s.transport.CloseIdleConnections()

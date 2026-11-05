@@ -55,12 +55,5 @@ it('accepts unknown capabilities without enabling known features', async () => {
   const server = bootstrapSchema.parse({ ...mockBootstrap, capabilities: ['future-feature'] })
   expect(hasCapability(server, 'usage')).toBe(false)
   expect(showsCollectorProgress(server)).toBe(false)
-  expect(
-    showsCollectorProgress({
-      ...server,
-      serverKind: 'hosted',
-      capabilities: ['collector-progress'],
-    }),
-  ).toBe(false)
   expect(showsCollectorProgress({ ...server, capabilities: ['collector-progress'] })).toBe(true)
 })

@@ -53,7 +53,7 @@ func TestCommandAliasesResolveToCanonicalCommand(t *testing.T) {
 func TestRootRejectsViewerFlags(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "missing.sqlite")
 	err := Run(context.Background(), []string{"--db-path", path, "--no-sync"}, io.Discard, io.Discard, time.Now())
-	if !errors.Is(err, ErrUsage) || !strings.Contains(err.Error(), "tokeninsights tui") {
+	if !errors.Is(err, ErrUsage) {
 		t.Fatalf("migration error: %v", err)
 	}
 	if _, err := os.Stat(path); !errors.Is(err, os.ErrNotExist) {
@@ -65,7 +65,7 @@ func TestCommandHelpSucceedsWithoutDatabaseSideEffects(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "missing.sqlite")
 	t.Setenv("TOKENINSIGHTS_COLLECTOR_DB_PATH", path)
 	t.Setenv("TOKENINSIGHTS_SERVER_DB_PATH", path)
-	for _, command := range []string{"tui", "web", "sync", "browse"} {
+	for _, command := range []string{"tui", "web", "remote"} {
 		if err := Run(context.Background(), []string{command, "--help"}, io.Discard, io.Discard, time.Now()); err != nil {
 			t.Errorf("%s help: %v", command, err)
 		}

@@ -15,9 +15,9 @@ pnpm = "12.15.0"
 [env]
 node = "ignored"
 `,
-  dockerfile: `FROM node:26.12.1-trixie-slim@sha256:abc AS web
+  validation: `From("node:26.12.1-trixie-slim@sha256:abc AS web
 RUN npm install --global pnpm@12.15.0
-FROM golang:1.27.3-trixie@sha256:def AS build
+const goImage = "golang:1.27.3-trixie@sha256:def AS build
 `,
   packageJson: '{"packageManager":"pnpm@12.15.0+sha512.abc"}',
   goMod: 'module example\n\ngo 1.27.0\n\ntoolchain go1.27.3\n',
@@ -38,7 +38,7 @@ void test('each copy that drifts from mise.toml is reported', () => {
   assert.deepEqual(
     toolchainMismatches({
       ...files,
-      dockerfile: files.dockerfile
+      validation: files.validation
         .replace('golang:1.27.3', 'golang:1.27.2')
         .replace('node:26.12.1', 'node:26.12.0')
         .replace('pnpm@12.15.0', 'pnpm@12.14.0'),
@@ -46,9 +46,9 @@ void test('each copy that drifts from mise.toml is reported', () => {
       goMod: 'module example\n\ngo 1.27.0\n\ntoolchain go1.27.2\n',
     }),
     [
-      'Dockerfile golang image: 1.27.2 differs from mise.toml 1.27.3',
-      'Dockerfile node image: 26.12.0 differs from mise.toml 26.12.1',
-      'Dockerfile pnpm install: 12.14.0 differs from mise.toml 12.15.0',
+      'validation Go image: 1.27.2 differs from mise.toml 1.27.3',
+      'validation Node image: 26.12.0 differs from mise.toml 26.12.1',
+      'validation pnpm install: 12.14.0 differs from mise.toml 12.15.0',
       'package.json packageManager: 12.14.0 differs from mise.toml 12.15.0',
       'go.mod toolchain: 1.27.2 differs from mise.toml 1.27.3',
     ],

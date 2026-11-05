@@ -59,7 +59,7 @@ func TestDirectCompleteQueryMatchesHTTPPagination(t *testing.T) {
 	}
 	direct := application.NewQueries(sqlanalytics.Queries{Store: store}, policy, "instance", "")
 	local := queryclient.NewDirect(direct)
-	httpServer := httptest.NewServer(server.NewDataHandler(t.Context(), sqlanalytics.Source{Store: store}, nil, "127.0.0.1", "instance", false))
+	httpServer := httptest.NewServer(server.NewDataHandler(t.Context(), sqlanalytics.Source{Store: store}, nil, "127.0.0.1", "instance"))
 	t.Cleanup(httpServer.Close)
 	remote, err := queryclient.New(httpServer.URL, httpServer.Client())
 	if err != nil {

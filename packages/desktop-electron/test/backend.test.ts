@@ -11,19 +11,20 @@ import { localBackendDescriptorSchema } from '@tokeninsights/contracts/local'
 const descriptor = {
   url: 'http://127.0.0.1:12345/',
   instanceId: 'test-instance',
-  protocolVersion: 2,
+  protocolVersion: 3,
 }
 
-void test('URL handoffs attach the requested owner instead of configured default storage', () => {
+const launch = 'tokeninsights-electron://launch?id=0123456789abcdef0123456789abcdef'
+void test('handoffs contain an opaque rendezvous ID and never a target or secret', () => {
   assert.deepEqual(backendArguments(), ['connect', '--json'])
-  assert.deepEqual(backendArguments('http://127.0.0.1:43210/models?period=week'), [
-    'connect',
-    '--json',
-    '--url',
-    'http://127.0.0.1:43210',
-  ])
-  assert.throws(() => backendArguments('https://usage.example.com/'), /local dashboard/)
-  assert.throws(() => backendArguments('http://user:secret@127.0.0.1:43210/'), /local dashboard/)
+  assert.deepEqual(backendArguments(launch), ['connect', '--json', '--launch', launch])
+  for (const value of [
+    'http://127.0.0.1:1234/',
+    'ssh://host',
+    'tokeninsights-electron://launch?id=bad&token=secret',
+  ]) {
+    assert.throws(() => backendArguments(value), /Invalid desktop launch link/)
+  }
 })
 
 void test('backend descriptor rejects remote origins, credentials and incompatible protocols', () => {
@@ -37,7 +38,7 @@ void test('backend descriptor rejects remote origins, credentials and incompatib
   ]) {
     assert.equal(localBackendDescriptorSchema.safeParse({ ...descriptor, url }).success, false)
   }
-  for (const protocolVersion of [1, 3]) {
+  for (const protocolVersion of [1, 2, 4]) {
     assert.equal(
       localBackendDescriptorSchema.safeParse({ ...descriptor, protocolVersion }).success,
       false,
@@ -87,6 +88,39 @@ void test('connector rejects malformed startup output and early exits', async ()
   )
 })
 
+void test(
+  'desktop acknowledges a live connector once, while preserving its lease',
+  { timeout: 5_000 },
+  async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'tokeninsights-electron-ack-'))
+    const marker = join(directory, 'ack')
+    const received = Promise.withResolvers<void>()
+    const watcher = watch(directory, (_event, filename) => {
+      if (filename === 'ack') received.resolve()
+    })
+    try {
+      const script = `import { writeFileSync } from 'node:fs'; process.stdin.on('data', (data) => writeFileSync(${JSON.stringify(marker)}, data)); console.log(${JSON.stringify(JSON.stringify(descriptor))})`
+      const connection = await connectBackend(
+        process.execPath,
+        () => assert.fail('acknowledgement closed the connector'),
+        ['--input-type=module', '--eval', script],
+      )
+      try {
+        await assert.rejects(readFile(marker), { code: 'ENOENT' })
+        connection.acknowledge()
+        connection.acknowledge()
+        await received.promise
+        assert.equal(await readFile(marker, 'utf8'), 'ready\n')
+      } finally {
+        connection.close()
+      }
+    } finally {
+      watcher.close()
+      await rm(directory, { recursive: true, force: true })
+    }
+  },
+)
+
 void test('unexpected connector exit notifies the window owner', async () => {
   const exited = Promise.withResolvers<void>()
   const connection = await connectBackend(process.execPath, () => exited.resolve(), [
@@ -117,8 +151,5 @@ void test('links stay within the backend origin or open HTTP(S) in the browser',
     undefined,
   )
   assert.equal(launchURL('tokeninsights-electron://user@open?url=https://example.com'), undefined)
-  assert.equal(
-    launchURL('tokeninsights-electron://open?url=https%3A%2F%2Fexample.com'),
-    'https://example.com/',
-  )
+  assert.equal(launchURL(launch), launch)
 })

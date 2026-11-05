@@ -12,7 +12,6 @@ import (
 
 	"github.com/flexdinesh/tokeninsights/packages/core/config"
 	"github.com/flexdinesh/tokeninsights/packages/core/localruntime"
-	"github.com/flexdinesh/tokeninsights/packages/core/syncjob"
 )
 
 type commandInvocation struct {
@@ -37,8 +36,8 @@ var commands = []commandSpec{
 	versionCommand,
 	tuiCommand,
 	webCommand,
-	browseCommand,
-	syncCommand,
+	connectCommand,
+	remoteCommand,
 	dataCommand,
 	configCommand,
 }
@@ -51,9 +50,6 @@ func Run(ctx context.Context, args []string, stdout io.Writer, stderr io.Writer,
 	if len(args) == 7 && args[0] == "__capture-dev-data" && args[1] == "--collector-db-path" && args[3] == "--server-db-path" && args[5] == "--source-dir" {
 		return localruntime.CaptureFixture(ctx, args[2], args[4], args[6])
 	}
-	if len(args) == 1 && args[0] == "__sync-run" {
-		return syncjob.Child(ctx)
-	}
 	var selectedPath string
 	var err error
 	args, selectedPath, err = configFileArgument(args)
@@ -64,20 +60,24 @@ func Run(ctx context.Context, args []string, stdout io.Writer, stderr io.Writer,
 	if err != nil {
 		return err
 	}
-	// Hidden remote end of `--endpoint ssh://`; stdout carries protocol bytes.
+	// Hidden remote end of `--connection ssh://`; stdout carries protocol bytes.
 	if len(args) == 2 && args[0] == "system" && args[1] == "dial-stdio" {
 		return runDialStdio(invocation)
 	}
 	if len(args) > 0 {
 		if _, ok := commandByName(args[0]); !ok {
 			if strings.HasPrefix(args[0], "-") {
-				return fmt.Errorf("choose tokeninsights tui or tokeninsights web\n%w", ErrUsage)
+				err := runDesktop(invocation, args, nil)
+				if errors.Is(err, flag.ErrHelp) {
+					return nil
+				}
+				return err
 			}
-			return fmt.Errorf("unknown command %q\n%w", args[0], ErrUsage)
+			return fmt.Errorf("unknown command\n%w", ErrUsage)
 		}
 	}
 	if len(args) == 0 {
-		return runHelp(invocation, nil)
+		return runDesktop(invocation, nil, nil)
 	}
 
 	if command, ok := commandByName(args[0]); ok {
@@ -90,7 +90,7 @@ func Run(ctx context.Context, args []string, stdout io.Writer, stderr io.Writer,
 	if strings.HasPrefix(args[0], "-") {
 		return fmt.Errorf("choose tokeninsights tui or tokeninsights web\n%w", ErrUsage)
 	}
-	return fmt.Errorf("unknown command %q\n%w", args[0], ErrUsage)
+	return fmt.Errorf("unknown command\n%w", ErrUsage)
 }
 
 func commandByName(name string) (commandSpec, bool) {
@@ -107,7 +107,7 @@ func commandByName(name string) (commandSpec, bool) {
 	return commandSpec{}, false
 }
 
-var ErrUsage = errors.New("usage: tokeninsights <sync|browse|tui|web|data|config> [options]")
+var ErrUsage = errors.New("usage: tokeninsights [connect URI|remote|tui|web|data|config] [options]")
 
 func configFileArgument(args []string) ([]string, string, error) {
 	result := make([]string, 0, len(args))
@@ -163,32 +163,4 @@ func (invocation commandInvocation) resolveLocalOverrides(overrides config.Overr
 		return settings, fmt.Errorf("configuration: %w", err)
 	}
 	return settings, nil
-}
-
-func (invocation commandInvocation) resolveSync(flags *flag.FlagSet) (config.SyncSettings, error) {
-	overrides, err := config.FlagOverrides(flags)
-	if err != nil {
-		return config.SyncSettings{}, err
-	}
-	settings, err := config.ResolveSync(invocation.configPath, true, overrides)
-	if err != nil {
-		return settings, fmt.Errorf("configuration: %w", err)
-	}
-	return settings, nil
-}
-
-func (invocation commandInvocation) resolveBrowse(flags *flag.FlagSet) (config.BrowseSettings, error) {
-	overrides, err := config.FlagOverrides(flags)
-	if err != nil {
-		return config.BrowseSettings{}, err
-	}
-	settings, err := config.ResolveBrowse(invocation.configPath, true, overrides)
-	if err != nil {
-		return settings, fmt.Errorf("configuration: %w", err)
-	}
-	return settings, nil
-}
-
-func (invocation commandInvocation) syncDefaults() config.SyncSettings {
-	return config.SyncSettings{CollectorDBPath: config.EnvironmentDefaults().CollectorDBPath}
 }

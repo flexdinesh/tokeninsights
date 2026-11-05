@@ -51,7 +51,7 @@ func TestRealServerPaginationAndComponents(t *testing.T) {
 		}
 
 	}
-	c := newClient(t, server.NewDataHandler(context.Background(), sqlanalytics.Source{Store: store}, io.Discard, "127.0.0.1", "", false))
+	c := newClient(t, server.NewDataHandler(context.Background(), sqlanalytics.Source{Store: store}, io.Discard, "127.0.0.1", ""))
 	instance, err := c.Instance(t.Context())
 	if err != nil || instance.Kind != "personal" {
 		t.Fatalf("instance = %#v, %v", instance, err)
@@ -261,7 +261,7 @@ func TestURLValidation(t *testing.T) {
 	}
 }
 
-func TestReadOnlyStatusAndBearerClientCopy(t *testing.T) {
+func TestReadOnlyStatusWithoutTransportCredentials(t *testing.T) {
 	requests := make(chan string, 3)
 	c := newClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
@@ -274,18 +274,17 @@ func TestReadOnlyStatusAndBearerClientCopy(t *testing.T) {
 		}
 		serveJSON(w, instanceResponse("stable"))
 	}))
-	authenticated := c.WithToken("synthetic-token")
-	status, err := authenticated.Status(t.Context())
+	status, err := c.Status(t.Context())
 	if err != nil || status.Metadata.Revision != 7 {
 		t.Fatalf("status=%#v error=%v", status, err)
 	}
-	if _, err := authenticated.Instance(t.Context()); err != nil {
+	if _, err := c.Instance(t.Context()); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := c.Instance(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"Bearer synthetic-token", "Bearer synthetic-token", ""} {
+	for _, want := range []string{"", "", ""} {
 		if got := <-requests; got != want {
 			t.Fatalf("authorization=%q want%q", got, want)
 		}

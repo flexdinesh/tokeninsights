@@ -24,7 +24,7 @@ func localViewOptions(t *testing.T, withUsage bool) tableOptions {
 	t.Helper()
 	root := t.TempDir()
 	options := tableOptions{dbPath: filepath.Join(root, "server.sqlite"), collectorDBPath: filepath.Join(root, "collector.sqlite"), period: periodAllTime, bucket: bucketDay}
-	runtime, err := localruntime.OpenWithAppOptions(t.Context(), options.collectorDBPath, options.dbPath, filepath.Join(root, "app.sqlite"), localruntime.Options{CaptureDetails: true})
+	runtime, err := localruntime.OpenWithOptions(t.Context(), options.collectorDBPath, options.dbPath, localruntime.Options{CaptureDetails: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -90,7 +90,7 @@ func TestTUIReadsSavedUsageDirectlyWithoutCollection(t *testing.T) {
 		return model, nil
 	})
 	defer restore()
-	if err := runCommandForTest(t, t.Context(), io.Discard, "--sync=false", "--all-time", "--server-db-path", options.dbPath, "--collector-db-path", options.collectorDBPath); err != nil {
+	if err := runCommandForTest(t, t.Context(), io.Discard, "--capture=false", "--all-time", "--server-db-path", options.dbPath, "--collector-db-path", options.collectorDBPath); err != nil {
 		t.Fatal(err)
 	}
 	assertViewMissingPath(t, options.collectorDBPath)
@@ -98,7 +98,7 @@ func TestTUIReadsSavedUsageDirectlyWithoutCollection(t *testing.T) {
 
 func TestViewRejectsRemoteFlagsBeforeOpeningLocalDatabase(t *testing.T) {
 	invalidLocal := t.TempDir()
-	err := runCommandForTest(t, t.Context(), io.Discard, "--sync=false", "--server-url", "https://remote.test", "--server-db-path", invalidLocal)
+	err := runCommandForTest(t, t.Context(), io.Discard, "--capture=false", "--server-url", "https://remote.test", "--server-db-path", invalidLocal)
 	if !errors.As(err, new(*UsageError)) {
 		t.Fatal(err)
 	}
@@ -113,7 +113,7 @@ func TestViewQuitCancelsReadsWithoutReportingFailure(t *testing.T) {
 		return model, nil
 	})
 	defer restore()
-	if err := runCommandForTest(t, t.Context(), io.Discard, "--sync=false", "--server-db-path", options.dbPath, "--collector-db-path", options.collectorDBPath); err != nil {
+	if err := runCommandForTest(t, t.Context(), io.Discard, "--capture=false", "--server-db-path", options.dbPath, "--collector-db-path", options.collectorDBPath); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -132,7 +132,7 @@ func TestViewReturnsProgramAndQueryErrors(t *testing.T) {
 				return model, nil
 			})
 			defer restore()
-			if err := runCommandForTest(t, t.Context(), io.Discard, "--sync=false", "--server-db-path", options.dbPath, "--collector-db-path", options.collectorDBPath); !errors.Is(err, expected) {
+			if err := runCommandForTest(t, t.Context(), io.Discard, "--capture=false", "--server-db-path", options.dbPath, "--collector-db-path", options.collectorDBPath); !errors.Is(err, expected) {
 				t.Fatal(err)
 			}
 		})
@@ -141,7 +141,7 @@ func TestViewReturnsProgramAndQueryErrors(t *testing.T) {
 
 func TestTUIRejectsRemovedNoSyncFlagBeforeSideEffects(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "server.sqlite")
-	err := runCommandForTest(t, context.Background(), io.Discard, "--sync", "--no-sync", "--server-db-path", path)
+	err := runCommandForTest(t, context.Background(), io.Discard, "--capture", "--no-sync", "--server-db-path", path)
 	if !errors.As(err, new(*UsageError)) {
 		t.Fatalf("expected usage error, got %v", err)
 	}
@@ -208,7 +208,7 @@ func TestViewAttachesToCompatibleSharedSession(t *testing.T) {
 		return model, nil
 	})
 	defer restore()
-	if err := runCommandForTest(t, t.Context(), io.Discard, "--sync=false", "--server-db-path", options.dbPath, "--collector-db-path", options.collectorDBPath); err != nil {
+	if err := runCommandForTest(t, t.Context(), io.Discard, "--capture=false", "--server-db-path", options.dbPath, "--collector-db-path", options.collectorDBPath); err != nil {
 		t.Fatal(err)
 	}
 }

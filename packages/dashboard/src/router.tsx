@@ -6,7 +6,6 @@ import {
   redirect,
 } from '@tanstack/react-router'
 import { App, DashboardView } from './App'
-import { SettingsPage } from './components/SettingsPage'
 import { tabSchema } from '@tokeninsights/contracts'
 import { parseDashboardSearch, parseDashboardSearchParams, stringifyDashboardSearch } from './query'
 import { Button, Heading, StartupShell } from './ui'
@@ -63,12 +62,7 @@ export const dashboardRoute = createRoute({
   component: DashboardView,
 })
 
-const settingsRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: 'settings',
-  component: SettingsPage,
-})
-const routeTree = rootRoute.addChildren([indexRoute, dashboardRoute, settingsRoute])
+const routeTree = rootRoute.addChildren([indexRoute, dashboardRoute])
 
 export function createAppRouter(history?: ReturnType<typeof createMemoryHistory>) {
   return createRouter({

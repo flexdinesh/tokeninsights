@@ -19,8 +19,6 @@ void test('public checks enter isolated validation without native check commands
     'check-schema',
     'check-api',
     'check:toolchain',
-    'check:plugins',
-    'typecheck:plugins',
     'test:js',
     'test:go',
     'test:race',

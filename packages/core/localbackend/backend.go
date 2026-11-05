@@ -11,7 +11,6 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"time"
 
@@ -27,12 +26,11 @@ type backend struct {
 	descriptor localprotocol.Descriptor
 	viewers    *viewers
 	capture    *captures
-	dashboard  *dashboard
 }
 
 // Serve opens storage once, ACKs only after the private socket is serving, and
 // holds storage ownership through listener drain and all capture/processing joins.
-// The public dashboard listener binds on demand for dashboard leases.
+// All viewers share the private socket and the same lease lifetime.
 func Serve(parent context.Context, settings localprotocol.Settings, log io.Writer, ready func(localprotocol.Descriptor) error) error {
 	return serve(parent, settings, log, ready, collector.Run)
 }
@@ -51,7 +49,7 @@ func serve(parent context.Context, settings localprotocol.Settings, log io.Write
 	}
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
-	runtime, err := localruntime.OpenWithAppOptions(ctx, settings.CollectorDBPath, settings.ServerDBPath, settings.AppDBPath, localruntime.Options{CaptureDetails: true})
+	runtime, err := localruntime.OpenWithOptions(ctx, settings.CollectorDBPath, settings.ServerDBPath, localruntime.Options{CaptureDetails: true})
 	if err != nil {
 		return err
 	}
@@ -75,30 +73,9 @@ func serve(parent context.Context, settings localprotocol.Settings, log io.Write
 	dataHandler := func(host string) http.Handler {
 		return server.NewDataHandlerWithOptions(ctx, runtime.DataSource(), log, server.DataHandlerOptions{Host: host, InstanceID: runtime.InstanceID, Hostname: runtime.Hostname, Policy: runtime.Policy, Progress: runtime.Progress, ProcessUsage: usage})
 	}
-	b.dashboard = newDashboard(ctx, runtime.Store, func(binding *dashboardBinding) http.Handler {
-		data := dataHandler(binding.bindHost)
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if r.URL.Path != "/api/local/v1/viewers" {
-				data.ServeHTTP(w, r)
-				return
-			}
-			if !localprotocol.ViewerRequestAllowed(r, binding.bindHost) {
-				http.Error(w, "forbidden", http.StatusForbidden)
-				return
-			}
-			// A browser tab keeps the listener serving it, never another binding.
-			releaseDashboard, ok := b.dashboard.acquireBound(binding)
-			if !ok {
-				http.Error(w, "shutting_down", http.StatusServiceUnavailable)
-				return
-			}
-			defer releaseDashboard()
-			b.stream(w, r, "")
-		})
-	})
 	lifetimeDone := make(chan struct{})
 	go func() { defer close(lifetimeDone); b.lifetime(ctx, cancel) }()
-	defer func() { cancel(); <-lifetimeDone; b.dashboard.close(); b.capture.join() }()
+	defer func() { cancel(); <-lifetimeDone; b.capture.join() }()
 	// The private mount uses loopback host rules; its callers already passed
 	// the mode-0600 socket and the instance check.
 	privateData := dataHandler("")
@@ -135,51 +112,13 @@ func (b *backend) lifetime(ctx context.Context, cancel context.CancelFunc) {
 	}
 }
 
-// privateViewer holds a control lease, or a dashboard lease when the request
-// names a listener. A dashboard lease reports its URL as the first event.
-func (b *backend) privateViewer(w http.ResponseWriter, r *http.Request) {
+func (b *backend) stream(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "method_not_allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	query := r.URL.Query()
-	if !query.Has("host") && !query.Has("port") {
-		b.stream(w, r, "")
-		return
-	}
-	port, err := strconv.Atoi(query.Get("port"))
-	if err != nil {
-		respond(w, http.StatusBadRequest, map[string]string{"error": "invalid_listen"})
-		return
-	}
-	// Hold a viewer lease first so binding never races final shutdown.
-	release, ok := b.viewers.attach()
-	if !ok {
-		respond(w, http.StatusServiceUnavailable, map[string]string{"error": "shutting_down"})
-		return
-	}
-	defer release()
-	url, releaseDashboard, err := b.dashboard.acquire(r.Context(), localprotocol.Listen{Host: query.Get("host"), Port: port})
-	if err != nil {
-		switch {
-		case errors.Is(err, localprotocol.ErrSettingsMismatch):
-			respond(w, http.StatusConflict, map[string]string{"error": "listen_conflict"})
-		case errors.Is(err, localprotocol.ErrListenUnavailable):
-			respond(w, http.StatusConflict, map[string]string{"error": "listen_unavailable"})
-		case errors.Is(err, localprotocol.ErrShuttingDown):
-			respond(w, http.StatusServiceUnavailable, map[string]string{"error": "shutting_down"})
-		default:
-			respond(w, http.StatusBadRequest, map[string]string{"error": "invalid_listen"})
-		}
-		return
-	}
-	defer releaseDashboard()
-	b.leaseStream(w, r, url)
-}
-
-func (b *backend) stream(w http.ResponseWriter, r *http.Request, url string) {
-	if r.Method != http.MethodGet {
-		http.Error(w, "method_not_allowed", http.StatusMethodNotAllowed)
+	if r.URL.RawQuery != "" {
+		http.Error(w, "invalid_viewer", http.StatusBadRequest)
 		return
 	}
 	release, ok := b.viewers.attach()
@@ -188,25 +127,16 @@ func (b *backend) stream(w http.ResponseWriter, r *http.Request, url string) {
 		return
 	}
 	defer release()
-	b.leaseStream(w, r, url)
+	b.leaseStream(w, r)
 }
 
-func (b *backend) leaseStream(w http.ResponseWriter, r *http.Request, url string) {
+func (b *backend) leaseStream(w http.ResponseWriter, r *http.Request) {
 	controller := http.NewResponseController(w)
 	if err := controller.SetWriteDeadline(time.Time{}); err != nil {
 		return
 	}
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-store")
-	if url != "" {
-		body, err := json.Marshal(localprotocol.Dashboard{URL: url})
-		if err != nil {
-			return
-		}
-		if _, err := fmt.Fprintf(w, "event: dashboard\ndata: %s\n\n", body); err != nil {
-			return
-		}
-	}
 	ticker := time.NewTicker(StreamHeartbeat)
 	defer ticker.Stop()
 	for {
@@ -250,9 +180,7 @@ func (b *backend) privateHandler(data http.Handler) http.Handler {
 	queries := queryHandler(b.runtime.Application())
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/api/local/v1/descriptor" && r.Method == http.MethodGet {
-			descriptor := b.descriptor
-			descriptor.URL, descriptor.Listen = b.dashboard.descriptor()
-			respond(w, http.StatusOK, descriptor)
+			respond(w, http.StatusOK, b.descriptor)
 			return
 		}
 		if r.Header.Get("X-TokenInsights-Instance") != b.descriptor.InstanceID {
@@ -263,7 +191,7 @@ func (b *backend) privateHandler(data http.Handler) http.Handler {
 		case strings.HasPrefix(r.URL.Path, "/api/local/v1/queries/"):
 			queries.ServeHTTP(w, r)
 		case r.URL.Path == "/api/local/v1/viewers":
-			b.privateViewer(w, r)
+			b.stream(w, r)
 		case r.URL.Path == "/api/local/v1/progress" && r.Method == http.MethodGet:
 			respond(w, http.StatusOK, b.runtime.Progress.Details())
 		case r.URL.Path == "/api/local/v1/processing" && r.Method == http.MethodGet:

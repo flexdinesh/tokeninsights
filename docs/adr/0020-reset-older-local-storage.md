@@ -1,5 +1,10 @@
 # Reset older local storage after confirmation
 
+Partly superseded by [ADR 0027](0027-personal-backend-and-explicit-connections.md).
+Only collector/token SQLite recovery remains; account/application/jobs pairing
+and sync commands are retired. Existing user files remain untouched.
+The original decision below is preserved as history.
+
 Status: Accepted. Date: 23 October 2026.
 
 ## Decision

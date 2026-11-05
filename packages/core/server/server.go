@@ -14,16 +14,12 @@ import (
 	"net/http"
 	"net/netip"
 
-	"github.com/flexdinesh/tokeninsights/packages/core/accounts"
 	"github.com/flexdinesh/tokeninsights/packages/core/analytics"
 	"github.com/flexdinesh/tokeninsights/packages/core/collectorprogress"
-	"github.com/flexdinesh/tokeninsights/packages/core/evidence"
-	"github.com/flexdinesh/tokeninsights/packages/core/networkprefs"
 	serverapi "github.com/flexdinesh/tokeninsights/packages/core/server/api"
 	"github.com/flexdinesh/tokeninsights/packages/core/serverfeatures"
 )
 
-const DefaultPort = networkprefs.DefaultPort
 const logIndent = "  "
 
 //go:embed static
@@ -36,18 +32,13 @@ type Options struct {
 }
 
 type app struct {
-	source         DataSource
-	data           evidence.Receiver
-	queries        analytics.Repository
-	allowIngestion bool
-	policy         serverfeatures.Policy
-	accounts       *accounts.Service
-	publicURL      string
-	progress       *collectorprogress.Registry
-	processUsage   ProcessUsage
-	options        Options
-	ctx            context.Context
-	log            io.Writer
+	queries      analytics.Repository
+	policy       serverfeatures.Policy
+	progress     *collectorprogress.Registry
+	processUsage ProcessUsage
+	options      Options
+	ctx          context.Context
+	log          io.Writer
 }
 
 func newApp(ctx context.Context, options Options, log io.Writer) *app {
@@ -95,9 +86,9 @@ func (a *app) queryError(w http.ResponseWriter, r *http.Request, err error) {
 }
 
 // Local compositions expose writes only through their private control socket.
-func NewDataHandler(ctx context.Context, store DataSource, log io.Writer, bindHost, instance string, allowIngestion bool) http.Handler {
+func NewDataHandler(ctx context.Context, store DataSource, log io.Writer, bindHost, instance string) http.Handler {
 	policy, _ := serverfeatures.New(serverfeatures.Personal, false)
-	return NewDataHandlerWithOptions(ctx, store, log, DataHandlerOptions{Host: bindHost, InstanceID: instance, AllowIngestion: allowIngestion, Policy: policy})
+	return NewDataHandlerWithOptions(ctx, store, log, DataHandlerOptions{Host: bindHost, InstanceID: instance, Policy: policy})
 }
 func protectHandler(handler http.Handler, bindHost string) http.Handler {
 	handler = http.NewCrossOriginProtection().Handler(handler)

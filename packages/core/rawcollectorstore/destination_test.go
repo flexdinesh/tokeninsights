@@ -43,44 +43,32 @@ func acknowledgeDestination(t *testing.T, store *Store, id string, saved *SavedB
 	}
 }
 
-func TestDestinationAliasRequiresLocalDatabaseAndDataset(t *testing.T) {
-	for _, scenario := range []struct {
-		name, database, dataset string
-		local                   bool
-	}{
-		{name: "remote", database: "database", dataset: "default"},
-		{name: "replacement", database: "replacement", dataset: "default", local: true},
-		{name: "account", database: "database", dataset: "other-user", local: true},
-	} {
-		t.Run(scenario.name, func(t *testing.T) {
-			store := destinationStore(t)
-			if err := store.Bind(t.Context(), "private", "http://local", "database"); err != nil {
-				t.Fatal(err)
-			}
-			saved, err := store.Prepare(t.Context(), "private")
-			if err != nil || saved == nil {
-				t.Fatal(err)
-			}
-			acknowledgeDestination(t, store, "private", saved)
-			id, err := store.ResolveDestination(t.Context(), "http://127.0.0.1:8765", scenario.database, scenario.dataset, scenario.local)
-			if err != nil || id == "private" {
-				t.Fatal("foreign alias reused", id, err)
-			}
-			if pending, err := store.Pending(t.Context(), id); err != nil || pending != 2 {
-				t.Fatal("foreign cursor inherited", pending, err)
-			}
-		})
+func TestDestinationReplacementCannotInheritCursor(t *testing.T) {
+	store := destinationStore(t)
+	if err := store.Bind(t.Context(), "private", "http://local", "database"); err != nil {
+		t.Fatal(err)
+	}
+	saved, err := store.Prepare(t.Context(), "private")
+	if err != nil || saved == nil {
+		t.Fatal(err)
+	}
+	acknowledgeDestination(t, store, "private", saved)
+	id, err := store.ResolveDestination(t.Context(), "http://local", "replacement", "default")
+	if err != nil || id == "private" {
+		t.Fatal("replacement reused binding", id, err)
+	}
+	if pending, err := store.Pending(t.Context(), id); err != nil || pending != 2 {
+		t.Fatal("replacement inherited cursor", pending, err)
 	}
 }
 
-func TestConflictingRemoteDestinationsRejectBeforeSelectingCursor(t *testing.T) {
+func TestForeignDatasetRejectedBeforeBinding(t *testing.T) {
 	store := destinationStore(t)
-	for _, database := range []string{"database", "replacement"} {
-		if err := store.Bind(t.Context(), database, "https://remote.example", database); err != nil {
-			t.Fatal(err)
-		}
+	if _, err := store.ResolveDestination(t.Context(), "http://local", "database", "other-user"); err == nil {
+		t.Fatal("foreign dataset accepted")
 	}
-	if _, err := store.ResolveDestination(t.Context(), "https://remote.example", "database", "default", false); err == nil {
-		t.Fatal("ambiguous remote database accepted")
+	var count int
+	if err := store.DB.QueryRow("SELECT COUNT(*) FROM evidence_destinations").Scan(&count); err != nil || count != 0 {
+		t.Fatal("rejection mutated destinations", count, err)
 	}
 }

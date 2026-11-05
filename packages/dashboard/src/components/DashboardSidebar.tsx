@@ -12,7 +12,7 @@ import type { Tab } from '@tokeninsights/contracts'
 import { labels } from '../format'
 import { reduceQuery, searchFromQuery } from '../query'
 import type { QueryState } from '../query'
-import { Button, Sidebar, SidebarItem } from '../ui'
+import { Sidebar, SidebarItem } from '../ui'
 
 const tabs: { id: Tab; icon: typeof Activity }[] = [
   { id: 'tokens', icon: Activity },
@@ -24,31 +24,16 @@ const tabs: { id: Tab; icon: typeof Activity }[] = [
   { id: 'repo', icon: GitBranch },
 ]
 
-export function DashboardSidebar({
-  localMachine,
-  onSignOut,
-  query,
-}: {
-  localMachine: boolean
-  onSignOut?: () => Promise<void>
-  query: QueryState
-}) {
+export function DashboardSidebar({ query }: { query: QueryState }) {
   return (
     <Sidebar
       label="Dashboard navigation"
       navLabel="Analytics views"
       note={
         <>
-          <p>{localMachine ? 'Local workspace' : 'Hosted workspace'}</p>
+          <p>Personal workspace</p>
           <p>Usage metadata only</p>
         </>
-      }
-      actions={
-        onSignOut && (
-          <Button variant="quiet" className="justify-start" onClick={() => void onSignOut()}>
-            Sign out
-          </Button>
-        )
       }
     >
       {tabs.map(({ id, icon: Icon }) => (

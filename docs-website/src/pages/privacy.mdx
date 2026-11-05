@@ -1,47 +1,56 @@
 # Privacy and data
 
-TokenInsights collects usage metadata from durable local harness artifacts.
-It does not store prompt text, assistant text, tool arguments, tool output,
-request headers, secrets, raw provider payloads, or full source paths in raw
-analytics storage.
+TokenInsights captures metadata from durable local harness artifacts. Raw evidence
+never stores prompt text, assistant text, tool arguments/output, request headers,
+secrets, raw provider payloads or full source paths.
 
-Stored metadata includes token counts, timestamps, models, providers, session
-identifiers, hashed location keys, and display names. Directory paths use `~/` where
-a home directory can be identified; otherwise a full directory path may remain in
-collector storage. Source artifact paths and full Git remote URLs are not stored.
+Allowed metadata includes counters, timestamps, models, providers, session/native
+identifiers, hashed location keys and bounded display labels. Directory enrichment
+may retain a collector-local directory label (home-relative where possible); full
+source artifact paths and Git remote URLs stay out of raw evidence.
+Hashes and basenames can still identify a project; metadata is not anonymous.
 
-## Local dashboards
+## Storage
 
-`tokeninsights web` and `tokeninsights tui` keep collected usage in local SQLite
-databases. The browser dashboard binds to localhost by default.
+Default directory: `${XDG_DATA_HOME:-~/.local/share}/tokeninsights/`.
 
-Default data files live under
-`${XDG_DATA_HOME:-~/.local/share}/tokeninsights/`:
+| File             | Purpose                                                    | Flag / environment                                        |
+| ---------------- | ---------------------------------------------------------- | --------------------------------------------------------- |
+| collector.sqlite | Continuity, immutable evidence/outbox and checkpoints      | `--collector-db-path` / `TOKENINSIGHTS_COLLECTOR_DB_PATH` |
+| server.sqlite    | Evidence, receipts, processing and published token history | `--server-db-path` / `TOKENINSIGHTS_SERVER_DB_PATH`       |
 
-| File                           | Purpose                                              | Flag / environment                                        |
-| ------------------------------ | ---------------------------------------------------- | --------------------------------------------------------- |
-| `collector.sqlite`             | Local source progress and evidence awaiting delivery | `--collector-db-path` / `TOKENINSIGHTS_COLLECTOR_DB_PATH` |
-| `server.sqlite`                | Token history and processing state                   | `--server-db-path` / `TOKENINSIGHTS_SERVER_DB_PATH`       |
-| `app.sqlite`                   | Application identity and settings                    | `--app-db-path` / `TOKENINSIGHTS_APP_DB_PATH`             |
-| `<collector-path>.jobs.sqlite` | Sync jobs                                            | Derived from collector path                               |
+SQLite is the sole backend. Roles cannot alias and wrong/incompatible contracts
+reject without mutation. Collector schema 20 and token schema 1 remain unchanged.
+There are no account/application/jobs stores. Former user files remain untouched;
+the redesign neither migrates nor deletes them. Keep stopped backups of both
+current stores and relevant SQLite companions.
 
-Each role uses its own database. Paths cannot alias; wrong storage roles reject
-without mutation. Existing unrelated files stay untouched. App and token databases
-are paired by identity; never pair one `app.sqlite` with another token database.
+## Connections and secrets
 
-## Distributed usage
+Local viewers use a private Unix socket. SSH uses system SSH to reach the selected
+machine's backend; TCP uses an explicit temporary pinned TLS gateway. Connecting
+reads that backend's history, without uploading/merging local evidence.
 
-Distributed sync is explicit: configure a remote server and run
-`tokeninsights sync` to submit sanitized usage evidence. Submitted evidence is
-retained indefinitely for replay. Local dashboards do not switch to a remote server
-based on those settings.
+`remote` prints a temporary credential-bearing connection command. Keep it private.
+The native client verifies the public-key pin before submitting the credential;
+every request authenticates. The credential grants reads, progress, leases and
+default capture only. Stop invalidates it. Same-host use still uses TCP.
 
-Publication can include directory basenames and stable location keys. Full
-collector-local directory paths and private conversation content stay local.
+Browser dashboards bind loopback and receive redacted connection metadata, never
+the TCP secret. Native desktop handoff keeps secrets on a private rendezvous
+socket; OS URLs contain only an opaque ID. No credential files or saved pairing
+profiles are created. [Remote connections](/remote) explains access limits.
 
-## Provider and model names
+## Accounting
 
-Raw provider and model values retain the harness names. Canonical values used by
-filters and dashboards map Pi `openai-codex` to `openai`, map `fireworks-ai` to
-`fireworks`, and shorten Fireworks model names by removing
-`accounts/fireworks/models/`.
+Raw missing provider/model values stay absent/null. Canonical absence becomes
+`unknown`; Claude Code records without explicit provider use `maybe-anthropic`
+with inferred provenance. Pi `openai-codex` canonicalizes to `openai`;
+`fireworks-ai` to `fireworks`, and Fireworks model prefixes
+`accounts/fireworks/models/` are removed.
+
+Stable native identities, never equal counters or payload hashes alone, determine
+duplicate consumption. All five token components stay atomic. Confirmed usage and
+ambiguous estimates remain separate; missing sessions cannot become canonical rows.
+Retained sanitized evidence permits reprocessing, but cannot recover fields never
+captured. Capture runs on launch and explicit Refresh, with no periodic scanning.

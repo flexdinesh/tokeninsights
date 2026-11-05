@@ -1,5 +1,7 @@
 import { DashboardClientProvider } from '@tokeninsights/dashboard'
 import { httpDashboardClient } from './http-client'
+import { mockConnection } from './mocks/data'
+const dashboardClient = { ...httpDashboardClient, getConnection: async () => mockConnection }
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
@@ -74,11 +76,11 @@ it('uses server defaults on first load', async () => {
     dataReadiness: 'ready',
     apiVersion: 'v2',
     serverKind: 'personal',
-    permissions: ['read', 'ingest'],
+    permissions: ['read'],
     serverVersion: 'test',
     hostname: 'first-load',
     timezone: 'UTC',
-    capabilities: ['usage', 'facets', 'web-dashboard', 'raw-ingestion'],
+    capabilities: ['usage', 'facets', 'web-dashboard'],
     defaults: {
       period: 'week',
       bucket: 'day',
@@ -112,7 +114,7 @@ it('uses server defaults on first load', async () => {
   )
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   render(
-    <DashboardClientProvider client={httpDashboardClient}>
+    <DashboardClientProvider client={dashboardClient}>
       <QueryClientProvider client={client}>
         <RouterProvider router={testRouter} />
       </QueryClientProvider>
@@ -129,11 +131,11 @@ it('shows saved ingested usage without a collector', async () => {
     dataReadiness: 'ready',
     apiVersion: 'v2',
     serverKind: 'personal',
-    permissions: ['read', 'ingest'],
+    permissions: ['read'],
     serverVersion: 'test',
     hostname: 'local',
     timezone: 'UTC',
-    capabilities: ['usage', 'facets', 'web-dashboard', 'raw-ingestion'],
+    capabilities: ['usage', 'facets', 'web-dashboard'],
     defaults: {
       period: 'month',
       bucket: 'day',
@@ -182,7 +184,7 @@ it('shows saved ingested usage without a collector', async () => {
   })
   vi.stubGlobal('fetch', fetcher)
   render(
-    <DashboardClientProvider client={httpDashboardClient}>
+    <DashboardClientProvider client={dashboardClient}>
       <QueryClientProvider client={client}>
         <RouterProvider router={testRouter} />
       </QueryClientProvider>
@@ -204,11 +206,11 @@ it('removes the final route filter after direct load', async () => {
     dataReadiness: 'ready',
     apiVersion: 'v2',
     serverKind: 'personal',
-    permissions: ['read', 'ingest'],
+    permissions: ['read'],
     serverVersion: 'test',
     hostname: 'direct-load',
     timezone: 'UTC',
-    capabilities: ['usage', 'facets', 'web-dashboard', 'raw-ingestion'],
+    capabilities: ['usage', 'facets', 'web-dashboard'],
     defaults: {
       period: 'week',
       bucket: 'day',
@@ -249,7 +251,7 @@ it('removes the final route filter after direct load', async () => {
     }),
   )
   render(
-    <DashboardClientProvider client={httpDashboardClient}>
+    <DashboardClientProvider client={dashboardClient}>
       <QueryClientProvider client={client}>
         <RouterProvider router={directRouter} />
       </QueryClientProvider>
@@ -268,11 +270,11 @@ it('refreshes producer labels when ingestion commits a new revision', async () =
     dataReadiness: 'ready',
     apiVersion: 'v2',
     serverKind: 'personal',
-    permissions: ['read', 'ingest'],
+    permissions: ['read'],
     serverVersion: 'test',
     hostname: 'unknown',
     timezone: 'UTC',
-    capabilities: ['usage', 'facets', 'web-dashboard', 'raw-ingestion'],
+    capabilities: ['usage', 'facets', 'web-dashboard'],
     defaults: {
       period: 'week',
       bucket: 'day',
@@ -322,7 +324,7 @@ it('refreshes producer labels when ingestion commits a new revision', async () =
     }),
   )
   render(
-    <DashboardClientProvider client={httpDashboardClient}>
+    <DashboardClientProvider client={dashboardClient}>
       <QueryClientProvider client={client}>
         <RouterProvider router={testRouter} />
       </QueryClientProvider>
@@ -342,14 +344,14 @@ it('offers retry when the page server is unavailable', async () => {
   vi.stubGlobal('fetch', fetcher)
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   render(
-    <DashboardClientProvider client={httpDashboardClient}>
+    <DashboardClientProvider client={dashboardClient}>
       <QueryClientProvider client={client}>
         <RouterProvider router={testRouter} />
       </QueryClientProvider>
     </DashboardClientProvider>,
   )
   expect(
-    await screen.findByRole('heading', { name: `Couldn’t connect to ${window.location.host}` }),
+    await screen.findByRole('heading', { name: `Couldn’t connect to ${mockConnection.target}` }),
   ).toBeVisible()
   await userEvent.click(screen.getByRole('button', { name: 'Retry Connection' }))
   await waitFor(() => expect(fetcher).toHaveBeenCalledTimes(2))
@@ -408,7 +410,7 @@ it('cancels obsolete filter requests and only renders the current result', async
     sessions: [],
   })
   const view = render(
-    <DashboardClientProvider client={httpDashboardClient}>
+    <DashboardClientProvider client={dashboardClient}>
       <QueryClientProvider client={client}>
         <AnalyticsExample query={base} />
       </QueryClientProvider>
@@ -416,7 +418,7 @@ it('cancels obsolete filter requests and only renders the current result', async
   )
   await waitFor(() => expect(fetcher).toHaveBeenCalledTimes(1))
   view.rerender(
-    <DashboardClientProvider client={httpDashboardClient}>
+    <DashboardClientProvider client={dashboardClient}>
       <QueryClientProvider client={client}>
         <AnalyticsExample query={{ ...base, models: ['new'] }} />
       </QueryClientProvider>
@@ -455,7 +457,7 @@ it('retains current results for sorting and valid summaries across views', async
     sessions: [],
   })
   const view = render(
-    <DashboardClientProvider client={httpDashboardClient}>
+    <DashboardClientProvider client={dashboardClient}>
       <QueryClientProvider client={client}>
         <AnalyticsExample query={query} />
       </QueryClientProvider>
@@ -464,7 +466,7 @@ it('retains current results for sorting and valid summaries across views', async
   expect(await screen.findByText('111')).toBeVisible()
 
   view.rerender(
-    <DashboardClientProvider client={httpDashboardClient}>
+    <DashboardClientProvider client={dashboardClient}>
       <QueryClientProvider client={client}>
         <AnalyticsExample query={{ ...query, sort: 'total' }} />
       </QueryClientProvider>
@@ -474,7 +476,7 @@ it('retains current results for sorting and valid summaries across views', async
   expect(screen.getByRole('status')).toHaveAttribute('data-placeholder', 'true')
 
   view.rerender(
-    <DashboardClientProvider client={httpDashboardClient}>
+    <DashboardClientProvider client={dashboardClient}>
       <QueryClientProvider client={client}>
         <AnalyticsExample query={{ ...query, tab: 'models', sort: 'total' }} />
       </QueryClientProvider>
@@ -483,7 +485,7 @@ it('retains current results for sorting and valid summaries across views', async
   expect(screen.getByRole('status')).toHaveTextContent('111')
 
   view.rerender(
-    <DashboardClientProvider client={httpDashboardClient}>
+    <DashboardClientProvider client={dashboardClient}>
       <QueryClientProvider client={client}>
         <AnalyticsExample
           query={{ ...query, tab: 'models', sort: 'total', models: ['different'] }}

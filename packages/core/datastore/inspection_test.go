@@ -59,7 +59,7 @@ func TestCurrentInspectionRejectsChangedContractsWithoutMutation(t *testing.T) {
 }
 
 func TestConcurrentCurrentInspection(t *testing.T) {
-	for _, kind := range []string{KindPersonal, KindHosted} {
+	for _, kind := range []string{KindPersonal} {
 		t.Run(kind, func(t *testing.T) {
 			t.Parallel()
 			path := filepath.Join(t.TempDir(), "server.sqlite")

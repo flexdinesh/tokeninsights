@@ -36,21 +36,28 @@ for (const platform of ['linux/amd64', 'darwin/arm64']) {
         product === 'cli' ? 'tokeninsights' : `tokeninsights-${product}`,
       )
       await writeFile(binary, 'executable', { mode: 0o755 })
-      if (product !== 'server') {
+      {
         await mkdir(backendRoot, { recursive: true })
         await writeFile(join(backendRoot, 'tokeninsights-backend'), 'backend', { mode: 0o755 })
       }
+      if (product === 'mygo')
+        await writeFile(join(binaryRoot, 'tokeninsights'), 'cli', { mode: 0o755 })
       const plist = join(root, app, 'Contents/Info.plist')
       if (desktop && target.os === 'darwin')
         await writeFile(plist, `<string>com.flexdinesh.tokeninsights.${product}</string>`)
       await writeFile(join(root, 'LICENSE'), 'MIT')
       await writeFile(join(root, 'build-info.json'), '{}')
       await verifyProduct(root, product, target)
+      if (product === 'mygo') {
+        await rm(join(binaryRoot, 'tokeninsights'))
+        await assert.rejects(verifyProduct(root, product, target), /tokeninsights/)
+        await writeFile(join(binaryRoot, 'tokeninsights'), 'cli', { mode: 0o755 })
+      }
       if (desktop && target.os === 'darwin') {
         await writeFile(plist, '<string>com.example.other</string>')
         await assert.rejects(verifyProduct(root, product, target), /incompatible desktop identity/)
       } else {
-        await rm(product === 'server' ? binary : join(backendRoot, 'tokeninsights-backend'))
+        await rm(join(backendRoot, 'tokeninsights-backend'))
         await assert.rejects(verifyProduct(root, product, target), /ENOENT/)
       }
     })

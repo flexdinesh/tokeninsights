@@ -6,8 +6,8 @@ import (
 	"strings"
 )
 
-// Bind numbers positional parameters in application-owned SQL. Both SQLite and
-// PostgreSQL accept $n parameters. Quoted literals/identifiers remain untouched;
+// Bind numbers positional parameters in application-owned SQL. SQLite
+// accepts $n parameters. Quoted literals/identifiers remain untouched;
 // request values are always passed separately to the driver.
 func Bind(query string) string {
 	var b strings.Builder

@@ -1,4 +1,5 @@
 import * as generated from './generated/api.ts'
+import type { ViewerConnection } from './connection.ts'
 
 export const periodSchema = generated.Period
 export const bucketSchema = generated.Bucket
@@ -34,20 +35,6 @@ export type Dimension = 'providers' | 'models' | 'harnesses' | 'sessions'
 export const collectorProgressSchema = generated.CollectorProgressResponse
 export type CollectorProgress = generated.CollectorProgressResponseOutput
 
-export const authInfoSchema = generated.AuthInfo
-export const accountUserSchema = generated.AccountUser
-export const apiKeyListSchema = generated.APIKeyList
-export const apiKeyCreatedSchema = generated.APIKeyCreated
-export type AccountUser = generated.AccountUserOutput
-export type APIKeyInfo = generated.APIKeyInfoOutput
-export type APIKeyCreated = generated.APIKeyCreatedOutput
-export const apiKeyLabelMaxCharacters = generated.createAPIKeyRequestLabelMax
-export const browserSessionPasswordMinCharacters = generated.browserSessionRequestPasswordMin
-export const browserSessionPasswordMaxCharacters = generated.browserSessionRequestPasswordMax
-export const newPasswordMinCharacters = generated.changePasswordRequestPasswordMin
-export const newPasswordMaxCharacters = generated.changePasswordRequestPasswordMax
-export type CreateAPIKeyRequest = generated.CreateAPIKeyRequest
-
 export interface DashboardQuery extends Selection {
   dateMode?: 'calendar'
   quality: 'confirmed' | 'estimated'
@@ -61,8 +48,6 @@ export interface DashboardQuery extends Selection {
   pageSize: number
 }
 
-export type Credentials = { username: string; password: string }
-
 // Operations consume semantic values. Adapters own routes, serialization and validation.
 export interface DashboardClient {
   getInstance(signal?: AbortSignal): Promise<Bootstrap>
@@ -70,22 +55,12 @@ export interface DashboardClient {
   getUsage(query: DashboardQuery, signal?: AbortSignal): Promise<Dashboard>
   getFacets(query: DashboardQuery, search: string, signal?: AbortSignal): Promise<Facets>
   getCollectorProgress(signal?: AbortSignal): Promise<CollectorProgress>
-  getAuthInfo(signal?: AbortSignal): Promise<generated.AuthInfoOutput>
-  getAccount(datasetId: string, signal?: AbortSignal): Promise<AccountUser>
-  getAPIKeys(datasetId: string, signal?: AbortSignal): Promise<generated.APIKeyListOutput>
-  changeBrowserSession(credentials?: Credentials): Promise<void>
-  signup(credentials: Credentials): Promise<void>
-  changePassword(datasetId: string, currentPassword: string, password: string): Promise<void>
-  createAPIKey(datasetId: string, request: CreateAPIKeyRequest): Promise<APIKeyCreated>
-  revokeAPIKey(datasetId: string, tokenId: string): Promise<void>
+  getConnection(signal?: AbortSignal): Promise<ViewerConnection>
+  refresh(signal?: AbortSignal): Promise<void>
 }
 
-export class AuthenticationRequired extends Error {
-  constructor() {
-    super('Sign in to view your token usage.')
-    this.name = 'AuthenticationRequired'
-  }
-}
+export { viewerConnectionSchema } from './connection.ts'
+export type { ViewerConnection } from './connection.ts'
 
 export { localBackendDescriptorSchema } from './local.ts'
 export type { LocalBackendDescriptor } from './local.ts'

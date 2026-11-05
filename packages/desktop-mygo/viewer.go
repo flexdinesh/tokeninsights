@@ -2,10 +2,10 @@ package main
 
 import (
 	"context"
-	"errors"
 	"sync"
 
 	"github.com/egoist/mygo"
+	"github.com/flexdinesh/tokeninsights/packages/core/desktoplaunch"
 	"github.com/flexdinesh/tokeninsights/packages/desktop-mygo/internal/link"
 )
 
@@ -27,6 +27,7 @@ type viewer struct {
 	connect    connector
 	windows    map[string]*mygo.Window
 	connecting map[string]bool
+	launches   map[string]bool
 	ctx        context.Context
 	cancel     context.CancelFunc
 	workers    sync.WaitGroup
@@ -34,24 +35,19 @@ type viewer struct {
 
 func newViewer(connect connector) *viewer {
 	ctx, cancel := context.WithCancel(context.Background())
-	return &viewer{connect: connect, windows: make(map[string]*mygo.Window), connecting: make(map[string]bool), ctx: ctx, cancel: cancel}
+	return &viewer{connect: connect, windows: make(map[string]*mygo.Window), connecting: make(map[string]bool), launches: make(map[string]bool), ctx: ctx, cancel: cancel}
 }
 
 func (v *viewer) open(raw string) {
-	target, err := link.Parse(raw)
-	if err != nil {
+	if _, err := desktoplaunch.ID(raw); err != nil {
 		v.fail("Cannot open this link.", err.Error())
 		return
 	}
-	if !target.Loopback {
-		v.openExternal(target.URL)
+	if v.launches[raw] {
 		return
 	}
-	if window, ok := v.windows[target.Origin]; ok {
-		v.load(window, target.URL)
-		return
-	}
-	v.start(target.Origin, target.URL)
+	v.launches[raw] = true
+	v.start(raw, raw)
 }
 
 func (v *viewer) focus() {
@@ -82,15 +78,14 @@ func (v *viewer) start(key, target string) {
 
 func (v *viewer) finish(key, target string, connected *dashboard, err error) {
 	delete(v.connecting, key)
-	var external *externalTarget
 	switch {
-	case errors.As(err, &external):
-		v.openExternal(external.URL)
-		v.quitIfIdle()
 	case err != nil:
-		if v.ctx.Err() == nil && v.retry(err) {
+		if v.ctx.Err() == nil && target == "" && v.retry(err) {
 			v.start(key, target)
 			return
+		}
+		if target != "" && v.ctx.Err() == nil {
+			v.fail("Cannot open requested connection.", err.Error())
 		}
 		v.quitIfIdle()
 	default:
@@ -146,6 +141,12 @@ func (v *viewer) show(connected *dashboard) {
 		delete(v.windows, origin)
 		v.release(connected)
 	})
+	if err := connected.acknowledge(); err != nil {
+		window.Close()
+		v.fail("Cannot acknowledge requested connection.", "Run tokeninsights again.")
+		return
+	}
+
 	// A lost backend leaves nothing to show; reopening attaches a new lease.
 	v.workers.Go(func() {
 		select {

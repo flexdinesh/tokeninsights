@@ -12,8 +12,7 @@ type Page =
   | { path: '/local-usage'; render: 'static' }
   | { path: '/maintenance'; render: 'static' }
   | { path: '/privacy'; render: 'static' }
-  | { path: '/self-hosting'; render: 'static' }
-  | { path: '/sync'; render: 'static' }
+  | { path: '/remote'; render: 'static' }
 
 // prettier-ignore
 declare module 'waku/router' {

@@ -20,7 +20,6 @@ void test('Go runner bounds package/test concurrency, permits overrides, propaga
   const env: NodeJS.ProcessEnv = {
     ...process.env,
     PATH: `${directory}:${process.env.PATH}`,
-    TOKENINSIGHTS_TEST_POSTGRES_DSN: 'fixture',
   }
   delete env.TOKENINSIGHTS_CHECK_CONCURRENCY
   delete env.GOMAXPROCS

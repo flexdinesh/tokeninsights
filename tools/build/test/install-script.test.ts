@@ -80,7 +80,7 @@ function fixture(t: TestContext) {
         : dir
     mkdirSync(binaryDir, { recursive: true })
     executable(join(binaryDir, binary), `echo ${version}`)
-    if (product !== 'server') {
+    {
       const backendDir =
         product === 'electron'
           ? os === 'darwin'
@@ -90,6 +90,7 @@ function fixture(t: TestContext) {
       mkdirSync(backendDir, { recursive: true })
       executable(join(backendDir, 'tokeninsights-backend'), `echo backend-${version}`)
     }
+    if (product === 'mygo') executable(join(binaryDir, 'tokeninsights'), `echo cli-${version}`)
     if (os === 'darwin' && (product === 'mygo' || product === 'electron'))
       writeFileSync(
         join(dir, app, 'Contents/Info.plist'),
@@ -236,7 +237,7 @@ void test('default CLI stable and main installers replace a whole product includ
 })
 void test('all product entrypoints support main; desktop products coexist', (t) => {
   const f = fixture(t)
-  const selected: readonly Product[] = ['server', 'mygo', 'electron']
+  const selected: readonly Product[] = ['mygo', 'electron']
   for (const product of selected) {
     f.archive(product)
     const result = f.run(`install-${product}.sh`, ['--channel=main'])
@@ -346,6 +347,83 @@ void test('macOS desktop bundles have distinct identities and support replacemen
   }
   assert.ok(existsSync(join(f.home, 'Applications/TokenInsights MyGo.app')))
   assert.ok(existsSync(join(f.home, 'Applications/TokenInsights Electron.app')))
+})
+for (const os of ['linux', 'darwin']) {
+  void test(`${os} MyGo requires its bundled CLI before installation`, (t) => {
+    const f = fixture(t)
+    const platform = os === 'darwin' ? 'darwin' : 'linux'
+    f.archive('mygo', 'v1', platform, (root) =>
+      rmSync(
+        join(
+          root,
+          platform === 'darwin'
+            ? 'TokenInsights MyGo.app/Contents/MacOS/tokeninsights'
+            : 'tokeninsights',
+        ),
+      ),
+    )
+    const rejected = f.run('install-mygo.sh', [], os === 'darwin' ? { TEST_OS: 'Darwin' } : {})
+    assert.notEqual(rejected.status, 0)
+    assert.match(rejected.stderr, /archive lacks executable tokeninsights/)
+    assert.ok(!existsSync(f.installed('mygo')))
+  })
+  void test(`${os} MyGo installs the bundled CLI and preserves CLI-only ownership`, (t) => {
+    const f = fixture(t)
+    const platform = os === 'darwin' ? 'darwin' : 'linux'
+    const overrides = os === 'darwin' ? { TEST_OS: 'Darwin' } : {}
+    const command = join(f.home, '.local/bin/tokeninsights')
+    f.archive('mygo', 'v1', platform)
+    const installed = f.run('install-mygo.sh', [], overrides)
+    assert.equal(installed.status, 0, installed.stderr)
+    assert.equal(execFileSync(command, { encoding: 'utf8' }).trim(), 'cli-v1')
+    const bundled = readlinkSync(command)
+    f.archive('cli', 'cli-only', platform)
+    const standalone = f.run('install.sh', [], overrides)
+    assert.equal(standalone.status, 0, standalone.stderr)
+    assert.equal(readlinkSync(command), join(f.installed('cli'), 'tokeninsights'))
+    assert.notEqual(readlinkSync(command), bundled)
+    f.archive('mygo', 'v2', platform)
+    const upgrade = f.run('install-mygo.sh', [], overrides)
+    assert.equal(upgrade.status, 0, upgrade.stderr)
+    assert.equal(execFileSync(command, { encoding: 'utf8' }).trim(), 'cli-only')
+  })
+  void test(`${os} MyGo rejects an unrelated command before replacing its product`, (t) => {
+    const f = fixture(t)
+    const platform = os === 'darwin' ? 'darwin' : 'linux'
+    const overrides = os === 'darwin' ? { TEST_OS: 'Darwin' } : {}
+    f.archive('mygo', 'v1', platform)
+    assert.equal(f.run('install-mygo.sh', [], overrides).status, 0)
+    const command = join(f.home, '.local/bin/tokeninsights')
+    rmSync(command)
+    executable(command, 'echo unrelated')
+    f.archive('mygo', 'v2', platform)
+    const rejected = f.run('install-mygo.sh', [], overrides)
+    assert.notEqual(rejected.status, 0)
+    assert.match(rejected.stderr, /unowned path/)
+    assert.equal(execFileSync(command, { encoding: 'utf8' }).trim(), 'unrelated')
+    const binary =
+      platform === 'darwin'
+        ? join(f.installed('mygo'), 'TokenInsights MyGo.app/Contents/MacOS/tokeninsights')
+        : join(f.installed('mygo'), 'tokeninsights')
+    assert.equal(execFileSync(binary, { encoding: 'utf8' }).trim(), 'cli-v1')
+  })
+}
+void test('failed CLI command handover restores owned MyGo command and product state', (t) => {
+  const f = fixture(t)
+  f.archive('mygo')
+  assert.equal(f.run('install-mygo.sh').status, 0)
+  const command = join(f.home, '.local/bin/tokeninsights')
+  const original = readlinkSync(command)
+  f.archive('cli')
+  executable(
+    join(f.bin, 'rmdir'),
+    'case "$1" in *.tokeninsights-link-*) exit 17 ;; *) exec /bin/rmdir "$@" ;; esac',
+  )
+  const result = f.run()
+  assert.notEqual(result.status, 0)
+  assert.equal(readlinkSync(command), original)
+  assert.ok(!existsSync(f.installed('cli')))
+  assert.equal(execFileSync(command, { encoding: 'utf8' }).trim(), 'cli-v1')
 })
 void test('rejects unsupported host and channel before download', (t) => {
   const f = fixture(t)

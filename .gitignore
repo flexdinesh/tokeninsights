@@ -27,7 +27,6 @@ mise.*.local.toml
 # Product archives and generated app bundles.
 /dist/
 packages/backend/bin/
-packages/server/bin/
 packages/desktop-mygo/build/
 packages/desktop-mygo/.mygo/
 packages/desktop-electron/dist/

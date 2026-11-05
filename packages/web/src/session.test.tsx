@@ -1,11 +1,10 @@
 import { DashboardClientProvider } from '@tokeninsights/dashboard'
 import { httpDashboardClient } from './http-client'
 import type { ReactNode } from 'react'
-import { act, cleanup, renderHook, waitFor } from '@testing-library/react'
+import { cleanup, renderHook, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { afterEach, expect, it, vi } from 'vitest'
 import { useAnalytics } from '../../dashboard/src/api'
-import { clearAccountQueries } from '../../dashboard/src/session'
 import { mockBootstrap, mockDashboard } from './mocks/data'
 import { initialQuery } from '../../dashboard/src/query'
 
@@ -14,42 +13,7 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
-it('changing accounts cancels old reads and clears all cached account data', async () => {
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-  let aborted = false
-  vi.stubGlobal(
-    'fetch',
-    vi.fn<typeof fetch>(
-      (_path, init) =>
-        new Promise((_resolve, reject) => {
-          init?.signal?.addEventListener('abort', () => {
-            aborted = true
-            reject(new DOMException('Aborted', 'AbortError'))
-          })
-        }),
-    ),
-  )
-  function Wrapper({ children }: { children: ReactNode }) {
-    return (
-      <DashboardClientProvider client={httpDashboardClient}>
-        <QueryClientProvider client={client}>{children}</QueryClientProvider>
-      </DashboardClientProvider>
-    )
-  }
-  client.setQueryData(['facets', 'old'], { sessions: ['private-session'] })
-  client.setQueryData(['collector-progress'], { attempts: ['private-attempt'] })
-  const view = renderHook(
-    () => useAnalytics(initialQuery(mockBootstrap.defaults), 1, true, 'instance/database/user-a/1'),
-    { wrapper: Wrapper },
-  )
-  await waitFor(() => expect(view.result.current.isFetching).toBe(true))
-  await act(() => clearAccountQueries(client))
-  expect(aborted).toBe(true)
-  expect(client.getQueryCache().getAll()).toHaveLength(0)
-  view.unmount()
-})
-
-it('never uses another dataset as placeholder data while switching accounts', async () => {
+it('never uses another backend identity as placeholder data', async () => {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   let first = true
   vi.stubGlobal(
@@ -74,28 +38,9 @@ it('never uses another dataset as placeholder data while switching accounts', as
     { wrapper: Wrapper, initialProps: { identity: 'mock-instance/mock-epoch/default/1' } },
   )
   await waitFor(() => expect(view.result.current.isSuccess).toBe(true))
-  view.rerender({ identity: 'mock-instance/mock-epoch/user-b/1' })
+  view.rerender({ identity: 'other-instance/other-epoch/default/1' })
   expect(view.result.current.data).toBeUndefined()
   expect(view.result.current.isPlaceholderData).toBe(false)
   view.unmount()
   client.clear()
-})
-
-it('exchanges password credentials in request body without persisting them', async () => {
-  const fetcher = vi.fn<typeof fetch>(() => Promise.resolve(new Response(null, { status: 204 })))
-  vi.stubGlobal('fetch', fetcher)
-  await httpDashboardClient.changeBrowserSession({ username: 'alice', password: 'secret-password' })
-  expect(fetcher).toHaveBeenCalledWith(
-    '/api/v2/auth/session',
-    expect.objectContaining({
-      method: 'POST',
-      body: JSON.stringify({ username: 'alice', password: 'secret-password' }),
-      credentials: 'same-origin',
-    }),
-  )
-  await httpDashboardClient.changeBrowserSession()
-  expect(fetcher).toHaveBeenLastCalledWith(
-    '/api/v2/auth/session',
-    expect.objectContaining({ method: 'DELETE', body: undefined }),
-  )
 })

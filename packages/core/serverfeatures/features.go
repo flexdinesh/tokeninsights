@@ -7,12 +7,11 @@ type Kind string
 
 const (
 	Personal Kind = "personal"
-	Hosted   Kind = "hosted"
 )
 
 func (k Kind) Validate() error {
-	if k != Personal && k != Hosted {
-		return fmt.Errorf("server-kind must be personal or hosted")
+	if k != Personal {
+		return fmt.Errorf("server-kind must be personal")
 	}
 	return nil
 }
@@ -24,14 +23,13 @@ const (
 	Facets            Capability = "facets"
 	WebDashboard      Capability = "web-dashboard"
 	DashboardReload   Capability = "dashboard-reload"
-	RawIngestion      Capability = "raw-ingestion"
 	TerminalDashboard Capability = "terminal-dashboard"
 	CollectorProgress Capability = "collector-progress"
 )
 
 func (c Capability) Known() bool {
 	switch c {
-	case Usage, Facets, WebDashboard, DashboardReload, RawIngestion, TerminalDashboard, CollectorProgress:
+	case Usage, Facets, WebDashboard, DashboardReload, TerminalDashboard, CollectorProgress:
 		return true
 	}
 	return false
@@ -60,9 +58,8 @@ func (cs Capabilities) Known() Capabilities {
 }
 
 type Policy struct {
-	SignupEnabled bool
-	Kind          Kind
-	Capabilities  Capabilities
+	Kind         Kind
+	Capabilities Capabilities
 }
 
 func New(kind Kind, collectorProgress bool, disabled ...Capability) (Policy, error) {
@@ -76,7 +73,7 @@ func NewLocalViewer(collectorProgress bool, disabled ...Capability) (Policy, err
 }
 
 func newPolicy(kind Kind, collectorProgress, dashboardReload bool, disabled ...Capability) (Policy, error) {
-	p := Policy{Kind: kind, Capabilities: Capabilities{Usage, Facets, WebDashboard, RawIngestion}}
+	p := Policy{Kind: kind, Capabilities: Capabilities{Usage, Facets, WebDashboard}}
 	if dashboardReload {
 		p.Capabilities = append(p.Capabilities, DashboardReload)
 	}
@@ -105,12 +102,6 @@ func (p Policy) Validate() error {
 	if err := p.Kind.Validate(); err != nil {
 		return err
 	}
-	if p.Kind == Personal && p.SignupEnabled {
-		return fmt.Errorf("personal server cannot enable signup")
-	}
-	if p.Kind == Hosted && (p.Capabilities.Has(TerminalDashboard) || p.Capabilities.Has(CollectorProgress) || p.Capabilities.Has(DashboardReload)) {
-		return fmt.Errorf("hosted server cannot support terminal-dashboard, collector-progress or dashboard-reload")
-	}
 	for _, c := range p.Capabilities {
 		if !c.Known() {
 			return fmt.Errorf("unknown capability %q", c)
@@ -118,9 +109,6 @@ func (p Policy) Validate() error {
 	}
 	if (p.Capabilities.Has(TerminalDashboard) || p.Capabilities.Has(WebDashboard)) && (!p.Capabilities.Has(Usage) || !p.Capabilities.Has(Facets)) {
 		return fmt.Errorf("dashboards require usage and facets")
-	}
-	if p.Capabilities.Has(CollectorProgress) && !p.Capabilities.Has(RawIngestion) {
-		return fmt.Errorf("collector-progress requires raw-ingestion")
 	}
 	if p.Capabilities.Has(DashboardReload) && (!p.Capabilities.Has(WebDashboard) || !p.Capabilities.Has(Usage)) {
 		return fmt.Errorf("dashboard-reload requires web-dashboard and usage")
@@ -131,8 +119,7 @@ func (p Policy) Validate() error {
 type Permission string
 
 const (
-	Read   Permission = "read"
-	Ingest Permission = "ingest"
+	Read Permission = "read"
 )
 
 type Permissions []Permission

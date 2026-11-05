@@ -5,7 +5,7 @@ import (
 	"flag"
 	"fmt"
 
-	"github.com/flexdinesh/tokeninsights/packages/core/localclient"
+	"github.com/flexdinesh/tokeninsights/packages/core/desktoplaunch"
 )
 
 var dataCommand = commandSpec{name: "data", run: runData}
@@ -23,8 +23,7 @@ func runData(invocation commandInvocation, args []string) error {
 	flags.SetOutput(invocation.stderr)
 	flags.String("server-db-path", defaults.ServerDBPath, "token database")
 	flags.String("collector-db-path", defaults.CollectorDBPath, "collector database")
-	flags.String("app-db-path", defaults.AppDBPath, "application database")
-	flags.String("endpoint", "", "backend: local (default) or ssh://[user@]host[:port]")
+	flags.String("connection", "", "backend: local (default) or ssh://[user@]host[:port]")
 	if err := flags.Parse(args[1:]); err != nil {
 		return err
 	}
@@ -35,12 +34,10 @@ func runData(invocation commandInvocation, args []string) error {
 	if err != nil {
 		return err
 	}
-	var session *localclient.Session
-	if remote := settings.Endpoint.SSH; remote != nil {
-		session, err = connectRemoteBackend(invocation.context, remote.Dialer(""), localclient.RemoteOptions{})
-	} else {
-		session, err = connectLocalBackend(invocation.context, localclient.Options{CollectorDBPath: settings.CollectorDBPath, ServerDBPath: settings.ServerDBPath, AppDBPath: settings.ApplicationPath(), Host: settings.Host, Port: settings.Port}, func() error { return invocation.prepareLocalStorage(settings) })
+	if settings.Endpoint.TCP != nil {
+		return fmt.Errorf("TCP connections cannot run maintenance; use local or SSH")
 	}
+	session, err := connectBackendSession(invocation.context, desktoplaunch.Specification(settings, false, false, ""), func() error { return invocation.prepareLocalStorage(settings) })
 	if err != nil {
 		return err
 	}

@@ -96,10 +96,7 @@ func queryFilter(q analytics.Query, now time.Time) analytics.Filter {
 	return f
 }
 func sumSQL(column string) string { return "CAST(COALESCE(SUM(" + column + "),0) AS BIGINT)" }
-func dimensionSummary(column string, postgres bool) string {
-	if postgres {
-		return "string_agg(DISTINCT " + column + ", ', ' ORDER BY " + column + ")"
-	}
+func dimensionSummary(column string) string {
 	return "ti_dimensions(" + column + ")"
 }
 
@@ -134,22 +131,22 @@ func queryGrouping(q analytics.Query) grouping {
 // Count group identities without computing token aggregates, distinct dimension
 // labels or session-peak rankings. Bucket parameters precede filter parameters,
 // just as they do in groupedSQL.
-func groupCountSQL(q analytics.Query, where, zone string, postgres bool) string {
+func groupCountSQL(q analytics.Query, where, zone string) string {
 	selected := "1"
 	if q.Tab == "tokens" {
-		selected = bucketSQL(zone, q.Selection.Bucket, postgres) + " AS bucket"
+		selected = bucketSQL(zone, q.Selection.Bucket) + " AS bucket"
 	}
 	return "SELECT COUNT(*) FROM(SELECT " + selected + " FROM " + dataTable(q) + where + " GROUP BY " + queryGrouping(q).columns + ") grouped"
 }
 
 // Only fixed SQL identifiers enter these statements. Filters, zone, limits and
 // offsets are bound parameters; aggregation and pagination stay in SQL.
-func groupedSQL(q analytics.Query, where, zone string, postgres bool) string {
+func groupedSQL(q analytics.Query, where, zone string) string {
 	g := queryGrouping(q)
 	switch q.Tab {
 	case "tokens":
-		bucket := bucketSQL(zone, q.Selection.Bucket, postgres)
-		return "WITH filtered AS (SELECT *," + bucket + " AS bucket FROM " + dataTable(q) + where + ") " + groupedSelect(q, g, "filtered", postgres)
+		bucket := bucketSQL(zone, q.Selection.Bucket)
+		return "WITH filtered AS (SELECT *," + bucket + " AS bucket FROM " + dataTable(q) + where + ") " + groupedSelect(q, g, "filtered")
 	case "context":
 		return `WITH peaks AS (SELECT harness,provider,model,session_id,MAX(input_tokens+cache_read_tokens+cache_write_tokens) AS peak,MAX(occurred_at_ms) AS latest FROM ` + dataTable(q) + where + ` GROUP BY harness,provider,model,session_id), ranked AS (SELECT *,ROW_NUMBER() OVER(PARTITION BY harness,provider,model ORDER BY peak) AS position,COUNT(*) OVER(PARTITION BY harness,provider,model) AS size FROM peaks)
  SELECT ` + g.key + " AS key," + g.name + ` AS name,harness,provider,model,MAX(latest) AS date,COUNT(*) AS sessions,
@@ -158,23 +155,20 @@ func groupedSQL(q analytics.Query, where, zone string, postgres bool) string {
  '' AS location_key,'' AS location_name,'[]' AS directory_names,FALSE AS unknown_directory,'' AS repository_key,'' AS repository_name
  FROM ranked GROUP BY ` + g.columns
 	}
-	return groupedSelect(q, g, dataTable(q)+where, postgres)
+	return groupedSelect(q, g, dataTable(q)+where)
 }
-func groupedSelect(q analytics.Query, g grouping, from string, postgres bool) string {
+func groupedSelect(q analytics.Query, g grouping, from string) string {
 	key, name, group := g.key, g.name, g.columns
 	locationKey, locationName, dirs, unknown, repoKey, repoName := "''", "''", "'[]'", "FALSE", "''", "''"
 	if q.Tab == "repo" {
 		locationKey, locationName = key, name
 		dirs = "ti_directories(directory_name) FILTER(WHERE directory_name<>'')"
-		if postgres {
-			dirs = "CAST(json_agg(DISTINCT directory_name ORDER BY directory_name) FILTER(WHERE directory_name<>'') AS TEXT)"
-		}
 		dirs = "COALESCE(" + dirs + ",'[]')"
 		unknown = "(MAX(CASE WHEN directory_key='' OR directory_name='' THEN 1 ELSE 0 END)=1)"
 		repoKey = "CASE WHEN COUNT(DISTINCT repository_key)=1 THEN MIN(repository_key) ELSE 'unknown' END"
 		repoName = "CASE WHEN COUNT(DISTINCT repository_key)=1 THEN MIN(repository_name) ELSE 'unknown' END"
 	}
-	return "SELECT " + key + " AS key," + name + " AS name," + dimensionSummary("harness", postgres) + " AS harness," + dimensionSummary("provider", postgres) + " AS provider," + dimensionSummary("model", postgres) + " AS model,MAX(occurred_at_ms) AS date,COUNT(DISTINCT session_id) AS sessions," +
+	return "SELECT " + key + " AS key," + name + " AS name," + dimensionSummary("harness") + " AS harness," + dimensionSummary("provider") + " AS provider," + dimensionSummary("model") + " AS model,MAX(occurred_at_ms) AS date,COUNT(DISTINCT session_id) AS sessions," +
 		sumSQL("input_tokens") + " AS input," + sumSQL("output_tokens") + " AS output," + sumSQL("reasoning_tokens") + " AS reasoning," + sumSQL("cache_read_tokens") + " AS cache_read," + sumSQL("cache_write_tokens") + " AS cache_write," + sumSQL("total_tokens") + " AS total,MAX(input_tokens+cache_read_tokens+cache_write_tokens) AS context," +
 		"CAST(0 AS BIGINT) AS average_context,CAST(0 AS BIGINT) AS median_context,CAST(0 AS BIGINT) AS max_context," + locationKey + " AS location_key," + locationName + " AS location_name," + dirs + " AS directory_names," + unknown + " AS unknown_directory," + repoKey + " AS repository_key," + repoName + " AS repository_name FROM " + from + " GROUP BY " + group
 }
@@ -263,12 +257,12 @@ func loadDashboard(ctx context.Context, store *datastore.Store, q analytics.Quer
 	if err := safeAggregate(result.Summary.TotalTokens, result.Summary.InputTokens, result.Summary.OutputTokens, result.Summary.ReasoningTokens, result.Summary.CacheReadTokens, result.Summary.CacheWriteTokens, result.Summary.SessionCount, result.Summary.SyncedSessions); err != nil {
 		return result, err
 	}
-	grouped := groupedSQL(q, where, reportingZone(now), store.PostgreSQL())
+	grouped := groupedSQL(q, where, reportingZone(now))
 	groupArgs := append([]interface{}{}, args...)
 	if q.Tab == "tokens" {
 		groupArgs = append([]interface{}{reportingZone(now)}, args...)
 	}
-	if err := tx.QueryRowContext(ctx, sqlutil.Bind(groupCountSQL(q, where, reportingZone(now), store.PostgreSQL())), groupArgs...).Scan(&result.RowCount); err != nil {
+	if err := tx.QueryRowContext(ctx, sqlutil.Bind(groupCountSQL(q, where, reportingZone(now))), groupArgs...).Scan(&result.RowCount); err != nil {
 		return result, err
 	}
 	if maxRows > 0 && result.RowCount > maxRows {
@@ -293,7 +287,7 @@ func loadDashboard(ctx context.Context, store *datastore.Store, q analytics.Quer
 	switch q.Tab {
 	case "tokens", "sessions":
 		chartQuery.Tab = "tokens"
-		chartSQL = groupedSQL(chartQuery, where, reportingZone(now), store.PostgreSQL())
+		chartSQL = groupedSQL(chartQuery, where, reportingZone(now))
 		chartArgs = append([]interface{}{reportingZone(now)}, args...)
 		chartSort, chartDirection = "date", "asc"
 		limit = 1000
@@ -347,11 +341,7 @@ func LoadFacets(ctx context.Context, store *datastore.Store, q analytics.Query, 
 		statement := "SELECT DISTINCT " + field + " FROM " + dataTable(q) + where
 		limit := 1000
 		if field == "session_native_id" {
-			if store.PostgreSQL() {
-				statement += " AND position(lower(?) in lower(session_native_id))>0"
-			} else {
-				statement += " AND instr(lower(session_native_id),lower(?))>0"
-			}
+			statement += " AND instr(lower(session_native_id),lower(?))>0"
 			args = append(args, search)
 			limit = analytics.SessionOptionLimit
 		}
@@ -416,23 +406,9 @@ func LoadFacets(ctx context.Context, store *datastore.Store, q analytics.Query, 
 
 // All identifiers here are fixed selections. Zones are bound, including fixed
 // offsets, and calendar boundaries retain historical DST rules.
-func bucketSQL(zone, bucket string, postgres bool) string {
+func bucketSQL(_ string, bucket string) string {
 	if bucket != "week" && bucket != "month" && bucket != "year" {
 		bucket = "day"
 	}
-	if !postgres {
-		return "ti_bucket(occurred_at_ms,?,'" + bucket + "')"
-	}
-	expression := "timezone(?,to_timestamp(occurred_at_ms / 1000.0))"
-	if strings.HasPrefix(zone, "@") {
-		expression = "timezone(make_interval(secs => CAST(substring(CAST(? AS TEXT) FROM 2) AS DOUBLE PRECISION)),to_timestamp(occurred_at_ms / 1000.0))"
-	}
-	format := "YYYY-MM-DD"
-	if bucket == "month" {
-		format = "YYYY-MM"
-	}
-	if bucket == "year" {
-		format = "YYYY"
-	}
-	return "to_char(date_trunc('" + bucket + "'," + expression + "),'" + format + "')"
+	return "ti_bucket(occurred_at_ms,?,'" + bucket + "')"
 }

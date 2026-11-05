@@ -1,6 +1,8 @@
 # Local usage
 
-Local dashboards read saved usage through one shared backend. TUI, browser, MyGo and Electron can run together. The backend starts on demand and stops after its final viewer disconnects. Browser, MyGo and Electron dashboards open a local HTTP port; it closes shortly after the last of them disconnects, while the TUI uses a private socket.
+MyGo, Electron, browser and TUI share one personal backend. It owns capture,
+processing and SQLite storage; each viewer holds a lease. After the final
+disconnect and reconnect grace it stops, leaving accepted work durable for next time.
 
 import webScreenshot from '../../../assets/tokeninsights-web.png'
 import tuiScreenshot from '../../../assets/tokeninsights-tui.png'
@@ -9,146 +11,98 @@ import tuiScreenshot from '../../../assets/tokeninsights-tui.png'
 
 <img src={tuiScreenshot} alt="TokenInsights terminal dashboard with synthetic fixture data" />
 
+## Desktop
+
+```sh
+tokeninsights
+tokeninsights --open=electron
+tokeninsights config set viewer.open mygo
+```
+
+MyGo is the default; Electron is an explicit alternative. Launch succeeds only
+after the selected desktop acknowledges a live requested session. If unavailable,
+it fails with repair guidance. Each window keeps its selected connection and shows
+requested target/transport, verified backend hostname/identity and state.
+
 ## Browser dashboard
 
 ```sh
 tokeninsights web
-```
-
-The dashboard opens at `http://127.0.0.1:8765`. The command runs in the foreground;
-Ctrl+C detaches this command; other viewers keep the backend running. Startup highlights the dashboard URL in color and shows a
-Ctrl+C detach hint. Redirected output stays plain; `NO_COLOR=1` disables terminal
-styling.
-
-To choose a different port:
-
-```sh
 tokeninsights web --port 9000
-```
-
-This opens `http://127.0.0.1:9000`. The flag overrides environment and saved
-configuration. Use `--port 0` to choose an available port; the command prints its
-URL. An occupied explicit port fails rather than choosing another port.
-
-When a [desktop experiment](/install#desktop-experiments) is installed, choose explicitly with --open or save a default with `tokeninsights config set viewer.open MODE`:
-
-| Mode       | Behavior                                    |
-| ---------- | ------------------------------------------- |
-| `auto`     | MyGo when installed, else browser (default) |
-| `mygo`     | MyGo app                                    |
-| `electron` | Electron app using the React dashboard      |
-| `browser`  | System browser                              |
-| `false`    | Print URL without opening a viewer          |
-
-```sh
-tokeninsights web --open=electron
-tokeninsights web --open=mygo
-tokeninsights web --open=browser
 tokeninsights web --open=false
 ```
 
-Both desktop experiments coexist and share the backend. Hosted URLs open in the browser. There is no periodic capture: opening a viewer requests a new collection, and overlapping requests coalesce. Browser reload and filters only query saved data.
+Web prints a loopback URL and runs foreground. Default port 0 chooses an available
+port; an occupied explicit port fails. `--open=false` prints the URL without
+opening a browser. Ctrl+C releases this command's lease; other viewers continue.
 
-### Remote machines
+The loopback bridge belongs to the viewer; the backend has only a private Unix
+socket. `--host` accepts loopback addresses. Use [temporary TCP access](/remote)
+for another machine rather than exposing an unauthenticated browser bridge.
 
-View usage collected on another machine without copying its data. The terminal dashboard, browser dashboard, MyGo and `data reprocess|wait` attach that machine's backend through your normal SSH configuration:
+## Refresh versus reload
 
-```sh
-tokeninsights tui --endpoint ssh://you@devbox
-tokeninsights web --endpoint ssh://you@devbox
-tokeninsights data wait --endpoint ssh://you@devbox:2222
-```
-
-`web --endpoint` serves the remote read-only dashboard on your local `--host`/`--port` and opens it in the browser; desktop experiments use their own `--endpoint` instead.
-
-The remote machine needs TokenInsights installed. SSH runs `tokeninsights system dial-stdio` there; if `tokeninsights` is not on the non-interactive PATH, set its path with `tokeninsights config set remote.command /home/you/.local/bin/tokeninsights`. Save a default endpoint with `tokeninsights config set remote.endpoint ssh://you@devbox` or `TOKENINSIGHTS_ENDPOINT`; `--endpoint=local` overrides it. Capture and `--source-dir` (absolute) run on the remote machine. If SSH disconnects, relaunch to reconnect; TokenInsights never falls back to local data.
-
-### Over SSH
-
-An SSH session never opens anything on the server. `tokeninsights web` prints the
-dashboard URL, a `tokeninsights://` app link and a tunnel command:
+Launch captures usage. Explicit **Refresh** (TUI `R`) requests capture again on the selected
+backend; overlapping requests coalesce. Saved results remain readable while capture
+and processing run. Filters, browser reload, TUI `r` and automatic revision reads
+only query saved usage. There is no periodic scanning.
 
 ```sh
-ssh -L 8765:127.0.0.1:8765 <host>
+tokeninsights web --capture=false
+tokeninsights tui --capture=false
+tokeninsights web --full-refresh
 ```
 
-Run the tunnel on your own machine, then open the dashboard URL in the browser. Desktop experiments use their configured local backend; a tunneled URL does not select another database.
+`--capture=false` skips launch capture while accepted processing resumes.
+`--full-refresh` rereads sources and retries unchanged quarantined input.
+A failed source preserves prior evidence/checkpoints; later launch/Refresh retries
+eligible sources. Changed source/parser policy also retries quarantine.
 
-To expose the read-only dashboard on all IPv4 interfaces:
+## Status and saved results
 
-```sh
-tokeninsights web --host 0.0.0.0
-```
+The loading indicator separates capture, processing and displayed revision.
+Source counts measure files/databases, never sessions/tokens. Failed/quarantined
+sources remain explicit. No percentage or ETA is estimated. A refresh completes
+only when processing is visible and a successful query displays the current revision.
+Saved usage remains available on failure.
 
-With a wildcard bind, the local browser opens a loopback URL. The local dashboard has
-no authentication; prefer an SSH tunnel over exposing it on a network.
+**No new usage** means unchanged sources or no sources found, without excluding
+earlier history. The hostname identifies the serving backend machine; retained
+facts may describe sources captured elsewhere in the past.
 
-The browser dashboard uses white and neutral charcoal themes, restrained blue
-accents, and locally bundled DM Sans. Compact navigation and filters wrap on smaller
-screens; filters and period navigation share a toolbar directly below the header.
-Hover, focus, or press the status icon beside theme selection for loading status and
-last ingestion. In-process Web also shows harness details and TokenInsights process
-CPU/resident RAM.
+The dashboard checks saved-data status and automatically updates published
+revisions. This is query polling, not source scanning. Retry controls recover failed
+requests. Process CPU/RSS and detailed capture progress are operational metadata.
 
-The browser checks saved-data status every five seconds and refreshes published
-usage automatically, including with `--sync=false`. It has no manual Reload button;
-failed requests retain Retry controls. Completed collection details collapse under
-**Latest collection**.
+## Filters and accounting
 
-**Review excluded usage** opens separate saved counters that cannot be confidently
-included. Date ranges and filters apply to both views; excluded usage never inflates
-the main totals.
+Date range and provider/model/harness/session filters affect displayed usage only,
+never source discovery. Daily, Weekly, Monthly, Yearly, All time and Custom operate
+in the backend timezone; weeks start Monday. Custom reveals inclusive, optionally
+open date inputs. Previous/next steps calendar periods through the current one.
+
+Repo view groups by repository/directory; location filters apply only there.
+Missing locations remain **unknown**. Expand an unknown row to inspect available
+contributing directory labels. Location keys help grouping, never deduplication.
+
+Confirmed usage is the default. **Review excluded usage** shows ambiguous usable
+counters separately under the same filters; it never adds them to confirmed totals.
+Missing/unusable session/time/counters remain diagnostics. Session context load is
+the peak of input + cache read + cache write, excluding output/reasoning; context
+summaries aggregate those per-session peaks.
 
 ## Terminal dashboard
 
 ```sh
 tokeninsights tui
+tokeninsights tui --today --bucket day
+tokeninsights tui --harness pi,codex
 ```
 
-Press `r` to query saved usage again. This does not start another collection.
+Press `r` to query saved usage again; it starts no capture.
+Persistent harness rows show discovery, reading, saving and finalized sources.
+The TUI reads its complete result from one consistent snapshot, using the same
+analytics as the dashboard with a 100,000-row limit.
 
-The TUI keeps a visible refresh strip above navigation. Four harness rows show
-discovery, reading, saving and finalized source counts with remaining work. Counts
-measure source files/databases, not sessions or tokens. Failed and quarantined
-sources remain explicit. No overall percentage or ETA is estimated. Completion
-appears only after processing is visible and the dashboard displays that revision.
-
-The TUI loads its complete result in one consistent snapshot, using the same
-analytics as Web and retaining its 100,000-row limit.
-
-## View saved usage
-
-Skip collection on startup with `--sync=false`:
-
-```sh
-tokeninsights web --sync=false
-tokeninsights tui --sync=false
-```
-
-Previously accepted data may still finish processing. Both viewers refresh when
-new usage is published.
-
-## Filter your view
-
-Use date ranges and model, provider, or harness filters to narrow the displayed
-usage. Filters affect what you see; they do not change which harnesses are
-collected on startup.
-
-In the browser, choose Daily, Weekly, Monthly, Yearly, All time, or Custom in the
-date filter. Previous/next arrows step calendar periods through the current period;
-weeks start Monday in the server timezone. Custom date inputs appear only after
-choosing Custom.
-
-The Repo view groups token, model, and provider usage by repository or directory.
-Location filters apply only there. Missing location data appears as **unknown**;
-expand an unknown row to see recorded contributing directories when available.
-
-## Refresh local sources
-
-Restart the dashboard to collect again. If a source failed during collection,
-the dashboard keeps saved usage available; restarting retries collection. Add
-`--full-refresh` to reread unchanged quarantined sources.
-
-In the latest collection, **No new usage** means unchanged sources or no sources
-found; saved usage from earlier runs remains included. The local hostname identifies
-the machine running the viewer, not the producer of every historical fact.
+See [commands](/commands) for filters/keys and [remote connections](/remote) for
+explicit SSH/TCP viewing.

@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"encoding/json"
 	"net/http"
 	"os"
 	"os/exec"
@@ -14,6 +15,7 @@ import (
 
 	"github.com/flexdinesh/tokeninsights/packages/core/endpoint"
 	"github.com/flexdinesh/tokeninsights/packages/core/localclient"
+	"github.com/flexdinesh/tokeninsights/packages/core/sshtransport"
 )
 
 // TestSSHEndpointDeployment runs against a real OpenSSH server whose remote
@@ -26,7 +28,7 @@ func TestSSHEndpointDeployment(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), 3*time.Minute)
 	defer cancel()
 	selected, err := endpoint.Parse(target)
-	if err != nil || selected.IsLocal() {
+	if err != nil || selected.SSH == nil {
 		t.Fatal("invalid SSH fixture endpoint", target, err)
 	}
 	local, err := os.Hostname()
@@ -37,7 +39,7 @@ func TestSSHEndpointDeployment(t *testing.T) {
 	root := t.TempDir()
 	t.Setenv("XDG_DATA_HOME", filepath.Join(root, "data"))
 	t.Setenv("TOKENINSIGHTS_CONFIG_PATH", filepath.Join(root, "config.json"))
-	session, err := localclient.ConnectRemote(ctx, selected.SSH.Dialer(""), localclient.RemoteOptions{Capture: true})
+	session, err := localclient.ConnectRemote(ctx, sshtransport.Dialer(*selected.SSH, ""), localclient.RemoteOptions{Capture: true})
 	if err != nil {
 		t.Fatal("real SSH endpoint rejected", err)
 	}
@@ -68,18 +70,18 @@ func TestSSHEndpointDeployment(t *testing.T) {
 		return output.String(), err
 	}
 	// The attached session keeps the remote owner; finite commands share it.
-	if output, err := run(endpoint.DefaultCommand, "data", "wait", "--endpoint", target); err != nil {
+	if output, err := run(endpoint.DefaultCommand, "data", "wait", "--connection", target); err != nil {
 		t.Fatalf("remote data wait through PATH failed: %v\n%s", err, output)
 	}
-	if output, err := run("/opt/tokeninsights/tokeninsights", "data", "reprocess", "--endpoint", target); err != nil {
+	if output, err := run("/opt/tokeninsights/tokeninsights", "data", "reprocess", "--connection", target); err != nil {
 		t.Fatalf("remote data reprocess through remote.command failed: %v\n%s", err, output)
 	}
-	output, err := run("/opt/absent/tokeninsights", "data", "wait", "--endpoint", target)
+	output, err := run("/opt/absent/tokeninsights", "data", "wait", "--connection", target)
 	if err == nil || !strings.Contains(output, "/opt/absent/tokeninsights") {
 		t.Fatalf("missing remote command lost diagnostics: %v\n%s", err, output)
 	}
-	// web --endpoint serves the remote dashboard through a local proxy.
-	web := exec.CommandContext(ctx, cli, "web", "--endpoint", target, "--sync=false", "--open=false", "--port", "0")
+	// web --connection serves the remote dashboard through a local proxy.
+	web := exec.CommandContext(ctx, cli, "web", "--connection", target, "--capture=false", "--open=false", "--port", "0")
 	web.Env = append(os.Environ(), "NO_COLOR=1")
 	stdout, err := web.StdoutPipe()
 	if err != nil {
@@ -106,6 +108,30 @@ func TestSSHEndpointDeployment(t *testing.T) {
 	_ = response.Body.Close()
 	if response.StatusCode != http.StatusOK {
 		t.Fatal("proxied remote status unavailable", response.StatusCode)
+	}
+	response, err = http.Get(dashboard + "/api/viewer/connection")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var connection endpoint.Info
+	err = json.NewDecoder(response.Body).Decode(&connection)
+	_ = response.Body.Close()
+	if err != nil || connection.Transport != "ssh" || connection.Hostname != instance.Hostname || connection.State != "connected" {
+		t.Fatal("SSH bridge did not report the verified target", connection, err)
+	}
+	refresh, err := http.NewRequestWithContext(ctx, http.MethodPost, dashboard+"/api/viewer/refresh", strings.NewReader("{}"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	refresh.Header.Set("Content-Type", "application/json")
+	refresh.Header.Set("Origin", dashboard)
+	response, err = http.DefaultClient.Do(refresh)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = response.Body.Close()
+	if response.StatusCode != http.StatusAccepted {
+		t.Fatal("SSH browser refresh failed", response.StatusCode)
 	}
 	if err := web.Process.Signal(os.Interrupt); err != nil {
 		t.Fatal(err)

@@ -10,7 +10,6 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/flexdinesh/tokeninsights/packages/core/appstore"
 	"github.com/flexdinesh/tokeninsights/packages/core/collector"
 	"github.com/flexdinesh/tokeninsights/packages/core/collectordb"
 	"github.com/flexdinesh/tokeninsights/packages/core/datastore"
@@ -71,21 +70,6 @@ func PrepareFixture(ctx context.Context, collectorPath, serverPath string) error
 		return err
 	}
 	defer func() { _ = server.Close() }()
-	var application *appstore.Store
-	appPath := filepath.Join(root, "app.sqlite")
-	if _, err := os.Stat(appPath); err == nil {
-		identity, err := server.DatabaseIdentity(ctx)
-		if err != nil {
-			return err
-		}
-		application, err = appstore.Open(ctx, appPath, identity, datastore.KindPersonal)
-		if err != nil {
-			return err
-		}
-		defer func() { _ = application.Close() }()
-	} else if !errors.Is(err, os.ErrNotExist) {
-		return err
-	}
 	if err := collectordb.ResetAllLocked(ctx, collectorPath); err != nil {
 		return err
 	}
@@ -123,11 +107,6 @@ func PrepareFixture(ctx context.Context, collectorPath, serverPath string) error
 	}
 	if err := tx.Commit(); err != nil {
 		return err
-	}
-	if application != nil {
-		if _, err := application.SQL().ExecContext(ctx, "UPDATE application_metadata SET database_id=? WHERE id=1", databaseID); err != nil {
-			return err
-		}
 	}
 	for _, name := range []string{"source", "home"} {
 		if err := os.RemoveAll(filepath.Join(root, name)); err != nil {

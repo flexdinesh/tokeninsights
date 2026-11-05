@@ -155,30 +155,14 @@ func TestDirectQueriesMatchHTTPWithoutNetworkDependency(t *testing.T) {
 	}
 }
 
-func TestDerivedRoleAliasesRejectBeforeCreatingStorage(t *testing.T) {
-	root := t.TempDir()
-	collectorPath := filepath.Join(root, "collector.sqlite")
-	for _, paths := range [][2]string{{collectorPath + ".jobs.sqlite", filepath.Join(root, "app.sqlite")}, {filepath.Join(root, "data.sqlite"), collectorPath + ".jobs.sqlite"}, {filepath.Join(root, "data.sqlite"), filepath.Join(root, "data.sqlite.application.json")}} {
-		runtime, err := localruntime.OpenWithApp(t.Context(), collectorPath, paths[0], paths[1])
-		if err == nil {
-			_ = runtime.Close()
-			t.Fatal("derived role alias allowed")
-		}
-	}
-	entries, err := os.ReadDir(root)
-	if err != nil || len(entries) != 0 {
-		t.Fatal("alias rejection mutated storage", entries, err)
-	}
-}
-
 func TestSQLiteSidecarRoleAliasesRejectBeforeCreatingStorage(t *testing.T) {
 	for _, suffix := range []string{"-wal", "-shm", "-journal"} {
 		t.Run(suffix, func(t *testing.T) {
 			root := t.TempDir()
 			collector := filepath.Join(root, "collector.sqlite")
 			data := filepath.Join(root, "server.sqlite")
-			for _, paths := range [][2]string{{collector + suffix, filepath.Join(root, "app.sqlite")}, {data, data + suffix}, {data, collector + suffix}} {
-				if runtime, err := localruntime.OpenWithApp(t.Context(), collector, paths[0], paths[1]); err == nil {
+			for _, pair := range [][2]string{{collector, collector + suffix}, {data + suffix, data}} {
+				if runtime, err := localruntime.Open(t.Context(), pair[0], pair[1]); err == nil {
 					_ = runtime.Close()
 					t.Fatal("SQLite sidecar alias accepted")
 				}
@@ -193,26 +177,54 @@ func TestSQLiteSidecarRoleAliasesRejectBeforeCreatingStorage(t *testing.T) {
 
 func TestStartupFailureReleasesDatabaseOwnership(t *testing.T) {
 	root := t.TempDir()
-	collectorPath, dataPath, appPath := filepath.Join(root, "collector.sqlite"), filepath.Join(root, "data.sqlite"), filepath.Join(root, "app.sqlite")
+	collectorPath, dataPath := filepath.Join(root, "collector.sqlite"), filepath.Join(root, "data.sqlite")
 	occupied := []byte("unrelated file")
-	if err := os.WriteFile(appPath, occupied, 0o600); err != nil {
+	if err := os.WriteFile(dataPath, occupied, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if runtime, err := localruntime.OpenWithApp(t.Context(), collectorPath, dataPath, appPath); err == nil {
+	if runtime, err := localruntime.Open(t.Context(), collectorPath, dataPath); err == nil {
 		_ = runtime.Close()
-		t.Fatal("opened invalid application database")
+		t.Fatal("opened invalid token database")
 	}
-	if contents, err := os.ReadFile(appPath); err != nil || string(contents) != string(occupied) {
+	if contents, err := os.ReadFile(dataPath); err != nil || string(contents) != string(occupied) {
 		t.Fatal("startup mutated unrelated file", err)
 	}
-	if err := os.Remove(appPath); err != nil {
+	if err := os.Remove(dataPath); err != nil {
 		t.Fatal(err)
 	}
-	runtime, err := localruntime.OpenWithApp(t.Context(), collectorPath, dataPath, appPath)
+	runtime, err := localruntime.Open(t.Context(), collectorPath, dataPath)
 	if err != nil {
-		t.Fatal("failed startup leaked storage or ownership", err)
+		t.Fatal("failed startup leaked ownership", err)
 	}
 	if err := runtime.Close(); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestRuntimeLeavesRetiredApplicationFilesUntouched(t *testing.T) {
+	root := t.TempDir()
+	collectorPath, dataPath := filepath.Join(root, "collector.sqlite"), filepath.Join(root, "server.sqlite")
+	retired := map[string][]byte{
+		"app.sqlite":                     []byte("unrelated account storage"),
+		"server.sqlite.application.json": []byte("old pairing guard"),
+		"collector.sqlite.jobs.sqlite":   []byte("retired jobs"),
+	}
+	for name, body := range retired {
+		if err := os.WriteFile(filepath.Join(root, name), body, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	runtime, err := localruntime.Open(t.Context(), collectorPath, dataPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := runtime.Close(); err != nil {
+		t.Fatal(err)
+	}
+	for name, want := range retired {
+		got, err := os.ReadFile(filepath.Join(root, name))
+		if err != nil || string(got) != string(want) {
+			t.Fatal("retired file mutated", name, err)
+		}
 	}
 }

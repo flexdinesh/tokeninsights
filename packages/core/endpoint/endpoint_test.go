@@ -1,15 +1,10 @@
 package endpoint
 
 import (
-	"context"
-	"errors"
-	"io"
-	"os"
-	"path/filepath"
-	"slices"
+	"encoding/base64"
+	"fmt"
 	"strings"
 	"testing"
-	"time"
 )
 
 func TestParseAcceptsLocalAndSSHOnly(t *testing.T) {
@@ -38,93 +33,37 @@ func TestParseAcceptsLocalAndSSHOnly(t *testing.T) {
 	}
 }
 
-func TestArgsPlaceDestinationAfterOptionTerminator(t *testing.T) {
-	parsed, err := Parse("ssh://dee@box:2222")
-	if err != nil {
-		t.Fatal(err)
+func TestTCPConnectionRoundTripAndRedaction(t *testing.T) {
+	target := Endpoint{TCP: &TCP{Address: "127.0.0.1:12345", Pin: strings.Repeat("ab", 32), Token: base64.RawURLEncoding.EncodeToString(make([]byte, 32))}}
+	value := target.ConnectionString()
+	parsed, err := Parse(value)
+	if err != nil || parsed.TCP == nil || *parsed.TCP != *target.TCP || parsed.IsLocal() {
+		t.Fatal("TCP round trip failed", err)
 	}
-	args := parsed.SSH.Args()
-	terminator := slices.Index(args, "--")
-	if terminator < 0 || !slices.Equal(args[terminator+1:], []string{"dee@box", DefaultCommand, "system", "dial-stdio"}) || !slices.Contains(args[:terminator], "2222") {
-		t.Fatal("unsafe or incomplete ssh arguments", args)
+	if strings.Contains(parsed.String(), target.TCP.Token) || strings.Contains(parsed.String(), target.TCP.Pin) {
+		t.Fatal("safe label leaked credentials")
 	}
-	parsed.SSH.Command = "/home/dee/.local/bin/tokeninsights"
-	if args := parsed.SSH.Args(); args[len(args)-3] != parsed.SSH.Command {
-		t.Fatal("remote.command not used", args)
-	}
-}
-
-func TestValidateCommandRejectsControlCharacters(t *testing.T) {
-	if err := ValidateCommand("/opt/ti/tokeninsights"); err != nil {
-		t.Fatal(err)
-	}
-	for _, command := range []string{"", " tokeninsights", "tokeninsights\nrm", "a\x00b"} {
-		if ValidateCommand(command) == nil {
-			t.Fatalf("invalid remote command %q accepted", command)
+	for _, label := range []string{fmt.Sprint(*parsed.TCP), fmt.Sprintf("%+v", parsed.TCP), fmt.Sprintf("%#v", parsed.TCP), fmt.Sprintf("%#v", parsed)} {
+		if strings.Contains(label, target.TCP.Token) || strings.Contains(label, target.TCP.Pin) {
+			t.Fatal("formatted connection leaked credentials")
 		}
 	}
-}
-
-func fakeSSH(t *testing.T, body string) string {
-	t.Helper()
-	path := filepath.Join(t.TempDir(), "ssh")
-	if err := os.WriteFile(path, []byte("#!/bin/sh\n"+body+"\n"), 0o700); err != nil {
-		t.Fatal(err)
+	for _, bad := range []string{
+		value + "&token=" + target.TCP.Token,
+		strings.Replace(value, "/v1?", "/v2?", 1),
+		strings.Replace(value, "address=", "extra=x&address=", 1),
+		strings.Replace(value, "#pin=", "#extra=x&pin=", 1),
+		strings.Replace(value, target.TCP.Pin, "bad", 1),
+		strings.Replace(value, target.TCP.Token, "short", 1),
+		strings.Replace(value, "127.0.0.1", "0.0.0.0", 1),
+		strings.Replace(value, "127.0.0.1", "*", 1),
+		strings.Replace(value, "127.0.0.1", "host%3Abad", 1),
+		strings.Replace(value, "%3A12345", "%3A0", 1),
+	} {
+		if _, err := Parse(bad); err == nil {
+			t.Fatal("malformed TCP accepted")
+		} else if strings.Contains(err.Error(), target.TCP.Token) {
+			t.Fatal("parse error leaked secret")
+		}
 	}
-	return path
-}
-
-func TestDialerCarriesOneStdioSessionAndRejectsRedial(t *testing.T) {
-	executable := fakeSSH(t, "exec cat")
-	dial := SSH{Host: "box"}.Dialer(executable)
-	conn, err := dial(t.Context())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := conn.SetDeadline(time.Now().Add(5 * time.Second)); err != nil {
-		t.Fatal("pipe deadlines unsupported", err)
-	}
-	if _, err := conn.Write([]byte("ping")); err != nil {
-		t.Fatal(err)
-	}
-	reply := make([]byte, 4)
-	if _, err := io.ReadFull(conn, reply); err != nil || string(reply) != "ping" {
-		t.Fatal("stdio round trip failed", string(reply), err)
-	}
-	if conn.RemoteAddr().String() != "ssh://box" {
-		t.Fatal("remote address lost endpoint", conn.RemoteAddr())
-	}
-	if err := conn.Close(); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := dial(t.Context()); !errors.Is(err, ErrSessionClosed) {
-		t.Fatal("second dial started another ssh session", err)
-	}
-}
-
-func TestDialerReportsBoundedRemoteDiagnostics(t *testing.T) {
-	executable := fakeSSH(t, `echo "sh: tokeninsights: not found" >&2; head -c 10000 /dev/zero | tr '\0' x >&2; exit 127`)
-	conn, err := SSH{Host: "box"}.Dialer(executable)(t.Context())
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = conn.Close() }()
-	_, err = conn.Read(make([]byte, 1))
-	var remote *RemoteError
-	if !errors.As(err, &remote) || !strings.Contains(err.Error(), "not found") || !strings.Contains(err.Error(), "remote.command") || len(remote.Stderr) > maxStderrBytes {
-		t.Fatal("remote failure lost or unbounded diagnostics", err)
-	}
-}
-
-func TestDialerRespectsCancelledContext(t *testing.T) {
-	ctx, cancel := contextWithCancel(t)
-	cancel()
-	if _, err := (SSH{Host: "box"}).Dialer(fakeSSH(t, "exec cat"))(ctx); err == nil {
-		t.Fatal("cancelled dial started ssh")
-	}
-}
-
-func contextWithCancel(t *testing.T) (context.Context, context.CancelFunc) {
-	t.Helper()
-	return context.WithCancel(t.Context())
 }

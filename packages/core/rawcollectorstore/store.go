@@ -87,7 +87,7 @@ func (s *Store) Bind(ctx context.Context, id, endpoint, databaseID string) error
 }
 
 func (s *Store) BindDataset(ctx context.Context, id, endpoint, databaseID, datasetID string) error {
-	if !evidence.ValidDatasetID(datasetID) {
+	if datasetID != evidence.PersonalDatasetID {
 		return errors.New("invalid_dataset")
 	}
 	u, err := url.Parse(endpoint)
@@ -109,40 +109,22 @@ func (s *Store) BindDataset(ctx context.Context, id, endpoint, databaseID, datas
 	return err
 }
 
-// ResolveDestination binds endpoint, database and dataset; tokens never identify cursors.
-// Remote replacement rejects, while local replacement deliberately replays history.
-func (s *Store) ResolveDestination(ctx context.Context, endpoint, databaseID, datasetID string, local bool) (string, error) {
-	if !local {
-		var conflicting bool
-		if err := s.DB.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM evidence_destinations WHERE endpoint=? AND dataset_id=? AND database_id<>?)", endpoint, datasetID, databaseID).Scan(&conflicting); err != nil {
-			return "", err
-		}
-		if conflicting {
-			return "", errors.New("server_database_changed")
-		}
+// ResolveDestination binds the personal outbox to its local token database.
+// Historical endpoint strings remain immutable journal identities, never transports.
+// A replacement local database deliberately replays retained evidence.
+func (s *Store) ResolveDestination(ctx context.Context, endpoint, databaseID, datasetID string) (string, error) {
+	if datasetID != evidence.PersonalDatasetID {
+		return "", errors.New("invalid_dataset")
 	}
-	query := "SELECT destination_id,database_id FROM evidence_destinations WHERE endpoint=? AND dataset_id=?"
-	args := []interface{}{endpoint, datasetID}
-	if local {
-		query += " AND database_id=?"
-		args = append(args, databaseID)
-	}
-	var id, previous string
-	err := s.DB.QueryRowContext(ctx, query, args...).Scan(&id, &previous)
+	var id string
+	err := s.DB.QueryRowContext(ctx, "SELECT destination_id FROM evidence_destinations WHERE endpoint=? AND dataset_id=? AND database_id=?", endpoint, datasetID, databaseID).Scan(&id)
 	if err == nil {
-		if previous != databaseID {
-			return "", errors.New("server_database_changed")
-		}
 		return id, s.BindDataset(ctx, id, endpoint, databaseID, datasetID)
 	}
 	if !errors.Is(err, sql.ErrNoRows) {
 		return "", err
 	}
-	identity := []interface{}{endpoint, datasetID}
-	if local {
-		identity = append(identity, databaseID)
-	}
-	id = evidence.Tuple(identity...)
+	id = evidence.Tuple(endpoint, datasetID, databaseID)
 	return id, s.BindDataset(ctx, id, endpoint, databaseID, datasetID)
 }
 

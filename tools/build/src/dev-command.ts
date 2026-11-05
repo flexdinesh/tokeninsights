@@ -16,7 +16,7 @@ export async function runDevCommand(mode: 'server' | 'combined') {
         join(workspaceRoot, 'packages/cli/bin/tokeninsights'),
         [
           'web',
-          '--sync=false',
+          '--capture=false',
           '--open=false',
           '--host',
           '127.0.0.1',
@@ -26,10 +26,8 @@ export async function runDevCommand(mode: 'server' | 'combined') {
           join(root, 'collector.sqlite'),
           '--server-db-path',
           join(root, 'server.sqlite'),
-          '--app-db-path',
-          join(root, 'app.sqlite'),
         ],
-        { env: { ...process.env, TOKENINSIGHTS_ACCESS_TOKEN: '', NO_COLOR: '1' } },
+        { env: { ...process.env, NO_COLOR: '1' } },
         /Dashboard:\s+(http:\/\/127\.0\.0\.1:\d+)/,
       )
     const startWeb = (apiURL: string) => {

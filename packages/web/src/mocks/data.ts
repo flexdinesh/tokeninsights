@@ -6,16 +6,30 @@ import {
   statusSchema,
   tabSchema,
 } from '@tokeninsights/contracts'
-import type { Bootstrap, Dashboard, Facets, Row, SyncStatus, Tab } from '@tokeninsights/contracts'
+import type {
+  Bootstrap,
+  Dashboard,
+  Facets,
+  Row,
+  SyncStatus,
+  Tab,
+  ViewerConnection,
+} from '@tokeninsights/contracts'
 
 const dayOne = Date.UTC(2026, 8, 12, 10)
 const dayTwo = Date.UTC(2026, 8, 13, 10)
 const dayThree = Date.UTC(2026, 8, 14, 10)
 
+export const mockConnection = {
+  transport: 'local',
+  target: 'local',
+  state: 'connected',
+} satisfies ViewerConnection
+
 export const mockBootstrap: Bootstrap = bootstrapSchema.parse({
   apiVersion: 'v2',
   serverKind: 'personal',
-  permissions: ['read', 'ingest'],
+  permissions: ['read'],
   instanceId: 'mock-instance',
   dataEpoch: 'mock-epoch',
   datasetId: 'default',
@@ -23,14 +37,7 @@ export const mockBootstrap: Bootstrap = bootstrapSchema.parse({
   serverVersion: 'dev-mock',
   hostname: 'mock.tokeninsights.local',
   timezone: 'Australia/Sydney',
-  capabilities: [
-    'usage',
-    'facets',
-    'web-dashboard',
-    'raw-ingestion',
-    'terminal-dashboard',
-    'dashboard-reload',
-  ],
+  capabilities: ['usage', 'facets', 'web-dashboard', 'terminal-dashboard'],
   defaults: {
     period: 'all',
     bucket: 'day',

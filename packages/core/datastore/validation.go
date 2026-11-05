@@ -15,7 +15,7 @@ func inspectCurrent(ctx context.Context, database *sql.DB, expectedKind string) 
 	if err := database.QueryRowContext(ctx, sqlutil.Bind("SELECT role,schema_version,database_id,server_kind FROM ingestion_instance WHERE id=1")).Scan(&role, &version, &id, &kind); err != nil {
 		return err
 	}
-	if role != "server-data" || version != SchemaVersion || id == "" || (kind != KindPersonal && kind != KindHosted) {
+	if role != "server-data" || version != SchemaVersion || id == "" || kind != KindPersonal {
 		return errors.New("incompatible_server_data")
 	}
 	var applicationID, versionID int

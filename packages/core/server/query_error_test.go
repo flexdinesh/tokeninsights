@@ -26,7 +26,7 @@ func TestCanceledDashboardRequestsAreQuiet(t *testing.T) {
 	for _, route := range []string{"instance", "status", "usage", "usage/facets"} {
 		t.Run(route, func(t *testing.T) {
 			var log bytes.Buffer
-			handler := NewDataHandler(t.Context(), sqlanalytics.Source{Store: store}, &log, "127.0.0.1", "test", false)
+			handler := NewDataHandler(t.Context(), sqlanalytics.Source{Store: store}, &log, "127.0.0.1", "test")
 			ctx, cancel := context.WithCancel(t.Context())
 			cancel()
 			request := httptest.NewRequestWithContext(ctx, http.MethodGet, "http://127.0.0.1/api/v2/"+route, nil)

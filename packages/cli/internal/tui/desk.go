@@ -34,7 +34,7 @@ var (
 		"←→          Scroll columns", "Home / End  First / last column",
 		"d           Date range", "g           Bucket / Repo group", "s           Sort",
 		"f           Filters", "p / m / h   Provider/model/harness",
-		"r           Reload saved server usage", "q / Ctrl+C  Quit",
+		"r           Reload saved server usage", "R           Refresh sources", "q / Ctrl+C  Quit",
 		"Day status  ✓ checked · ○ empty",
 		"            … pending · ↻ updating",
 		"            ! incomplete",
@@ -110,6 +110,9 @@ func tokenReadouts(rows []renderRow) []deskMetric {
 func (m interactiveModel) deskHeader() []string {
 	width := m.tableViewportWidth()
 	lines := m.deskProgressHeader()
+	if m.options.connectionLabel != "" {
+		lines = append(lines, hintStyle.Render(truncateCell(m.options.connectionLabel, width)))
+	}
 	if m.timezone != "" && m.height >= deskRoomyHeight {
 		lines = append(lines, hintStyle.Render(truncateCell("Server time: "+m.timezone+" · r Reload saved usage", width)))
 	}
@@ -235,11 +238,11 @@ func (m interactiveModel) renderDesk() string {
 	case len(m.rows) == 0:
 		message, recovery := "No rows match the current scope.", "d Change date range · f Adjust filters"
 		if m.sessionCounts.Synced == 0 {
-			message, recovery = "No ingested usage yet.", "Restart tokeninsights tui to collect usage."
+			message, recovery = "No ingested usage yet.", "Press R to refresh sources."
 			if m.refreshBusy() {
 				message, recovery = "Refreshing local usage…", "Usage appears automatically as refresh completes."
 			} else if m.collectionFailed() {
-				message, recovery = "Refresh incomplete.", "Restart tokeninsights tui to retry; saved usage remains available."
+				message, recovery = "Refresh incomplete.", "Press R to retry; saved usage remains available."
 			}
 		}
 		table = m.deskMessage(message, "", recovery, visible+1)
@@ -287,7 +290,7 @@ func (m interactiveModel) deskMessage(title, detail, action string, height int) 
 }
 
 func (m interactiveModel) deskFooter() string {
-	keys := "tab Views   ↑↓ Rows   ←→ Columns   f Filters   ? Help   q Quit"
+	keys := "tab Views   ↑↓ Rows   ←→ Columns   f Filters   R Refresh   ? Help   q Quit"
 	position := ""
 	if m.loading {
 		position = "loading"
@@ -306,7 +309,7 @@ func (m interactiveModel) deskFooter() string {
 		position += "processing"
 	}
 	if ansi.StringWidth(keys)+ansi.StringWidth(position)+ansi.StringWidth(tableSummarySeparator) > m.tableViewportWidth() {
-		keys = "f Filters   ? Help   q Quit"
+		keys = "f Filters   R Refresh   ? Help   q Quit"
 	}
 	return renderFooterLine(keys, position, m.tableViewportWidth())
 }

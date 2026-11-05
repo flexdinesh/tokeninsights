@@ -182,14 +182,7 @@ func (m interactiveModel) Init() tea.Cmd {
 		})
 	}
 	if m.collectionDone != nil {
-		commands = append(commands, func() tea.Msg {
-			select {
-			case <-m.ctx.Done():
-				return nil
-			case result := <-m.collectionDone:
-				return collectionFinishedMsg{result: result}
-			}
-		}, refreshAnimationCmd())
+		commands = append(commands, m.collectionWaitCmd(), refreshAnimationCmd())
 	}
 	return tea.Batch(commands...)
 }
@@ -767,6 +760,12 @@ func (m interactiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "?":
 				m.popup, m.popupCursor = popupHelp, 0
 				return m, nil
+			case "R":
+				if m.options.local == nil || m.refresh.collectionPending {
+					return m, nil
+				}
+				m = m.collect(false, "")
+				return m, tea.Batch(m.collectionWaitCmd(), refreshAnimationCmd(), m.sharedSyncCmdAfter(0))
 			case "u":
 				return m, nil
 			case "r":

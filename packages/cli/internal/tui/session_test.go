@@ -20,11 +20,11 @@ import (
 
 func TestTUIProductionSessionAttachesWithoutPreparingOwnedStorage(t *testing.T) {
 	root := t.TempDir()
-	settings := config.LocalSettings{CollectorDBPath: filepath.Join(root, "collector.sqlite"), ServerDBPath: filepath.Join(root, "server.sqlite"), AppDBPath: filepath.Join(root, "app.sqlite"), Host: "127.0.0.1"}
+	settings := config.LocalSettings{CollectorDBPath: filepath.Join(root, "collector.sqlite"), ServerDBPath: filepath.Join(root, "server.sqlite"), Host: "127.0.0.1"}
 	backendContext, cancelBackend := context.WithCancel(t.Context())
 	ready, finished := make(chan struct{}), make(chan error, 1)
 	go func() {
-		finished <- localbackend.Serve(backendContext, localprotocol.Settings{CollectorDBPath: settings.CollectorDBPath, ServerDBPath: settings.ServerDBPath, AppDBPath: settings.AppDBPath}, io.Discard,
+		finished <- localbackend.Serve(backendContext, localprotocol.Settings{CollectorDBPath: settings.CollectorDBPath, ServerDBPath: settings.ServerDBPath}, io.Discard,
 			func(localprotocol.Descriptor) error { close(ready); return nil })
 	}()
 	defer func() {
@@ -46,7 +46,7 @@ func TestTUIProductionSessionAttachesWithoutPreparingOwnedStorage(t *testing.T) 
 	case <-time.After(10 * time.Second):
 		t.Fatal("backend not ready")
 	}
-	other, err := localclient.Connect(t.Context(), localclient.Options{CollectorDBPath: settings.CollectorDBPath, ServerDBPath: settings.ServerDBPath, AppDBPath: settings.AppDBPath, Host: settings.Host})
+	other, err := localclient.Connect(t.Context(), localclient.Options{CollectorDBPath: settings.CollectorDBPath, ServerDBPath: settings.ServerDBPath})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -81,7 +81,7 @@ func TestTUIProductionSessionAttachesWithoutPreparingOwnedStorage(t *testing.T) 
 				return model, nil
 			})
 			defer restore()
-			err := Run(Command{Context: t.Context(), Args: []string{"--sync=" + strconv.FormatBool(collect), "--source-dir", root}, Resolve: func(config.Overrides) (config.LocalSettings, error) { return settings, nil },
+			err := Run(Command{Context: t.Context(), Args: []string{"--capture=" + strconv.FormatBool(collect), "--source-dir", root}, Resolve: func(config.Overrides) (config.LocalSettings, error) { return settings, nil },
 				Prepare: func(config.LocalSettings) error { t.Fatal("attached viewer inspected owned storage"); return nil }, Now: time.Now(), Stdout: io.Discard, Stderr: io.Discard})
 			if err != nil {
 				t.Fatal(err)

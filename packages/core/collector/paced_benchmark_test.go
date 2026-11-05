@@ -26,15 +26,17 @@ type pacedBackend struct {
 func (p *pacedBackend) PublishProjection(ctx context.Context, work dataengine.Work, projection evidence.Projection) (bool, error) {
 	published, err := p.measuredBackend.PublishProjection(ctx, work, projection)
 	if published && err == nil {
-		p.first.LoadOrStore(work.DatasetID, time.Now())
+		for scope := range work.Scopes {
+			p.first.LoadOrStore(scope, time.Now())
+		}
 	}
 	return published, err
 }
 
 // BenchmarkPacedProcessing submits forty 256-message batches to one growing
-// component and one message to another dataset during the stream. Capture,
+// component and one message to an independent session during the stream. Capture,
 // fixture creation and opening are untimed; acceptance and two real workers are
-// timed. The ordinary ingestion matrix separately covers authenticated HTTP.
+// timed. The ordinary ingestion matrix separately covers capture and saved reads.
 func BenchmarkPacedProcessing(b *testing.B) {
 	entries := evidence.MaxEntries
 	if storagecontract.BenchmarkSmoke() {
@@ -48,17 +50,12 @@ func BenchmarkPacedProcessing(b *testing.B) {
 	metrics := make(map[string]float64)
 	for range b.N {
 		func() {
-			store, err := datastore.OpenKind(b.Context(), filepath.Join(b.TempDir(), "data.sqlite"), datastore.KindHosted)
+			store, err := datastore.Open(b.Context(), filepath.Join(b.TempDir(), "data.sqlite"))
 			if err != nil {
 				b.Fatal(err)
 			}
 			defer func() { _ = store.Close() }()
-			for _, dataset := range []string{"hot", "cold"} {
-				if err := store.CreateDataset(b.Context(), dataset); err != nil {
-					b.Fatal(err)
-				}
-			}
-			hot, cold := store.ForDataset("hot"), store.ForDataset("cold")
+			hot, cold := store, store
 			bodies := make([][]byte, batches)
 			for index := range batches {
 				var batch evidence.Batch
@@ -76,7 +73,18 @@ func BenchmarkPacedProcessing(b *testing.B) {
 					b.Fatal(err)
 				}
 			}
-			coldBody := acceptanceBody(b, cold, 1)
+			var coldValue evidence.Batch
+			if err := json.Unmarshal(acceptanceBody(b, cold, 1), &coldValue); err != nil {
+				b.Fatal(err)
+			}
+			coldValue.StreamID = "cold"
+			coldValue.Entries[0].Record.Context[0].Data = json.RawMessage(`{"type":"session","id":"cold"}`)
+			coldBody, err := json.Marshal(coldValue)
+			if err != nil {
+				b.Fatal(err)
+			}
+			hotScope := evidence.Scope(evidence.Record{Harness: "pi", Format: "pi-jsonl", Context: []evidence.Context{{Data: json.RawMessage(`{"type":"session","id":"session"}`)}}})
+			coldScope := evidence.Scope(coldValue.Entries[0].Record)
 			backend := &pacedBackend{measuredBackend: &measuredBackend{Store: store}}
 			worker := dataengine.NewWorker()
 			ctx, cancel := context.WithTimeout(b.Context(), time.Minute)
@@ -124,20 +132,20 @@ func BenchmarkPacedProcessing(b *testing.B) {
 				}
 			}
 			visible := time.Now()
-			query := analytics.Query{Selection: analytics.Selection{Period: "all", Bucket: "day"}, Tab: "sessions", Quality: "confirmed", Sort: "total", Direction: "desc", Page: 1, PageSize: 200}
+			query := analytics.Query{Selection: analytics.Selection{Period: "all", Bucket: "day", Sessions: []string{"session"}}, Tab: "sessions", Quality: "confirmed", Sort: "total", Direction: "desc", Page: 1, PageSize: 200}
 			dashboard, err := sqlanalytics.LoadDashboard(ctx, hot, query, time.Now())
 			b.StopTimer()
 			queried := time.Now()
 			if err != nil || dashboard.Summary.TotalTokens != int64(batches*entries*120) || dashboard.Summary.SessionCount != 1 {
 				b.Fatal("dashboard totals", dashboard.Summary, err)
 			}
-			for _, dataset := range []*datastore.Store{hot, cold} {
+			for _, session := range []string{"session", "cold"} {
 				messages := int64(1)
-				if dataset == hot {
+				if session == "session" {
 					messages = int64(batches * entries)
 				}
 				var components [7]int64
-				err := store.SQL().QueryRowContext(ctx, `SELECT COUNT(*),CAST(SUM(input_tokens) AS BIGINT),CAST(SUM(output_tokens) AS BIGINT),CAST(SUM(reasoning_tokens) AS BIGINT),CAST(SUM(cache_read_tokens) AS BIGINT),CAST(SUM(cache_write_tokens) AS BIGINT),CAST(SUM(total_tokens) AS BIGINT) FROM analytics_confirmed WHERE countable AND dataset_id=?`, dataset.DatasetID()).Scan(&components[0], &components[1], &components[2], &components[3], &components[4], &components[5], &components[6])
+				err := store.SQL().QueryRowContext(ctx, `SELECT COUNT(*),CAST(SUM(input_tokens) AS BIGINT),CAST(SUM(output_tokens) AS BIGINT),CAST(SUM(reasoning_tokens) AS BIGINT),CAST(SUM(cache_read_tokens) AS BIGINT),CAST(SUM(cache_write_tokens) AS BIGINT),CAST(SUM(total_tokens) AS BIGINT) FROM analytics_confirmed WHERE countable AND dataset_id=? AND session_native_id=?`, datastore.DatasetID, session).Scan(&components[0], &components[1], &components[2], &components[3], &components[4], &components[5], &components[6])
 				if err != nil || components != [7]int64{messages, messages * 100, messages * 20, 0, 0, 0, messages * 120} {
 					b.Fatal("component totals", components, err)
 				}
@@ -145,15 +153,15 @@ func BenchmarkPacedProcessing(b *testing.B) {
 			// Visibility can be observed just before the worker records its metrics.
 			cancel()
 			<-joined
-			hotFirst, hotOK := backend.first.Load("hot")
-			coldFirst, coldOK := backend.first.Load("cold")
+			hotFirst, hotOK := backend.first.Load(hotScope)
+			coldFirst, coldOK := backend.first.Load(coldScope)
 			if !hotOK || !coldOK {
 				b.Fatal("missing publication")
 			}
 			hotTime, hotOK := hotFirst.(time.Time)
 			coldTime, coldOK := coldFirst.(time.Time)
 			if !hotOK || !coldOK || !coldTime.Before(accepted) {
-				b.Fatal("independent dataset waited for global quiet")
+				b.Fatal("independent session waited for global quiet")
 			}
 			metrics["first-publication-ns/op"] += float64(hotTime.Sub(start).Nanoseconds())
 			metrics["independent-publication-ns/op"] += float64(coldTime.Sub(coldStart).Nanoseconds())

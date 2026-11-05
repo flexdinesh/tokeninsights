@@ -1,20 +1,13 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import { useQueryClient } from '@tanstack/react-query'
-import { Outlet, useNavigate } from '@tanstack/react-router'
+import { useCallback, useMemo } from 'react'
+import { Outlet } from '@tanstack/react-router'
 import { CircleAlert } from 'lucide-react'
-import { useAnalytics, useBootstrap, useFacets } from './api'
-import { AuthenticationRequired } from '@tokeninsights/contracts'
-import { useDashboardClient } from './client'
-import { clearAccountQueries } from './session'
+import { useAnalytics, useBootstrap, useConnection, useFacets, useRefresh } from './api'
 import { hasCapability, showsCollectorProgress } from './capabilities'
-import { PasswordLogin } from './components/PasswordLogin'
-import { useAuthInfo } from './account'
 import { IdentityContext, useIdentity } from './identity'
 import { collectorStages } from './components/CollectorProgress'
 import type { DashboardStatusValue } from './components/DashboardStatus'
-import type { Bootstrap } from '@tokeninsights/contracts'
+import type { Bootstrap, ViewerConnection } from '@tokeninsights/contracts'
 import { locationGroupSchema } from '@tokeninsights/contracts'
-import { parseDashboardSearch } from './query'
 import { DashboardProvider, useDashboardQuery } from './state'
 import { useDashboardSync } from './useDashboardSync'
 import { serverTimeZoneLabel } from './format'
@@ -40,113 +33,40 @@ import {
 } from './ui'
 
 export function App() {
-  const api = useDashboardClient()
-  const client = useQueryClient()
-  const navigate = useNavigate()
-  const [authenticationRequired, setAuthenticationRequired] = useState(false)
-  const [sessionChanging, setSessionChanging] = useState(false)
-  const [sessionError, setSessionError] = useState('')
-  const bootstrap = useBootstrap(!authenticationRequired)
-  const needsAuthentication =
-    authenticationRequired || bootstrap.error instanceof AuthenticationRequired
-  const authInfo = useAuthInfo(needsAuthentication && !sessionChanging)
-  useEffect(
-    () =>
-      client.getQueryCache().subscribe((event) => {
-        if (
-          event.type !== 'updated' ||
-          !(event.query.state.error instanceof AuthenticationRequired)
-        )
-          return
-        setAuthenticationRequired(true)
-        setSessionChanging(true)
-        void clearAccountQueries(client).finally(() => setSessionChanging(false))
-      }),
-    [client],
-  )
-
-  async function signIn() {
-    await clearAccountQueries(client)
-    await navigate({
-      to: '/$tab',
-      params: { tab: 'tokens' },
-      search: parseDashboardSearch({}),
-      replace: true,
-    })
-    setSessionError('')
-    setAuthenticationRequired(false)
-  }
-
-  const signOut = useCallback(async () => {
-    setAuthenticationRequired(true)
-    setSessionChanging(true)
-    setSessionError('')
-    try {
-      await clearAccountQueries(client)
-      await navigate({
-        to: '/$tab',
-        params: { tab: 'tokens' },
-        search: parseDashboardSearch({}),
-        replace: true,
-      })
-      await api.changeBrowserSession()
-    } catch {
-      setSessionError('Couldn’t end the server session. Sign in again to replace it.')
-    } finally {
-      setSessionChanging(false)
-    }
-  }, [api, client, navigate])
-
-  const sessionEnded = useCallback(
-    async (message = '') => {
-      setAuthenticationRequired(true)
-      setSessionChanging(true)
-      await clearAccountQueries(client)
-      setSessionError(message)
-      setSessionChanging(false)
-    },
-    [client],
-  )
-
+  const bootstrap = useBootstrap()
+  const connection = useConnection()
+  const { refetch: refetchBootstrap } = bootstrap
+  const { refetch: refetchConnection } = connection
+  const retryConnection = useCallback(async () => {
+    await Promise.all([refetchBootstrap(), refetchConnection()])
+  }, [refetchBootstrap, refetchConnection])
   const identity = useMemo(
     () =>
       bootstrap.data
         ? {
             bootstrap: bootstrap.data,
-            connectionError: bootstrap.error,
-            retryConnection: bootstrap.refetch,
-            onSignOut: signOut,
-            onSessionEnded: sessionEnded,
+            connection: connection.data,
+            connectionError: bootstrap.error ?? connection.error,
+            retryConnection,
           }
         : undefined,
-    [bootstrap.data, bootstrap.error, bootstrap.refetch, signOut, sessionEnded],
+    [bootstrap.data, bootstrap.error, connection.data, connection.error, retryConnection],
   )
-
-  if (needsAuthentication) {
-    if (!authInfo.data) return <ConnectionScreen error={authInfo.error} retry={authInfo.refetch} />
-    if (authInfo.data.serverKind !== 'hosted' || !authInfo.data.loginMethods.includes('password'))
-      return (
-        <ConnectionScreen
-          error={new Error('This server does not support password sign in.')}
-          retry={authInfo.refetch}
-        />
-      )
+  const data = bootstrap.data
+  if (!data)
     return (
-      <PasswordLogin
-        onSignIn={signIn}
-        signupEnabled={authInfo.data.signupEnabled}
-        disabled={sessionChanging}
-        sessionError={sessionError}
+      <ConnectionScreen
+        connection={connection.data}
+        error={bootstrap.error}
+        retry={retryConnection}
       />
     )
-  }
-  const data = bootstrap.data
-  if (!data) return <ConnectionScreen error={bootstrap.error} retry={bootstrap.refetch} />
   if (!hasCapability(data, 'web-dashboard') || !data.permissions.includes('read')) {
     return (
       <ConnectionScreen
         error={new Error('This server does not support the web dashboard.')}
-        retry={bootstrap.refetch}
+        connection={connection.data}
+        retry={retryConnection}
       />
     )
   }
@@ -170,19 +90,27 @@ export function DashboardView() {
 }
 
 function ConnectionScreen({
+  connection,
   error,
   retry,
 }: {
+  connection: ViewerConnection | undefined
   error: Error | null
   retry: () => Promise<unknown>
 }) {
+  const target = connection?.target ?? 'requested backend'
   return (
     <StartupShell>
+      {connection && (
+        <p role="status">
+          {connection.transport.toUpperCase()} · {target} · {error ? 'unavailable' : 'connecting'}
+        </p>
+      )}
       {error ? (
         <>
           <CircleAlert aria-hidden="true" />
           <Heading as="h1" variant="page">
-            Couldn’t connect to {window.location.host}
+            Couldn’t connect to {target}
           </Heading>
           <p>{error.message}</p>
           <Button onClick={() => void retry()}>Retry Connection</Button>
@@ -190,7 +118,7 @@ function ConnectionScreen({
       ) : (
         <>
           <Spinner />
-          <p>Connecting to {window.location.host}…</p>
+          <p>Connecting to {target}…</p>
         </>
       )}
     </StartupShell>
@@ -201,13 +129,14 @@ function DashboardShell({
   bootstrap,
   connectionError,
   retryConnection,
-  onSignOut,
+  connection,
 }: {
   bootstrap: Bootstrap
   connectionError: Error | null
   retryConnection: () => Promise<unknown>
-  onSignOut: () => Promise<void>
+  connection: ViewerConnection | undefined
 }) {
+  const refresh = useRefresh()
   const { query, setLocationGroup } = useDashboardQuery()
   const showProgress = showsCollectorProgress(bootstrap)
   const controller = useDashboardSync(bootstrap.datasetId, {
@@ -242,17 +171,11 @@ function DashboardShell({
     enabled && hasCapability(bootstrap, 'facets'),
     controller.identity,
   )
-  const status = dashboardStatus(controller, analytics, facets, bootstrap, connectionError)
+  const status = dashboardStatus(controller, analytics, facets, bootstrap, connectionError, refresh)
   return (
     <AppShell
       skipTarget="dashboard"
-      sidebar={
-        <DashboardSidebar
-          query={query}
-          localMachine={bootstrap.serverKind === 'personal'}
-          onSignOut={bootstrap.serverKind === 'hosted' ? onSignOut : undefined}
-        />
-      }
+      sidebar={<DashboardSidebar query={query} />}
       header={
         <DashboardHeader
           hostname={bootstrap.hostname}
@@ -262,7 +185,11 @@ function DashboardShell({
           processUsage={
             controller.statusQuery.error ? undefined : controller.statusQuery.data?.processUsage
           }
-          localMachine={bootstrap.serverKind === 'personal'}
+          connection={connection}
+          connectionUnavailable={Boolean(connectionError || controller.statusQuery.error)}
+          instanceId={bootstrap.instanceId}
+          refreshPending={refresh.isPending || controller.collectionPending}
+          onRefresh={() => refresh.mutate()}
           lastSynced={analytics.data?.dashboard.lastSynced}
         />
       }
@@ -305,11 +232,11 @@ function DashboardShell({
         )}
         <div>
           <DashboardResults
-            localMachine={bootstrap.serverKind === 'personal'}
             analytics={analytics}
             excludedUsage={excludedUsage}
             facets={facets}
             controller={controller}
+            refreshError={refresh.error}
             timezone={bootstrap.timezone}
             connectionError={connectionError}
             retryConnection={retryConnection}
@@ -317,8 +244,16 @@ function DashboardShell({
         </div>
         <footer className="flex justify-between gap-3 pt-3 text-label text-ink-subtle max-compact:flex-col max-compact:gap-2 [&>span]:min-w-0 [&>span]:wrap-anywhere">
           <span className="flex items-center gap-2">
-            <StatusDot />
-            {bootstrap.hostname} · {window.location.origin} ·{' '}
+            <StatusDot
+              tone={
+                status.state === 'attention'
+                  ? 'danger'
+                  : status.state === 'loading'
+                    ? 'pending'
+                    : 'success'
+              }
+            />
+            {bootstrap.hostname} · {connection?.target ?? 'Connection details unavailable'} ·{' '}
             {serverTimeZoneLabel(bootstrap.timezone)}
           </span>
           <span>OpenCode · Pi · Codex · Claude Code</span>
@@ -334,9 +269,12 @@ function dashboardStatus(
   facets: ReturnType<typeof useFacets>,
   bootstrap: Bootstrap,
   connectionError: Error | null,
+  refresh: ReturnType<typeof useRefresh>,
 ): DashboardStatusValue {
   if (connectionError || controller.statusQuery.error)
     return { label: 'Connection unavailable', state: 'attention' }
+  if (refresh.error) return { label: 'Refresh failed', state: 'attention' }
+  if (refresh.isPending) return { label: 'Refreshing usage…', state: 'loading' }
   if (analytics.error) return { label: 'Usage couldn’t load', state: 'attention' }
   if (facets.error) return { label: 'Filters couldn’t load', state: 'attention' }
   if (showsCollectorProgress(bootstrap) && controller.progressQuery.error)

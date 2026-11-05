@@ -1,6 +1,8 @@
 # Raw ingestion whitelist
 
-Approved direction: [ADR 0007](adr/0007-raw-ingestion-and-server-processing.md).
+Current composition: [ADR 0027](adr/0027-personal-backend-and-explicit-connections.md).
+Evidence/accounting origin: [ADR 0007](adr/0007-raw-ingestion-and-server-processing.md).
+Acceptance is direct within the personal backend; no network ingestion is exposed.
 Implemented in the evidence contract and collector extractor. This list comes from fields recognized by the current
 TokenInsights adapters, not from collecting private user transcripts. It governs
 the current evidence contract.

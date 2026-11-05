@@ -2,7 +2,7 @@ import { act, cleanup, render, renderHook, waitFor } from '@testing-library/reac
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { afterEach, expect, it, vi } from 'vitest'
 import type { ReactNode } from 'react'
-import type { Bootstrap, DashboardClient } from '@tokeninsights/contracts'
+import type { DashboardClient } from '@tokeninsights/contracts'
 import { DashboardClientProvider } from '@tokeninsights/dashboard'
 import { useAnalytics, useBootstrap } from '@tokeninsights/dashboard/api'
 import { initialQuery } from '../../dashboard/src/query'
@@ -15,7 +15,7 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
-it('browser lifetime observes bootstrap without issuing requests or bypassing authentication', () => {
+it('browser lifetime observes bootstrap without issuing requests', () => {
   const fetcher = vi.fn<typeof fetch>().mockRejectedValue(new Error('Unexpected request'))
   vi.stubGlobal('fetch', fetcher)
   const close = vi.fn<() => void>()
@@ -78,44 +78,3 @@ it('dashboard hooks use injected semantic operations without an HTTP transport',
   view.unmount()
   client.clear()
 })
-
-for (const kind of ['personal', 'hosted'] satisfies Bootstrap['serverKind'][]) {
-  it(`${kind} browser viewer owns only a local instance stream`, async () => {
-    const close = vi.fn<() => void>()
-    class ViewerStream {
-      url: string
-      constructor(url: string) {
-        this.url = url
-      }
-      close = close
-    }
-    const eventSource = vi.fn<typeof ViewerStream>(ViewerStream)
-    vi.stubGlobal('EventSource', eventSource)
-    const api = {
-      ...httpDashboardClient,
-      getInstance: vi
-        .fn<DashboardClient['getInstance']>()
-        .mockResolvedValue({ ...mockBootstrap, serverKind: kind }),
-    }
-    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-    function Wrapper({ children }: { children: ReactNode }) {
-      return (
-        <DashboardClientProvider client={api}>
-          <QueryClientProvider client={client}>{children}</QueryClientProvider>
-        </DashboardClientProvider>
-      )
-    }
-    const view = renderHook(
-      () => {
-        BrowserViewer()
-        return useBootstrap()
-      },
-      { wrapper: Wrapper },
-    )
-    await waitFor(() => expect(view.result.current.isSuccess).toBe(true))
-    expect(eventSource.mock.calls).toEqual(kind === 'personal' ? [['/api/local/v1/viewers']] : [])
-    view.unmount()
-    expect(close).toHaveBeenCalledTimes(kind === 'personal' ? 1 : 0)
-    client.clear()
-  })
-}

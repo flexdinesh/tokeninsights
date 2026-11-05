@@ -1,19 +1,15 @@
 package datastore
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"net/http"
-	"net/http/httptest"
 	"path/filepath"
 	"sync"
 	"testing"
 
 	"github.com/flexdinesh/tokeninsights/packages/core/evidence"
-	"github.com/flexdinesh/tokeninsights/packages/core/ingestionhttp"
 	"github.com/flexdinesh/tokeninsights/packages/core/persistence/sqlutil"
 )
 
@@ -108,22 +104,15 @@ func TestAcceptanceReplayAndConcurrentDuplicates(t *testing.T) {
 	if replay.Receipt != response.Receipt || replay.Processing.Pending != 0 || len(replay.Processing.Items) != 2 {
 		t.Fatalf("receipt/status replay: %+v", replay)
 	}
-	request := httptest.NewRequest(http.MethodPost, ingestionhttp.IngestionPrefix+"batches", bytes.NewReader(body))
-	request.Header.Set("Content-Type", "application/json")
-	writer := httptest.NewRecorder()
-	ingestionhttp.Handler(store, ingestionhttp.IngestionPrefix, evidence.ProtocolVersion).ServeHTTP(writer, request)
-	if writer.Code != 200 {
-		t.Fatalf("processed duplicate status: %d %s", writer.Code, writer.Body.String())
+	terminal, err := store.Accept(t.Context(), evidence.ProtocolVersion, body)
+	if err != nil || terminal.Receipt != response.Receipt || terminal.Processing.Pending != 0 {
+		t.Fatal("processed duplicate status", terminal, err)
 	}
-	// A different Collector/batch also gets terminal status for identical evidence.
+	// Another collector receives terminal mappings for the same accepted evidence.
 	lateBody := batchBody(t, store, "late-copy", "new-batch", record, record)
-	lateRequest := httptest.NewRequest(http.MethodPost, ingestionhttp.IngestionPrefix+"batches", bytes.NewReader(lateBody))
-	lateRequest.Header.Set("Content-Type", "application/json")
-	lateWriter := httptest.NewRecorder()
-	ingestionhttp.Handler(store, ingestionhttp.IngestionPrefix, evidence.ProtocolVersion).ServeHTTP(lateWriter, lateRequest)
-	var late evidence.Response
-	if lateWriter.Code != http.StatusOK || json.Unmarshal(lateWriter.Body.Bytes(), &late) != nil || late.Receipt.Accepted != 2 || late.Processing.Pending != 0 || len(late.Processing.Items) != 2 {
-		t.Fatalf("already processed evidence lost status/mappings: %d %s", lateWriter.Code, lateWriter.Body.String())
+	late, err := store.Accept(t.Context(), evidence.ProtocolVersion, lateBody)
+	if err != nil || late.Receipt.Accepted != 2 || late.Processing.Pending != 0 || len(late.Processing.Items) != 2 {
+		t.Fatal("already processed evidence lost status/mappings", late, err)
 	}
 	changed := batchBody(t, store, "stream", "batch", piRecord("message", 200), record)
 	_, err = store.Accept(t.Context(), evidence.ProtocolVersion, changed)
