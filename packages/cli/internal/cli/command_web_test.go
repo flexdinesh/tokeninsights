@@ -46,7 +46,7 @@ func useSharedBackendForTest(t *testing.T) {
 			return err
 		case <-ctx.Done():
 			cancel()
-			<-finished
+			_ = <-finished
 			return ctx.Err()
 		case <-ready:
 		}
@@ -143,7 +143,7 @@ type cancelOnOutput struct {
 
 func (w *cancelOnOutput) Write(body []byte) (int, error) {
 	count, err := w.Buffer.Write(body)
-	if strings.Contains(w.Buffer.String(), "Dashboard:") {
+	if strings.Contains(w.String(), "Dashboard:") {
 		w.cancel()
 	}
 	return count, err
