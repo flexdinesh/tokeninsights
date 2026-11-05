@@ -84,7 +84,7 @@ func queryGroupCounts(t *testing.T, store Tokens) {
 								CacheReadTokens: filter.facts * 3, CacheWriteTokens: filter.facts * 4,
 								SessionCount: filter.sessions, SyncedSessions: 3,
 							}
-							if got.RowCount != filter.groups || got.FactCount != filter.facts || got.Page != max(1, filter.groups) || len(got.Rows) != min(1, filter.groups) || got.Generation != generation || got.DatasetID != "group-counts" ||
+							if got.RowCount != filter.groups || got.FactCount != filter.facts || got.Page != max(1, filter.groups) || len(got.Rows) != min(1, filter.groups) || got.Generation != generation || got.DatasetID != evidence.PersonalDatasetID ||
 								s != wantSummary {
 								t.Fatal("group count, pagination or summary scope changed", got)
 							}

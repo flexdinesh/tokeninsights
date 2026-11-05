@@ -1,5 +1,12 @@
 # Shared backend, removable presentations and release downloads
 
+Superseded where conflicting by [ADR 0027](0027-personal-backend-and-explicit-connections.md).
+Current product: one personal SQLite backend, explicit local/SSH/temporary TCP
+connections. Hosted/accounts/PostgreSQL/sync/plugins and conflicting listener,
+opener or distribution choices below are historical. Applicable accounting,
+privacy, identity, transaction and lifecycle principles remain.
+The original decision below is preserved as history.
+
 The always-bound public listener and listener settings as backend compatibility
 are superseded by [ADR 0025](0025-ssh-endpoints-and-on-demand-dashboard.md).
 MyGo's native Go UI is superseded by [ADR 0026](0026-mygo-webview-shell.md).

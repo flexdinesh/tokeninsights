@@ -18,7 +18,10 @@ Object.assign(env, {
   XDG_CONFIG_HOME: join(fixture, 'config'),
   XDG_DATA_HOME: join(fixture, 'data'),
   XDG_CACHE_HOME: join(fixture, 'cache'),
-  TOKENINSIGHTS_PORT: '0',
+  XDG_STATE_HOME: join(fixture, 'state'),
+  XDG_RUNTIME_DIR: join(fixture, 'runtime'),
+  CODEX_HOME: join(fixture, 'codex'),
+  CLAUDE_CONFIG_DIR: join(fixture, 'claude'),
   TOKENINSIGHTS_DOWNLOAD_URL: `file://${out}`,
 })
 try {
@@ -26,17 +29,17 @@ try {
   await buildProducts(out, metadata)
   const { writeChecksums } = await import('./build-products.ts')
   await writeChecksums(out)
-  for (const script of [
-    'install.sh',
-    'install-server.sh',
-    'install-mygo.sh',
-    'install-electron.sh',
-  ])
+  for (const script of ['install.sh', 'install-mygo.sh', 'install-electron.sh'])
     execFileSync('sh', [workspacePath(script)], { env, stdio: 'inherit' })
   const installed = join(fixture, 'data/tokeninsights/products')
   for (const [product, binary] of [
     ['cli', 'tokeninsights'],
-    ['server', 'tokeninsights-server'],
+    [
+      'mygo',
+      process.platform === 'darwin'
+        ? 'TokenInsights MyGo.app/Contents/MacOS/tokeninsights'
+        : 'tokeninsights',
+    ],
   ]) {
     const output = execFileSync(join(installed, product ?? '', binary ?? ''), ['--version'], {
       env: { ...env, PATH: '' },

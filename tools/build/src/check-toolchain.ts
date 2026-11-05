@@ -4,17 +4,17 @@ import { fileURLToPath } from 'node:url'
 
 import { workspacePath } from './workspace.ts'
 
-// mise.toml owns development tool versions. Docker, Corepack-style packageManager
+// mise.toml owns development tool versions. Validation images, packageManager
 // metadata and the Go toolchain directive copy them and must stay equal.
 export type ToolchainFiles = {
   miseToml: string
-  dockerfile: string
+  validation: string
   packageJson: string
   goMod: string
 }
 
-const pinnedTools = ['go', 'node', 'pnpm'] as const
-type PinnedTool = (typeof pinnedTools)[number]
+type PinnedTool = 'go' | 'node' | 'pnpm'
+const pinnedTools: readonly PinnedTool[] = ['go', 'node', 'pnpm']
 
 function misePins(miseToml: string): Map<PinnedTool, string> {
   const pins = new Map<PinnedTool, string>()
@@ -57,9 +57,9 @@ export function toolchainMismatches(files: ToolchainFiles): string[] {
   const node = pins.get('node')
   const pnpm = pins.get('pnpm')
   return [
-    compare('Dockerfile golang image', go, /^FROM golang:([^-@\s]+)/m.exec(files.dockerfile)?.[1]),
-    compare('Dockerfile node image', node, /^FROM node:([^-@\s]+)/m.exec(files.dockerfile)?.[1]),
-    compare('Dockerfile pnpm install', pnpm, /\bpnpm@([^\s]+)/.exec(files.dockerfile)?.[1]),
+    compare('validation Go image', go, /"golang:([^-@\s]+)/.exec(files.validation)?.[1]),
+    compare('validation Node image', node, /From\("node:([^-@\s]+)/.exec(files.validation)?.[1]),
+    compare('validation pnpm install', pnpm, /\bpnpm@([^\s"]+)/.exec(files.validation)?.[1]),
     compare('package.json packageManager', pnpm, packageManager(files.packageJson)),
     compare(
       'go.mod toolchain',
@@ -70,13 +70,13 @@ export function toolchainMismatches(files: ToolchainFiles): string[] {
 }
 
 export async function readToolchainFiles(): Promise<ToolchainFiles> {
-  const [miseToml, dockerfile, packageJson, goMod] = await Promise.all([
+  const [miseToml, validation, packageJson, goMod] = await Promise.all([
     readFile(workspacePath('mise.toml'), 'utf8'),
-    readFile(workspacePath('Dockerfile'), 'utf8'),
+    readFile(workspacePath('tools/validation/main.go'), 'utf8'),
     readFile(workspacePath('package.json'), 'utf8'),
     readFile(workspacePath('go.mod'), 'utf8'),
   ])
-  return { miseToml, dockerfile, packageJson, goMod }
+  return { miseToml, validation, packageJson, goMod }
 }
 
 async function main(): Promise<void> {

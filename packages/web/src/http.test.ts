@@ -1,7 +1,7 @@
 import { afterEach, expect, it, vi } from 'vitest'
 import { z } from 'zod'
 import { httpDashboardClient } from './http-client'
-import { AuthenticationRequired, request } from './http'
+import { request } from './http'
 
 afterEach(() => {
   vi.unstubAllGlobals()
@@ -35,26 +35,22 @@ it('rejects unparseable success bodies', async () => {
   )
 })
 
-it('surfaces server error messages when changing the browser session', async () => {
-  respond(
-    new Response(
-      JSON.stringify({ code: 'invalid_request', message: 'Username must not be empty.' }),
-      { status: 400 },
-    ),
+it('Refresh sends one same-origin JSON action without connection credentials', async () => {
+  const fetcher = vi.fn<typeof fetch>(() => Promise.resolve(new Response(null, { status: 202 })))
+  vi.stubGlobal('fetch', fetcher)
+  await httpDashboardClient.refresh()
+  expect(fetcher).toHaveBeenCalledExactlyOnceWith(
+    '/api/viewer/refresh',
+    expect.objectContaining({
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: '{}',
+    }),
   )
-  await expect(
-    httpDashboardClient.changeBrowserSession({ username: '', password: 'secret-password' }),
-  ).rejects.toThrow('Username must not be empty.')
 })
 
-it('falls back to the session status without an error body', async () => {
-  respond(new Response(null, { status: 500 }))
-  await expect(httpDashboardClient.changeBrowserSession()).rejects.toThrow('Sign in failed (500)')
-})
-
-it('treats rejected credentials as an authentication requirement', async () => {
+it('rejected viewer access reports a connection failure', async () => {
   respond(new Response(null, { status: 401 }))
-  await expect(
-    httpDashboardClient.changeBrowserSession({ username: 'alice', password: 'wrong-password' }),
-  ).rejects.toBeInstanceOf(AuthenticationRequired)
+  await expect(httpDashboardClient.refresh()).rejects.toThrow('Request failed (401)')
 })

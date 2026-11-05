@@ -13,13 +13,13 @@ func TestCanonicalStorageIdentityAndShortSocket(t *testing.T) {
 	if err := os.Symlink(root, alias); err != nil {
 		t.Fatal(err)
 	}
-	settings := Settings{CollectorDBPath: filepath.Join(root, "collector.sqlite"), ServerDBPath: filepath.Join(root, "server.sqlite"), AppDBPath: filepath.Join(root, "app.sqlite")}
+	settings := Settings{CollectorDBPath: filepath.Join(root, "collector.sqlite"), ServerDBPath: filepath.Join(root, "server.sqlite")}
 	canonical, err := settings.Canonical()
 	if err != nil {
 		t.Fatal(err)
 	}
 	aliased := settings
-	aliased.CollectorDBPath, aliased.ServerDBPath, aliased.AppDBPath = filepath.Join(alias, "collector.sqlite"), filepath.Join(alias, "server.sqlite"), filepath.Join(alias, "app.sqlite")
+	aliased.CollectorDBPath, aliased.ServerDBPath = filepath.Join(alias, "collector.sqlite"), filepath.Join(alias, "server.sqlite")
 	other, err := aliased.Canonical()
 	if err != nil || other != canonical {
 		t.Fatal("symlink identity differs", err)
@@ -28,7 +28,7 @@ func TestCanonicalStorageIdentityAndShortSocket(t *testing.T) {
 	if err != nil || len(socket) >= 104 {
 		t.Fatal("runtime socket inherits long storage path", len(socket), err)
 	}
-	aliased.AppDBPath = aliased.ServerDBPath
+	aliased.CollectorDBPath = aliased.ServerDBPath
 	if _, err := aliased.Canonical(); err == nil {
 		t.Fatal("role alias accepted")
 	}
@@ -57,18 +57,5 @@ func TestEndpointOriginsAreDialableAndLoopbackWhenRequired(t *testing.T) {
 	}
 	if _, err := HTTPOrigin("http://192.0.2.1:8765", false); err != nil {
 		t.Fatal("explicit broad host descriptor rejected", err)
-	}
-}
-
-func TestListenRequiresIPv4HostAndPort(t *testing.T) {
-	for _, valid := range []Listen{{Host: "127.0.0.1", Port: 0}, {Host: "0.0.0.0", Port: 8765}} {
-		if err := valid.Validate(); err != nil {
-			t.Fatal("valid listen rejected", valid, err)
-		}
-	}
-	for _, invalid := range []Listen{{Host: "", Port: 8765}, {Host: "::1", Port: 8765}, {Host: "localhost", Port: 8765}, {Host: "127.0.0.1", Port: -1}, {Host: "127.0.0.1", Port: 65536}} {
-		if err := invalid.Validate(); err == nil {
-			t.Fatal("invalid listen accepted", invalid)
-		}
 	}
 }

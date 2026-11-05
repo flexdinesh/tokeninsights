@@ -2,19 +2,16 @@ package collector_test
 
 import (
 	"encoding/json"
-	"net/http/httptest"
 	"testing"
 
 	"github.com/flexdinesh/tokeninsights/packages/core/collector"
 	"github.com/flexdinesh/tokeninsights/packages/core/evidence"
-	"github.com/flexdinesh/tokeninsights/packages/core/ingestionhttp"
 )
 
 // BenchmarkReceiverAcceptance measures adapters plus durable acceptance, without
-// capture or workers. HTTP is the real handler over loopback; the ingestion matrix
-// separately covers hosted authentication/admission and concurrent processing.
+// capture or workers. The ingestion matrix separately covers concurrent processing.
 func BenchmarkReceiverAcceptance(b *testing.B) {
-	for _, mode := range []string{"Direct", "HTTP"} {
+	for _, mode := range []string{"Direct"} {
 		for _, operation := range []string{"New", "Replay"} {
 			b.Run(mode+"/"+operation, func(b *testing.B) {
 				b.ReportAllocs()
@@ -25,11 +22,6 @@ func BenchmarkReceiverAcceptance(b *testing.B) {
 						defer func() { _ = store.Close() }()
 						body := acceptanceBody(b, store, evidence.MaxEntries)
 						var delivery collector.Delivery = collector.DirectDelivery{Receiver: store}
-						if mode == "HTTP" {
-							remote := httptest.NewServer(ingestionhttp.Handler(store, ingestionhttp.IngestionPrefix, evidence.ProtocolVersion))
-							defer remote.Close()
-							delivery = collector.HTTPDelivery{URL: remote.URL, Client: remote.Client()}
-						}
 						var original evidence.Response
 						if operation == "Replay" {
 							response, err := delivery.Submit(b.Context(), evidence.ProtocolVersion, body)

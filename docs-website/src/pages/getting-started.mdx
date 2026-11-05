@@ -1,34 +1,37 @@
 # Getting started
 
-Install TokenInsights on the machine where you use OpenCode, Pi, Codex, or Claude Code.
-
-## Install
+Install on the machine where you use OpenCode, Pi, Codex or Claude Code:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/flexdinesh/tokeninsights/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/flexdinesh/tokeninsights/main/install-mygo.sh | sh
+tokeninsights
 ```
 
-Ensure `~/.local/bin` is on PATH. See [Install](/install) for desktop apps and the main channel.
+Ensure `~/.local/bin` is on PATH. MyGo includes CLI/backend and is the default
+desktop. [Install](/install) also covers CLI-only, Electron and release channels.
 
-## Open your first dashboard
-
-For the browser dashboard:
-
-```sh
-tokeninsights web
-```
-
-For the terminal dashboard:
+## Open saved usage
 
 ```sh
 tokeninsights tui
+tokeninsights web
 ```
 
-Both open saved usage while collecting and processing local usage in the
-background. All four supported harnesses are collected by default. Published
-usage appears automatically as processing finishes.
+Viewers share one backend and open saved history while all four supported harnesses
+are captured and processed. Published usage appears as processing finishes.
+Closing one viewer leaves others active.
 
-If you have not used a supported harness yet, there may be no usage to display.
-Run it normally, then open a viewer again to collect the new data.
+After another harness run, use **Refresh** in the dashboard to capture new usage,
+or launch a viewer again. Reload and filters only query saved results. There is
+no periodic source scanning.
 
-Continue with [local usage](/local-usage). See [Install](/install) for release channels.
+To skip launch capture:
+
+```sh
+tokeninsights --capture=false
+tokeninsights tui --capture=false
+```
+
+Pending accepted processing still resumes. If you have not used a supported harness,
+there may be no usage yet. Continue with [local usage](/local-usage), or
+[connect explicitly to another machine](/remote).

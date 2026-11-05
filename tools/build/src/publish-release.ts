@@ -61,7 +61,7 @@ export async function verifyReleaseAssets(
   const names = (await readdir(out)).toSorted()
   const expected = [...expectedArchives(), 'checksums.txt'].toSorted()
   if (JSON.stringify(names) !== JSON.stringify(expected))
-    throw new Error('release requires exactly sixteen product archives and checksums.txt')
+    throw new Error('release requires exactly twelve product archives and checksums.txt')
   const checksums = (await readFile(join(out, 'checksums.txt'), 'utf8')).trim().split('\n')
   if (checksums.length !== expectedArchives().length) throw new Error('unexpected checksum count')
   await Promise.all(

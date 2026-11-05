@@ -12,10 +12,10 @@ import (
 // stderr, which ssh relays; stdout carries only protocol bytes.
 func runDialStdio(invocation commandInvocation) error {
 	local := endpoint.Local
-	settings, err := invocation.resolveLocalOverrides(config.Overrides{Endpoint: &local})
+	settings, err := invocation.resolveLocalOverrides(config.Overrides{Connection: &local})
 	if err != nil {
 		return err
 	}
-	return localclient.Bridge(invocation.context, localclient.Options{CollectorDBPath: settings.CollectorDBPath, ServerDBPath: settings.ServerDBPath, AppDBPath: settings.ApplicationPath()},
+	return localclient.Bridge(invocation.context, localclient.Options{CollectorDBPath: settings.CollectorDBPath, ServerDBPath: settings.ServerDBPath},
 		func() error { return invocation.prepareLocalStorage(settings) }, invocation.stdin, invocation.stdout)
 }

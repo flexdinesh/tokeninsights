@@ -1,18 +1,8 @@
 import { spawn, type ChildProcess } from 'node:child_process'
-import { randomUUID } from 'node:crypto'
-import type { Server } from 'node:http'
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
-import { z } from 'zod'
 import { CollectorProgressResponse, StatusResponseV2 } from '@tokeninsights/contracts/generated'
-import {
-  adminRequest,
-  seedHostedUser,
-  startHostedProxy,
-  tokenSchema,
-  userSchema,
-} from './hosted-fixture.ts'
 import { metadataSchema, runDirectory } from './fixture.ts'
 
 const readinessTimeout = 30_000
@@ -64,8 +54,6 @@ function localEnvironment(home: string): NodeJS.ProcessEnv {
     TZ: 'UTC',
     NO_COLOR: '1',
     HOME: home,
-    TOKENINSIGHTS_SERVER_URL: '',
-    TOKENINSIGHTS_ACCESS_TOKEN: '',
     XDG_DATA_HOME: join(home, '.local/share'),
     XDG_CONFIG_HOME: join(home, '.config'),
     XDG_STATE_HOME: join(home, '.local/state'),
@@ -75,13 +63,8 @@ function localEnvironment(home: string): NodeJS.ProcessEnv {
   }
 }
 
-function startChild(
-  executable: 'tokeninsights' | 'tokeninsights-server',
-  args: string[],
-  environment: NodeJS.ProcessEnv,
-) {
-  const binaryDirectory = executable === 'tokeninsights-server' ? '../server/bin' : '../cli/bin'
-  const child = spawn(resolve(binaryDirectory, executable), args, {
+function startChild(args: string[], environment: NodeJS.ProcessEnv) {
+  const child = spawn(resolve('../cli/bin/tokeninsights'), args, {
     stdio: ['ignore', 'pipe', 'pipe'],
     env: environment,
   })
@@ -148,26 +131,13 @@ export default async function setup() {
   await mkdir(directory, { recursive: true, mode: 0o700 })
   // Keep Unix sockets short even when the checkout has a long absolute path.
   const localHome = await mkdtemp(join(tmpdir(), 'ti-e2e-'))
-  const hostedHome = join(localHome, 'hosted')
-  const hostedPassword = randomUUID()
   const children: ReturnType<typeof startChild>[] = []
   const cancellation = new AbortController()
   let ready = false
-  let proxy: Server | undefined
   let cleanup: Promise<void> | undefined
   const stop = () => {
     cleanup ??= (async () => {
-      const activeProxy = proxy
-      const closing = activeProxy
-        ? new Promise<void>((done, reject) => {
-            activeProxy.close((error) => (error ? reject(error) : done()))
-            activeProxy.closeAllConnections()
-          })
-        : Promise.resolve()
-      const stopped = await Promise.allSettled([
-        closing,
-        ...children.map(({ child }) => stopChild(child)),
-      ])
+      const stopped = await Promise.allSettled([...children.map(({ child }) => stopChild(child))])
       const finalized = await Promise.allSettled([
         ...children.map((child, index) =>
           writeFile(join(directory, `server-${index}.log`), child.output(), { mode: 0o600 }),
@@ -233,16 +203,7 @@ export default async function setup() {
       ].join('\n'),
     )
 
-    await mkdir(hostedHome, { mode: 0o700 })
-    const hostedSocket = join(hostedHome, 'admin.sock')
-    let hostedBackend = ''
-    proxy = await startHostedProxy(() => hostedBackend)
-    cancellation.signal.throwIfAborted()
-    const address = proxy.address()
-    if (!address || typeof address === 'string') throw new Error('Expected HTTPS TCP listener')
-    const hostedOrigin = `https://127.0.0.1:${address.port}`
     const local = startChild(
-      'tokeninsights',
       [
         'web',
         '--open=false',
@@ -258,26 +219,7 @@ export default async function setup() {
       localEnvironment(localHome),
     )
     children.push(local)
-    const hosted = startChild(
-      'tokeninsights-server',
-      [
-        '--listen',
-        '127.0.0.1:0',
-        '--server-db-path',
-        join(hostedHome, 'server.sqlite'),
-        '--public-url',
-        hostedOrigin,
-        '--admin-socket',
-        hostedSocket,
-        '--signup',
-        '--trusted-proxies',
-        '127.0.0.1/32',
-      ],
-      localEnvironment(hostedHome),
-    )
-    children.push(hosted)
     const localOrigin = await boundURL(local, cancellation.signal)
-    hostedBackend = await boundURL(hosted, cancellation.signal)
     await waitUntil(async () => {
       local.assertRunning()
       cancellation.signal.throwIfAborted()
@@ -300,52 +242,7 @@ export default async function setup() {
       )
       return status.pending === 0 && status.generation === status.targetGeneration
     }, 'Local capture')
-    await waitUntil(async () => {
-      hosted.assertRunning()
-      cancellation.signal.throwIfAborted()
-      return (
-        await fetch(hostedBackend + '/readyz', { signal: AbortSignal.timeout(requestTimeout) })
-      ).ok
-    }, 'Hosted readiness')
-    for (const { name, input } of [
-      { name: 'alice', input: 100 },
-      { name: 'bob', input: 400 },
-    ]) {
-      const user = await adminRequest(
-        hostedSocket,
-        { operation: 'create-user', displayName: name },
-        userSchema,
-      )
-      const token = await adminRequest(
-        hostedSocket,
-        {
-          operation: 'create-token',
-          userId: user.userId,
-          permissions: ['read', 'ingest'],
-        },
-        tokenSchema,
-      )
-      await adminRequest(
-        hostedSocket,
-        {
-          operation: 'reset-password',
-          userId: user.userId,
-          password: hostedPassword,
-        },
-        z.object({}),
-      )
-      await seedHostedUser(hostedBackend, token.token, input, cancellation.signal)
-      await writeFile(join(hostedHome, name + '.json'), JSON.stringify({ ...user, ...token }), {
-        mode: 0o600,
-      })
-    }
-    const metadata = metadataSchema.parse({
-      localOrigin,
-      hostedOrigin,
-      hostedBackend,
-      hostedHome,
-      hostedPassword,
-    })
+    const metadata = metadataSchema.parse({ localOrigin })
     cancellation.signal.throwIfAborted()
     await writeFile(join(directory, 'fixture.json'), JSON.stringify(metadata), { mode: 0o600 })
     cancellation.signal.throwIfAborted()

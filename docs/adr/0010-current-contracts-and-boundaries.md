@@ -1,5 +1,12 @@
 # Current contracts and composition boundaries
 
+Superseded where conflicting by [ADR 0027](0027-personal-backend-and-explicit-connections.md).
+Current product: one personal SQLite backend, explicit local/SSH/temporary TCP
+connections. Hosted/accounts/PostgreSQL/sync/plugins and conflicting listener,
+opener or distribution choices below are historical. Applicable accounting,
+privacy, identity, transaction and lifecycle principles remain.
+The original decision below is preserved as history.
+
 Command selection/config and local handoff are superseded by [ADR 0014](0014-command-owned-client-compositions.md); retained domain/storage contracts still apply.
 
 Engine details below are historical; [ADR 0012](0012-sqlite-and-postgres-persistence.md) supersedes them with SQLite/PostgreSQL.

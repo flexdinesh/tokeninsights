@@ -12,17 +12,17 @@ export type DashboardStatusValue = {
 const hoverCloseDelayMs = 150
 
 export function DashboardStatus({
+  instanceId,
   status,
   progress,
   processUsage,
-  localMachine,
   lastSynced,
   timezone,
 }: {
+  instanceId: string
   status: DashboardStatusValue
   progress: Progress | undefined
   processUsage: SyncStatus['processUsage']
-  localMachine: boolean
   lastSynced?: number
   timezone: string
 }) {
@@ -41,7 +41,7 @@ export function DashboardStatus({
     closeTimer.current = setTimeout(() => setOpen(false), hoverCloseDelayMs)
   }
 
-  const statusScope = localMachine ? 'Local' : 'Dashboard'
+  const statusScope = 'Backend'
   return (
     <Popover
       open={open}
@@ -85,27 +85,26 @@ export function DashboardStatus({
         onOpenAutoFocus={(event) => event.preventDefault()}
         onCloseAutoFocus={(event) => event.preventDefault()}
       >
-        {localMachine && (
-          <div
-            className="flex flex-wrap gap-3 text-ink tabular-nums"
-            role="group"
-            aria-label="Process resource usage"
-          >
-            <span title="TokenInsights process CPU · 100% = one core">
-              CPU{' '}
-              {processUsage?.cpuPercent === undefined
-                ? '—'
-                : `${processUsage.cpuPercent.toFixed(1)}%`}
-            </span>
-            <span title="TokenInsights resident memory">
-              RAM{' '}
-              {processUsage?.residentMemoryBytes === undefined
-                ? '—'
-                : formatMemory(processUsage.residentMemoryBytes)}
-            </span>
-          </div>
-        )}
+        <div
+          className="flex flex-wrap gap-3 text-ink tabular-nums"
+          role="group"
+          aria-label="Process resource usage"
+        >
+          <span title="TokenInsights process CPU · 100% = one core">
+            CPU{' '}
+            {processUsage?.cpuPercent === undefined
+              ? '—'
+              : `${processUsage.cpuPercent.toFixed(1)}%`}
+          </span>
+          <span title="TokenInsights resident memory">
+            RAM{' '}
+            {processUsage?.residentMemoryBytes === undefined
+              ? '—'
+              : formatMemory(processUsage.residentMemoryBytes)}
+          </span>
+        </div>
         <p className="mt-2">{status.label}</p>
+        <p className="mt-2">Backend identity: {instanceId}</p>
         {lastSynced ? (
           <p className="mt-2">
             <time
@@ -116,7 +115,7 @@ export function DashboardStatus({
             </time>
           </p>
         ) : null}
-        {localMachine && <CollectorProgress progress={progress} />}
+        {progress && <CollectorProgress progress={progress} />}
       </PopoverContent>
     </Popover>
   )

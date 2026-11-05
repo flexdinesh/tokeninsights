@@ -1,51 +1,78 @@
 # Commands
 
-Commands select composition. Bare invocation prints help; run any command with
-`--help` for its full flag list.
+`tokeninsights --help` lists commands. Bare invocation opens the selected desktop
+(MyGo default). Install MyGo for that default, or use `tui`/`web` from CLI-only.
 
-## Local viewers
-
-```sh
-tokeninsights tui                 # collect, ingest and open terminal dashboard
-tokeninsights web                 # collect, ingest and serve browser dashboard until exit
-tokeninsights web --host 0.0.0.0  # bind all IPv4 interfaces (read-only dashboard)
-tokeninsights tui --sync=false    # show saved data; resume pending processing
-tokeninsights web --full-refresh  # reread sources/retry quarantine at startup
-```
-
-Local viewers start or attach to a shared backend automatically. It owns storage and direct ingestion; clients use application operations through replaceable transport adapters. Local viewers ignore distributed settings, including unreachable
-servers.
-
-| Flag                                                                  | `tui` | `web` | Purpose                                                                    |
-| --------------------------------------------------------------------- | ----- | ----- | -------------------------------------------------------------------------- |
-| `--sync`                                                              | yes   | yes   | Refresh usage in the background; `--sync=false` reads saved data           |
-| `--full-refresh`                                                      | yes   | yes   | Reread sources and retry quarantine at startup                             |
-| `--source-dir`                                                        | yes   | yes   | Override startup capture source directory                                  |
-| `--collector-db-path`, `--server-db-path`, `--app-db-path`            | yes   | yes   | Override database paths                                                    |
-| `--endpoint`                                                          | yes   | yes   | `local` (default) or `ssh://[user@]host[:port]`; also `data`               |
-| `--host`, `--port`                                                    |       | yes   | Bind address; default `127.0.0.1:8765`, port `0` chooses an available port |
-| `--open=MODE`                                                         |       | yes   | `auto` (MyGo, else browser), `mygo`, `electron`, `browser` or `false`      |
-| `--today`, `--yesterday`, `--week`, `--month`, `--year`, `--all-time` | yes   |       | Date range presets; weeks are Monday to Sunday                             |
-| `--filter-day-from`, `--filter-day-to`                                | yes   |       | Local day range, `YYYY-MM-DD`                                              |
-| `--bucket`                                                            | yes   |       | Time bucket: `day`, `week`, `month`, or `year`                             |
-| `--harness`, `--model`, `--provider`, `--session-id`                  | yes   |       | Filters; repeat or comma-separate                                          |
-
-## Distributed
+## Viewers
 
 ```sh
-tokeninsights sync                # start finite background submission
-tokeninsights sync --print        # also submit; stdout contains only remote URL
-tokeninsights sync --wait         # wait for acceptance
-tokeninsights sync --debug        # show capture, acceptance and receipt processing
-tokeninsights sync status --json  # latest durable job status
-tokeninsights browse              # open configured hosted dashboard; no upload
-tokeninsights browse --open=false # print dashboard URL without opening it
+tokeninsights
+tokeninsights --open=electron
+tokeninsights connect local
+tokeninsights connect ssh://you@devbox
+tokeninsights tui
+tokeninsights tui --capture=false
+tokeninsights web
+tokeninsights web --open=false
+tokeninsights web --host 127.0.0.1 --port 9000
 ```
 
-Hosted browse opens the system browser (or prints with --open=false); see
-[Local usage](/local-usage#browser-dashboard).
+Desktop `--open=mygo|electron` selects an installed app. Unavailable selection
+fails; no browser fallback. Launch returns after the selected app acknowledges a
+live requested session. `web --open` is boolean: true opens the system browser,
+false prints its loopback URL. Web's default port is 0 (available port); host must
+be loopback. The command stays foreground and Ctrl+C releases its lease.
 
-See [Distributed sync](/sync) for setup, options and job behavior.
+Viewer flags: `--capture` (default true), `--full-refresh`, `--source-dir`,
+`--connection`, `--collector-db-path`, `--server-db-path`.
+`--full-refresh` requires capture. Path flags select local storage only.
+Source overrides on SSH must be absolute; TCP permits default capture only.
+
+Launch and explicit **Refresh** capture on the backend. Filters, browser reload,
+TUI `r` and automatic revision reads only query saved usage. No periodic scanning.
+`--capture=false` skips launch capture while pending durable processing resumes.
+
+## TUI filters
+
+```sh
+tokeninsights tui --today                      # also --yesterday --week --month --year --all-time
+tokeninsights tui --filter-day-from 2026-01-01 --filter-day-to 2026-01-31
+tokeninsights tui --bucket week                # day|week|month|year
+tokeninsights tui --harness pi,codex            # also --provider --model --session-id; repeat/comma-separate
+```
+
+Weeks start Monday; calendar filters use the backend timezone and never restrict
+capture. TUI results use one consistent snapshot with a 100,000-row limit.
+
+| Key                             | Action                                   |
+| ------------------------------- | ---------------------------------------- |
+| `tab` / `1`-`7`                 | Switch view                              |
+| `d` / `g` / `s`                 | Date range / bucket or group / sort      |
+| `p` / `m` / `h` / `f`           | Provider / model / harness / all filters |
+| `j` `k` / `PgUp` `PgDn`         | Row / page                               |
+| `←` `→` / `Home` `End`          | Scroll columns                           |
+| `Space` / `Enter` / `Esc` / `c` | Toggle / apply / cancel / clear          |
+| `r`                             | Reload saved queries                     |
+| `?`                             | Help                                     |
+| `q` / `Ctrl+C`                  | Quit                                     |
+
+## Connections
+
+```sh
+tokeninsights tui --connection ssh://you@devbox
+tokeninsights web --connection ssh://you@devbox:2222
+tokeninsights config set remote.command /home/you/.local/bin/tokeninsights
+tokeninsights remote
+tokeninsights remote --listen 0.0.0.0:9000 --advertise devbox.example
+```
+
+SSH discovers/starts the target backend through system SSH. TCP requires a running
+`remote` gateway. Its default bind is `0.0.0.0:0`; `--advertise` accepts a
+reachable host or host:port. It prints a complete shell-quoted connect command.
+Use that full URI as `connect STRING` or `tui|web --connection STRING`.
+Keep its temporary secret private. Stopping the gateway invalidates its strings
+and connections; other leases continue. Same-machine use stays TCP.
+See [remote connections](/remote).
 
 ## Configuration
 
@@ -53,50 +80,45 @@ See [Distributed sync](/sync) for setup, options and job behavior.
 tokeninsights config set KEY VALUE
 tokeninsights config get KEY
 tokeninsights config remove KEY
+tokeninsights --config-file PATH tui
+tokeninsights config set viewer.open electron
 ```
 
-Keys: `collector.db-path`, `in-process.server-db-path`, `in-process.app-db-path`,
-`in-process.host`, `in-process.port`, `distributed.server-url`,
-`distributed.server-token`, `viewer.open`.
+| Key                         | Environment                       | Default                            |
+| --------------------------- | --------------------------------- | ---------------------------------- |
+| `collector.db-path`         | `TOKENINSIGHTS_COLLECTOR_DB_PATH` | collector.sqlite in data directory |
+| `in-process.server-db-path` | `TOKENINSIGHTS_SERVER_DB_PATH`    | server.sqlite in data directory    |
+| `in-process.host`           | `TOKENINSIGHTS_HOST`              | 127.0.0.1                          |
+| `in-process.port`           | `TOKENINSIGHTS_PORT`              | 0                                  |
+| `viewer.open`               | None                              | mygo; also electron                |
+| `remote.command`            | `TOKENINSIGHTS_REMOTE_COMMAND`    | tokeninsights on remote PATH       |
 
-`viewer.open` sets the default `--open` mode for `web` and `browse`: `auto`, `mygo`, `electron`, `browser` or `false`. It has no environment variable.
+Flags > environment > config > defaults. Config defaults to
+`${XDG_CONFIG_HOME:-~/.config}/tokeninsights/config.json`;
+`--config-file` or `TOKENINSIGHTS_CONFIG_PATH` overrides it.
+Connections are invocation-only; there is no saved remote endpoint.
 
-Set `distributed.server-token` without a value to read it securely from the
-terminal or stdin. Passing a token value as an argument is rejected; `get` reports
-only whether it is configured.
-
-Configuration lives in `${XDG_CONFIG_HOME:-~/.config}/tokeninsights/config.json`,
-private and atomically written. Select another file with `--config-file PATH` or
-`TOKENINSIGHTS_CONFIG_PATH`.
-
-```json
-{
-  "collector": { "db-path": "/home/user/.local/share/tokeninsights/collector.sqlite" },
-  "in-process": { "host": "127.0.0.1", "port": 8765 },
-  "distributed": { "server-url": "https://usage.example.com" },
-  "viewer": { "open": "auto" }
-}
-```
-
-Precedence: flags, then environment, then file, then defaults. Role-specific
-environment names remain; `TOKENINSIGHTS_SERVER_URL` and
-`TOKENINSIGHTS_ACCESS_TOKEN` apply only to distributed commands. There is no mode
-setting or flag.
-
-Flat configuration files are rejected without modification. Manually regroup their
-settings or select a fresh file with `--config-file`. No automatic conversion,
-deletion, or credential copying occurs.
+Retired application/distributed settings, `remote.endpoint`, old endpoint/access
+environment variables and obsolete viewer modes fail with repair guidance.
+Edit/remove obsolete settings explicitly; failures neither print secret values
+nor rewrite configuration. `--sync` is replaced by `--capture`;
+`--endpoint` by `--connection`. Sync, browse, hosted server and completion
+plugins are removed. Existing user files remain untouched.
 
 ## Maintenance
 
 ```sh
-tokeninsights data reprocess  # rebuild processed usage through the owner
-tokeninsights data wait       # resume waiting for a saved generation
+tokeninsights data reprocess
+tokeninsights data wait
+tokeninsights data wait --connection ssh://you@devbox
+tokeninsights tui --collector-db-path PATH --server-db-path PATH
+tokeninsights --version
 ```
 
-See [Maintenance](/maintenance).
+Maintenance supports local/SSH only. TCP viewer credentials cannot run it.
+Reprocessing preserves published usage until replacement is complete.
+Both maintenance operations use a 30-second visibility wait.
 
-## Removed commands
-
-Legacy `service`, `server`, and `collector` commands are removed. The hosted server
-is the separate `tokeninsights-server` executable; see [Self-hosting](/self-hosting).
+Defaults: `${XDG_DATA_HOME:-~/.local/share}/tokeninsights/collector.sqlite`
+and `server.sqlite`. Role/path checks reject mismatches; removed app/jobs files
+are never migrated or deleted. See [maintenance](/maintenance).

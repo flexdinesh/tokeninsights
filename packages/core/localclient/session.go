@@ -12,9 +12,7 @@ import (
 	"io"
 	"net"
 	"net/http"
-	"net/url"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -33,18 +31,13 @@ const operationTimeout = 35 * time.Second
 // dialers such as SSH bridges require.
 const privateHost = "local"
 
-// maxLeaseEventBytes bounds the dashboard event preceding lease heartbeats.
-const maxLeaseEventBytes = 4096
-
 // Dialer opens one connection to a backend's private control endpoint. The
 // launcher owns discovery; the Session owns HTTP and the viewer lease.
 type Dialer func(context.Context) (net.Conn, error)
 
-// Session is one viewer lease over private backend operations. URL is set only
-// for sessions holding a dashboard lease.
+// Session owns one viewer lease on a pinned backend instance.
 type Session struct {
 	Query      *queryclient.Client
-	URL        string
 	InstanceID string
 	client     *http.Client
 	transport  *http.Transport
@@ -52,13 +45,13 @@ type Session struct {
 	cancel     context.CancelFunc
 	done       chan struct{}
 	once       sync.Once
+	token      string
 }
 
 // attachOptions describe one lease and its optional launch capture.
 type attachOptions struct {
 	Capture, FullRefresh bool
 	SourceDir            string
-	Listen               *localprotocol.Listen
 }
 
 func newSession(dial Dialer, unencryptedHTTP2 bool) *Session {
@@ -83,17 +76,12 @@ func (s *Session) attach(parent, startup context.Context, descriptor localprotoc
 	s.Query = queryclient.NewDirect(privateReader{session: s})
 	leaseCtx, cancelLease := context.WithCancel(parent)
 	s.cancel = cancelLease
-	path := "/viewers"
-	if options.Listen != nil {
-		query := url.Values{"host": {options.Listen.Host}, "port": {strconv.Itoa(options.Listen.Port)}}
-		path += "?" + query.Encode()
-	}
-	request, err := s.request(leaseCtx, http.MethodGet, path, nil)
+	request, err := s.request(leaseCtx, http.MethodGet, "/viewers", nil)
 	if err != nil {
 		cancelLease()
 		return err
 	}
-	// Stream headers and the dashboard event are bounded independently from
+	// Stream headers are bounded independently from
 	// the lease's indefinite lifetime.
 	stop := context.AfterFunc(startup, cancelLease)
 	response, err := s.client.Do(request)
@@ -109,20 +97,14 @@ func (s *Session) attach(parent, startup context.Context, descriptor localprotoc
 		cancelLease()
 		return err
 	}
-	reader := bufio.NewReader(response.Body)
-	if options.Listen != nil {
-		dashboard, err := readDashboard(reader)
-		if err != nil {
-			_ = response.Body.Close()
-			stop()
-			cancelLease()
-			return err
-		}
-		s.URL = dashboard.URL
-	}
 	stop()
 	s.lease = response.Body
-	go func() { _, _ = io.Copy(io.Discard, reader); close(s.done) }()
+	go func() {
+		_, _ = io.Copy(io.Discard, response.Body)
+		cancelLease()
+		s.transport.CloseIdleConnections()
+		close(s.done)
+	}()
 	if options.Capture {
 		if err := s.Capture(startup, options.FullRefresh, options.SourceDir); err != nil {
 			_ = s.Close()
@@ -130,25 +112,6 @@ func (s *Session) attach(parent, startup context.Context, descriptor localprotoc
 		}
 	}
 	return nil
-}
-
-// readDashboard reads the first lease event, which names the bound listener.
-func readDashboard(reader *bufio.Reader) (localprotocol.Dashboard, error) {
-	var dashboard localprotocol.Dashboard
-	limited := bufio.NewScanner(io.LimitReader(reader, maxLeaseEventBytes))
-	for limited.Scan() {
-		line := limited.Text()
-		if data, ok := strings.CutPrefix(line, "data: "); ok {
-			if err := json.Unmarshal([]byte(data), &dashboard); err != nil {
-				return dashboard, localprotocol.ErrIncompatible
-			}
-			if _, err := localprotocol.HTTPOrigin(dashboard.URL, false); err != nil {
-				return dashboard, localprotocol.ErrIncompatible
-			}
-			return dashboard, nil
-		}
-	}
-	return dashboard, errors.New("local backend dashboard lease disconnected")
 }
 
 // Done closes when this viewer loses its backend connection.
@@ -238,10 +201,18 @@ func (s *Session) Reprocess(ctx context.Context) error {
 }
 
 func (s *Session) request(ctx context.Context, method, path string, body io.Reader) (*http.Request, error) {
+	select {
+	case <-s.done:
+		return nil, errors.New("backend session disconnected; reconnect explicitly")
+	default:
+	}
 	r, err := http.NewRequestWithContext(ctx, method, "http://"+privateHost+"/api/local/v1"+path, body)
 	if err == nil {
 		r.Header.Set("X-TokenInsights-Instance", s.InstanceID)
 		r.Header.Set("Content-Type", "application/json")
+		if s.token != "" {
+			r.Header.Set("Authorization", "Bearer "+s.token)
+		}
 	}
 	return r, err
 }
@@ -286,10 +257,6 @@ func failure(response *http.Response, fallback string) error {
 		return localprotocol.ErrProcessingFailed
 	case "processing_timeout":
 		return localprotocol.ErrProcessingTimeout
-	case "listen_conflict":
-		return localprotocol.ErrSettingsMismatch
-	case "listen_unavailable":
-		return localprotocol.ErrListenUnavailable
 	case "shutting_down":
 		return localprotocol.ErrShuttingDown
 	}
@@ -298,7 +265,7 @@ func failure(response *http.Response, fallback string) error {
 
 // PrivateRoundTripper sends requests over this session's private connection,
 // pinned to its backend instance. Callers own routing policy and must forward
-// only read-only dashboard requests and browser leases.
+// only scoped viewer operations.
 func (s *Session) PrivateRoundTripper() http.RoundTripper {
 	return instanceTransport{session: s}
 }
@@ -306,6 +273,11 @@ func (s *Session) PrivateRoundTripper() http.RoundTripper {
 type instanceTransport struct{ session *Session }
 
 func (t instanceTransport) RoundTrip(r *http.Request) (*http.Response, error) {
+	select {
+	case <-t.session.done:
+		return nil, errors.New("backend session disconnected; reconnect explicitly")
+	default:
+	}
 	r = r.Clone(r.Context())
 	// Keep the caller's Host header, but reuse the session's connection.
 	if r.Host == "" {
@@ -313,5 +285,9 @@ func (t instanceTransport) RoundTrip(r *http.Request) (*http.Response, error) {
 	}
 	r.URL.Scheme, r.URL.Host = "http", privateHost
 	r.Header.Set("X-TokenInsights-Instance", t.session.InstanceID)
+	r.Header.Del("Authorization")
+	if t.session.token != "" {
+		r.Header.Set("Authorization", "Bearer "+t.session.token)
+	}
 	return t.session.transport.RoundTrip(r)
 }

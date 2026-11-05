@@ -4,8 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"net/http"
-	"net/url"
 
 	"github.com/flexdinesh/tokeninsights/packages/core/evidence"
 )
@@ -16,47 +14,6 @@ type Delivery interface {
 	Capabilities(context.Context) (evidence.Capabilities, error)
 	Submit(context.Context, int, []byte) ([]byte, error)
 	Receipt(context.Context, string, string) (evidence.Response, error)
-}
-
-type HTTPDelivery struct {
-	URL    string
-	Token  string
-	Client *http.Client
-}
-
-func (d HTTPDelivery) call(ctx context.Context, route string, body []byte) ([]byte, error) {
-	target, err := endpoint(d.URL)
-	if err != nil {
-		return nil, err
-	}
-	return request(ctx, deliveryClient(d.Client), target+route, d.Token, body)
-}
-
-func (d HTTPDelivery) Capabilities(ctx context.Context) (evidence.Capabilities, error) {
-	var result evidence.Capabilities
-	body, err := d.call(ctx, "/api/v3/ingestion/capabilities", nil)
-	if err == nil {
-		if decodeErr := evidence.StrictDecode(body, &result); decodeErr != nil {
-			err = failure("capabilities", "incompatible_server", decodeErr)
-		}
-	}
-	return result, err
-}
-
-func (d HTTPDelivery) Submit(ctx context.Context, protocol int, body []byte) ([]byte, error) {
-	if protocol != evidence.ProtocolVersion {
-		return nil, failure("validation", "incompatible", nil)
-	}
-	return d.call(ctx, "/api/v3/ingestion/batches", body)
-}
-
-func (d HTTPDelivery) Receipt(ctx context.Context, stream, batch string) (evidence.Response, error) {
-	var result evidence.Response
-	body, err := d.call(ctx, "/api/v3/ingestion/batches/"+url.PathEscape(stream)+"/"+url.PathEscape(batch), nil)
-	if err == nil {
-		err = evidence.StrictDecode(body, &result)
-	}
-	return result, err
 }
 
 // DirectDelivery uses an authorized receiver without HTTP or synthetic requests.

@@ -17,13 +17,11 @@ import (
 
 	"github.com/flexdinesh/tokeninsights/packages/core/analytics"
 	"github.com/flexdinesh/tokeninsights/packages/core/dbpath"
-	"github.com/flexdinesh/tokeninsights/packages/core/networkprefs"
 	"github.com/flexdinesh/tokeninsights/packages/core/serverownership"
 )
 
-// ProtocolVersion 2 separates storage identity from per-lease dashboard
-// listeners. Clients and backends require exact equality.
-const ProtocolVersion = 2
+// ProtocolVersion requires exact equality between clients and backends.
+const ProtocolVersion = 3
 
 const MaxQueryRows = 100000
 
@@ -44,38 +42,18 @@ var ErrProcessingTimeout = fmt.Errorf("processing_timeout: usage is still proces
 
 var ErrSettingsMismatch = errors.New("local backend settings differ; close its viewers before changing local settings")
 var ErrIncompatible = errors.New("local backend incompatible; close its viewers and launch matching clients")
-var ErrListenUnavailable = errors.New("local dashboard address unavailable; choose another --host or --port")
 var ErrShuttingDown = errors.New("local backend shutting down; retry")
 var ErrCaptureBusy = errors.New("local backend capture busy with another source directory")
 
-// Settings identify the storage one backend owns. Dashboard listeners are
-// requested per viewer lease, so they never select or reject an owner.
+// Settings identify the storage one backend owns.
 type Settings struct {
-	CollectorDBPath, ServerDBPath, AppDBPath string
-}
-
-// Listen requests the public read-only dashboard listener for one lease. The
-// first dashboard lease binds it; equal requests share it until the last
-// dashboard lease leaves; different requests reject while it is bound.
-type Listen struct {
-	Host string `json:"host"`
-	Port int    `json:"port"`
-}
-
-func (l Listen) Validate() error {
-	if err := networkprefs.ValidateHost(l.Host); err != nil {
-		return err
-	}
-	if l.Host == "" || l.Port < 0 || l.Port > 65535 {
-		return errors.New("local dashboard requires IPv4 host and a valid port")
-	}
-	return nil
+	CollectorDBPath, ServerDBPath string
 }
 
 // Canonical resolves filesystem aliases without inspecting an active owner's
 // store inodes. Collector creation briefly publishes through a hard link.
 func (s Settings) Canonical() (Settings, error) {
-	paths := []*string{&s.CollectorDBPath, &s.ServerDBPath, &s.AppDBPath}
+	paths := []*string{&s.CollectorDBPath, &s.ServerDBPath}
 	for _, path := range paths {
 		canonical, err := dbpath.Canonical(*path)
 		if err != nil {
@@ -97,7 +75,7 @@ func (s Settings) Canonical() (Settings, error) {
 // Persistent hard links reject before mutation; active-owner attachment never
 // mistakes a temporary atomic-publication link for user-created storage aliases.
 func (s Settings) ValidateStorageIdentity() error {
-	for _, path := range []string{s.CollectorDBPath, s.ServerDBPath, s.AppDBPath} {
+	for _, path := range []string{s.CollectorDBPath, s.ServerDBPath} {
 		if _, _, err := serverownership.Identify(path); err != nil {
 			return err
 		}
@@ -138,13 +116,10 @@ func RuntimeDirectory() (string, error) {
 	return dir, nil
 }
 
-// Descriptor reports a backend's identity and its currently bound dashboard,
-// if any. URL and Listen are empty while no dashboard lease is held.
+// Descriptor identifies one backend. Network gateways redact Settings.
 type Descriptor struct {
 	ProtocolVersion int      `json:"protocolVersion"`
 	InstanceID      string   `json:"instanceId"`
-	URL             string   `json:"url,omitempty"`
-	Listen          *Listen  `json:"listen,omitempty"`
 	Settings        Settings `json:"settings"`
 }
 
@@ -164,20 +139,7 @@ func (d Descriptor) CompatibleProtocol() error {
 	if d.ProtocolVersion != ProtocolVersion || d.InstanceID == "" {
 		return fmt.Errorf("%w: backend protocol %d, client protocol %d", ErrIncompatible, d.ProtocolVersion, ProtocolVersion)
 	}
-	if (d.URL == "") != (d.Listen == nil) {
-		return ErrIncompatible
-	}
-	if d.URL != "" {
-		if _, err := HTTPOrigin(d.URL, false); err != nil {
-			return ErrIncompatible
-		}
-	}
 	return nil
-}
-
-// Dashboard is the first event of a dashboard lease stream.
-type Dashboard struct {
-	URL string `json:"url"`
 }
 
 // HTTPOrigin accepts only an HTTP IPv4 origin with an explicit dialable port.

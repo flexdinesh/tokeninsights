@@ -8,14 +8,13 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net/url"
+	"net"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 
 	"github.com/flexdinesh/tokeninsights/packages/core/browser"
-	"github.com/flexdinesh/tokeninsights/packages/core/dbpath"
 	"github.com/flexdinesh/tokeninsights/packages/core/endpoint"
 	"github.com/flexdinesh/tokeninsights/packages/core/networkprefs"
 	"github.com/flexdinesh/tokeninsights/packages/core/writerlock"
@@ -27,52 +26,31 @@ type CollectorValues struct {
 	DBPath *string `json:"db-path,omitempty"`
 }
 type LocalValues struct {
-	AppDBPath    *string `json:"app-db-path,omitempty"`
 	ServerDBPath *string `json:"server-db-path,omitempty"`
 	Host         *string `json:"host,omitempty"`
 	Port         *int    `json:"port,omitempty"`
 }
-type DistributedValues struct {
-	ServerURL   *string `json:"server-url,omitempty"`
-	ServerToken *string `json:"server-token,omitempty"`
-}
 type ViewerValues struct {
 	Open *string `json:"open,omitempty"`
 }
-
-// RemoteValues select where viewers attach a personal backend. They never
-// affect hosted sync or browse.
 type RemoteValues struct {
-	Endpoint *string `json:"endpoint,omitempty"`
-	Command  *string `json:"command,omitempty"`
+	Command *string `json:"command,omitempty"`
 }
 type Values struct {
-	Collector   CollectorValues   `json:"collector,omitempty"`
-	InProcess   LocalValues       `json:"in-process,omitempty"`
-	Distributed DistributedValues `json:"distributed,omitempty"`
-	Viewer      ViewerValues      `json:"viewer,omitempty"`
-	Remote      RemoteValues      `json:"remote,omitempty"`
+	Collector CollectorValues `json:"collector,omitempty"`
+	InProcess LocalValues     `json:"in-process,omitempty"`
+	Viewer    ViewerValues    `json:"viewer,omitempty"`
+	Remote    RemoteValues    `json:"remote,omitempty"`
 }
-
-// Overrides describes flags, never the persisted configuration.
 type Overrides struct {
-	AppDBPath, ServerDBPath, CollectorDBPath, Host, ServerURL, ServerToken, Open, Endpoint *string
-	Port                                                                                   *int
+	ServerDBPath, CollectorDBPath, Host, Open, Connection *string
+	Port                                                  *int
 }
 type LocalSettings struct {
-	AppDBPath, ServerDBPath, CollectorDBPath, Host string
-	Port                                           int
-	// Open selects how web opens its dashboard: flag > file > auto.
-	Open browser.Mode
-	// Endpoint selects the backend viewers attach: flag > env > file > local.
-	// A remote endpoint carries its resolved remote command.
-	Endpoint endpoint.Endpoint
-}
-type SyncSettings struct{ CollectorDBPath, ServerURL, ServerToken string }
-type BrowseSettings struct {
-	ServerURL string
-	// Open selects how browse opens its dashboard: flag > file > auto.
-	Open browser.Mode
+	ServerDBPath, CollectorDBPath, Host string
+	Port                                int
+	Open                                browser.Mode
+	Endpoint                            endpoint.Endpoint
 }
 
 func Path(explicit string) (string, error) {
@@ -96,7 +74,7 @@ func Path(explicit string) (string, error) {
 // Defaults are the built-in settings before config files and environment.
 func Defaults() LocalSettings {
 	base := dataDirectory()
-	return LocalSettings{Host: networkprefs.DefaultHost, Port: networkprefs.DefaultPort, Open: browser.ModeAuto,
+	return LocalSettings{Host: networkprefs.DefaultHost, Port: 0, Open: browser.ModeMyGo,
 		CollectorDBPath: filepath.Join(base, "collector.sqlite"),
 		ServerDBPath:    filepath.Join(base, "server.sqlite")}
 }
@@ -155,7 +133,7 @@ func Read(path string) (Values, error) {
 	decoder = json.NewDecoder(bytes.NewReader(body))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&values); err != nil {
-		return Values{}, fmt.Errorf("invalid grouped config; use collector, in-process, distributed, viewer and remote groups (flat config and mode are removed)")
+		return Values{}, fmt.Errorf("obsolete or invalid config; remove application/distributed settings and remote.endpoint; use --connection explicitly (config unchanged)")
 	}
 	return values, nil
 }
@@ -196,78 +174,34 @@ func objectBody(decoder *json.Decoder) error {
 	}
 	return nil
 }
-func ValidateURL(value string) error {
-	if value == "" {
-		return nil
-	}
-	parsed, err := url.Parse(value)
-	if err != nil || parsed == nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" || parsed.Hostname() == "" || parsed.User != nil || parsed.RawQuery != "" || parsed.ForceQuery || parsed.Fragment != "" || strings.TrimSpace(value) != value {
-		return fmt.Errorf("invalid server-url; use an HTTP/HTTPS endpoint without credentials, query or fragment")
-	}
-	return nil
-}
-func validateToken(value string) error {
-	if value != "" && (strings.TrimSpace(value) != value || strings.ContainsAny(value, "\r\n\x00\t ")) {
-		return fmt.Errorf("invalid server-token")
-	}
-	return nil
-}
 func validatePath(value string) error {
 	if strings.TrimSpace(value) == "" || strings.ContainsRune(value, 0) {
 		return fmt.Errorf("database path must not be empty or contain NUL")
 	}
 	return nil
 }
+func validateHost(value string) error {
+	if value == "localhost" {
+		return nil
+	}
+	if ip := net.ParseIP(value); ip == nil || !ip.IsLoopback() {
+		return fmt.Errorf("dashboard host must be loopback; use tokeninsights remote to share a backend")
+	}
+	return nil
+}
 func (s LocalSettings) Validate() error {
-	if err := networkprefs.ValidateHost(s.Host); err != nil {
+	if err := validateHost(s.Host); err != nil {
 		return err
 	}
-	if s.Host == "" || s.Port < 0 || s.Port > 65535 {
-		return fmt.Errorf("invalid local host/port")
+	if s.Port < 0 || s.Port > 65535 {
+		return fmt.Errorf("invalid local port")
 	}
 	for _, path := range []string{s.CollectorDBPath, s.ServerDBPath} {
 		if err := validatePath(path); err != nil {
 			return err
 		}
 	}
-	if s.AppDBPath != "" {
-		return validatePath(s.AppDBPath)
-	}
 	return nil
-}
-func (s LocalSettings) ApplicationPath() string {
-	if s.AppDBPath != "" {
-		return s.AppDBPath
-	}
-	path, err := dbpath.Canonical(s.ServerDBPath)
-	if err != nil {
-		path = s.ServerDBPath
-	}
-	return filepath.Join(filepath.Dir(path), "app.sqlite")
-}
-func (s SyncSettings) ValidateDestination() error {
-	if s.ServerURL == "" || s.ServerToken == "" {
-		return fmt.Errorf("sync requires distributed.server-url and distributed.server-token")
-	}
-	if err := ValidateURL(s.ServerURL); err != nil {
-		return err
-	}
-	if err := validateToken(s.ServerToken); err != nil {
-		return err
-	}
-	return nil
-}
-func (s SyncSettings) Validate() error {
-	if err := s.ValidateDestination(); err != nil {
-		return err
-	}
-	return validatePath(s.CollectorDBPath)
-}
-func (s BrowseSettings) Validate() error {
-	if s.ServerURL == "" {
-		return fmt.Errorf("browse requires distributed.server-url")
-	}
-	return ValidateURL(s.ServerURL)
 }
 func resolveString(fallback string, saved *string, key string, override *string, environment bool) string {
 	if override != nil {
@@ -307,7 +241,6 @@ func (v Values) local(base string, environment bool, o Overrides) (LocalSettings
 	s := Defaults()
 	s.CollectorDBPath = resolvePath(s.CollectorDBPath, v.Collector.DBPath, "TOKENINSIGHTS_COLLECTOR_DB_PATH", o.CollectorDBPath, base, environment)
 	s.ServerDBPath = resolvePath(s.ServerDBPath, v.InProcess.ServerDBPath, "TOKENINSIGHTS_SERVER_DB_PATH", o.ServerDBPath, base, environment)
-	s.AppDBPath = resolvePath("", v.InProcess.AppDBPath, "TOKENINSIGHTS_APP_DB_PATH", o.AppDBPath, base, environment)
 	s.Host = resolveString(s.Host, v.InProcess.Host, "TOKENINSIGHTS_HOST", o.Host, environment)
 	if o.Port != nil {
 		s.Port = *o.Port
@@ -328,16 +261,27 @@ func (v Values) local(base string, environment bool, o Overrides) (LocalSettings
 		return s, err
 	}
 	// A remote backend uses its own configuration; local paths cannot apply.
-	if !s.Endpoint.IsLocal() && (o.CollectorDBPath != nil || o.ServerDBPath != nil || o.AppDBPath != nil) {
-		return s, fmt.Errorf("--endpoint %s rejects local database path flags; the remote uses its own configuration", s.Endpoint)
+	if !s.Endpoint.IsLocal() && (o.CollectorDBPath != nil || o.ServerDBPath != nil) {
+		return s, fmt.Errorf("--connection %s rejects local database path flags; the remote uses its own configuration", s.Endpoint)
 	}
 	return s, s.Validate()
 }
 
-// endpoint resolves remote.endpoint and, for SSH endpoints, remote.command.
+// Connections are invocation-only. Environment and files cannot select a target.
 func (v Values) endpoint(environment bool, o Overrides) (endpoint.Endpoint, error) {
-	selected, err := endpoint.Parse(resolveString(endpoint.Local, v.Remote.Endpoint, "TOKENINSIGHTS_ENDPOINT", o.Endpoint, environment))
-	if err != nil || selected.IsLocal() {
+	if environment {
+		for _, key := range []string{"TOKENINSIGHTS_ENDPOINT", "TOKENINSIGHTS_APP_DB_PATH", "TOKENINSIGHTS_SERVER_URL", "TOKENINSIGHTS_ACCESS_TOKEN"} {
+			if os.Getenv(key) != "" {
+				return endpoint.Endpoint{}, fmt.Errorf("obsolete %s; unset it and use explicit --connection (config unchanged)", key)
+			}
+		}
+	}
+	value := endpoint.Local
+	if o.Connection != nil {
+		value = *o.Connection
+	}
+	selected, err := endpoint.Parse(value)
+	if err != nil || selected.SSH == nil {
 		return selected, err
 	}
 	command := resolveString(endpoint.DefaultCommand, v.Remote.Command, "TOKENINSIGHTS_REMOTE_COMMAND", nil, environment)
@@ -350,18 +294,15 @@ func (v Values) endpoint(environment bool, o Overrides) (endpoint.Endpoint, erro
 
 // open resolves the viewer open mode; it has no environment variable.
 func (v Values) open(o Overrides) (browser.Mode, error) {
-	value := resolveString(string(browser.ModeAuto), v.Viewer.Open, "", o.Open, false)
+	value := resolveString(string(browser.ModeMyGo), v.Viewer.Open, "", o.Open, false)
 	mode, err := browser.ParseMode(value)
+	if err == nil && mode != browser.ModeMyGo && mode != browser.ModeElectron {
+		err = fmt.Errorf("viewer.open must be mygo or electron")
+	}
 	if err != nil && o.Open == nil {
 		return "", fmt.Errorf("invalid viewer.open: %w", err)
 	}
 	return mode, err
-}
-func (v Values) remote(base string, environment bool, o Overrides) SyncSettings {
-	return SyncSettings{
-		CollectorDBPath: resolvePath(Defaults().CollectorDBPath, v.Collector.DBPath, "TOKENINSIGHTS_COLLECTOR_DB_PATH", o.CollectorDBPath, base, environment),
-		ServerURL:       resolveString("", v.Distributed.ServerURL, "TOKENINSIGHTS_SERVER_URL", o.ServerURL, environment),
-		ServerToken:     resolveString("", v.Distributed.ServerToken, "TOKENINSIGHTS_ACCESS_TOKEN", o.ServerToken, environment)}
 }
 func ResolveLocal(path string, environment bool, o Overrides) (LocalSettings, error) {
 	v, err := Read(path)
@@ -370,54 +311,20 @@ func ResolveLocal(path string, environment bool, o Overrides) (LocalSettings, er
 	}
 	return v.local(filepath.Dir(path), environment, o)
 }
-
-// Sync completeness is checked after flags: status and dry-run do not submit.
-func ResolveSync(path string, environment bool, o Overrides) (SyncSettings, error) {
-	v, err := Read(path)
-	if err != nil {
-		return SyncSettings{}, err
-	}
-	settings := v.remote(filepath.Dir(path), environment, o)
-	return settings, validatePath(settings.CollectorDBPath)
-}
-func ResolveBrowse(path string, environment bool, o Overrides) (BrowseSettings, error) {
-	v, err := Read(path)
-	if err != nil {
-		return BrowseSettings{}, err
-	}
-	mode, err := v.open(o)
-	if err != nil {
-		return BrowseSettings{}, err
-	}
-	return BrowseSettings{ServerURL: resolveString("", v.Distributed.ServerURL, "TOKENINSIGHTS_SERVER_URL", o.ServerURL, environment), Open: mode}, nil
-}
 func (v Values) Get(key, base string) (string, error) {
 	local, err := v.local(base, false, Overrides{})
-	remote := v.remote(base, false, Overrides{})
 	switch key {
 	case "collector.db-path":
-		return remote.CollectorDBPath, nil
-	case "in-process.app-db-path":
-		return local.ApplicationPath(), err
+		return local.CollectorDBPath, err
 	case "in-process.server-db-path":
 		return local.ServerDBPath, err
 	case "in-process.host":
 		return local.Host, err
 	case "in-process.port":
 		return strconv.Itoa(local.Port), err
-	case "distributed.server-url":
-		return remote.ServerURL, nil
-	case "distributed.server-token":
-		if remote.ServerToken == "" {
-			return "unset", nil
-		}
-		return "configured", nil
 	case "viewer.open":
 		mode, err := v.open(Overrides{})
 		return string(mode), err
-	case "remote.endpoint":
-		selected, err := endpoint.Parse(resolveString(endpoint.Local, v.Remote.Endpoint, "", nil, false))
-		return selected.String(), err
 	case "remote.command":
 		return resolveString(endpoint.DefaultCommand, v.Remote.Command, "", nil, false), nil
 	default:
@@ -430,7 +337,7 @@ func (v *Values) Set(key, value string, remove bool) error {
 		stringValue = &value
 	}
 	switch key {
-	case "collector.db-path", "in-process.server-db-path", "in-process.app-db-path":
+	case "collector.db-path", "in-process.server-db-path":
 		if !remove {
 			if err := validatePath(value); err != nil {
 				return err
@@ -446,15 +353,13 @@ func (v *Values) Set(key, value string, remove bool) error {
 			v.Collector.DBPath = stringValue
 		case "in-process.server-db-path":
 			v.InProcess.ServerDBPath = stringValue
-		default:
-			v.InProcess.AppDBPath = stringValue
 		}
 	case "in-process.host":
 		if !remove {
 			if value == "" {
 				return fmt.Errorf("empty host")
 			}
-			if err := networkprefs.ValidateHost(value); err != nil {
+			if err := validateHost(value); err != nil {
 				return err
 			}
 		}
@@ -468,43 +373,20 @@ func (v *Values) Set(key, value string, remove bool) error {
 			}
 			v.InProcess.Port = &port
 		}
-	case "distributed.server-url":
-		if err := ValidateURL(value); err != nil {
-			return err
-		}
-		v.Distributed.ServerURL = stringValue
-	case "distributed.server-token":
-		if !remove {
-			if value == "" {
-				return fmt.Errorf("empty server-token")
-			}
-			if err := validateToken(value); err != nil {
-				return err
-			}
-		}
-		v.Distributed.ServerToken = stringValue
 	case "viewer.open":
 		if remove {
 			v.Viewer.Open = nil
 			return nil
 		}
 		mode, err := browser.ParseMode(value)
+		if err == nil && mode != browser.ModeMyGo && mode != browser.ModeElectron {
+			err = fmt.Errorf("viewer.open must be mygo or electron")
+		}
 		if err != nil {
 			return err
 		}
 		canonical := string(mode)
 		v.Viewer.Open = &canonical
-	case "remote.endpoint":
-		if remove {
-			v.Remote.Endpoint = nil
-			return nil
-		}
-		selected, err := endpoint.Parse(value)
-		if err != nil {
-			return err
-		}
-		canonical := selected.String()
-		v.Remote.Endpoint = &canonical
 	case "remote.command":
 		if !remove {
 			if err := endpoint.ValidateCommand(value); err != nil {

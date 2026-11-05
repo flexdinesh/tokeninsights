@@ -140,7 +140,7 @@ async function runCommand(binaryPath: string, args: string[]): Promise<void> {
   await new Promise<void>((resolveRun, rejectRun) => {
     const child = spawn(binaryPath, args, {
       stdio: 'inherit',
-      env: { ...process.env, TOKENINSIGHTS_ACCESS_TOKEN: '' },
+      env: process.env,
     })
     child.once('error', rejectRun)
     child.once('exit', (code, signal) => {

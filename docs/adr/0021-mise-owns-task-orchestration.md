@@ -1,5 +1,10 @@
 # mise owns task orchestration
 
+Current coverage update: [ADR 0027](0027-personal-backend-and-explicit-connections.md)
+supersedes retired hosted/PostgreSQL/Docker product coverage. Local task/engine
+ownership, isolation, retained artifacts and sandboxed desktop validation remain.
+The original decision below is preserved as history.
+
 Status: Accepted. Date: 24 October 2026.
 
 ## Context

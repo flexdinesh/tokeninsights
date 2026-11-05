@@ -4,19 +4,13 @@ export type Capability =
   | 'usage'
   | 'facets'
   | 'web-dashboard'
-  | 'raw-ingestion'
   | 'terminal-dashboard'
   | 'collector-progress'
-  | 'dashboard-reload'
 
 export function hasCapability(server: Bootstrap, capability: Capability): boolean {
   return server.capabilities.includes(capability)
 }
 
 export function showsCollectorProgress(server: Bootstrap): boolean {
-  return (
-    server.serverKind === 'personal' &&
-    server.permissions.includes('read') &&
-    hasCapability(server, 'collector-progress')
-  )
+  return server.permissions.includes('read') && hasCapability(server, 'collector-progress')
 }

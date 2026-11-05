@@ -13,7 +13,7 @@ import (
 
 func TestCaptureCoalescesAndRetainsOneStrongerFollowup(t *testing.T) {
 	root := t.TempDir()
-	runtime, err := localruntime.OpenWithAppOptions(t.Context(), filepath.Join(root, "collector.sqlite"), filepath.Join(root, "server.sqlite"), filepath.Join(root, "app.sqlite"), localruntime.Options{CaptureDetails: true})
+	runtime, err := localruntime.OpenWithOptions(t.Context(), filepath.Join(root, "collector.sqlite"), filepath.Join(root, "server.sqlite"), localruntime.Options{CaptureDetails: true})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -1,5 +1,7 @@
 import { DashboardClientProvider } from '@tokeninsights/dashboard'
 import { httpDashboardClient } from './http-client'
+import { mockConnection } from './mocks/data'
+const dashboardClient = { ...httpDashboardClient, getConnection: async () => mockConnection }
 import { afterEach, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
@@ -87,7 +89,7 @@ function mount(path = '/tokens', options = { confirmed: true, excluded: true, fa
     }),
   )
   render(
-    <DashboardClientProvider client={httpDashboardClient}>
+    <DashboardClientProvider client={dashboardClient}>
       <QueryClientProvider client={client}>
         <RouterProvider router={createAppRouter(history)} />
       </QueryClientProvider>
@@ -133,7 +135,7 @@ it('excluded evidence alone offers review instead of claiming nothing is saved',
   mount('/tokens', { confirmed: false, excluded: true, failing: false })
   expect(await screen.findByText('No usage included in your total yet.')).toBeVisible()
   expect(
-    screen.queryByText('No usage saved yet. Restart tokeninsights web to collect usage.'),
+    screen.queryByText('No usage saved yet. Use Refresh to collect usage.'),
   ).not.toBeInTheDocument()
   const [review] = await screen.findAllByRole('button', { name: 'Review excluded usage' })
   if (!review) throw new Error('Expected excluded review recovery')

@@ -49,24 +49,3 @@ func TestPersonalStatusSamplesCommandResources(t *testing.T) {
 		t.Fatalf("unexpected resources: calls %d, status %+v", sampler.calls, status.ProcessUsage)
 	}
 }
-
-func TestHostedStatusNeverSamplesOrExposesProcessResources(t *testing.T) {
-	fixture := newHostedContractFixture(t)
-	policy, err := serverfeatures.New(serverfeatures.Hosted, false)
-	if err != nil {
-		t.Fatal(err)
-	}
-	sampler := &resourceSampler{}
-	handler := NewDataHandlerWithOptions(t.Context(), sqlanalytics.Source{Store: fixture.store}, io.Discard, DataHandlerOptions{Policy: policy, Accounts: fixture.accounts, PublicURL: hostedTestOrigin, ProcessUsage: sampler})
-	response := hostedRequest(t, handler, http.MethodGet, "/api/v2/status", fixture.aliceToken.Secret, nil, nil)
-	if response.Code != http.StatusOK {
-		t.Fatal(response.Code, response.Body.String())
-	}
-	var fields map[string]json.RawMessage
-	if err := json.Unmarshal(response.Body.Bytes(), &fields); err != nil {
-		t.Fatal(err)
-	}
-	if _, found := fields["processUsage"]; found || sampler.calls != 0 {
-		t.Fatal("hosted process resources exposed or sampled", response.Body.String(), sampler.calls)
-	}
-}

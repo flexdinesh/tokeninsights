@@ -201,83 +201,11 @@ async function main() {
     readText(new URL('../../../packages/core/datastore/schema/data.sql', import.meta.url).pathname),
     readText(new URL('../../../packages/core/datastore/store.go', import.meta.url).pathname),
   ])
-  const [appSQL, embeddedAppSQL, appGo] = await Promise.all([
-    readText(new URL('../../../schema/app.sql', import.meta.url).pathname),
-    readText(new URL('../../../packages/core/appstore/schema/app.sql', import.meta.url).pathname),
-    readText(new URL('../../../packages/core/appstore/store.go', import.meta.url).pathname),
-  ])
-  const [hostedAppSQL, embeddedHostedAppSQL, postgresGo] = await Promise.all([
-    readText(new URL('../../../schema/app.hosted.sql', import.meta.url).pathname),
-    readText(
-      new URL('../../../packages/core/appstore/schema/app.hosted.sql', import.meta.url).pathname,
-    ),
-    readText(
-      new URL('../../../packages/core/persistence/postgres/store.go', import.meta.url).pathname,
-    ),
-  ])
-  const [jobsSQL, embeddedJobsSQL, jobsGo] = await Promise.all([
-    readText(new URL('../../../schema/jobs.sql', import.meta.url).pathname),
-    readText(new URL('../../../packages/core/syncjob/schema/jobs.sql', import.meta.url).pathname),
-    readText(new URL('../../../packages/core/syncjob/store.go', import.meta.url).pathname),
-  ])
-  const postgresCopies = await Promise.all(
-    ['data', 'app'].map(async (role) => {
-      const authoritative = await readText(
-        new URL(`../../../schema/${role}.postgres.sql`, import.meta.url).pathname,
-      )
-      const embedded = await readText(
-        new URL(`../../../packages/core/persistence/postgres/schema/${role}.sql`, import.meta.url)
-          .pathname,
-      )
-      const versionMatch = authoritative.match(/CHECK\(schema_version=(\d+)\)/)
-      const version = versionMatch ? Number(versionMatch[1]) : undefined
-      const constant = role === 'app' ? 'AccountSchemaVersion' : 'SchemaVersion'
-      const mismatches: string[] = []
-      if (authoritative !== embedded) mismatches.push(`postgres ${role}: embedded schema differs`)
-      if (version === undefined || extractGoConsts(postgresGo).ints.get(constant) !== version) {
-        mismatches.push(`postgres ${role}: ${constant} mismatch`)
-      }
-      return mismatches
-    }),
-  )
   const mismatches = [
-    ...postgresCopies.flat(),
     ...(extractGoConsts(dataGo).ints.get('ApplicationID') ===
     extractSchemaSqlIdentifiers(dataSQL).applicationID
       ? []
       : ['data: ApplicationID mismatch']),
-    ...(jobsSQL === embeddedJobsSQL ? [] : ['jobs: embedded schema differs']),
-    ...(extractGoConsts(jobsGo).ints.get('SchemaVersion') ===
-    extractSchemaSqlIdentifiers(jobsSQL).version
-      ? []
-      : ['jobs: SchemaVersion mismatch']),
-    ...(extractGoConsts(jobsGo).ints.get('ApplicationID') ===
-    extractSchemaSqlIdentifiers(jobsSQL).applicationID
-      ? []
-      : ['jobs: ApplicationID mismatch']),
-
-    ...(appSQL === embeddedAppSQL ? [] : ['application: embedded schema differs']),
-    ...(extractGoConsts(appGo).ints.get('SchemaVersion') ===
-    extractSchemaSqlIdentifiers(appSQL).version
-      ? []
-      : ['application: SchemaVersion mismatch']),
-    ...(extractGoConsts(appGo).ints.get('ApplicationID') ===
-    extractSchemaSqlIdentifiers(appSQL).applicationID
-      ? []
-      : ['application: ApplicationID mismatch']),
-
-    ...(hostedAppSQL === embeddedHostedAppSQL
-      ? []
-      : ['hosted application: embedded schema differs']),
-    ...(extractGoConsts(appGo).ints.get('HostedSchemaVersion') ===
-    extractSchemaSqlIdentifiers(hostedAppSQL).version
-      ? []
-      : ['hosted application: HostedSchemaVersion mismatch']),
-    ...(extractGoConsts(appGo).ints.get('ApplicationID') ===
-    extractSchemaSqlIdentifiers(hostedAppSQL).applicationID
-      ? []
-      : ['hosted application: ApplicationID mismatch']),
-
     ...(dataSQL === embeddedDataSQL ? [] : ['data: embedded SQLite schema differs']),
     ...(extractGoConsts(dataGo).ints.get('SchemaVersion') ===
     extractSchemaSqlIdentifiers(dataSQL).version

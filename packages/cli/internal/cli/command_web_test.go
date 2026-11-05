@@ -4,269 +4,205 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"github.com/flexdinesh/tokeninsights/packages/core/localprotocol"
 	"io"
 	"net"
 	"net/http"
-	"os"
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
-	"github.com/charmbracelet/x/ansi"
 	"github.com/flexdinesh/tokeninsights/packages/core/browser"
 	"github.com/flexdinesh/tokeninsights/packages/core/config"
+	"github.com/flexdinesh/tokeninsights/packages/core/desktoplaunch"
 	"github.com/flexdinesh/tokeninsights/packages/core/localbackend"
 	"github.com/flexdinesh/tokeninsights/packages/core/localclient"
+	"github.com/flexdinesh/tokeninsights/packages/core/localprotocol"
 )
 
-// The CLI tests exercise a real owner and Unix attachment without depending on
-// a built adjacent executable. Real child startup is covered by localclient.
+// Start real private owners inside this test process. Production attachment,
+// bridge, query and capture protocols remain unchanged.
 func useSharedBackendForTest(t *testing.T) {
 	t.Helper()
-	previous := connectLocalBackend
-	t.Cleanup(func() { connectLocalBackend = previous })
-	connectLocalBackend = func(ctx context.Context, options localclient.Options, prepare func() error) (*localclient.Session, error) {
+	previousConnect, previousOpen := connectBackendSession, openViewerDashboard
+	owners := make(map[string]bool)
+	ensure := func(ctx context.Context, spec desktoplaunch.Spec, prepare func() error) error {
+		if owners[spec.ServerDBPath] {
+			return nil
+		}
 		if prepare != nil {
 			if err := prepare(); err != nil {
-				return nil, err
+				return err
 			}
 		}
-		ownerCtx, cancel := context.WithCancel(t.Context())
+		backendCtx, cancel := context.WithCancel(t.Context())
 		ready, finished := make(chan struct{}), make(chan error, 1)
-		settings := localprotocol.Settings{CollectorDBPath: options.CollectorDBPath, ServerDBPath: options.ServerDBPath, AppDBPath: options.AppDBPath}
 		go func() {
-			finished <- localbackend.Serve(ownerCtx, settings, io.Discard, func(localprotocol.Descriptor) error { close(ready); return nil })
+			finished <- localbackend.Serve(backendCtx, localprotocol.Settings{CollectorDBPath: spec.CollectorDBPath, ServerDBPath: spec.ServerDBPath}, io.Discard,
+				func(localprotocol.Descriptor) error { close(ready); return nil })
 		}()
 		select {
 		case err := <-finished:
 			cancel()
-			return nil, err
-		case <-ready:
+			return err
 		case <-ctx.Done():
 			cancel()
-			if err := <-finished; err != nil {
-				t.Logf("cancelled backend startup: %v", err)
-			}
-			return nil, ctx.Err()
+			<-finished
+			return ctx.Err()
+		case <-ready:
 		}
+		owners[spec.ServerDBPath] = true
 		t.Cleanup(func() {
 			cancel()
 			if err := <-finished; err != nil {
 				t.Error(err)
 			}
 		})
-		return localclient.Connect(ctx, options)
+		return nil
 	}
+	connectBackendSession = func(ctx context.Context, spec desktoplaunch.Spec, prepare func() error) (*localclient.Session, error) {
+		if err := ensure(ctx, spec, prepare); err != nil {
+			return nil, err
+		}
+		return previousConnect(ctx, spec, func() error { t.Error("owned storage inspected"); return nil })
+	}
+	openViewerDashboard = func(ctx context.Context, spec desktoplaunch.Spec, host string, port int, prepare func() error) (*desktoplaunch.Dashboard, error) {
+		if err := ensure(ctx, spec, prepare); err != nil {
+			return nil, err
+		}
+		return previousOpen(ctx, spec, host, port, func() error { t.Error("owned storage inspected"); return nil })
+	}
+	t.Cleanup(func() { connectBackendSession = previousConnect; openViewerDashboard = previousOpen })
 }
 
-func TestWebClosingCommandPreservesAnotherViewerAndPrivateMaintenance(t *testing.T) {
+func TestWebClosingCommandPreservesAnotherViewerAndMaintenance(t *testing.T) {
+	useSharedBackendForTest(t)
 	root := t.TempDir()
 	settings := config.Defaults()
-	settings.CollectorDBPath, settings.ServerDBPath, settings.Port = filepath.Join(root, "collector.sqlite"), filepath.Join(root, "server.sqlite"), 0
-	useSharedBackendForTest(t)
-	keeper, err := connectLocalBackend(t.Context(), localclient.Options{CollectorDBPath: settings.CollectorDBPath, ServerDBPath: settings.ServerDBPath, AppDBPath: settings.ApplicationPath(), Host: settings.Host, Port: settings.Port, Dashboard: true}, nil)
+	settings.CollectorDBPath, settings.ServerDBPath = filepath.Join(root, "collector.sqlite"), filepath.Join(root, "server.sqlite")
+	keeper, err := connectBackendSession(t.Context(), desktoplaunch.Specification(settings, false, false, ""), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer func() { _ = keeper.Close() }()
-	connectLocalBackend = func(ctx context.Context, options localclient.Options, prepare func() error) (*localclient.Session, error) {
-		return localclient.ConnectPrepared(ctx, options, func() error { t.Error("attached command inspected owned storage"); return nil })
-	}
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
-	previousOpen := openDashboard
-	t.Cleanup(func() { openDashboard = previousOpen })
-	var stdout bytes.Buffer
-	openDashboard = func(_ context.Context, _ browser.Mode, url string) (browser.Result, error) {
-		if url != keeper.URL || !strings.Contains(ansi.Strip(stdout.String()), "Dashboard:  "+url) {
-			t.Error("web did not attach to shared dashboard")
+	previous := openDashboard
+	t.Cleanup(func() { openDashboard = previous })
+	var output bytes.Buffer
+	openDashboard = func(_ context.Context, mode browser.Mode, url string) (browser.Result, error) {
+		if mode != browser.ModeBrowser || !strings.Contains(output.String(), url) {
+			t.Fatal("web did not print bridge URL", mode, output.String())
 		}
-		for _, path := range []string{"/api/v3/ingestion/batches", "/api/local/v1/capture", "/api/local/v1/reprocess"} {
+		for _, path := range []string{"/api/v3/ingestion/batches", "/api/local/v1/reprocess", "/api/local/v1/capture"} {
 			response, err := http.Post(url+path, "application/json", strings.NewReader("{}"))
 			if err != nil {
 				t.Fatal(err)
 			}
 			_ = response.Body.Close()
 			if response.StatusCode < 400 {
-				t.Error("public mutation enabled", path)
+				t.Error("bridge exposed mutation", path)
 			}
 		}
 		cancel()
 		return browser.Result{}, nil
 	}
-	invocation := commandInvocation{context: ctx, stdout: &stdout, stderr: io.Discard, configPath: localConfigForTest(t, settings)}
-	if err := runWeb(invocation, []string{"--sync=false"}); err != nil {
+	invocation := commandInvocation{context: ctx, stdout: &output, stderr: io.Discard, configPath: localConfigForTest(t, settings)}
+	if err := runWeb(invocation, []string{"--capture=false"}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := keeper.Query.Instance(t.Context()); err != nil {
-		t.Fatal("closing web stopped another viewer", err)
+		t.Fatal("web close stopped another viewer", err)
 	}
 	invocation.context = t.Context()
 	if err := runData(invocation, []string{"reprocess"}); err != nil {
-		t.Fatal("maintenance failed while viewer attached", err)
+		t.Fatal(err)
 	}
 }
 
-func TestWebPassesLaunchCaptureSettings(t *testing.T) {
+func TestWebPassesCapturePolicyAndOpenFalse(t *testing.T) {
+	previous := openViewerDashboard
+	t.Cleanup(func() { openViewerDashboard = previous })
+	expected := errors.New("inspected")
 	root := t.TempDir()
-	settings := config.Defaults()
-	settings.CollectorDBPath, settings.ServerDBPath = filepath.Join(root, "collector.sqlite"), filepath.Join(root, "server.sqlite")
-	previous := connectLocalBackend
-	t.Cleanup(func() { connectLocalBackend = previous })
-	expected := errors.New("launch inspected")
-	connectLocalBackend = func(_ context.Context, options localclient.Options, _ func() error) (*localclient.Session, error) {
-		if !options.Capture || !options.FullRefresh || options.SourceDir != root {
-			t.Error("launch capture controls lost", options)
+	openViewerDashboard = func(_ context.Context, spec desktoplaunch.Spec, _ string, _ int, _ func() error) (*desktoplaunch.Dashboard, error) {
+		if !spec.Capture || !spec.FullRefresh || spec.SourceDir != root {
+			t.Fatal("lost capture controls", spec)
 		}
 		return nil, expected
 	}
-	if err := runWeb(commandInvocation{context: t.Context(), stdout: io.Discard, stderr: io.Discard, configPath: localConfigForTest(t, settings)}, []string{"--full-refresh", "--source-dir", root}); !errors.Is(err, expected) {
+	invocation := commandInvocation{context: t.Context(), stdout: io.Discard, stderr: io.Discard, configPath: writeConfigForTest(t, nil)}
+	if err := runWeb(invocation, []string{"--full-refresh", "--source-dir", root, "--open=false"}); !errors.Is(err, expected) {
 		t.Fatal(err)
 	}
 }
 
-func TestConfigTokenStdinAndMaskedGet(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "config.json")
-	var output bytes.Buffer
-	invocation := commandInvocation{context: t.Context(), stdin: strings.NewReader("private-token\n"), stdout: &output, stderr: &output, configPath: path}
-	if err := runConfig(invocation, []string{"set", "distributed.server-token"}); err != nil {
-		t.Fatal(err)
-	}
-	if err := runConfig(invocation, []string{"get", "distributed.server-token"}); err != nil || output.String() != "configured\n" {
-		t.Fatal("secret disclosure", err)
-	}
-	if err := runConfig(invocation, []string{"set", "distributed.server-token", "secret"}); !errors.Is(err, ErrUsage) {
-		t.Fatal("token argument accepted")
-	}
+type cancelOnOutput struct {
+	bytes.Buffer
+	cancel context.CancelFunc
 }
 
-func TestWebReadyOutputRespectsColorEnvironment(t *testing.T) {
-	const url = "http://127.0.0.1:43210"
-	for _, test := range []struct {
-		name     string
-		force    string
-		noColor  string
-		cliColor string
-		styled   bool
-	}{
-		{name: "redirected"},
-		{name: "forced color", force: "1", styled: true},
-		{name: "no color overrides force", force: "1", noColor: "1"},
-		{name: "disabled color", cliColor: "0"},
-	} {
-		t.Run(test.name, func(t *testing.T) {
-			t.Setenv("CLICOLOR_FORCE", test.force)
-			t.Setenv("NO_COLOR", test.noColor)
-			t.Setenv("CLICOLOR", test.cliColor)
-			var output bytes.Buffer
-			printWebReady(&output, url, false)
-			text := output.String()
-			plain := ansi.Strip(text)
-			if (text != plain) != test.styled {
-				t.Fatalf("styled = %v, want %v: %q", text != plain, test.styled, text)
-			}
-			if !strings.Contains(plain, "TokenInsights  ready") || !strings.Contains(plain, "Dashboard:  "+url) || !strings.Contains(plain, "Press Ctrl+C to stop.") {
-				t.Fatalf("missing ready information: %q", plain)
-			}
-		})
+func (w *cancelOnOutput) Write(body []byte) (int, error) {
+	count, err := w.Buffer.Write(body)
+	if strings.Contains(w.Buffer.String(), "Dashboard:") {
+		w.cancel()
 	}
+	return count, err
 }
 
-// Commands parse their own flags once, so every flag form outranks the
-// environment, including single-dash forms a separate pre-scan would miss.
-func TestWebSingleDashFlagsOverrideInvalidEnvironment(t *testing.T) {
+func TestWebOpenFalseHoldsBridgeWithoutOpeningApplication(t *testing.T) {
+	useSharedBackendForTest(t)
 	root := t.TempDir()
 	settings := config.Defaults()
-	settings.CollectorDBPath, settings.ServerDBPath = filepath.Join(root, "env-collector.sqlite"), filepath.Join(root, "env-server.sqlite")
-	path := localConfigForTest(t, settings)
-	t.Setenv("TOKENINSIGHTS_PORT", "not-a-port")
-	t.Setenv("TOKENINSIGHTS_COLLECTOR_DB_PATH", settings.CollectorDBPath)
-	flagCollector, flagServer := filepath.Join(root, "collector.sqlite"), filepath.Join(root, "server.sqlite")
-	useSharedBackendForTest(t)
+	settings.CollectorDBPath, settings.ServerDBPath = filepath.Join(root, "collector.sqlite"), filepath.Join(root, "server.sqlite")
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
-	previousOpen := openDashboard
-	t.Cleanup(func() { openDashboard = previousOpen })
+	output := &cancelOnOutput{cancel: cancel}
+	previous := openDashboard
+	t.Cleanup(func() { openDashboard = previous })
 	openDashboard = func(context.Context, browser.Mode, string) (browser.Result, error) {
-		cancel()
+		t.Fatal("--open=false opened an application")
 		return browser.Result{}, nil
 	}
-	err := Run(ctx, []string{"--config-file", path, "web", "--sync=false", "-port", "0", "-collector-db-path", flagCollector, "-server-db-path", flagServer}, io.Discard, io.Discard, time.Now())
+	err := runWeb(commandInvocation{context: ctx, stdout: output, stderr: io.Discard, configPath: localConfigForTest(t, settings)}, []string{"--capture=false", "--open=false"})
+	if err != nil || !strings.Contains(output.String(), "Dashboard: http://127.0.0.1:") {
+		t.Fatal("web did not print its live loopback bridge", err)
+	}
+}
+
+func TestWebRejectsUnsafeBindingAndInvalidPortsBeforeStorage(t *testing.T) {
+	previous := openViewerDashboard
+	t.Cleanup(func() { openViewerDashboard = previous })
+	openViewerDashboard = func(context.Context, desktoplaunch.Spec, string, int, func() error) (*desktoplaunch.Dashboard, error) {
+		t.Fatal("invalid binding reached backend")
+		return nil, nil
+	}
+	invocation := commandInvocation{context: t.Context(), stdout: io.Discard, stderr: io.Discard, configPath: writeConfigForTest(t, nil)}
+	for _, args := range [][]string{{"--port=-1"}, {"--port=65536"}, {"--port=invalid"}, {"--host=0.0.0.0"}} {
+		if err := runWeb(invocation, args); err == nil {
+			t.Fatal("accepted", args)
+		}
+	}
+}
+
+func TestWebOccupiedPortDoesNotFallback(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := os.Stat(flagServer); err != nil {
-		t.Fatalf("flag server database not used: %v", err)
+	defer func() { _ = listener.Close() }()
+	// Bridge bind rejection and lease cleanup are exercised by desktoplaunch's
+	// real-backend test; this command preserves the exact explicit port.
+	previous := openViewerDashboard
+	t.Cleanup(func() { openViewerDashboard = previous })
+	_, port, _ := net.SplitHostPort(listener.Addr().String())
+	expected := errors.New("address in use")
+	openViewerDashboard = func(_ context.Context, _ desktoplaunch.Spec, _ string, selected int, _ func() error) (*desktoplaunch.Dashboard, error) {
+		if selected == 0 {
+			t.Fatal("port fallback")
+		}
+		return nil, expected
 	}
-	assertViewMissingPath(t, settings.ServerDBPath)
-}
-
-func TestWebPortFlagBindsRequestedPort(t *testing.T) {
-	useSharedBackendForTest(t)
-	for _, form := range []string{"separate", "equals"} {
-		t.Run(form, func(t *testing.T) {
-			reservation, err := net.Listen("tcp4", "127.0.0.1:0")
-			if err != nil {
-				t.Fatal(err)
-			}
-			address := reservation.Addr().String()
-			_, port, err := net.SplitHostPort(address)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if err := reservation.Close(); err != nil {
-				t.Fatal(err)
-			}
-			settings := config.Defaults()
-			root := t.TempDir()
-			settings.CollectorDBPath, settings.ServerDBPath, settings.Port = filepath.Join(root, "collector.sqlite"), filepath.Join(root, "server.sqlite"), 0
-			path := localConfigForTest(t, settings)
-			t.Setenv("TOKENINSIGHTS_PORT", "not-a-port")
-			ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
-			defer cancel()
-			previousOpen := openDashboard
-			t.Cleanup(func() { openDashboard = previousOpen })
-			var output bytes.Buffer
-			openDashboard = func(_ context.Context, _ browser.Mode, url string) (browser.Result, error) {
-				defer cancel()
-				if url != "http://"+address || !strings.Contains(ansi.Strip(output.String()), "Dashboard:  "+url) {
-					t.Fatalf("dashboard URL = %q, want http://%s; output = %q", url, address, output.String())
-				}
-				response, err := http.Get(url + "/api/v2/instance")
-				if err != nil {
-					t.Fatal(err)
-				}
-				defer func() { _ = response.Body.Close() }()
-				if response.StatusCode != http.StatusOK {
-					t.Fatal(response.Status)
-				}
-				return browser.Result{}, nil
-			}
-			args := []string{"--sync=false", "--port", port}
-			if form == "equals" {
-				args = []string{"--sync=false", "--port=" + port}
-			}
-			if err := Run(ctx, append([]string{"--config-file", path, "web"}, args...), &output, io.Discard, time.Now()); err != nil {
-				t.Fatal(err)
-			}
-		})
-	}
-}
-
-func TestWebRejectsInvalidPortBeforeOpeningStorage(t *testing.T) {
-	for _, port := range []string{"-1", "65536", "not-a-port"} {
-		t.Run(port, func(t *testing.T) {
-			settings := config.Defaults()
-			root := t.TempDir()
-			settings.CollectorDBPath, settings.ServerDBPath = filepath.Join(root, "collector.sqlite"), filepath.Join(root, "server.sqlite")
-			err := runWeb(commandInvocation{context: t.Context(), stdout: io.Discard, stderr: io.Discard, configPath: localConfigForTest(t, settings)}, []string{"--port", port})
-			if err == nil {
-				t.Fatalf("accepted invalid port %q", port)
-			}
-			assertViewMissingPath(t, settings.CollectorDBPath)
-			assertViewMissingPath(t, settings.ServerDBPath)
-		})
+	if err := runWeb(commandInvocation{context: t.Context(), stdout: io.Discard, stderr: io.Discard, configPath: writeConfigForTest(t, nil)}, []string{"--port", port, "--open=false"}); !errors.Is(err, expected) {
+		t.Fatal(err)
 	}
 }

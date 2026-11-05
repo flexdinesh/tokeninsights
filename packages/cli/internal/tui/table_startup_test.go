@@ -270,7 +270,7 @@ func TestTUIStartupSyncDefaultsAndReadOnlyOptOut(t *testing.T) {
 	for _, test := range []struct {
 		args []string
 		want bool
-	}{{nil, true}, {[]string{"--sync"}, true}, {[]string{"--sync=false"}, false}} {
+	}{{nil, true}, {[]string{"--capture"}, true}, {[]string{"--capture=false"}, false}} {
 		options, err := parseTableOptions(test.args, io.Discard, false, periodMonth)
 		if err != nil || options.syncOnStart != test.want {
 			t.Fatalf("args=%v sync=%v err=%v", test.args, options.syncOnStart, err)

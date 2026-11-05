@@ -90,8 +90,8 @@ func NewQueries(source analytics.Repository, policy serverfeatures.Policy, insta
 		defaults: analytics.Selection{Period: "month", Bucket: "day"}, permissions: serverfeatures.Permissions{serverfeatures.Read}}
 }
 
-// WithPresentation returns a scoped copy for an authenticated HTTP composition.
-// Repository scoping must already have occurred at the authentication boundary.
+// WithPresentation returns a copy with explicit viewer defaults and permissions.
+// Composition has already selected the personal repository.
 func (q *Queries) WithPresentation(defaults analytics.Selection, permissions serverfeatures.Permissions) *Queries {
 	copy := *q
 	copy.defaults, copy.permissions = cloneSelection(defaults), append(serverfeatures.Permissions{}, permissions...)

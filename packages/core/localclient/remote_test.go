@@ -19,6 +19,7 @@ import (
 	"github.com/flexdinesh/tokeninsights/packages/core/localprotocol"
 	"github.com/flexdinesh/tokeninsights/packages/core/localruntime"
 	"github.com/flexdinesh/tokeninsights/packages/core/serverownership"
+	"github.com/flexdinesh/tokeninsights/packages/core/sshtransport"
 )
 
 // fakeSSH drops ssh options and the destination, then runs the remote command
@@ -44,7 +45,7 @@ func isolateRemote(t *testing.T) string {
 	t.Setenv("TOKENINSIGHTS_CONFIG_PATH", filepath.Join(home, "config.json"))
 	t.Setenv("CODEX_HOME", filepath.Join(home, "codex"))
 	t.Setenv("CLAUDE_CONFIG_DIR", filepath.Join(home, "claude"))
-	for _, key := range []string{"TOKENINSIGHTS_ENDPOINT", "TOKENINSIGHTS_COLLECTOR_DB_PATH", "TOKENINSIGHTS_SERVER_DB_PATH", "TOKENINSIGHTS_APP_DB_PATH"} {
+	for _, key := range []string{"TOKENINSIGHTS_CONNECTION", "TOKENINSIGHTS_COLLECTOR_DB_PATH", "TOKENINSIGHTS_SERVER_DB_PATH"} {
 		t.Setenv(key, "")
 	}
 	return filepath.Join(home, "data", "tokeninsights", "server.sqlite")
@@ -94,14 +95,11 @@ func TestSSHEndpointAttachesRemoteBackendAndReleasesOnDisconnect(t *testing.T) {
 	shim := fakeSSH(t, pids)
 	remote := endpoint.SSH{Host: "box", Command: cli}
 	source := t.TempDir()
-	first, err := ConnectRemote(ctx, remote.Dialer(shim), RemoteOptions{Capture: true, SourceDir: source})
+	first, err := ConnectRemote(ctx, sshtransport.Dialer(remote, shim), RemoteOptions{Capture: true, SourceDir: source})
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer func() { _ = first.Close() }()
-	if first.URL != "" {
-		t.Fatal("remote control session bound a dashboard", first.URL)
-	}
 	instance, err := first.Query.Instance(ctx)
 	if err != nil || instance.InstanceID != first.InstanceID || instance.Hostname == "" {
 		t.Fatal("remote queries unavailable", instance, err)
@@ -112,7 +110,7 @@ func TestSSHEndpointAttachesRemoteBackendAndReleasesOnDisconnect(t *testing.T) {
 	if err := first.WaitVisible(ctx); err != nil {
 		t.Fatal(err)
 	}
-	second, err := ConnectRemote(ctx, remote.Dialer(shim), RemoteOptions{})
+	second, err := ConnectRemote(ctx, sshtransport.Dialer(remote, shim), RemoteOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -147,7 +145,7 @@ func TestSSHEndpointAttachesRemoteBackendAndReleasesOnDisconnect(t *testing.T) {
 		t.Fatal("closed SSH session reconnected")
 	}
 	waitReleased(t, ctx, server)
-	runtime, err := localruntime.OpenWithApp(ctx, filepath.Join(filepath.Dir(server), "collector.sqlite"), server, filepath.Join(filepath.Dir(server), "app.sqlite"))
+	runtime, err := localruntime.Open(ctx, filepath.Join(filepath.Dir(server), "collector.sqlite"), server)
 	if err != nil {
 		t.Fatal("remote shutdown did not release usable storage", err)
 	}
@@ -158,8 +156,8 @@ func TestSSHEndpointMissingRemoteCommandReportsDiagnostics(t *testing.T) {
 	isolateRemote(t)
 	shim := fakeSSH(t, filepath.Join(t.TempDir(), "pids"))
 	missing := filepath.Join(t.TempDir(), "absent", "tokeninsights")
-	_, err := ConnectRemote(t.Context(), endpoint.SSH{Host: "box", Command: missing}.Dialer(shim), RemoteOptions{})
-	var remote *endpoint.RemoteError
+	_, err := ConnectRemote(t.Context(), sshtransport.Dialer(endpoint.SSH{Host: "box", Command: missing}, shim), RemoteOptions{})
+	var remote *sshtransport.RemoteError
 	if !errors.As(err, &remote) || !strings.Contains(err.Error(), missing) {
 		t.Fatal("missing remote command lost diagnostics", err)
 	}
@@ -186,7 +184,7 @@ func TestRemoteRejectsRelativeSourceAndIncompatibleProtocol(t *testing.T) {
 	go func() { _ = server.Serve(listener) }()
 	defer func() { _ = server.Close() }()
 	_, err = ConnectRemote(t.Context(), SocketDialer(socket), RemoteOptions{})
-	if !errors.Is(err, localprotocol.ErrIncompatible) || !strings.Contains(err.Error(), "client protocol 2") {
+	if !errors.Is(err, localprotocol.ErrIncompatible) || !strings.Contains(err.Error(), "client protocol 3") {
 		t.Fatal("incompatible remote accepted or unnamed", err)
 	}
 }

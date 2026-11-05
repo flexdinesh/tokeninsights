@@ -1,5 +1,12 @@
 # Personal/hosted composition, capabilities and user datasets
 
+Superseded where conflicting by [ADR 0027](0027-personal-backend-and-explicit-connections.md).
+Current product: one personal SQLite backend, explicit local/SSH/temporary TCP
+connections. Hosted/accounts/PostgreSQL/sync/plugins and conflicting listener,
+opener or distribution choices below are historical. Applicable accounting,
+privacy, identity, transaction and lifecycle principles remain.
+The original decision below is preserved as history.
+
 Engine details below are historical; [ADR 0012](0012-sqlite-and-postgres-persistence.md) supersedes them with SQLite/PostgreSQL.
 Composition and account-storage decisions superseded by [ADR 0009](0009-single-process-and-distributed-compositions.md); capability wire contracts remain. Hosted token-login decisions are superseded by [ADR 0016](0016-hosted-user-management.md).
 Status: **Accepted**. Date: 7 October 2026.

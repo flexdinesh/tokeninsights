@@ -31,8 +31,11 @@ func TestPrepareFixtureRejectsHostedBeforeResettingCollector(t *testing.T) {
 	if err := os.Remove(serverPath); err != nil {
 		t.Fatal(err)
 	}
-	hosted, err := datastore.OpenWithOptions(ctx, serverPath, datastore.Options{Kind: datastore.KindHosted})
+	hosted, err := datastore.Open(ctx, serverPath)
 	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := hosted.SQL().Exec("UPDATE ingestion_instance SET server_kind='hosted'; UPDATE ingestion_metadata SET server_kind='hosted'"); err != nil {
 		t.Fatal(err)
 	}
 	if err := hosted.Close(); err != nil {

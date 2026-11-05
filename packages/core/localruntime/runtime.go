@@ -1,5 +1,5 @@
-// Package localruntime composes command-owned acceptance, processing and queries.
-// No listener, service discovery or detached process is required.
+// Package localruntime composes personal SQLite capture, direct acceptance,
+// durable processing and queries under one storage owner.
 package localruntime
 
 import (
@@ -17,9 +17,7 @@ import (
 
 	"github.com/flexdinesh/tokeninsights/packages/core/adapters/sqlanalytics"
 	"github.com/flexdinesh/tokeninsights/packages/core/adapters/sqlite"
-	"github.com/flexdinesh/tokeninsights/packages/core/adapters/sqliteaccounts"
 	"github.com/flexdinesh/tokeninsights/packages/core/analytics"
-	"github.com/flexdinesh/tokeninsights/packages/core/appstore"
 	"github.com/flexdinesh/tokeninsights/packages/core/collector"
 	"github.com/flexdinesh/tokeninsights/packages/core/collectorprogress"
 	"github.com/flexdinesh/tokeninsights/packages/core/datastore"
@@ -45,7 +43,6 @@ type Runtime struct {
 	Policy         serverfeatures.Policy
 	Progress       *collectorprogress.Registry
 	Store          *datastore.Store
-	App            *appstore.Store
 	Query          *queryclient.Client
 	Destination    *collector.Destination
 	queries        analytics.Repository
@@ -63,42 +60,20 @@ type Runtime struct {
 }
 
 // Options selects command-owned local behavior at composition time.
-// Only the TUI enables capture details; public progress retains its wire shape.
+// The shared backend enables capture details for every viewer.
 type Options struct {
 	CaptureDetails bool
 }
 
 func Open(ctx context.Context, collectorPath, dataPath string) (*Runtime, error) {
-	path, _, err := serverownership.Identify(dataPath)
-	if err != nil {
-		return nil, err
-	}
-	return OpenWithApp(ctx, collectorPath, path, filepath.Join(filepath.Dir(path), "app.sqlite"))
-}
-func OpenWithApp(ctx context.Context, collectorPath, dataPath, appPath string) (*Runtime, error) {
-	return OpenWithAppOptions(ctx, collectorPath, dataPath, appPath, Options{})
+	return OpenWithOptions(ctx, collectorPath, dataPath, Options{})
 }
 
-func OpenWithAppOptions(ctx context.Context, collectorPath, dataPath, appPath string, options Options) (*Runtime, error) {
+func OpenWithOptions(ctx context.Context, collectorPath, dataPath string, options Options) (*Runtime, error) {
 	canonicalCollector, _, err := serverownership.Identify(collectorPath)
 	if err != nil {
 		return nil, err
 	}
-	for _, other := range []string{dataPath, appPath} {
-		if err := dbpath.ValidateDistinct(canonicalCollector+".jobs.sqlite", other); err != nil {
-			return nil, err
-		}
-	}
-	if err := dbpath.ValidateDistinct(dataPath+".application.json", appPath); err != nil {
-		return nil, err
-	}
-
-	for _, other := range []string{collectorPath, dataPath} {
-		if err := dbpath.ValidateDistinct(appPath, other); err != nil {
-			return nil, err
-		}
-	}
-
 	if err := dbpath.ValidateDistinct(collectorPath, dataPath); err != nil {
 		return nil, err
 	}
@@ -132,24 +107,10 @@ func OpenWithAppOptions(ctx context.Context, collectorPath, dataPath, appPath st
 		_ = owner.Close()
 		return nil, err
 	}
-	app, err := appstore.OpenPaired(ctx, appPath, path, metadata.DatabaseID, datastore.KindPersonal)
-	if err != nil {
-		_ = store.Close()
-		_ = owner.Close()
-		return nil, err
-	}
-	repository := sqliteaccounts.NewSQLite(app, store)
-	if err := repository.EnsureDefault(ctx); err != nil {
-		_ = app.Close()
-		_ = store.Close()
-		_ = owner.Close()
-		return nil, err
-	}
 	workerCtx, cancel := context.WithCancel(ctx)
 	policy, err := serverfeatures.NewLocalViewer(true)
 	if err != nil {
 		cancel()
-		_ = app.Close()
 		_ = store.Close()
 		_ = owner.Close()
 		return nil, err
@@ -157,14 +118,13 @@ func OpenWithAppOptions(ctx context.Context, collectorPath, dataPath, appPath st
 	var instance [16]byte
 	if _, err := rand.Read(instance[:]); err != nil {
 		cancel()
-		_ = app.Close()
 		_ = store.Close()
 		_ = owner.Close()
 		return nil, err
 	}
 	hostname := resolveHostname(os.Hostname)
 	id := hex.EncodeToString(instance[:])
-	r := &Runtime{InstanceID: id, Hostname: hostname, Policy: policy, Progress: collectorprogress.New(id), Store: store, App: app, owner: owner, cancel: cancel, ctx: workerCtx, collectorPath: canonicalCollector, dataPath: path, done: make(chan struct{}), queries: sqlanalytics.Queries{Store: store}, captureDetails: options.CaptureDetails}
+	r := &Runtime{InstanceID: id, Hostname: hostname, Policy: policy, Progress: collectorprogress.New(id), Store: store, owner: owner, cancel: cancel, ctx: workerCtx, collectorPath: canonicalCollector, dataPath: path, done: make(chan struct{}), queries: sqlanalytics.Queries{Store: store}, captureDetails: options.CaptureDetails}
 	r.Query = queryclient.NewDirect(application.NewQueries(r.queries, policy, id, hostname))
 	r.Destination = &collector.Destination{Identity: "http://local", DatabaseID: metadata.DatabaseID, DatasetID: metadata.DatasetID, Local: true, Transport: collector.DirectDelivery{Receiver: store}}
 	// WaitVisible reads durable failure state, including failures from a prior owner.
@@ -244,7 +204,7 @@ func (r *Runtime) Close() error {
 		r.collections.Wait()
 		<-r.done
 		r.Progress.InterruptAll()
-		err = errors.Join(r.Store.Close(), r.App.Close(), r.owner.Close())
+		err = errors.Join(r.Store.Close(), r.owner.Close())
 	})
 	return err
 }

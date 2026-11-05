@@ -1,19 +1,23 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/flexdinesh/tokeninsights/packages/core/localprotocol"
 	"io"
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
+	"github.com/flexdinesh/tokeninsights/packages/core/browser"
 	"github.com/flexdinesh/tokeninsights/packages/core/config"
+	"github.com/flexdinesh/tokeninsights/packages/core/desktoplaunch"
 	"github.com/flexdinesh/tokeninsights/packages/core/localbackend"
-	"github.com/flexdinesh/tokeninsights/packages/core/localclient"
+	"github.com/flexdinesh/tokeninsights/packages/core/localprotocol"
+	"github.com/flexdinesh/tokeninsights/packages/core/localstorage"
 )
 
 func main() {
@@ -44,49 +48,99 @@ func run(ctx context.Context, args []string) error {
 			return err
 		})
 	}
-	if (len(args) != 2 && len(args) != 4) || args[0] != "connect" || args[1] != "--json" || len(args) == 4 && args[2] != "--url" {
-		return errors.New("usage: tokeninsights-backend connect --json [--url URL]")
+	if (len(args) != 2 && len(args) != 4) || args[0] != "connect" || args[1] != "--json" || len(args) == 4 && args[2] != "--launch" {
+		return errors.New("usage: tokeninsights-backend connect --json [--launch RENDEZVOUS_LINK]")
 	}
-	session, err := connect(ctx, args)
+	dashboard, handoff, err := connect(ctx, args)
 	if err != nil {
 		return err
 	}
-	defer func() { _ = session.Close() }()
+	defer func() { _ = dashboard.Close() }()
+	if handoff != nil {
+		defer func() { _ = handoff.Close() }()
+	}
 	if err := json.NewEncoder(os.Stdout).Encode(struct {
 		URL             string `json:"url"`
 		InstanceID      string `json:"instanceId"`
 		ProtocolVersion int    `json:"protocolVersion"`
-	}{session.URL, session.InstanceID, localprotocol.ProtocolVersion}); err != nil {
+	}{dashboard.URL, dashboard.Session.InstanceID, localprotocol.ProtocolVersion}); err != nil {
 		return err
 	}
+	// The Electron main process confirms it accepted the live connector before
+	// acknowledging the CLI. stdin stays open for the window's entire lifetime.
+	input := bufio.NewReader(os.Stdin)
+	if handoff != nil {
+		accepted := make(chan bool, 1)
+		go func() { ready, err := input.ReadString('\n'); accepted <- err == nil && ready == "ready\n" }()
+		timer := time.NewTimer(time.Until(handoff.Deadline()))
+		defer timer.Stop()
+		select {
+		case <-timer.C:
+			return errors.New("desktop acknowledgement timed out; run tokeninsights again")
+		case ready := <-accepted:
+			if !ready {
+				return errors.New("desktop closed before accepting the requested session")
+			}
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-dashboard.Done():
+			return errors.New("backend disconnected before desktop acknowledgement")
+		}
+		select {
+		case <-dashboard.Done():
+			return errors.New("backend disconnected before desktop acknowledgement")
+		default:
+		}
+		if err := handoff.Acknowledge(browser.ModeElectron); err != nil {
+			return err
+		}
+	}
 	closed := make(chan struct{})
-	go func() { _, _ = io.Copy(io.Discard, os.Stdin); close(closed) }()
+	go func() { _, _ = io.Copy(io.Discard, input); close(closed) }()
 	select {
 	case <-ctx.Done():
 		return nil
 	case <-closed:
 		return nil
-	case <-session.Done():
-		return errors.New("local backend disconnected")
+	case <-dashboard.Done():
+		return errors.New("backend disconnected")
 	}
 }
 
-func connect(ctx context.Context, args []string) (*localclient.Session, error) {
+func connect(ctx context.Context, args []string) (*desktoplaunch.Dashboard, *desktoplaunch.Handoff, error) {
+	var spec desktoplaunch.Spec
+	var handoff *desktoplaunch.Handoff
 	if len(args) == 4 {
-		// The originating launcher already applied capture/source policy.
-		return localclient.ConnectEndpoint(ctx, args[3], false, true)
-	}
-	path, err := config.Path("")
-	if err != nil {
-		return nil, err
-	}
-	settings, err := config.ResolveLocal(path, true, config.Overrides{})
-	if err != nil {
-		return nil, err
+		var err error
+		handoff, err = desktoplaunch.Receive(ctx, args[3])
+		if err != nil {
+			return nil, nil, err
+		}
+		spec = handoff.Spec
+	} else {
+		path, err := config.Path("")
+		if err != nil {
+			return nil, nil, err
+		}
+		settings, err := config.ResolveLocal(path, true, config.Overrides{})
+		if err != nil {
+			return nil, nil, err
+		}
+		spec = desktoplaunch.Specification(settings, true, false, "")
 	}
 	executable, err := os.Executable()
 	if err != nil {
-		return nil, err
+		if handoff != nil {
+			_ = handoff.Close()
+		}
+		return nil, nil, err
 	}
-	return localclient.Connect(ctx, localclient.Options{CollectorDBPath: settings.CollectorDBPath, ServerDBPath: settings.ServerDBPath, AppDBPath: settings.ApplicationPath(), Host: settings.Host, Port: settings.Port, BackendPath: executable, Capture: true, Dashboard: true})
+	spec.BackendPath = executable
+	dashboard, err := desktoplaunch.Open(ctx, spec, "127.0.0.1", 0, func() error {
+		return localstorage.RequireCurrent(ctx, spec.CollectorDBPath, spec.ServerDBPath)
+	})
+	if err != nil && handoff != nil {
+		_ = handoff.Close()
+	}
+	return dashboard, handoff, err
 }

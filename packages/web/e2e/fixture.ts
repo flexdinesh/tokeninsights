@@ -5,10 +5,6 @@ import { z } from 'zod'
 
 export const metadataSchema = z.object({
   localOrigin: z.url(),
-  hostedOrigin: z.url(),
-  hostedBackend: z.url(),
-  hostedHome: z.string(),
-  hostedPassword: z.string(),
 })
 
 export function runDirectory() {

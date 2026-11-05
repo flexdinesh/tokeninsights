@@ -1,56 +1,57 @@
-# Capture, delivery and storage contracts
+# Capture, acceptance and storage contracts
 
-Current guarantees and test policy: [ADR 0010](adr/0010-current-contracts-and-boundaries.md).
-Commands and tooling: [development](development.md). Tests use isolated synthetic
-sources and real current stores.
+Current composition: [ADR 0027](adr/0027-personal-backend-and-explicit-connections.md).
+Semantic boundary principles: [ADR 0010](adr/0010-current-contracts-and-boundaries.md).
+Commands: [development](development.md). Tests use isolated synthetic sources and
+real collector/token SQLite stores.
 
 | Contract | Executable coverage |
 | --- | --- |
-| Capture/checkpoint atomicity and privacy | `pipeline/extract_test.go`, `rawcollectorstore` tests |
-| Golden native totals, collector rebuild and lost acknowledgement | `collector.TestRawCollectorNativeGoldenRebuildAndLostAcknowledgement` |
-| Private source content excluded from HTTP and persisted storage | `collector.TestRawCollectorKeepsPrivateContentOutOfTransportAndStorage` |
-| Direct replay and rebuild | `collector.TestDirectCollectorGoldenReplayAndRebuild` |
-| Direct/HTTP acceptance, receipts and rejection parity | `collector.TestDirectAndHTTPShareAcceptanceReceiptsAndRejections` |
-| Credential rotation and account switch | `collector.TestInjectedDestinationRetryRotationAndAccountSwitch` |
-| Durable acceptance and duplicate replay | `datastore.TestAcceptanceReplayAndConcurrentDuplicates`, `TestPendingAcceptanceSurvivesRestart` |
-| Dataset isolation with colliding native identities | `datastore/datasets_test.go` |
-| Projection rollback, reopen and retry | `datastore.TestPublicationRollbackReopenAndRetryPreservesUsage` |
-| Atomic generation cutover, late evidence and restart | `datastore/generation_test.go` |
-| Structural contract rejection without mutation | `db.TestCollectorContractRejectsWithoutMutation`, `datastore.TestCurrentInspectionRejectsChangedContractsWithoutMutation` |
-| Query snapshots, dataset binding and pagination | `storagecontract` and `adapters/sqlanalytics` tests |
-| Composition, process ownership and shutdown | `localruntime`, `remoteserver` and `deployment` tests |
-| Mode precedence and invalid destination rejection | `config.TestResolvedModeAndDestinationContract`, `cli.TestIngestionPreflightRejectsBeforeCapture` |
+| Capture/checkpoint atomicity, metadata-only privacy | `pipeline/extract_test.go`, `rawcollectorstore` |
+| Native golden totals, collector rebuild, lost acknowledgement | `collector.TestRawCollectorNativeGoldenRebuildAndLostAcknowledgement` |
+| Private content excluded from acceptance and persistence | `collector.TestRawCollectorKeepsPrivateContentOutOfTransportAndStorage` |
+| Direct replay, copied source identity and rebuild | `collector.TestDirectCollectorGoldenReplayAndRebuild` |
+| Direct receipts and rejection | `collector.TestDirectAcceptanceReceiptsAndRejections` |
+| External submission rejected before capture | `collector.TestExternalDestinationRejectsBeforeCapture` |
+| Durable acceptance, replay/concurrency and pending reopen | `datastore` and `storagecontract` |
+| Publication rollback, cancellation, reopen and retry | `datastore.TestPublicationRollbackReopenAndRetryPreservesUsage` |
+| Generation cutover, late evidence and restart | `datastore/generation_test.go` |
+| Physical contract rejection without mutation | `collectordb`, `datastore`, `localstorage` |
+| Query snapshot, binding, pagination and five token components | `storagecontract`, `adapters/sqlanalytics` |
+| Shared capture and bounded stronger follow-up | `localbackend/capture_test.go` |
+| Final lease shutdown/reopen and reconnect grace | `localbackend/socket_test.go`, `localbackend/lifetime_test.go` |
+| Compatible startup and protocol rejection | `localclient`, `localprotocol` |
+| Real OpenSSH | `deployment.TestSSHEndpointDeployment` |
+| TLS authentication, pin/token rejection and expiry | `remoteaccess/gateway_test.go`, `tcptransport` |
+| Redacted bridge metadata, Refresh and independent lifetime | `remoteaccess.TestGatewayBridgeMetadataRefreshAndIndependentLifetime`, `dashboardproxy` |
+| Native secret handoff and desktop acknowledgement | `desktoplaunch` and installed distribution/desktop validation |
 | Dependency boundaries | `architecture.TestLayerDependencies` |
 
-Paths are relative to `packages/core`. Pure `processor` and `publication`
-tests retain independent semantic oracles for accounting, native identity, ambiguity,
-token components and time bounds. They complement boundary tests.
+Paths are relative to packages/core. Pure `processor` and `publication` tests
+retain independent semantic oracles for native identity, ambiguity, token
+components, provider attribution and calendar/time bounds. Boundary tests do not
+replace them.
 
-## Supported compositions
+## Storage and transport verification
 
-| Scenario | In-process SQLite | Hosted SQLite and PostgreSQL |
-| --- | --- | --- |
-| Four native harnesses, copied sources, collector rebuild and reprocessing; all token components and stable identities | `collector.TestDirectCollectorGoldenReplayAndRebuild` | `deployment.TestAllHarnessesPublishThroughConfiguredRemoteBinaryAndRebuild` (built client/server, interrupted replacement generation, HTTP session and receipt fact IDs) |
-| Committed acceptance with lost response; exact request/receipt replay | `collector.TestDirectCollectorGoldenReplayAndRebuild` | `deployment.TestRemoteCommittedResponseLostReplaysExactRequestAndReceipt` (restart before retry) |
-| Failed delivery retains journal/cursor; accepted work resumes | Local capture/lifetime tests in `localruntime`; shared adapter recovery below | `deployment.TestRemoteFailureRetainsJournalAndRestartResumesAcceptedWork` |
-| Concurrent copied and distinct native identities | Collector direct replay and storage concurrency contracts | `deployment.TestConcurrentCopiedAndDistinctClients` |
-| Configured remote, repeat sync, copied clients and collector rebuild | Not a local routing scenario | `deployment.TestConfigRemoteSyncTracerAndCopiedClients` |
-| Account provisioning, tenant isolation, spoof rejection and restart | Local default-user contracts | `remoteserver.TestHostedSharedDatabaseIsolationAndProvisioning` |
+`storagecontract` uses real SQLite fixtures with semantic operations and durable
+reopen. Acceptance commits evidence/receipts/scopes together; projection commits
+facts/estimates/provenance/outcomes together. Failure injection must prove rollback,
+retained receipt bytes, stable IDs/components and exactly-once eventual totals.
+Inspecting the collector journal verifies its own durable boundary; application
+assertions use semantic operations and query results.
 
-`storagecontract.RunTokens` and `RunAccounts` enforce shared semantics against real
-SQLite and PostgreSQL adapters: pending reopen, atomic rollback, generation fences,
-query snapshots/components/calendar boundaries, provisioning and revocation.
-Engine-specific schema, transaction, ownership and physical privacy checks stay
-beside adapters/collector storage. Application assertions use semantic interfaces
-or HTTP; inspecting the collector's SQLite journal verifies its own durable boundary.
+Personal SQL retains dataset-qualified keys and fixed historical role literals.
+Tests may exercise those storage invariants without promising hosted accounts,
+multiple product modes or another storage engine. Source-format fixtures describe
+real artifacts; they remain supported despite retired product APIs.
 
-Deployment restart fixtures stop the server and commit through the real adapter
-without a worker before restarting the same binary/endpoint. This deterministically
-proves pending recovery; it is not a power-loss or database failover simulation.
-`mise run test` and `mise run test:race` run both hosted backends in local pre-push
-verification. Direct `go test` skips PostgreSQL without `TOKENINSIGHTS_TEST_POSTGRES_DSN`;
-use the mise tasks for complete verification.
+Local Dagger validation must retain real OpenSSH and isolated network access,
+including TCP on the serving machine, bad pins/tokens, expired strings and exact
+protocol mismatch. Prove query/Refresh parity across local/SSH/TCP and shared
+owner/startup/final lease behavior. Use installed apps for native handoff/unavailable
+selection, Node-free Go runtime and Electron sandbox checks.
 
-Deleted normalized-publication pipelines, legacy schemas, migration/import adapters
-and old routes have no retained tests. Harness source-format tests remain: their
-input variations describe real source artifacts, not obsolete product APIs.
+Before PR creation/update: full `mise run check:pr`, `mise run check:desktop` and
+`mise run build:docs` on clean committed HEAD. Root owns aggregate validation
+during concurrent implementation.

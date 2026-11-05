@@ -46,7 +46,7 @@ func fixtureConnect(t *testing.T) func(context.Context, config.LocalSettings, fu
 			if err := prepare(); err != nil {
 				return nil, err
 			}
-			runtime, err := localruntime.OpenWithAppOptions(t.Context(), settings.CollectorDBPath, settings.ServerDBPath, settings.ApplicationPath(), localruntime.Options{CaptureDetails: true})
+			runtime, err := localruntime.OpenWithOptions(t.Context(), settings.CollectorDBPath, settings.ServerDBPath, localruntime.Options{CaptureDetails: true})
 			if err != nil {
 				return nil, err
 			}

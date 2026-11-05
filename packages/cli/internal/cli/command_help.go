@@ -8,47 +8,25 @@ func runHelp(invocation commandInvocation, _ []string) error {
 	_, err := fmt.Fprintln(invocation.stdout, usageText())
 	return err
 }
-
 func usageText() string {
-	return `usage: tokeninsights <command> [options]
+	return `usage: tokeninsights [command] [options]
 
-Local viewers:
-  tui                         attach shared backend and open terminal dashboard
-  web                         attach shared backend and open browser dashboard
-  web --port 9000              serve browser dashboard on a different port
-  web --host 0.0.0.0          bind all IPv4 interfaces (read-only dashboard)
-  tui|web --sync=false         show saved data; resume pending processing
-  tui|web --full-refresh       reread sources/retry quarantine at startup
-  web --open=MODE              auto (MyGo, else browser), mygo, electron, browser or false
-  tui|web|data --endpoint ssh://[user@]host[:port]
-                              attach that machine's backend over SSH; --endpoint=local forces local
-                              (web serves its dashboard through a local read-only proxy)
-
-Distributed:
-  sync                        start finite background submission
-  sync --print                also submit; stdout contains only remote URL
-  sync --wait                 wait for acceptance
-  sync --debug                show capture, acceptance and receipt processing
-  sync status [--json]         latest durable job status
-  browse                      open configured hosted dashboard; no upload
-  browse --open=false          print dashboard URL without opening it
-
-Configuration:
+  tokeninsights               open local desktop (MyGo by default)
+  --open=mygo|electron        select installed desktop
+  connect URI                 open exact local, ssh://host or tokeninsights://connect/v1 connection
+  remote                      foreground temporary TCP gateway; print connect command
+  remote --listen HOST:PORT --advertise HOST
+  tui                         local terminal dashboard, also inside SSH
+  web                         browser dashboard through a loopback bridge
+  web --open=false            print URL without opening a browser
+  tui|web --connection URI    explicitly choose another backend
+  --capture=false             read saved usage; resume pending processing
+  --full-refresh              reread sources and retry quarantine at launch
+  data reprocess|wait          finite local/SSH maintenance; --connection supported
   config set KEY VALUE|get KEY|remove KEY
-  config set distributed.server-url https://usage.example.com
-  config set distributed.server-token  read bearer token securely from terminal/stdin
 
-Maintenance:
-  data reprocess|wait          finite processing through the shared local owner
-  tokeninsights-server         separate authenticated container/server executable
-
-Config groups: collector.db-path; in-process.host, port, server-db-path, app-db-path;
-distributed.server-url, server-token; viewer.open; remote.endpoint, command.
-No mode setting or flag. TOKENINSIGHTS_ENDPOINT / TOKENINSIGHTS_REMOTE_COMMAND.
+Config: collector.db-path; in-process.server-db-path, host, port; viewer.open; remote.command.
+Connections are explicit. No implicit remote default. No transport or browser fallback.
 Config: --config-file PATH / TOKENINSIGHTS_CONFIG_PATH; default XDG config.json.
-Precedence: flags > environment > file > defaults. get reads saved preferences.
-Local web defaults to 127.0.0.1:8765; hosted server defaults to 0.0.0.0:8766.
-Commands select composition. Local viewers ignore distributed credentials.
-Sync requires URL and bearer token. Browse requires only URL.
-Bare invocation prints help. Reload queries saved data. Plugins enqueue background sync with --harness.`
+Precedence: flags > environment > file > defaults. Reload/filter query saved data.`
 }

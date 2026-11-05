@@ -16,10 +16,10 @@ func TestHelpAliases(t *testing.T) {
 			if err := Run(context.Background(), []string{alias}, &stdout, io.Discard, time.Now()); err != nil {
 				t.Fatal(err)
 			}
-			if !strings.Contains(stdout.String(), "usage: tokeninsights <command>") {
+			if !strings.Contains(stdout.String(), "usage: tokeninsights [command]") {
 				t.Fatalf("expected usage in output: %q", stdout.String())
 			}
-			if !strings.Contains(stdout.String(), "web --port 9000") {
+			if !strings.Contains(stdout.String(), "web --open=false") {
 				t.Fatalf("help missing web port example: %q", stdout.String())
 			}
 		})
@@ -28,7 +28,7 @@ func TestHelpAliases(t *testing.T) {
 
 func TestHelpListsCurrentCommands(t *testing.T) {
 	help := usageText()
-	for _, name := range []string{"tui", "web", "browse", "sync --debug", "sync --print", "sync status", "config set", "data reprocess|wait", "tokeninsights-server"} {
+	for _, name := range []string{"tui", "web", "connect URI", "remote", "config set", "data reprocess|wait"} {
 		if !strings.Contains(help, name) {
 			t.Fatalf("help missing %q", name)
 		}

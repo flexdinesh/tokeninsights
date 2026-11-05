@@ -15,7 +15,7 @@ export function DashboardResults({
   facets,
   controller,
   timezone,
-  localMachine,
+  refreshError,
   connectionError,
   retryConnection,
 }: {
@@ -24,7 +24,7 @@ export function DashboardResults({
   facets: ReturnType<typeof useFacets>
   controller: ReturnType<typeof useDashboardSync>
   timezone: string
-  localMachine: boolean
+  refreshError: Error | null
   connectionError: Error | null
   retryConnection: () => Promise<unknown>
 }) {
@@ -111,6 +111,9 @@ export function DashboardResults({
       {enabled && facets.error && (
         <ErrorBanner message="Filter values couldn’t load." onRetry={() => void facets.refetch()} />
       )}
+      {refreshError && (
+        <p role="alert">Refresh failed. Saved usage remains available. Try Refresh again.</p>
+      )}
       {controller.collectionUnknown && (
         <ErrorBanner
           message="Collection status couldn’t load. Saved usage remains available."
@@ -118,9 +121,7 @@ export function DashboardResults({
         />
       )}
       {controller.collectionFailed && (
-        <p role="alert">
-          Saved usage remains available. Restart tokeninsights web to retry collection.
-        </p>
+        <p role="alert">Saved usage remains available. Use Refresh to retry collection.</p>
       )}
       {enabled && (!hasData || waitingForFirstData) && !analytics.error && <DashboardSkeleton />}
       {enabled &&
@@ -137,9 +138,7 @@ export function DashboardResults({
               ? 'No excluded usage saved.'
               : hasExcludedUsage || excludedUsage.error
                 ? 'No usage included in your total yet.'
-                : localMachine
-                  ? 'No usage saved yet. Restart tokeninsights web to collect usage.'
-                  : 'No usage saved yet. Run tokeninsights sync.'}
+                : 'No usage saved yet. Use Refresh to collect usage.'}
           </p>
         )}
       {enabled && data && hasData && !waitingForFirstData && (
@@ -175,10 +174,12 @@ export function DashboardResults({
               </div>
             )}
             {analytics.isPlaceholderData && !resultsMatchView ? (
-              <RouteResultsSkeleton />
+              analytics.error ? null : (
+                <RouteResultsSkeleton />
+              )
             ) : (
               <>
-                {analytics.isPlaceholderData && (
+                {analytics.isPlaceholderData && !analytics.error && (
                   <span className="sr-only" role="status" aria-label="Updating view results">
                     Updating view results
                   </span>

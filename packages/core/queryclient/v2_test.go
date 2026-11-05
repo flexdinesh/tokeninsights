@@ -12,22 +12,22 @@ import (
 
 func TestV2DatasetPinnedReads(t *testing.T) {
 	client := newClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Header.Get("Authorization") != "Bearer secret" {
-			t.Error("missing authentication")
+		if r.Header.Get("Authorization") != "" {
+			t.Error("analytics client received transport credentials")
 		}
 		switch r.URL.Path {
 		case "/api/v2/instance":
-			serveJSON(w, api.InstanceResponseV2{ApiVersion: "v2", InstanceId: "instance", DataEpoch: "database", DataReadiness: "ready", DatasetId: "user-a", ServerKind: "hosted", Capabilities: []string{"usage", "future-capability"}, Permissions: []api.InstanceResponseV2Permissions{"read"}})
+			serveJSON(w, api.InstanceResponseV2{ApiVersion: "v2", InstanceId: "instance", DataEpoch: "database", DataReadiness: "ready", DatasetId: "default", ServerKind: "personal", Capabilities: []string{"usage", "future-capability"}, Permissions: []api.InstanceResponseV2Permissions{"read"}})
 		case "/api/v2/usage":
-			serveJSON(w, api.UsageResponseV2{InstanceId: "instance", DataEpoch: "database", DatasetId: "user-b", Revision: 0})
+			serveJSON(w, api.UsageResponseV2{InstanceId: "instance", DataEpoch: "database", DatasetId: "foreign", Revision: 0})
 		case "/api/v2/status":
-			serveJSON(w, api.StatusResponseV2{InstanceId: "instance", DataEpoch: "database", DatasetId: "user-a", DataReadiness: "ready", Pending: 1})
+			serveJSON(w, api.StatusResponseV2{InstanceId: "instance", DataEpoch: "database", DatasetId: "default", DataReadiness: "ready", Pending: 1})
 		default:
 			t.Error("unexpected endpoint", r.URL.Path)
 		}
-	})).WithToken("secret").WithDataset("user-a")
+	})).WithDataset("default")
 	descriptor, err := client.Descriptor(t.Context())
-	if err != nil || !DescriptorCapabilities(descriptor).Has(serverfeatures.Usage) || DescriptorCapabilities(descriptor).Has("future-capability") || !HasPermission(descriptor, serverfeatures.Read) || HasPermission(descriptor, serverfeatures.Ingest) {
+	if err != nil || !DescriptorCapabilities(descriptor).Has(serverfeatures.Usage) || DescriptorCapabilities(descriptor).Has("future-capability") || !HasPermission(descriptor, serverfeatures.Read) || HasPermission(descriptor, serverfeatures.Permission("future-permission")) {
 		t.Fatal(descriptor, err)
 	}
 	if _, err := client.Usage(t.Context(), analytics.Query{}); !errors.Is(err, ErrSnapshotChanged) {

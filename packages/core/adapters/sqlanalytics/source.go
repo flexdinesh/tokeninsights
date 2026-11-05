@@ -15,7 +15,6 @@ func (s Source) Kind() string {
 	}
 	return s.Store.Kind()
 }
-func (s Source) Receiver(datasetID string) evidence.Receiver { return s.Store.ForDataset(datasetID) }
 func (s Source) Queries(datasetID string) analytics.Repository {
 	return Queries{Store: s.Store.ForDataset(datasetID)}
 }

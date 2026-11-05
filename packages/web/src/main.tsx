@@ -2,7 +2,6 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { RouterProvider } from '@tanstack/react-router'
-import { AuthenticationRequired } from '@tokeninsights/contracts'
 import { DashboardClientProvider, router } from '@tokeninsights/dashboard'
 import { httpDashboardClient } from './http-client'
 import { BrowserViewer } from './viewer'
@@ -16,7 +15,7 @@ if (import.meta.env.MODE === 'mock') {
 const client = new QueryClient({
   defaultOptions: {
     queries: {
-      retry: (count, error) => !(error instanceof AuthenticationRequired) && count < 1,
+      retry: 1,
       staleTime: 15_000,
       gcTime: 60_000,
       refetchOnWindowFocus: true,

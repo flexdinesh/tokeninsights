@@ -3,7 +3,6 @@ package cli
 import (
 	"bytes"
 	"database/sql"
-	"errors"
 	"io"
 	"os"
 	"path/filepath"
@@ -17,7 +16,6 @@ import (
 	"github.com/flexdinesh/tokeninsights/packages/core/config"
 	"github.com/flexdinesh/tokeninsights/packages/core/localruntime"
 	"github.com/flexdinesh/tokeninsights/packages/core/serverownership"
-	"github.com/flexdinesh/tokeninsights/packages/core/syncjob"
 )
 
 func nonInteractiveStorage(t *testing.T) {
@@ -43,8 +41,8 @@ type storageFixture struct {
 func newStorageFixture(t *testing.T) storageFixture {
 	t.Helper()
 	root := t.TempDir()
-	settings := config.LocalSettings{CollectorDBPath: filepath.Join(root, "collector.sqlite"), ServerDBPath: filepath.Join(root, "server.sqlite"), AppDBPath: filepath.Join(root, "app.sqlite")}
-	runtime, err := localruntime.OpenWithApp(t.Context(), settings.CollectorDBPath, settings.ServerDBPath, settings.AppDBPath)
+	settings := config.LocalSettings{CollectorDBPath: filepath.Join(root, "collector.sqlite"), ServerDBPath: filepath.Join(root, "server.sqlite")}
+	runtime, err := localruntime.Open(t.Context(), settings.CollectorDBPath, settings.ServerDBPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -56,13 +54,6 @@ func newStorageFixture(t *testing.T) storageFixture {
 		t.Fatal(err)
 	}
 	if err := collector.Close(); err != nil {
-		t.Fatal(err)
-	}
-	jobs, err := syncjob.Open(t.Context(), settings.CollectorDBPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := jobs.Close(); err != nil {
 		t.Fatal(err)
 	}
 	return storageFixture{root: root, settings: settings}
@@ -123,7 +114,6 @@ func TestConfirmedResetMovesOlderCollectorAndCommandRecovers(t *testing.T) {
 		"TokenInsights needs to reset local storage written by an older version.",
 		"  collector.sqlite   schema 19 -> 20   reset\n",
 		"  server.sqlite      schema 1          keep\n",
-		"  app.sqlite         schema 2          keep\n",
 		"Old files move aside:\n  " + f.settings.CollectorDBPath + ".v19.bak\n",
 		"Usage is rebuilt from saved usage and harness logs.",
 		"Reset now? [y/N] ",
@@ -144,7 +134,7 @@ func TestConfirmedResetMovesOlderCollectorAndCommandRecovers(t *testing.T) {
 	}
 	f.settings.Port = 0
 	f.settings.Host = "127.0.0.1"
-	args := []string{"--config-file", localConfigForTest(t, f.settings), "data", "wait", "--collector-db-path", f.settings.CollectorDBPath, "--server-db-path", f.settings.ServerDBPath, "--app-db-path", f.settings.AppDBPath}
+	args := []string{"--config-file", localConfigForTest(t, f.settings), "data", "wait", "--collector-db-path", f.settings.CollectorDBPath, "--server-db-path", f.settings.ServerDBPath}
 	if err := Run(t.Context(), args, io.Discard, io.Discard, time.Now()); err != nil {
 		t.Fatal("command did not recover", err)
 	}
@@ -159,7 +149,7 @@ func TestResetPromptWarnsWhenCollectorAndServerResetTogether(t *testing.T) {
 	if err := f.invocation(t, "n\n", &stderr).prepareLocalStorage(f.settings); err == nil {
 		t.Fatal("declined reset continued")
 	}
-	for _, want := range []string{"  app.sqlite         schema 2          reset\n", "Local accounts and credentials are recreated.", "Usage whose harness logs were already deleted cannot be rebuilt."} {
+	for _, want := range []string{"Usage whose harness logs were already deleted cannot be rebuilt."} {
 		if !strings.Contains(stderr.String(), want) {
 			t.Errorf("prompt missing %q:\n%s", want, stderr.String())
 		}
@@ -192,16 +182,15 @@ func TestBlockedStorageIsReportedWithoutPrompt(t *testing.T) {
 		{"newer", func(f storageFixture) { f.version(t, f.settings.CollectorDBPath, collectordb.SupportedSchemaVersion+1) },
 			[]string{"collector.sqlite: schema 21; this build supports 20", "Upgrade TokenInsights, or move the file aside to start fresh."}},
 		{"foreign", func(f storageFixture) {
-			if err := os.Rename(f.settings.AppDBPath, f.settings.ServerDBPath+".tmp"); err != nil {
+			database, err := sql.Open("sqlite", f.settings.ServerDBPath)
+			if err != nil {
 				t.Fatal(err)
 			}
-			if err := os.Rename(f.settings.ServerDBPath, f.settings.AppDBPath); err != nil {
+			defer func() { _ = database.Close() }()
+			if _, err := database.Exec("PRAGMA application_id=123"); err != nil {
 				t.Fatal(err)
 			}
-			if err := os.Rename(f.settings.ServerDBPath+".tmp", f.settings.ServerDBPath); err != nil {
-				t.Fatal(err)
-			}
-		}, []string{"server.sqlite: not a TokenInsights token database", "app.sqlite: not a TokenInsights application database", "Check the configured path."}},
+		}, []string{"server.sqlite: not a TokenInsights token database", "Check the configured path."}},
 	}
 	for _, test := range cases {
 		t.Run(test.name, func(t *testing.T) {
@@ -242,40 +231,5 @@ func TestResetWhileAnotherProcessOwnsServerChangesNothing(t *testing.T) {
 	}
 	if after := f.files(t); !reflect.DeepEqual(before, after) {
 		t.Fatal("busy reset changed files")
-	}
-}
-
-func TestSyncOffersResetForCollectorAndJobsOnly(t *testing.T) {
-	nonInteractiveStorage(t)
-	f := newStorageFixture(t)
-	jobs := f.settings.CollectorDBPath + ".jobs.sqlite"
-	f.version(t, jobs, syncjob.SchemaVersion-1)
-	f.version(t, f.settings.ServerDBPath, 0)
-	before := f.files(t)
-	args := []string{"--config-file", filepath.Join(f.root, "config.json"), "sync", "status", "--collector-db-path", f.settings.CollectorDBPath}
-	err := Run(t.Context(), args, io.Discard, io.Discard, time.Now())
-	if err == nil || !strings.Contains(err.Error(), "\n  "+jobs) || strings.Contains(err.Error(), "server.sqlite") {
-		t.Fatalf("sync storage report: %v", err)
-	}
-	if after := f.files(t); !reflect.DeepEqual(before, after) {
-		t.Fatal("sync without terminal changed files")
-	}
-}
-
-func TestSyncDryRunNeverOffersReset(t *testing.T) {
-	interactiveStorage(t)
-	f := newStorageFixture(t)
-	f.version(t, f.settings.CollectorDBPath, collectordb.SupportedSchemaVersion-1)
-	before := f.files(t)
-	args := []string{"--config-file", filepath.Join(f.root, "config.json"), "sync", "--dry-run", "--collector-db-path", f.settings.CollectorDBPath, "--source-dir", filepath.Join(f.root, "source")}
-	err := Run(t.Context(), args, io.Discard, io.Discard, time.Now())
-	if err != nil && strings.Contains(err.Error(), "older version") {
-		t.Fatal("dry run offered reset", err)
-	}
-	if after := f.files(t); !reflect.DeepEqual(before, after) {
-		t.Fatal("dry run changed files")
-	}
-	if errors.Is(err, ErrUsage) {
-		t.Fatal(err)
 	}
 }

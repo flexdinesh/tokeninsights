@@ -46,9 +46,12 @@ func Run(command Command) error {
 	if err != nil {
 		return err
 	}
-	options.appDBPath, options.dbPath, options.collectorDBPath = settings.AppDBPath, settings.ServerDBPath, settings.CollectorDBPath
+	options.dbPath, options.collectorDBPath = settings.ServerDBPath, settings.CollectorDBPath
 	if !settings.Endpoint.IsLocal() && options.sourceDir != "" && !filepath.IsAbs(options.sourceDir) {
 		return localclient.ErrRelativeRemoteSource
+	}
+	if settings.Endpoint.TCP != nil && (options.fullRefresh || options.sourceDir != "") {
+		return usageError("TCP connections allow default capture only; use local or SSH for source overrides")
 	}
 	connect := command.Connect
 	if connect == nil {
@@ -74,6 +77,7 @@ func Run(command Command) error {
 		}
 	}
 	options.local, options.query = session, session.Queries()
+	options.connectionLabel = "Connected " + settings.Endpoint.String() + " · " + instance.Hostname + " [" + instance.InstanceID + "]"
 	model := newInteractiveModel(command.Context, options, command.Now, instance.Hostname)
 	if options.syncOnStart {
 		model = model.startCollection()

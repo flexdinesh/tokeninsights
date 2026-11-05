@@ -14,7 +14,7 @@ locked = true
 output = "keep-order"
 source_freshness_hash_contents = true
 
-# check:toolchain keeps these pins equal to the Dockerfile, packageManager and go.mod toolchain.
+# check:toolchain keeps these pins equal to the validation images, packageManager and go.mod toolchain.
 [tools]
 "aqua:dagger/dagger" = "0.21.11"
 go = "1.27.3"
@@ -31,8 +31,8 @@ auto = false
 run = "pnpm install --frozen-lockfile"
 
 [vars]
-format_paths = "package.json compose.yaml pnpm-workspace.yaml orval.config.ts .agents/plugins .claude-plugin deploy docs/openapi.yaml docs-website .github/workflows packages/cli/package.json packages/backend packages/server packages/desktop-mygo/mygo.json packages/desktop-electron packages/dashboard packages/contracts packages/web packages/plugin-codex packages/plugin-claude packages/plugin-pi packages/plugin-opencode packages/plugin-runtime tools/build tools/validation/groups.json"
-lint_paths = "orval.config.ts docs-website packages/desktop-electron packages/dashboard packages/contracts packages/web packages/plugin-pi packages/plugin-opencode packages/plugin-runtime tools/build tools/validation/groups.json"
+format_paths = "package.json pnpm-workspace.yaml orval.config.ts docs/openapi.yaml docs-website .github/workflows packages/cli/package.json packages/backend packages/desktop-mygo/mygo.json packages/desktop-electron packages/dashboard packages/contracts packages/web tools/build tools/validation/groups.json"
+lint_paths = "orval.config.ts docs-website packages/desktop-electron packages/dashboard packages/contracts packages/web tools/build tools/validation/groups.json"
 
 # Setup
 
@@ -83,15 +83,6 @@ description = "Isolated static validation"
 dir = "{{config_root}}/tools/validation"
 run = "go run ./cmd/validate --group static"
 
-[tasks."check:plugins"]
-description = "Isolated JavaScript validation"
-dir = "{{config_root}}/tools/validation"
-run = "go run ./cmd/validate --group static"
-
-[tasks."typecheck:plugins"]
-description = "Isolated JavaScript validation"
-dir = "{{config_root}}/tools/validation"
-run = "go run ./cmd/validate --group static"
 
 [tasks."generate:api:go"]
 description = "Regenerate Go API server code"
@@ -117,13 +108,12 @@ description = "Build and sync embedded web assets; skips unchanged inputs"
 run = "node tools/build/src/build-web.ts"
 
 [tasks."build:cli"]
-description = "Build CLI, local backend and hosted server"
+description = "Build CLI and personal backend"
 depends = ["build:web"]
 dir = "{{config_root}}/packages/cli"
 run = [
   "go build -o bin/tokeninsights ./cmd/tokeninsights",
   "go build -o bin/tokeninsights-backend ../backend/cmd/tokeninsights-backend",
-  "go build -o ../server/bin/tokeninsights-server ../server/cmd/tokeninsights-server",
 ]
 
 [tasks."build:desktop"]
@@ -131,23 +121,9 @@ description = "Build self-contained native and Electron product archives"
 depends = ["build:web"]
 run = "node tools/build/src/build-products.ts 0.0.0 dist"
 
-[tasks."build:plugins"]
-depends = ["build:internal:deps"]
-description = "Build plugin artifacts"
-sources = [
-  "packages/plugin-opencode/src/**/*",
-  "packages/plugin-pi/src/**/*",
-  "packages/plugin-runtime/src/**/*",
-  "packages/plugin-opencode/package.json",
-  "packages/plugin-pi/package.json",
-  "pnpm-lock.yaml",
-  "tools/build/src/build-plugins.ts",
-]
-outputs = ["packages/plugin-opencode/dist/**/*", "packages/plugin-pi/dist/**/*"]
-run = "pnpm --recursive --filter '@tokeninsights/plugin-*' run build"
 
 [tasks.build]
-description = "Build production binaries and plugins, validating contracts"
+description = "Build production binaries, validating contracts"
 run = [
   { tasks = [
     "build:internal:check-schema",
@@ -155,7 +131,6 @@ run = [
   ] },
   { tasks = [
     "build:cli",
-    "build:plugins",
   ] },
 ]
 
@@ -227,7 +202,7 @@ run = "pnpm --filter @tokeninsights/build-tools run setup-dev-data"
 description = "Open TUI with fixture data"
 depends = ["dev:data"]
 interactive = true
-run = "TOKENINSIGHTS_ACCESS_TOKEN= ./packages/cli/bin/tokeninsights tui --sync=false --all-time --collector-db-path .tokeninsights-dev/collector.sqlite --server-db-path .tokeninsights-dev/server.sqlite --app-db-path .tokeninsights-dev/app.sqlite"
+run = "./packages/cli/bin/tokeninsights tui --capture=false --all-time --collector-db-path .tokeninsights-dev/collector.sqlite --server-db-path .tokeninsights-dev/server.sqlite"
 
 [tasks."dev:server"]
 description = "Run Go API with fixture data"
@@ -267,8 +242,6 @@ run = [
   "node tools/build/src/check-toolchain.ts",
   "go test ./packages/core/architecture/...",
   "oxlint {{vars.lint_paths}}",
-  "pnpm --workspace-concurrency=2 --recursive --filter '@tokeninsights/plugin-*' run typecheck",
-  "pnpm --workspace-concurrency=2 --recursive --filter '@tokeninsights/plugin-*' run check:build",
   "pnpm --filter @tokeninsights/build-tools run typecheck",
   "pnpm --filter @tokeninsights/web exec tsc --noEmit",
   "pnpm --filter @tokeninsights/dashboard run check",
@@ -297,7 +270,8 @@ run = ["pnpm --filter @tokeninsights/web run test:e2e"]
 [tasks."check:internal:deployment"]
 hide = true
 run = [
-  "go test ./packages/core/deployment -run '^(TestContainerDeployment|TestSSHEndpointDeployment)$' -count=1 -timeout=5m",
+  "go test ./packages/core/deployment -run '^(TestSSHEndpointDeployment|TestPersonalNetworkDeployment)$' -count=1 -timeout=5m",
+  "node tools/build/src/test-personal-network.ts",
 ]
 
 [tasks."check:pr"]

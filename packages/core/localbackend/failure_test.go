@@ -17,13 +17,12 @@ import (
 	"github.com/flexdinesh/tokeninsights/packages/core/localprotocol"
 	"github.com/flexdinesh/tokeninsights/packages/core/localruntime"
 	"github.com/flexdinesh/tokeninsights/packages/core/pipeline"
-	"github.com/flexdinesh/tokeninsights/packages/core/queryclient"
 )
 
 func TestFailedSharedCaptureKeepsSavedPublicUsageAndSanitizedDetails(t *testing.T) {
 	root := t.TempDir()
-	settings := localprotocol.Settings{CollectorDBPath: filepath.Join(root, "collector.sqlite"), ServerDBPath: filepath.Join(root, "server.sqlite"), AppDBPath: filepath.Join(root, "app.sqlite")}
-	runtime, err := localruntime.OpenWithApp(t.Context(), settings.CollectorDBPath, settings.ServerDBPath, settings.AppDBPath)
+	settings := localprotocol.Settings{CollectorDBPath: filepath.Join(root, "collector.sqlite"), ServerDBPath: filepath.Join(root, "server.sqlite")}
+	runtime, err := localruntime.Open(t.Context(), settings.CollectorDBPath, settings.ServerDBPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -68,7 +67,7 @@ func TestFailedSharedCaptureKeepsSavedPublicUsageAndSanitizedDetails(t *testing.
 		}
 	})
 	<-ready
-	session, err := localclient.Connect(t.Context(), localclient.Options{CollectorDBPath: settings.CollectorDBPath, ServerDBPath: settings.ServerDBPath, AppDBPath: settings.AppDBPath, Host: "127.0.0.1", Dashboard: true})
+	session, err := localclient.Connect(t.Context(), localclient.Options{CollectorDBPath: settings.CollectorDBPath, ServerDBPath: settings.ServerDBPath})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -88,11 +87,7 @@ func TestFailedSharedCaptureKeepsSavedPublicUsageAndSanitizedDetails(t *testing.
 	if err != nil || strings.Contains(string(encoded), "private source") || strings.Contains(string(encoded), "prompt") {
 		t.Fatal("capture leaked private failure", err)
 	}
-	public, err := queryclient.New(session.URL, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	usage, err := public.AllUsage(t.Context(), analytics.Query{Selection: analytics.Selection{Period: "all"}})
+	usage, err := session.Query.AllUsage(t.Context(), analytics.Query{Selection: analytics.Selection{Period: "all"}})
 	if err != nil || usage.Summary.TotalTokens != 100 {
 		t.Fatal("capture failure lost saved public usage", usage.Summary.TotalTokens, err)
 	}

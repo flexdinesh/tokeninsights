@@ -1,48 +1,47 @@
 # Maintenance
 
-TokenInsights keeps raw evidence and a published generation of processed usage.
-SQLite uses pooled reads and a serialized WAL writer. PostgreSQL uses a dedicated
-owned writer and pooled snapshot reads.
+One backend owns collector/token SQLite storage. Reads use consistent snapshots;
+a serialized WAL writer commits evidence/receipts and projections atomically.
 
-## Reprocess local data
+## Reprocess saved evidence
 
 ```sh
 tokeninsights data reprocess
 tokeninsights data wait
+tokeninsights data wait --connection ssh://you@devbox
 ```
 
-Reprocessing is explicit, never automatic. It keeps the published generation until
-the replacement is complete. Local data maintenance has a 30-second visibility wait.
-If reprocessing exceeds that wait, `data wait` resumes the saved generation without
-starting another rebuild. Persistent `processing_failed` errors can be recovered with
-`data reprocess`. Raw evidence and the old published generation remain intact.
+Maintenance supports local/SSH only. Temporary TCP viewer credentials cannot run it.
+Reprocessing is explicit and keeps the published generation until replacement
+covers the latest accepted inputs. Restart resumes durable pending work.
 
-Keep a stopped backup of the paired databases and application guard before
-maintenance.
+Commands wait up to 30 seconds for visibility. If that expires, `data wait`
+continues waiting without another rebuild. Persistent `processing_failed`
+errors can be recovered with explicit `data reprocess`; published history,
+evidence and receipts stay intact. Processing failures never reset storage.
 
 ## Backups
 
-Application pairing persists `<canonical-token-path>.application.json`, containing
-only the application instance ID. Keep this guard with both databases in stopped
-backups. A missing or replaced app database fails closed to preserve credential
-revocations. Restore the matched set; do not delete the guard to bypass recovery.
+Close all viewers and temporary gateways; wait for the backend's final lease grace
+and shutdown. Back up collector.sqlite and server.sqlite with any remaining WAL/SHM
+companions. Restoring retained collector evidence can replay token projections;
+retaining token history protects usage whose original harness sources were deleted.
 
-## Incompatible data
+There are no application/account/jobs databases or pairing guards in current use.
+Former user files remain untouched. The redesign runs no migrations/imports and
+deletes no user files. Do not delete evidence to repair a processing error.
 
-Only current schemas are supported. There are no imports or migrations. Storage uses
-collector schema **20**, token SQLite schema **1**, PostgreSQL token/account schemas
-**1/2**, personal application SQLite schema **2**, hosted application SQLite schema
-**3** and job SQLite schema **1**.
+## Incompatible storage
 
-When `tui`, `web`, `data`, or `sync` finds local storage written by an older version,
-it asks before resetting:
+Current schemas: collector **20**, SQLite token history **1**.
+Role/path/physical contract mismatches and newer files reject without mutation.
+Only explicit older-local-store recovery asks for confirmation in a terminal:
 
 ```text
 TokenInsights needs to reset local storage written by an older version.
 
   collector.sqlite   schema 19 -> 20   reset
   server.sqlite      schema 1          keep
-  app.sqlite         schema 2          keep
 
 Old files move aside:
   /home/you/.local/share/tokeninsights/collector.sqlite.v19.bak
@@ -52,14 +51,15 @@ Usage is rebuilt from saved usage and harness logs.
 Reset now? [y/N]
 ```
 
-Old files are moved, never deleted. Resetting the token database also resets the
-application database and its pairing guard, recreating local accounts and
-credentials. If the collector and token databases reset together, usage whose
-harness logs were already deleted cannot be rebuilt; restore the `.bak` files to
-recover it. Without a terminal (for example, plugin background syncs), the command
-reports the files and changes nothing; run it once in a terminal.
+Affected files and WAL/SHM companions move to versioned backups, never deletion.
+Without a terminal, report the issue and change nothing. Owned/foreign/newer/
+mismatched files block reset. Resetting both stores cannot rebuild usage whose
+native logs were deleted; preserve backups. No automatic schema migration exists.
 
-Files written by a newer version, files that are not TokenInsights databases, and
-files whose structure does not match are never reset. The error names each file
-and the next step. Remote servers never reset storage; incompatible databases
-reject without mutation.
+## Retired configuration
+
+Old application/distributed settings, `remote.endpoint` and old endpoint/access
+environment variables return concise repair guidance without printing values or
+rewriting configuration. Edit/remove obsolete keys explicitly. Use
+`--connection` for invocation targets and `--capture` for launch capture.
+See [commands](/commands) for supported keys and paths.

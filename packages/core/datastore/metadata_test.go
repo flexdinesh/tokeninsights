@@ -67,8 +67,8 @@ func BenchmarkMetadataRead(b *testing.B) {
 }
 
 func TestMetadataGenerationGuardsAreDatasetScoped(t *testing.T) {
-	root, alice, bob := hostedStores(t)
-	if _, err := root.SQL().ExecContext(t.Context(), sqlutil.Bind("UPDATE analytics_generations SET processor_version=? WHERE dataset_id=?"), evidence.ProcessorVersion+1, bob.DatasetID()); err != nil {
+	alice, bob := testStore(t), testStore(t)
+	if _, err := bob.SQL().ExecContext(t.Context(), sqlutil.Bind("UPDATE analytics_generations SET processor_version=? WHERE dataset_id=?"), evidence.ProcessorVersion+1, bob.DatasetID()); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := alice.Metadata(t.Context()); err != nil {
@@ -77,7 +77,7 @@ func TestMetadataGenerationGuardsAreDatasetScoped(t *testing.T) {
 	if _, err := bob.Metadata(t.Context()); err == nil || err.Error() != "newer_processor_version" {
 		t.Fatal("newer dataset accepted", err)
 	}
-	if _, err := root.ForDataset("missing").Metadata(t.Context()); !errors.Is(err, sql.ErrNoRows) {
+	if _, err := alice.ForDataset("missing").Metadata(t.Context()); !errors.Is(err, sql.ErrNoRows) {
 		t.Fatal("missing dataset accepted", err)
 	}
 }

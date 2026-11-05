@@ -1,20 +1,16 @@
 import {
-  accountUserSchema,
-  apiKeyCreatedSchema,
-  apiKeyListSchema,
-  authInfoSchema,
   bootstrapSchema,
   collectorProgressSchema,
   dashboardSchema,
   facetsSchema,
   statusSchema,
+  viewerConnectionSchema,
 } from '@tokeninsights/contracts'
 import type { DashboardClient } from '@tokeninsights/contracts'
-import { parseBody, request, send } from './http'
+import { request, send } from './http'
 import { apiQueryParams } from './http-query'
 
-// Same-origin transport. Dataset headers bind account operations to the observed
-// session; they never select or authorize another dataset.
+// The native bridge owns connection transport and credentials.
 export const httpDashboardClient: DashboardClient = {
   getInstance: (signal) => request('/api/v2/instance', bootstrapSchema, signal),
   getStatus: (signal) => request('/api/v2/status', statusSchema, signal),
@@ -29,37 +25,8 @@ export const httpDashboardClient: DashboardClient = {
   },
   getCollectorProgress: (signal) =>
     request('/api/v2/collector-progress', collectorProgressSchema, signal),
-  getAuthInfo: (signal) => request('/api/v2/auth', authInfoSchema, signal),
-  getAccount: (datasetId, signal) =>
-    request('/api/v2/account', accountUserSchema, signal, datasetId),
-  getAPIKeys: (datasetId, signal) =>
-    request('/api/v2/account/keys', apiKeyListSchema, signal, datasetId),
-  changeBrowserSession: async (credentials) => {
-    await send('/api/v2/auth/session', {
-      method: credentials === undefined ? 'DELETE' : 'POST',
-      body: credentials,
-      failure: 'Sign in failed',
-    })
-  },
-  signup: async (credentials) => {
-    await send('/api/v2/auth/signup', { method: 'POST', body: credentials })
-  },
-  changePassword: async (datasetId, currentPassword, password) => {
-    await send('/api/v2/account/password', {
-      method: 'PUT',
-      body: { currentPassword, password },
-      datasetId,
-    })
-  },
-  createAPIKey: async (datasetId, body) =>
-    parseBody(
-      await send('/api/v2/account/keys', { method: 'POST', body, datasetId }),
-      apiKeyCreatedSchema,
-    ),
-  revokeAPIKey: async (datasetId, tokenId) => {
-    await send(`/api/v2/account/keys/${encodeURIComponent(tokenId)}`, {
-      method: 'DELETE',
-      datasetId,
-    })
+  getConnection: (signal) => request('/api/viewer/connection', viewerConnectionSchema, signal),
+  refresh: async (signal) => {
+    await send('/api/viewer/refresh', { method: 'POST', body: {}, signal })
   },
 }

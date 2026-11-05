@@ -11,12 +11,8 @@ func TestCompositionPolicy(t *testing.T) {
 	if err != nil || foreground.Capabilities.Has(CollectorProgress) {
 		t.Fatal(foreground, err)
 	}
-	hosted, err := New(Hosted, false)
-	if err != nil || hosted.Capabilities.Has(TerminalDashboard) || hosted.Capabilities.Has(CollectorProgress) {
-		t.Fatal(hosted, err)
-	}
-	if err := (Policy{Kind: Hosted, Capabilities: Capabilities{TerminalDashboard}}).Validate(); err == nil {
-		t.Fatal("hosted terminal feature enabled")
+	if _, err := New(Kind("hosted"), false); err == nil {
+		t.Fatal("hosted server enabled")
 	}
 	if _, err := New(Personal, false, Usage); err == nil {
 		t.Fatal("dashboard without usage enabled")
@@ -35,7 +31,7 @@ func TestCompositionPolicy(t *testing.T) {
 }
 
 func TestReloadRequiresLocalViewerComposition(t *testing.T) {
-	for _, kind := range []Kind{Personal, Hosted} {
+	for _, kind := range []Kind{Personal} {
 		policy, err := New(kind, false)
 		if err != nil || policy.Capabilities.Has(DashboardReload) {
 			t.Fatalf("%s server granted local Reload: %+v, %v", kind, policy, err)
@@ -63,7 +59,7 @@ func TestReloadPolicyDependencies(t *testing.T) {
 		wantAccepted bool
 	}{
 		{name: "local query Reload", policy: Policy{Kind: Personal, Capabilities: Capabilities{Usage, Facets, WebDashboard, DashboardReload}}, wantAccepted: true},
-		{name: "hosted rejects Reload", policy: Policy{Kind: Hosted, Capabilities: Capabilities{Usage, Facets, WebDashboard, DashboardReload}}},
+		{name: "hosted rejects Reload", policy: Policy{Kind: Kind("hosted"), Capabilities: Capabilities{Usage, Facets, WebDashboard, DashboardReload}}},
 		{name: "Reload requires dashboard", policy: Policy{Kind: Personal, Capabilities: Capabilities{Usage, DashboardReload}}},
 		{name: "Reload requires usage", policy: Policy{Kind: Personal, Capabilities: Capabilities{DashboardReload}}},
 	} {
@@ -78,21 +74,5 @@ func TestReloadPolicyDependencies(t *testing.T) {
 	}
 	if _, err := NewLocalViewer(false, DashboardReload, WebDashboard); err != nil {
 		t.Fatalf("disabling Reload and web dashboard failed: %v", err)
-	}
-}
-
-func TestSignupPolicyRequiresHostedMode(t *testing.T) {
-	personal, _ := New(Personal, false)
-	personal.SignupEnabled = true
-	if personal.Validate() == nil {
-		t.Fatal("personal signup accepted")
-	}
-	hosted, _ := New(Hosted, false)
-	if hosted.SignupEnabled {
-		t.Fatal("signup enabled by default")
-	}
-	hosted.SignupEnabled = true
-	if err := hosted.Validate(); err != nil {
-		t.Fatal(err)
 	}
 }

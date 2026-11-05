@@ -1,6 +1,9 @@
 package dashboardproxy
 
 import (
+	"context"
+	"encoding/json"
+	"github.com/flexdinesh/tokeninsights/packages/core/endpoint"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -12,6 +15,92 @@ import (
 type recordingTransport struct {
 	mu       sync.Mutex
 	requests []*http.Request
+}
+
+func TestBridgeRefreshRequiresSameOriginDefaultJSON(t *testing.T) {
+	for _, scenario := range []struct {
+		origin, site, contentType, body, query string
+		status                                 int
+	}{
+		{"http://127.0.0.1:9000", "same-origin", "application/json", "{}", "", http.StatusOK},
+		{"http://127.0.0.1:9000", "", "application/json", `{"fullRefresh":false,"sourceDir":""}`, "", http.StatusOK},
+		{"", "", "application/json", "{}", "", http.StatusForbidden},
+		{"null", "", "application/json", "{}", "", http.StatusForbidden},
+		{"http://evil.test", "cross-site", "application/json", "{}", "", http.StatusForbidden},
+		{"http://127.0.0.1:9000", "cross-site", "application/json", "{}", "", http.StatusForbidden},
+		{"http://127.0.0.1:9000", "", "text/plain", "{}", "", http.StatusUnsupportedMediaType},
+		{"http://127.0.0.1:9000", "", "application/json", `{"sourceDir":"/private"}`, "", http.StatusBadRequest},
+		{"http://127.0.0.1:9000", "", "application/json", `{"fullRefresh":true}`, "", http.StatusBadRequest},
+		{"http://127.0.0.1:9000", "", "application/json", `{"fullRefresh":true,"fullRefresh":false}`, "", http.StatusBadRequest},
+		{"http://127.0.0.1:9000", "", "application/json", "null", "", http.StatusBadRequest},
+		{"http://127.0.0.1:9000", "", "application/json", "{} {}", "", http.StatusBadRequest},
+		{"http://127.0.0.1:9000", "", "application/json", "{}", "?sourceDir=/private", http.StatusForbidden},
+	} {
+		upstream := &recordingTransport{}
+		request := httptest.NewRequest(http.MethodPost, "http://127.0.0.1:9000/api/viewer/refresh"+scenario.query, strings.NewReader(scenario.body))
+		request.Header.Set("Origin", scenario.origin)
+		request.Header.Set("Sec-Fetch-Site", scenario.site)
+		request.Header.Set("Content-Type", scenario.contentType)
+		response := httptest.NewRecorder()
+		Handler(upstream, "127.0.0.1").ServeHTTP(response, request)
+		if response.Code != scenario.status {
+			t.Fatal("refresh policy differs", scenario, response.Code)
+		}
+		forwarded := upstream.last()
+		if scenario.status == http.StatusOK {
+			if forwarded == nil || forwarded.URL.Path != "/api/local/v1/capture" || forwarded.URL.RawQuery != "" {
+				t.Fatal("refresh did not use default capture")
+			}
+			data, err := io.ReadAll(forwarded.Body)
+			if err != nil || string(data) != "{}" {
+				t.Fatal("capture body was not canonical default", err)
+			}
+		} else if forwarded != nil {
+			t.Fatal("rejected mutation reached backend")
+		}
+	}
+}
+
+func TestStartLoopbackMetadataAndClose(t *testing.T) {
+	upstream := &recordingTransport{}
+	info := endpoint.Info{Transport: "ssh", Target: "ssh://box", State: "connected", Hostname: "verified-box"}
+	bridge, err := Start(t.Context(), upstream, Options{Connection: info})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = bridge.Close() }()
+	response, err := http.Get(bridge.URL + "/api/viewer/connection")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var metadata endpoint.Info
+	err = json.NewDecoder(response.Body).Decode(&metadata)
+	_ = response.Body.Close()
+	if err != nil || metadata != info {
+		t.Fatal("connection metadata differs", metadata, err)
+	}
+	if upstream.last() != nil {
+		t.Fatal("connection metadata forwarded upstream")
+	}
+	if err := bridge.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if response, err := http.Get(bridge.URL); err == nil {
+		_ = response.Body.Close()
+		t.Fatal("closed bridge still serves")
+	}
+	for _, host := range []string{"0.0.0.0", "192.0.2.1", "example.test", "::"} {
+		if invalid, err := Start(t.Context(), upstream, Options{Host: host}); err == nil {
+			_ = invalid.Close()
+			t.Fatal("nonloopback bridge accepted", host)
+		}
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	if invalid, err := Start(ctx, upstream, Options{}); err == nil {
+		_ = invalid.Close()
+		t.Fatal("cancelled bridge started")
+	}
 }
 
 func (t *recordingTransport) RoundTrip(r *http.Request) (*http.Response, error) {

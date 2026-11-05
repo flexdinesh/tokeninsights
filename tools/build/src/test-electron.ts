@@ -41,7 +41,6 @@ export async function smokeElectronProduct(): Promise<void> {
     CODEX_HOME: join(fixture, 'codex'),
     CLAUDE_CONFIG_DIR: join(fixture, 'claude'),
     TMPDIR: fixture,
-    TOKENINSIGHTS_PORT: '0',
     TOKENINSIGHTS_DOWNLOAD_URL: `file://${out}`,
     DEBUG: 'pw:browser',
   })

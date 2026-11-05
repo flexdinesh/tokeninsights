@@ -35,18 +35,18 @@ func TestClaimedComponentSpanningCandidatePagesDoesNotBlockIndependentWork(t *te
 	}
 }
 
-func TestRunningWorkerPublishesIsolatedDatasetsAndJoins(t *testing.T) {
-	root, alice, bob := hostedStores(t)
+func TestRunningWorkerPublishesIndependentSessionsAndJoins(t *testing.T) {
+	store := testStore(t)
 	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 	defer cancel()
 	joined := make(chan struct{})
-	go func() {
-		root.Run(ctx, func(err error) { t.Error(err) })
-		close(joined)
-	}()
+	go func() { defer close(joined); store.Run(ctx, func(err error) { t.Error(err) }) }()
 	defer func() { cancel(); <-joined }()
-	for _, store := range []*Store{alice, bob} {
-		if _, err := store.Accept(ctx, evidence.ProtocolVersion, batchBody(t, store, "same-stream", "same-batch", piRecord("same-message", 100))); err != nil {
+	streams := []string{"first", "second"}
+	for _, stream := range streams {
+		record := piRecord("message", 100)
+		record.Context[0].Data = json.RawMessage(fmt.Sprintf(`{"type":"session","id":%q}`, stream))
+		if _, err := store.Accept(ctx, evidence.ProtocolVersion, batchBody(t, store, stream, "batch", record)); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -54,8 +54,8 @@ func TestRunningWorkerPublishesIsolatedDatasetsAndJoins(t *testing.T) {
 	defer ticker.Stop()
 	for {
 		ready := true
-		for _, store := range []*Store{alice, bob} {
-			response, err := store.Receipt(ctx, "same-stream", "same-batch")
+		for _, stream := range streams {
+			response, err := store.Receipt(ctx, stream, "batch")
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -66,14 +66,12 @@ func TestRunningWorkerPublishesIsolatedDatasetsAndJoins(t *testing.T) {
 		}
 		select {
 		case <-ctx.Done():
-			t.Fatal("running workers did not publish both datasets")
+			t.Fatal("running workers did not publish both sessions")
 		case <-ticker.C:
 		}
 	}
-	for _, store := range []*Store{alice, bob} {
-		if got := total(t, store, "analytics_confirmed"); got != 120 {
-			t.Fatal("running publication lost isolation or usage", store.DatasetID(), got)
-		}
+	if got := total(t, store, "analytics_confirmed"); got != 240 {
+		t.Fatal("running publication changed session usage", got)
 	}
 }
 
@@ -139,8 +137,9 @@ func lenMustMarshal(t *testing.T, value evidence.Record) int {
 	return len(body)
 }
 
-func TestDelayedMembershipSkipsLateAncestorsWithoutBlockingOtherDatasets(t *testing.T) {
-	root, alice, bob := hostedStores(t)
+func TestDelayedMembershipSkipsLateAncestorsWithoutBlockingIndependentSessions(t *testing.T) {
+	root := testStore(t)
+	alice, bob := root, root
 	if _, err := alice.Accept(t.Context(), evidence.ProtocolVersion, batchBody(t, alice, "child", "batch", codexRecord("child", "parent"))); err != nil {
 		t.Fatal(err)
 	}
@@ -160,11 +159,12 @@ func TestDelayedMembershipSkipsLateAncestorsWithoutBlockingOtherDatasets(t *test
 	}
 	// The scheduler retains only membership, not payload or byte admission.
 	first.Records, first.Bytes = nil, 0
-	if _, err := bob.Accept(t.Context(), evidence.ProtocolVersion, batchBody(t, bob, "child", "batch", codexRecord("child", ""))); err != nil {
+	independent := piRecord("independent", 100)
+	if _, err := bob.Accept(t.Context(), evidence.ProtocolVersion, batchBody(t, bob, "independent", "batch", independent)); err != nil {
 		t.Fatal(err)
 	}
 	work, found, err := root.LoadWorkExcluding(t.Context(), []dataengine.Work{first}, 0)
-	if err != nil || !found || work.DatasetID != "bob" {
+	if err != nil || !found || work.Root != evidence.Scope(independent) {
 		t.Fatal("delay crossed datasets", work, found, err)
 	}
 	if _, found, err := root.LoadWorkExcluding(t.Context(), []dataengine.Work{first, work}, 0); err != nil || found {
@@ -176,14 +176,12 @@ func TestDelayedMembershipSkipsLateAncestorsWithoutBlockingOtherDatasets(t *test
 	}
 	// Removing only the ephemeral hint makes durable work immediately available.
 	resumed, found, err := root.LoadWorkExcluding(t.Context(), []dataengine.Work{work}, 0)
-	if err != nil || !found || resumed.DatasetID != "alice" || len(resumed.Scopes) != 2 {
+	if err != nil || !found || resumed.DatasetID != DatasetID || len(resumed.Scopes) != 2 {
 		t.Fatal("pending component lost", resumed, found, err)
 	}
 	drain(t, root)
-	for _, dataset := range []*Store{alice, bob} {
-		if total(t, dataset, "analytics_confirmed") != 120 {
-			t.Fatal("delay changed native accounting", dataset.DatasetID())
-		}
+	if total(t, root, "analytics_confirmed") != 240 {
+		t.Fatal("delay changed native accounting")
 	}
 }
 

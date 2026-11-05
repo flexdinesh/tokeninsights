@@ -1,57 +1,58 @@
 # Install
 
-Install on macOS or Linux, amd64 or arm64. Products are prebuilt GitHub Release downloads; no Go or Node installation is required.
+macOS/Linux, amd64/arm64. Products are prebuilt GitHub Release downloads.
+No Go or Node installation is required; Electron bundles its own runtime.
 
-## CLI, TUI and browser dashboard
+## MyGo desktop
 
-Latest stable:
-
-```sh
-curl -fsSL https://raw.githubusercontent.com/flexdinesh/tokeninsights/main/install.sh | sh
-```
-
-Latest main build:
-
-```sh
-curl -fsSL https://raw.githubusercontent.com/flexdinesh/tokeninsights/main/install-main.sh | sh
-```
-
-Ensure `~/.local/bin` is on PATH, then run `tokeninsights tui` or `tokeninsights web`.
-
-## Desktop experiments
-
-MyGo, using the system webview (Linux needs WebKitGTK 4.1):
+MyGo is the default desktop. Its installer includes the CLI and backend:
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/flexdinesh/tokeninsights/main/install-mygo.sh | sh
+tokeninsights
 ```
 
-Electron, bundling its own browser engine:
+MyGo uses WKWebView on macOS and WebKitGTK 4.1 on Linux. Both desktop shells show
+the same dashboard as the browser and can coexist with TUI/web.
+
+## CLI, TUI and browser
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/flexdinesh/tokeninsights/main/install.sh | sh
+tokeninsights tui
+tokeninsights web
+```
+
+The CLI-only product includes the backend. Bare `tokeninsights` still selects
+MyGo, so install that app or explicitly use TUI/web.
+
+## Electron desktop
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/flexdinesh/tokeninsights/main/install-electron.sh | sh
+tokeninsights --open=electron
+tokeninsights config set viewer.open electron
 ```
 
-Both apps show the same dashboard as the browser, include their backend and can run together with TUI/web. MyGo is the default for `tokeninsights web`; override with `--open=electron`, `--open=mygo` or `--open=browser`. Save the selection with `tokeninsights config set viewer.open MODE`. Hosted URLs open in the browser.
+Desktop choices are `mygo` and `electron`. An unavailable selected desktop fails
+with installation guidance, without opening a browser.
 
-macOS apps appear in `~/Applications`; Linux apps have distinct desktop entries. No login service is installed. The shared backend starts when a viewer opens and stops after the last viewer disconnects. Linux MyGo needs GTK 3 and a supported graphics environment; it uses native Go UI, not WebKit.
+## Paths, channels and updates
 
-## Hosted server
+Command links use `~/.local/bin`; add it to PATH if needed. macOS apps appear in
+`~/Applications`; Linux apps have distinct desktop entries. Product files live
+under `${XDG_DATA_HOME:-~/.local/share}/tokeninsights/products/`.
+No login service is installed. The backend starts on demand and stops after its
+last lease and reconnect grace.
 
-```sh
-curl -fsSL https://raw.githubusercontent.com/flexdinesh/tokeninsights/main/install-server.sh | sh
-```
-
-Installing the server does not launch it. See [self-hosting](/self-hosting) for storage and authentication setup.
-
-## Channels and updates
-
-Every product script accepts `--channel=stable` or `--channel=main`:
+Every product script accepts `--channel=stable` (default) or `--channel=main`:
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/flexdinesh/tokeninsights/main/install-mygo.sh | sh -s -- --channel=main
 ```
 
-Rerun the installer to update. Stable/main replace that product; the two desktop experiments coexist. Downloads and checksums come from GitHub Releases or the rolling main prerelease. Failed downloads preserve the existing installation. Close viewers before an incompatible backend upgrade; installation never terminates them or changes usage data.
-
-Homebrew and Go source installs are no longer distribution channels. Developers build from a checkout using the repository's mise tasks.
+CLI's latest main build also has `install-main.sh`. Rerun to update.
+Downloads/checksums come from stable releases or the rolling main prerelease.
+Failed downloads preserve the existing installation. Close viewers before an
+incompatible backend upgrade; installation never terminates them, migrates history
+or deletes usage files. Homebrew and Go source installs are retired.

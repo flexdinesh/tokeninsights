@@ -7,9 +7,9 @@ product=cli
 channel=stable
 for arg in "$@"; do
     case "$arg" in
-        --product=cli|--product=server|--product=mygo|--product=electron) product="${arg#*=}" ;;
+        --product=cli|--product=mygo|--product=electron) product="${arg#*=}" ;;
         --channel=stable|--channel=main) channel="${arg#*=}" ;;
-        --help) printf '%s\n' 'Usage: install[-main|-server|-mygo|-electron].sh [--channel=stable|main]'; exit 0 ;;
+        --help) printf '%s\n' 'Usage: install[-main|-mygo|-electron].sh [--channel=stable|main]'; exit 0 ;;
         *) fail "unknown option $arg" ;;
     esac
 done
@@ -31,10 +31,24 @@ stage=
 backup=
 dest=
 link_stage=
+published_link=
+previous_link=
+published_cli=
+complete=false
+published_product=false
 cleanup() {
+    if [ "$complete" = false ]; then
+        if [ -n "$published_cli" ]; then rm -f "$published_cli"; fi
+        if [ -n "$published_link" ]; then
+            rm -f "$published_link"
+            if [ -n "$previous_link" ]; then ln -s "$previous_link" "$published_link"; fi
+        fi
+    fi
     if [ -n "$backup" ] && [ -d "$backup" ]; then
         rm -rf "$dest"
         mv "$backup" "$dest"
+    elif [ "$complete" = false ] && [ "$published_product" = true ]; then
+        rm -rf "$dest"
     fi
     if [ -n "$stage" ]; then rm -rf "$stage"; fi
     if [ -n "$link_stage" ]; then rm -rf "$link_stage"; fi
@@ -146,7 +160,6 @@ find "$src" -type l -exec sh -c '
 [ -f "$src/product.txt" ] && [ "$(cat "$src/product.txt")" = "tokeninsights-product-v1 $product $os $arch" ] || fail 'incompatible product archive'
 case "$product" in
     cli) binary=tokeninsights ;;
-    server) binary=tokeninsights-server ;;
     mygo) binary=tokeninsights-mygo; app='TokenInsights MyGo.app'; identity=com.flexdinesh.tokeninsights.mygo ;;
     electron) binary=tokeninsights-electron; app='TokenInsights Electron.app'; identity=com.flexdinesh.tokeninsights.electron ;;
 esac
@@ -162,8 +175,10 @@ if [ "$product" = electron ]; then
     if [ "$os" = darwin ]; then backend="$src/$app/Contents/Resources/tokeninsights-backend"; else backend="$src/resources/tokeninsights-backend"; fi
 fi
 [ -f "$executable" ] && [ -x "$executable" ] || fail "archive lacks executable $binary"
-if [ "$product" != server ]; then
-    [ -f "$backend" ] && [ -x "$backend" ] || fail 'archive lacks executable tokeninsights-backend'
+[ -f "$backend" ] && [ -x "$backend" ] || fail 'archive lacks executable tokeninsights-backend'
+if [ "$product" = mygo ]; then
+    cli_source="$(dirname "$executable")/tokeninsights"
+    [ -f "$cli_source" ] && [ -x "$cli_source" ] || fail 'archive lacks executable tokeninsights'
 fi
 data="${XDG_DATA_HOME:-$HOME/.local/share}"
 products="$data/tokeninsights/products"
@@ -182,9 +197,32 @@ if [ "$os" = darwin ] && { [ "$product" = mygo ] || [ "$product" = electron ]; }
     target="$dest/$app"
 fi
 publish_link=true
+owned_product() {
+    [ ! -L "$products/$1" ] && [ -d "$products/$1" ] &&
+        [ -f "$products/$1/.installed-by-tokeninsights" ] &&
+        [ "$(cat "$products/$1/.installed-by-tokeninsights")" = "tokeninsights-product:$1" ]
+}
+mygo_cli="$products/mygo/tokeninsights"
+if [ "$os" = darwin ]; then mygo_cli="$products/mygo/TokenInsights MyGo.app/Contents/MacOS/tokeninsights"; fi
 if [ -e "$link" ] || [ -L "$link" ]; then
-    [ -L "$link" ] && [ "$(readlink "$link")" = "$target" ] || fail "refusing to replace unowned path $link"
-    publish_link=false
+    [ -L "$link" ] || fail "refusing to replace unowned path $link"
+    previous_link="$(readlink "$link")"
+    if [ "$previous_link" = "$target" ]; then publish_link=false
+    elif [ "$product" = cli ] && [ "$previous_link" = "$mygo_cli" ] && owned_product mygo; then
+        : # An explicitly installed CLI takes command ownership from bundled MyGo.
+    else fail "refusing to replace unowned path $link"; fi
+fi
+# MyGo supplies the command unless an owned CLI-only installation already does.
+cli_link="$HOME/.local/bin/tokeninsights"
+publish_cli=false
+if [ "$product" = mygo ]; then
+    if [ -e "$cli_link" ] || [ -L "$cli_link" ]; then
+        [ -L "$cli_link" ] || fail "refusing to replace unowned path $cli_link"
+        existing_cli="$(readlink "$cli_link")"
+        if [ "$existing_cli" = "$products/cli/tokeninsights" ] && owned_product cli; then :
+        elif [ "$existing_cli" = "$mygo_cli" ] && owned_product mygo; then :
+        else fail "refusing to replace unowned path $cli_link"; fi
+    else publish_cli=true; fi
 fi
 if [ "$os" = linux ] && { [ "$product" = mygo ] || [ "$product" = electron ]; }; then
     entry="$data/applications/$slug.desktop"
@@ -204,11 +242,22 @@ if [ -d "$dest" ]; then
     mv "$dest" "$backup"
 fi
 mv "$stage" "$dest"
+published_product=true
 stage=
 if [ "$publish_link" = true ]; then
     link_stage="$(mktemp -d "$bin/.tokeninsights-link-XXXXXX")"
     ln -s "$target" "$link_stage/link"
     mv "$link_stage/link" "$link"
+    published_link="$link"
+    rmdir "$link_stage"
+    link_stage=
+fi
+if [ "$publish_cli" = true ]; then
+    mkdir -p "$HOME/.local/bin"
+    link_stage="$(mktemp -d "$HOME/.local/bin/.tokeninsights-link-XXXXXX")"
+    ln -s "$mygo_cli" "$link_stage/link"
+    mv "$link_stage/link" "$cli_link"
+    published_cli="$cli_link"
     rmdir "$link_stage"
     link_stage=
 fi
@@ -236,4 +285,5 @@ if [ "$os" = darwin ] && { [ "$product" = mygo ] || [ "$product" = electron ]; }
     if [ -x "$register" ]; then "$register" -f "$dest/$app" || printf 'warning: open the app once to register links\n' >&2; fi
 fi
 if [ -n "$backup" ]; then rm -rf "$backup"; backup=; fi
+complete=true
 printf 'Installed %s (%s): %s\n' "$product" "$channel" "$link"

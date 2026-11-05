@@ -63,8 +63,8 @@ func BenchmarkStorage(b *testing.B, factory func(*testing.B) BenchmarkFixture) {
 					drainHistory(b, d)
 				}
 				got := historyDashboard(b, d, query())
-				checkHistory(b, got, initial, int64(shape.sessions), id)
-				if got.DatasetID != id || got.Generation != int64(shape.generations) || got.Pending != 0 {
+				checkHistory(b, got, initial, int64(shape.sessions), evidence.PersonalDatasetID)
+				if got.DatasetID != evidence.PersonalDatasetID || got.Generation != int64(shape.generations) || got.Pending != 0 {
 					b.Fatal("incomplete seed", got)
 				}
 			}
@@ -90,7 +90,7 @@ func BenchmarkStorage(b *testing.B, factory func(*testing.B) BenchmarkFixture) {
 					}
 					b.ReportAllocs()
 					for b.Loop() {
-						checkHistory(b, historyDashboard(b, d, q), current, int64(shape.sessions), "tenant-0")
+						checkHistory(b, historyDashboard(b, d, q), current, int64(shape.sessions), evidence.PersonalDatasetID)
 					}
 					b.ReportMetric(float64(baselineBytes), "store-bytes")
 				})
@@ -101,7 +101,7 @@ func BenchmarkStorage(b *testing.B, factory func(*testing.B) BenchmarkFixture) {
 					tokens = tokens.Reopen()
 					b.StopTimer()
 					got := historyDashboard(b, tokens.Dataset("tenant-0"), query())
-					checkHistory(b, got, current, int64(shape.sessions), "tenant-0")
+					checkHistory(b, got, current, int64(shape.sessions), evidence.PersonalDatasetID)
 					if got.Pending != 0 || got.Generation != int64(shape.generations) {
 						b.Fatal("reopen lost generation", got)
 					}
@@ -123,7 +123,7 @@ func BenchmarkStorage(b *testing.B, factory func(*testing.B) BenchmarkFixture) {
 					accepted := time.Now()
 					drainHistory(b, d)
 					current++
-					checkHistory(b, historyDashboard(b, d, query()), current, int64(shape.sessions), "tenant-0")
+					checkHistory(b, historyDashboard(b, d, query()), current, int64(shape.sessions), evidence.PersonalDatasetID)
 					visibility += time.Since(accepted)
 					acceptance += accepted.Sub(started)
 					b.StopTimer()
@@ -175,7 +175,7 @@ func BenchmarkStorage(b *testing.B, factory func(*testing.B) BenchmarkFixture) {
 						if got.FactCount < previous || got.FactCount > end {
 							b.Fatal("nonmonotonic snapshot", got)
 						}
-						checkHistory(b, got, got.FactCount, int64(shape.sessions), "tenant-0")
+						checkHistory(b, got, got.FactCount, int64(shape.sessions), evidence.PersonalDatasetID)
 						previous = got.FactCount
 						select {
 						case err := <-failures:
@@ -203,7 +203,7 @@ func BenchmarkStorage(b *testing.B, factory func(*testing.B) BenchmarkFixture) {
 				b.ReportMetric(float64(size(b)), "store-bytes")
 			})
 			if shape.datasets > 1 {
-				checkHistory(b, historyDashboard(b, tokens.Dataset("tenant-1"), query()), initial, int64(shape.sessions), "tenant-1")
+				checkHistory(b, historyDashboard(b, tokens.Dataset("tenant-1"), query()), initial, int64(shape.sessions), evidence.PersonalDatasetID)
 			}
 		})
 	}

@@ -1,5 +1,7 @@
 import { DashboardClientProvider } from '@tokeninsights/dashboard'
 import { httpDashboardClient } from './http-client'
+import { mockConnection } from './mocks/data'
+const dashboardClient = { ...httpDashboardClient, getConnection: async () => mockConnection }
 import { afterEach, expect, it, vi } from 'vitest'
 import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
@@ -106,7 +108,7 @@ function mountDashboard(
   })
   vi.stubGlobal('fetch', fetcher)
   render(
-    <DashboardClientProvider client={httpDashboardClient}>
+    <DashboardClientProvider client={dashboardClient}>
       <QueryClientProvider client={client}>
         <RouterProvider
           router={createAppRouter(createMemoryHistory({ initialEntries: ['/tokens'] }))}
@@ -117,39 +119,15 @@ function mountDashboard(
   return { client, fetcher, state }
 }
 
-it('local dashboard omits manual Reload and preserves machine context with either capability setting', async () => {
-  const { client, state, fetcher } = mountDashboard()
+it('dashboard offers Refresh and keeps machine context without a collector', async () => {
+  const { fetcher } = mountDashboard()
   expect(await screen.findByLabelText('Total tokens: 647,000')).toBeVisible()
   expect(screen.queryByRole('button', { name: 'Reload' })).not.toBeInTheDocument()
   expect(
     fetcher.mock.calls.some(([input]) => requestPath(input).includes('collector-progress')),
   ).toBe(false)
-  await act(() =>
-    client.setQueryData(['instance'], {
-      ...state.bootstrap,
-      capabilities: state.bootstrap.capabilities.filter((value) => value !== 'dashboard-reload'),
-    }),
-  )
-  expect(screen.queryByRole('button', { name: 'Reload' })).not.toBeInTheDocument()
-  expect(screen.getByTitle(/Local machine running this dashboard/)).toHaveTextContent(
-    mockBootstrap.hostname,
-  )
-})
-
-it('hosted ignores inconsistent local capabilities and preserves saved usage without collector requests', async () => {
-  const { fetcher } = mountDashboard({
-    bootstrap: {
-      ...mockBootstrap,
-      serverKind: 'hosted',
-      capabilities: [...mockBootstrap.capabilities, 'collector-progress'],
-    },
-  })
-  expect(await screen.findByLabelText('Total tokens: 647,000')).toBeVisible()
-  expect(screen.queryByRole('button', { name: 'Reload' })).not.toBeInTheDocument()
-  expect(screen.queryByRole('region', { name: 'Collector progress' })).not.toBeInTheDocument()
-  expect(
-    fetcher.mock.calls.some(([input]) => requestPath(input).includes('collector-progress')),
-  ).toBe(false)
+  expect(screen.getByRole('button', { name: 'Refresh' })).toBeVisible()
+  expect(screen.getByTitle(/Backend hostname:/)).toHaveTextContent(mockBootstrap.hostname)
 })
 
 it('a caller without read permission cannot expose Reload or collector progress', async () => {
@@ -175,7 +153,7 @@ it('startup shares one progress request, names harness state and suppresses prem
     progress: progress('capturing'),
     dashboard: emptyDashboard(),
   })
-  await userEvent.click(await screen.findByRole('button', { name: /Local status:/ }))
+  await userEvent.click(await screen.findByRole('button', { name: /Backend status:/ }))
   const region = await screen.findByRole('region', { name: 'Collector progress' })
   expect(region).toHaveTextContent('Collecting usage')
   expect(region).toHaveTextContent('codex: Collecting')
@@ -183,7 +161,7 @@ it('startup shares one progress request, names harness state and suppresses prem
   expect(within(screen.getByRole('banner')).getByText('Collecting usage')).toBeVisible()
   expect(screen.queryByText('Ready')).not.toBeInTheDocument()
   expect(
-    screen.queryByText('No usage saved yet. Restart tokeninsights web to collect usage.'),
+    screen.queryByText('No usage saved yet. Use Refresh to collect usage.'),
   ).not.toBeInTheDocument()
   expect(screen.queryByText('No matching usage')).not.toBeInTheDocument()
   expect(
@@ -207,13 +185,13 @@ it('acceptance refreshes status before declaring Ready and keeps processing visi
           })
         : undefined,
   })
-  await screen.findByRole('button', { name: 'Local status: Collecting usage' })
+  await screen.findByRole('button', { name: 'Backend status: Collecting usage' })
   await act(() =>
     client.setQueryData(['collector-progress', mockBootstrap.instanceId], progress('accepted')),
   )
   expect(await within(screen.getByRole('banner')).findByText('Loading…')).toBeVisible()
   expect(
-    screen.queryByText('No usage saved yet. Restart tokeninsights web to collect usage.'),
+    screen.queryByText('No usage saved yet. Use Refresh to collect usage.'),
   ).not.toBeInTheDocument()
   await waitFor(() => expect(resolveStatus).toBeDefined())
   state.status = { ...state.status, pending: 1 }
@@ -222,7 +200,7 @@ it('acceptance refreshes status before declaring Ready and keeps processing visi
   })
   expect(await within(screen.getByRole('banner')).findByText('Processing usage')).toBeVisible()
   expect(
-    screen.queryByText('No usage saved yet. Restart tokeninsights web to collect usage.'),
+    screen.queryByText('No usage saved yet. Use Refresh to collect usage.'),
   ).not.toBeInTheDocument()
   state.dashboard = { ...mockDashboard('tokens'), revision: 2 }
   state.status = { ...state.status, pending: 0, revision: 2 }
@@ -274,9 +252,7 @@ it('filter failure reports its own status and retries without hiding saved usage
   expect(await screen.findByLabelText('Total tokens: 647,000')).toBeVisible()
   expect(await within(screen.getByRole('banner')).findByText('Filters couldn’t load')).toBeVisible()
   expect(screen.queryByText('Connection unavailable')).not.toBeInTheDocument()
-  expect(screen.getByTitle(/Local machine running this dashboard/)).toHaveTextContent(
-    mockBootstrap.hostname,
-  )
+  expect(screen.getByTitle(/Backend hostname:/)).toHaveTextContent(mockBootstrap.hostname)
   state.failure = ''
   await userEvent.click(
     within(screen.getByRole('alert')).getByRole('button', { name: 'Retry Request' }),
@@ -301,7 +277,7 @@ it('missing collection status shows recovery without Ready, premature empty text
   )
   expect(screen.queryByText('Ready')).not.toBeInTheDocument()
   expect(
-    screen.queryByText('No usage saved yet. Restart tokeninsights web to collect usage.'),
+    screen.queryByText('No usage saved yet. Use Refresh to collect usage.'),
   ).not.toBeInTheDocument()
   await waitFor(() =>
     expect(screen.queryByRole('status', { name: 'Loading dashboard' })).not.toBeInTheDocument(),
@@ -342,9 +318,7 @@ it('collection failure shows saved data and names the recovery', async () => {
   expect(
     await within(screen.getByRole('banner')).findByText('Collection needs attention'),
   ).toBeVisible()
-  expect(screen.getByRole('alert')).toHaveTextContent(
-    'Restart tokeninsights web to retry collection.',
-  )
+  expect(screen.getByRole('alert')).toHaveTextContent('Use Refresh to retry collection.')
   await act(() =>
     client.setQueryData(['instance'], {
       ...state.bootstrap,
@@ -379,7 +353,7 @@ it('retained completion history stays compact while every running attempt remain
       ],
     },
   })
-  await userEvent.click(await screen.findByRole('button', { name: /Local status:/ }))
+  await userEvent.click(await screen.findByRole('button', { name: /Backend status:/ }))
   const region = await screen.findByRole('region', { name: 'Collector progress' })
   expect(within(region).getAllByText(/Usage accepted/)).toHaveLength(1)
   expect(within(region).getAllByText(/Collecting usage/)).toHaveLength(2)
@@ -405,7 +379,7 @@ it('a run with no new harness usage preserves saved totals and explains its scop
   })
   expect(await screen.findByLabelText('Total tokens: 647,000')).toBeVisible()
   expect(screen.queryByText('codex: No new usage')).not.toBeInTheDocument()
-  await userEvent.click(await screen.findByRole('button', { name: 'Local status: Ready' }))
+  await userEvent.click(await screen.findByRole('button', { name: 'Backend status: Ready' }))
   expect(screen.getByText('codex: No new usage')).toBeVisible()
   expect(screen.getByRole('list', { name: 'Collection by harness' })).toHaveAttribute(
     'title',
@@ -426,7 +400,7 @@ it('keeps collection details out of the dashboard until the status indicator is 
     },
     progress: progress('capturing'),
   })
-  const indicator = await screen.findByRole('button', { name: 'Local status: Collecting usage' })
+  const indicator = await screen.findByRole('button', { name: 'Backend status: Collecting usage' })
   expect(screen.queryByRole('heading', { name: 'Token usage' })).not.toBeInTheDocument()
   expect(
     screen.queryByText('Understand your coding activity across harnesses.'),
@@ -448,7 +422,7 @@ it('local status shows process resources and preserves unknown measurements', as
       processUsage: { cpuPercent: 125.5, residentMemoryBytes: 64 * 1024 * 1024 },
     },
   })
-  await userEvent.click(await screen.findByRole('button', { name: 'Local status: Ready' }))
+  await userEvent.click(await screen.findByRole('button', { name: 'Backend status: Ready' }))
   expect(screen.getByLabelText('Process resource usage')).toHaveTextContent('CPU 125.5%RAM 64 MiB')
   await act(() =>
     client.setQueryData(['sync', mockBootstrap.datasetId], {
@@ -459,18 +433,4 @@ it('local status shows process resources and preserves unknown measurements', as
   await waitFor(() =>
     expect(screen.getByLabelText('Process resource usage')).toHaveTextContent('CPU —RAM —'),
   )
-})
-
-it('hosted dashboards omit local loading and resource controls even if resources are supplied', async () => {
-  mountDashboard({
-    bootstrap: {
-      ...mockBootstrap,
-      serverKind: 'hosted',
-      capabilities: [...mockBootstrap.capabilities, 'collector-progress'],
-    },
-    status: { ...mockSyncStatus(1), processUsage: { cpuPercent: 0, residentMemoryBytes: 1024 } },
-  })
-  expect(await screen.findByLabelText('Total tokens: 647,000')).toBeVisible()
-  expect(screen.queryByRole('button', { name: /Local status:/ })).not.toBeInTheDocument()
-  expect(screen.queryByLabelText('Process resource usage')).not.toBeInTheDocument()
 })

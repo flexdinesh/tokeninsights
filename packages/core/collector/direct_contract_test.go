@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -13,7 +12,6 @@ import (
 	"github.com/flexdinesh/tokeninsights/packages/core/collector"
 	"github.com/flexdinesh/tokeninsights/packages/core/datastore"
 	"github.com/flexdinesh/tokeninsights/packages/core/evidence"
-	"github.com/flexdinesh/tokeninsights/packages/core/ingestionhttp"
 	"github.com/flexdinesh/tokeninsights/packages/core/pipeline"
 )
 
@@ -80,23 +78,16 @@ func TestDirectCollectorGoldenReplayAndRebuild(t *testing.T) {
 	}
 }
 
-func TestDirectAndHTTPShareAcceptanceReceiptsAndRejections(t *testing.T) {
+func TestDirectAcceptanceReceiptsAndRejections(t *testing.T) {
 	store, err := datastore.Open(t.Context(), filepath.Join(t.TempDir(), "data.sqlite"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer func() { _ = store.Close() }()
-	remote := httptest.NewServer(ingestionhttp.Handler(store, ingestionhttp.IngestionPrefix, evidence.ProtocolVersion))
-	defer remote.Close()
 	direct := collector.DirectDelivery{Receiver: store}
-	network := collector.HTTPDelivery{URL: remote.URL}
 	caps, err := direct.Capabilities(t.Context())
 	if err != nil {
 		t.Fatal(err)
-	}
-	networkCaps, err := network.Capabilities(t.Context())
-	if err != nil || networkCaps != caps {
-		t.Fatalf("capabilities differ: %+v %v", networkCaps, err)
 	}
 	record := evidence.Record{Harness: "pi", Format: "pi-jsonl", SourceID: "source", Lineage: "lineage", Ordinal: 2,
 		Data:    json.RawMessage(`{"type":"message","id":"message","message":{"role":"assistant","timestamp":1700000000000,"provider":"openai","model":"gpt-5","usage":{"input":100,"output":20}}}`),
@@ -111,7 +102,7 @@ func TestDirectAndHTTPShareAcceptanceReceiptsAndRejections(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	second, err := network.Submit(t.Context(), evidence.ProtocolVersion, body)
+	second, err := direct.Submit(t.Context(), evidence.ProtocolVersion, body)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -124,7 +115,7 @@ func TestDirectAndHTTPShareAcceptanceReceiptsAndRejections(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	right, err := network.Receipt(t.Context(), "stream", "batch")
+	right, err := direct.Receipt(t.Context(), "stream", "batch")
 	if err != nil || !reflect.DeepEqual(left, right) || left.Receipt != a.Receipt || left.Processing.Pending != 0 {
 		t.Fatalf("terminal receipt differs: %+v %v", right, err)
 	}
@@ -149,7 +140,7 @@ func TestDirectAndHTTPShareAcceptanceReceiptsAndRejections(t *testing.T) {
 		{"oversized", make([]byte, evidence.MaxBodyBytes+1), 3, "body_limit"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			for _, delivery := range []collector.Delivery{direct, network} {
+			for _, delivery := range []collector.Delivery{direct} {
 				_, err := delivery.Submit(t.Context(), test.protocol, test.body)
 				var stage *collector.StageError
 				if !errors.As(err, &stage) || stage.Code != test.code {
@@ -163,5 +154,27 @@ func TestDirectAndHTTPShareAcceptanceReceiptsAndRejections(t *testing.T) {
 	destination := &collector.Destination{Identity: "http://local", Transport: direct}
 	if _, err := collector.NegotiateCapabilities(t.Context(), destination); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestExternalDestinationRejectsBeforeCapture(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "collector.sqlite")
+	store := acceptanceStore(t)
+	caps, err := store.RawCapabilities(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = collector.Run(t.Context(), collector.Options{
+		CollectorDBPath: path, ServerDBPath: filepath.Join(root, "server.sqlite"),
+		Destination: &collector.Destination{Identity: "https://external.example", DatabaseID: caps.DatabaseID, DatasetID: caps.DatasetID, Transport: collector.DirectDelivery{Receiver: store}},
+		SyncOptions: pipeline.SyncOptions{SourceDir: acceptanceSources(t), Harnesses: pipeline.SupportedHarnesses},
+	})
+	var stage *collector.StageError
+	if !errors.As(err, &stage) || stage.Code != "local_destination_required" {
+		t.Fatal("external collector destination accepted", err)
+	}
+	if _, err := os.Stat(path); !errors.Is(err, os.ErrNotExist) {
+		t.Fatal("external destination captured before rejection", err)
 	}
 }

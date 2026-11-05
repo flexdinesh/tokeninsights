@@ -1,8 +1,37 @@
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useEffect, useState } from 'react'
 import { useDashboardClient } from './client'
 import type { QueryState } from './query'
 
 const dashboardPollIntervalMs = 5_000
+
+export function useConnection(enabled = true) {
+  const api = useDashboardClient()
+  return useQuery({
+    queryKey: ['viewer-connection'],
+    queryFn: ({ signal }) => api.getConnection(signal),
+    enabled,
+    retry: false,
+    staleTime: Infinity,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+  })
+}
+
+export function useRefresh() {
+  const api = useDashboardClient()
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: () => api.refresh(),
+    retry: false,
+    onSettled: async () => {
+      await Promise.all([
+        client.invalidateQueries({ queryKey: ['collector-progress'] }),
+        client.invalidateQueries({ queryKey: ['sync'] }),
+      ])
+    },
+  })
+}
 
 export function useBootstrap(enabled = true) {
   const api = useDashboardClient()
@@ -52,7 +81,7 @@ export function useAnalytics(q: QueryState, revision: number, enabled: boolean, 
     repositories: q.tab === 'repo' ? q.repositories : [],
     directories: q.tab === 'repo' ? q.directories : [],
   })
-  return useQuery({
+  const result = useQuery({
     queryKey: ['usage', summaryScope, q, revision, identity],
     queryFn: async ({ signal }) => {
       const dashboard = await api.getUsage(q, signal)
@@ -73,6 +102,19 @@ export function useAnalytics(q: QueryState, revision: number, enabled: boolean, 
         : undefined
     },
   })
+  // A failed query for a new published revision must keep the last saved result
+  // for this selection and backend. Changed selections never borrow old totals.
+  const savedKey = `${summaryScope}/${identity}`
+  const [saved, setSaved] = useState<{ key: string; data: typeof result.data }>()
+  useEffect(() => {
+    if (result.data) setSaved({ key: savedKey, data: result.data })
+  }, [result.data, savedKey])
+  const retained = saved?.key === savedKey ? saved.data : undefined
+  return {
+    ...result,
+    data: result.data ?? retained,
+    isPlaceholderData: result.isPlaceholderData || (!result.data && Boolean(retained)),
+  }
 }
 
 export function useFacets(

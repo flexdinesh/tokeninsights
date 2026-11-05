@@ -1,7 +1,8 @@
 # TokenInsights MyGo
 
-The shell has no visual design of its own: the shared dashboard owns theme,
-layout and behavior. Default window 1280×850, minimum 360×480, matching
-Electron. The window title follows the page. Connection and backend failures use
-native message dialogs. Loading never blocks window closure. Hosted/external
-targets use the system browser. No trusted-origin storage.
+The shared dashboard owns layout, theme and behavior. Default window 1280×850,
+minimum 360×480, matching Electron. Connection failures use native dialogs.
+Each window owns its requested backend session and private loopback bridge.
+Desktop launch links contain an opaque rendezvous ID; native processes exchange
+the connection and capture policy over a user-private Unix socket.
+Pages receive browser capabilities only. No privileged page bindings.

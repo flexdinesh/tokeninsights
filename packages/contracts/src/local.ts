@@ -1,6 +1,6 @@
 import { z } from 'zod'
 
-// Local process contract only. Hosted HTTP shapes remain generated unchanged.
+// Native shell bridge handoff. The URL exposes no connection credentials.
 export const localBackendDescriptorSchema = z
   .object({
     url: z.url().refine((value) => {
@@ -17,7 +17,7 @@ export const localBackendDescriptorSchema = z
       )
     }, 'Expected an HTTP loopback backend origin'),
     instanceId: z.string().min(1),
-    protocolVersion: z.literal(2),
+    protocolVersion: z.literal(3),
   })
   .strict()
 export type LocalBackendDescriptor = z.output<typeof localBackendDescriptorSchema>

@@ -13,14 +13,9 @@ import (
 )
 
 type Options struct {
-	CollectorDBPath, ServerDBPath, AppDBPath, Host string
-	Port                                           int
-	BackendPath                                    string
-	Capture, FullRefresh                           bool
-	SourceDir                                      string
-	// Dashboard requests the public read-only listener at Host:Port for this
-	// lease. Sessions without it bind no TCP port.
-	Dashboard bool
+	CollectorDBPath, ServerDBPath, BackendPath string
+	Capture, FullRefresh                       bool
+	SourceDir                                  string
 }
 
 func Connect(parent context.Context, options Options) (*Session, error) {
@@ -34,13 +29,6 @@ func ConnectPrepared(parent context.Context, options Options, prepare func() err
 	settings, err := launchSettings(options)
 	if err != nil {
 		return nil, err
-	}
-	var listen *localprotocol.Listen
-	if options.Dashboard {
-		listen = &localprotocol.Listen{Host: options.Host, Port: options.Port}
-		if err := listen.Validate(); err != nil {
-			return nil, err
-		}
 	}
 	if options.FullRefresh && !options.Capture {
 		return nil, errors.New("full refresh requires capture")
@@ -57,7 +45,7 @@ func ConnectPrepared(parent context.Context, options Options, prepare func() err
 	if err != nil {
 		return nil, err
 	}
-	if err := s.attach(parent, startup, descriptor, attachOptions{Capture: options.Capture, FullRefresh: options.FullRefresh, SourceDir: options.SourceDir, Listen: listen}); err != nil {
+	if err := s.attach(parent, startup, descriptor, attachOptions{Capture: options.Capture, FullRefresh: options.FullRefresh, SourceDir: options.SourceDir}); err != nil {
 		s.transport.CloseIdleConnections()
 		return nil, err
 	}
@@ -65,14 +53,7 @@ func ConnectPrepared(parent context.Context, options Options, prepare func() err
 }
 
 func launchSettings(options Options) (localprotocol.Settings, error) {
-	settings := localprotocol.Settings{CollectorDBPath: options.CollectorDBPath, ServerDBPath: options.ServerDBPath, AppDBPath: options.AppDBPath}
-	if settings.AppDBPath == "" {
-		server, _, err := serverownership.Identify(settings.ServerDBPath)
-		if err != nil {
-			return localprotocol.Settings{}, err
-		}
-		settings.AppDBPath = filepath.Join(filepath.Dir(server), "app.sqlite")
-	}
+	settings := localprotocol.Settings{CollectorDBPath: options.CollectorDBPath, ServerDBPath: options.ServerDBPath}
 	return settings.Canonical()
 }
 

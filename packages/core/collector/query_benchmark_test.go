@@ -49,7 +49,7 @@ func BenchmarkLocalSavedQueries(b *testing.B) {
 	if err := runtime.WaitVisible(b.Context()); err != nil {
 		b.Fatal(err)
 	}
-	httpServer := httptest.NewServer(server.NewDataHandler(b.Context(), sqlanalytics.Source{Store: runtime.Store}, nil, "127.0.0.1", runtime.InstanceID, false))
+	httpServer := httptest.NewServer(server.NewDataHandler(b.Context(), sqlanalytics.Source{Store: runtime.Store}, nil, "127.0.0.1", runtime.InstanceID))
 	b.Cleanup(httpServer.Close)
 	httpClient, err := queryclient.New(httpServer.URL, httpServer.Client())
 	if err != nil {

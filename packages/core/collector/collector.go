@@ -2,29 +2,18 @@
 package collector
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
-	"fmt"
-	"io"
-	"net/http"
 	"net/url"
-	"strconv"
 	"strings"
-	"time"
 
 	"github.com/flexdinesh/tokeninsights/packages/core/dbpath"
 	"github.com/flexdinesh/tokeninsights/packages/core/evidence"
 	"github.com/flexdinesh/tokeninsights/packages/core/pipeline"
-	"github.com/flexdinesh/tokeninsights/packages/core/publication"
 )
 
-const requestTimeout = 30 * time.Second
-const maxRetryAfter = 24 * time.Hour
-
-// Destination is resolved by command composition, before any source capture.
-// Identity binds durable delivery; Transport owns the actual endpoint.
+// Destination is resolved by the personal runtime before source capture.
+// Identity binds the durable local journal; Transport performs direct acceptance.
 type Destination struct {
 	Transport  Delivery
 	Identity   string
@@ -66,16 +55,12 @@ type StageError struct {
 	Stage, Code string
 	BatchID     string
 	Cause       error
-	RetryAfter  time.Duration
 }
 
 func (e *StageError) Error() string {
 	value := e.Stage + ": " + e.Code
 	if e.BatchID != "" {
 		value += " batch=" + e.BatchID
-	}
-	if e.RetryAfter > 0 {
-		value += " retry-after=" + e.RetryAfter.String()
 	}
 	return value
 }
@@ -84,7 +69,7 @@ func failure(stage, code string, cause error) error {
 	return &StageError{Stage: stage, Code: code, Cause: cause}
 }
 
-// ValidatePaths must precede creation or collection, including remote selection.
+// ValidatePaths must precede creation or collection.
 func ValidatePaths(collectorPath, serverPath string) error {
 	err := dbpath.ValidateDistinct(collectorPath, serverPath)
 	var configuration *dbpath.ConfigurationError
@@ -99,7 +84,10 @@ func Run(ctx context.Context, options Options) (Result, error) {
 	if strings.TrimSpace(options.CollectorDBPath) == "" {
 		return result, failure("configuration", "missing_database_path", nil)
 	}
-	if options.Destination != nil && options.Destination.Local {
+	if options.Destination != nil {
+		if !options.Destination.Local || options.Destination.DatasetID != evidence.PersonalDatasetID {
+			return result, failure("configuration", "local_destination_required", nil)
+		}
 		if err := ValidatePaths(options.CollectorDBPath, options.ServerDBPath); err != nil {
 			return result, err
 		}
@@ -139,85 +127,8 @@ func endpoint(value string) (string, error) {
 	return parsed.String(), nil
 }
 
-// CanonicalEndpoint gives discovery and publication the same delivery identity.
-func CanonicalEndpoint(value string) (string, error) { return endpoint(value) }
-
 func reportDeliveryProgress(options Options, result *Result) {
 	if options.DeliveryProgress != nil {
 		options.DeliveryProgress(DeliveryProgress{Accepted: result.Accepted, Batches: result.Batches, Pending: result.Pending, PendingKnown: result.PendingKnown})
 	}
-}
-
-func deliveryClient(source *http.Client) *http.Client {
-	client := http.Client{}
-	if source != nil {
-		client = *source
-	}
-	if client.Timeout <= 0 || client.Timeout > requestTimeout {
-		client.Timeout = requestTimeout
-	}
-	client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
-	return &client
-}
-
-func request(ctx context.Context, client *http.Client, target, token string, body []byte) ([]byte, error) {
-	method := http.MethodGet
-	if body != nil {
-		method = http.MethodPost
-	}
-	req, err := http.NewRequestWithContext(ctx, method, target, bytes.NewReader(body))
-	if err != nil {
-		return nil, failure("delivery", "invalid_request", err)
-	}
-	req.Header.Set("Accept", "application/json")
-	if body != nil {
-		req.Header.Set("Content-Type", "application/json")
-	}
-	if token != "" {
-		req.Header.Set("Authorization", "Bearer "+token)
-	}
-	response, err := client.Do(req)
-	if err != nil {
-		return nil, failure("delivery", "transport_failed", err)
-	}
-	defer func() { _ = response.Body.Close() }()
-	data, err := io.ReadAll(io.LimitReader(response.Body, publication.MaxBodyBytes+1))
-	if err != nil {
-		return nil, failure("delivery", "response_failed", err)
-	}
-	if len(data) > publication.MaxBodyBytes {
-		return nil, failure("delivery", "response_too_large", nil)
-	}
-	if response.StatusCode != http.StatusOK && response.StatusCode != http.StatusAccepted {
-		var responseError publication.ErrorResponse
-		if json.Unmarshal(data, &responseError) == nil && safeServerCode(responseError.Code) && safeServerStage(responseError.Stage) {
-			return nil, &StageError{Stage: responseError.Stage, Code: responseError.Code, RetryAfter: retryDelay(response.Header.Get("Retry-After"))}
-		}
-		return nil, &StageError{Stage: "delivery", Code: fmt.Sprintf("http_%d", response.StatusCode), RetryAfter: retryDelay(response.Header.Get("Retry-After"))}
-	}
-	return data, nil
-}
-
-// Servers return bounded delta-seconds; malformed or excessive delays are ignored.
-func retryDelay(value string) time.Duration {
-	seconds, err := strconv.ParseInt(value, 10, 64)
-	if err != nil || seconds <= 0 || seconds > int64(maxRetryAfter/time.Second) {
-		return 0
-	}
-	return time.Duration(seconds) * time.Second
-}
-
-func safeServerCode(code string) bool {
-	switch code {
-	case "busy", "body_limit", "body_read_failed", "invalid_request", "invalid_identity", "invalid_tokens", "invalid_revision", "incompatible", "database_mismatch", "batch_conflict", "revision_limit", "transaction_failed", "fact_conflict", "revision_conflict", "reference_conflict", "aggregate_limit", "dataset_mismatch", "unauthorized", "forbidden", "rate_limited", "user_busy", "unavailable", "not_found":
-		return true
-	}
-	return false
-}
-func safeServerStage(stage string) bool {
-	switch stage {
-	case "admission", "validation", "identity", "receipt", "database", "facts", "references":
-		return true
-	}
-	return false
 }

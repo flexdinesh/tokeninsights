@@ -7,6 +7,7 @@ import (
 	"github.com/flexdinesh/tokeninsights/packages/core/analytics"
 	"github.com/flexdinesh/tokeninsights/packages/core/collectorprogress"
 	"github.com/flexdinesh/tokeninsights/packages/core/config"
+	"github.com/flexdinesh/tokeninsights/packages/core/desktoplaunch"
 	"github.com/flexdinesh/tokeninsights/packages/core/localclient"
 	"github.com/flexdinesh/tokeninsights/packages/core/localprotocol"
 	"github.com/flexdinesh/tokeninsights/packages/core/queryclient"
@@ -29,18 +30,7 @@ type localSession struct{ *localclient.Session }
 func (s localSession) Queries() *queryclient.Client { return s.Query }
 
 func connectSession(ctx context.Context, settings config.LocalSettings, prepare func() error) (Session, error) {
-	if remote := settings.Endpoint.SSH; remote != nil {
-		// Capture starts from the model, so the lease attaches without it.
-		session, err := localclient.ConnectRemote(ctx, remote.Dialer(""), localclient.RemoteOptions{})
-		if err != nil {
-			return nil, err
-		}
-		return localSession{session}, nil
-	}
-	session, err := localclient.ConnectPrepared(ctx, localclient.Options{
-		CollectorDBPath: settings.CollectorDBPath, ServerDBPath: settings.ServerDBPath,
-		AppDBPath: settings.ApplicationPath(), Host: settings.Host, Port: settings.Port,
-	}, prepare)
+	session, err := desktoplaunch.Connect(ctx, desktoplaunch.Specification(settings, false, false, ""), prepare)
 	if err != nil {
 		return nil, err
 	}

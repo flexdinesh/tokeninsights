@@ -1,20 +1,21 @@
 import { app, BrowserWindow, dialog, shell } from 'electron'
 import { join } from 'node:path'
+import { randomUUID } from 'node:crypto'
 import type { BackendConnection } from './backend'
 import { externalURL, launchURL, localNavigation } from './links'
-import { connectTarget, localLaunch } from './launch'
+import { connectTarget } from './launch'
 
 app.setName('TokenInsights Electron')
 app.setAppUserModelId('com.flexdinesh.tokeninsights.electron')
 app.enableSandbox()
 
-let window: BrowserWindow | undefined
-let connection: BackendConnection | undefined
-let quitting = false
-let cleaningUp = false
-let requestedEndpoint: string | undefined
-let requestedURL: string | undefined
+const windows = new Map<BrowserWindow, BackendConnection>()
+const handledLinks = new Set<string>()
 const pendingLinks: string[] = []
+let quitting = false
+let initialized = false
+let invalidInitialRequest = false
+let connecting = 0
 
 function openExternal(value: string) {
   const url = externalURL(value)
@@ -26,60 +27,35 @@ function openExternal(value: string) {
       )
 }
 
-async function handleArguments(args: string[]) {
-  let local = false
-  let external = false
-  const urls = args.map(launchURL).filter((url): url is string => url !== undefined)
-  const targets = await Promise.all(
-    urls.map(async (url) => ({ url, local: await localLaunch(url) })),
-  )
-  for (const target of targets) {
-    if (target.local) {
-      const endpoint = new URL(target.url).origin
-      const current = connection?.descriptor.url ?? requestedEndpoint
-      if (current !== undefined && endpoint !== new URL(current).origin) {
-        openExternal(target.url)
-        external = true
-      } else {
-        requestedEndpoint = endpoint
-        requestedURL = target.url
-        local = true
-      }
-    } else {
-      openExternal(target.url)
-      external = true
-    }
+// Each invocation creates its own window, connector session and bridge. An
+// existing window cannot silently consume another connection's launch policy.
+async function startWindow(link?: string): Promise<void> {
+  if (link !== undefined) {
+    if (handledLinks.has(link)) return
+    handledLinks.add(link)
   }
-  return external && !local
-}
-
-async function startWindow(): Promise<void> {
+  connecting += 1
+  let connection: BackendConnection | undefined
+  let current: BrowserWindow | undefined
   try {
     connection = await connectTarget(
       join(process.resourcesPath, 'tokeninsights-backend'),
       () => {
         if (quitting) return
         dialog.showErrorBox(
-          'Local backend disconnected',
-          'Reopen TokenInsights Electron to reconnect. Saved usage remains available.',
+          'Backend disconnected',
+          'Reopen this connection. Saved usage remains available.',
         )
-        app.quit()
+        current?.close()
       },
-      requestedURL,
-      (url) => {
-        if (!quitting) openExternal(url)
-      },
+      link,
     )
-    if (connection === undefined) {
-      app.quit()
-      return
-    }
     if (quitting) {
       connection.close()
       return
     }
     const backendURL = connection.descriptor.url
-    const current = new BrowserWindow({
+    current = new BrowserWindow({
       title: 'TokenInsights Electron',
       width: 1280,
       height: 850,
@@ -87,6 +63,7 @@ async function startWindow(): Promise<void> {
       minHeight: 480,
       show: false,
       webPreferences: {
+        partition: randomUUID(),
         nodeIntegration: false,
         nodeIntegrationInWorker: false,
         nodeIntegrationInSubFrames: false,
@@ -98,94 +75,110 @@ async function startWindow(): Promise<void> {
         navigateOnDragDrop: false,
       },
     })
-    window = current
-    const session = current.webContents.session
+    const window = current
+    const owned = connection
+    windows.set(window, owned)
+    const session = window.webContents.session
     session.setPermissionRequestHandler((_contents, _permission, callback) => callback(false))
     session.setPermissionCheckHandler(() => false)
     session.on('will-download', (event) => event.preventDefault())
-    current.webContents.on('will-attach-webview', (event) => event.preventDefault())
-    current.webContents.on('will-navigate', (event, url) => {
+    window.webContents.on('will-attach-webview', (event) => event.preventDefault())
+    window.webContents.on('will-navigate', (event, url) => {
       if (!localNavigation(url, backendURL)) {
         event.preventDefault()
         openExternal(url)
       }
     })
-    current.webContents.on('will-frame-navigate', (event) => {
+    window.webContents.on('will-frame-navigate', (event) => {
       if (!event.isMainFrame || !localNavigation(event.url, backendURL)) event.preventDefault()
     })
-    current.webContents.on('will-redirect', (event, url) => {
+    window.webContents.on('will-redirect', (event, url) => {
       if (!localNavigation(url, backendURL)) event.preventDefault()
     })
-    current.webContents.setWindowOpenHandler(({ url }) => {
+    window.webContents.setWindowOpenHandler(({ url }) => {
       openExternal(url)
       return { action: 'deny' }
     })
-    // Backend assets compose the shared dashboard with its browser HTTP client.
-    // No preload or IPC is needed: the renderer has browser capabilities only.
-    session.webRequest.onBeforeRequest((details, callback) => {
-      callback({ cancel: !localNavigation(details.url, backendURL) })
+    // A private session prevents one window's request filter from replacing
+    // another window's filter when they target different bridges.
+    session.webRequest.onBeforeRequest((details, callback) =>
+      callback({ cancel: !localNavigation(details.url, backendURL) }),
+    )
+    window.once('ready-to-show', () => window.show())
+    window.once('closed', () => {
+      windows.delete(window)
+      owned.close()
     })
-    current.once('ready-to-show', () => current.show())
-    current.once('closed', () => {
-      connection?.close()
-      connection = undefined
-      window = undefined
-      if (!cleaningUp) app.quit()
-    })
-    await current.loadURL(backendURL)
+    await window.loadURL(backendURL)
+    if (!window.isDestroyed()) owned.acknowledge()
   } catch (error) {
     connection?.close()
-    connection = undefined
-    cleaningUp = true
-    window?.destroy()
-    window = undefined
-    cleaningUp = false
-    if (quitting) return
-    const result = await dialog.showMessageBox({
-      type: 'error',
-      title: 'Couldn’t start TokenInsights Electron',
-      message: error instanceof Error ? error.message : 'Local backend startup failed.',
-      buttons: ['Retry', 'Quit'],
-      defaultId: 0,
-      cancelId: 1,
-    })
-    if (result.response === 0) await startWindow()
-    else app.quit()
+    current?.destroy()
+    if (!quitting)
+      dialog.showErrorBox(
+        'Couldn’t start TokenInsights Electron',
+        error instanceof Error ? error.message : 'Backend startup failed.',
+      )
+  } finally {
+    connecting -= 1
+    if (windows.size === 0 && connecting === 0) app.quit()
   }
+}
+
+function handleArguments(args: string[]): boolean {
+  let requested = false
+  for (const value of args) {
+    const link = launchURL(value)
+    if (link !== undefined) {
+      requested = true
+      if (!app.isReady()) pendingLinks.push(link)
+      else void startWindow(link)
+    } else if (value.includes('://')) {
+      requested = true
+      if (!initialized) invalidInitialRequest = true
+      dialog.showErrorBox(
+        'Invalid desktop launch',
+        'Run tokeninsights connect URI to select a connection.',
+      )
+    }
+  }
+  return requested
+}
+
+function focus() {
+  const first = windows.keys().next().value
+  if (first !== undefined) {
+    first.show()
+    first.focus()
+  } else if (connecting === 0) void startWindow()
 }
 
 if (!app.requestSingleInstanceLock()) app.quit()
 else {
   app.on('second-instance', (_event, args) => {
-    void handleArguments(args).then((externalOnly) => {
-      if (!externalOnly) {
-        window?.show()
-        window?.focus()
-      }
-    })
+    if (!handleArguments(args)) focus()
   })
   app.on('open-url', (event, url) => {
     event.preventDefault()
-    if (!app.isReady()) pendingLinks.push(url)
-    else {
-      void handleArguments([url]).then((externalOnly) => {
-        if (!externalOnly) {
-          window?.show()
-          window?.focus()
-        }
-      })
-    }
+    handleArguments([url])
+  })
+  app.on('activate', () => {
+    if (initialized && pendingLinks.length === 0) focus()
   })
   app.on('before-quit', () => {
     quitting = true
-    connection?.close()
+    for (const connection of windows.values()) connection.close()
   })
-  void app.whenReady().then(async () => {
+  app.on('window-all-closed', () => {
+    if (connecting === 0) app.quit()
+  })
+  void app.whenReady().then(() => {
     app.setAsDefaultProtocolClient('tokeninsights-electron')
-    if (await handleArguments([...process.argv.slice(1), ...pendingLinks])) {
-      app.quit()
-      return
-    }
-    await startWindow()
+    const links = [...process.argv.slice(1), ...pendingLinks]
+    pendingLinks.length = 0
+    const requested = handleArguments(links)
+    initialized = true
+    if (!requested && !invalidInitialRequest) void startWindow()
+    else if (connecting === 0 && windows.size === 0) app.quit()
   })
 }

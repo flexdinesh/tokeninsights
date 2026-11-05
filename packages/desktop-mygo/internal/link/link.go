@@ -1,7 +1,4 @@
-// Package link parses tokeninsights:// dashboard links.
-//
-// The CLI writes links as tokeninsights://open?url=<escaped http(s) URL>.
-// Parsing is pure: it performs no I/O and trusts nothing about the target.
+// Package link validates browser navigation origins without performing I/O.
 package link
 
 import (
@@ -12,23 +9,7 @@ import (
 	"strings"
 )
 
-// Scheme is the URL scheme the desktop viewer registers.
-const Scheme = "tokeninsights"
-
-// MyGoScheme identifies MyGo independently of Electron.
-const MyGoScheme = "tokeninsights-mygo"
-
-const (
-	openAction = "open"
-	urlParam   = "url"
-)
-
-var (
-	// ErrMalformed rejects text that is not a tokeninsights:// open link.
-	ErrMalformed = errors.New("not a TokenInsights open link")
-	// ErrTarget rejects a dashboard URL that is not an absolute http(s) URL.
-	ErrTarget = errors.New("dashboard URL must be an absolute http or https URL without credentials")
-)
+var ErrTarget = errors.New("dashboard URL must be an absolute http or https URL without credentials")
 
 // Target is a validated dashboard URL.
 type Target struct {
@@ -38,26 +19,6 @@ type Target struct {
 	Origin string
 	// Loopback reports whether the host is localhost or a loopback address.
 	Loopback bool
-}
-
-// Parse validates a tokeninsights://open?url=... link.
-func Parse(raw string) (Target, error) {
-	u, err := url.Parse(raw)
-	if err != nil || (!strings.EqualFold(u.Scheme, Scheme) && !strings.EqualFold(u.Scheme, MyGoScheme)) || u.Opaque != "" || u.User != nil || u.Fragment != "" {
-		return Target{}, ErrMalformed
-	}
-	if !strings.EqualFold(u.Host, openAction) || (u.Path != "" && u.Path != "/") {
-		return Target{}, ErrMalformed
-	}
-	query, err := url.ParseQuery(u.RawQuery)
-	if err != nil {
-		return Target{}, ErrMalformed
-	}
-	targets := query[urlParam]
-	if len(targets) != 1 || len(query) != 1 {
-		return Target{}, ErrMalformed
-	}
-	return Dashboard(targets[0])
 }
 
 // Dashboard validates a dashboard URL.

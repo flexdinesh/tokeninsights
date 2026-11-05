@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -283,26 +282,6 @@ func TestDashboardRoutesServeEmbeddedApp(t *testing.T) {
 	}
 }
 
-func TestListenerURLAndShutdown(t *testing.T) {
-	listener, err := listen("127.0.0.1", 0)
-	if err != nil {
-		t.Fatal(err)
-	}
-	host, port, err := net.SplitHostPort(listener.Addr().String())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if host != "127.0.0.1" || port == "0" {
-		t.Fatalf("must bind only the selected address and actual port: %s", listener.Addr())
-	}
-	conflict, err := net.Listen("tcp4", listener.Addr().String())
-	if err == nil {
-		_ = conflict.Close()
-		t.Fatal("expected occupied port")
-	}
-	_ = listener.Close()
-}
-
 func loadDashboard(ctx context.Context, path string, q query, now time.Time) (dashboard, error) {
 	store, err := datastore.Open(ctx, path)
 	if err != nil {
@@ -319,7 +298,6 @@ func fixtureApp(t *testing.T, path string, options Options) *app {
 	}
 	t.Cleanup(func() { _ = store.Close() })
 	a := newApp(t.Context(), options, io.Discard)
-	a.data = store
 	a.queries = sqlanalytics.Queries{Store: store}
 	return a
 }

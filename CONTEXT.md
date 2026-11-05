@@ -1,6 +1,6 @@
 # TokenInsights
 
-TokenInsights tracks token usage across coding harnesses through host collection, sanitized evidence ingestion, server-owned processing and queries over retained history.
+TokenInsights tracks token usage across coding harnesses through host collection, sanitized evidence acceptance, backend-owned processing and queries over retained history.
 
 ## Language
 
@@ -9,7 +9,7 @@ The user-facing command-line product for TokenInsights, invoked as `tokeninsight
 _Avoid_: tokeninsights-cli as the public command name
 
 **Durable Source**:
-A local harness-owned file, database, or directory that persists usage-relevant session data after a harness run completes and can be batch-synced without realtime hooks or separate authenticated API export.
+A local harness-owned file, database, or directory that persists usage-relevant session data after a harness run completes and can be captured without realtime hooks or separate authenticated API export.
 _Avoid_: Harness source, local source, session file, harness local DB
 
 **Date Range Filter**:
@@ -32,7 +32,7 @@ _Avoid_: Metric tab, domain tab, filter
 A read-only summary of countable canonical token facts for one aggregation tab and the active date range and dimension filters.
 _Avoid_: Pre-aggregated rollup, metric domain
 
-**Syncable Analytics Data**:
+**Sanitized Evidence**:
 Sanitized native evidence and safe location references governed by the ingestion whitelist. The server interprets it into confirmed facts and separate estimates; source paths, parsing diagnostics and continuity metadata stay local.
 _Avoid_: Local cursor data, source continuity state
 
@@ -52,46 +52,38 @@ _Avoid_: Client-side counter interpretation, private content ingestion
 The shared Go server core that durably accepts immutable evidence/receipts, asynchronously publishes replaceable stable contributions, stores durable processing status and serves REST analytics plus embedded web assets.
 _Avoid_: Collector service, client-side normalization
 
-**Personal Server**:
-The wire/storage kind used by single-process local commands. One default dataset/user; direct ingestion and TUI queries. Web adds a foreground read-only HTTP listener. No daemon or personal remote deployment; viewers may attach another machine's personal backend over SSH.
-_Avoid_: Simple server, prod server, local-only server
+**Personal Backend**:
+One Go process per storage identity, owning SQLite capture, direct evidence acceptance, durable processing, queries and shutdown. Local viewers use private Unix socket protocol 3; SSH carries that protocol over system SSH, and TCP uses a temporary pinned TLS gateway.
+_Avoid_: Hosted server, viewer-owned database, background scan service
 
-**Hosted Server**:
-The distributed server kind: authenticated datasets share token storage, with accounts behind a separate repository. Hosted composition selects SQLite or PostgreSQL for both domains; local composition always uses SQLite. Browser password login, optional operator-enabled signup and self-service settings are hosted only. Browser dashboard supported; analytics TUI unavailable. Collector sync uses finite jobs.
-_Avoid_: Prod server, database per tenant, authenticated personal server
+**Connection**:
+An invocation's explicit local, SSH or temporary TCP target. Each window retains its requested transport/target and verified backend identity. Failure never selects another target.
+_Avoid_: Implicit remote default, saved pairing profile, local fallback
+
+**Remote Gateway**:
+Foreground `tokeninsights remote` TLS listener, default `0.0.0.0:0`, sharing the personal backend through a lease. It prints a shell-quoted connect command with a temporary pin/token URI. Stop invalidates the URI and its connections; other leases survive.
+_Avoid_: Durable server credential, ingestion endpoint, hosted deployment
 
 **Dataset**:
-The isolation boundary for evidence, deduplication, receipts, ancestry, processing generations and analytics. Personal uses `default`; each hosted user owns one server-assigned dataset, stable across password changes, API key rotation and future login methods.
+The retained SQL identity boundary for evidence, deduplication, receipts, ancestry, generations and analytics. Personal storage uses `default`. Dataset-qualified schema fields remain unchanged; they do not imply accounts or a hosted product.
 _Avoid_: Collector installation, token identity, source session
-
-**User**:
-A stable internal identity that owns one dataset. Personal composition creates its default user automatically; hosted usernames/passwords authenticate users without choosing their dataset. Future provider identities attach to the same user through explicit verified linking.
-_Avoid_: Username as dataset ID, API key as user identity, public administrator role
-
-**API Key**:
-A named, revocable hosted credential with read/ingest scopes. Its random secret is shown once and stored only as a digest. Collectors configure it as `distributed.server-token`; it never authorizes account management.
-_Avoid_: Login password, browser session, shared server token
-
-**Browser Session**:
-A 24-hour opaque cookie credential created by hosted password login, independent of API keys. It authorizes dataset reads and the current user's account settings. Password changes/reset invalidate all user sessions; key revocation leaves sessions intact.
-_Avoid_: Source-token-bound session, API key in localStorage, account administration
 
 **Capability**:
 A typed, server-owned feature declaration exposed by the instance REST endpoint. Routes, commands and browser UI share its policy. Caller permissions separately authorize supported operations.
 _Avoid_: Client-selected feature, authentication scope
 
 **Desktop Viewer**:
-The optional macOS/Linux TokenInsights app that shows dashboards served elsewhere. `web` and `browse` hand it `tokeninsights://open?url=...` links; it owns no usage storage or collection. It keeps only approved non-loopback origins and its webview's own browser state.
-_Avoid_: Desktop server, standalone app, Electron app
+A MyGo or Electron window over a selected backend session and a loopback dashboard bridge. Bare CLI opens MyGo by default. Native launch handoff carries secrets over a private rendezvous socket; the OS URL contains only its ID. Launch succeeds after the selected desktop acknowledges a live requested session. An unavailable desktop fails without browser fallback.
+_Avoid_: Viewer-owned storage, credential-bearing OS URL
 
 **Collector Progress**:
-Bounded, sanitized capture/submission attempt state owned by the shared local backend. Viewers read it through semantic clients; detailed capture measurements use the private local-client contract. Hosted servers never collect or expose collector progress. Processing lag remains separate.
+Bounded, sanitized capture/submission attempt state owned by the shared local backend. Viewers read it through semantic clients; detailed capture measurements use the private local-client contract. Processing lag remains separate.
 
-**Read-only View**:
-TUI, web, Electron and native MyGo attach to one local backend and read saved committed usage while capture/submission/processing continues. Viewer launches request coalesced capture; filters and reload query only. Completion requires visible processing and a current dashboard read; failures preserve saved usage. --sync=false skips capture while durable processing resumes. Viewer leases keep the owner alive; it stops after the final disconnect and reconnect grace. Browse opens the configured hosted browser without local capture or storage.
+**Viewer Session**:
+TUI, web, Electron and MyGo read saved usage from one backend. Launch and explicit Refresh request coalesced capture; filters and query reload only read. Completion requires visible processing and a current dashboard read; failures preserve saved usage. `--capture=false` skips launch capture while processing resumes. Each session holds a lease; final disconnect plus reconnect grace stops the owner.
 
 **Durable Publication**:
-Immutable raw outbox and saved batches, acknowledged per endpoint/database/dataset binding after server acceptance. Later manual sync retries pending delivery with exact saved bytes.
+Immutable collector outbox and saved batches, acknowledged after direct backend acceptance. Replay retains exact bytes, stable evidence, receipts and totals.
 _Avoid_: Best-effort upload marker, insert-only export
 
 **Stable Fact Identity**:

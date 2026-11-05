@@ -1,5 +1,12 @@
 # Command-owned client compositions
 
+Superseded where conflicting by [ADR 0027](0027-personal-backend-and-explicit-connections.md).
+Current product: one personal SQLite backend, explicit local/SSH/temporary TCP
+connections. Hosted/accounts/PostgreSQL/sync/plugins and conflicting listener,
+opener or distribution choices below are historical. Applicable accounting,
+privacy, identity, transaction and lifecycle principles remain.
+The original decision below is preserved as history.
+
 Local ownership/lifetimes are superseded by [ADR 0024](0024-shared-backend-and-installable-products.md). Command-scoped configuration and hosted isolation remain.
 
 Collector lock scope and plugin completion behavior are superseded by [ADR 0015](0015-server-bootstrap-and-background-plugins.md).

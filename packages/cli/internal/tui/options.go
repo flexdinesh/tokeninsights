@@ -63,8 +63,8 @@ type filters struct {
 }
 
 type tableOptions struct {
+	connectionLabel string
 	local           Session
-	appDBPath       string
 	dbPath          string
 	query           *queryclient.Client
 	collectorDBPath string
@@ -101,14 +101,13 @@ func parseViewerOptions(args []string, stderr io.Writer, requirePeriod bool, def
 	var fullRefresh bool
 	var bucket string
 	var queryFilters filters
-	flags.StringVar(&settings.AppDBPath, "app-db-path", settings.AppDBPath, "application SQLite database")
 	defaultServerDBPath := settings.ServerDBPath
 	flags.StringVar(&dbPath, "server-db-path", settings.ServerDBPath, "local query server database path")
 	flags.StringVar(&collectorDBPath, "collector-db-path", settings.CollectorDBPath, "collector database used by startup sync")
 	flags.BoolVar(&fullRefresh, "full-refresh", false, "reread sources and retry quarantine at startup")
 	flags.StringVar(&sourceDir, "source-dir", "", "override startup capture source directory")
-	flags.String("endpoint", "", "backend: local (default) or ssh://[user@]host[:port]")
-	flags.BoolVar(&syncOnStart, "sync", true, "refresh usage in the background; --sync=false skips startup collection")
+	flags.String("connection", "", "backend: local (default) or ssh://[user@]host[:port]")
+	flags.BoolVar(&syncOnStart, "capture", true, "refresh usage in the background; --capture=false skips startup collection")
 	flags.BoolVar(&today, "today", false, "show today")
 	flags.BoolVar(&yesterday, "yesterday", false, "show yesterday")
 	flags.BoolVar(&week, "week", false, "show current calendar week (Mon-Sun)")
@@ -176,7 +175,7 @@ func parseViewerOptions(args []string, stderr io.Writer, requirePeriod bool, def
 	if !syncOnStart && fullRefresh {
 		return tableOptions{}, usageError("--full-refresh requires startup collection")
 	}
-	return tableOptions{appDBPath: settings.AppDBPath, dbPath: selectedDBPath, collectorDBPath: collectorDBPath, syncOnStart: syncOnStart, fullRefresh: fullRefresh, sourceDir: sourceDir, period: selected, bucket: selectedBucket, filters: queryFilters, overrides: overrides}, nil
+	return tableOptions{dbPath: selectedDBPath, collectorDBPath: collectorDBPath, syncOnStart: syncOnStart, fullRefresh: fullRefresh, sourceDir: sourceDir, period: selected, bucket: selectedBucket, filters: queryFilters, overrides: overrides}, nil
 }
 
 func selectedPeriod(today bool, yesterday bool, week bool, month bool, year bool, allTime bool, required bool, fallback period) (period, error) {

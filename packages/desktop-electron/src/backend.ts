@@ -1,7 +1,7 @@
 import { spawn } from 'node:child_process'
 import { localBackendDescriptorSchema } from '@tokeninsights/contracts/local'
 import type { LocalBackendDescriptor } from '@tokeninsights/contracts/local'
-import { localTarget } from './links.ts'
+import { launchURL } from './links.ts'
 
 const startupTimeoutMs = 30_000
 const descriptorMaxBytes = 16_384
@@ -9,13 +9,15 @@ const descriptorMaxBytes = 16_384
 export interface BackendConnection {
   descriptor: LocalBackendDescriptor
   close(): void
+  acknowledge(): void
 }
 
-// A URL handoff identifies an existing owner; it must never select defaults.
-export function backendArguments(endpoint?: string): string[] {
-  if (endpoint === undefined) return ['connect', '--json']
-  if (!localTarget(endpoint)) throw new Error('Expected a local dashboard address.')
-  return ['connect', '--json', '--url', new URL(endpoint).origin]
+// argv contains only a random rendezvous ID. Connection secrets stay native.
+export function backendArguments(link?: string): string[] {
+  if (link === undefined) return ['connect', '--json']
+  const valid = launchURL(link)
+  if (valid === undefined) throw new Error('Invalid desktop launch link; run tokeninsights again.')
+  return ['connect', '--json', '--launch', valid]
 }
 
 // The connector owns the viewer lease. Never detach it or close stdin while the
@@ -48,6 +50,7 @@ export async function connectBackend(
     child.once('error', fail)
     child.stdin.on('error', (error) => {
       if (!ready) fail(error)
+      else if (!closing) onExit()
     })
     child.once('exit', (code, signal) => {
       clearTimeout(timeout)
@@ -76,5 +79,11 @@ export async function connectBackend(
       }
     })
   })
-  return { descriptor, close }
+  let acknowledged = false
+  const acknowledge = () => {
+    if (acknowledged || closing) return
+    acknowledged = true
+    child.stdin.write('ready\n')
+  }
+  return { descriptor, close, acknowledge }
 }

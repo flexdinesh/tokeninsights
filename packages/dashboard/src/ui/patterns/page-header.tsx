@@ -9,7 +9,7 @@ export function PageHeader({ title, children }: { title: ReactNode; children?: R
         {title}
       </Heading>
       {children && (
-        <div className="flex max-w-full min-w-0 flex-wrap items-center justify-end gap-2 max-compact:ml-auto max-compact:flex-1 max-compact:flex-nowrap max-compact:gap-1">
+        <div className="flex max-w-full min-w-0 flex-wrap items-center justify-end gap-2 max-compact:ml-auto max-compact:flex-1 max-compact:gap-1">
           {children}
         </div>
       )}

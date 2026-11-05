@@ -17,8 +17,8 @@ import { dirname, join, resolve } from 'node:path'
 import { buildMygo, hostTarget, mygoApp, type DesktopTarget } from './build-desktop.ts'
 import { workspacePath, workspaceRoot } from './workspace.ts'
 
-export type Product = 'cli' | 'server' | 'mygo' | 'electron'
-export const products: readonly Product[] = ['cli', 'server', 'mygo', 'electron']
+export type Product = 'cli' | 'mygo' | 'electron'
+export const products: readonly Product[] = ['cli', 'mygo', 'electron']
 export interface BuildMetadata {
   version: string
   commit: string
@@ -59,17 +59,17 @@ export async function verifyProduct(
   const executableRoot =
     desktop && target.os === 'darwin' ? join(root, app, 'Contents/MacOS') : root
   await executable(join(executableRoot, binary))
-  if (product !== 'server')
-    await executable(
-      join(
-        product === 'electron'
-          ? target.os === 'darwin'
-            ? join(root, app, 'Contents/Resources')
-            : join(root, 'resources')
-          : executableRoot,
-        'tokeninsights-backend',
-      ),
-    )
+  if (product === 'mygo') await executable(join(executableRoot, 'tokeninsights'))
+  await executable(
+    join(
+      product === 'electron'
+        ? target.os === 'darwin'
+          ? join(root, app, 'Contents/Resources')
+          : join(root, 'resources')
+        : executableRoot,
+      'tokeninsights-backend',
+    ),
+  )
   if (desktop && target.os === 'darwin') {
     const plist = await readFile(join(root, app, 'Contents/Info.plist'), 'utf8')
     if (!plist.includes(`<string>com.flexdinesh.tokeninsights.${product}</string>`))
@@ -184,13 +184,10 @@ export async function buildProducts(
     await mkdir(binaries)
     const commands = new Map([
       ['tokeninsights', './packages/cli/cmd/tokeninsights'],
-      ['tokeninsights-server', './packages/server/cmd/tokeninsights-server'],
       ['tokeninsights-backend', './packages/backend/cmd/tokeninsights-backend'],
     ])
     for (const [binary, command] of commands) {
-      if (binary === 'tokeninsights-server' && !selected.includes('server')) continue
-      if (binary === 'tokeninsights' && !selected.includes('cli')) continue
-      if (binary === 'tokeninsights-backend' && selected.every((product) => product === 'server'))
+      if (binary === 'tokeninsights' && !selected.includes('cli') && !selected.includes('mygo'))
         continue
       runBuildTool('go', [
         'build',
@@ -220,27 +217,32 @@ export async function buildProducts(
           linkerFlags(metadata),
           root,
         )
+        // eslint-disable-next-line no-await-in-loop
+        await cp(
+          join(binaries, 'tokeninsights'),
+          target.os === 'darwin'
+            ? join(root, mygoApp, 'Contents/MacOS/tokeninsights')
+            : join(root, 'tokeninsights'),
+        )
       } else if (product === 'electron') {
         // eslint-disable-next-line no-await-in-loop
         await buildElectron(target, root)
       } else {
-        const binary = product === 'cli' ? 'tokeninsights' : 'tokeninsights-server'
+        const binary = 'tokeninsights'
         // eslint-disable-next-line no-await-in-loop
         await cp(join(binaries, binary), join(root, binary))
       }
-      if (product !== 'server') {
-        const app = product === 'mygo' ? mygoApp : 'TokenInsights Electron.app'
-        const dest =
-          product === 'electron'
-            ? target.os === 'darwin'
-              ? join(root, app, 'Contents/Resources/tokeninsights-backend')
-              : join(root, 'resources/tokeninsights-backend')
-            : target.os === 'darwin' && product === 'mygo'
-              ? join(root, app, 'Contents/MacOS/tokeninsights-backend')
-              : join(root, 'tokeninsights-backend')
-        // eslint-disable-next-line no-await-in-loop
-        await cp(join(binaries, 'tokeninsights-backend'), dest)
-      }
+      const app = product === 'mygo' ? mygoApp : 'TokenInsights Electron.app'
+      const dest =
+        product === 'electron'
+          ? target.os === 'darwin'
+            ? join(root, app, 'Contents/Resources/tokeninsights-backend')
+            : join(root, 'resources/tokeninsights-backend')
+          : target.os === 'darwin' && product === 'mygo'
+            ? join(root, app, 'Contents/MacOS/tokeninsights-backend')
+            : join(root, 'tokeninsights-backend')
+      // eslint-disable-next-line no-await-in-loop
+      await cp(join(binaries, 'tokeninsights-backend'), dest)
       if (target.os === 'darwin' && (product === 'mygo' || product === 'electron'))
         runBuildTool('codesign', [
           '--force',

@@ -30,16 +30,7 @@ var storagePromptInteractive = func(input io.Reader) bool {
 
 // prepareLocalStorage runs before an in-process command opens its stores.
 func (invocation commandInvocation) prepareLocalStorage(settings config.LocalSettings) error {
-	report, err := localstorage.InspectLocal(invocation.context, settings.CollectorDBPath, settings.ServerDBPath, settings.ApplicationPath())
-	if err != nil {
-		return err
-	}
-	return invocation.prepareStorage(report)
-}
-
-// prepareSyncStorage runs before a distributed sync client opens its stores.
-func (invocation commandInvocation) prepareSyncStorage(collectorPath string) error {
-	report, err := localstorage.InspectSync(invocation.context, collectorPath)
+	report, err := localstorage.InspectLocal(invocation.context, settings.CollectorDBPath, settings.ServerDBPath)
 	if err != nil {
 		return err
 	}
@@ -88,24 +79,16 @@ func resetPrompt(report localstorage.Report) string {
 	text.WriteString("TokenInsights needs to reset local storage written by an older version.\n\n")
 	text.WriteString(storageTable(report.Stores))
 	text.WriteString("\nOld files move aside:\n")
-	rebuilt, app, jobs := false, false, false
+	rebuilt := false
 	for _, store := range report.Stores {
 		if store.Reset && store.Result.Status != storagecompat.Missing {
 			text.WriteString("  " + store.Backup() + "\n")
 		}
-		rebuilt = rebuilt || store.Reset && store.Role != localstorage.Jobs
-		app = app || store.Reset && store.Role == localstorage.Application
-		jobs = jobs || store.Reset && store.Role == localstorage.Jobs
+		rebuilt = rebuilt || store.Reset
 	}
 	text.WriteString("\n")
 	if rebuilt {
 		text.WriteString("Usage is rebuilt from saved usage and harness logs.\n")
-	}
-	if app {
-		text.WriteString("Local accounts and credentials are recreated.\n")
-	}
-	if jobs {
-		text.WriteString("Past sync job status is cleared.\n")
 	}
 	if report.LosesHistory() {
 		text.WriteString("Usage whose harness logs were already deleted cannot be rebuilt.\n")
@@ -181,9 +164,7 @@ func roleName(role localstorage.Role) string {
 		return "collector"
 	case localstorage.Server:
 		return "token"
-	case localstorage.Application:
-		return "application"
 	default:
-		return "sync jobs"
+		return "unknown"
 	}
 }

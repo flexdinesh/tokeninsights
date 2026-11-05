@@ -90,8 +90,8 @@ func TestLayerDependencies(t *testing.T) {
 	}
 	// Storage location rule (docs/design.md): composition roots select adapters;
 	// role packages and adapters share engine mechanics from persistence.
-	compositionRoots := []string{"localruntime", "remoteserver", "packages/cli/cmd/tokeninsights", "packages/server/cmd/tokeninsights-server", "packages/backend/cmd/tokeninsights-backend", "localclient"}
-	storageRoles := []string{"rawcollectorstore", "collectordb", "syncjob", "appstore", "datastore"}
+	compositionRoots := []string{"localruntime", "packages/cli/cmd/tokeninsights", "packages/backend/cmd/tokeninsights-backend"}
+	storageRoles := []string{"rawcollectorstore", "collectordb", "datastore"}
 	for name, dependencies := range imports {
 		adapterOwner := strings.HasPrefix(name, "adapters/")
 		for _, dependency := range dependencies {
@@ -103,7 +103,6 @@ func TestLayerDependencies(t *testing.T) {
 			}
 		}
 	}
-	hostCapture := []string{prefix + "collector", prefix + "pipeline", prefix + "rawcollectorstore", prefix + "collectordb", prefix + "syncjob", prefix + "localruntime", prefix + "clientworkflow", prefix + "localstorage"}
 	pureContract := []string{"database/sql", "net/http", "os", prefix + "persistence", prefix + "adapters", prefix + "datastore", prefix + "server", prefix + "collector", prefix + "pipeline"}
 	rules := []struct {
 		name      string
@@ -117,34 +116,30 @@ func TestLayerDependencies(t *testing.T) {
 		{"datastore", []string{"net/http", prefix + "ingestionhttp", prefix + "collector", prefix + "pipeline", prefix + "server"}},
 		{"application", []string{"database/sql", "net/http", "net/url", prefix + "server", prefix + "queryclient", prefix + "localruntime", prefix + "localclient", prefix + "datastore", prefix + "appstore", prefix + "collector", prefix + "pipeline"}},
 		{"analytics", []string{"database/sql", "net/http", prefix + "datastore", prefix + "appstore", prefix + "collectordb", prefix + "adapters", prefix + "server"}},
-		{"clientaddress", []string{"os", "database/sql", prefix + "accounts", prefix + "datastore", prefix + "server"}},
-		{"accounts", []string{"database/sql", "net/http", prefix + "datastore", prefix + "appstore", prefix + "collectordb", prefix + "adapters", prefix + "clientaddress"}},
 		{"server", []string{"database/sql", prefix + "datastore", prefix + "appstore", prefix + "adapters", prefix + "pipeline", prefix + "collector", prefix + "localruntime", prefix + "remoteserver"}},
-		{"localruntime", []string{prefix + "syncjob", prefix + "clientworkflow"}},
+		{"localruntime", []string{prefix + "endpoint", prefix + "sshtransport", prefix + "tcptransport", prefix + "remoteaccess"}},
 		{"tui", []string{"database/sql", prefix + "datastore", prefix + "appstore", prefix + "collectordb", prefix + "rawcollectorstore", prefix + "collector", prefix + "localruntime", prefix + "localbackend", prefix + "pipeline", prefix + "syncjob", prefix + "localstorage"}},
 		{"capture", pureContract},
 		{"localclient", []string{"database/sql", prefix + "datastore", prefix + "appstore", prefix + "collectordb", prefix + "localruntime", prefix + "localbackend", prefix + "pipeline", prefix + "adapters", prefix + "remoteserver"}},
 		{"localprotocol", []string{"database/sql", prefix + "datastore", prefix + "appstore", prefix + "collectordb", prefix + "localruntime", prefix + "localbackend", prefix + "pipeline", prefix + "adapters", prefix + "remoteserver"}},
 		{"serverruntime", []string{"database/sql", prefix + "datastore", prefix + "appstore", prefix + "collectordb", prefix + "adapters"}},
-		// SSH endpoints select and dial a remote backend; they never open
-		// storage, speak HTTP or substitute local composition.
-		// The remote web proxy forwards read-only dashboard requests only.
+		// Connection values are pure. Transport adapters never select storage.
+		// Bridges expose viewer operations, not backend composition.
 		{"dashboardproxy", []string{"database/sql", prefix + "datastore", prefix + "appstore", prefix + "collectordb", prefix + "localruntime", prefix + "localbackend", prefix + "localclient", prefix + "server", prefix + "pipeline", prefix + "remoteserver", prefix + "collector"}},
-		{"endpoint", []string{"database/sql", "net/http", prefix + "datastore", prefix + "appstore", prefix + "collectordb", prefix + "localruntime", prefix + "localbackend", prefix + "localclient", prefix + "server", prefix + "pipeline", prefix + "remoteserver"}},
-		// Remote servers accept and process evidence; they never capture host
-		// sources or reset storage.
-		{"remoteserver", hostCapture},
-		{"packages/server/cmd/tokeninsights-server", hostCapture},
+		{"endpoint", []string{"database/sql", "net/http", "os", prefix + "datastore", prefix + "collectordb", prefix + "localruntime", prefix + "localbackend", prefix + "localclient", prefix + "server", prefix + "pipeline", prefix + "sshtransport", prefix + "tcptransport"}},
+		{"sshtransport", []string{"database/sql", "net/http", prefix + "datastore", prefix + "collectordb", prefix + "localruntime", prefix + "localbackend", prefix + "localclient", prefix + "server", prefix + "pipeline", prefix + "collector"}},
+		{"tcptransport", []string{"database/sql", prefix + "datastore", prefix + "collectordb", prefix + "localruntime", prefix + "localbackend", prefix + "localclient", prefix + "server", prefix + "pipeline", prefix + "collector"}},
+		{"remoteaccess", []string{"database/sql", prefix + "datastore", prefix + "collectordb", prefix + "localruntime", prefix + "localbackend", prefix + "server", prefix + "pipeline", prefix + "collector", prefix + "config"}},
+		{"desktoplaunch", []string{"database/sql", prefix + "datastore", prefix + "collectordb", prefix + "localruntime", prefix + "localbackend", prefix + "server", prefix + "pipeline", prefix + "collector"}},
 		{"collector", []string{prefix + "processor", prefix + "dataengine", prefix + "datastore", prefix + "analytics", prefix + "accounts", prefix + "server", prefix + "localruntime", prefix + "remoteserver"}},
 		{"evidence", pureContract},
 		{"publication", pureContract},
 		{"collectordb", []string{"net/http"}},
-		{"operator", []string{"database/sql", prefix + "datastore", prefix + "appstore", prefix + "server", prefix + "ingestionhttp"}},
 		{"writerlock", []string{"database/sql", "net/http"}},
 		{"dbpath", []string{"database/sql", "net/http"}},
 		{"storagecompat", pureContract},
 	}
-	persistenceOwners := map[string]bool{"datastore": true, "pipeline": true, "localruntime": true, "collector": true, "collectordb": true, "remoteserver": true, "packages/server/cmd/tokeninsights-server": true}
+	persistenceOwners := map[string]bool{"datastore": true, "pipeline": true, "localruntime": true, "collector": true, "collectordb": true}
 	// Command packages compose through localruntime; they never construct
 	// storage adapters or HTTP handlers themselves.
 	direct := []struct {
@@ -189,8 +184,11 @@ func TestLayerDependencies(t *testing.T) {
 				}
 				seen[name] = true
 				for _, dependency := range imports[name] {
+					// Viewer compositions use the read-wire adapter through
+					// queryclient, without importing the server implementation.
+					wireContract := dependency == prefix+"server/api" && (rule.name == "remoteaccess" || rule.name == "desktoplaunch")
 					for _, forbidden := range rule.forbidden {
-						if dependency == forbidden || strings.HasPrefix(dependency, forbidden+"/") {
+						if !wireContract && (dependency == forbidden || strings.HasPrefix(dependency, forbidden+"/")) {
 							t.Errorf("%s imports forbidden dependency %s (root %s)", name, dependency, rule.name)
 						}
 					}

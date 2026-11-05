@@ -1,168 +1,125 @@
 # Development
 
-Run from repo root. `mise tasks ls` lists every task. User commands: [CLI](cli.md).
+Run from repo root. `mise tasks ls` lists tasks. User commands: [CLI](cli.md).
 
-## Install from main
+## Install main
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/flexdinesh/tokeninsights/main/install-main.sh | sh                                # CLI
-curl -fsSL https://raw.githubusercontent.com/flexdinesh/tokeninsights/main/install-mygo.sh | sh -s -- --channel=main          # MyGo
-curl -fsSL https://raw.githubusercontent.com/flexdinesh/tokeninsights/main/install-electron.sh | sh -s -- --channel=main      # Electron
-curl -fsSL https://raw.githubusercontent.com/flexdinesh/tokeninsights/main/install-server.sh | sh -s -- --channel=main        # server
-curl -fsSL https://raw.githubusercontent.com/flexdinesh/tokeninsights/main/install.sh | sh                                    # back to stable
-fish_add_path ~/.local/bin                     # if not on PATH
+curl -fsSL https://raw.githubusercontent.com/flexdinesh/tokeninsights/main/install-mygo.sh | sh -s -- --channel=main
+curl -fsSL https://raw.githubusercontent.com/flexdinesh/tokeninsights/main/install-main.sh | sh
+curl -fsSL https://raw.githubusercontent.com/flexdinesh/tokeninsights/main/install-electron.sh | sh -s -- --channel=main
+fish_add_path ~/.local/bin
 ```
 
-## Run main build
+MyGo includes CLI/backend. CLI-only supports TUI/web; Electron remains separate.
+Use `tokeninsights --version` to inspect the installed version.
+Stable/main replace the selected product. Installation never terminates viewers.
 
-Main replaces stable at `~/.local/bin/tokeninsights`; same commands as [CLI](cli.md).
+## Setup and fixtures
 
 ```sh
-tokeninsights --version                        # confirm main build
-cat ~/.local/share/tokeninsights/products/cli/.channel  # stable|main
-tokeninsights tui
-tokeninsights tui --sync=false
-tokeninsights web
-tokeninsights web --open=mygo                  # MyGo installed from main
-tokeninsights web --open=electron              # Electron installed from main
-tokeninsights web --open=browser
-tokeninsights tui --endpoint ssh://you@devbox  # remote needs matching protocol version
-tokeninsights web --endpoint ssh://you@devbox
-tokeninsights sync --wait
-tokeninsights-server --version                 # server installed from main
+git clone git@github.com:flexdinesh/tokeninsights.git
+cd tokeninsights
+mise trust
+mise install
+mise run setup
+mise run setup:browser
+mise run dev:data
+mise run dev
+mise run dev:cli
+mise run dev:web:mock
+mise run dev:docs
 ```
 
-## Setup
+Development data is synthetic and isolated in `.tokeninsights-dev/`. Fixture
+capture uses the same runtime/collector and ownership locks. The guarded internal
+entrypoint is not a public headless capture command.
+
+## Build and run
 
 ```sh
-git clone git@github.com:flexdinesh/tokeninsights.git && cd tokeninsights
-mise trust && mise install                     # pinned Go/Node/pnpm (mise 2026.10.18)
-mise run setup                                 # deps + Husky hooks
-mise run setup:browser                         # Chromium for e2e
-```
-
-## Dev loop (fixture data)
-
-```sh
-mise run dev:data                              # recreate synthetic fixture DBs in .tokeninsights-dev/
-mise run dev                                   # Go API + hot-reload web; prints both URLs
-mise run dev -- --api-port 8765 --web-port 5173  # explicit ports; 0 = auto
-mise run dev:cli                               # TUI on fixture data
-mise run dev:server -- --api-port 0            # Go API only
-TOKENINSIGHTS_DEV_API_URL=http://127.0.0.1:PORT mise run dev:web -- --port 0  # web against that API
-mise run dev:web:mock                          # web with synthetic API, no Go
-mise run dev:docs                              # docs site at http://localhost:5173/
-```
-
-## Build and run local binary
-
-```sh
-mise run build:cli                             # packages/cli/bin/{tokeninsights,tokeninsights-backend}, packages/server/bin/tokeninsights-server
+mise run build:cli
 ./packages/cli/bin/tokeninsights tui
-./packages/cli/bin/tokeninsights tui --sync=false --all-time
-./packages/cli/bin/tokeninsights web
+./packages/cli/bin/tokeninsights tui --capture=false --all-time
 ./packages/cli/bin/tokeninsights web --port 0 --open=false
-./packages/cli/bin/tokeninsights web --open=browser
-./packages/cli/bin/tokeninsights web --open=mygo      # needs MyGo installed
-./packages/cli/bin/tokeninsights web --open=electron  # needs Electron installed
-mise run start:web                             # build:cli + web
+./packages/cli/bin/tokeninsights --open=mygo
+./packages/cli/bin/tokeninsights --open=electron
+mise run build:desktop
+mise run build:docs
 ```
 
-## SSH endpoint
+Desktop selection requires the installed selected app. No browser fallback.
+`build:cli` produces CLI/backend in packages/cli/bin; browser assets are generated
+before Go compilation. After tooling/web-asset changes also build directly from
+packages/cli and run the binary with Node/npm/pnpm absent from PATH.
+For manual CLI/TUI checks use the built project binary.
+
+## SSH and network validation
 
 ```sh
-./packages/cli/bin/tokeninsights tui --endpoint ssh://you@devbox
-./packages/cli/bin/tokeninsights web --endpoint ssh://you@devbox
-./packages/cli/bin/tokeninsights data wait --endpoint ssh://you@devbox
-./packages/cli/bin/tokeninsights config set remote.command /home/you/.local/bin/tokeninsights  # remote binary path
-tokeninsights-mygo --endpoint=ssh://you@devbox # installed MyGo, Linux
-open -a "TokenInsights MyGo" --args --endpoint=ssh://you@devbox  # installed MyGo, macOS
+./packages/cli/bin/tokeninsights connect ssh://you@devbox
+./packages/cli/bin/tokeninsights tui --connection ssh://you@devbox
+./packages/cli/bin/tokeninsights web --connection ssh://you@devbox
+./packages/cli/bin/tokeninsights data wait --connection ssh://you@devbox
+./packages/cli/bin/tokeninsights config set remote.command /home/you/.local/bin/tokeninsights
+./packages/cli/bin/tokeninsights remote
 ```
 
-## Desktop experiments
+`remote` prints a shell-quoted connect command with a temporary TLS pin/token URI.
+Use the exact string, including on the serving host. Stop invalidates it.
+See [remote](remote.md) for `--listen`/`--advertise`.
+Keep real OpenSSH and isolated TCP/network checks in local Dagger validation;
+unit stubs alone cannot prove transport or installed-product behavior.
 
-```sh
-mise run build:desktop                         # dist/tokeninsights-{mygo,electron}_<os>_<arch>.tar.gz
-tar -xzf dist/tokeninsights-mygo_linux_amd64.tar.gz -C /tmp && /tmp/tokeninsights-mygo_linux_amd64/tokeninsights-mygo
-tar -xzf dist/tokeninsights-electron_linux_amd64.tar.gz -C /tmp && /tmp/tokeninsights-electron_linux_amd64/tokeninsights-electron
-pnpm --filter @tokeninsights/desktop-electron run install:runtime  # pinned Electron runtime
-mise run check:desktop                         # installed Electron GUI check, sandboxed, on host
-```
+## Format and validation
 
-## Remote server
-
-```sh
-mkdir -p /tmp/ti-server && TOKENINSIGHTS_BOOTSTRAP_USERNAME=alice TOKENINSIGHTS_BOOTSTRAP_PASSWORD=change-me-please-123 \
-  ./packages/server/bin/tokeninsights-server --listen 127.0.0.1:8766 --server-db-path /tmp/ti-server/server.sqlite --admin-socket /tmp/ti-server/admin.sock
-./packages/server/bin/tokeninsights-server admin --admin-socket /tmp/ti-server/admin.sock token create USER_ID --scopes read,ingest
-TOKENINSIGHTS_BOOTSTRAP_USERNAME=alice TOKENINSIGHTS_BOOTSTRAP_PASSWORD=... docker compose up -d --build  # SQLite image on 127.0.0.1:8766
-docker compose -f deploy/compose.postgres.yaml up -d --build                     # PostgreSQL
-docker compose exec tokeninsights tokeninsights-server admin token create USER_ID --scopes read,ingest
-```
-
-Client against it, isolated config:
-
-```sh
-C="--config-file /tmp/ti-server/client.json"
-./packages/cli/bin/tokeninsights $C config set distributed.server-url http://127.0.0.1:8766
-./packages/cli/bin/tokeninsights $C config set distributed.server-token
-./packages/cli/bin/tokeninsights $C sync --wait
-./packages/cli/bin/tokeninsights $C sync --debug
-./packages/cli/bin/tokeninsights $C sync status
-./packages/cli/bin/tokeninsights $C browse
-```
-
-## Format, lint, test
+Format/lint before verification. Public validation entrypoints use isolated groups:
 
 ```sh
 mise run format
-mise run lint
-mise run test                                  # all, via Dagger, live PostgreSQL
-mise run test:js
-mise run test:go
-mise run test:race
-mise run test:web-e2e
-mise run test:container                        # after Dockerfile/deploy changes
-mise run check-schema
-mise run check-api
-mise run generate:api
-mise run build:web                             # needed before direct go build/test
-mise run build                                 # all binaries + plugins
+mise run check:pr -- --group go
+mise run check:pr -- --group deployment
+```
+
+Groups: format, static, web, tooling, go, benchmarks, distribution, browser,
+deployment. Internal leaf tasks are implementation details.
+
+Before PR creation/update, commit intended changes and require clean tracked HEAD:
+
+```sh
+mise run check:pr
+mise run check:desktop
+mise run build:docs
+```
+
+Full successful evidence must match inputs. No PR CI runs; main/release CI builds
+and publishes products only. Electron GUI validation runs on the host with Chromium
+sandboxing enabled because managed Dagger denies unprivileged user namespaces.
+Packaging/runtime/SSH/network checks remain isolated. Never weaken accounting,
+privacy, receipt replay or restart assertions to accommodate a failure.
+
+Use the explicitly managed repository Dagger engine and dedicated named cache.
+Set `DAGGER_LEAVE_OLD_ENGINE=true` and the direct runner endpoint, including setup.
+Never stop/restart/prune other tasks' engines or volumes. Unknown ownership means
+leave untouched. Cancellation stops only the invocation.
+
+Artifacts: `<canonical-git-common-dir>/tokeninsights-validation/v2/runs/<run-id>/`.
+Inspect failed retained artifacts; rerun the failed group. `--force` bypasses
+successful check caches. Never poll long checks or delete another invocation's
+artifacts. Status/setup are exposed by `check:status` and
+`check:pr -- --setup-engine`; engine upgrades/cleanup require coordination.
+
+## Benchmarks and toolchain
+
+```sh
 mise run bench:smoke
 mise run bench:storage
+mise run check:toolchain
 ```
 
-## Validate before PR
+Use synthetic real SQLite fixtures. Benchmark timing is not a production SLO.
+Tool versions live in mise.toml/mise.lock; keep package manager, Go module and
+validation fixture images aligned when bumping. See [performance](ingestion-performance.md).
 
-Commit first; tracked tree must be clean.
-
-```sh
-mise run check:pr                              # full suite on HEAD
-mise run check:pr -- --group go                # format|static|web|tooling|go|benchmarks|distribution|browser|deployment
-mise run check:pr -- --force                   # ignore cached receipts
-mise run check:pr -- --setup-engine            # create missing managed Dagger engine
-mise run check:status                          # receipt status, no engine
-mise run check:cleanup                         # prune old run artifacts
-mise run check:desktop                         # also required before PR
-```
-
-Artifacts: `<git-common-dir>/tokeninsights-validation/v2/runs/<run-id>/`. Engine: `tokeninsights-validation-engine-v0.21.11`; never prune or restart it. Apt steps run under a guard (memory cap, timeout, log filter, backoff retries) and reuse `tokeninsights-validation-apt-<suite>-<snapshot>` cache volumes inside that engine; rename them with the snapshot date.
-
-## Direct Go
-
-```sh
-mise run build:web
-cd packages/cli && go test ./... && go build -o bin/tokeninsights ./cmd/tokeninsights
-```
-
-## Toolchain bump
-
-Edit `mise.toml`, `mise lock`, then match Dockerfile images/pnpm, root `package.json` `packageManager`, `go.mod`; `mise run check:toolchain`.
-
-## Misc
-
-```sh
-git commit -m "docs: update readme [skip ci]"  # skip CI on docs-only main push
-```
-
-Scratch notes go in ignored `.scratch/`. More: [design](design.md), [deployment](deployment.md), [release](release.md), [benchmarks](ingestion-performance.md), [OpenAPI](openapi.yaml).
+Scratch issues/reports stay ignored in `.scratch/`. Durable docs:
+[design](design.md), [release](release.md), [coverage](collector-ingestion-tests.md).

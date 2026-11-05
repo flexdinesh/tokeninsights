@@ -13,7 +13,6 @@ import (
 	"time"
 
 	"github.com/flexdinesh/tokeninsights/packages/core/analytics"
-	"github.com/flexdinesh/tokeninsights/packages/core/appstore"
 	"github.com/flexdinesh/tokeninsights/packages/core/collector"
 	"github.com/flexdinesh/tokeninsights/packages/core/collectordb"
 	"github.com/flexdinesh/tokeninsights/packages/core/datastore"
@@ -22,7 +21,6 @@ import (
 	"github.com/flexdinesh/tokeninsights/packages/core/pipeline"
 	"github.com/flexdinesh/tokeninsights/packages/core/serverownership"
 	"github.com/flexdinesh/tokeninsights/packages/core/storagecompat"
-	"github.com/flexdinesh/tokeninsights/packages/core/syncjob"
 )
 
 const visibilityTimeout = 30 * time.Second
@@ -64,7 +62,7 @@ type usage struct {
 // capture runs real local collection and returns all-time usage once visible.
 func capture(t *testing.T, p paths) usage {
 	t.Helper()
-	runtime, err := localruntime.OpenWithApp(t.Context(), p.collector, p.server, p.app)
+	runtime, err := localruntime.Open(t.Context(), p.collector, p.server)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -123,13 +121,6 @@ func TestInspectClassifiesEveryLocalRole(t *testing.T) {
 		{"server", func(p paths) string { return p.server }, datastore.SchemaVersion, func(ctx context.Context, p paths) (storagecompat.Result, error) {
 			return datastore.InspectCompatibility(ctx, p.server)
 		}},
-		{"app", func(p paths) string { return p.app }, appstore.SchemaVersion, func(ctx context.Context, p paths) (storagecompat.Result, error) {
-			return appstore.InspectCompatibility(ctx, p.app, datastore.KindPersonal)
-		}},
-		{"jobs", func(p paths) string { return p.collector + ".jobs.sqlite" }, syncjob.SchemaVersion, func(ctx context.Context, p paths) (storagecompat.Result, error) {
-			_, result, err := syncjob.InspectCompatibility(ctx, p.collector)
-			return result, err
-		}},
 	}
 	cases := []struct {
 		name   string
@@ -171,7 +162,7 @@ func TestInspectClassifiesEveryLocalRole(t *testing.T) {
 
 func createStores(t *testing.T, p paths) {
 	t.Helper()
-	runtime, err := localruntime.OpenWithApp(t.Context(), p.collector, p.server, p.app)
+	runtime, err := localruntime.Open(t.Context(), p.collector, p.server)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -185,13 +176,7 @@ func createStores(t *testing.T, p paths) {
 	if err := database.Close(); err != nil {
 		t.Fatal(err)
 	}
-	jobs, err := syncjob.Open(t.Context(), p.collector)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := jobs.Close(); err != nil {
-		t.Fatal(err)
-	}
+
 }
 
 // snapshot records file names and contents, excluding lock sidecars, the
@@ -227,18 +212,18 @@ func TestServerResetReplaysSavedCollectorEvidence(t *testing.T) {
 		t.Fatal("fixture captured nothing", expected)
 	}
 	setPragma(t, p.server, "PRAGMA user_version=0")
-	report, err := localstorage.InspectLocal(t.Context(), p.collector, p.server, p.app)
+	report, err := localstorage.InspectLocal(t.Context(), p.collector, p.server)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !status(t, report, localstorage.Server).Reset || !status(t, report, localstorage.Application).Reset || status(t, report, localstorage.Collector).Reset || report.LosesHistory() {
+	if !status(t, report, localstorage.Server).Reset || status(t, report, localstorage.Collector).Reset || report.LosesHistory() {
 		t.Fatalf("unexpected plan %+v", report)
 	}
 	moved, err := localstorage.Reset(t.Context(), report, time.Now())
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, path := range []string{p.server + ".v0.bak", p.app + ".v2.bak", p.server + ".application.json.v0.bak"} {
+	for _, path := range []string{p.server + ".v0.bak"} {
 		if _, err := os.Stat(path); err != nil {
 			t.Fatal("backup missing", path, moved)
 		}
@@ -257,11 +242,11 @@ func TestCollectorResetKeepsLocalUsageWithoutDoubleCounting(t *testing.T) {
 	copySources(t, p.source)
 	expected := capture(t, p)
 	setPragma(t, p.collector, "PRAGMA user_version=19")
-	report, err := localstorage.InspectLocal(t.Context(), p.collector, p.server, p.app)
+	report, err := localstorage.InspectLocal(t.Context(), p.collector, p.server)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !status(t, report, localstorage.Collector).Reset || status(t, report, localstorage.Server).Reset || status(t, report, localstorage.Application).Reset {
+	if !status(t, report, localstorage.Collector).Reset || status(t, report, localstorage.Server).Reset {
 		t.Fatalf("unexpected plan %+v", report)
 	}
 	if _, err := localstorage.Reset(t.Context(), report, time.Now()); err != nil {
@@ -281,7 +266,7 @@ func TestBothResetReportsHistoryLoss(t *testing.T) {
 	createStores(t, p)
 	setPragma(t, p.collector, "PRAGMA user_version=19")
 	setPragma(t, p.server, "PRAGMA user_version=0")
-	report, err := localstorage.InspectLocal(t.Context(), p.collector, p.server, p.app)
+	report, err := localstorage.InspectLocal(t.Context(), p.collector, p.server)
 	if err != nil || !report.LosesHistory() {
 		t.Fatal("history loss not reported", report, err)
 	}
@@ -291,7 +276,7 @@ func TestResetMovesCompanionsAndKeepsEarlierBackups(t *testing.T) {
 	p := newPaths(t)
 	createStores(t, p)
 	setPragma(t, p.collector, "PRAGMA user_version=19")
-	report, err := localstorage.InspectSync(t.Context(), p.collector)
+	report, err := localstorage.InspectLocal(t.Context(), p.collector, p.server)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -325,7 +310,7 @@ func TestResetRejectsOwnedServerWithoutMoving(t *testing.T) {
 	p := newPaths(t)
 	createStores(t, p)
 	setPragma(t, p.server, "PRAGMA user_version=0")
-	report, err := localstorage.InspectLocal(t.Context(), p.collector, p.server, p.app)
+	report, err := localstorage.InspectLocal(t.Context(), p.collector, p.server)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -348,7 +333,7 @@ func TestBlockedReportResetsNothing(t *testing.T) {
 	createStores(t, p)
 	setPragma(t, p.collector, "PRAGMA user_version=21")
 	setPragma(t, p.server, "PRAGMA user_version=0")
-	report, err := localstorage.InspectLocal(t.Context(), p.collector, p.server, p.app)
+	report, err := localstorage.InspectLocal(t.Context(), p.collector, p.server)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -361,5 +346,33 @@ func TestBlockedReportResetsNothing(t *testing.T) {
 	}
 	if after := snapshot(t, p.root); !reflect.DeepEqual(before, after) {
 		t.Fatal("blocked reset moved files")
+	}
+}
+
+func TestInspectionAndResetLeaveRetiredStoresUntouched(t *testing.T) {
+	p := newPaths(t)
+	createStores(t, p)
+	retired := map[string]string{
+		p.app:                          "retired account data",
+		p.collector + ".jobs.sqlite":   "retired sync jobs",
+		p.server + ".application.json": "retired pairing guard",
+	}
+	for path, body := range retired {
+		if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	setPragma(t, p.server, "PRAGMA user_version=0")
+	report, err := localstorage.InspectLocal(t.Context(), p.collector, p.server)
+	if err != nil || len(report.Stores) != 2 || len(report.Blocked()) != 0 {
+		t.Fatal("retired stores affected inspection", report, err)
+	}
+	if _, err := localstorage.Reset(t.Context(), report, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	for path, want := range retired {
+		if got, err := os.ReadFile(path); err != nil || string(got) != want {
+			t.Fatal("retired store moved or changed", path, err)
+		}
 	}
 }
