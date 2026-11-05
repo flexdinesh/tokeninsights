@@ -35,11 +35,15 @@ link_stage=
 published_link=
 previous_link=
 published_cli=
+previous_cli=
 complete=false
 published_product=false
 cleanup() {
     if [ "$complete" = false ]; then
-        if [ -n "$published_cli" ]; then rm -f "$published_cli"; fi
+        if [ -n "$published_cli" ]; then
+            rm -f "$published_cli"
+            if [ -n "$previous_cli" ]; then ln -s "$previous_cli" "$published_cli"; fi
+        fi
         if [ -n "$published_link" ]; then
             rm -f "$published_link"
             if [ -n "$previous_link" ]; then ln -s "$previous_link" "$published_link"; fi
@@ -213,14 +217,16 @@ if [ -e "$link" ] || [ -L "$link" ]; then
         : # An explicitly installed CLI takes command ownership from bundled MyGo.
     else fail "refusing to replace unowned path $link"; fi
 fi
-# MyGo supplies the command unless an owned CLI-only installation already does.
+# The most recent CLI or MyGo install owns the command, so neither leaves a stale one.
 cli_link="$HOME/.local/bin/tokeninsights"
 publish_cli=false
 if [ "$product" = mygo ]; then
     if [ -e "$cli_link" ] || [ -L "$cli_link" ]; then
         [ -L "$cli_link" ] || fail "refusing to replace unowned path $cli_link"
         existing_cli="$(readlink "$cli_link")"
-        if [ "$existing_cli" = "$products/cli/tokeninsights" ] && owned_product cli; then :
+        if [ "$existing_cli" = "$products/cli/tokeninsights" ] && owned_product cli; then
+            previous_cli="$existing_cli"
+            publish_cli=true
         elif [ "$existing_cli" = "$mygo_cli" ] && owned_product mygo; then :
         else fail "refusing to replace unowned path $cli_link"; fi
     else publish_cli=true; fi
@@ -288,3 +294,13 @@ fi
 if [ -n "$backup" ]; then rm -rf "$backup"; backup=; fi
 complete=true
 printf 'Installed %s (%s): %s\n' "$product" "$channel" "$link"
+if [ -n "$previous_cli" ]; then
+    printf 'tokeninsights now runs the MyGo CLI; rerun install.sh to return to CLI-only\n'
+fi
+# Retired Homebrew and Go installs can stay ahead of the published link.
+if [ "$product" != electron ]; then
+    resolved="$(command -v tokeninsights || true)"
+    if [ ! "$resolved" -ef "$cli_link" ]; then
+        printf 'warning: PATH runs %s instead of %s; put ~/.local/bin first and remove any older tokeninsights\n' "${resolved:-nothing}" "$cli_link" >&2
+    fi
+fi

@@ -367,7 +367,7 @@ for (const os of ['linux', 'darwin']) {
     assert.match(rejected.stderr, /archive lacks executable tokeninsights/)
     assert.ok(!existsSync(f.installed('mygo')))
   })
-  void test(`${os} MyGo installs the bundled CLI and preserves CLI-only ownership`, (t) => {
+  void test(`${os} latest CLI or MyGo install owns the command`, (t) => {
     const f = fixture(t)
     const platform = os === 'darwin' ? 'darwin' : 'linux'
     const overrides = os === 'darwin' ? { TEST_OS: 'Darwin' } : {}
@@ -385,7 +385,12 @@ for (const os of ['linux', 'darwin']) {
     f.archive('mygo', 'v2', platform)
     const upgrade = f.run('install-mygo.sh', [], overrides)
     assert.equal(upgrade.status, 0, upgrade.stderr)
-    assert.equal(execFileSync(command, { encoding: 'utf8' }).trim(), 'cli-only')
+    assert.match(upgrade.stdout, /now runs the MyGo CLI/)
+    assert.equal(execFileSync(command, { encoding: 'utf8' }).trim(), 'cli-v2')
+    assert.ok(existsSync(join(f.installed('cli'), 'tokeninsights')))
+    const steady = f.run('install-mygo.sh', [], overrides)
+    assert.equal(steady.status, 0, steady.stderr)
+    assert.doesNotMatch(steady.stdout, /now runs the MyGo CLI/)
   })
   void test(`${os} MyGo rejects an unrelated command before replacing its product`, (t) => {
     const f = fixture(t)
@@ -424,6 +429,40 @@ void test('failed CLI command handover restores owned MyGo command and product s
   assert.equal(readlinkSync(command), original)
   assert.ok(!existsSync(f.installed('cli')))
   assert.equal(execFileSync(command, { encoding: 'utf8' }).trim(), 'cli-v1')
+})
+void test('failed MyGo install restores the CLI-only command', (t) => {
+  const f = fixture(t)
+  f.archive('cli', 'cli-only')
+  assert.equal(f.run().status, 0)
+  const command = join(f.home, '.local/bin/tokeninsights')
+  const original = readlinkSync(command)
+  f.archive('mygo')
+  executable(
+    join(f.bin, 'cp'),
+    'case "$*" in *desktop-entry*) exit 17 ;; *) exec /bin/cp "$@" ;; esac',
+  )
+  const result = f.run('install-mygo.sh')
+  assert.notEqual(result.status, 0)
+  assert.equal(readlinkSync(command), original)
+  assert.ok(!existsSync(f.installed('mygo')))
+  assert.equal(execFileSync(command, { encoding: 'utf8' }).trim(), 'cli-only')
+})
+void test('installers warn only when PATH does not run the published command', (t) => {
+  const f = fixture(t)
+  const local = join(f.home, '.local/bin')
+  const system = `${f.bin}:/usr/bin:/bin`
+  f.archive('mygo')
+  assert.equal(
+    f.run('install-mygo.sh', [], { PATH: `${local}:${system}` }).stderr.includes('warning: PATH'),
+    false,
+  )
+  assert.match(f.run('install-mygo.sh', [], { PATH: system }).stderr, /warning: PATH runs nothing/)
+  executable(join(f.bin, 'tokeninsights'), 'echo retired')
+  const shadowed = f.run('install-mygo.sh', [], { PATH: `${system}:${local}` })
+  assert.equal(shadowed.status, 0, shadowed.stderr)
+  assert.match(shadowed.stderr, /warning: PATH runs .*\/bin\/tokeninsights instead of/)
+  f.archive('electron')
+  assert.doesNotMatch(f.run('install-electron.sh').stderr, /warning: PATH/)
 })
 void test('rejects unsupported host and channel before download', (t) => {
   const f = fixture(t)
