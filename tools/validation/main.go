@@ -7,7 +7,6 @@ import (
 	"dagger/validation/internal/dagger"
 	"errors"
 	"fmt"
-	"strings"
 )
 
 type Validation struct{}
