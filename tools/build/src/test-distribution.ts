@@ -29,8 +29,9 @@ try {
   await buildProducts(out, metadata)
   const { writeChecksums } = await import('./build-products.ts')
   await writeChecksums(out)
-  for (const script of ['install.sh', 'install-desktop.sh'])
-    execFileSync('sh', [workspacePath(script)], { env, stdio: 'inherit' })
+  // Inherited ZDOTDIR could reach a real profile, so this host-run contract never edits PATH.
+  for (const args of [['--cli-only', '--no-modify-path'], ['--no-modify-path']])
+    execFileSync('sh', [workspacePath('install.sh'), ...args], { env, stdio: 'inherit' })
   const installed = join(fixture, 'data/tokeninsights/products')
   for (const [product, binary] of [
     ['cli', 'tokeninsights'],

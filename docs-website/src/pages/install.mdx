@@ -3,50 +3,56 @@
 macOS/Linux, amd64/arm64. Products are prebuilt GitHub Release downloads.
 No Go or Node installation is required.
 
-## Desktop
+## Desktop and CLI
 
-The desktop installer includes the CLI and backend:
+The installer includes the desktop app, CLI and backend:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/flexdinesh/tokeninsights/main/install-desktop.sh | sh
+curl -fsSL https://raw.githubusercontent.com/flexdinesh/tokeninsights/main/install.sh | sh
 tokeninsights
 ```
 
 Desktop uses WKWebView on macOS and WebKitGTK 4.1 on Linux. It shows
 the same dashboard as the browser and can coexist with TUI/web.
 
-## CLI, TUI and browser
+## Servers without a display
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/flexdinesh/tokeninsights/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/flexdinesh/tokeninsights/main/install.sh | sh -s -- --cli-only
 tokeninsights tui
 tokeninsights web
 ```
 
 The CLI-only product includes the backend. Bare `tokeninsights` still opens
-desktop, so install that app or explicitly use TUI/web.
+desktop, so install that app or explicitly use TUI/web. Repeat `--cli-only` when
+updating; a rerun without it installs desktop.
 
 An unavailable desktop fails with installation guidance, without opening a browser.
 
 ## Paths, channels and updates
 
-Command links use `~/.local/bin`; add it to PATH if needed. The most recent CLI or
-desktop install owns `tokeninsights`, and both warn when PATH runs another command.
+Command links use `~/.local/bin`. When that is not on PATH, the installer adds one
+marked line to your shell profile: `.zshenv` for zsh, `.bashrc` and a login profile
+for bash, `conf.d/tokeninsights.fish` for fish, otherwise `.profile`. Open a new
+shell, or run the command it prints. `--no-modify-path` opts out. Non-interactive
+SSH may skip these profiles; set `remote.command` if `connect` cannot find the
+command. The most recent CLI or desktop install owns `tokeninsights`, and both warn
+when PATH runs another command.
 macOS apps appear in
 `~/Applications`; Linux apps have distinct desktop entries. Product files live
 under `${XDG_DATA_HOME:-~/.local/share}/tokeninsights/products/`.
 No login service is installed. The backend starts on demand and stops after its
 last lease and reconnect grace.
 
-Every product script accepts `--channel=stable` (default) or `--channel=main`.
-Main has no macOS Intel build:
+`install.sh` uses stable and `install-main.sh` the latest main build; both accept
+`--channel=stable` or `--channel=main`. Main has no macOS Intel build:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/flexdinesh/tokeninsights/main/install-desktop.sh | sh -s -- --channel=main
+curl -fsSL https://raw.githubusercontent.com/flexdinesh/tokeninsights/main/install-main.sh | sh
 ```
 
-CLI's latest main build also has `install-main.sh`. Rerun to update.
-Both installers recognize CLI links from installer-owned MyGo products before the
+Rerun to update.
+Both products recognize CLI links from installer-owned MyGo products before the
 desktop rename; they update the command without deleting the old product or launcher.
 Downloads/checksums come from stable releases or the rolling main prerelease.
 Failed downloads preserve the existing installation. Close viewers before an

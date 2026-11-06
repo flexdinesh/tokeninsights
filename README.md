@@ -8,15 +8,16 @@ Local token usage dashboard for OpenCode, Pi, Codex, and Claude Code.
 
 ## Install
 
-macOS/Linux, amd64/arm64. Desktop includes the CLI and Go backend.
+macOS/Linux, amd64/arm64. Installs the desktop app, CLI and Go backend, and puts the
+CLI on PATH.
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/flexdinesh/tokeninsights/main/install-desktop.sh | sh
-curl -fsSL https://raw.githubusercontent.com/flexdinesh/tokeninsights/main/install.sh | sh # CLI, TUI, web
+curl -fsSL https://raw.githubusercontent.com/flexdinesh/tokeninsights/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/flexdinesh/tokeninsights/main/install.sh | sh -s -- --cli-only # servers without a display
 ```
 
-Rerun to update. Latest main build: `install-main.sh` for CLI, or append
-`| sh -s -- --channel=main` to a product script. Main has no macOS Intel build.
+Rerun to update, repeating `--cli-only` on servers. Latest main build: `install-main.sh`.
+Main has no macOS Intel build. `--no-modify-path` leaves shell profiles untouched.
 Updates recognize installer-owned MyGo CLI links from before the desktop rename,
 without deleting the old product files.
 

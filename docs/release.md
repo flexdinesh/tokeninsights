@@ -4,7 +4,7 @@ Install prebuilt products from GitHub Releases. No Go, Node, npm, pnpm or reposi
 
 ## Install
 
-CLI, TUI, browser launcher and their backend, latest stable:
+Desktop, CLI, TUI, browser launcher and their backend, latest stable:
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/flexdinesh/tokeninsights/main/install.sh | sh
@@ -16,15 +16,15 @@ Latest main build:
 curl -fsSL https://raw.githubusercontent.com/flexdinesh/tokeninsights/main/install-main.sh | sh
 ```
 
-Desktop (includes CLI/backend):
+CLI, TUI, browser launcher and their backend, for servers without a display:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/flexdinesh/tokeninsights/main/install-desktop.sh | sh
+curl -fsSL https://raw.githubusercontent.com/flexdinesh/tokeninsights/main/install.sh | sh -s -- --cli-only
 ```
 
-Product scripts default to stable. Pass `sh -s -- --channel=main` to choose main. Rerun to upgrade. Stable/main replace the selected product. Installers verify a unique SHA-256 checksum, product identity and archive layout, then stage replacement in user-owned storage. An incomplete download or checksum failure leaves the installed product intact. `TOKENINSIGHTS_DOWNLOAD_URL` overrides the download base for local release fixtures.
+Both scripts install the desktop product, which bundles the CLI and backend; `--cli-only` selects the CLI product instead. `install.sh` also accepts `--channel=main`. Rerun to upgrade; a rerun without `--cli-only` installs desktop. Stable/main replace the selected product. Installers verify a unique SHA-256 checksum, product identity and archive layout, then stage replacement in user-owned storage. An incomplete download or checksum failure leaves the installed product intact. `TOKENINSIGHTS_DOWNLOAD_URL` overrides the download base for local release fixtures.
 
-Product files live under `${XDG_DATA_HOME:-~/.local/share}/tokeninsights/products/`. Command links use `~/.local/bin`; macOS apps use `~/Applications`. Add `~/.local/bin` to PATH if needed. Installation starts no background service. Each client product contains its own backend; desktop installation also exposes the CLI. The most recent CLI or desktop install owns `tokeninsights`, and both warn when PATH runs another command. Removing another client cannot remove the selected product's backend dependency. Close viewers before upgrading an incompatible local-client version. Installers never terminate running viewers.
+Product files live under `${XDG_DATA_HOME:-~/.local/share}/tokeninsights/products/`. Command links use `~/.local/bin`; macOS apps use `~/Applications`. When `~/.local/bin` is not on PATH, a completed install adds one marked, idempotent line to the `$SHELL` profile: zsh `${ZDOTDIR:-~}/.zshenv`; bash `~/.bashrc` plus `~/.bash_profile` or `~/.profile`; fish `conf.d/tokeninsights.fish`; otherwise `~/.profile`. A failed edit only warns, and `--no-modify-path` opts out. Installation starts no background service. Each client product contains its own backend; desktop installation also exposes the CLI. The most recent CLI or desktop install owns `tokeninsights`, and both warn when PATH runs another command. Removing another client cannot remove the selected product's backend dependency. Close viewers before upgrading an incompatible local-client version. Installers never terminate running viewers.
 
 Homebrew and versioned `go install` delivery are no longer supported. Historical releases/tags remain downloadable. Building source remains a development workflow through mise.
 
