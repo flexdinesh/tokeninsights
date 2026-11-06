@@ -54,8 +54,10 @@ function fixture(t: TestContext) {
       encoding: 'utf8',
       env: { ...env, ...overrides },
     })
-  const runPiped = (script = 'install.sh') =>
-    spawnSync('sh', ['-s'], {
+  const runCli = (script = 'install.sh', args: string[] = [], overrides: NodeJS.ProcessEnv = {}) =>
+    run(script, ['--cli-only', ...args], overrides)
+  const runPiped = (script = 'install.sh', args: string[] = []) =>
+    spawnSync('sh', ['-s', '--', ...args], {
       input: readFileSync(workspacePath(script), 'utf8'),
       cwd: home,
       encoding: 'utf8',
@@ -124,7 +126,7 @@ function fixture(t: TestContext) {
     symlinkSync(cli, command)
     return { product, marker, cli, command, launcher }
   }
-  return { root, home, release, bin, log, run, runPiped, installed, archive, retiredMyGo }
+  return { root, home, release, bin, log, run, runCli, runPiped, installed, archive, retiredMyGo }
 }
 
 void test('piped entrypoint ignores a hostile working-directory helper', (t) => {
@@ -133,7 +135,7 @@ void test('piped entrypoint ignores a hostile working-directory helper', (t) => 
   mkdirSync(join(f.home, 'install'))
   executable(join(f.home, 'install/lib.sh'), 'echo hostile-helper >&2; exit 71')
   writeFileSync(join(f.release, 'lib.sh'), readFileSync(workspacePath('install/lib.sh')))
-  const result = f.runPiped()
+  const result = f.runPiped('install.sh', ['--cli-only'])
   assert.equal(result.status, 0, result.stderr)
   assert.doesNotMatch(result.stderr, /hostile-helper/)
   assert.match(
@@ -161,7 +163,7 @@ for (const tar of archiveTools) {
       linkSync(join(version, 'Bundled Framework'), join(version, 'Framework hardlink'))
     })
     executable(join(f.bin, 'tar'), `exec ${tar} "$@"`)
-    const result = f.run('install-desktop.sh', [], { TEST_OS: 'Darwin' })
+    const result = f.run('install.sh', [], { TEST_OS: 'Darwin' })
     assert.equal(result.status, 0, result.stderr)
     const installed = join(f.installed('desktop'), framework)
     assert.equal(readlinkSync(join(installed, 'Versions/Current')), 'A')
@@ -181,7 +183,7 @@ for (const kind of ['relative escape', 'chained escape', 'cycle', 'dangling', 's
   void test(`rejects ${kind} before replacing an installed product`, (t) => {
     const f = fixture(t)
     f.archive()
-    assert.equal(f.run().status, 0)
+    assert.equal(f.runCli().status, 0)
     f.archive('cli', 'v2', 'linux', (root) => {
       if (kind === 'relative escape') symlinkSync('../../outside', join(root, 'unsafe'))
       if (kind === 'chained escape') {
@@ -218,15 +220,15 @@ for (const kind of ['relative escape', 'chained escape', 'cycle', 'dangling', 's
         `${createHash('sha256').update(readFileSync(archive)).digest('hex')}  tokeninsights-cli_linux_amd64.tar.gz\n`,
       )
     }
-    const result = f.run()
+    const result = f.runCli()
     assert.notEqual(result.status, 0)
     assert.match(readFileSync(join(f.installed('cli'), 'tokeninsights'), 'utf8'), /echo v1/)
   })
 }
-void test('default CLI stable and main installers replace a whole product including backend', (t) => {
+void test('CLI-only stable and main installers replace a whole product including backend', (t) => {
   const f = fixture(t)
   f.archive()
-  const first = f.run()
+  const first = f.runCli()
   assert.equal(first.status, 0, first.stderr)
   assert.equal(
     execFileSync(join(f.home, '.local/bin/tokeninsights'), { encoding: 'utf8' }).trim(),
@@ -237,7 +239,7 @@ void test('default CLI stable and main installers replace a whole product includ
     /backend-v1/,
   )
   f.archive('cli', 'v2')
-  const next = f.run('install-main.sh')
+  const next = f.runCli('install-main.sh')
   assert.equal(next.status, 0, next.stderr)
   assert.equal(readFileSync(join(f.installed('cli'), '.channel'), 'utf8'), 'main\n')
   assert.match(
@@ -248,10 +250,47 @@ void test('default CLI stable and main installers replace a whole product includ
   assert.match(urls, /releases\/latest\/download\/tokeninsights-cli/)
   assert.match(urls, /releases\/download\/main-build\/tokeninsights-cli/)
 })
-void test('desktop entrypoint supports main and registers its desktop entry', (t) => {
+for (const { script, channel, source } of [
+  { script: 'install.sh', channel: 'stable', source: /latest\/download\/tokeninsights-desktop/ },
+  { script: 'install-main.sh', channel: 'main', source: /main-build\/tokeninsights-desktop/ },
+]) {
+  void test(`${script} installs desktop and its CLI by default`, (t) => {
+    const f = fixture(t)
+    f.archive('desktop')
+    const result = f.run(script)
+    assert.equal(result.status, 0, result.stderr)
+    assert.equal(readFileSync(join(f.installed('desktop'), '.channel'), 'utf8'), `${channel}\n`)
+    assert.equal(
+      execFileSync(join(f.home, '.local/bin/tokeninsights'), { encoding: 'utf8' }).trim(),
+      'cli-v1',
+    )
+    assert.equal(
+      execFileSync(join(f.home, '.local/bin/tokeninsights-desktop'), { encoding: 'utf8' }).trim(),
+      'v1',
+    )
+    assert.ok(!existsSync(f.installed('cli')))
+    assert.match(readFileSync(f.log, 'utf8'), source)
+    assert.doesNotMatch(readFileSync(f.log, 'utf8'), /tokeninsights-cli/)
+  })
+}
+void test('--cli-only leaves no desktop product, launcher or entry', (t) => {
+  const f = fixture(t)
+  f.archive()
+  const result = f.runCli()
+  assert.equal(result.status, 0, result.stderr)
+  assert.equal(
+    execFileSync(join(f.home, '.local/bin/tokeninsights'), { encoding: 'utf8' }).trim(),
+    'v1',
+  )
+  assert.ok(!existsSync(f.installed('desktop')))
+  assert.ok(!existsSync(join(f.home, '.local/bin/tokeninsights-desktop')))
+  assert.ok(!existsSync(join(f.home, '.local/share/applications/tokeninsights-desktop.desktop')))
+  assert.doesNotMatch(readFileSync(f.log, 'utf8'), /tokeninsights-desktop/)
+})
+void test('desktop default supports main and registers its desktop entry', (t) => {
   const f = fixture(t)
   f.archive('desktop')
-  const result = f.run('install-desktop.sh', ['--channel=main'])
+  const result = f.run('install.sh', ['--channel=main'])
   assert.equal(result.status, 0, result.stderr)
   assert.equal(readFileSync(join(f.installed('desktop'), '.channel'), 'utf8'), 'main\n')
   assert.ok(existsSync(join(f.home, '.local/share/applications/tokeninsights-desktop.desktop')))
@@ -259,13 +298,13 @@ void test('desktop entrypoint supports main and registers its desktop entry', (t
 void test('upgrades retain the valid launcher without a remove-and-republish gap', (t) => {
   const f = fixture(t)
   f.archive()
-  assert.equal(f.run().status, 0)
+  assert.equal(f.runCli().status, 0)
   f.archive('cli', 'v2')
   executable(
     join(f.bin, 'mv'),
     'case "$1" in *.tokeninsights-link-*) exit 17 ;; *) exec /bin/mv "$@" ;; esac',
   )
-  const result = f.run()
+  const result = f.runCli()
   assert.equal(result.status, 0, result.stderr)
   assert.equal(
     execFileSync(join(f.home, '.local/bin/tokeninsights'), { encoding: 'utf8' }).trim(),
@@ -287,7 +326,7 @@ for (const failure of [
   void test(`failed ${failure} preserves the installed product`, (t) => {
     const f = fixture(t)
     f.archive()
-    assert.equal(f.run().status, 0)
+    assert.equal(f.runCli().status, 0)
     const a = f.archive('cli', 'v2', 'linux', (path) => {
       if (failure === 'backend') rmSync(join(path, 'tokeninsights-backend'))
       if (failure === 'incompatible')
@@ -318,7 +357,7 @@ for (const failure of [
         join(f.bin, 'mv'),
         'case "$1" in *.cli.install-*) exit 17 ;; *) exec /bin/mv "$@" ;; esac',
       )
-    const result = f.run()
+    const result = f.runCli()
     assert.notEqual(result.status, 0, result.stdout)
     assert.match(readFileSync(join(f.installed('cli'), 'tokeninsights'), 'utf8'), /echo v1/)
     assert.match(
@@ -335,19 +374,19 @@ void test('refuses unowned products and executable paths', (t) => {
   const f = fixture(t)
   f.archive()
   mkdirSync(f.installed('cli'), { recursive: true })
-  assert.match(f.run().stderr, /unowned path/)
+  assert.match(f.runCli().stderr, /unowned path/)
   rmSync(f.installed('cli'), { recursive: true })
   mkdirSync(join(f.home, '.local/bin'), { recursive: true })
   executable(join(f.home, '.local/bin/tokeninsights'), 'echo foreign')
-  assert.match(f.run().stderr, /unowned path/)
+  assert.match(f.runCli().stderr, /unowned path/)
 })
 void test('macOS desktop bundle supports replacement', (t) => {
   const f = fixture(t)
   f.archive('desktop', 'v1', 'darwin')
-  const result = f.run('install-desktop.sh', [], { TEST_OS: 'Darwin' })
+  const result = f.run('install.sh', [], { TEST_OS: 'Darwin' })
   assert.equal(result.status, 0, result.stderr)
   f.archive('desktop', 'v2', 'darwin')
-  const upgrade = f.run('install-desktop.sh', [], { TEST_OS: 'Darwin' })
+  const upgrade = f.run('install.sh', [], { TEST_OS: 'Darwin' })
   assert.equal(upgrade.status, 0, upgrade.stderr)
   assert.ok(existsSync(join(f.home, 'Applications/TokenInsights Desktop.app')))
 })
@@ -365,7 +404,7 @@ for (const os of ['linux', 'darwin']) {
         ),
       ),
     )
-    const rejected = f.run('install-desktop.sh', [], os === 'darwin' ? { TEST_OS: 'Darwin' } : {})
+    const rejected = f.run('install.sh', [], os === 'darwin' ? { TEST_OS: 'Darwin' } : {})
     assert.notEqual(rejected.status, 0)
     assert.match(rejected.stderr, /archive lacks executable tokeninsights/)
     assert.ok(!existsSync(f.installed('desktop')))
@@ -376,22 +415,22 @@ for (const os of ['linux', 'darwin']) {
     const overrides = os === 'darwin' ? { TEST_OS: 'Darwin' } : {}
     const command = join(f.home, '.local/bin/tokeninsights')
     f.archive('desktop', 'v1', platform)
-    const installed = f.run('install-desktop.sh', [], overrides)
+    const installed = f.run('install.sh', [], overrides)
     assert.equal(installed.status, 0, installed.stderr)
     assert.equal(execFileSync(command, { encoding: 'utf8' }).trim(), 'cli-v1')
     const bundled = readlinkSync(command)
     f.archive('cli', 'cli-only', platform)
-    const standalone = f.run('install.sh', [], overrides)
+    const standalone = f.runCli('install.sh', [], overrides)
     assert.equal(standalone.status, 0, standalone.stderr)
     assert.equal(readlinkSync(command), join(f.installed('cli'), 'tokeninsights'))
     assert.notEqual(readlinkSync(command), bundled)
     f.archive('desktop', 'v2', platform)
-    const upgrade = f.run('install-desktop.sh', [], overrides)
+    const upgrade = f.run('install.sh', [], overrides)
     assert.equal(upgrade.status, 0, upgrade.stderr)
     assert.match(upgrade.stdout, /now runs the desktop CLI/)
     assert.equal(execFileSync(command, { encoding: 'utf8' }).trim(), 'cli-v2')
     assert.ok(existsSync(join(f.installed('cli'), 'tokeninsights')))
-    const steady = f.run('install-desktop.sh', [], overrides)
+    const steady = f.run('install.sh', [], overrides)
     assert.equal(steady.status, 0, steady.stderr)
     assert.doesNotMatch(steady.stdout, /now runs the desktop CLI/)
   })
@@ -400,12 +439,12 @@ for (const os of ['linux', 'darwin']) {
     const platform = os === 'darwin' ? 'darwin' : 'linux'
     const overrides = os === 'darwin' ? { TEST_OS: 'Darwin' } : {}
     f.archive('desktop', 'v1', platform)
-    assert.equal(f.run('install-desktop.sh', [], overrides).status, 0)
+    assert.equal(f.run('install.sh', [], overrides).status, 0)
     const command = join(f.home, '.local/bin/tokeninsights')
     rmSync(command)
     executable(command, 'echo unrelated')
     f.archive('desktop', 'v2', platform)
-    const rejected = f.run('install-desktop.sh', [], overrides)
+    const rejected = f.run('install.sh', [], overrides)
     assert.notEqual(rejected.status, 0)
     assert.match(rejected.stderr, /unowned path/)
     assert.equal(execFileSync(command, { encoding: 'utf8' }).trim(), 'unrelated')
@@ -421,13 +460,18 @@ for (const platform of ['linux', 'darwin']) {
   const overrides = os === 'darwin' ? { TEST_OS: 'Darwin' } : {}
   for (const product of ['cli', 'desktop']) {
     const current = product === 'desktop' ? 'desktop' : 'cli'
-    const script = current === 'desktop' ? 'install-desktop.sh' : 'install.sh'
+    const script = 'install.sh'
+    const productArgs = current === 'cli' ? ['--cli-only'] : []
     void test(`${os} ${product} takes command ownership from the renamed MyGo product`, (t) => {
       const f = fixture(t)
       const retired = f.retiredMyGo(os)
       const launcherTarget = readlinkSync(retired.launcher)
       f.archive(current, 'v2', os)
-      const result = f.run(script, os === 'linux' ? ['--channel=main'] : [], overrides)
+      const result = f.run(
+        script,
+        [...productArgs, ...(os === 'linux' ? ['--channel=main'] : [])],
+        overrides,
+      )
       assert.equal(result.status, 0, result.stderr)
       assert.equal(
         execFileSync(retired.command, { encoding: 'utf8' }).trim(),
@@ -436,7 +480,7 @@ for (const platform of ['linux', 'darwin']) {
       assert.equal(readFileSync(retired.marker, 'utf8'), 'tokeninsights-product:mygo\n')
       assert.equal(execFileSync(retired.cli, { encoding: 'utf8' }).trim(), 'retired-cli')
       assert.equal(readlinkSync(retired.launcher), launcherTarget)
-      const steady = f.run(script, [], overrides)
+      const steady = f.run(script, productArgs, overrides)
       assert.equal(steady.status, 0, steady.stderr)
     })
     void test(`${os} failed ${product} handover restores the MyGo command`, (t) => {
@@ -447,7 +491,7 @@ for (const platform of ['linux', 'darwin']) {
         join(f.bin, 'rmdir'),
         'case "$1" in *.tokeninsights-link-*) if [ "$(readlink "$HOME/.local/bin/tokeninsights")" != "$TEST_RETIRED_CLI" ]; then echo injected-publication-failure >&2; exit 17; fi ;; esac\nexec /bin/rmdir "$@"',
       )
-      const result = f.run(script, [], { ...overrides, TEST_RETIRED_CLI: retired.cli })
+      const result = f.run(script, productArgs, { ...overrides, TEST_RETIRED_CLI: retired.cli })
       assert.notEqual(result.status, 0)
       assert.match(result.stderr, /injected-publication-failure/)
       assert.equal(readlinkSync(retired.command), retired.cli)
@@ -467,7 +511,7 @@ for (const platform of ['linux', 'darwin']) {
           symlinkSync(foreign, retired.product)
         }
         f.archive(current, 'v2', os)
-        const result = f.run(script, [], overrides)
+        const result = f.run(script, productArgs, overrides)
         assert.notEqual(result.status, 0)
         assert.match(result.stderr, /refusing to replace unowned path/)
         assert.equal(readlinkSync(retired.command), retired.cli)
@@ -480,7 +524,7 @@ for (const platform of ['linux', 'darwin']) {
 void test('failed CLI command handover restores owned desktop command and product state', (t) => {
   const f = fixture(t)
   f.archive('desktop')
-  assert.equal(f.run('install-desktop.sh').status, 0)
+  assert.equal(f.run('install.sh').status, 0)
   const command = join(f.home, '.local/bin/tokeninsights')
   const original = readlinkSync(command)
   f.archive('cli')
@@ -488,7 +532,7 @@ void test('failed CLI command handover restores owned desktop command and produc
     join(f.bin, 'rmdir'),
     'case "$1" in *.tokeninsights-link-*) exit 17 ;; *) exec /bin/rmdir "$@" ;; esac',
   )
-  const result = f.run()
+  const result = f.runCli()
   assert.notEqual(result.status, 0)
   assert.equal(readlinkSync(command), original)
   assert.ok(!existsSync(f.installed('cli')))
@@ -497,7 +541,7 @@ void test('failed CLI command handover restores owned desktop command and produc
 void test('failed desktop install restores the CLI-only command', (t) => {
   const f = fixture(t)
   f.archive('cli', 'cli-only')
-  assert.equal(f.run().status, 0)
+  assert.equal(f.runCli().status, 0)
   const command = join(f.home, '.local/bin/tokeninsights')
   const original = readlinkSync(command)
   f.archive('desktop')
@@ -505,7 +549,7 @@ void test('failed desktop install restores the CLI-only command', (t) => {
     join(f.bin, 'cp'),
     'case "$*" in *desktop-entry*) exit 17 ;; *) exec /bin/cp "$@" ;; esac',
   )
-  const result = f.run('install-desktop.sh')
+  const result = f.run('install.sh')
   assert.notEqual(result.status, 0)
   assert.equal(readlinkSync(command), original)
   assert.ok(!existsSync(f.installed('desktop')))
@@ -517,22 +561,116 @@ void test('installers warn only when PATH does not run the published command', (
   const system = `${f.bin}:/usr/bin:/bin`
   f.archive('desktop')
   assert.equal(
-    f
-      .run('install-desktop.sh', [], { PATH: `${local}:${system}` })
-      .stderr.includes('warning: PATH'),
+    f.run('install.sh', [], { PATH: `${local}:${system}` }).stderr.includes('warning: PATH'),
     false,
   )
   assert.match(
-    f.run('install-desktop.sh', [], { PATH: system }).stderr,
+    f.run('install.sh', ['--no-modify-path'], { PATH: system }).stderr,
     /warning: PATH runs nothing/,
   )
   executable(join(f.bin, 'tokeninsights'), 'echo retired')
-  const shadowed = f.run('install-desktop.sh', [], { PATH: `${system}:${local}` })
+  const shadowed = f.run('install.sh', [], { PATH: `${system}:${local}` })
   assert.equal(shadowed.status, 0, shadowed.stderr)
   assert.match(shadowed.stderr, /warning: PATH runs .*\/bin\/tokeninsights instead of/)
 })
+const profileMarker = '# Added by the tokeninsights installer'
+const occurrences = (path: string) =>
+  readFileSync(path, 'utf8')
+    .split('\n')
+    .filter((line) => line === profileMarker).length
+for (const { shell, profiles } of [
+  { shell: '/bin/zsh', profiles: ['.zshenv'] },
+  { shell: '/bin/bash', profiles: ['.bashrc', '.profile'] },
+  { shell: '/bin/dash', profiles: ['.profile'] },
+]) {
+  void test(`${shell} profiles put the CLI on PATH once, keeping existing content`, (t) => {
+    const f = fixture(t)
+    f.archive('desktop')
+    for (const profile of profiles) writeFileSync(join(f.home, profile), '# mine\n')
+    for (const attempt of [1, 2]) {
+      const result = f.run('install.sh', [], { SHELL: shell })
+      assert.equal(result.status, 0, `attempt ${attempt}: ${result.stderr}`)
+      assert.match(result.stdout, /For this shell, run: export PATH=/)
+      assert.doesNotMatch(result.stderr, /warning: PATH/)
+    }
+    for (const profile of profiles) {
+      const path = join(f.home, profile)
+      assert.equal(occurrences(path), 1)
+      assert.match(readFileSync(path, 'utf8'), /^# mine\n/)
+      const found = execFileSync('sh', ['-c', '. "$1"; command -v tokeninsights', 'sh', path], {
+        encoding: 'utf8',
+        env: { HOME: f.home, PATH: '/usr/bin:/bin' },
+      })
+      assert.equal(found.trim(), join(f.home, '.local/bin/tokeninsights'))
+    }
+  })
+}
+void test('fish profile lives in its own conf.d file', (t) => {
+  const f = fixture(t)
+  f.archive('desktop')
+  for (const attempt of [1, 2]) {
+    const result = f.run('install.sh', [], { SHELL: '/usr/bin/fish' })
+    assert.equal(result.status, 0, `attempt ${attempt}: ${result.stderr}`)
+    assert.match(result.stdout, /For this shell, run: set -gx PATH/)
+  }
+  const profile = join(f.home, '.config/fish/conf.d/tokeninsights.fish')
+  assert.equal(occurrences(profile), 1)
+  assert.match(readFileSync(profile, 'utf8'), /or set -gx PATH "\$HOME\/\.local\/bin" \$PATH/)
+  assert.ok(!existsSync(join(f.home, '.profile')))
+})
+void test('bash prefers an existing login profile; zsh honors ZDOTDIR', (t) => {
+  const f = fixture(t)
+  f.archive('desktop')
+  writeFileSync(join(f.home, '.bash_profile'), '')
+  assert.equal(f.run('install.sh', [], { SHELL: '/bin/bash' }).status, 0)
+  assert.equal(occurrences(join(f.home, '.bash_profile')), 1)
+  assert.ok(!existsSync(join(f.home, '.profile')))
+  const zdotdir = join(f.root, 'zsh config')
+  assert.equal(f.run('install.sh', [], { SHELL: '/bin/zsh', ZDOTDIR: zdotdir }).status, 0)
+  assert.equal(occurrences(join(zdotdir, '.zshenv')), 1)
+  assert.ok(!existsSync(join(f.home, '.zshenv')))
+})
+void test('CLI-only install also puts the CLI on PATH', (t) => {
+  const f = fixture(t)
+  f.archive()
+  assert.equal(f.runCli().status, 0)
+  assert.equal(occurrences(join(f.home, '.profile')), 1)
+})
+void test('profiles stay untouched when PATH already works, on opt-out and on failed install', (t) => {
+  const f = fixture(t)
+  f.archive('desktop')
+  const profile = join(f.home, '.profile')
+  const onPath = f.run('install.sh', [], {
+    PATH: `${join(f.home, '.local/bin')}:${f.bin}:/usr/bin:/bin`,
+  })
+  assert.equal(onPath.status, 0, onPath.stderr)
+  assert.doesNotMatch(onPath.stdout, /For this shell/)
+  assert.ok(!existsSync(profile))
+  const optOut = f.run('install.sh', ['--no-modify-path'])
+  assert.equal(optOut.status, 0, optOut.stderr)
+  assert.doesNotMatch(optOut.stdout, /For this shell/)
+  assert.ok(!existsSync(profile))
+  writeFileSync(join(f.release, 'checksums.txt'), '')
+  assert.notEqual(f.run().status, 0)
+  assert.ok(!existsSync(profile))
+})
+void test('an unwritable profile warns and keeps the completed install', (t) => {
+  const f = fixture(t)
+  f.archive('desktop')
+  // A directory rejects writes even when validation runs as root.
+  mkdirSync(join(f.home, '.profile'))
+  const result = f.run()
+  assert.equal(result.status, 0, result.stderr)
+  assert.match(result.stderr, /warning: could not add ~\/\.local\/bin to your shell profile/)
+  assert.match(result.stderr, /warning: PATH runs nothing/)
+  assert.equal(
+    execFileSync(join(f.home, '.local/bin/tokeninsights'), { encoding: 'utf8' }).trim(),
+    'cli-v1',
+  )
+})
 void test('rejects unsupported host and channel before download', (t) => {
   const f = fixture(t)
+  assert.match(f.run('install.sh', ['--product=cli']).stderr, /unknown option/)
   assert.match(f.run('install.sh', [], { TEST_OS: 'FreeBSD' }).stderr, /unsupported OS/)
   assert.match(f.run('install.sh', [], { TEST_ARCH: 'i686' }).stderr, /unsupported architecture/)
   assert.match(f.run('install.sh', ['--channel=edge']).stderr, /unknown option/)
@@ -542,16 +680,16 @@ void test('main channel rejects macOS Intel before download; Apple Silicon and s
   const f = fixture(t)
   const intel = { TEST_OS: 'Darwin' }
   assert.match(f.run('install-main.sh', [], intel).stderr, /no macOS Intel build/)
-  assert.match(
-    f.run('install-desktop.sh', ['--channel=main'], intel).stderr,
-    /no macOS Intel build/,
-  )
+  assert.match(f.run('install.sh', ['--channel=main'], intel).stderr, /no macOS Intel build/)
   assert.ok(!existsSync(f.log))
   f.run('install-main.sh', [], { ...intel, TEST_ARCH: 'arm64' })
-  assert.match(readFileSync(f.log, 'utf8'), /main-build\/tokeninsights-cli_darwin_arm64\.tar\.gz/)
+  assert.match(
+    readFileSync(f.log, 'utf8'),
+    /main-build\/tokeninsights-desktop_darwin_arm64\.tar\.gz/,
+  )
   f.run('install.sh', [], intel)
   assert.match(
     readFileSync(f.log, 'utf8'),
-    /latest\/download\/tokeninsights-cli_darwin_amd64\.tar\.gz/,
+    /latest\/download\/tokeninsights-desktop_darwin_amd64\.tar\.gz/,
   )
 })

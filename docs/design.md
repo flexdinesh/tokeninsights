@@ -447,8 +447,10 @@ implicit endpoints and saved viewer settings return actionable errors without
 printing values, rewriting configuration or deleting files. Users repair their
 configuration explicitly. There is no automatic migration.
 
-Desktop installation includes CLI/backend. The CLI-only product remains.
-Either installer can take command ownership from the former MyGo product only
+The default installer installs the desktop product, which includes CLI/backend, and
+adds `~/.local/bin` to the shell profile when PATH lacks it. The CLI-only product
+remains behind `--cli-only` for hosts without a display.
+Either product install can take command ownership from the former MyGo product only
 when the CLI symlink targets its known bundled path and its product directory has
 the matching installer ownership marker. Retired product files and launchers remain
 untouched; failed publication restores the previous command.

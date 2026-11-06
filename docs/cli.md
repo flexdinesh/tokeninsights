@@ -1,7 +1,7 @@
 # CLI reference
 
 `tokeninsights --help` lists commands. Bare invocation opens the desktop
-app. Install desktop for that default, or use `tui`/`web` from CLI-only.
+app. The default install includes it; `--cli-only` installs use `tui`/`web`.
 
 ## Viewers
 

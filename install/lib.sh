@@ -3,13 +3,15 @@
 set -eu
 fail() { printf 'error: %s\n' "$*" >&2; exit 1; }
 need() { command -v "$1" >/dev/null 2>&1 || fail "$1 is required"; }
-product=cli
+product=desktop
 channel=stable
+modify_path=true
 for arg in "$@"; do
     case "$arg" in
-        --product=cli|--product=desktop) product="${arg#*=}" ;;
+        --cli-only) product=cli ;;
+        --no-modify-path) modify_path=false ;;
         --channel=stable|--channel=main) channel="${arg#*=}" ;;
-        --help) printf '%s\n' 'Usage: install[-main|-desktop].sh [--channel=stable|main]'; exit 0 ;;
+        --help) printf '%s\n' 'Usage: install[-main].sh [--cli-only] [--channel=stable|main] [--no-modify-path]'; exit 0 ;;
         *) fail "unknown option $arg" ;;
     esac
 done
@@ -298,10 +300,48 @@ if [ -n "$backup" ]; then rm -rf "$backup"; backup=; fi
 complete=true
 printf 'Installed %s (%s): %s\n' "$product" "$channel" "$link"
 if [ -n "$previous_cli" ]; then
-    printf 'tokeninsights now runs the desktop CLI; rerun install.sh to return to CLI-only\n'
+    printf 'tokeninsights now runs the desktop CLI; rerun install.sh --cli-only to return to CLI-only\n'
 fi
+# Profile edits follow a complete install and are best effort: a read-only dotfile
+# must not undo a working product.
+path_marker='# Added by the tokeninsights installer'
+add_path_line() {
+    if [ -f "$1" ] && grep -Fx "$path_marker" "$1" >/dev/null; then return 0; fi
+    mkdir -p "$(dirname "$1")" && printf '\n%s\n%s\n' "$path_marker" "$2" >> "$1"
+}
+publish_path() {
+    posix_line='case ":$PATH:" in *":$HOME/.local/bin:"*) ;; *) export PATH="$HOME/.local/bin:$PATH" ;; esac'
+    case "$1" in
+        zsh) add_path_line "${ZDOTDIR:-$HOME}/.zshenv" "$posix_line" ;;
+        bash)
+            login="$HOME/.profile"
+            if [ -f "$HOME/.bash_profile" ]; then login="$HOME/.bash_profile"; fi
+            add_path_line "$HOME/.bashrc" "$posix_line" && add_path_line "$login" "$posix_line"
+            ;;
+        fish) add_path_line "${XDG_CONFIG_HOME:-$HOME/.config}/fish/conf.d/tokeninsights.fish" 'contains -- "$HOME/.local/bin" $PATH; or set -gx PATH "$HOME/.local/bin" $PATH' ;;
+        *) add_path_line "$HOME/.profile" "$posix_line" ;;
+    esac
+}
+path_published=false
+case ":$PATH:" in
+    *":$HOME/.local/bin:"*) ;;
+    *)
+        if [ "$modify_path" = true ]; then
+            shell="${SHELL:-}"
+            shell="${shell##*/}"
+            if publish_path "$shell"; then
+                path_published=true
+                activate='export PATH="$HOME/.local/bin:$PATH"'
+                if [ "$shell" = fish ]; then activate='set -gx PATH "$HOME/.local/bin" $PATH'; fi
+                printf 'New shells find tokeninsights on PATH. For this shell, run: %s\n' "$activate"
+            else
+                printf 'warning: could not add ~/.local/bin to your shell profile\n' >&2
+            fi
+        fi
+        ;;
+esac
 # Retired Homebrew and Go installs can stay ahead of the published link.
 resolved="$(command -v tokeninsights || true)"
-if [ ! "$resolved" -ef "$cli_link" ]; then
+if [ "$path_published" = false ] && [ ! "$resolved" -ef "$cli_link" ]; then
     printf 'warning: PATH runs %s instead of %s; put ~/.local/bin first and remove any older tokeninsights\n' "${resolved:-nothing}" "$cli_link" >&2
 fi
