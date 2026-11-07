@@ -22,4 +22,6 @@ mise run build:docs
 
 Edit public user guides in `src/pages/` as Markdown or MDX. Each page's `# H1` sets its title; `vocs.config.ts` controls the sidebar labels and order. Run `mise run format` and `mise run lint` from the root to format and lint pages and configuration.
 
-Internal architecture, ADRs, and other engineering docs stay in the repository's `docs/` directory. This site has no dependency on the application, its databases, or its browser build. Deployment is not configured.
+Internal architecture, ADRs, and other engineering docs stay in the repository's `docs/` directory. This site has no dependency on the application, its databases, or its browser build.
+
+Cloudflare Workers Builds deploys the site. The root `wrangler.jsonc` serves `dist/public/` as static assets. Workers Builds ignores Wrangler custom build settings, so the connected Worker `tokeninsights-docs` sets these itself: root directory `/`, build command `pnpm --filter @tokeninsights/docs run build`, and build variable `NODE_VERSION` matching `mise.toml`.
