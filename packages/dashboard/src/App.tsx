@@ -195,7 +195,7 @@ function DashboardShell({
       }
     >
       <PageContent id="dashboard">
-        <div className="mb-2 flex flex-wrap items-start gap-x-3 gap-y-2">
+        <div className="-mx-(--page-gutter) flex flex-wrap items-start gap-x-3 gap-y-2 border-b border-line px-(--page-gutter) py-2">
           {hasCapability(bootstrap, 'facets') && (
             <FilterToolbar
               facets={facets.data}
@@ -207,7 +207,11 @@ function DashboardShell({
           <DateNavigation timezone={bootstrap.timezone} />
         </div>
         {query.tab === 'repo' && (
-          <div className="flex flex-wrap gap-3 pb-3" role="group" aria-label="Repo view options">
+          <div
+            className="-mx-(--page-gutter) flex flex-wrap gap-3 border-b border-line px-(--page-gutter) py-2"
+            role="group"
+            aria-label="Repo view options"
+          >
             <ControlLabel label="Group by">
               <Select
                 value={query.locationGroup}
@@ -242,7 +246,7 @@ function DashboardShell({
             retryConnection={retryConnection}
           />
         </div>
-        <footer className="flex justify-between gap-3 pt-3 text-label text-ink-subtle max-compact:flex-col max-compact:gap-2 [&>span]:min-w-0 [&>span]:wrap-anywhere">
+        <footer className="-mx-(--page-gutter) flex justify-between gap-3 border-t border-line px-(--page-gutter) py-3 text-label text-ink-subtle max-compact:flex-col max-compact:gap-2 [&>span]:min-w-0 [&>span]:wrap-anywhere">
           <span className="flex items-center gap-2">
             <StatusDot
               tone={

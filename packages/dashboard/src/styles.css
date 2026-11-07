@@ -11,11 +11,11 @@
  * primitives; features compose them with Tailwind layout utilities.
  */
 @font-face {
-  font-family: 'DM Sans';
+  font-family: 'Geist';
   font-style: normal;
   font-weight: 100 900;
   font-display: swap;
-  src: url('/fonts/dm-sans-latin-variable.woff2') format('woff2');
+  src: url('/fonts/geist-latin-variable.woff2') format('woff2');
 }
 
 @layer base {

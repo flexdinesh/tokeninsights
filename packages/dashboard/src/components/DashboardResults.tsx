@@ -143,7 +143,7 @@ export function DashboardResults({
         )}
       {enabled && data && hasData && !waitingForFirstData && (
         <div aria-busy={analytics.isFetching}>
-          <div className="mb-4">
+          <div>
             <SummaryCards summary={data.summary} estimated={query.quality === 'estimated'} />
             {!reviewingExcluded && hasExcludedUsage && excluded && (
               <div className={excludedNotice}>
@@ -202,7 +202,7 @@ export function DashboardResults({
 }
 
 const excludedNotice =
-  'flex flex-wrap items-center gap-x-4 gap-y-2 py-2 text-label [&>p]:text-ink-muted'
+  '-mx-(--page-gutter) border-b border-line px-(--page-gutter) flex flex-wrap items-center gap-x-4 gap-y-2 py-2 text-label [&>p]:text-ink-muted'
 
 function RouteResultsSkeleton() {
   return (
