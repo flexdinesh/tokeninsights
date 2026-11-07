@@ -156,7 +156,10 @@ export function UsageChart({
     tokenShare: formatTokenShare(r.total, totalTokens),
   }))
   return (
-    <section className="my-2" aria-label={title}>
+    <section
+      className="-mx-(--page-gutter) border-b border-line px-(--page-gutter) py-2"
+      aria-label={title}
+    >
       <SectionHeader
         className="pt-0"
         title={title}

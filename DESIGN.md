@@ -1,39 +1,39 @@
 ---
 name: "TokenInsights — Quiet Blue / White First"
-description: "White and neutral charcoal measurement workspace with DM Sans, restrained blue feedback, and clear navigation."
+description: "White and cool charcoal measurement workspace with Geist, restrained blue feedback, sharp corners and mild rules."
 colors:
   surface: "#ffffff"
-  dark-surface: "#181818"
+  dark-surface: "#121316"
   surface-raised: "#f7f7f7"
-  dark-surface-raised: "#222222"
+  dark-surface-raised: "#17181c"
   surface-overlay: "#ffffff"
-  dark-surface-overlay: "#222222"
+  dark-surface-overlay: "#17181c"
   surface-field: "#ffffff"
-  dark-surface-field: "#222222"
+  dark-surface-field: "#17181c"
   surface-rail: "#ffffff"
-  dark-surface-rail: "#1b1b1b"
-  surface-heading: "#fafafa"
-  dark-surface-heading: "#222222"
+  dark-surface-rail: "#141519"
+  surface-heading: "#ffffff"
+  dark-surface-heading: "#17181c"
   surface-hover: "#f7f7f7"
-  dark-surface-hover: "#222222"
+  dark-surface-hover: "#17181c"
   ink: "#22252b"
-  dark-ink: "#efefef"
-  ink-muted: "#64666d"
-  dark-ink-muted: "#b7b7b7"
-  ink-subtle: "#64666d"
-  dark-ink-subtle: "#aaaaaa"
+  dark-ink: "#ecedf0"
+  ink-muted: "#5f6269"
+  dark-ink-muted: "#a2a5ad"
+  ink-subtle: "#5f6269"
+  dark-ink-subtle: "#a2a5ad"
   ink-hover: "#285bd4"
   dark-ink-hover: "#82aaff"
-  line: "#e3e3e5"
-  dark-line: "#343434"
-  line-strong: "#929299"
-  dark-line-strong: "#666666"
+  line: "#e6e6e8"
+  dark-line: "#2a2c31"
+  line-strong: "#c9cacf"
+  dark-line-strong: "#4a4c53"
   action: "#285bd4"
   dark-action: "#82aaff"
   action-ink: "#ffffff"
-  dark-action-ink: "#181818"
-  selected: "#f1f1f2"
-  dark-selected: "#292929"
+  dark-action-ink: "#121316"
+  selected: "#eef2fc"
+  dark-selected: "#1f2738"
   selected-ink: "#285bd4"
   dark-selected-ink: "#82aaff"
   focus: "#285bd4"
@@ -45,7 +45,7 @@ colors:
   status-danger: "oklch(0.56 0.22 27)"
   dark-status-danger: "oklch(0.68 0.19 23)"
   status-danger-ink: "#ffffff"
-  dark-status-danger-ink: "#181818"
+  dark-status-danger-ink: "#121316"
   status-danger-surface: "oklch(0.96 0.025 25)"
   dark-status-danger-surface: "oklch(0.2 0.04 25)"
   chart-1: "#285bd4"
@@ -74,31 +74,31 @@ colors:
   dark-chart-12: "oklch(0.7 0.1 45)"
 typography:
   page:
-    fontFamily: "'DM Sans', ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
+    fontFamily: "'Geist', ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
     fontSize: "1.75rem"
     fontWeight: 600
     lineHeight: 1.15
     letterSpacing: "-0.035em"
   readout:
-    fontFamily: "'DM Sans', ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
+    fontFamily: "'Geist', ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
     fontSize: "1.5rem"
     fontWeight: 600
     lineHeight: 1.15
     letterSpacing: "-0.035em"
     fontFeature: "tnum"
   title:
-    fontFamily: "'DM Sans', ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
+    fontFamily: "'Geist', ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
     fontSize: "1rem"
     fontWeight: 600
     lineHeight: 1.5
     letterSpacing: "-0.015em"
   body:
-    fontFamily: "'DM Sans', ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
+    fontFamily: "'Geist', ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
     fontSize: "0.875rem"
     fontWeight: 400
     lineHeight: 1.4286
   label:
-    fontFamily: "'DM Sans', ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
+    fontFamily: "'Geist', ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
     fontSize: "0.8125rem"
     fontWeight: 400
     lineHeight: 1.3333
@@ -108,9 +108,9 @@ typography:
     fontWeight: 400
     lineHeight: 1.3333
 rounded:
-  sm: "0.25rem"
-  md: "0.375rem"
-  lg: "0.75rem"
+  sm: "0"
+  md: "0"
+  lg: "0"
 spacing:
   "1": "0.25rem"
   "2": "0.5rem"
@@ -224,11 +224,11 @@ components:
 
 **Creative North Star: "Quiet Blue — White First"**
 
-White First is a mature measurement workspace: white surfaces, neutral gray
-supporting regions, precise typography, and restrained blue actions. Its dark
-theme uses neutral charcoal and soft white ink with the same hierarchy.
+White First is a mature measurement workspace: full white surfaces, sharp corners,
+mild full-width rules, precise typography, and restrained blue actions. Its dark
+theme uses cool charcoal and soft white ink with the same hierarchy.
 
-Locally bundled DM Sans, tabular numerals, and compact section spacing support
+Locally bundled Geist, tabular numerals, and compact section spacing support
 repeated inspection. Preserve the Split T mark and TokenInsights wordmark, offline
 assets, explicit states, and existing analytical behavior.
 
@@ -241,9 +241,9 @@ palette; the design guard test fails when they drift. Architecture remains in
 
 **Key Characteristics:**
 
-- White light surfaces and neutral charcoal dark surfaces.
+- Full white light surfaces and cool charcoal dark surfaces.
 - Blue actions, selection, focus, and principal chart series.
-- Sidebar navigation, a compact current-view heading, and rule-separated analytics.
+- Sidebar navigation, a compact current-view heading, and analytics separated by full-width rules.
 - Wrapping filters, scalable type, and visible keyboard focus.
 - One component library owns appearance; features own layout.
 
@@ -314,7 +314,7 @@ reads as selected.
 
 ## Typography
 
-**Interface Font:** locally bundled variable DM Sans with system sans fallbacks.
+**Interface Font:** locally bundled variable Geist with system sans fallbacks.
 **Numeric Font:** the same sans family with tabular numerals.
 **Mono Font:** system monospace, reserved for code and paths.
 
@@ -394,10 +394,9 @@ animate data. Reduced-motion preferences disable transitions and animation.
 
 ## Shapes
 
-Small corners (0.25rem) belong to compact controls, chips, badges and checkboxes;
-medium corners (0.375rem) to fields and regular controls; large corners (0.75rem)
-to overlays, alerts and skeletons. Analytics regions remain square and flat.
-Status dots are circular. Rules use 0.0625rem.
+Every corner is square: controls, chips, badges, fields, overlays, alerts and
+skeletons. The radius tokens stay as the single owner and resolve to 0. Status dots
+are the one circular exception. Rules use 0.0625rem and stay low contrast.
 
 **The Visible Focus Rule.** Every focusable element shows a 2px `focus` outline
 with a 2px offset (`focus-ring`). Inside clipped regions (navigation, table

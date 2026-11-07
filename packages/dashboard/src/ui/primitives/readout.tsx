@@ -15,10 +15,10 @@ function ReadoutStrip({
   return (
     <section
       data-slot="readout-strip"
-      className={cn('@container/readouts mb-2 border-b border-line', className)}
+      className={cn('@container/readouts -mx-(--page-gutter) border-b border-line', className)}
       {...props}
     >
-      <div className="grid grid-cols-(--readout-columns) gap-4 py-2 @max-readouts/readouts:grid-cols-(--readout-columns-narrow)">
+      <div className="grid grid-cols-(--readout-columns) @max-readouts/readouts:grid-cols-(--readout-columns-narrow)">
         {children}
       </div>
     </section>
@@ -44,10 +44,10 @@ function Readout({
     <div
       data-slot="readout"
       className={cn(
-        'flex min-w-0 flex-col items-start gap-1 border-line text-left',
+        'flex min-w-0 flex-col items-start gap-1 border-line px-(--page-gutter) py-2 text-left',
         primary
           ? '@max-readouts/readouts:col-span-full'
-          : 'border-l pl-4 @max-readouts/readouts:border-l-0 @max-readouts/readouts:pl-0',
+          : 'border-l @max-readouts/readouts:border-l-0',
       )}
     >
       <span className="text-label text-ink-muted">{label}</span>

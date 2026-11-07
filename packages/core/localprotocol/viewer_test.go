@@ -20,7 +20,7 @@ func TestDefaultCaptureRejectsOverridesDuplicateUnknownAndMalformedJSON(t *testi
 	}
 }
 func TestViewerReadHasExplicitRoutesAndCanonicalAssets(t *testing.T) {
-	for _, path := range []string{"/", "/tokens", "/sessions", "/models", "/providers", "/harnesses", "/repo", "/context", "/index.html", "/assets/app.js", "/fonts/dm-sans-latin-variable.woff2", "/api/v2/usage?period=week", "/api/v2/status", "/api/v2/collector-progress"} {
+	for _, path := range []string{"/", "/tokens", "/sessions", "/models", "/providers", "/harnesses", "/repo", "/context", "/index.html", "/assets/app.js", "/fonts/geist-latin-variable.woff2", "/api/v2/usage?period=week", "/api/v2/status", "/api/v2/collector-progress"} {
 		if !ViewerRead(httptest.NewRequest(http.MethodGet, path, nil)) {
 			t.Fatal("viewer read rejected", path)
 		}

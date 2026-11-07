@@ -6,25 +6,24 @@
 :root {
   /* Cool gray: White First light theme. */
   --palette-gray-0: #ffffff;
-  --palette-gray-25: #fafafa;
   --palette-gray-50: #f7f7f7;
-  --palette-gray-75: #f1f1f2;
-  --palette-gray-150: #e3e3e5;
-  --palette-gray-450: #929299;
-  --palette-gray-600: #64666d;
+  --palette-gray-150: #e6e6e8;
+  --palette-gray-450: #c9cacf;
+  --palette-gray-600: #5f6269;
   --palette-gray-900: #22252b;
 
-  /* Neutral charcoal: dark theme. */
-  --palette-charcoal-50: #efefef;
-  --palette-charcoal-250: #b7b7b7;
-  --palette-charcoal-300: #aaaaaa;
-  --palette-charcoal-550: #666666;
-  --palette-charcoal-750: #343434;
-  --palette-charcoal-800: #292929;
-  --palette-charcoal-850: #222222;
-  --palette-charcoal-875: #1b1b1b;
-  --palette-charcoal-900: #181818;
+  /* Cool charcoal: dark theme. */
+  --palette-charcoal-50: #ecedf0;
+  --palette-charcoal-250: #a2a5ad;
+  --palette-charcoal-300: #a2a5ad;
+  --palette-charcoal-550: #4a4c53;
+  --palette-charcoal-750: #2a2c31;
+  --palette-charcoal-850: #17181c;
+  --palette-charcoal-875: #141519;
+  --palette-charcoal-900: #121316;
 
+  --palette-blue-50: #eef2fc;
+  --palette-blue-900: #1f2738;
   --palette-blue-600: #285bd4;
   --palette-blue-300: #82aaff;
 

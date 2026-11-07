@@ -45,13 +45,7 @@ export function PageContent({
   children: ReactNode
 }) {
   return (
-    <main
-      id={id}
-      className={cn(
-        'mx-auto max-w-content px-(--page-gutter) pt-2 pb-3 max-compact:pb-4',
-        className,
-      )}
-    >
+    <main id={id} className={cn('mx-auto max-w-content px-(--page-gutter)', className)}>
       {children}
     </main>
   )

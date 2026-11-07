@@ -352,7 +352,7 @@ export function ResultsTable({
         ]
   return (
     <section
-      className="overflow-hidden border-t border-line"
+      className="overflow-hidden"
       aria-label={`${reviewingExcluded ? 'Excluded ' : ''}${labels[query.tab]} details`}
     >
       <SectionHeader
