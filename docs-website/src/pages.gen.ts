@@ -1,18 +1,22 @@
 // deno-fmt-ignore-file
 // biome-ignore format: generated types do not need formatting
 // prettier-ignore
-import type { PathsForPages } from 'waku/router'
+import type { PathsForPages, GetConfigResponse } from 'waku/router'
+
+// prettier-ignore
+import type { getConfig as File_Index_getConfig } from './pages/index'
 
 // prettier-ignore
 type Page =
-  | { path: '/commands'; render: 'static' }
-  | { path: '/getting-started'; render: 'static' }
-  | { path: '/'; render: 'static' }
-  | { path: '/install'; render: 'static' }
-  | { path: '/local-usage'; render: 'static' }
-  | { path: '/maintenance'; render: 'static' }
-  | { path: '/privacy'; render: 'static' }
-  | { path: '/remote'; render: 'static' }
+  | { path: '/docs/commands'; render: 'static' }
+  | { path: '/docs/getting-started'; render: 'static' }
+  | { path: '/docs'; render: 'static' }
+  | { path: '/docs/install'; render: 'static' }
+  | { path: '/docs/local-usage'; render: 'static' }
+  | { path: '/docs/maintenance'; render: 'static' }
+  | { path: '/docs/privacy'; render: 'static' }
+  | { path: '/docs/remote'; render: 'static' }
+  | ({ path: '/' } & GetConfigResponse<typeof File_Index_getConfig>)
 
 // prettier-ignore
 declare module 'waku/router' {

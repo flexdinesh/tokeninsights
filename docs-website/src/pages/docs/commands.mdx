@@ -1,3 +1,7 @@
+---
+showAskAi: false
+---
+
 # Commands
 
 `tokeninsights --help` lists commands. Bare invocation opens the desktop
@@ -70,7 +74,7 @@ reachable host or host:port. It prints a complete shell-quoted connect command.
 Use that full URI as `connect STRING` or `tui|web --connection STRING`.
 Keep its temporary secret private. Stopping the gateway invalidates its strings
 and connections; other leases continue. Same-machine use stays TCP.
-See [remote connections](/remote).
+See [remote connections](/docs/remote).
 
 ## Configuration
 
@@ -118,4 +122,4 @@ Both maintenance operations use a 30-second visibility wait.
 
 Defaults: `${XDG_DATA_HOME:-~/.local/share}/tokeninsights/collector.sqlite`
 and `server.sqlite`. Role/path checks reject mismatches; removed app/jobs files
-are never migrated or deleted. See [maintenance](/maintenance).
+are never migrated or deleted. See [maintenance](/docs/maintenance).

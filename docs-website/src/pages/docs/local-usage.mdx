@@ -1,11 +1,15 @@
+---
+showAskAi: false
+---
+
 # Local usage
 
 Desktop, browser and TUI share one personal backend. It owns capture,
 processing and SQLite storage; each viewer holds a lease. After the final
 disconnect and reconnect grace it stops, leaving accepted work durable for next time.
 
-import webScreenshot from '../../../assets/tokeninsights-web.png'
-import tuiScreenshot from '../../../assets/tokeninsights-tui.png'
+import webScreenshot from '../../../../assets/tokeninsights-web.png'
+import tuiScreenshot from '../../../../assets/tokeninsights-tui.png'
 
 <img src={webScreenshot} alt="TokenInsights browser dashboard with synthetic demo data" />
 
@@ -35,7 +39,7 @@ port; an occupied explicit port fails. `--open=false` prints the URL without
 opening a browser. Ctrl+C releases this command's lease; other viewers continue.
 
 The loopback bridge belongs to the viewer; the backend has only a private Unix
-socket. `--host` accepts loopback addresses. Use [temporary TCP access](/remote)
+socket. `--host` accepts loopback addresses. Use [temporary TCP access](/docs/remote)
 for another machine rather than exposing an unauthenticated browser bridge.
 
 ## Refresh versus reload
@@ -102,5 +106,5 @@ Persistent harness rows show discovery, reading, saving and finalized sources.
 The TUI reads its complete result from one consistent snapshot, using the same
 analytics as the dashboard with a 100,000-row limit.
 
-See [commands](/commands) for filters/keys and [remote connections](/remote) for
+See [commands](/docs/commands) for filters/keys and [remote connections](/docs/remote) for
 explicit SSH/TCP viewing.
