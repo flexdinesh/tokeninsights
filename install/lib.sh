@@ -280,6 +280,7 @@ if [ "$os" = linux ] && [ "$product" = desktop ]; then
 Type=Application
 Name=TokenInsights $product
 Exec="$dest/$binary" %u
+Icon=$dest/$binary.png
 Terminal=false
 Categories=Utility;
 MimeType=x-scheme-handler/tokeninsights-$product;
