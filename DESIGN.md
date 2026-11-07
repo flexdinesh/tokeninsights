@@ -229,8 +229,8 @@ supporting regions, precise typography, and restrained blue actions. Its dark
 theme uses neutral charcoal and soft white ink with the same hierarchy.
 
 Locally bundled DM Sans, tabular numerals, and compact section spacing support
-repeated inspection. Preserve the TokenInsights text wordmark, offline assets, explicit
-states, and existing analytical behavior.
+repeated inspection. Preserve the Split T mark and TokenInsights wordmark, offline
+assets, explicit states, and existing analytical behavior.
 
 This browser contract derives from the token layers and primitives in
 [`packages/dashboard/src/ui/`](packages/dashboard/src/ui/). Frontmatter colors record each
@@ -302,7 +302,8 @@ Neutral surfaces carry the workspace; one quiet blue carries every interaction.
 
 **The Neutral Surface Rule.** Keep large surfaces white or neutral gray in light
 mode and neutral charcoal in dark mode. Blue belongs to feedback and plotted
-data; readout values remain neutral.
+data; readout values remain neutral. The brand mark's single `action` token is the
+only decorative exception.
 
 **The Selection Rule.** Every selected state is the `selected` tint with
 `selected-ink` and no border: navigation, segmented controls, date presets,
@@ -327,7 +328,8 @@ reads as selected.
 - **Body** (400, 0.875rem, 1.43): explanations, table cells and controls.
 - **Label** (400, 0.8125rem, 1.33): captions, axes, compact controls and metadata.
 
-The brand uses one weight (650) across the full TokenInsights name. Field
+The brand pairs the Split T mark (`Brand`; sources in `assets/brand/`) with one
+weight (650) across the full TokenInsights name. Field
 labels use body weight 500. Fields grow to the title size below 38rem so mobile
 browsers do not zoom on focus.
 

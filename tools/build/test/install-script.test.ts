@@ -293,7 +293,11 @@ void test('desktop default supports main and registers its desktop entry', (t) =
   const result = f.run('install.sh', ['--channel=main'])
   assert.equal(result.status, 0, result.stderr)
   assert.equal(readFileSync(join(f.installed('desktop'), '.channel'), 'utf8'), 'main\n')
-  assert.ok(existsSync(join(f.home, '.local/share/applications/tokeninsights-desktop.desktop')))
+  const entry = readFileSync(
+    join(f.home, '.local/share/applications/tokeninsights-desktop.desktop'),
+    'utf8',
+  )
+  assert.ok(entry.includes(`Icon=${join(f.installed('desktop'), 'tokeninsights-desktop.png')}\n`))
 })
 void test('upgrades retain the valid launcher without a remove-and-republish gap', (t) => {
   const f = fixture(t)

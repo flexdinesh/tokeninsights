@@ -71,8 +71,9 @@ require a separate authenticated harness export or realtime hooks.
 ## Brand Commitments
 
 The product name is **TokenInsights**; the public command is `tokeninsights`.
-Use the established domain terminology and text wordmark. The incumbent browser
-identity is recorded separately in `DESIGN.md`.
+Use the established domain terminology, the Split T mark and the TokenInsights
+wordmark. Brand sources live in `assets/brand/`; the terminal stays text-only. The
+incumbent browser identity is recorded separately in `DESIGN.md`.
 
 ## Evidence on Hand
 

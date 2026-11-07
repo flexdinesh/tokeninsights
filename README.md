@@ -1,4 +1,4 @@
-# TokenInsights
+# <picture><source media="(prefers-color-scheme: dark)" srcset="assets/brand/lockup-dark.svg"><img src="assets/brand/lockup-light.svg" alt="TokenInsights" height="40"></picture>
 
 Local token usage dashboard for OpenCode, Pi, Codex, and Claude Code.
 

@@ -90,6 +90,7 @@
         ".gitignore",
         "LICENSE",
         "assets/",
+        "docs-website/public/",
         "packages/core/",
         "packages/backend/",
         "packages/dashboard/",

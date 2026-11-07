@@ -91,7 +91,10 @@ export async function buildDesktop(
           `$1${desktopBinary}`,
         ),
       )
-    } else await cp(join(built, desktopBinary), join(output, desktopBinary))
+    } else {
+      await cp(join(built, desktopBinary), join(output, desktopBinary))
+      await cp(join(built, `${desktopBinary}.png`), join(output, `${desktopBinary}.png`))
+    }
   } finally {
     await rm(temporary, { recursive: true, force: true })
   }
