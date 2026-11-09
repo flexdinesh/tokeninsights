@@ -44,11 +44,14 @@ async function main(): Promise<void> {
       ['-config', join(ROOT, GO_MODULE, GO_CONFIG), join(ROOT, 'docs/openapi.yaml')],
       goDirectory,
     )
-    run('pnpm', ['exec', 'orval', '--config', 'orval.config.ts'], ROOT, {
+    // Local binaries avoid pnpm package-manager resolution, which needs the
+    // registry; checks run without network access.
+    const bin = join(ROOT, 'node_modules/.bin')
+    run(join(bin, 'orval'), ['--config', 'orval.config.ts'], ROOT, {
       ...process.env,
       TOKENINSIGHTS_API_OUTPUT: generatedWeb,
     })
-    run('pnpm', ['exec', 'oxfmt', generatedWeb], ROOT)
+    run(join(bin, 'oxfmt'), [generatedWeb], ROOT)
 
     const mismatches: string[] = []
     if (!(await sameFile(join(ROOT, GO_OUTPUT), generatedGo))) mismatches.push(GO_OUTPUT)

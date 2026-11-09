@@ -1,0 +1,107 @@
+# One project per executing group: tokeninsights-check-s<slot>-<group>. The
+# runner supplies every variable below; contexts a group does not declare in
+# groups.json are empty directories, so an undeclared context use fails the
+# build instead of silently widening inputs. No ports are published, the
+# network has no egress or host route, and no host socket or path is mounted.
+
+x-build: &build
+  context: ${CHECK_CONTEXT_EMPTY:?}
+  dockerfile: ${CHECK_DOCKERFILE:?}
+  # ctx- prefixes keep context names apart from same-named Dockerfile stages.
+  additional_contexts:
+    ctx-group: ${CHECK_CONTEXT_GROUP:?}
+    ctx-deps: ${CHECK_CONTEXT_DEPS:?}
+    ctx-web: ${CHECK_CONTEXT_WEB:?}
+    ctx-go: ${CHECK_CONTEXT_GO:?}
+
+x-service: &service
+  platform: linux/amd64
+  init: true
+  cpus: 1
+  mem_limit: 1g
+  memswap_limit: 1g
+  # The runner builds explicitly first; up/run must never rebuild or pull.
+  pull_policy: never
+
+services:
+  runner:
+    <<: *service
+    build:
+      <<: *build
+      target: ${CHECK_GROUP:?}
+    image: tokeninsights-check:s${CHECK_SLOT:?}-${CHECK_GROUP:?}
+    cpus: 2
+    mem_limit: 6g
+    memswap_limit: 6g
+    shm_size: 1g
+    working_dir: /src
+    environment:
+      # Explicit paths keep compiler reuse when tests replace HOME.
+      GOCACHE: /cache/go-build
+      GOLANGCI_LINT_CACHE: /cache/golangci-lint
+      GOPROXY: "off"
+      TOKENINSIGHTS_TEST_SSH_ENDPOINT: ${CHECK_SSH_ENDPOINT:-}
+      TOKENINSIGHTS_TEST_PERSONAL_CONTROL_URL: ${CHECK_PERSONAL_URL:-}
+    volumes:
+      - go-build:/cache/go-build
+      - golangci-lint:/cache/golangci-lint
+      - keys:/keys:ro
+
+  keys:
+    <<: *service
+    profiles: [deployment]
+    build:
+      <<: *build
+      target: keys
+    image: tokeninsights-check:s${CHECK_SLOT:?}-keys
+    volumes:
+      - keys:/keys
+
+  sshd:
+    <<: *service
+    profiles: [deployment]
+    build:
+      <<: *build
+      target: sshd
+    image: tokeninsights-check:s${CHECK_SLOT:?}-sshd
+    depends_on:
+      keys:
+        condition: service_completed_successfully
+    volumes:
+      - keys:/keys:ro
+    healthcheck:
+      test: [CMD, bash, -c, "exec 3<>/dev/tcp/127.0.0.1/22"]
+      interval: 1s
+      timeout: 2s
+      retries: 120
+
+  personal:
+    <<: *service
+    profiles: [deployment]
+    build:
+      <<: *build
+      target: personal
+    image: tokeninsights-check:s${CHECK_SLOT:?}-personal
+    healthcheck:
+      test: [CMD, bash, -c, "exec 3<>/dev/tcp/127.0.0.1/9876"]
+      interval: 1s
+      timeout: 2s
+      retries: 120
+
+networks:
+  default:
+    # internal removes egress; the isolated gateway mode (Docker 28+) leaves
+    # the host without an address on the bridge, so no host service is reachable.
+    internal: true
+    driver_opts:
+      com.docker.network.bridge.gateway_mode_ipv4: isolated
+
+volumes:
+  keys: {}
+  # Shared accelerators across projects, worktrees and runs; never evidence.
+  go-build:
+    name: tokeninsights-check-go-build
+    external: true
+  golangci-lint:
+    name: tokeninsights-check-golangci-lint
+    external: true

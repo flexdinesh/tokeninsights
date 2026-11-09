@@ -4,11 +4,12 @@ import { fileURLToPath } from 'node:url'
 
 import { workspacePath } from './workspace.ts'
 
-// mise.toml owns development tool versions. Validation images, packageManager
-// metadata and the Go toolchain directive copy them and must stay equal.
+// mise.toml owns development tool versions. The check image installs Go, Node
+// and pnpm from mise.lock with the mise binary pinned to min_version;
+// packageManager metadata and the Go toolchain directive copy the pins.
 export type ToolchainFiles = {
   miseToml: string
-  validation: string
+  dockerfile: string
   packageJson: string
   goMod: string
 }
@@ -27,6 +28,18 @@ function misePins(miseToml: string): Map<PinnedTool, string> {
     if (tool !== undefined && match?.[2] !== undefined) pins.set(tool, match[2])
   }
   return pins
+}
+
+function minVersion(miseToml: string): string | undefined {
+  return /^min_version = "([^"]+)"$/m.exec(miseToml)?.[1]
+}
+
+// Separate tool pins in the image would bypass mise.lock and drift silently.
+function imageToolPins(dockerfile: string): string[] {
+  const pins = /^FROM (?:golang|node):|\bpnpm@\d|\bnpm install --global\b/m
+  return pins.test(dockerfile)
+    ? ['check image Dockerfile: install Go, Node and pnpm only through mise.lock']
+    : []
 }
 
 function packageManager(packageJson: string): string | undefined {
@@ -54,12 +67,12 @@ export function toolchainMismatches(files: ToolchainFiles): string[] {
     .map((tool) => `mise.toml: [tools] ${tool} pin missing`)
   if (missing.length > 0) return missing
   const go = pins.get('go')
-  const node = pins.get('node')
   const pnpm = pins.get('pnpm')
+  const mise = minVersion(files.miseToml)
+  if (mise === undefined) return ['mise.toml: min_version missing']
   return [
-    compare('validation Go image', go, /"golang:([^-@\s]+)/.exec(files.validation)?.[1]),
-    compare('validation Node image', node, /From\("node:([^-@\s]+)/.exec(files.validation)?.[1]),
-    compare('validation pnpm install', pnpm, /\bpnpm@([^\s"]+)/.exec(files.validation)?.[1]),
+    compare('check image mise', mise, /^ENV MISE_VERSION=(\S+)$/m.exec(files.dockerfile)?.[1]),
+    ...imageToolPins(files.dockerfile),
     compare('package.json packageManager', pnpm, packageManager(files.packageJson)),
     compare(
       'go.mod toolchain',
@@ -70,20 +83,20 @@ export function toolchainMismatches(files: ToolchainFiles): string[] {
 }
 
 export async function readToolchainFiles(): Promise<ToolchainFiles> {
-  const [miseToml, validation, packageJson, goMod] = await Promise.all([
+  const [miseToml, dockerfile, packageJson, goMod] = await Promise.all([
     readFile(workspacePath('mise.toml'), 'utf8'),
-    readFile(workspacePath('tools/validation/main.go'), 'utf8'),
+    readFile(workspacePath('tools/validation/Dockerfile'), 'utf8'),
     readFile(workspacePath('package.json'), 'utf8'),
     readFile(workspacePath('go.mod'), 'utf8'),
   ])
-  return { miseToml, validation, packageJson, goMod }
+  return { miseToml, dockerfile, packageJson, goMod }
 }
 
 async function main(): Promise<void> {
   const mismatches = toolchainMismatches(await readToolchainFiles())
   if (mismatches.length > 0) {
     for (const mismatch of mismatches) console.error(mismatch)
-    console.error('Update the listed files to the mise.toml [tools] versions.')
+    console.error('Update the listed files to the mise.toml versions.')
     process.exit(1)
   }
   console.log('toolchain pins OK')

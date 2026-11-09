@@ -1,5 +1,8 @@
 # Personal backend and explicit connections
 
+[ADR 0029](0029-compose-check-runner.md) replaces local Dagger validation with
+Docker Compose; real SSH/network coverage remains.
+
 Status: Accepted. Date: 5 November 2026. User approved the redesign, breaking
 CLI/config cleanup and retired product/schema removal.
 

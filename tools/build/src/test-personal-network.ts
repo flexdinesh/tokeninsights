@@ -1,4 +1,4 @@
-// Runs only against the invocation-owned Dagger personal gateway service.
+// Runs only against the invocation-owned compose personal gateway service.
 import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
 import { existsSync } from 'node:fs'

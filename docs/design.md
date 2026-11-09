@@ -467,8 +467,8 @@ Stable source tags and rolling main-build prereleases publish prebuilt archives;
 see [release](release.md). There is no hosted server, PostgreSQL, account UI,
 server installer, Docker product deployment, completion plugin or sync job product.
 
-Validation remains local through the explicitly managed Dagger engine and dedicated
-cache, including real OpenSSH and isolated TCP/network validation. Preserve
+Validation remains local through isolated Docker Compose projects (ADR 0029),
+including real OpenSSH and isolated TCP/network validation. Preserve
 accounting/privacy, receipt replay, source deletion/rebuild, publication rollback,
 restart and snapshot oracles. Add shared owner/startup races, final lease shutdown/
 reopen, query/Refresh parity, bad pin/token/expired URI/protocol mismatch, serving-host
@@ -477,4 +477,4 @@ TCP, native secret handoff/desktop acknowledgement and unavailable-app checks.
 Format/lint before verification. Final PR evidence requires committed clean HEAD:
 full `mise run check:pr` and
 `mise run build:docs`. Never replace these with uncommitted checks. Use retained
-artifacts; never poll long checks or interfere with another engine/invocation.
+artifacts; never poll long checks or interfere with another invocation's resources.

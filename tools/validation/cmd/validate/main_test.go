@@ -27,7 +27,11 @@ func TestGeneratedArtifactPathsRejectBuildOutput(t *testing.T) {
 
 func fixture(t *testing.T) runner {
 	t.Helper()
-	r := runner{ctx: context.Background(), root: t.TempDir(), home: t.TempDir(), manifest: manifest{Common: []string{"*", "packages/"}, Groups: map[string]groupSpec{"go": {Class: "heavy"}}}}
+	r := runner{ctx: context.Background(), root: t.TempDir(), home: t.TempDir(), manifest: manifest{
+		Common:   []string{"*", "packages/"},
+		Contexts: map[string]contextSpec{"deps": {Inputs: []string{"pnpm-lock.yaml"}}, "web": {}, "go": {}},
+		Groups:   map[string]groupSpec{"go": {Executor: "container", Uses: []string{"deps"}}},
+	}}
 	for _, a := range [][]string{{"init", "-q"}, {"config", "user.email", "test@example.invalid"}, {"config", "user.name", "Test"}} {
 		if _, e := r.git(a...); e != nil {
 			t.Fatal(e)
@@ -125,27 +129,35 @@ func TestSnapshotIdentityAndIsolation(t *testing.T) {
 	if e := os.WriteFile(filepath.Join(r.root, "secret"), []byte("untracked"), 0600); e != nil {
 		t.Fatal(e)
 	}
-	dest := t.TempDir()
-	key, e := r.snapshot(sha, "go", dest)
-	if e != nil {
+	tree := filepath.Join(t.TempDir(), "tree")
+	if e := r.extract(sha, tree); e != nil {
 		t.Fatal(e)
 	}
-	if _, e = os.Stat(filepath.Join(dest, "secret")); !os.IsNotExist(e) {
+	if _, e := os.Stat(filepath.Join(tree, "secret")); !os.IsNotExist(e) {
 		t.Fatal("untracked input leaked")
 	}
-	if st, e := os.Stat(filepath.Join(dest, ".git")); e != nil || !st.IsDir() {
-		t.Fatal("snapshot lacks independent git metadata")
+	if _, e := os.Stat(filepath.Join(tree, ".git")); !os.IsNotExist(e) {
+		t.Fatal("snapshot carries host git metadata")
 	}
-	next := commit(t, r)
-	key2, e := r.snapshot(next, "go", t.TempDir())
+	source, e := r.prepareHostSource(tree, "go", t.TempDir())
 	if e != nil {
 		t.Fatal(e)
 	}
-	if key == key2 {
-		t.Fatal("new root input must invalidate")
+	if st, e := os.Stat(filepath.Join(source, ".git")); e != nil || !st.IsDir() {
+		t.Fatal("host source lacks independent git metadata")
 	}
-	history := commit(t, r)
-	key3, e := r.snapshot(history, "go", t.TempDir())
+	key, e := r.identity(sha, "go")
+	if e != nil {
+		t.Fatal(e)
+	}
+	if e = os.WriteFile(filepath.Join(r.root, "added"), []byte("new"), 0600); e != nil {
+		t.Fatal(e)
+	}
+	key2, e := r.identity(commit(t, r), "go")
+	if e != nil || key == key2 {
+		t.Fatal("new root input must invalidate", e)
+	}
+	key3, e := r.identity(commit(t, r), "go")
 	if e != nil || key2 != key3 {
 		t.Fatal("history-only change invalidated", e)
 	}
@@ -155,8 +167,7 @@ func TestSnapshotIdentityAndIsolation(t *testing.T) {
 	if _, e = r.clean(); e == nil {
 		t.Fatal("dirty tree accepted")
 	}
-	changed := commit(t, r)
-	key4, e := r.snapshot(changed, "go", t.TempDir())
+	key4, e := r.identity(commit(t, r), "go")
 	if e != nil || key3 == key4 {
 		t.Fatal("configuration change not invalidated", e)
 	}
@@ -186,24 +197,56 @@ func TestEvidenceReceiptRequiresCompleteSuccess(t *testing.T) {
 		t.Fatal("wrong identity accepted")
 	}
 }
-func TestAdmissionCancellationAndRelease(t *testing.T) {
-	release, e := slot(context.Background(), "heavy")
-	if e != nil {
-		t.Fatal(e)
+func TestAdmissionBoundsRunsAndReleases(t *testing.T) {
+	dir := t.TempDir()
+	first, releaseFirst, err := admit(t.Context(), dir)
+	if err != nil {
+		t.Fatal(err)
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	second, releaseSecond, err := admit(t.Context(), dir)
+	if err != nil || first == second {
+		t.Fatal("two runs must hold distinct slots", first, second, err)
+	}
+	ctx, cancel := context.WithTimeout(t.Context(), 300*time.Millisecond)
 	defer cancel()
-	if other, e := slot(ctx, "heavy"); e == nil {
+	if _, other, err := admit(ctx, dir); err == nil {
 		other()
+		t.Fatal("third concurrent run admitted")
+	}
+	releaseFirst()
+	again, release, err := admit(t.Context(), dir)
+	if err != nil || again != first {
+		t.Fatal("released slot not reused", again, err)
+	}
+	release()
+	releaseSecond()
+}
+
+// Other repositories hold the same numbered flock files; their holders count
+// against this repository's limit.
+func TestAdmissionHonorsForeignHolders(t *testing.T) {
+	dir := t.TempDir()
+	for slot := range admissionSlots {
+		f, err := lockFile(filepath.Join(dir, fmt.Sprintf("%d.lock", slot)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer f.Close()
+	}
+	ctx, cancel := context.WithTimeout(t.Context(), 300*time.Millisecond)
+	defer cancel()
+	if _, release, err := admit(ctx, dir); err == nil {
 		release()
-		t.Fatal("concurrent capacity admitted")
+		t.Fatal("admitted while foreign runs hold every slot")
 	}
-	release()
-	release, e = slot(context.Background(), "heavy")
-	if e != nil {
-		t.Fatal(e)
+}
+
+func TestAdmissionDirIsSharedAcrossRepositories(t *testing.T) {
+	t.Setenv("XDG_CACHE_HOME", "/cache-root")
+	dir, err := admissionDir()
+	if err != nil || dir != "/cache-root/local-validation/slots" {
+		t.Fatal(dir, err)
 	}
-	release()
 }
 
 func TestPrunePreservesActiveLease(t *testing.T) {
