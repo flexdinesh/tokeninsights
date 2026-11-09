@@ -9,7 +9,6 @@ import (
 
 	"github.com/flexdinesh/tokeninsights/packages/core/dataengine"
 	"github.com/flexdinesh/tokeninsights/packages/core/evidence"
-	"github.com/flexdinesh/tokeninsights/packages/core/persistence/sqlutil"
 	"github.com/flexdinesh/tokeninsights/packages/core/processor"
 )
 
@@ -171,7 +170,7 @@ func TestDelayedMembershipSkipsLateAncestorsWithoutBlockingIndependentSessions(t
 		t.Fatal("alternate root bypassed delayed membership", found, err)
 	}
 	var failures int
-	if err := root.SQL().QueryRow(sqlutil.Bind("SELECT COUNT(*) FROM processing_scopes WHERE error_code<>'' OR attempts<>0 OR retry_at_ms<>0")).Scan(&failures); err != nil || failures != 0 {
+	if err := root.SQL().QueryRow("SELECT COUNT(*) FROM processing_scopes WHERE error_code<>'' OR attempts<>0 OR retry_at_ms<>0").Scan(&failures); err != nil || failures != 0 {
 		t.Fatal("stale work changed durable backoff", failures, err)
 	}
 	// Removing only the ephemeral hint makes durable work immediately available.

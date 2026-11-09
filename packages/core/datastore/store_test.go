@@ -10,7 +10,6 @@ import (
 	"testing"
 
 	"github.com/flexdinesh/tokeninsights/packages/core/evidence"
-	"github.com/flexdinesh/tokeninsights/packages/core/persistence/sqlutil"
 )
 
 func testStore(t testing.TB) *Store {
@@ -57,7 +56,7 @@ func drain(t *testing.T, store *Store) {
 func total(t *testing.T, store *Store, table string) int64 {
 	t.Helper()
 	var total int64
-	if err := store.SQL().QueryRowContext(t.Context(), sqlutil.Bind("SELECT CAST(COALESCE(SUM(total_tokens),0) AS BIGINT) FROM "+table+" WHERE dataset_id=?"), store.DatasetID()).Scan(&total); err != nil {
+	if err := store.SQL().QueryRowContext(t.Context(), "SELECT CAST(COALESCE(SUM(total_tokens),0) AS BIGINT) FROM "+table+" WHERE dataset_id=?", store.DatasetID()).Scan(&total); err != nil {
 		t.Fatal(err)
 	}
 	return total
@@ -168,7 +167,7 @@ func TestNativeConflictWithdrawsConfirmedAndDeduplicatesEstimate(t *testing.T) {
 		t.Fatalf("conflict still confirmed: %d", got)
 	}
 	var count int
-	if err := store.SQL().QueryRow(sqlutil.Bind("SELECT COUNT(*) FROM analytics_estimates")).Scan(&count); err != nil || count != 1 {
+	if err := store.SQL().QueryRow("SELECT COUNT(*) FROM analytics_estimates").Scan(&count); err != nil || count != 1 {
 		t.Fatalf("estimates %d %v", count, err)
 	}
 	response, err := store.Receipt(t.Context(), "first", "batch")
@@ -203,7 +202,7 @@ func TestOverlappingBatchesBindSequenceAndKeepEveryMembership(t *testing.T) {
 		t.Fatal("overlap inflated or skipped facts", got)
 	}
 	var mappings int
-	if err := store.SQL().QueryRow(sqlutil.Bind("SELECT COUNT(*) FROM ingestion_batch_items")).Scan(&mappings); err != nil || mappings != 4 {
+	if err := store.SQL().QueryRow("SELECT COUNT(*) FROM ingestion_batch_items").Scan(&mappings); err != nil || mappings != 4 {
 		t.Fatal("overlap lost membership", mappings, err)
 	}
 	batch.BatchID = "changed-sequence"
@@ -220,7 +219,7 @@ func TestOverlappingBatchesBindSequenceAndKeepEveryMembership(t *testing.T) {
 	if got := total(t, store, "analytics_confirmed"); got != 340 {
 		t.Fatal("conflict mutated facts", got)
 	}
-	if err := store.SQL().QueryRow(sqlutil.Bind("SELECT COUNT(*) FROM ingestion_batch_items")).Scan(&mappings); err != nil || mappings != 4 {
+	if err := store.SQL().QueryRow("SELECT COUNT(*) FROM ingestion_batch_items").Scan(&mappings); err != nil || mappings != 4 {
 		t.Fatal("failed overlap partly committed", mappings, err)
 	}
 }

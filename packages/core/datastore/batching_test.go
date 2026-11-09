@@ -8,7 +8,6 @@ import (
 	"testing"
 
 	"github.com/flexdinesh/tokeninsights/packages/core/evidence"
-	"github.com/flexdinesh/tokeninsights/packages/core/persistence/sqlutil"
 	"github.com/flexdinesh/tokeninsights/packages/core/processor"
 )
 
@@ -28,7 +27,7 @@ func TestLargeBatchPreservesDuplicatesAndProjection(t *testing.T) {
 		t.Fatalf("lost duplicate mappings: %+v", accepted)
 	}
 	var raw, mappings, scopes int64
-	if err := store.SQL().QueryRowContext(t.Context(), sqlutil.Bind("SELECT (SELECT COUNT(*) FROM raw_evidence),(SELECT COUNT(*) FROM ingestion_batch_items),(SELECT COUNT(*) FROM processing_scopes)")).Scan(&raw, &mappings, &scopes); err != nil {
+	if err := store.SQL().QueryRowContext(t.Context(), "SELECT (SELECT COUNT(*) FROM raw_evidence),(SELECT COUNT(*) FROM ingestion_batch_items),(SELECT COUNT(*) FROM processing_scopes)").Scan(&raw, &mappings, &scopes); err != nil {
 		t.Fatal(err)
 	}
 	if raw != uniqueRecords || mappings != evidence.MaxEntries || scopes != 1 {
@@ -39,7 +38,7 @@ func TestLargeBatchPreservesDuplicatesAndProjection(t *testing.T) {
 		t.Fatalf("wrong usage total: %d", got)
 	}
 	var facts, provenance, outcomes int64
-	if err := store.SQL().QueryRowContext(t.Context(), sqlutil.Bind("SELECT (SELECT COUNT(*) FROM analytics_facts),(SELECT COUNT(*) FROM analytics_provenance),(SELECT COUNT(*) FROM processing_outcomes)")).Scan(&facts, &provenance, &outcomes); err != nil {
+	if err := store.SQL().QueryRowContext(t.Context(), "SELECT (SELECT COUNT(*) FROM analytics_facts),(SELECT COUNT(*) FROM analytics_provenance),(SELECT COUNT(*) FROM processing_outcomes)").Scan(&facts, &provenance, &outcomes); err != nil {
 		t.Fatal(err)
 	}
 	if facts != uniqueRecords || provenance != uniqueRecords || outcomes != uniqueRecords {
@@ -111,7 +110,7 @@ func TestLargeBatchSequenceConflictRollsBack(t *testing.T) {
 		t.Fatalf("expected immutable sequence conflict: %v", err)
 	}
 	var raw, mappings, batches int64
-	if err := store.SQL().QueryRowContext(t.Context(), sqlutil.Bind("SELECT (SELECT COUNT(*) FROM raw_evidence),(SELECT COUNT(*) FROM ingestion_batch_items),(SELECT COUNT(*) FROM ingestion_batches)")).Scan(&raw, &mappings, &batches); err != nil {
+	if err := store.SQL().QueryRowContext(t.Context(), "SELECT (SELECT COUNT(*) FROM raw_evidence),(SELECT COUNT(*) FROM ingestion_batch_items),(SELECT COUNT(*) FROM ingestion_batches)").Scan(&raw, &mappings, &batches); err != nil {
 		t.Fatal(err)
 	}
 	if raw != 1 || mappings != 1 || batches != 1 {

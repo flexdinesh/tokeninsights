@@ -6,23 +6,22 @@ import (
 	"errors"
 
 	"github.com/flexdinesh/tokeninsights/packages/core/persistence/sqlitecore"
-	"github.com/flexdinesh/tokeninsights/packages/core/persistence/sqlutil"
 )
 
 func inspectCurrent(ctx context.Context, database *sql.DB, expectedKind string) error {
 	var role, id, kind string
 	var version int
-	if err := database.QueryRowContext(ctx, sqlutil.Bind("SELECT role,schema_version,database_id,server_kind FROM ingestion_instance WHERE id=1")).Scan(&role, &version, &id, &kind); err != nil {
+	if err := database.QueryRowContext(ctx, "SELECT role,schema_version,database_id,server_kind FROM ingestion_instance WHERE id=1").Scan(&role, &version, &id, &kind); err != nil {
 		return err
 	}
 	if role != "server-data" || version != SchemaVersion || id == "" || kind != KindPersonal {
 		return errors.New("incompatible_server_data")
 	}
 	var applicationID, versionID int
-	if err := database.QueryRowContext(ctx, sqlutil.Bind("PRAGMA application_id")).Scan(&applicationID); err != nil {
+	if err := database.QueryRowContext(ctx, "PRAGMA application_id").Scan(&applicationID); err != nil {
 		return err
 	}
-	if err := database.QueryRowContext(ctx, sqlutil.Bind("PRAGMA user_version")).Scan(&versionID); err != nil {
+	if err := database.QueryRowContext(ctx, "PRAGMA user_version").Scan(&versionID); err != nil {
 		return err
 	}
 	if applicationID != ApplicationID || versionID != SchemaVersion {
@@ -38,7 +37,7 @@ func inspectCurrent(ctx context.Context, database *sql.DB, expectedKind string) 
 }
 
 func inspectDatasets(ctx context.Context, database *sql.DB, id, kind string) error {
-	rows, err := database.QueryContext(ctx, sqlutil.Bind("SELECT dataset_id FROM ingestion_metadata"))
+	rows, err := database.QueryContext(ctx, "SELECT dataset_id FROM ingestion_metadata")
 	if err != nil {
 		return err
 	}

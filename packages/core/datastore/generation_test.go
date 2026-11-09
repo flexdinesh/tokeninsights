@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"github.com/flexdinesh/tokeninsights/packages/core/evidence"
-	"github.com/flexdinesh/tokeninsights/packages/core/persistence/sqlutil"
 )
 
 func TestMetadataRemainsConsistentDuringGenerationActivation(t *testing.T) {
@@ -78,7 +77,7 @@ func TestReprocessKeepsPublishedGenerationUntilComplete(t *testing.T) {
 		t.Fatalf("generation duplicated totals %d", got)
 	}
 	var retained int
-	if err := store.SQL().QueryRow(sqlutil.Bind("SELECT COUNT(*) FROM analytics_facts WHERE generation=1")).Scan(&retained); err != nil || retained != 2 {
+	if err := store.SQL().QueryRow("SELECT COUNT(*) FROM analytics_facts WHERE generation=1").Scan(&retained); err != nil || retained != 2 {
 		t.Fatalf("old generation lost: %d %v", retained, err)
 	}
 	status, err = store.Receipt(t.Context(), "stream", "batch")
@@ -137,7 +136,7 @@ func TestProcessorUpgradeReplacesInterruptedOlderGeneration(t *testing.T) {
 	if _, err := store.Reprocess(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.SQL().Exec(sqlutil.Bind("UPDATE analytics_generations SET processor_version=? WHERE generation=2"), evidence.ProcessorVersion-1); err != nil {
+	if _, err := store.SQL().Exec("UPDATE analytics_generations SET processor_version=? WHERE generation=2", evidence.ProcessorVersion-1); err != nil {
 		t.Fatal(err)
 	}
 	if err := store.Close(); err != nil {
@@ -153,7 +152,7 @@ func TestProcessorUpgradeReplacesInterruptedOlderGeneration(t *testing.T) {
 		t.Fatal("upgrade reused interrupted older rules", m, err)
 	}
 	var processor int
-	if err := reopened.SQL().QueryRow(sqlutil.Bind("SELECT processor_version FROM analytics_generations WHERE generation=?"), m.TargetGeneration).Scan(&processor); err != nil || processor != evidence.ProcessorVersion {
+	if err := reopened.SQL().QueryRow("SELECT processor_version FROM analytics_generations WHERE generation=?", m.TargetGeneration).Scan(&processor); err != nil || processor != evidence.ProcessorVersion {
 		t.Fatal("generation mislabels processor", processor, err)
 	}
 	drain(t, reopened)

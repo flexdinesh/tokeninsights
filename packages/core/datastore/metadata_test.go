@@ -8,7 +8,6 @@ import (
 	"testing"
 
 	"github.com/flexdinesh/tokeninsights/packages/core/evidence"
-	"github.com/flexdinesh/tokeninsights/packages/core/persistence/sqlutil"
 )
 
 func TestMetadataRejectsInvalidGenerationContracts(t *testing.T) {
@@ -28,7 +27,7 @@ func TestMetadataRejectsInvalidGenerationContracts(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			store := testStore(t)
-			if _, err := store.SQL().ExecContext(t.Context(), sqlutil.Bind(test.change)); err != nil {
+			if _, err := store.SQL().ExecContext(t.Context(), test.change); err != nil {
 				t.Fatal(err)
 			}
 			if _, err := store.Metadata(t.Context()); err == nil || err.Error() != test.code {
@@ -68,7 +67,7 @@ func BenchmarkMetadataRead(b *testing.B) {
 
 func TestMetadataGenerationGuardsAreDatasetScoped(t *testing.T) {
 	alice, bob := testStore(t), testStore(t)
-	if _, err := bob.SQL().ExecContext(t.Context(), sqlutil.Bind("UPDATE analytics_generations SET processor_version=? WHERE dataset_id=?"), evidence.ProcessorVersion+1, bob.DatasetID()); err != nil {
+	if _, err := bob.SQL().ExecContext(t.Context(), "UPDATE analytics_generations SET processor_version=? WHERE dataset_id=?", evidence.ProcessorVersion+1, bob.DatasetID()); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := alice.Metadata(t.Context()); err != nil {
