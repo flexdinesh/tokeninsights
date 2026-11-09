@@ -327,7 +327,7 @@ func TestRawParallelMatchesSerialAndWorkerAdmission(t *testing.T) {
 			t.Fatal("parallel replay requeued unchanged observations", summary, err)
 		}
 	}
-	if rawWorkerCount(SyncOptions{}, 100) != rawPreparationWorkers || rawWorkerCount(SyncOptions{workers: 100}, 100)*rawPreparationWorkerBytes > rawPreparationMemoryBytes || rawWorkerCount(SyncOptions{workers: 4}, 2) != 2 {
+	if rawWorkerCount(SyncOptions{}, 100) != defaultRawPreparationWorkers() || defaultRawPreparationWorkers() > maxRawPreparationWorkers || rawWorkerCount(SyncOptions{workers: 100}, 100)*rawPreparationWorkerBytes > rawPreparationMemoryBytes || rawWorkerCount(SyncOptions{workers: 4}, 2) != 2 {
 		t.Fatal("worker/count/memory admission violated")
 	}
 }

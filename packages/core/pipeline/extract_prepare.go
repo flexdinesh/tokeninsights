@@ -10,6 +10,7 @@ import (
 	"io"
 	"os"
 	"reflect"
+	"runtime"
 	"sync"
 	"time"
 
@@ -18,11 +19,15 @@ import (
 )
 
 const (
-	rawPreparationWorkers = 4
+	maxRawPreparationWorkers = 8
+	// Completed sources may wait this many slots per reader behind the ordered
+	// commit head, so one slow source does not idle the other readers. Waiting
+	// sources hold only their on-disk spool, not reader memory.
+	rawCompletedSourcesPerWorker = 4
 	// Readers, native JSON decoding and sanitized record encoding share a
 	// per-worker allowance. The record bound is independent of worker count.
 	rawPreparationWorkerBytes = 4 * maxEvidenceLineBytes
-	rawPreparationMemoryBytes = rawPreparationWorkers * rawPreparationWorkerBytes
+	rawPreparationMemoryBytes = maxRawPreparationWorkers * rawPreparationWorkerBytes
 	rawParserPolicyVersion    = 1
 )
 
@@ -200,10 +205,14 @@ type rawSourceResult struct {
 	err      error
 }
 
+func defaultRawPreparationWorkers() int {
+	return min(runtime.NumCPU(), maxRawPreparationWorkers)
+}
+
 func rawWorkerCount(options SyncOptions, count int) int {
 	workers := options.workers
 	if workers <= 0 {
-		workers = rawPreparationWorkers
+		workers = defaultRawPreparationWorkers()
 	}
 	return max(1, min(workers, count, rawPreparationMemoryBytes/rawPreparationWorkerBytes))
 }
@@ -270,7 +279,10 @@ func extractPrepared(ctx context.Context, options SyncOptions, store *rawcollect
 	}
 	defer func() { _ = os.RemoveAll(directory) }()
 	workers := rawWorkerCount(options, len(jobs))
-	queue := make(chan int, workers)
+	window := workers * rawCompletedSourcesPerWorker
+	// Unbuffered: a source is issued only when an idle reader starts it, so
+	// cancellation leaves every unstarted source outstanding.
+	queue := make(chan int)
 	results := make([]chan rawSourceResult, len(jobs))
 	for i := range results {
 		results[i] = make(chan rawSourceResult, 1)
@@ -279,6 +291,9 @@ func extractPrepared(ctx context.Context, options SyncOptions, store *rawcollect
 	for range workers {
 		wg.Go(func() {
 			for index := range queue {
+				if options.beforePrepare != nil {
+					options.beforePrepare(index)
+				}
 				progress.reading(jobs[index].harnessIndex, true)
 				p, err := prepareRawSource(ctx, jobs[index].source, options, store, directory)
 				progress.reading(jobs[index].harnessIndex, false)
@@ -286,14 +301,39 @@ func extractPrepared(ctx context.Context, options SyncOptions, store *rawcollect
 			}
 		})
 	}
-	// A source slot remains occupied until the single writer consumes it. This
-	// bounds completed spools and active readers together, even for a slow source.
-	issued := min(workers, len(jobs))
-	for i := 0; i < issued; i++ {
-		queue <- i
+	// A source slot remains occupied until the single writer consumes it in
+	// order. Workers bound active readers; the window bounds completed spools
+	// waiting behind a slow source.
+	issued := 0
+	// receive waits for the ordered head while handing later sources to idle
+	// readers. A ready head result always wins, keeping commits prompt.
+	receive := func(completed int) rawSourceResult {
+		for {
+			select {
+			case result := <-results[completed]:
+				return result
+			default:
+			}
+			if issued >= len(jobs) || issued >= completed+window || ctx.Err() != nil {
+				return <-results[completed]
+			}
+			select {
+			case result := <-results[completed]:
+				return result
+			case queue <- issued:
+				issued++
+			}
+		}
 	}
-	for completed := 0; completed < issued; completed++ {
-		result := <-results[completed]
+	for completed := 0; completed < len(jobs); completed++ {
+		if completed == issued {
+			if completed > 0 && ctx.Err() != nil {
+				break
+			}
+			queue <- issued
+			issued++
+		}
+		result := receive(completed)
 		job := jobs[completed]
 		state := &states[job.harnessIndex]
 		count := 0
@@ -336,10 +376,6 @@ func extractPrepared(ctx context.Context, options SyncOptions, store *rawcollect
 			if options.Progress != nil {
 				options.Progress(SyncProgressEvent{Harness: state.harness, Status: status, Quarantined: state.quarantined})
 			}
-		}
-		if issued < len(jobs) && ctx.Err() == nil {
-			queue <- issued
-			issued++
 		}
 	}
 	close(queue)

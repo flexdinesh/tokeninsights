@@ -52,6 +52,8 @@ type SyncOptions struct {
 	CaptureProgress  func(CaptureProgressEvent)
 	locationResolver *locationResolver
 	workers          int
+	// beforePrepare observes a worker starting a source job; tests only.
+	beforePrepare func(job int)
 }
 
 type SyncProgressStatus string
