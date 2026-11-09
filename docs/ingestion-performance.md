@@ -15,7 +15,7 @@ mkdir -p .scratch/storage-tmp
 env TMPDIR="$PWD/.scratch/storage-tmp" mise run bench:storage
 ```
 
-Checks run locally through managed Dagger with isolated synthetic real SQLite
+Checks run locally in isolated Docker Compose projects with synthetic real SQLite
 fixtures, never user databases. Use disk-backed temporary storage; tmpfs timings
 do not establish disk durability performance. Smoke executes benchmark families
 once without timing gates. Full storage samples use three iterations and three

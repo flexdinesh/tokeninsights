@@ -50,12 +50,12 @@ void test('development builds retain native leaves and dependency preparation', 
   assert.doesNotMatch(output, /go run \.\/cmd\/validate/)
 })
 
-void test('format verification never installs dependencies or enters Dagger', () => {
+void test('format verification never installs dependencies or enters containers', () => {
   for (const task of ['format:check', 'check:internal:format']) {
     const output = dryRun(task)
     assert.match(output, /format-go.ts --check/)
     assert.match(output, /oxfmt --check/)
-    assert.doesNotMatch(output, /mise deps install|cmd\/validate|dagger/)
+    assert.doesNotMatch(output, /mise deps install|cmd\/validate|docker/)
   }
 })
 

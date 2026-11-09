@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -11,7 +10,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
-	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -19,58 +17,33 @@ import (
 	"time"
 )
 
-type groupSpec struct {
-	Inputs          []string
-	Executor, Class string
-}
-type manifest struct {
-	Common []string
-	Groups map[string]groupSpec
+// prepareHostSource gives host groups an independent Git index over exactly
+// their selected files, never real history or host gitdir pointers.
+func (r runner) prepareHostSource(tree, group, dest string) (string, error) {
+	contexts, err := r.manifest.materialize(tree, group, dest)
+	if err != nil {
+		return "", err
+	}
+	source := contexts[groupContext]
+	for _, args := range [][]string{{"init", "--quiet", "--initial-branch=validation"}, {"add", "--force", "."}} {
+		if _, err = r.command(source, "git", args...); err != nil {
+			return "", err
+		}
+	}
+	// Rebuild the index from its tree to remove checkout-dependent stat timestamps.
+	written, err := r.command(source, "git", "write-tree")
+	if err != nil {
+		return "", err
+	}
+	if err = os.Remove(filepath.Join(source, ".git", "index")); err != nil {
+		return "", err
+	}
+	if _, err = r.command(source, "git", "read-tree", strings.TrimSpace(string(written))); err != nil {
+		return "", err
+	}
+	return source, nil
 }
 
-func (r runner) selected(group, path string) bool {
-	for _, p := range append(append([]string{}, r.manifest.Common...), r.manifest.Groups[group].Inputs...) {
-		if p == path || strings.HasSuffix(p, "/") && strings.HasPrefix(path, p) {
-			return true
-		}
-		if ok, _ := filepath.Match(p, path); ok {
-			return true
-		}
-	}
-	return false
-}
-func (r runner) identity(sha, g string) (string, error) {
-	b, e := r.command(r.root, "git", "ls-tree", "-rz", "--full-tree", sha)
-	if e != nil {
-		return "", e
-	}
-	h := sha256.New()
-	fmt.Fprintf(h, "%s\x00%s\x00%s\x00%s\x00linux/amd64", receiptVersion, version, engineImage, g)
-	fmt.Fprintf(h, "\x00storage-samples=%t", r.storageBenchmarks)
-	manifestBytes, e := json.Marshal(r.manifest)
-	if e != nil {
-		return "", e
-	}
-	h.Write(manifestBytes)
-	for _, entry := range strings.Split(string(b), "\x00") {
-		parts := strings.SplitN(entry, "\t", 2)
-		if len(parts) != 2 || !r.selected(g, parts[1]) {
-			continue
-		}
-		// Git object identifiers commit to the complete bytes, including symlink targets.
-		fmt.Fprint(h, entry, "\x00")
-	}
-	if r.manifest.Groups[g].Executor == "host" {
-		fmt.Fprint(h, runtime.GOOS, "/", runtime.GOARCH)
-		fingerprint, _, err := r.hostTools(sha)
-		e = err
-		if e != nil {
-			return "", fmt.Errorf("install pinned formatter tools explicitly with mise install: %w", e)
-		}
-		h.Write([]byte(fingerprint))
-	}
-	return hex.EncodeToString(h.Sum(nil)), nil
-}
 func (r runner) hostFormat(sha, snap, artifacts string) error {
 	// Resolve installed tools before entering the isolated home. No install task is invoked.
 	r.logPath = ""
@@ -173,46 +146,40 @@ func capacity(name string, fallback int) int {
 	}
 	return fallback
 }
-func slot(ctx context.Context, class string) (func(), error) {
-	if err := ctx.Err(); err != nil {
-		return nil, err
-	}
-	count := 1
-	if class == "light" {
-		count = 2
-	} else if class != "heavy" {
-		return nil, fmt.Errorf("invalid execution class %q", class)
-	}
-	count = capacity("TOKENINSIGHTS_VALIDATION_"+strings.ToUpper(class)+"_SLOTS", count)
-	// Admission must not depend on an invocation's private TMPDIR.
-	dir := filepath.Join("/tmp", fmt.Sprintf("local-validation-%d", os.Getuid()))
-	if e := os.MkdirAll(dir, 0700); e != nil {
-		return nil, e
-	}
-	info, err := os.Lstat(dir)
+
+// admissionSlots bounds concurrent container runs machine-wide. Other
+// repositories use the same directory and flock files, so the limit is global.
+const admissionSlots = 2
+
+func admissionDir() (string, error) {
+	cache, err := os.UserCacheDir()
 	if err != nil {
-		return nil, err
+		return "", err
 	}
-	stat, ok := info.Sys().(*syscall.Stat_t)
-	if !ok || !info.IsDir() || info.Mode().Perm() != 0700 || stat.Uid != uint32(os.Getuid()) {
-		return nil, fmt.Errorf("unsafe admission directory %s", dir)
+	return filepath.Join(cache, "local-validation", "slots"), nil
+}
+
+// admit holds one slot for a whole run. Status and cache hits never queue.
+func admit(ctx context.Context, dir string) (int, func(), error) {
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		return 0, nil, err
 	}
 	for {
 		if err := ctx.Err(); err != nil {
-			return nil, err
+			return 0, nil, err
 		}
-		for i := 0; i < count; i++ {
-			f, e := lockFile(filepath.Join(dir, fmt.Sprintf("%s-%d.lock", class, i)))
+		for slot := range admissionSlots {
+			f, e := lockFile(filepath.Join(dir, fmt.Sprintf("%d.lock", slot)))
 			if e == nil {
-				return func() { f.Close() }, nil
+				return slot, func() { f.Close() }, nil
 			}
 			if !errors.Is(e, syscall.EWOULDBLOCK) {
-				return nil, e
+				return 0, nil, e
 			}
 		}
 		select {
 		case <-ctx.Done():
-			return nil, ctx.Err()
+			return 0, nil, ctx.Err()
 		case <-time.After(200 * time.Millisecond):
 		}
 	}

@@ -1,5 +1,8 @@
 # Focused validation and cache reuse
 
+Updated by [ADR 0029](0029-compose-check-runner.md): Docker Compose and
+BuildKit stages replace Dagger engine caches and heavy/light admission.
+
 Status: Accepted. Date: 5 November 2026. User approved retaining mandatory
 correctness contracts and moving performance benchmarks to explicit commands.
 

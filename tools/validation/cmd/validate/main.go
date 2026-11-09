@@ -1,11 +1,10 @@
+// validate runs isolated checks on committed HEAD: format on the host, every
+// other group in its own Docker Compose project.
 package main
 
 import (
-	"archive/tar"
 	"bytes"
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -16,17 +15,12 @@ import (
 	"os/signal"
 	"path/filepath"
 	"strings"
-	"sync"
 	"syscall"
 	"time"
 
 	"github.com/google/uuid"
 )
 
-const version = "0.21.11"
-const engine = "tokeninsights-validation-engine-v0.21.11"
-const engineImage = "registry.dagger.io/engine@sha256:6b557cc8b5fdfee0e2e8c82d451ac922097a1255482143e1b96c0be3ff2a303c"
-const engineVolume = "tokeninsights-validation-cache-v0.21.11"
 const receiptVersion = "v2"
 
 type selection []string
@@ -46,6 +40,31 @@ type runner struct {
 	manifest          manifest
 	hostPath          string
 	storageBenchmarks bool
+	// docker is the Docker CLI; env carries the caller's Docker endpoint
+	// settings and compose variables into otherwise private subprocesses.
+	docker string
+	env    []string
+}
+
+// dockerEnvironment keeps the caller's Docker endpoint and CLI plugins while
+// subprocesses otherwise run with a private HOME.
+func dockerEnvironment() []string {
+	var env []string
+	for _, name := range []string{"DOCKER_HOST", "DOCKER_CONTEXT", "DOCKER_CERT_PATH", "DOCKER_TLS_VERIFY"} {
+		if value, ok := os.LookupEnv(name); ok {
+			env = append(env, name+"="+value)
+		}
+	}
+	config := os.Getenv("DOCKER_CONFIG")
+	if config == "" {
+		if home, err := os.UserHomeDir(); err == nil {
+			config = filepath.Join(home, ".docker")
+		}
+	}
+	if config != "" {
+		env = append(env, "DOCKER_CONFIG="+config)
+	}
+	return env
 }
 
 func (r runner) command(dir, name string, args ...string) ([]byte, error) {
@@ -54,23 +73,25 @@ func (r runner) command(dir, name string, args ...string) ([]byte, error) {
 	}
 	c := exec.Command(name, args...)
 	c.Dir = dir
-	c.Env = []string{"PATH=" + os.Getenv("PATH"), "HOME=" + r.home, "XDG_CONFIG_HOME=" + r.home + "/config", "XDG_CACHE_HOME=" + r.home + "/cache", "GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL=/dev/null", "DAGGER_LEAVE_OLD_ENGINE=true", "_EXPERIMENTAL_DAGGER_RUNNER_HOST=docker-container://" + engine, "LC_ALL=C", "GIT_TERMINAL_PROMPT=0"}
+	c.Env = []string{"PATH=" + os.Getenv("PATH"), "HOME=" + r.home, "XDG_CONFIG_HOME=" + r.home + "/config", "XDG_CACHE_HOME=" + r.home + "/cache", "GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL=/dev/null", "LC_ALL=C", "GIT_TERMINAL_PROMPT=0"}
 	c.Env = append(c.Env, "TMPDIR="+filepath.Join(r.home, "tmp"))
 	if r.hostPath != "" {
 		c.Env[0] = "PATH=" + r.hostPath
 		c.Env = append(c.Env, "MISE_TRUSTED_CONFIG_PATHS="+dir, "MISE_TASK_RUN_AUTO_INSTALL=false", "GOTOOLCHAIN=local")
 	}
+	c.Env = append(c.Env, r.env...)
 	c.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	c.WaitDelay = 5 * time.Second
 	var output bytes.Buffer
 	c.Stdout, c.Stderr = &output, &output
 	if r.logPath != "" {
+		// Concurrent groups keep complete output in their own log files.
 		log, err := os.OpenFile(r.logPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0600)
 		if err != nil {
 			return nil, err
 		}
 		defer log.Close()
-		stream := io.MultiWriter(&output, log, os.Stdout)
+		stream := io.MultiWriter(&output, log)
 		c.Stdout, c.Stderr = stream, stream
 	}
 	if e := r.ctx.Err(); e != nil {
@@ -107,10 +128,21 @@ func (r runner) command(dir, name string, args ...string) ([]byte, error) {
 		return b, r.ctx.Err()
 	}
 	if e != nil {
+		if r.logPath != "" {
+			return b, fmt.Errorf("%s %s: %w (log %s)", name, firstArg(args), e, r.logPath)
+		}
 		return b, fmt.Errorf("%s %v: %w\n%s", name, args, e, b)
 	}
 	return b, nil
 }
+
+func firstArg(args []string) string {
+	if len(args) == 0 {
+		return ""
+	}
+	return args[0]
+}
+
 func (r runner) git(args ...string) (string, error) {
 	b, e := r.command(r.root, "git", args...)
 	return strings.TrimSpace(string(b)), e
@@ -153,104 +185,6 @@ func generatedArtifactPath(path string) bool {
 	}
 	return false
 }
-func (r runner) snapshot(sha, group, dest string) (string, error) {
-	b, e := r.command(r.root, "git", "archive", "--format=tar", sha)
-	if e != nil {
-		return "", e
-	}
-	h := sha256.New()
-	fmt.Fprintf(h, "%s\x00%s\x00%s\x00linux/amd64\x00%s\x00", receiptVersion, version, engineImage, group)
-	tr := tar.NewReader(bytes.NewReader(b))
-	for {
-		hdr, e := tr.Next()
-		if e == io.EOF {
-			break
-		}
-		if e != nil {
-			return "", e
-		}
-		if hdr.Typeflag == tar.TypeXGlobalHeader || hdr.Typeflag == tar.TypeXHeader {
-			continue
-		}
-		if !r.selected(group, hdr.Name) {
-			continue
-		}
-		p := filepath.Join(dest, filepath.FromSlash(hdr.Name))
-		rel, e := filepath.Rel(dest, p)
-		if e != nil || rel == ".." || strings.HasPrefix(rel, "../") {
-			return "", errors.New("unsafe archive path")
-		}
-		if hdr.Typeflag == tar.TypeDir {
-			continue
-		}
-		fmt.Fprintf(h, "%s\x00%d\x00%d\x00%s\x00%d\x00", hdr.Name, hdr.Mode, hdr.Typeflag, hdr.Linkname, hdr.Size)
-		if e = os.MkdirAll(filepath.Dir(p), 0700); e != nil {
-			return "", e
-		}
-		switch hdr.Typeflag {
-		case tar.TypeReg:
-			data, e := io.ReadAll(tr)
-			if e != nil {
-				return "", e
-			}
-			h.Write(data)
-			if e = os.WriteFile(p, data, os.FileMode(hdr.Mode)); e != nil {
-				return "", e
-			}
-		case tar.TypeSymlink:
-			resolved := filepath.Clean(filepath.Join(filepath.Dir(p), hdr.Linkname))
-			if filepath.IsAbs(hdr.Linkname) || !strings.HasPrefix(resolved, dest+string(filepath.Separator)) {
-				return "", fmt.Errorf("snapshot symlink escapes source: %s", hdr.Name)
-			}
-			if e = os.Symlink(hdr.Linkname, p); e != nil {
-				return "", e
-			}
-		default:
-			return "", fmt.Errorf("unsupported archive entry %s", hdr.Name)
-		}
-	}
-	for _, args := range [][]string{{"init", "--quiet", "--initial-branch=validation"}, {"add", "--force", "."}} {
-		if _, e = r.command(dest, "git", args...); e != nil {
-			return "", e
-		}
-	}
-	// Rebuild the index from its tree to remove checkout-dependent stat timestamps.
-	tree, e := r.command(dest, "git", "write-tree")
-	if e != nil {
-		return "", e
-	}
-	if e = os.Remove(filepath.Join(dest, ".git", "index")); e != nil {
-		return "", e
-	}
-	if _, e = r.command(dest, "git", "read-tree", strings.TrimSpace(string(tree))); e != nil {
-		return "", e
-	}
-	// Enumeration needs only an independent index, never real history or host gitdir pointers.
-	return hex.EncodeToString(h.Sum(nil)), nil
-}
-func evidence(path string) error {
-	b, e := os.ReadFile(filepath.Join(path, "status.json"))
-	if e != nil {
-		return e
-	}
-	var s struct {
-		ExitCode *int `json:"exitCode"`
-	}
-	if e = json.Unmarshal(b, &s); e != nil {
-		return e
-	}
-	if s.ExitCode == nil || *s.ExitCode != 0 {
-		return errors.New("check failed or incomplete status")
-	}
-	f, e := os.Stat(filepath.Join(path, "check.log"))
-	if e != nil {
-		return e
-	}
-	if !f.Mode().IsRegular() {
-		return errors.New("missing check log")
-	}
-	return nil
-}
 func readReceipt(path, key, group string) (receipt, bool) {
 	var r receipt
 	b, e := os.ReadFile(path)
@@ -285,89 +219,6 @@ func saveReceipt(path string, r receipt) error {
 	}
 	return os.Rename(f.Name(), path)
 }
-func (r runner) checkEngine(cli string, setup bool) error {
-	b, e := r.command(r.root, cli, "version")
-	if e != nil {
-		return e
-	}
-	if !strings.Contains(string(b), "v"+version+" ") && !strings.HasSuffix(strings.TrimSpace(string(b)), "v"+version) {
-		return fmt.Errorf("requires Dagger %s: %s", version, b)
-	}
-	if e = r.checkVolume(setup); e != nil {
-		return e
-	}
-	b, e = r.command(r.root, "docker", "container", "inspect", engine)
-	if e != nil && setup { // Only create after proving the named container is absent.
-		names, err := r.command(r.root, "docker", "container", "ls", "--all", "--filter", "name=^/"+engine+"$", "--format", "{{.Names}}")
-		if err != nil {
-			return err
-		}
-		if strings.TrimSpace(string(names)) != "" {
-			return e
-		}
-		_, e = r.command(r.root, "docker", "run", "--detach", "--privileged", "--name", engine, "--label", "dev.tokeninsights.owner=validation", "--volume", engineVolume+":/var/lib/dagger", engineImage)
-		if e != nil {
-			return e
-		}
-		b, e = r.command(r.root, "docker", "container", "inspect", engine)
-	}
-	if e != nil {
-		return e
-	}
-	var v []struct {
-		Config struct {
-			Image  string
-			Labels map[string]string
-		}
-		State  struct{ Running bool }
-		Mounts []struct{ Type, Name, Destination string }
-	}
-	if e = json.Unmarshal(b, &v); e != nil {
-		return e
-	}
-	if len(v) != 1 || v[0].Config.Image != engineImage || v[0].Config.Labels["dev.tokeninsights.owner"] != "validation" || !v[0].State.Running {
-		return errors.New("managed engine ownership, digest or running state mismatch; explicit operator repair required")
-	}
-	for _, mount := range v[0].Mounts {
-		if mount.Destination == "/var/lib/dagger" && mount.Type == "volume" && mount.Name == engineVolume {
-			return nil
-		}
-	}
-	return errors.New("managed engine cache mount mismatch")
-}
-
-func (r runner) checkVolume(setup bool) error {
-	b, err := r.command(r.root, "docker", "volume", "inspect", engineVolume)
-	if err != nil && setup {
-		names, listErr := r.command(r.root, "docker", "volume", "ls", "--format", "{{.Name}}")
-		if listErr != nil {
-			return listErr
-		}
-		for _, name := range strings.Fields(string(names)) {
-			if name == engineVolume {
-				return err
-			}
-		}
-		if _, err = r.command(r.root, "docker", "volume", "create", "--label", "dev.tokeninsights.owner=validation", engineVolume); err != nil {
-			return err
-		}
-		b, err = r.command(r.root, "docker", "volume", "inspect", engineVolume)
-	}
-	if err != nil {
-		return err
-	}
-	var volumes []struct {
-		Name   string
-		Labels map[string]string
-	}
-	if err = json.Unmarshal(b, &volumes); err != nil {
-		return err
-	}
-	if len(volumes) != 1 || volumes[0].Name != engineVolume || volumes[0].Labels["dev.tokeninsights.owner"] != "validation" {
-		return errors.New("cache volume ownership mismatch; leave existing volume untouched")
-	}
-	return nil
-}
 
 func run(ctx context.Context, args []string) (resultErr error) {
 	started := time.Now().UTC()
@@ -376,8 +227,7 @@ func run(ctx context.Context, args []string) (resultErr error) {
 	fs.Var(&chosen, "group", "group (repeatable)")
 	force := fs.Bool("force", false, "execute despite successful receipts")
 	status := fs.Bool("status", false, "report reusable group receipts")
-	cli := fs.String("dagger", "dagger", "pinned CLI path")
-	setup := fs.Bool("setup-engine", false, "create missing managed engine")
+	docker := fs.String("docker", "docker", "Docker CLI path")
 	prune := fs.Bool("prune", false, "prune inactive completed evidence")
 	storageBenchmarks := fs.Bool("storage-benchmarks", false, "full storage benchmark samples; requires only benchmarks group")
 	if e := fs.Parse(args); e != nil {
@@ -397,7 +247,7 @@ func run(ctx context.Context, args []string) (resultErr error) {
 		return e
 	}
 	defer os.RemoveAll(home)
-	r := runner{ctx: ctx, home: home, storageBenchmarks: *storageBenchmarks}
+	r := runner{ctx: ctx, home: home, storageBenchmarks: *storageBenchmarks, docker: *docker, env: dockerEnvironment()}
 	root, e := r.git("rev-parse", "--show-toplevel")
 	if e != nil {
 		return e
@@ -430,6 +280,9 @@ func run(ctx context.Context, args []string) (resultErr error) {
 	if e = json.Unmarshal(data, &r.manifest); e != nil {
 		return e
 	}
+	if e = r.manifest.validate(); e != nil {
+		return e
+	}
 	if len(chosen) == 0 {
 		chosen = defaultGroups()
 	}
@@ -458,6 +311,7 @@ func run(ctx context.Context, args []string) (resultErr error) {
 	var records []receipt
 	executed := make(map[string]bool)
 	timings := make(map[string]groupTiming)
+	slot := -1
 	if !*status {
 		defer func() {
 			outcome := "passed"
@@ -469,7 +323,7 @@ func run(ctx context.Context, args []string) (resultErr error) {
 			if ctx.Err() != nil {
 				outcome = "cancelled"
 			}
-			if err := saveRun(filepath.Join(out, "run.json"), sha, tree, records, executed, chosen, outcome, message, started, timings); err != nil && resultErr == nil {
+			if err := saveRun(filepath.Join(out, "run.json"), sha, tree, records, executed, chosen, outcome, message, started, timings, slot); err != nil && resultErr == nil {
 				resultErr = err
 			}
 		}()
@@ -481,7 +335,7 @@ func run(ctx context.Context, args []string) (resultErr error) {
 		if e != nil {
 			return e
 		}
-		path := filepath.Join(common, "tokeninsights-validation", receiptVersion, g, key+".json")
+		path := filepath.Join(base, g, key+".json")
 		old, ok := readReceipt(path, key, g)
 		if *status {
 			fmt.Printf("%s reusable=%t key=%s\n", g, ok, key)
@@ -506,21 +360,57 @@ func run(ctx context.Context, args []string) (resultErr error) {
 		}
 		pending = append(pending, g)
 	}
-	if *status {
+	if *status || len(pending) == 0 {
 		return nil
 	}
-	var engineOnce sync.Once
-	var engineErr error
-	err := scheduleChecks(ctx, pending, func(ctx context.Context, group string) groupResult {
+	temp, e := os.MkdirTemp("", "validation-source-")
+	if e != nil {
+		return e
+	}
+	defer os.RemoveAll(temp)
+	source := filepath.Join(temp, "tree")
+	if e = r.extract(sha, source); e != nil {
+		return e
+	}
+	inv := invocation{sha: sha, tree: tree, out: out, base: base, source: source, temp: temp, force: *force, queued: time.Now(), executionGroup: func(group string) string {
+		if *storageBenchmarks {
+			return "storage"
+		}
+		return group
+	}}
+	admitRun := func(ctx context.Context) (func(), error) {
+		dir, err := admissionDir()
+		if err != nil {
+			return nil, err
+		}
+		fmt.Println("validate: waiting for an admission slot")
+		acquired, release, err := admit(ctx, dir)
+		if err != nil {
+			return nil, err
+		}
+		local := r
+		local.logPath = filepath.Join(out, "admission.log")
+		if err = sweep(local, temp, acquired); err == nil {
+			err = ensureVolumes(local, temp)
+		}
+		if err != nil {
+			release()
+			return nil, fmt.Errorf("prepare slot %d: %w (log %s)", acquired, err, local.logPath)
+		}
+		slot = acquired
+		inv.slot = acquired
+		fmt.Printf("validate: admitted on slot %d\n", acquired)
+		return release, nil
+	}
+	err := scheduleChecks(ctx, pending, admitRun, func(ctx context.Context, group string) groupResult {
 		local := r
 		local.ctx = ctx
-		return local.executeGroup(sha, tree, group, keys[group], out, base, id, *cli, *force, func() error {
-			engineOnce.Do(func() { engineErr = local.checkEngine(*cli, *setup) })
-			return engineErr
-		})
+		fmt.Printf("validate: %s started\n", group)
+		return local.executeGroup(inv, group, keys[group])
 	}, func(group string, result groupResult) {
 		timings[group] = result.timing
 		executed[group] = result.executed
+		report(group, result)
 		if result.err == nil {
 			records = append(records, result.receipt)
 		}
@@ -535,20 +425,38 @@ func run(ctx context.Context, args []string) (resultErr error) {
 	if current != sha {
 		return fmt.Errorf("validated %s; current HEAD %s differs", sha, current)
 	}
-
 	return nil
 }
-func saveRun(path, sha, tree string, records []receipt, executed map[string]bool, requested []string, outcome, message string, started time.Time, timings map[string]groupTiming) error {
+
+func report(group string, result groupResult) {
+	elapsed := time.Duration(result.timing.TotalMS-result.timing.QueueMS) * time.Millisecond
+	if result.err == nil {
+		fmt.Printf("validate: %s passed (%s)\n", group, elapsed.Round(time.Second))
+	} else {
+		fmt.Printf("validate: %s failed (%s): %v\n", group, elapsed.Round(time.Second), result.err)
+		if result.log != "" {
+			if lines := tail(result.log, failureTail); lines != "" {
+				fmt.Printf("--- last %d lines of %s ---\n%s\n---\n", failureTail, result.log, lines)
+			}
+		}
+	}
+	if result.warning != "" {
+		fmt.Printf("validate: %s warning: %s\n", group, result.warning)
+	}
+}
+
+func saveRun(path, sha, tree string, records []receipt, executed map[string]bool, requested []string, outcome, message string, started time.Time, timings map[string]groupTiming, slot int) error {
 	b, e := json.MarshalIndent(struct {
-		SHA, Tree                     string
-		Groups                        []receipt
-		Executed                      map[string]bool
-		Dagger, EngineImage, Platform string
-		Requested                     []string
-		Outcome, Error                string
-		Started, Completed            time.Time
-		Timings                       map[string]groupTiming
-	}{sha, tree, records, executed, version, engineImage, "linux/amd64", requested, outcome, message, started, time.Now().UTC(), timings}, "", "  ")
+		SHA, Tree          string
+		Groups             []receipt
+		Executed           map[string]bool
+		Platform           string
+		Slot               int
+		Requested          []string
+		Outcome, Error     string
+		Started, Completed time.Time
+		Timings            map[string]groupTiming
+	}{sha, tree, records, executed, platform, slot, requested, outcome, message, started, time.Now().UTC(), timings}, "", "  ")
 	if e != nil {
 		return e
 	}

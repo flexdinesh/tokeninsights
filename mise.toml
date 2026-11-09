@@ -14,9 +14,9 @@ locked = true
 output = "keep-order"
 source_freshness_hash_contents = true
 
-# check:toolchain keeps these pins equal to the validation images, packageManager and go.mod toolchain.
+# Check images install these from mise.lock. check:toolchain keeps packageManager,
+# the go.mod toolchain and the check image's mise version (min_version) equal.
 [tools]
-"aqua:dagger/dagger" = "0.21.11"
 go = "1.27.3"
 node = "26.12.1"
 pnpm = "12.15.0"
@@ -281,6 +281,12 @@ run = "go run ./cmd/validate"
 dir = "{{config_root}}/tools/validation"
 run = "go run ./cmd/validate --status"
 
+[tasks."check:isolation"]
+description = "Prove compose project and host isolation against the local Docker engine"
+dir = "{{config_root}}/tools/validation"
+env = { TOKENINSIGHTS_VALIDATION_DOCKER_TEST = "1" }
+run = "go test -count=1 -run '^TestComposeIsolation$' ./cmd/validate"
+
 [tasks."build:internal:deps"]
 hide = true
 run = "mise deps install"
@@ -315,8 +321,7 @@ run = ["pnpm --filter @tokeninsights/web exec vitest run"]
 hide = true
 run = [
   "pnpm --filter @tokeninsights/build-tools run test",
-  "cd tools/validation && go test -count=1 contract.go main_test.go",
-  "cd tools/validation && go test -race -count=1 ./cmd/validate",
+  "cd tools/validation && go test -race -count=1 ./...",
 ]
 
 [tasks."check:internal:storage"]

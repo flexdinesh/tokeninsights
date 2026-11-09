@@ -1,6 +1,7 @@
 # Shared backend, removable presentations and release downloads
 
 Superseded where conflicting by [ADR 0027](0027-personal-backend-and-explicit-connections.md).
+[ADR 0029](0029-compose-check-runner.md) replaces Dagger validation with Docker Compose.
 Current product: one personal SQLite backend, explicit local/SSH/temporary TCP
 connections. Hosted/accounts/PostgreSQL/sync/plugins and conflicting listener,
 opener or distribution choices below are historical. Applicable accounting,

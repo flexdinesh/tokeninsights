@@ -1,6 +1,6 @@
 name: CI
 
-# Native archives require macOS and native runners; main omits macOS Intel. Local Dagger owns full validation.
+# Native archives require macOS and native runners; main omits macOS Intel. Local Docker Compose checks own full validation.
 on:
   push:
     branches: [main]

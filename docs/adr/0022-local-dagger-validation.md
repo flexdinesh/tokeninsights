@@ -1,5 +1,9 @@
 # Local validation through Dagger
 
+Superseded where conflicting by [ADR 0029](0029-compose-check-runner.md):
+Docker Compose projects replace the managed Dagger engine, and whole-run
+admission slots replace heavy/light group slots.
+
 Current coverage update: [ADR 0027](0027-personal-backend-and-explicit-connections.md)
 supersedes retired hosted/PostgreSQL/Docker product coverage. Local task/engine
 ownership, isolation, retained artifacts and sandboxed desktop validation remain.

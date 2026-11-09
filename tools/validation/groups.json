@@ -11,9 +11,63 @@
     ".oxlintrc.json",
     "packages/*/package.json",
     "tools/build/package.json",
-    "docs-website/package.json",
-    "dagger.json"
+    "docs-website/package.json"
   ],
+  "contexts": {
+    "deps": {
+      "inputs": [
+        "package.json",
+        "pnpm-lock.yaml",
+        "pnpm-workspace.yaml",
+        "packages/*/package.json",
+        "tools/build/package.json",
+        "docs-website/package.json",
+        "mise.toml",
+        "mise.lock",
+        "go.mod",
+        "go.sum",
+        "golangci-lint.mod",
+        "golangci-lint.sum",
+        "tools/validation/go.mod",
+        "tools/validation/go.sum"
+      ]
+    },
+    "web": {
+      "inputs": [
+        "packages/web/",
+        "packages/dashboard/",
+        "packages/contracts/",
+        "tools/build/src/build-web.ts",
+        "tools/build/src/sync-web-assets.ts",
+        "tools/build/src/files.ts",
+        "tools/build/src/workspace.ts"
+      ],
+      "exclude": [
+        "**/*.test.*",
+        "**/*.spec.*",
+        "**/test-results/",
+        "**/playwright-report/",
+        "packages/web/e2e/",
+        "packages/web/playwright.config.ts",
+        "packages/web/scripts/",
+        "packages/web/src/test-setup.ts",
+        "**/node_modules/",
+        "**/dist/"
+      ]
+    },
+    "go": {
+      "inputs": ["packages/cli/", "packages/backend/", "packages/core/"],
+      "exclude": [
+        "**/*_test.go",
+        "**/testdata/",
+        "**/fixtures/",
+        "**/*.md",
+        "**/node_modules/",
+        "**/bin/",
+        "packages/cli/.golangci.yml"
+      ]
+    }
+  },
   "groups": {
     "format": {
       "inputs": [
@@ -29,8 +83,7 @@
         "schema/",
         "tools/"
       ],
-      "executor": "host",
-      "class": "light"
+      "executor": "host"
     },
     "static": {
       "inputs": [
@@ -54,8 +107,8 @@
         "install*.sh",
         ".github/workflows/"
       ],
-      "executor": "dagger",
-      "class": "light"
+      "executor": "container",
+      "uses": ["deps", "web"]
     },
     "web": {
       "inputs": [
@@ -69,8 +122,8 @@
         "packages/dashboard/",
         "packages/contracts/"
       ],
-      "executor": "dagger",
-      "class": "light"
+      "executor": "container",
+      "uses": ["deps"]
     },
     "tooling": {
       "inputs": [
@@ -98,8 +151,8 @@
         "install/",
         "install*.sh"
       ],
-      "executor": "dagger",
-      "class": "light"
+      "executor": "container",
+      "uses": ["deps"]
     },
     "go": {
       "inputs": [
@@ -121,8 +174,8 @@
         "packages/dashboard/",
         "packages/contracts/"
       ],
-      "executor": "dagger",
-      "class": "heavy"
+      "executor": "container",
+      "uses": ["deps", "web"]
     },
     "benchmarks": {
       "inputs": [
@@ -144,8 +197,8 @@
         "packages/dashboard/",
         "packages/contracts/"
       ],
-      "executor": "dagger",
-      "class": "heavy"
+      "executor": "container",
+      "uses": ["deps", "web"]
     },
     "distribution": {
       "inputs": [
@@ -173,8 +226,8 @@
         ".github/workflows/",
         "tools/build/"
       ],
-      "executor": "dagger",
-      "class": "heavy"
+      "executor": "container",
+      "uses": ["deps", "web"]
     },
     "browser": {
       "inputs": [
@@ -195,8 +248,8 @@
         "packages/dashboard/",
         "packages/contracts/"
       ],
-      "executor": "dagger",
-      "class": "heavy"
+      "executor": "container",
+      "uses": ["deps", "web", "go"]
     },
     "deployment": {
       "inputs": [
@@ -219,8 +272,8 @@
         "packages/dashboard/",
         "packages/contracts/"
       ],
-      "executor": "dagger",
-      "class": "heavy"
+      "executor": "container",
+      "uses": ["deps", "web", "go"]
     }
   }
 }

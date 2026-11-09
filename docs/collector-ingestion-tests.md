@@ -46,7 +46,7 @@ Tests may exercise those storage invariants without promising hosted accounts,
 multiple product modes or another storage engine. Source-format fixtures describe
 real artifacts; they remain supported despite retired product APIs.
 
-Local Dagger validation must retain real OpenSSH and isolated network access,
+Local container validation must retain real OpenSSH and isolated network access,
 including TCP on the serving machine, bad pins/tokens, expired strings and exact
 protocol mismatch. Prove query/Refresh parity across local/SSH/TCP and shared
 owner/startup/final lease behavior. Use installed apps for native handoff/unavailable
