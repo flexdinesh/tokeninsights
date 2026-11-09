@@ -58,12 +58,36 @@ func TestTCPConnectionRoundTripAndRedaction(t *testing.T) {
 		strings.Replace(value, "127.0.0.1", "0.0.0.0", 1),
 		strings.Replace(value, "127.0.0.1", "*", 1),
 		strings.Replace(value, "127.0.0.1", "host%3Abad", 1),
-		strings.Replace(value, "%3A12345", "%3A0", 1),
+		strings.Replace(value, ":12345", ":0", 1),
 	} {
 		if _, err := Parse(bad); err == nil {
 			t.Fatal("malformed TCP accepted")
 		} else if strings.Contains(err.Error(), target.TCP.Token) {
 			t.Fatal("parse error leaked secret")
 		}
+	}
+}
+
+func TestTCPConnectionAddressIsReadable(t *testing.T) {
+	pin, token := strings.Repeat("ab", 32), base64.RawURLEncoding.EncodeToString(make([]byte, 32))
+	for address, query := range map[string]string{
+		"10.0.1.151:37619":  "?address=10.0.1.151:37619#",
+		"devbox.test:9000":  "?address=devbox.test:9000#",
+		"[2001:db8::1]:443": "?address=%5B2001:db8::1%5D:443#",
+	} {
+		target := TCP{Address: address, Pin: pin, Token: token}
+		value := target.ConnectionString()
+		if !strings.Contains(value, query) {
+			t.Fatalf("ConnectionString() = %q, want query %q", value, query)
+		}
+		parsed, err := Parse(value)
+		if err != nil || parsed.TCP == nil || *parsed.TCP != target {
+			t.Fatal("readable TCP round trip failed", address, err)
+		}
+	}
+	escaped := "tokeninsights://connect/v1?address=10.0.1.151%3A37619#pin=" + pin + "&token=" + token
+	parsed, err := Parse(escaped)
+	if err != nil || parsed.TCP == nil || parsed.TCP.Address != "10.0.1.151:37619" {
+		t.Fatal("percent-encoded address rejected", err)
 	}
 }

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"strings"
@@ -42,7 +43,7 @@ func runRemote(invocation commandInvocation, args []string) error {
 		return err
 	}
 	defer func() { _ = gateway.Close() }()
-	if _, err := fmt.Fprintf(invocation.stdout, "%s %s %s\n", shellQuote("tokeninsights"), shellQuote("connect"), shellQuote(gateway.ConnectionString())); err != nil {
+	if err := writeRemoteInstructions(invocation.stdout, invocation.stderr, gateway.Address(), gateway.ConnectionString()); err != nil {
 		return err
 	}
 	select {
@@ -59,6 +60,19 @@ func runRemote(invocation commandInvocation, args []string) error {
 		}
 		return errors.New("backend disconnected")
 	}
+}
+
+// writeRemoteInstructions keeps stdout to the single copyable connect command;
+// guidance goes to stderr so pipes receive only the command.
+func writeRemoteInstructions(stdout, stderr io.Writer, address, connection string) error {
+	if _, err := fmt.Fprintf(stderr, "Sharing TokenInsights on %s (temporary view access)\n\nOn the viewing machine, run:\n\n", address); err != nil {
+		return err
+	}
+	if _, err := fmt.Fprintf(stdout, "tokeninsights connect %s\n", shellQuote(connection)); err != nil {
+		return err
+	}
+	_, err := fmt.Fprint(stderr, "\nOr: tokeninsights tui|web --connection '<URI>'\n\nKeep this secret. Ctrl+C stops sharing and invalidates it.\n")
+	return err
 }
 
 func shellQuote(value string) string { return "'" + strings.ReplaceAll(value, "'", "'\\''") + "'" }

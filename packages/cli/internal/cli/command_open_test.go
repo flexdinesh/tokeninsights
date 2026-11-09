@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"encoding/base64"
 	"errors"
 	"io"
 	"strings"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/flexdinesh/tokeninsights/packages/core/browser"
 	"github.com/flexdinesh/tokeninsights/packages/core/desktoplaunch"
+	"github.com/flexdinesh/tokeninsights/packages/core/endpoint"
 )
 
 func TestBareDesktopAndExplicitConnectionCarryExactPolicy(t *testing.T) {
@@ -76,6 +78,35 @@ func TestInvalidConnectionAndCaptureFlagsNeverLaunch(t *testing.T) {
 func TestConnectCommandIsCompletelyShellQuoted(t *testing.T) {
 	if got := shellQuote("secret'with space&x"); got != "'secret'\\''with space&x'" {
 		t.Fatal(got)
+	}
+}
+
+func TestRemoteInstructionsKeepStdoutToConnectCommand(t *testing.T) {
+	target := endpoint.TCP{Address: "10.0.1.151:37619", Pin: strings.Repeat("ab", 32), Token: base64.RawURLEncoding.EncodeToString(make([]byte, endpoint.SecretBytes))}
+	var stdout, stderr strings.Builder
+	if err := writeRemoteInstructions(&stdout, &stderr, target.Address, target.ConnectionString()); err != nil {
+		t.Fatal(err)
+	}
+	line, ok := strings.CutSuffix(stdout.String(), "\n")
+	if !ok || strings.Contains(line, "\n") {
+		t.Fatalf("stdout must be one line: %q", stdout.String())
+	}
+	quoted, ok := strings.CutPrefix(line, "tokeninsights connect ")
+	if !ok || !strings.HasPrefix(quoted, "'") || !strings.HasSuffix(quoted, "'") {
+		t.Fatalf("stdout must be a connect command with a quoted URI: %q", line)
+	}
+	parsed, err := endpoint.Parse(strings.Trim(quoted, "'"))
+	if err != nil || parsed.TCP == nil || *parsed.TCP != target {
+		t.Fatal("printed connection does not round trip", err)
+	}
+	guidance := stderr.String()
+	for _, want := range []string{target.Address, "On the viewing machine, run:", "tokeninsights tui|web --connection", "Keep this secret", "Ctrl+C"} {
+		if !strings.Contains(guidance, want) {
+			t.Fatalf("stderr missing %q: %q", want, guidance)
+		}
+	}
+	if strings.Contains(guidance, target.Token) || strings.Contains(guidance, target.Pin) {
+		t.Fatal("stderr guidance leaked credentials")
 	}
 }
 
