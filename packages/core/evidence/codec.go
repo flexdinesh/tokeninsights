@@ -49,20 +49,8 @@ func ValidateRecord(record Record) error {
 	if !validID(record.SourceID) || !validID(record.Lineage) || record.Ordinal < 0 || record.Ordinal > publication.SafeInteger {
 		return errors.New("invalid_identity")
 	}
-	clean, _, err := Sanitize(record.Harness, record.Format, record.Data)
-	if err != nil {
+	if err := sanitizedOnly(record.Harness, record.Format, record.Data); err != nil {
 		return err
-	}
-	left, err := DecodeData(clean)
-	if err != nil {
-		return err
-	}
-	right, err := DecodeData(record.Data)
-	if err != nil {
-		return err
-	}
-	if !reflect.DeepEqual(left, right) {
-		return errors.New("private_or_unknown_field")
 	}
 	if len(record.Context) > 3 || len(record.Diagnostics) > 8 {
 		return errors.New("body_limit")
@@ -106,6 +94,32 @@ func ValidateRecord(record Record) error {
 		if l.RepositorySource != "" && publication.RepositorySourceRank(l.RepositorySource) == 0 {
 			return errors.New("invalid_location")
 		}
+	}
+	return nil
+}
+
+// sanitizedOnly rejects data that sanitization would change. Accepted evidence
+// is normally the exact sanitized bytes; identical bytes decode identically, so
+// they skip the second decode and structural comparison. Validity is still
+// decoded once; any other bytes are compared structurally.
+func sanitizedOnly(harness, format string, data []byte) error {
+	clean, _, err := Sanitize(harness, format, data)
+	if err != nil {
+		return err
+	}
+	left, err := DecodeData(clean)
+	if err != nil {
+		return err
+	}
+	if bytes.Equal(clean, data) {
+		return nil
+	}
+	right, err := DecodeData(data)
+	if err != nil {
+		return err
+	}
+	if !reflect.DeepEqual(left, right) {
+		return errors.New("private_or_unknown_field")
 	}
 	return nil
 }
