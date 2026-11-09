@@ -29,7 +29,7 @@ tokeninsights tui
 tokeninsights web
 tokeninsights connect ssh://you@devbox
 tokeninsights tui --connection ssh://you@devbox
-tokeninsights remote                          # temporary TLS gateway; prints connect command
+tokeninsights remote                          # temporary TLS gateway; connect command on stdout
 ```
 
 Viewers share one SQLite backend on the selected machine. Launch captures usage;

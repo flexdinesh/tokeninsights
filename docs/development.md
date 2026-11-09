@@ -61,7 +61,7 @@ For manual CLI/TUI checks use the built project binary.
 ./packages/cli/bin/tokeninsights remote
 ```
 
-`remote` prints a shell-quoted connect command with a temporary TLS pin/token URI.
+`remote` prints a shell-quoted connect command with a temporary TLS pin/token URI on stdout; guidance goes to stderr.
 Use the exact string, including on the serving host. Stop invalidates it.
 See [remote](remote.md) for `--listen`/`--advertise`.
 Keep real OpenSSH and isolated TCP/network checks in local Dagger validation;

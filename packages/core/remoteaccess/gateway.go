@@ -119,6 +119,9 @@ func start(ctx context.Context, session *localclient.Session, options Options, i
 // ConnectionString intentionally returns the temporary secret for sharing.
 func (g *Gateway) ConnectionString() string { return g.target.ConnectionString() }
 func (g *Gateway) Done() <-chan struct{}    { return g.done }
+
+// Address returns the advertised host:port without credentials.
+func (g *Gateway) Address() string { return g.target.TCP.Address }
 func (g *Gateway) Close() error {
 	var err error
 	g.once.Do(func() { err = g.server.Close() })

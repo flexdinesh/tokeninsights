@@ -61,7 +61,7 @@ An invocation's explicit local, SSH or temporary TCP target. Each window retains
 _Avoid_: Implicit remote default, saved pairing profile, local fallback
 
 **Remote Gateway**:
-Foreground `tokeninsights remote` TLS listener, default `0.0.0.0:0`, sharing the personal backend through a lease. It prints a shell-quoted connect command with a temporary pin/token URI. Stop invalidates the URI and its connections; other leases survive.
+Foreground `tokeninsights remote` TLS listener, default `0.0.0.0:0`, sharing the personal backend through a lease. It prints a shell-quoted connect command with a temporary pin/token URI on stdout and guidance on stderr. Stop invalidates the URI and its connections; other leases survive.
 _Avoid_: Durable server credential, ingestion endpoint, hosted deployment
 
 **Dataset**:

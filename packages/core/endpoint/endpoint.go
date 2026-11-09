@@ -66,7 +66,9 @@ func (e Endpoint) ConnectionString() string {
 	if e.TCP == nil {
 		return e.String()
 	}
-	u := url.URL{Scheme: "tokeninsights", Host: "connect", Path: "/v1", RawQuery: url.Values{"address": {e.TCP.Address}}.Encode(), Fragment: url.Values{"pin": {e.TCP.Pin}, "token": {e.TCP.Token}}.Encode()}
+	// A literal ':' is valid in a URI query; keep host:port readable.
+	address := strings.ReplaceAll(url.QueryEscape(e.TCP.Address), "%3A", ":")
+	u := url.URL{Scheme: "tokeninsights", Host: "connect", Path: "/v1", RawQuery: "address=" + address, Fragment: url.Values{"pin": {e.TCP.Pin}, "token": {e.TCP.Token}}.Encode()}
 	return u.String()
 }
 

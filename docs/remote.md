@@ -45,9 +45,9 @@ Without `--advertise`, choose the SSH_CONNECTION server address, otherwise a
 nonloopback interface, otherwise loopback. Override with a reachable host or
 host:port; wildcard addresses cannot be advertised.
 
-The command prints a shell-quoted `tokeninsights connect 'URI'` command. Copy it
-to the viewing machine. The URI carries its address, temporary public-key pin and
-access token:
+The command prints a shell-quoted `tokeninsights connect 'URI'` command as the
+only stdout line; sharing guidance goes to stderr. Copy the command to the viewing
+machine. The URI carries its address, temporary public-key pin and access token:
 
 ```text
 tokeninsights://connect/v1?address=HOST:PORT#pin=HEX_SHA256_SPKI&token=BASE64URL_SECRET
