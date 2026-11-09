@@ -4,8 +4,6 @@ import (
 	"context"
 	"errors"
 	"os"
-
-	"github.com/flexdinesh/tokeninsights/packages/core/persistence/sqlutil"
 )
 
 func (s *Store) checkFile() error {
@@ -43,7 +41,7 @@ func (s *Store) Ready(ctx context.Context) error {
 	defer func() { _ = tx.Rollback() }()
 	var role, databaseID, kind string
 	var version int
-	if err := tx.QueryRowContext(ctx, sqlutil.Bind("SELECT role,schema_version,database_id,server_kind FROM ingestion_instance WHERE id=1")).Scan(&role, &version, &databaseID, &kind); err != nil {
+	if err := tx.QueryRowContext(ctx, "SELECT role,schema_version,database_id,server_kind FROM ingestion_instance WHERE id=1").Scan(&role, &version, &databaseID, &kind); err != nil {
 		return err
 	}
 	if role != "server-data" || version != SchemaVersion || databaseID == "" || kind != s.kind {

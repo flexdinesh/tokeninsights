@@ -8,12 +8,11 @@ import (
 	"time"
 
 	"github.com/flexdinesh/tokeninsights/packages/core/analytics"
-	"github.com/flexdinesh/tokeninsights/packages/core/persistence/sqlutil"
 )
 
 func TestAllDashboardMatchesPaginatedSnapshots(t *testing.T) {
 	store := dashboardStore(t)
-	if _, err := store.SQL().ExecContext(t.Context(), sqlutil.Bind("INSERT INTO analytics_estimates SELECT *,fact_id,'fixture' FROM analytics_facts")); err != nil {
+	if _, err := store.SQL().ExecContext(t.Context(), "INSERT INTO analytics_estimates SELECT *,fact_id,'fixture' FROM analytics_facts"); err != nil {
 		t.Fatal(err)
 	}
 	now := time.Date(2023, 11, 16, 12, 0, 0, 0, time.Local)
@@ -90,10 +89,10 @@ func TestAllDashboardDuringAtomicPublication(t *testing.T) {
 	go func() {
 		for range publications {
 			err := store.WriteTransaction(t.Context(), func(tx *sql.Tx) error {
-				if _, err := tx.ExecContext(t.Context(), sqlutil.Bind("UPDATE analytics_facts SET input_tokens=input_tokens+1,total_tokens=total_tokens+1 WHERE dataset_id=?"), store.DatasetID()); err != nil {
+				if _, err := tx.ExecContext(t.Context(), "UPDATE analytics_facts SET input_tokens=input_tokens+1,total_tokens=total_tokens+1 WHERE dataset_id=?", store.DatasetID()); err != nil {
 					return err
 				}
-				_, err := tx.ExecContext(t.Context(), sqlutil.Bind("UPDATE ingestion_metadata SET revision=revision+1 WHERE dataset_id=?"), store.DatasetID())
+				_, err := tx.ExecContext(t.Context(), "UPDATE ingestion_metadata SET revision=revision+1 WHERE dataset_id=?", store.DatasetID())
 				return err
 			})
 			if err != nil {

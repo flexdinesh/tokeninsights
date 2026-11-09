@@ -11,7 +11,6 @@ import (
 
 	"github.com/flexdinesh/tokeninsights/packages/core/analytics"
 	"github.com/flexdinesh/tokeninsights/packages/core/datastore"
-	"github.com/flexdinesh/tokeninsights/packages/core/persistence/sqlutil"
 	"github.com/flexdinesh/tokeninsights/packages/core/publication"
 )
 
@@ -184,7 +183,7 @@ func orderSQL(q analytics.Query, sort, direction string) string {
 	return " ORDER BY " + column + " " + direction + ",key ASC"
 }
 func readRows(ctx context.Context, tx *sql.Tx, statement string, args []interface{}) ([]analytics.Row, error) {
-	rows, err := tx.QueryContext(ctx, sqlutil.Bind(statement), args...)
+	rows, err := tx.QueryContext(ctx, statement, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -238,20 +237,20 @@ func loadDashboard(ctx context.Context, store *datastore.Store, q analytics.Quer
 	result.InputRevision = m.InputRevision
 	result.Generation = m.Generation
 	result.LastSynced = m.LastIngestionAtMs
-	if err := tx.QueryRowContext(ctx, sqlutil.Bind("SELECT COUNT(*) FROM processing_scopes WHERE dataset_id=? AND (processed_revision<>revision OR generation<>?)"), store.DatasetID(), m.TargetGeneration).Scan(&result.Pending); err != nil {
+	if err := tx.QueryRowContext(ctx, "SELECT COUNT(*) FROM processing_scopes WHERE dataset_id=? AND (processed_revision<>revision OR generation<>?)", store.DatasetID(), m.TargetGeneration).Scan(&result.Pending); err != nil {
 		return result, err
 	}
-	if err := tx.QueryRowContext(ctx, sqlutil.Bind("SELECT COUNT(*) FROM processing_outcomes o WHERE o.dataset_id=? AND o.generation=? AND disposition='ambiguous' AND o.code='unusable_usage'"), store.DatasetID(), m.Generation).Scan(&result.Unresolved); err != nil {
+	if err := tx.QueryRowContext(ctx, "SELECT COUNT(*) FROM processing_outcomes o WHERE o.dataset_id=? AND o.generation=? AND disposition='ambiguous' AND o.code='unusable_usage'", store.DatasetID(), m.Generation).Scan(&result.Unresolved); err != nil {
 		return result, err
 	}
 	where, args, err := queryWhere(queryFilter(q, now), reportingZone(now), store.DatasetID())
 	if err != nil {
 		return result, err
 	}
-	if err := tx.QueryRowContext(ctx, sqlutil.Bind("SELECT "+sumSQL("total_tokens")+","+sumSQL("input_tokens")+","+sumSQL("output_tokens")+","+sumSQL("reasoning_tokens")+","+sumSQL("cache_read_tokens")+","+sumSQL("cache_write_tokens")+",COUNT(DISTINCT session_id),COUNT(*) FROM "+dataTable(q)+where), args...).Scan(&result.Summary.TotalTokens, &result.Summary.InputTokens, &result.Summary.OutputTokens, &result.Summary.ReasoningTokens, &result.Summary.CacheReadTokens, &result.Summary.CacheWriteTokens, &result.Summary.SessionCount, &result.FactCount); err != nil {
+	if err := tx.QueryRowContext(ctx, "SELECT "+sumSQL("total_tokens")+","+sumSQL("input_tokens")+","+sumSQL("output_tokens")+","+sumSQL("reasoning_tokens")+","+sumSQL("cache_read_tokens")+","+sumSQL("cache_write_tokens")+",COUNT(DISTINCT session_id),COUNT(*) FROM "+dataTable(q)+where, args...).Scan(&result.Summary.TotalTokens, &result.Summary.InputTokens, &result.Summary.OutputTokens, &result.Summary.ReasoningTokens, &result.Summary.CacheReadTokens, &result.Summary.CacheWriteTokens, &result.Summary.SessionCount, &result.FactCount); err != nil {
 		return result, err
 	}
-	if err := tx.QueryRowContext(ctx, sqlutil.Bind("SELECT COUNT(DISTINCT session_id) FROM "+dataTable(q)+" WHERE countable AND dataset_id=?"), store.DatasetID()).Scan(&result.Summary.SyncedSessions); err != nil {
+	if err := tx.QueryRowContext(ctx, "SELECT COUNT(DISTINCT session_id) FROM "+dataTable(q)+" WHERE countable AND dataset_id=?", store.DatasetID()).Scan(&result.Summary.SyncedSessions); err != nil {
 		return result, err
 	}
 	if err := safeAggregate(result.Summary.TotalTokens, result.Summary.InputTokens, result.Summary.OutputTokens, result.Summary.ReasoningTokens, result.Summary.CacheReadTokens, result.Summary.CacheWriteTokens, result.Summary.SessionCount, result.Summary.SyncedSessions); err != nil {
@@ -262,7 +261,7 @@ func loadDashboard(ctx context.Context, store *datastore.Store, q analytics.Quer
 	if q.Tab == "tokens" {
 		groupArgs = append([]interface{}{reportingZone(now)}, args...)
 	}
-	if err := tx.QueryRowContext(ctx, sqlutil.Bind(groupCountSQL(q, where, reportingZone(now))), groupArgs...).Scan(&result.RowCount); err != nil {
+	if err := tx.QueryRowContext(ctx, groupCountSQL(q, where, reportingZone(now)), groupArgs...).Scan(&result.RowCount); err != nil {
 		return result, err
 	}
 	if maxRows > 0 && result.RowCount > maxRows {
@@ -352,7 +351,7 @@ func LoadFacets(ctx context.Context, store *datastore.Store, q analytics.Query, 
 		}
 		statement += " ORDER BY 1 LIMIT ?"
 		args = append(args, limit)
-		rows, err := tx.QueryContext(ctx, sqlutil.Bind(statement), args...)
+		rows, err := tx.QueryContext(ctx, statement, args...)
 		if err != nil {
 			return result, fmt.Errorf("facets %s: %w", field, err)
 		}

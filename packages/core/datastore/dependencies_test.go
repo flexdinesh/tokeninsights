@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	"github.com/flexdinesh/tokeninsights/packages/core/evidence"
-	"github.com/flexdinesh/tokeninsights/packages/core/persistence/sqlutil"
 )
 
 func codexRecord(session, parent string) evidence.Record {
@@ -81,7 +80,7 @@ func TestProcessingFailureBackoffAllowsIndependentScope(t *testing.T) {
 	if _, err := store.Accept(t.Context(), evidence.ProtocolVersion, batchBody(t, store, "stream", "batch", broken, good)); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.SQL().Exec(sqlutil.Bind("UPDATE raw_evidence SET record_json='invalid' WHERE scope=?"), evidence.Scope(broken)); err != nil {
+	if _, err := store.SQL().Exec("UPDATE raw_evidence SET record_json='invalid' WHERE scope=?", evidence.Scope(broken)); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := store.ProcessNext(t.Context()); err == nil {
@@ -89,7 +88,7 @@ func TestProcessingFailureBackoffAllowsIndependentScope(t *testing.T) {
 	}
 	var attempts int
 	var code string
-	if err := store.SQL().QueryRow(sqlutil.Bind("SELECT attempts,error_code FROM processing_scopes WHERE scope=?"), evidence.Scope(broken)).Scan(&attempts, &code); err != nil || attempts != 1 || code != "processing_failed" {
+	if err := store.SQL().QueryRow("SELECT attempts,error_code FROM processing_scopes WHERE scope=?", evidence.Scope(broken)).Scan(&attempts, &code); err != nil || attempts != 1 || code != "processing_failed" {
 		t.Fatal(attempts, code, err)
 	}
 	if worked, err := store.ProcessNext(t.Context()); err != nil || !worked {
@@ -107,7 +106,7 @@ func TestReprocessClearsObsoleteFailureBackoff(t *testing.T) {
 	if _, err := store.Accept(t.Context(), evidence.ProtocolVersion, batchBody(t, store, "stream", "batch", record)); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.SQL().Exec(sqlutil.Bind("UPDATE processing_scopes SET attempts=6,retry_at_ms=9007199254740991,error_code='processing_failed'")); err != nil {
+	if _, err := store.SQL().Exec("UPDATE processing_scopes SET attempts=6,retry_at_ms=9007199254740991,error_code='processing_failed'"); err != nil {
 		t.Fatal(err)
 	}
 	if worked, err := store.ProcessNext(t.Context()); err != nil || worked {

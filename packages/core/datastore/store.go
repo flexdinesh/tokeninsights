@@ -15,7 +15,6 @@ import (
 
 	"github.com/flexdinesh/tokeninsights/packages/core/dataengine"
 	"github.com/flexdinesh/tokeninsights/packages/core/evidence"
-	"github.com/flexdinesh/tokeninsights/packages/core/persistence/sqlutil"
 	"github.com/flexdinesh/tokeninsights/packages/core/publication"
 	_ "modernc.org/sqlite"
 )
@@ -75,14 +74,14 @@ func ReadMetadataForDataset(ctx context.Context, reader metadataReader, datasetI
 	// One dataset-scoped snapshot supplies metadata and every generation guard.
 	// LEFT JOIN preserves missing generations so they still reject explicitly;
 	// the maximum includes retained generations, not only active/target ones.
-	err := reader.QueryRowContext(ctx, sqlutil.Bind(`SELECT
+	err := reader.QueryRowContext(ctx, `SELECT
  m.role,m.schema_version,m.database_id,m.dataset_id,m.server_kind,
  m.generation,m.target_generation,m.input_revision,m.revision,m.last_ingestion_at_ms,m.created_at_ms,
  MAX(g.state) FILTER (WHERE g.generation=m.generation),
  MAX(g.state) FILTER (WHERE g.generation=m.target_generation),
  COUNT(*) FILTER (WHERE g.state='active'),MAX(g.processor_version)
  FROM ingestion_metadata m LEFT JOIN analytics_generations g ON g.dataset_id=m.dataset_id
- WHERE m.dataset_id=? GROUP BY m.dataset_id,m.role,m.schema_version,m.database_id,m.server_kind,m.generation,m.target_generation,m.input_revision,m.revision,m.last_ingestion_at_ms,m.created_at_ms`), datasetID).Scan(&role, &version, &m.DatabaseID, &m.DatasetID, &m.Kind, &m.Generation, &m.TargetGeneration, &m.InputRevision, &m.Revision, &m.LastIngestionAtMs, &m.CreatedAtMs, &activeState, &targetState, &activeCount, &newestProcessor)
+ WHERE m.dataset_id=? GROUP BY m.dataset_id,m.role,m.schema_version,m.database_id,m.server_kind,m.generation,m.target_generation,m.input_revision,m.revision,m.last_ingestion_at_ms,m.created_at_ms`, datasetID).Scan(&role, &version, &m.DatabaseID, &m.DatasetID, &m.Kind, &m.Generation, &m.TargetGeneration, &m.InputRevision, &m.Revision, &m.LastIngestionAtMs, &m.CreatedAtMs, &activeState, &targetState, &activeCount, &newestProcessor)
 	if err == nil && (role != "server-data" || version != SchemaVersion || m.DatasetID == "" || m.Kind != KindPersonal || m.DatabaseID == "" || m.Generation < 1 || m.TargetGeneration < m.Generation || m.TargetGeneration > publication.SafeInteger || m.InputRevision < 0 || m.InputRevision > publication.SafeInteger || m.Revision < 0 || m.Revision > publication.SafeInteger) {
 		err = errors.New("incompatible_server_data")
 	}
@@ -145,14 +144,14 @@ func (s *Store) createDatasetInTx(ctx context.Context, tx *sql.Tx, datasetID str
 		return errors.New("invalid_dataset")
 	}
 	var databaseID string
-	if err := tx.QueryRowContext(ctx, sqlutil.Bind("SELECT database_id FROM ingestion_instance WHERE id=1")).Scan(&databaseID); err != nil {
+	if err := tx.QueryRowContext(ctx, "SELECT database_id FROM ingestion_instance WHERE id=1").Scan(&databaseID); err != nil {
 		return err
 	}
 	now := time.Now().UnixMilli()
-	if _, err := tx.ExecContext(ctx, sqlutil.Bind("INSERT INTO analytics_generations VALUES(?,1,?,'active',?,?)"), datasetID, evidence.ProcessorVersion, now, now); err != nil {
+	if _, err := tx.ExecContext(ctx, "INSERT INTO analytics_generations VALUES(?,1,?,'active',?,?)", datasetID, evidence.ProcessorVersion, now, now); err != nil {
 		return err
 	}
-	_, err := tx.ExecContext(ctx, sqlutil.Bind("INSERT INTO ingestion_metadata(dataset_id,role,schema_version,database_id,server_kind,generation,target_generation,created_at_ms) VALUES(?,'server-data',?, ?,?,1,1,?)"), datasetID, SchemaVersion, databaseID, s.kind, now)
+	_, err := tx.ExecContext(ctx, "INSERT INTO ingestion_metadata(dataset_id,role,schema_version,database_id,server_kind,generation,target_generation,created_at_ms) VALUES(?,'server-data',?, ?,?,1,1,?)", datasetID, SchemaVersion, databaseID, s.kind, now)
 	return err
 }
 func connect(path string, readOnly bool) (*sql.DB, error) {
@@ -249,7 +248,7 @@ func OpenWithOptions(ctx context.Context, path string, options Options) (*Store,
 		store := &Store{database: database, writer: &sync.Mutex{}, worker: dataengine.NewWorker(), datasetID: DatasetID, kind: kind, root: true, nextDataset: new(string), selection: &sync.Mutex{}}
 		err = store.initialize(ctx)
 		if err == nil {
-			_, err = database.ExecContext(ctx, sqlutil.Bind("PRAGMA wal_checkpoint(TRUNCATE)"))
+			_, err = database.ExecContext(ctx, "PRAGMA wal_checkpoint(TRUNCATE)")
 		}
 		closeErr := database.Close()
 		if err != nil {
@@ -280,7 +279,7 @@ func OpenWithOptions(ctx context.Context, path string, options Options) (*Store,
 		return nil, err
 	}
 	store := &Store{database: database, writer: &sync.Mutex{}, worker: dataengine.NewWorker(), admissions: make(chan struct{}, 4), path: abs, datasetID: DatasetID, kind: kind, root: true, nextDataset: new(string), selection: &sync.Mutex{}}
-	if _, err := database.ExecContext(ctx, sqlutil.Bind("PRAGMA journal_mode=WAL")); err != nil {
+	if _, err := database.ExecContext(ctx, "PRAGMA journal_mode=WAL"); err != nil {
 		_ = database.Close()
 		return nil, err
 	}
@@ -306,7 +305,7 @@ func (s *Store) initialize(ctx context.Context) error {
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
-	if _, err := tx.ExecContext(ctx, sqlutil.Bind(Schema)); err != nil {
+	if _, err := tx.ExecContext(ctx, Schema); err != nil {
 		return err
 	}
 	id, err := evidence.RandomID()
@@ -314,7 +313,7 @@ func (s *Store) initialize(ctx context.Context) error {
 		return err
 	}
 	now := time.Now().UnixMilli()
-	if _, err := tx.ExecContext(ctx, sqlutil.Bind("INSERT INTO ingestion_instance VALUES(1,'server-data',?,?,?,?)"), SchemaVersion, id, s.kind, now); err != nil {
+	if _, err := tx.ExecContext(ctx, "INSERT INTO ingestion_instance VALUES(1,'server-data',?,?,?,?)", SchemaVersion, id, s.kind, now); err != nil {
 		return err
 	}
 	if err := s.createDatasetInTx(ctx, tx, DatasetID); err != nil {
@@ -323,7 +322,7 @@ func (s *Store) initialize(ctx context.Context) error {
 	return tx.Commit()
 }
 func (s *Store) prepareAllGenerations(ctx context.Context) error {
-	rows, err := s.database.QueryContext(ctx, sqlutil.Bind("SELECT dataset_id FROM ingestion_metadata ORDER BY dataset_id"))
+	rows, err := s.database.QueryContext(ctx, "SELECT dataset_id FROM ingestion_metadata ORDER BY dataset_id")
 	if err != nil {
 		return err
 	}
@@ -354,7 +353,7 @@ func (s *Store) prepareGeneration(ctx context.Context) error {
 		return err
 	}
 	var processor int
-	if err := s.database.QueryRowContext(ctx, sqlutil.Bind("SELECT processor_version FROM analytics_generations WHERE dataset_id=? AND generation=?"), s.datasetID, m.TargetGeneration).Scan(&processor); err != nil {
+	if err := s.database.QueryRowContext(ctx, "SELECT processor_version FROM analytics_generations WHERE dataset_id=? AND generation=?", s.datasetID, m.TargetGeneration).Scan(&processor); err != nil {
 		return err
 	}
 	if processor > evidence.ProcessorVersion {
@@ -386,7 +385,7 @@ func (s *Store) Reprocess(ctx context.Context) (int64, error) {
 	}
 	if m.TargetGeneration > m.Generation {
 		var processor int
-		if err := tx.QueryRowContext(ctx, sqlutil.Bind("SELECT processor_version FROM analytics_generations WHERE dataset_id=? AND generation=?"), s.datasetID, m.TargetGeneration).Scan(&processor); err != nil {
+		if err := tx.QueryRowContext(ctx, "SELECT processor_version FROM analytics_generations WHERE dataset_id=? AND generation=?", s.datasetID, m.TargetGeneration).Scan(&processor); err != nil {
 			return 0, err
 		}
 		if processor == evidence.ProcessorVersion {
@@ -394,7 +393,7 @@ func (s *Store) Reprocess(ctx context.Context) (int64, error) {
 		}
 		// Never finish an interrupted older generation under newer rules while
 		// retaining its old version label. Keep its evidence/projection for review.
-		if _, err := tx.ExecContext(ctx, sqlutil.Bind("UPDATE analytics_generations SET state='retained' WHERE dataset_id=? AND generation=?"), s.datasetID, m.TargetGeneration); err != nil {
+		if _, err := tx.ExecContext(ctx, "UPDATE analytics_generations SET state='retained' WHERE dataset_id=? AND generation=?", s.datasetID, m.TargetGeneration); err != nil {
 			return 0, err
 		}
 	}
@@ -402,17 +401,17 @@ func (s *Store) Reprocess(ctx context.Context) (int64, error) {
 		return 0, reject("generation_limit")
 	}
 	next := m.TargetGeneration + 1
-	if _, err := tx.ExecContext(ctx, sqlutil.Bind("INSERT INTO analytics_generations(dataset_id,generation,processor_version,state,created_at_ms) VALUES(?,?,?,'building',?)"), s.datasetID, next, evidence.ProcessorVersion, time.Now().UnixMilli()); err != nil {
+	if _, err := tx.ExecContext(ctx, "INSERT INTO analytics_generations(dataset_id,generation,processor_version,state,created_at_ms) VALUES(?,?,?,'building',?)", s.datasetID, next, evidence.ProcessorVersion, time.Now().UnixMilli()); err != nil {
 		return 0, err
 	}
-	if _, err := tx.ExecContext(ctx, sqlutil.Bind("UPDATE ingestion_metadata SET target_generation=? WHERE dataset_id=?"), next, s.datasetID); err != nil {
+	if _, err := tx.ExecContext(ctx, "UPDATE ingestion_metadata SET target_generation=? WHERE dataset_id=?", next, s.datasetID); err != nil {
 		return 0, err
 	}
-	if _, err := tx.ExecContext(ctx, sqlutil.Bind("UPDATE processing_scopes SET error_code='',attempts=0,retry_at_ms=0 WHERE dataset_id=?"), s.datasetID); err != nil {
+	if _, err := tx.ExecContext(ctx, "UPDATE processing_scopes SET error_code='',attempts=0,retry_at_ms=0 WHERE dataset_id=?", s.datasetID); err != nil {
 		return 0, err
 	}
 	var scopes int64
-	if err := tx.QueryRowContext(ctx, sqlutil.Bind("SELECT COUNT(*) FROM processing_scopes WHERE dataset_id=?"), s.datasetID).Scan(&scopes); err != nil {
+	if err := tx.QueryRowContext(ctx, "SELECT COUNT(*) FROM processing_scopes WHERE dataset_id=?", s.datasetID).Scan(&scopes); err != nil {
 		return 0, err
 	}
 	if scopes == 0 {
@@ -428,13 +427,13 @@ func (s *Store) Reprocess(ctx context.Context) (int64, error) {
 }
 
 func activateGeneration(ctx context.Context, tx *sql.Tx, datasetID string, generation int64) error {
-	if _, err := tx.ExecContext(ctx, sqlutil.Bind("UPDATE analytics_generations SET state='retained' WHERE state='active' AND dataset_id=?"), datasetID); err != nil {
+	if _, err := tx.ExecContext(ctx, "UPDATE analytics_generations SET state='retained' WHERE state='active' AND dataset_id=?", datasetID); err != nil {
 		return err
 	}
-	if _, err := tx.ExecContext(ctx, sqlutil.Bind("UPDATE analytics_generations SET state='active',activated_at_ms=? WHERE dataset_id=? AND generation=?"), time.Now().UnixMilli(), datasetID, generation); err != nil {
+	if _, err := tx.ExecContext(ctx, "UPDATE analytics_generations SET state='active',activated_at_ms=? WHERE dataset_id=? AND generation=?", time.Now().UnixMilli(), datasetID, generation); err != nil {
 		return err
 	}
-	_, err := tx.ExecContext(ctx, sqlutil.Bind("UPDATE ingestion_metadata SET generation=?,revision=revision+1 WHERE dataset_id=?"), generation, datasetID)
+	_, err := tx.ExecContext(ctx, "UPDATE ingestion_metadata SET generation=?,revision=revision+1 WHERE dataset_id=?", generation, datasetID)
 	return err
 }
 
@@ -480,7 +479,7 @@ func (s *Store) Accept(ctx context.Context, protocol int, body []byte) (evidence
 		return evidence.Response{}, reject("database_mismatch")
 	}
 	var hash, receiptBody string
-	err = tx.QueryRowContext(ctx, sqlutil.Bind("SELECT request_hash,receipt_json FROM ingestion_batches WHERE dataset_id=? AND stream_id=? AND batch_id=?"), s.datasetID, batch.StreamID, batch.BatchID).Scan(&hash, &receiptBody)
+	err = tx.QueryRowContext(ctx, "SELECT request_hash,receipt_json FROM ingestion_batches WHERE dataset_id=? AND stream_id=? AND batch_id=?", s.datasetID, batch.StreamID, batch.BatchID).Scan(&hash, &receiptBody)
 	if err == nil {
 		if hash != requestHash {
 			return evidence.Response{}, reject("batch_conflict")
@@ -509,16 +508,16 @@ func (s *Store) Accept(ctx context.Context, protocol int, body []byte) (evidence
 	// Late ancestor evidence invalidates descendants, including already terminal
 	// ambiguous outcomes. Their receipts remain immutable.
 	if changed {
-		if _, err := tx.ExecContext(ctx, sqlutil.Bind(`WITH RECURSIVE affected(scope) AS (SELECT scope FROM processing_scopes WHERE dataset_id=? AND revision=? UNION SELECT d.child FROM processing_dependencies d JOIN affected a ON d.parent=a.scope WHERE d.dataset_id=?) UPDATE processing_scopes SET revision=?,error_code='',attempts=0,retry_at_ms=0 WHERE dataset_id=? AND scope IN(SELECT scope FROM affected)`), s.datasetID, revision, s.datasetID, revision, s.datasetID); err != nil {
+		if _, err := tx.ExecContext(ctx, `WITH RECURSIVE affected(scope) AS (SELECT scope FROM processing_scopes WHERE dataset_id=? AND revision=? UNION SELECT d.child FROM processing_dependencies d JOIN affected a ON d.parent=a.scope WHERE d.dataset_id=?) UPDATE processing_scopes SET revision=?,error_code='',attempts=0,retry_at_ms=0 WHERE dataset_id=? AND scope IN(SELECT scope FROM affected)`, s.datasetID, revision, s.datasetID, revision, s.datasetID); err != nil {
 			return evidence.Response{}, err
 		}
 	}
 	receipt := evidence.Receipt{DatabaseID: m.DatabaseID, DatasetID: m.DatasetID, StreamID: batch.StreamID, BatchID: batch.BatchID, RequestHash: requestHash, FromSequence: batch.FromSequence, ToSequence: batch.ToSequence, Accepted: int64(len(batch.Entries)), AcceptedAtMs: now, InputRevision: revision}
 	encoded, _ := json.Marshal(receipt)
-	if _, err := tx.ExecContext(ctx, sqlutil.Bind("INSERT INTO ingestion_batches VALUES(?,?,?,?,?,?)"), s.datasetID, batch.StreamID, batch.BatchID, receipt.RequestHash, body, string(encoded)); err != nil {
+	if _, err := tx.ExecContext(ctx, "INSERT INTO ingestion_batches VALUES(?,?,?,?,?,?)", s.datasetID, batch.StreamID, batch.BatchID, receipt.RequestHash, body, string(encoded)); err != nil {
 		return evidence.Response{}, err
 	}
-	if _, err := tx.ExecContext(ctx, sqlutil.Bind("UPDATE ingestion_metadata SET input_revision=?,last_ingestion_at_ms=? WHERE dataset_id=?"), revision, now, s.datasetID); err != nil {
+	if _, err := tx.ExecContext(ctx, "UPDATE ingestion_metadata SET input_revision=?,last_ingestion_at_ms=? WHERE dataset_id=?", revision, now, s.datasetID); err != nil {
 		return evidence.Response{}, err
 	}
 	response, err := responseFor(ctx, tx, s.datasetID, receipt)
@@ -563,7 +562,7 @@ func responseFor(ctx context.Context, tx *sql.Tx, datasetID string, receipt evid
 		return evidence.Response{}, errors.New("stored_receipt_binding_mismatch")
 	}
 	response := evidence.Response{Receipt: receipt, Processing: evidence.Status{Generation: m.TargetGeneration, InputRevision: m.InputRevision, Items: []evidence.Outcome{}}}
-	rows, err := tx.QueryContext(ctx, sqlutil.Bind(`SELECT i.evidence_id,COALESCE(o.disposition,'pending'),COALESCE(o.code,''),COALESCE(o.fact_id,''),COALESCE(o.generation,0),COALESCE(o.input_revision,0),s.revision,s.processed_revision,s.generation FROM ingestion_batch_items i JOIN raw_evidence e ON e.dataset_id=i.dataset_id AND e.evidence_id=i.evidence_id JOIN processing_scopes s ON s.dataset_id=e.dataset_id AND s.scope=e.scope LEFT JOIN processing_outcomes o ON o.dataset_id=i.dataset_id AND o.evidence_id=i.evidence_id AND o.generation=? WHERE i.dataset_id=? AND i.stream_id=? AND i.batch_id=? ORDER BY i.sequence`), m.TargetGeneration, datasetID, receipt.StreamID, receipt.BatchID)
+	rows, err := tx.QueryContext(ctx, `SELECT i.evidence_id,COALESCE(o.disposition,'pending'),COALESCE(o.code,''),COALESCE(o.fact_id,''),COALESCE(o.generation,0),COALESCE(o.input_revision,0),s.revision,s.processed_revision,s.generation FROM ingestion_batch_items i JOIN raw_evidence e ON e.dataset_id=i.dataset_id AND e.evidence_id=i.evidence_id JOIN processing_scopes s ON s.dataset_id=e.dataset_id AND s.scope=e.scope LEFT JOIN processing_outcomes o ON o.dataset_id=i.dataset_id AND o.evidence_id=i.evidence_id AND o.generation=? WHERE i.dataset_id=? AND i.stream_id=? AND i.batch_id=? ORDER BY i.sequence`, m.TargetGeneration, datasetID, receipt.StreamID, receipt.BatchID)
 	if err != nil {
 		return response, err
 	}
@@ -591,7 +590,7 @@ func (s *Store) Receipt(ctx context.Context, stream, batch string) (evidence.Res
 	}
 	defer func() { _ = tx.Rollback() }()
 	var body string
-	if err := tx.QueryRowContext(ctx, sqlutil.Bind("SELECT receipt_json FROM ingestion_batches WHERE dataset_id=? AND stream_id=? AND batch_id=?"), s.datasetID, stream, batch).Scan(&body); err != nil {
+	if err := tx.QueryRowContext(ctx, "SELECT receipt_json FROM ingestion_batches WHERE dataset_id=? AND stream_id=? AND batch_id=?", s.datasetID, stream, batch).Scan(&body); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return evidence.Response{}, evidence.ErrReceiptNotFound
 		}
@@ -627,7 +626,7 @@ func (s *Store) LoadWorkExcluding(ctx context.Context, claims []dataengine.Work,
 	defer s.selection.Unlock()
 	datasets := []string{s.datasetID}
 	if s.root {
-		rows, err := s.database.QueryContext(ctx, sqlutil.Bind(`SELECT m.dataset_id FROM ingestion_metadata m JOIN processing_scopes p ON p.dataset_id=m.dataset_id WHERE (p.processed_revision<>p.revision OR p.generation<>m.target_generation) AND p.retry_at_ms<=? GROUP BY m.dataset_id ORDER BY CASE WHEN m.dataset_id>? THEN 0 ELSE 1 END,m.dataset_id`), time.Now().UnixMilli(), *s.nextDataset)
+		rows, err := s.database.QueryContext(ctx, `SELECT m.dataset_id FROM ingestion_metadata m JOIN processing_scopes p ON p.dataset_id=m.dataset_id WHERE (p.processed_revision<>p.revision OR p.generation<>m.target_generation) AND p.retry_at_ms<=? GROUP BY m.dataset_id ORDER BY CASE WHEN m.dataset_id>? THEN 0 ELSE 1 END,m.dataset_id`, time.Now().UnixMilli(), *s.nextDataset)
 		if err != nil {
 			return dataengine.Work{}, false, err
 		}
@@ -669,7 +668,7 @@ type scopeCandidate struct {
 // Keyset pages avoid materializing every pending root for each component, while
 // preserving revision/scope ordering and a consistent eligibility snapshot.
 func candidatePage(ctx context.Context, tx *sql.Tx, datasetID string, generation, now int64, cursor scopeCandidate, limit int) ([]scopeCandidate, error) {
-	rows, err := tx.QueryContext(ctx, sqlutil.Bind("SELECT scope,revision FROM processing_scopes WHERE dataset_id=? AND (processed_revision<>revision OR generation<>?) AND retry_at_ms<=? AND (revision>? OR (revision=? AND scope>?)) ORDER BY revision,scope LIMIT ?"), datasetID, generation, now, cursor.revision, cursor.revision, cursor.scope, limit)
+	rows, err := tx.QueryContext(ctx, "SELECT scope,revision FROM processing_scopes WHERE dataset_id=? AND (processed_revision<>revision OR generation<>?) AND retry_at_ms<=? AND (revision>? OR (revision=? AND scope>?)) ORDER BY revision,scope LIMIT ?", datasetID, generation, now, cursor.revision, cursor.revision, cursor.scope, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -725,7 +724,7 @@ func (s *Store) loadWork(ctx context.Context, claims []dataengine.Work, maxBytes
 				continue
 			}
 			component := map[string]int64{}
-			rows, err := tx.QueryContext(ctx, sqlutil.Bind(connectedScopesSQL+"SELECT s.scope,s.revision FROM processing_scopes s WHERE s.dataset_id=? AND s.scope IN(SELECT scope FROM connected)"), s.datasetID, scope, s.datasetID, s.datasetID)
+			rows, err := tx.QueryContext(ctx, connectedScopesSQL+"SELECT s.scope,s.revision FROM processing_scopes s WHERE s.dataset_id=? AND s.scope IN(SELECT scope FROM connected)", s.datasetID, scope, s.datasetID, s.datasetID)
 			if err != nil {
 				result.Root = scope
 				return result, err
@@ -759,7 +758,7 @@ func (s *Store) loadWork(ctx context.Context, claims []dataengine.Work, maxBytes
 				continue
 			}
 			var bytes int64
-			err = tx.QueryRowContext(ctx, sqlutil.Bind(connectedScopesSQL+"SELECT COALESCE(SUM(octet_length(record_json)),0) FROM raw_evidence WHERE dataset_id=? AND scope IN(SELECT scope FROM connected)"), s.datasetID, scope, s.datasetID, s.datasetID).Scan(&bytes)
+			err = tx.QueryRowContext(ctx, connectedScopesSQL+"SELECT COALESCE(SUM(octet_length(record_json)),0) FROM raw_evidence WHERE dataset_id=? AND scope IN(SELECT scope FROM connected)", s.datasetID, scope, s.datasetID, s.datasetID).Scan(&bytes)
 			if err != nil {
 				result.Root = scope
 				result.Scopes = component
@@ -771,7 +770,7 @@ func (s *Store) loadWork(ctx context.Context, claims []dataengine.Work, maxBytes
 			result.Root = scope
 			result.Scopes = component
 			result.Bytes = bytes
-			rows, err = tx.QueryContext(ctx, sqlutil.Bind(connectedScopesSQL+"SELECT scope,evidence_id,record_json FROM raw_evidence WHERE dataset_id=? AND scope IN(SELECT scope FROM connected) ORDER BY scope,evidence_id"), s.datasetID, scope, s.datasetID, s.datasetID)
+			rows, err = tx.QueryContext(ctx, connectedScopesSQL+"SELECT scope,evidence_id,record_json FROM raw_evidence WHERE dataset_id=? AND scope IN(SELECT scope FROM connected) ORDER BY scope,evidence_id", s.datasetID, scope, s.datasetID, s.datasetID)
 			if err != nil {
 				return result, err
 			}
@@ -822,7 +821,7 @@ func (s *Store) PublishProjection(ctx context.Context, work dataengine.Work, pro
 	if m.TargetGeneration != work.Generation {
 		return false, nil
 	}
-	current, err := tx.QueryContext(ctx, sqlutil.Bind(connectedScopesSQL+"SELECT s.scope,s.revision FROM processing_scopes s WHERE s.dataset_id=? AND s.scope IN(SELECT scope FROM connected)"), s.datasetID, work.Root, s.datasetID, s.datasetID)
+	current, err := tx.QueryContext(ctx, connectedScopesSQL+"SELECT s.scope,s.revision FROM processing_scopes s WHERE s.dataset_id=? AND s.scope IN(SELECT scope FROM connected)", s.datasetID, work.Root, s.datasetID, s.datasetID)
 	if err != nil {
 		return false, err
 	}
@@ -855,12 +854,12 @@ func (s *Store) PublishProjection(ctx context.Context, work dataengine.Work, pro
 		return false, reject("revision_limit")
 	}
 	if m.Generation == work.Generation {
-		if _, err := tx.ExecContext(ctx, sqlutil.Bind("UPDATE ingestion_metadata SET revision=revision+1 WHERE dataset_id=?"), s.datasetID); err != nil {
+		if _, err := tx.ExecContext(ctx, "UPDATE ingestion_metadata SET revision=revision+1 WHERE dataset_id=?", s.datasetID); err != nil {
 			return false, err
 		}
 	} else {
 		var pending int64
-		if err := tx.QueryRowContext(ctx, sqlutil.Bind("SELECT COUNT(*) FROM processing_scopes WHERE dataset_id=? AND (processed_revision<>revision OR generation<>?)"), s.datasetID, work.Generation).Scan(&pending); err != nil {
+		if err := tx.QueryRowContext(ctx, "SELECT COUNT(*) FROM processing_scopes WHERE dataset_id=? AND (processed_revision<>revision OR generation<>?)", s.datasetID, work.Generation).Scan(&pending); err != nil {
 			return false, err
 		}
 		if pending == 0 {
@@ -887,17 +886,17 @@ func (s *Store) RecordFailure(ctx context.Context, work dataengine.Work) {
 	s = s.ForDataset(work.DatasetID)
 	_ = s.WriteTransaction(ctx, func(tx *sql.Tx) error {
 		var attempts int64
-		if err := tx.QueryRowContext(ctx, sqlutil.Bind("SELECT attempts FROM processing_scopes WHERE dataset_id=? AND scope=?"), s.datasetID, work.Root).Scan(&attempts); err != nil {
+		if err := tx.QueryRowContext(ctx, "SELECT attempts FROM processing_scopes WHERE dataset_id=? AND scope=?", s.datasetID, work.Root).Scan(&attempts); err != nil {
 			return err
 		}
 		const maxBackoffExponent = 6
 		delay := time.Second * time.Duration(int64(1)<<min(attempts, maxBackoffExponent))
 		retryAt := time.Now().Add(delay).UnixMilli()
 		if len(work.Scopes) == 0 {
-			_, err := tx.ExecContext(ctx, sqlutil.Bind("UPDATE processing_scopes SET attempts=attempts+1,retry_at_ms=?,error_code='processing_failed' WHERE dataset_id=? AND scope=? AND revision<=? AND EXISTS(SELECT 1 FROM ingestion_metadata WHERE dataset_id=? AND target_generation=?)"), retryAt, s.datasetID, work.Root, work.Revision, s.datasetID, work.Generation)
+			_, err := tx.ExecContext(ctx, "UPDATE processing_scopes SET attempts=attempts+1,retry_at_ms=?,error_code='processing_failed' WHERE dataset_id=? AND scope=? AND revision<=? AND EXISTS(SELECT 1 FROM ingestion_metadata WHERE dataset_id=? AND target_generation=?)", retryAt, s.datasetID, work.Root, work.Revision, s.datasetID, work.Generation)
 			return err
 		}
-		statement, err := tx.PrepareContext(ctx, sqlutil.Bind("UPDATE processing_scopes SET attempts=attempts+1,retry_at_ms=?,error_code='processing_failed' WHERE dataset_id=? AND scope=? AND revision=? AND EXISTS(SELECT 1 FROM ingestion_metadata WHERE dataset_id=? AND target_generation=?)"))
+		statement, err := tx.PrepareContext(ctx, "UPDATE processing_scopes SET attempts=attempts+1,retry_at_ms=?,error_code='processing_failed' WHERE dataset_id=? AND scope=? AND revision=? AND EXISTS(SELECT 1 FROM ingestion_metadata WHERE dataset_id=? AND target_generation=?)")
 		if err != nil {
 			return err
 		}

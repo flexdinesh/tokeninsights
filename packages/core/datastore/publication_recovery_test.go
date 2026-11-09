@@ -11,7 +11,6 @@ import (
 	"testing"
 
 	"github.com/flexdinesh/tokeninsights/packages/core/evidence"
-	"github.com/flexdinesh/tokeninsights/packages/core/persistence/sqlutil"
 	"github.com/flexdinesh/tokeninsights/packages/core/processor"
 )
 
@@ -82,7 +81,7 @@ func TestPublicationTreatsProvenanceAsASet(t *testing.T) {
 			t.Fatal("publish duplicate edges", published, err)
 		}
 		var count int
-		if err := store.SQL().QueryRow(sqlutil.Bind("SELECT COUNT(*) FROM analytics_provenance WHERE dataset_id=? AND fact_id=? AND evidence_id=?"), store.DatasetID(), contribution.Fact.ID, id).Scan(&count); err != nil || count != 1 {
+		if err := store.SQL().QueryRow("SELECT COUNT(*) FROM analytics_provenance WHERE dataset_id=? AND fact_id=? AND evidence_id=?", store.DatasetID(), contribution.Fact.ID, id).Scan(&count); err != nil || count != 1 {
 			t.Fatal("provenance is not a set", count, err)
 		}
 		if got := total(t, store, "analytics_confirmed"); got != 120 {
@@ -171,7 +170,7 @@ func TestPublicationRollbackReopenAndRetryPreservesUsage(t *testing.T) {
 			}
 			drain(t, reopened)
 			var components [6]int64
-			if err := reopened.SQL().QueryRow(sqlutil.Bind("SELECT SUM(input_tokens),SUM(output_tokens),SUM(reasoning_tokens),SUM(cache_read_tokens),SUM(cache_write_tokens),SUM(total_tokens) FROM analytics_confirmed")).Scan(&components[0], &components[1], &components[2], &components[3], &components[4], &components[5]); err != nil {
+			if err := reopened.SQL().QueryRow("SELECT SUM(input_tokens),SUM(output_tokens),SUM(reasoning_tokens),SUM(cache_read_tokens),SUM(cache_write_tokens),SUM(total_tokens) FROM analytics_confirmed").Scan(&components[0], &components[1], &components[2], &components[3], &components[4], &components[5]); err != nil {
 				t.Fatal(err)
 			}
 			count := int64(newRecords + 1)
@@ -180,7 +179,7 @@ func TestPublicationRollbackReopenAndRetryPreservesUsage(t *testing.T) {
 			}
 			for _, contribution := range projection.Contributions {
 				var edges int64
-				if err := reopened.SQL().QueryRow(sqlutil.Bind("SELECT COUNT(*) FROM analytics_provenance WHERE fact_id=?"), contribution.Fact.ID).Scan(&edges); err != nil || edges != int64(len(contribution.EvidenceIDs)) {
+				if err := reopened.SQL().QueryRow("SELECT COUNT(*) FROM analytics_provenance WHERE fact_id=?", contribution.Fact.ID).Scan(&edges); err != nil || edges != int64(len(contribution.EvidenceIDs)) {
 					t.Fatal("retry changed fact identity or provenance", edges, err)
 				}
 			}

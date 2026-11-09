@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"github.com/flexdinesh/tokeninsights/packages/core/evidence"
-	"github.com/flexdinesh/tokeninsights/packages/core/persistence/sqlutil"
 )
 
 func TestCurrentInspectionRejectsChangedContractsWithoutMutation(t *testing.T) {
@@ -33,7 +32,7 @@ func TestCurrentInspectionRejectsChangedContractsWithoutMutation(t *testing.T) {
 				t.Fatal(err)
 			}
 			drain(t, store)
-			if _, err := store.SQL().ExecContext(t.Context(), sqlutil.Bind(change.sql)); err != nil {
+			if _, err := store.SQL().ExecContext(t.Context(), change.sql); err != nil {
 				t.Fatal(err)
 			}
 			if err := store.Close(); err != nil {

@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/flexdinesh/tokeninsights/packages/core/evidence"
-	"github.com/flexdinesh/tokeninsights/packages/core/persistence/sqlutil"
 	"github.com/flexdinesh/tokeninsights/packages/core/processor"
 	"github.com/flexdinesh/tokeninsights/packages/core/storagecontract"
 )
@@ -118,8 +117,8 @@ func verifyPublication(b *testing.B, store *Store, expected map[string]string, w
 	if len(expected) != wantFacts {
 		b.Fatal("fixture lost fact identities", len(expected))
 	}
-	rows, err := store.SQL().QueryContext(b.Context(), sqlutil.Bind(`SELECT f.fact_id,p.evidence_id,f.input_tokens,f.output_tokens,f.reasoning_tokens,f.cache_read_tokens,f.cache_write_tokens,f.total_tokens
-		FROM analytics_confirmed f JOIN analytics_provenance p USING(dataset_id,generation,fact_id)`))
+	rows, err := store.SQL().QueryContext(b.Context(), `SELECT f.fact_id,p.evidence_id,f.input_tokens,f.output_tokens,f.reasoning_tokens,f.cache_read_tokens,f.cache_write_tokens,f.total_tokens
+		FROM analytics_confirmed f JOIN analytics_provenance p USING(dataset_id,generation,fact_id)`)
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -144,12 +143,12 @@ func verifyPublication(b *testing.B, store *Store, expected map[string]string, w
 		b.Fatal("publication lost facts", len(expected))
 	}
 	var outcomes, facts, provenance, estimates, pending, sessions int
-	err = store.SQL().QueryRowContext(b.Context(), sqlutil.Bind(`SELECT
+	err = store.SQL().QueryRowContext(b.Context(), `SELECT
 		(SELECT COUNT(*) FROM processing_outcomes WHERE disposition='processed'),
 		(SELECT COUNT(*) FROM analytics_facts), (SELECT COUNT(*) FROM analytics_provenance),
 		(SELECT COUNT(*) FROM analytics_estimates),
 		(SELECT COUNT(*) FROM processing_scopes WHERE processed_revision<>revision OR generation<>1),
-		(SELECT COUNT(DISTINCT session_id) FROM analytics_confirmed)`)).Scan(&outcomes, &facts, &provenance, &estimates, &pending, &sessions)
+		(SELECT COUNT(DISTINCT session_id) FROM analytics_confirmed)`).Scan(&outcomes, &facts, &provenance, &estimates, &pending, &sessions)
 	if err != nil || outcomes != wantFacts || facts != wantFacts || provenance != wantFacts || estimates != 0 || pending != 0 || sessions != components {
 		b.Fatal("incomplete publication", outcomes, facts, provenance, estimates, pending, sessions, err)
 	}

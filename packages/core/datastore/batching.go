@@ -9,7 +9,6 @@ import (
 
 	"github.com/flexdinesh/tokeninsights/packages/core/dataengine"
 	"github.com/flexdinesh/tokeninsights/packages/core/evidence"
-	"github.com/flexdinesh/tokeninsights/packages/core/persistence/sqlutil"
 	"github.com/flexdinesh/tokeninsights/packages/core/publication"
 )
 
@@ -26,7 +25,7 @@ func writeRows(ctx context.Context, tx *sql.Tx, prefix, suffix string, rows [][]
 			values = append(values, "("+sqlPlaceholders(len(row))+")")
 			args = append(args, row...)
 		}
-		if _, err := tx.ExecContext(ctx, sqlutil.Bind(prefix+strings.Join(values, ",")+suffix), args...); err != nil {
+		if _, err := tx.ExecContext(ctx, prefix+strings.Join(values, ",")+suffix, args...); err != nil {
 			return err
 		}
 	}
@@ -52,7 +51,7 @@ func prepareAcceptance(batch evidence.Batch) ([]acceptedRecord, error) {
 }
 func acceptRecords(ctx context.Context, tx *sql.Tx, datasetID string, batch evidence.Batch, records []acceptedRecord, revision, now int64) (bool, error) {
 	previous := map[int64]string{}
-	rows, err := tx.QueryContext(ctx, sqlutil.Bind("SELECT sequence,evidence_id FROM ingestion_items WHERE dataset_id=? AND stream_id=? AND sequence BETWEEN ? AND ?"), datasetID, batch.StreamID, batch.FromSequence, batch.ToSequence)
+	rows, err := tx.QueryContext(ctx, "SELECT sequence,evidence_id FROM ingestion_items WHERE dataset_id=? AND stream_id=? AND sequence BETWEEN ? AND ?", datasetID, batch.StreamID, batch.FromSequence, batch.ToSequence)
 	if err != nil {
 		return false, err
 	}
@@ -74,7 +73,7 @@ func acceptRecords(ctx context.Context, tx *sql.Tx, datasetID string, batch evid
 	for _, record := range records {
 		args = append(args, record.id)
 	}
-	rows, err = tx.QueryContext(ctx, sqlutil.Bind("SELECT evidence_id FROM raw_evidence WHERE dataset_id=? AND evidence_id IN("+sqlPlaceholders(len(records))+")"), args...)
+	rows, err = tx.QueryContext(ctx, "SELECT evidence_id FROM raw_evidence WHERE dataset_id=? AND evidence_id IN("+sqlPlaceholders(len(records))+")", args...)
 	if err != nil {
 		return false, err
 	}
@@ -207,11 +206,11 @@ func publishRows(ctx context.Context, tx *sql.Tx, work dataengine.Work, rows pro
 		filter := " WHERE dataset_id=? AND generation=? AND scope IN(" + sqlPlaceholders(end-start) + ")"
 		provenanceArgs := []interface{}{work.DatasetID, work.Generation}
 		provenanceArgs = append(provenanceArgs, args...)
-		if _, err := tx.ExecContext(ctx, sqlutil.Bind("DELETE FROM analytics_provenance WHERE dataset_id=? AND generation=? AND fact_id IN(SELECT fact_id FROM analytics_facts"+filter+")"), provenanceArgs...); err != nil {
+		if _, err := tx.ExecContext(ctx, "DELETE FROM analytics_provenance WHERE dataset_id=? AND generation=? AND fact_id IN(SELECT fact_id FROM analytics_facts"+filter+")", provenanceArgs...); err != nil {
 			return err
 		}
 		for _, table := range []string{"analytics_facts", "analytics_estimates"} {
-			if _, err := tx.ExecContext(ctx, sqlutil.Bind("DELETE FROM "+table+filter), args...); err != nil {
+			if _, err := tx.ExecContext(ctx, "DELETE FROM "+table+filter, args...); err != nil {
 				return err
 			}
 		}
@@ -229,7 +228,7 @@ func publishRows(ctx context.Context, tx *sql.Tx, work dataengine.Work, rows pro
 	if err := writeRows(ctx, tx, "INSERT INTO processing_outcomes VALUES", " ON CONFLICT(dataset_id,generation,evidence_id) DO UPDATE SET disposition=excluded.disposition,code=excluded.code,fact_id=excluded.fact_id,input_revision=excluded.input_revision", rows.outcomes); err != nil {
 		return err
 	}
-	statement, err := tx.PrepareContext(ctx, sqlutil.Bind("UPDATE processing_scopes SET processed_revision=?,generation=?,error_code='',attempts=0,retry_at_ms=0 WHERE dataset_id=? AND scope=?"))
+	statement, err := tx.PrepareContext(ctx, "UPDATE processing_scopes SET processed_revision=?,generation=?,error_code='',attempts=0,retry_at_ms=0 WHERE dataset_id=? AND scope=?")
 	if err != nil {
 		return err
 	}
