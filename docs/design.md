@@ -108,6 +108,11 @@ Collector locks serialize capture and journal writes. Direct delivery never hold
 the capture lock across acceptance. Persist request bytes before acceptance;
 validate the receipt independently, then advance retained delivery progress
 transactionally. Cancellation or lost acknowledgement replays identical bytes.
+While one batch is accepted, delivery encodes the next in memory without writing;
+preparation persists it only if a fresh read would encode the same entries for the
+same binding, otherwise it re-encodes. Acknowledgement reuses the prepared batch
+only when stored request bytes are identical. Pending counts derive from the
+contiguous outbox sequence instead of scanning it.
 
 Raw/outbox/old generations retain indefinitely initially; no compaction. Replay
 can repair only captured fields; whitelist changes may require source rereads.
