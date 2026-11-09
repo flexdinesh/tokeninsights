@@ -88,7 +88,17 @@ func publishRaw(ctx context.Context, options Options, result *Result) error {
 		return failure("publication", "collector_database", err)
 	}
 	defer func() { _ = store.Close() }()
+	// Deferred after Close so the lookahead is cancelled and joined first.
+	var lookahead *draftLookahead
+	defer func() {
+		if lookahead != nil {
+			lookahead.wait()
+		}
+	}()
+	draftCtx, cancelDraft := context.WithCancel(ctx)
+	defer cancelDraft()
 	var destination string
+	var draft *rawcollectorstore.Draft
 	for {
 		var saved *rawcollectorstore.SavedBatch
 		err := withPublicationLock(ctx, path, func() error {
@@ -102,7 +112,7 @@ func publishRaw(ctx context.Context, options Options, result *Result) error {
 				return failure("publication", "pending_read", err)
 			}
 			result.PendingKnown = true
-			saved, err = store.Prepare(ctx, destination)
+			saved, err = store.PrepareDraft(ctx, destination, draft)
 			if err != nil {
 				return failure("publication", "prepare_batch", err)
 			}
@@ -115,6 +125,9 @@ func publishRaw(ctx context.Context, options Options, result *Result) error {
 		if saved == nil {
 			return nil
 		}
+		// Encode the next batch while this one is accepted. Nothing is written
+		// until this batch is acknowledged; preparation verifies the draft.
+		lookahead = startDraft(draftCtx, store, destination, saved.Batch.ToSequence)
 		response, err := d.Transport.Submit(ctx, saved.Batch.ProtocolVersion, saved.Request)
 		if err != nil {
 			var rejected *StageError
@@ -125,7 +138,7 @@ func publishRaw(ctx context.Context, options Options, result *Result) error {
 			return &StageError{Stage: "delivery", Code: "acceptance_failed", BatchID: saved.Batch.BatchID, Cause: err}
 		}
 		if err := withPublicationLock(ctx, path, func() error {
-			return store.Ack(ctx, destination, response)
+			return store.AckPrepared(ctx, destination, saved, response)
 		}); err != nil {
 			return &StageError{Stage: "receipt", Code: "acknowledgement_rejected", BatchID: saved.Batch.BatchID, Cause: err}
 		}
@@ -140,7 +153,33 @@ func publishRaw(ctx context.Context, options Options, result *Result) error {
 		}
 		result.Batches++
 		result.Accepted += int64(len(saved.Batch.Entries))
+		draft = lookahead.wait()
+		lookahead = nil
 	}
+}
+
+// draftLookahead encodes the next batch concurrently with acceptance. A failed
+// or stale draft is discarded; preparation then reads and reports normally.
+type draftLookahead struct {
+	done  chan struct{}
+	draft *rawcollectorstore.Draft
+}
+
+func startDraft(ctx context.Context, store *rawcollectorstore.Store, destination string, cursor int64) *draftLookahead {
+	l := &draftLookahead{done: make(chan struct{})}
+	go func() {
+		defer close(l.done)
+		draft, err := store.Draft(ctx, destination, cursor)
+		if err == nil {
+			l.draft = draft
+		}
+	}()
+	return l
+}
+
+func (l *draftLookahead) wait() *rawcollectorstore.Draft {
+	<-l.done
+	return l.draft
 }
 
 // Each journal operation holds a short capture lock, never across transport.
