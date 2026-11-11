@@ -33,7 +33,7 @@ func (f *fakeSystem) system(platform string) system {
 }
 func TestUnavailableDesktopNeverFallsBack(t *testing.T) {
 	fake := fakeSystem{}
-	if fake.system("darwin").openApp(t.Context(), "opaque-link") {
+	if fake.system("darwin").openApp(t.Context(), DesktopApp, "opaque-link") {
 		t.Fatal("unavailable app opened")
 	}
 	for _, call := range fake.calls {
@@ -44,11 +44,36 @@ func TestUnavailableDesktopNeverFallsBack(t *testing.T) {
 }
 func TestDesktopRegistration(t *testing.T) {
 	fake := fakeSystem{appBundle: true}
-	if !fake.system("darwin").openApp(t.Context(), "desktop-link") {
+	if !fake.system("darwin").openApp(t.Context(), DesktopApp, "desktop-link") {
 		t.Fatal("desktop unavailable")
 	}
 	if fake.calls[0][2] != appBundleID {
 		t.Fatal(fake.calls)
+	}
+}
+func TestNativeRegistrationIsSeparate(t *testing.T) {
+	fake := fakeSystem{appBundle: true}
+	if !fake.system("darwin").openApp(t.Context(), NativeApp, "native-link") || fake.calls[0][2] != nativeBundleID {
+		t.Fatal(fake.calls)
+	}
+	fake = fakeSystem{env: map[string]string{"DISPLAY": ":1"}}
+	if fake.system("linux").openApp(t.Context(), NativeApp, "native-link") {
+		t.Fatal("unregistered native app opened")
+	}
+	if len(fake.calls) != 1 || fake.calls[0][3] != "x-scheme-handler/"+NativeScheme {
+		t.Fatal(fake.calls)
+	}
+}
+func TestAppSelectionIsExact(t *testing.T) {
+	for mode, want := range map[Mode]App{ModeDesktop: DesktopApp, ModeNative: NativeApp} {
+		if app, err := AppFor(mode); err != nil || app != want {
+			t.Fatal(mode, app, err)
+		}
+	}
+	for _, mode := range []Mode{ModeBrowser, ModeOff, "", "mygo"} {
+		if _, err := AppFor(mode); err == nil {
+			t.Fatal("accepted", mode)
+		}
 	}
 }
 func TestExplicitBrowserAndSSHBehavior(t *testing.T) {

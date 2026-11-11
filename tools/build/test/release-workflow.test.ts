@@ -84,11 +84,29 @@ void test('main publication accepts its archives and stable rejects them', async
   await writeChecksums(dir)
   await verifyReleaseAssets(dir, 'main')
   await assert.rejects(verifyReleaseAssets(dir, 'stable'), /stable release requires exactly 8/)
+  await assert.rejects(verifyReleaseAssets(dir, 'edge'), /edge release requires exactly 3/)
+})
+void test('edge publication carries only desktop-native without macOS Intel', async (t) => {
+  assert.deepEqual(expectedArchives('edge'), [
+    'tokeninsights-desktop-native_darwin_arm64.tar.gz',
+    'tokeninsights-desktop-native_linux_amd64.tar.gz',
+    'tokeninsights-desktop-native_linux_arm64.tar.gz',
+  ])
+  const legacy: ReleaseChannel[] = ['stable', 'main']
+  for (const channel of legacy)
+    assert.ok(!expectedArchives(channel).some((name) => name.includes('desktop-native')))
+  const dir = mkdtempSync(join(tmpdir(), 'tokeninsights-edge-assets-'))
+  t.after(() => rmSync(dir, { recursive: true, force: true }))
+  for (const name of expectedArchives('edge')) writeFileSync(join(dir, name), `archive ${name}`)
+  await writeChecksums(dir)
+  await verifyReleaseAssets(dir, 'edge')
+  await assert.rejects(verifyReleaseAssets(dir, 'main'), /main release requires exactly 6/)
 })
 void test('workflow build matrices match each channel release contract', () => {
   const workflows: ReadonlyArray<readonly [string, ReleaseChannel]> = [
     ['ci.yml', 'main'],
     ['release.yml', 'stable'],
+    ['edge.yml', 'edge'],
   ]
   for (const [file, channel] of workflows) {
     const workflow = readFileSync(workspacePath(`.github/workflows/${file}`), 'utf8')
@@ -118,6 +136,8 @@ for (const scenario of [
   'published stable',
   'main',
   'superseded main',
+  'edge',
+  'edge from another ref',
   'upload failure',
 ]) {
   void test(`release publication handles ${scenario} without exposing partial assets`, (t) => {
@@ -128,8 +148,12 @@ for (const scenario of [
     const stage = join(dir, 'stage')
     for (const path of [out, bin, stage]) mkdirSync(path)
     const commit = 'a'.repeat(40)
-    const channel = scenario.includes('main') ? 'main' : 'stable'
-    const version = channel === 'main' ? `main.${commit.slice(0, 12)}` : '1.2.3'
+    const channel: ReleaseChannel = scenario.includes('main')
+      ? 'main'
+      : scenario.includes('edge')
+        ? 'edge'
+        : 'stable'
+    const version = channel === 'stable' ? '1.2.3' : `${channel}.${commit.slice(0, 12)}`
     for (const name of expectedArchives(channel)) {
       const root = name.replace(/\.tar\.gz$/, '')
       const [slug, os, arch] = root.split('_')
@@ -184,8 +208,8 @@ if (args[1] === 'upload' && process.env.FAIL_UPLOAD === '1') process.exit(23);
           PATH: `${bin}:${process.env.PATH ?? ''}`,
           PUBLISH_LOG: log,
           SOURCE_SHA: commit,
-          EXISTING: scenario === 'published stable' || scenario === 'main' ? '1' : '0',
-          SUPERSEDED: scenario === 'superseded main' ? '1' : '0',
+          EXISTING: ['published stable', 'main', 'edge'].includes(scenario) ? '1' : '0',
+          SUPERSEDED: scenario.startsWith('superseded') || scenario.includes('another') ? '1' : '0',
           FAIL_UPLOAD: scenario === 'upload failure' ? '1' : '0',
         },
       },
@@ -221,6 +245,20 @@ if (args[1] === 'upload' && process.env.FAIL_UPLOAD === '1') process.exit(23);
         assert.equal(result.status, 0, result.stderr)
         assert.ok(edit > upload)
         assert.ok(calls[edit]?.includes(`--latest=${scenario === 'stable'}`))
+        assert.ok(calls[edit]?.includes(`--prerelease=${channel !== 'stable'}`))
+      }
+      if (channel === 'edge') {
+        // Edge never consults main and replaces only its own rolling tag.
+        assert.ok(!calls.some((args) => args.includes('refs/heads/main')))
+        assert.ok(calls[create]?.includes('edge-build'))
+        assert.ok(
+          calls.some((args) => args.join(' ') === 'git push --force origin refs/tags/edge-build'),
+        )
+        assert.ok(
+          calls[upload]?.every((arg) => !arg.endsWith('.tar.gz') || arg.includes('desktop-native')),
+        )
+        if (scenario === 'edge')
+          assert.ok(calls.some((args) => args.join(' ') === 'gh release delete edge-build --yes'))
       }
     }
   })

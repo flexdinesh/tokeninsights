@@ -29,13 +29,13 @@ type acknowledgement struct {
 	Application browser.Mode `json:"application"`
 }
 
-// Launch returns only after the desktop acknowledges ownership of the live
-// requested session. An OS opener accepting a URL is insufficient.
-func Launch(ctx context.Context, spec Spec) error {
-	return launch(ctx, spec, browser.Launch)
+// Launch returns only after app acknowledges ownership of the live requested
+// session. An OS opener accepting a URL is insufficient.
+func Launch(ctx context.Context, app browser.App, spec Spec) error {
+	return launch(ctx, app, spec, func(ctx context.Context, link string) error { return browser.Launch(ctx, app, link) })
 }
 
-func launch(ctx context.Context, spec Spec, open func(context.Context, string) error) error {
+func launch(ctx context.Context, app browser.App, spec Spec, open func(context.Context, string) error) error {
 	ctx, cancel := context.WithTimeout(ctx, acknowledgementTimeout)
 	defer cancel()
 	directory, err := rendezvousDirectory()
@@ -58,7 +58,7 @@ func launch(ctx context.Context, spec Spec, open func(context.Context, string) e
 	}
 	stop := context.AfterFunc(ctx, func() { _ = listener.Close() })
 	defer stop()
-	if err := open(ctx, browser.DesktopScheme+"://launch?id="+id); err != nil {
+	if err := open(ctx, app.Scheme+"://launch?id="+id); err != nil {
 		return err
 	}
 	conn, err := listener.Accept()
@@ -76,7 +76,7 @@ func launch(ctx context.Context, spec Spec, open func(context.Context, string) e
 	var ack acknowledgement
 	decoder := json.NewDecoder(io.LimitReader(conn, messageLimit))
 	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&ack); err != nil || !ack.Ready || ack.Application != browser.ModeDesktop {
+	if err := decoder.Decode(&ack); err != nil || !ack.Ready || ack.Application != app.Mode {
 		return errors.New("desktop could not hold the requested session; check the desktop error and retry")
 	}
 	return nil
@@ -104,9 +104,9 @@ func (h *Handoff) Deadline() time.Time { return h.deadline }
 
 func (h *Handoff) Close() error { return h.reply(acknowledgement{}) }
 
-// Receive accepts only an opaque ID, never a connection string or URL target.
-func Receive(ctx context.Context, raw string) (*Handoff, error) {
-	id, err := ID(raw)
+// Receive accepts only app's opaque ID, never a connection string or URL target.
+func Receive(ctx context.Context, app browser.App, raw string) (*Handoff, error) {
+	id, err := ID(app, raw)
 	if err != nil {
 		return nil, err
 	}
@@ -134,9 +134,10 @@ func Receive(ctx context.Context, raw string) (*Handoff, error) {
 	return &Handoff{Spec: spec, conn: conn, deadline: deadline}, nil
 }
 
-func ID(raw string) (string, error) {
+// ID returns the rendezvous ID of a launch link addressed to app.
+func ID(app browser.App, raw string) (string, error) {
 	u, err := url.Parse(raw)
-	if err == nil && u != nil && u.Scheme == browser.DesktopScheme && u.Host == "launch" && u.Path == "" && u.Fragment == "" && u.User == nil {
+	if err == nil && u != nil && u.Scheme == app.Scheme && u.Host == "launch" && u.Path == "" && u.Fragment == "" && u.User == nil {
 		values, queryErr := url.ParseQuery(u.RawQuery)
 		id := values.Get("id")
 		decoded, decodeErr := hex.DecodeString(id)

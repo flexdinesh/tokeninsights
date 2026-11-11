@@ -2,6 +2,8 @@ package cli
 
 import (
 	"fmt"
+
+	"github.com/flexdinesh/tokeninsights/packages/core/browser"
 	"github.com/flexdinesh/tokeninsights/packages/core/config"
 	"github.com/flexdinesh/tokeninsights/packages/core/desktoplaunch"
 )
@@ -19,11 +21,16 @@ func runConnect(invocation commandInvocation, args []string) error {
 
 func runDesktop(invocation commandInvocation, args []string, connection *string) error {
 	flags, capture, full, source := viewerFlags(invocation, "tokeninsights")
+	appName := flags.String("app", string(browser.ModeDesktop), "desktop application: desktop or native")
 	if err := flags.Parse(args); err != nil {
 		return fmt.Errorf("%w\n%w", err, ErrUsage)
 	}
 	if flags.NArg() != 0 {
 		return ErrUsage
+	}
+	app, err := browser.AppFor(browser.Mode(*appName))
+	if err != nil {
+		return fmt.Errorf("%w\n%w", err, ErrUsage)
 	}
 	if !*capture && *full {
 		return fmt.Errorf("--full-refresh requires --capture\n%w", ErrUsage)
@@ -42,5 +49,5 @@ func runDesktop(invocation commandInvocation, args []string, connection *string)
 	if err != nil {
 		return err
 	}
-	return launchDesktop(invocation.context, desktoplaunch.Specification(settings, *capture, *full, *source))
+	return launchDesktop(invocation.context, app, desktoplaunch.Specification(settings, *capture, *full, *source))
 }

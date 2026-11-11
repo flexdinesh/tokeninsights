@@ -29,3 +29,5 @@ mise.*.local.toml
 packages/backend/bin/
 packages/desktop/build/
 packages/desktop/.mygo/
+packages/desktop-native/build/
+packages/desktop-native/.mygo/

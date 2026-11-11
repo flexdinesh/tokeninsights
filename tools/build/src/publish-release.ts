@@ -2,7 +2,12 @@ import { execFileSync, spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { readFile, readdir } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
-import { archiveName, products } from './build-products.ts'
+import {
+  archiveName,
+  channelProducts,
+  versionChannel,
+  type ReleaseChannel,
+} from './build-products.ts'
 import { parseTarget } from './build-desktop.ts'
 import { workspaceRoot } from './workspace.ts'
 
@@ -11,16 +16,28 @@ export function releaseTag(version: string): string {
   if (!stableVersion.test(version)) throw new Error('version must be x.y.z without leading zeros')
   return `v${version}`
 }
-export type ReleaseChannel = 'stable' | 'main'
+export type { ReleaseChannel }
 export function releasePlatforms(channel: ReleaseChannel): string[] {
-  return channel === 'main'
-    ? ['linux/amd64', 'linux/arm64', 'darwin/arm64']
-    : ['linux/amd64', 'linux/arm64', 'darwin/amd64', 'darwin/arm64']
+  return channel === 'stable'
+    ? ['linux/amd64', 'linux/arm64', 'darwin/amd64', 'darwin/arm64']
+    : ['linux/amd64', 'linux/arm64', 'darwin/arm64']
 }
 export function expectedArchives(channel: ReleaseChannel): string[] {
   return releasePlatforms(channel)
-    .flatMap((platform) => products.map((product) => archiveName(product, parseTarget(platform))))
+    .flatMap((platform) =>
+      channelProducts(channel).map((product) => archiveName(product, parseTarget(platform))),
+    )
     .toSorted()
+}
+// Rolling prereleases are replaced in place; stable releases are immutable.
+export function releaseName(
+  channel: ReleaseChannel,
+  version: string,
+): { tag: string; title: string } {
+  if (channel === 'main') return { tag: 'main-build', title: 'Main build' }
+  if (channel === 'edge') return { tag: 'edge-build', title: 'Edge build' }
+  const tag = releaseTag(version)
+  return { tag, title: `TokenInsights ${tag}` }
 }
 export function verifyArchiveMetadata(
   path: string,
@@ -111,16 +128,22 @@ export async function publish(
 ): Promise<void> {
   const git = (...args: string[]) => execFileSync('git', args, { cwd, encoding: 'utf8' }).trim()
   const gh = (...args: string[]) => execFileSync('gh', args, { cwd, stdio: 'inherit' })
+  if (versionChannel(version) !== channel) throw new Error(`${version} is not a ${channel} version`)
   const source = git('rev-parse', 'HEAD')
   await verifyReleaseAssets(out, channel, { version, commit: source })
-  const tag = channel === 'stable' ? releaseTag(version) : 'main-build'
+  const { tag, title } = releaseName(channel, version)
+  const rollingRelease = channel !== 'stable'
   const existing = spawnSync(
     'gh',
     ['release', 'view', tag, '--json', 'isDraft', '--jq', '.isDraft'],
     { cwd, encoding: 'utf8' },
   )
-  if (channel === 'main') {
-    if (git('ls-remote', 'origin', 'refs/heads/main').split(/\s+/)[0] !== source) {
+  if (rollingRelease) {
+    // Edge may publish any dispatched ref; workflow concurrency keeps the newest run.
+    if (
+      channel === 'main' &&
+      git('ls-remote', 'origin', 'refs/heads/main').split(/\s+/)[0] !== source
+    ) {
       console.log('Main advanced; publication skipped')
       return
     }
@@ -133,7 +156,7 @@ export async function publish(
     if (existing.status === 0 && existing.stdout.trim() !== 'true')
       throw new Error('published stable releases are immutable')
   }
-  if (channel === 'main' || existing.status !== 0) {
+  if (rollingRelease || existing.status !== 0) {
     gh(
       'release',
       'create',
@@ -141,8 +164,8 @@ export async function publish(
       '--verify-tag',
       '--draft',
       '--title',
-      channel === 'main' ? 'Main build' : `TokenInsights ${tag}`,
-      ...(channel === 'main' ? ['--prerelease'] : ['--generate-notes']),
+      title,
+      ...(rollingRelease ? ['--prerelease'] : ['--generate-notes']),
     )
   }
   gh(
@@ -157,16 +180,18 @@ export async function publish(
     'edit',
     tag,
     '--draft=false',
-    `--prerelease=${channel === 'main'}`,
+    `--prerelease=${rollingRelease}`,
     `--latest=${channel === 'stable'}`,
   )
 }
 if (import.meta.main) {
   const [action, version, directory] = process.argv.slice(2)
   if (version === undefined)
-    throw new Error('usage: publish-release.ts tag|stable|main <x.y.z|main.sha> [directory]')
+    throw new Error(
+      'usage: publish-release.ts tag|stable|main|edge <x.y.z|main.sha|edge.sha> [directory]',
+    )
   if (action === 'tag') console.log(prepareTag(version))
-  else if (action === 'stable' || action === 'main')
+  else if (action === 'stable' || action === 'main' || action === 'edge')
     await publish(action, version, resolve(directory ?? 'dist'))
   else throw new Error(`unknown release action ${action}`)
 }

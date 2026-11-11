@@ -31,7 +31,7 @@ auto = false
 run = "pnpm install --frozen-lockfile"
 
 [vars]
-format_paths = "package.json pnpm-workspace.yaml orval.config.ts docs/openapi.yaml docs-website .github/workflows packages/cli/package.json packages/backend packages/desktop/mygo.json packages/dashboard packages/contracts packages/web tools/build tools/validation/groups.json"
+format_paths = "package.json pnpm-workspace.yaml orval.config.ts docs/openapi.yaml docs-website .github/workflows packages/cli/package.json packages/backend packages/desktop/mygo.json packages/desktop-native/mygo.json packages/dashboard packages/contracts packages/web tools/build tools/validation/groups.json"
 lint_paths = "orval.config.ts docs-website packages/dashboard packages/contracts packages/web tools/build tools/validation/groups.json"
 
 # Setup
@@ -120,6 +120,11 @@ run = [
 description = "Build self-contained native product archives"
 depends = ["build:web"]
 run = "node tools/build/src/build-products.ts 0.0.0 dist"
+
+[tasks."build:desktop-native"]
+description = "Build the self-contained native desktop experiment archive"
+depends = ["build:web"]
+run = "node tools/build/src/build-products.ts 0.0.0 dist desktop-native"
 
 
 [tasks.build]

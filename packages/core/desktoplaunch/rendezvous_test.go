@@ -19,13 +19,13 @@ func TestLaunchRequiresDesktopAcknowledgementAndKeepsSecretsOffURL(t *testing.T)
 	finished := make(chan error, 1)
 	spec := Spec{Connection: "private-token", SourceDir: "private-source", Capture: false}
 	go func() {
-		finished <- launch(ctx, spec, func(ctx context.Context, raw string) error {
+		finished <- launch(ctx, browser.DesktopApp, spec, func(ctx context.Context, raw string) error {
 			if !strings.HasPrefix(raw, "tokeninsights-desktop://launch?id=") || strings.Contains(raw, "private") {
 				return errors.New("secret or wrong app in OS link")
 			}
 			links <- raw
 			go func() {
-				handoff, err := Receive(ctx, raw)
+				handoff, err := Receive(ctx, browser.DesktopApp, raw)
 				if err != nil {
 					t.Error(err)
 					cancel()
@@ -52,7 +52,7 @@ func TestLaunchRequiresDesktopAcknowledgementAndKeepsSecretsOffURL(t *testing.T)
 		t.Fatal(err)
 	}
 	raw := <-links
-	id, err := ID(raw)
+	id, err := ID(browser.DesktopApp, raw)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -68,13 +68,13 @@ func TestLaunchRequiresDesktopAcknowledgementAndKeepsSecretsOffURL(t *testing.T)
 func TestFailedOrCancelledDesktopNeverReportsSuccess(t *testing.T) {
 	for _, reject := range []bool{true, false} {
 		ctx, cancel := context.WithCancel(t.Context())
-		err := launch(ctx, Spec{}, func(ctx context.Context, raw string) error {
+		err := launch(ctx, browser.DesktopApp, Spec{}, func(ctx context.Context, raw string) error {
 			if !reject {
 				cancel()
 				return nil
 			}
 			go func() {
-				handoff, err := Receive(ctx, raw)
+				handoff, err := Receive(ctx, browser.DesktopApp, raw)
 				if err != nil {
 					t.Error(err)
 					cancel()
@@ -91,16 +91,16 @@ func TestFailedOrCancelledDesktopNeverReportsSuccess(t *testing.T) {
 	}
 }
 func TestUnavailableApplicationPreservesActionableError(t *testing.T) {
-	err := launch(t.Context(), Spec{}, func(context.Context, string) error { return browser.ErrAppUnavailable })
+	err := launch(t.Context(), browser.DesktopApp, Spec{}, func(context.Context, string) error { return browser.ErrAppUnavailable })
 	if !errors.Is(err, browser.ErrAppUnavailable) {
 		t.Fatal(err)
 	}
 }
 
 func TestWrongDesktopCannotAcknowledgeSelectedApplication(t *testing.T) {
-	err := launch(t.Context(), Spec{}, func(ctx context.Context, raw string) error {
+	err := launch(t.Context(), browser.DesktopApp, Spec{}, func(ctx context.Context, raw string) error {
 		go func() {
-			handoff, err := Receive(ctx, raw)
+			handoff, err := Receive(ctx, browser.DesktopApp, raw)
 			if err != nil {
 				t.Error(err)
 				return
@@ -124,11 +124,48 @@ func TestRendezvousRejectsCredentialAndDuplicateURLFields(t *testing.T) {
 		"tokeninsights://connect/v1?address=host:1#token=secret",
 		"tokeninsights-desktop://open?url=http://localhost",
 	} {
-		if _, err := ID(raw); err == nil {
+		if _, err := ID(browser.DesktopApp, raw); err == nil {
 			t.Fatal("accepted", raw)
 		}
 	}
-	if _, err := Receive(t.Context(), "tokeninsights-desktop://launch?id="+id); err == nil || !strings.Contains(err.Error(), "expired") {
+	if _, err := Receive(t.Context(), browser.DesktopApp, "tokeninsights-desktop://launch?id="+id); err == nil || !strings.Contains(err.Error(), "expired") {
+		t.Fatal(err)
+	}
+}
+
+func TestNativeLaunchIsAddressedOnlyToNative(t *testing.T) {
+	var link string
+	err := launch(t.Context(), browser.NativeApp, Spec{Connection: "local"}, func(ctx context.Context, raw string) error {
+		link = raw
+		if _, err := ID(browser.DesktopApp, raw); err == nil {
+			t.Error("desktop accepted native launch link")
+		}
+		go func() {
+			handoff, err := Receive(ctx, browser.NativeApp, raw)
+			if err != nil {
+				t.Error(err)
+				return
+			}
+			// The default desktop cannot acknowledge a native request.
+			_ = handoff.Acknowledge(browser.ModeDesktop)
+		}()
+		return nil
+	})
+	if err == nil || !strings.HasPrefix(link, browser.NativeScheme+"://launch?id=") {
+		t.Fatal(link, err)
+	}
+	err = launch(t.Context(), browser.NativeApp, Spec{Connection: "local"}, func(ctx context.Context, raw string) error {
+		go func() {
+			handoff, err := Receive(ctx, browser.NativeApp, raw)
+			if err != nil {
+				t.Error(err)
+				return
+			}
+			_ = handoff.Acknowledge(browser.ModeNative)
+		}()
+		return nil
+	})
+	if err != nil {
 		t.Fatal(err)
 	}
 }

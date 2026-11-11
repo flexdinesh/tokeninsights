@@ -1,10 +1,11 @@
 // Exercise real host product builds and prebuilt installation, never source installs.
 import assert from 'node:assert/strict'
 import { execFileSync, spawn } from 'node:child_process'
+import { accessSync, constants, readlinkSync } from 'node:fs'
 import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { buildProducts } from './build-products.ts'
+import { buildProducts, products } from './build-products.ts'
 import { checkArtifacts } from './check-artifacts.ts'
 import { workspacePath } from './workspace.ts'
 
@@ -26,13 +27,31 @@ Object.assign(env, {
 })
 try {
   checkArtifacts()
-  await buildProducts(out, metadata)
+  await buildProducts(out, metadata, products)
   const { writeChecksums } = await import('./build-products.ts')
   await writeChecksums(out)
   // Inherited ZDOTDIR could reach a real profile, so this host-run contract never edits PATH.
-  for (const args of [['--cli-only', '--no-modify-path'], ['--no-modify-path']])
+  for (const args of [
+    ['--cli-only', '--no-modify-path'],
+    ['--no-modify-path'],
+    ['--channel=edge', '--no-modify-path'],
+  ])
     execFileSync('sh', [workspacePath('install.sh'), ...args], { env, stdio: 'inherit' })
   const installed = join(fixture, 'data/tokeninsights/products')
+  // The native experiment installs beside desktop and never takes the command.
+  const nativeRoot =
+    process.platform === 'darwin'
+      ? join(installed, 'desktop-native/TokenInsights Native.app/Contents/MacOS')
+      : join(installed, 'desktop-native')
+  for (const binary of ['tokeninsights-native', 'tokeninsights-backend'])
+    accessSync(join(nativeRoot, binary), constants.X_OK)
+  assert.equal(await readFile(join(installed, 'desktop-native/.channel'), 'utf8'), 'edge\n')
+  assert.equal(
+    readlinkSync(join(fixture, '.local/bin/tokeninsights')),
+    process.platform === 'darwin'
+      ? join(installed, 'desktop/TokenInsights Desktop.app/Contents/MacOS/tokeninsights')
+      : join(installed, 'desktop/tokeninsights'),
+  )
   for (const [product, binary] of [
     ['cli', 'tokeninsights'],
     [
@@ -65,6 +84,17 @@ try {
         process.execPath,
         workspacePath('tools/build/src/smoke-desktop.ts'),
         join(installed, 'desktop/tokeninsights-desktop'),
+      ],
+      { env, stdio: 'inherit' },
+    )
+    execFileSync(
+      'xvfb-run',
+      [
+        '-a',
+        process.execPath,
+        workspacePath('tools/build/src/smoke-desktop.ts'),
+        join(installed, 'desktop-native/tokeninsights-native'),
+        'TokenInsights Native',
       ],
       { env, stdio: 'inherit' },
     )
@@ -126,7 +156,7 @@ try {
       clearTimeout(timeout)
     }
   }
-  console.log('Verified prebuilt products, installers, native window and embedded dashboard.')
+  console.log('Verified prebuilt products, installers, desktop windows and embedded dashboard.')
 } finally {
   await rm(fixture, { recursive: true, force: true })
 }

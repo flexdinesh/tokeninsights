@@ -127,9 +127,9 @@ func TestNativeHandoffOwnsRequestedLiveSessionAfterLauncherReturns(t *testing.T)
 	spec := backendFixture(t)
 	connected := make(chan *Dashboard, 1)
 	failures := make(chan error, 1)
-	err := launch(t.Context(), spec, func(ctx context.Context, raw string) error {
+	err := launch(t.Context(), browser.DesktopApp, spec, func(ctx context.Context, raw string) error {
 		go func() {
-			handoff, err := Receive(ctx, raw)
+			handoff, err := Receive(ctx, browser.DesktopApp, raw)
 			if err != nil {
 				failures <- err
 				return
@@ -175,7 +175,7 @@ func TestExistingDesktopHandoffsKeepDistinctRequestedBackends(t *testing.T) {
 	windows := make(chan *Dashboard, 2)
 	opener := func(ctx context.Context, raw string) error {
 		go func() {
-			handoff, err := Receive(ctx, raw)
+			handoff, err := Receive(ctx, browser.DesktopApp, raw)
 			if err != nil {
 				t.Error(err)
 				return
@@ -196,7 +196,7 @@ func TestExistingDesktopHandoffsKeepDistinctRequestedBackends(t *testing.T) {
 		return nil
 	}
 	for _, spec := range []Spec{firstSpec, secondSpec} {
-		if err := launch(t.Context(), spec, opener); err != nil {
+		if err := launch(t.Context(), browser.DesktopApp, spec, opener); err != nil {
 			t.Fatal(err)
 		}
 	}

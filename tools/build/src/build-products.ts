@@ -3,11 +3,32 @@ import { createHash } from 'node:crypto'
 import { cp, mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
-import { buildDesktop, hostTarget, desktopApp, type DesktopTarget } from './build-desktop.ts'
+import {
+  buildDesktop,
+  desktopIdentities,
+  hostTarget,
+  type DesktopProduct,
+  type DesktopTarget,
+} from './build-desktop.ts'
 import { workspacePath, workspaceRoot } from './workspace.ts'
 
-export type Product = 'cli' | 'desktop'
-export const products: readonly Product[] = ['cli', 'desktop']
+export type Product = 'cli' | DesktopProduct
+export const products: readonly Product[] = ['cli', 'desktop', 'desktop-native']
+export type ReleaseChannel = 'stable' | 'main' | 'edge'
+// Edge ships only the native desktop experiment; stable and main never ship it.
+export function channelProducts(channel: ReleaseChannel): readonly Product[] {
+  return channel === 'edge' ? ['desktop-native'] : ['cli', 'desktop']
+}
+const stableVersion = /^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)$/
+export function versionChannel(version: string): ReleaseChannel {
+  if (/^main\.[0-9a-f]{12}$/.test(version)) return 'main'
+  if (/^edge\.[0-9a-f]{12}$/.test(version)) return 'edge'
+  if (stableVersion.test(version)) return 'stable'
+  throw new Error(`invalid product version ${version}`)
+}
+function desktopProduct(product: Product): product is DesktopProduct {
+  return product !== 'cli'
+}
 export interface BuildMetadata {
   version: string
   commit: string
@@ -20,8 +41,7 @@ export function archiveName(product: Product, target: DesktopTarget): string {
   return `${archiveRoot(product, target)}.tar.gz`
 }
 export function sourceMetadata(version: string, cwd = workspaceRoot): BuildMetadata {
-  if (!/^(?:main\.[0-9a-f]{12}|(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*))$/.test(version))
-    throw new Error(`invalid product version ${version}`)
+  versionChannel(version)
   const git = (...args: string[]) => execFileSync('git', args, { cwd, encoding: 'utf8' }).trim()
   return {
     version,
@@ -42,16 +62,16 @@ export async function verifyProduct(
   product: Product,
   target: DesktopTarget,
 ): Promise<void> {
-  const desktop = product === 'desktop'
-  const binary = product === 'cli' ? 'tokeninsights' : `tokeninsights-${product}`
-  const executableRoot =
-    desktop && target.os === 'darwin' ? join(root, desktopApp, 'Contents/MacOS') : root
+  const identity = desktopProduct(product) ? desktopIdentities[product] : undefined
+  const binary = identity?.binary ?? 'tokeninsights'
+  const bundle = identity !== undefined && target.os === 'darwin' ? identity.app : undefined
+  const executableRoot = bundle === undefined ? root : join(root, bundle, 'Contents/MacOS')
   await executable(join(executableRoot, binary))
   if (product === 'desktop') await executable(join(executableRoot, 'tokeninsights'))
   await executable(join(executableRoot, 'tokeninsights-backend'))
-  if (desktop && target.os === 'darwin') {
-    const plist = await readFile(join(root, desktopApp, 'Contents/Info.plist'), 'utf8')
-    if (!plist.includes(`<string>com.flexdinesh.tokeninsights.${product}</string>`))
+  if (identity !== undefined && bundle !== undefined) {
+    const plist = await readFile(join(root, bundle, 'Contents/Info.plist'), 'utf8')
+    if (!plist.includes(`<string>${identity.identifier}</string>`))
       throw new Error('incompatible desktop identity')
   }
   await Promise.all(['LICENSE', 'build-info.json'].map((file) => stat(join(root, file))))
@@ -92,7 +112,7 @@ function runBuildTool(command: string, args: string[]): void {
 export async function buildProducts(
   out: string,
   metadata: BuildMetadata,
-  selected: readonly Product[] = products,
+  selected: readonly Product[] = channelProducts(versionChannel(metadata.version)),
 ): Promise<void> {
   const target = hostTarget()
   const temporary = await mkdtemp(join(tmpdir(), 'tokeninsights-products-'))
@@ -127,34 +147,32 @@ export async function buildProducts(
       // Package construction is deliberately sequential, sharing one backend build.
       // eslint-disable-next-line no-await-in-loop
       await mkdir(root)
-      if (product === 'desktop') {
+      const bundle =
+        desktopProduct(product) && target.os === 'darwin'
+          ? desktopIdentities[product].app
+          : undefined
+      const executableRoot = bundle === undefined ? root : join(root, bundle, 'Contents/MacOS')
+      if (desktopProduct(product)) {
         // eslint-disable-next-line no-await-in-loop
         await buildDesktop(
           target,
-          metadata.version.startsWith('main.') ? '0.0.0' : metadata.version,
+          stableVersion.test(metadata.version) ? metadata.version : '0.0.0',
           linkerFlags(metadata),
           root,
+          product,
         )
-        // eslint-disable-next-line no-await-in-loop
-        await cp(
-          join(binaries, 'tokeninsights'),
-          target.os === 'darwin'
-            ? join(root, desktopApp, 'Contents/MacOS/tokeninsights')
-            : join(root, 'tokeninsights'),
-        )
-      } else {
-        const binary = 'tokeninsights'
-        // eslint-disable-next-line no-await-in-loop
-        await cp(join(binaries, binary), join(root, binary))
       }
-      const dest =
-        target.os === 'darwin' && product === 'desktop'
-          ? join(root, desktopApp, 'Contents/MacOS/tokeninsights-backend')
-          : join(root, 'tokeninsights-backend')
+      // Desktop exposes its bundled CLI; the native experiment never owns the command.
+      if (product !== 'desktop-native')
+        // eslint-disable-next-line no-await-in-loop
+        await cp(join(binaries, 'tokeninsights'), join(executableRoot, 'tokeninsights'))
       // eslint-disable-next-line no-await-in-loop
-      await cp(join(binaries, 'tokeninsights-backend'), dest)
-      if (target.os === 'darwin' && product === 'desktop')
-        runBuildTool('codesign', ['--force', '--deep', '--sign', '-', join(root, desktopApp)])
+      await cp(
+        join(binaries, 'tokeninsights-backend'),
+        join(executableRoot, 'tokeninsights-backend'),
+      )
+      if (bundle !== undefined)
+        runBuildTool('codesign', ['--force', '--deep', '--sign', '-', join(root, bundle)])
       // eslint-disable-next-line no-await-in-loop
       await packageProduct(temporary, product, target, out, metadata)
     }
@@ -175,11 +193,18 @@ export async function writeChecksums(out: string): Promise<void> {
   if (lines.length === 0) throw new Error('no product archives')
   await writeFile(join(out, 'checksums.txt'), `${lines.join('\n')}\n`)
 }
+function isProduct(value: string): value is Product {
+  return products.some((product) => product === value)
+}
 if (import.meta.main) {
-  const args = process.argv.slice(2)
-  const version = args[0]
-  if (version === undefined || args.length > 2)
-    throw new Error('usage: build-products.ts <x.y.z|main.sha> [output-directory]')
-  await buildProducts(resolve(workspaceRoot, args[1] ?? 'dist'), sourceMetadata(version))
-  await writeChecksums(resolve(workspaceRoot, args[1] ?? 'dist'))
+  const [version, directory, ...names] = process.argv.slice(2)
+  const selected = names.filter(isProduct)
+  if (version === undefined || selected.length !== names.length)
+    throw new Error(
+      `usage: build-products.ts <x.y.z|main.sha|edge.sha> [output-directory] [${products.join('|')}...]`,
+    )
+  const out = resolve(workspaceRoot, directory ?? 'dist')
+  const metadata = sourceMetadata(version)
+  await buildProducts(out, metadata, selected.length === 0 ? undefined : selected)
+  await writeChecksums(out)
 }

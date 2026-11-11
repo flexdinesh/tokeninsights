@@ -59,6 +59,27 @@ func Connect(ctx context.Context, spec Spec, prepare func() error) (*localclient
 		BackendPath: spec.BackendPath, Capture: spec.Capture, FullRefresh: spec.FullRefresh, SourceDir: spec.SourceDir}, prepare)
 }
 
+// Describe names the connected session's transport, exact target and backend
+// host for presentation. It never includes credentials.
+func Describe(ctx context.Context, spec Spec, session *localclient.Session) (endpoint.Info, error) {
+	target, err := endpoint.Parse(spec.Connection)
+	if err != nil {
+		return endpoint.Info{}, err
+	}
+	instance, err := session.Query.Instance(ctx)
+	if err != nil {
+		return endpoint.Info{}, err
+	}
+	transport := "local"
+	if target.SSH != nil {
+		transport = "ssh"
+	}
+	if target.TCP != nil {
+		transport = "tcp"
+	}
+	return endpoint.Info{Transport: transport, Target: target.String(), State: "connected", Hostname: instance.Hostname}, nil
+}
+
 // Dashboard owns one session and one bridge for one window.
 type Dashboard struct {
 	URL     string
@@ -71,25 +92,12 @@ func Open(ctx context.Context, spec Spec, host string, port int, prepare func() 
 	if err != nil {
 		return nil, err
 	}
-	target, err := endpoint.Parse(spec.Connection)
+	info, err := Describe(ctx, spec, session)
 	if err != nil {
 		_ = session.Close()
 		return nil, err
 	}
-	instance, err := session.Query.Instance(ctx)
-	if err != nil {
-		_ = session.Close()
-		return nil, err
-	}
-	transport := "local"
-	if target.SSH != nil {
-		transport = "ssh"
-	}
-	if target.TCP != nil {
-		transport = "tcp"
-	}
-	bridge, err := dashboardproxy.Start(ctx, session.PrivateRoundTripper(), dashboardproxy.Options{Host: host, Port: port,
-		Connection: endpoint.Info{Transport: transport, Target: target.String(), State: "connected", Hostname: instance.Hostname}})
+	bridge, err := dashboardproxy.Start(ctx, session.PrivateRoundTripper(), dashboardproxy.Options{Host: host, Port: port, Connection: info})
 	if err != nil {
 		_ = session.Close()
 		return nil, err

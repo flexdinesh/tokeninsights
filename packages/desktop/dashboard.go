@@ -39,7 +39,7 @@ func connectDashboard(ctx context.Context, target string, connection *string) (*
 	var handoff *desktoplaunch.Handoff
 	if target != "" {
 		var err error
-		handoff, err = desktoplaunch.Receive(ctx, target)
+		handoff, err = desktoplaunch.Receive(ctx, browser.DesktopApp, target)
 		if err != nil {
 			return nil, err
 		}

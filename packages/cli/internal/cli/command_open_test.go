@@ -23,16 +23,19 @@ func TestBareDesktopAndExplicitConnectionCarryExactPolicy(t *testing.T) {
 		args    []string
 		target  string
 		capture bool
+		app     browser.App
 	}{
-		{nil, "local", true},
-		{[]string{"--capture=false"}, "local", false},
-		{[]string{"connect", "ssh://alice@host:2222", "--source-dir=/remote/logs"}, "ssh://alice@host:2222", true},
+		{nil, "local", true, browser.DesktopApp},
+		{[]string{"--capture=false"}, "local", false, browser.DesktopApp},
+		{[]string{"connect", "ssh://alice@host:2222", "--source-dir=/remote/logs"}, "ssh://alice@host:2222", true, browser.DesktopApp},
+		{[]string{"--app=native"}, "local", true, browser.NativeApp},
+		{[]string{"connect", "ssh://alice@host:2222", "--app=native"}, "ssh://alice@host:2222", true, browser.NativeApp},
 	} {
 		called := false
-		launchDesktop = func(_ context.Context, spec desktoplaunch.Spec) error {
+		launchDesktop = func(_ context.Context, app browser.App, spec desktoplaunch.Spec) error {
 			called = true
-			if spec.Connection != test.target || spec.Capture != test.capture {
-				t.Fatal(spec)
+			if spec.Connection != test.target || spec.Capture != test.capture || app != test.app {
+				t.Fatal(spec, app)
 			}
 			return nil
 		}
@@ -45,10 +48,21 @@ func TestBareDesktopAndExplicitConnectionCarryExactPolicy(t *testing.T) {
 func TestUnavailableDesktopHasNoFallback(t *testing.T) {
 	old := launchDesktop
 	defer func() { launchDesktop = old }()
-	launchDesktop = func(context.Context, desktoplaunch.Spec) error { return browser.ErrAppUnavailable }
+	launchDesktop = func(context.Context, browser.App, desktoplaunch.Spec) error { return browser.ErrAppUnavailable }
 	path := writeConfigForTest(t, nil)
 	err := Run(t.Context(), []string{"--config-file", path}, io.Discard, io.Discard, time.Now())
 	if !errors.Is(err, browser.ErrAppUnavailable) {
+		t.Fatal(err)
+	}
+	// An unavailable native app never falls back to desktop.
+	launchDesktop = func(_ context.Context, app browser.App, _ desktoplaunch.Spec) error {
+		if app != browser.NativeApp {
+			t.Fatal("native request launched", app.Mode)
+		}
+		return browser.ErrNativeUnavailable
+	}
+	err = Run(t.Context(), []string{"--config-file", path, "--app=native"}, io.Discard, io.Discard, time.Now())
+	if !errors.Is(err, browser.ErrNativeUnavailable) {
 		t.Fatal(err)
 	}
 }
@@ -56,7 +70,7 @@ func TestUnavailableDesktopHasNoFallback(t *testing.T) {
 func TestInvalidConnectionAndCaptureFlagsNeverLaunch(t *testing.T) {
 	old := launchDesktop
 	defer func() { launchDesktop = old }()
-	launchDesktop = func(context.Context, desktoplaunch.Spec) error {
+	launchDesktop = func(context.Context, browser.App, desktoplaunch.Spec) error {
 		t.Fatal("invalid request launched desktop")
 		return nil
 	}
@@ -67,6 +81,9 @@ func TestInvalidConnectionAndCaptureFlagsNeverLaunch(t *testing.T) {
 		{"--capture=false", "--full-refresh"},
 		{"--open=mygo"},
 		{"--sync=false"},
+		{"--app=browser"},
+		{"--app=mygo"},
+		{"connect", "local", "--app="},
 	} {
 		err := Run(t.Context(), append([]string{"--config-file", path}, args...), io.Discard, io.Discard, time.Now())
 		if err == nil || strings.Contains(err.Error(), "private-secret") {

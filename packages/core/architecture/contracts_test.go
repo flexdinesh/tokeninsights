@@ -78,6 +78,16 @@ func TestLayerDependencies(t *testing.T) {
 			}
 		}
 	}
+	// The webview and native desktop shells stay independently removable.
+	for name, dependencies := range imports {
+		for _, dependency := range dependencies {
+			native := strings.HasPrefix(dependency, module+"packages/desktop-native")
+			webview := strings.HasPrefix(dependency, module+"packages/desktop/") || dependency == module+"packages/desktop"
+			if strings.HasPrefix(name, "packages/desktop-native") && webview || strings.HasPrefix(name, "packages/desktop/") && native || name == "packages/desktop" && native {
+				t.Errorf("desktop shell %s imports the other desktop shell %s", name, dependency)
+			}
+		}
+	}
 	for name, dependencies := range imports {
 		if strings.HasPrefix(name, "packages/") || name == "tui" || name == "cli" {
 			continue

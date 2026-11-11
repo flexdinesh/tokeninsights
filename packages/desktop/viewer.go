@@ -5,6 +5,7 @@ import (
 	"sync"
 
 	"github.com/egoist/mygo"
+	"github.com/flexdinesh/tokeninsights/packages/core/browser"
 	"github.com/flexdinesh/tokeninsights/packages/core/desktoplaunch"
 	"github.com/flexdinesh/tokeninsights/packages/desktop/internal/link"
 )
@@ -39,7 +40,7 @@ func newViewer(connect connector) *viewer {
 }
 
 func (v *viewer) open(raw string) {
-	if _, err := desktoplaunch.ID(raw); err != nil {
+	if _, err := desktoplaunch.ID(browser.DesktopApp, raw); err != nil {
 		v.fail("Cannot open this link.", err.Error())
 		return
 	}
