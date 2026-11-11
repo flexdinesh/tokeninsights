@@ -29,13 +29,13 @@ RUN sed -i 's|http://deb.debian.org/debian-security|http://snapshot.debian.org/a
   && rm -f /etc/apt/apt.conf.d/docker-clean \
   && printf 'Acquire::Check-Valid-Until "false";\nBinary::apt::APT::Keep-Downloaded-Packages "true";\n' > /etc/apt/apt.conf.d/99validation-snapshot
 # Optional-group packages live here too so every group shares one base:
-# libarchive-tools (tooling), Xvfb/GTK/WebKit (distribution), OpenSSH (deployment).
+# libarchive-tools (tooling), Xvfb/GTK/WebKit/Mesa GL (distribution), OpenSSH (deployment).
 RUN --mount=type=cache,id=tokeninsights-check-apt-archives-trixie-20261031,target=/var/cache/apt,sharing=locked \
   --mount=type=cache,id=tokeninsights-check-apt-lists-trixie-20261031,target=/var/lib/apt/lists,sharing=locked \
   apt-get update \
   && apt-get install -y --no-install-recommends \
-    bash ca-certificates curl gcc git libc6-dev libarchive-tools libgtk-3-0 libwebkit2gtk-4.1-0 \
-    openssh-client openssh-server procps x11-utils xauth xvfb xz-utils
+    bash ca-certificates curl gcc git libc6-dev libarchive-tools libegl1 libgl1 libgl1-mesa-dri \
+    libgtk-3-0 libwebkit2gtk-4.1-0 openssh-client openssh-server procps x11-utils xauth xvfb xz-utils
 
 FROM base AS toolchain
 # check-toolchain.ts keeps this equal to mise.toml min_version. Go, Node and

@@ -4,12 +4,15 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
-import { parseTarget } from '../src/build-desktop.ts'
+import { desktopIdentities, parseTarget } from '../src/build-desktop.ts'
 import {
   archiveRoot,
+  channelProducts,
   packageProduct,
   products,
+  sourceMetadata,
   verifyProduct,
+  versionChannel,
   writeChecksums,
 } from '../src/build-products.ts'
 
@@ -19,16 +22,14 @@ for (const platform of ['linux/amd64', 'darwin/arm64']) {
       const root = await mkdtemp(join(tmpdir(), 'tokeninsights-product-layout-'))
       t.after(() => rm(root, { recursive: true, force: true }))
       const target = parseTarget(platform)
-      const desktop = product === 'desktop'
-      const app = 'TokenInsights Desktop.app'
+      const identity = product === 'cli' ? undefined : desktopIdentities[product]
+      const app = identity?.app ?? ''
+      const desktop = identity !== undefined
       const binaryRoot =
         desktop && target.os === 'darwin' ? join(root, app, 'Contents/MacOS') : root
       const backendRoot = binaryRoot
       await mkdir(binaryRoot, { recursive: true })
-      const binary = join(
-        binaryRoot,
-        product === 'cli' ? 'tokeninsights' : `tokeninsights-${product}`,
-      )
+      const binary = join(binaryRoot, identity?.binary ?? 'tokeninsights')
       await writeFile(binary, 'executable', { mode: 0o755 })
       {
         await mkdir(backendRoot, { recursive: true })
@@ -38,7 +39,7 @@ for (const platform of ['linux/amd64', 'darwin/arm64']) {
         await writeFile(join(binaryRoot, 'tokeninsights'), 'cli', { mode: 0o755 })
       const plist = join(root, app, 'Contents/Info.plist')
       if (desktop && target.os === 'darwin')
-        await writeFile(plist, `<string>com.flexdinesh.tokeninsights.${product}</string>`)
+        await writeFile(plist, `<string>${identity?.identifier ?? ''}</string>`)
       await writeFile(join(root, 'LICENSE'), 'MIT')
       await writeFile(join(root, 'build-info.json'), '{}')
       await verifyProduct(root, product, target)
@@ -48,8 +49,20 @@ for (const platform of ['linux/amd64', 'darwin/arm64']) {
         await writeFile(join(binaryRoot, 'tokeninsights'), 'cli', { mode: 0o755 })
       }
       if (desktop && target.os === 'darwin') {
-        await writeFile(plist, '<string>com.example.other</string>')
-        await assert.rejects(verifyProduct(root, product, target), /incompatible desktop identity/)
+        for (const other of [
+          'com.example.other',
+          ...Object.values(desktopIdentities)
+            .map((i) => i.identifier)
+            .filter((id) => id !== identity?.identifier),
+        ]) {
+          // eslint-disable-next-line no-await-in-loop
+          await writeFile(plist, `<string>${other}</string>`)
+          // eslint-disable-next-line no-await-in-loop
+          await assert.rejects(
+            verifyProduct(root, product, target),
+            /incompatible desktop identity/,
+          )
+        }
       } else {
         await rm(join(backendRoot, 'tokeninsights-backend'))
         await assert.rejects(verifyProduct(root, product, target), /ENOENT/)
@@ -58,6 +71,26 @@ for (const platform of ['linux/amd64', 'darwin/arm64']) {
   }
 }
 
+void test('native desktop identity never claims desktop or CLI names', () => {
+  const native = desktopIdentities['desktop-native']
+  assert.deepEqual(native, {
+    name: 'TokenInsights Native',
+    app: 'TokenInsights Native.app',
+    binary: 'tokeninsights-native',
+    identifier: 'com.flexdinesh.tokeninsights.native',
+  })
+  assert.notEqual(native.identifier, desktopIdentities.desktop.identifier)
+})
+void test('versions select channels and only edge ships desktop-native', () => {
+  assert.equal(versionChannel('1.2.3'), 'stable')
+  assert.equal(versionChannel(`main.${'a'.repeat(12)}`), 'main')
+  assert.equal(versionChannel(`edge.${'b'.repeat(12)}`), 'edge')
+  for (const version of ['edge.abc', 'edge.ABCDEF123456', '01.2.3', 'nightly.aaaaaaaaaaaa'])
+    assert.throws(() => sourceMetadata(version), /invalid product version/)
+  assert.deepEqual(channelProducts('stable'), ['cli', 'desktop'])
+  assert.deepEqual(channelProducts('main'), ['cli', 'desktop'])
+  assert.deepEqual(channelProducts('edge'), ['desktop-native'])
+})
 void test('unsupported or malformed product targets reject', () => {
   for (const value of ['windows/amd64', 'linux/386', 'linux', 'darwin/arm64/x'])
     assert.throws(() => parseTarget(value))

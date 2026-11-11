@@ -10,20 +10,25 @@ for arg in "$@"; do
     case "$arg" in
         --cli-only) product=cli ;;
         --no-modify-path) modify_path=false ;;
-        --channel=stable|--channel=main) channel="${arg#*=}" ;;
-        --help) printf '%s\n' 'Usage: install[-main].sh [--cli-only] [--channel=stable|main] [--no-modify-path]'; exit 0 ;;
+        --channel=stable|--channel=main|--channel=edge) channel="${arg#*=}" ;;
+        --help) printf '%s\n' 'Usage: install[-main|-edge].sh [--cli-only] [--channel=stable|main|edge] [--no-modify-path]' 'edge installs only the native desktop experiment.'; exit 0 ;;
         *) fail "unknown option $arg" ;;
     esac
 done
+if [ "$channel" = edge ]; then
+    [ "$product" = desktop ] || fail 'edge channel ships only the native desktop; it cannot be combined with --cli-only'
+    product=desktop-native
+fi
 for tool in curl tar awk mktemp; do need "$tool"; done
 case "$(uname -s)" in Darwin) os=darwin ;; Linux) os=linux ;; *) fail 'unsupported OS; use macOS or Linux' ;; esac
 machine="$(uname -m)"
 if [ "$os" = darwin ] && [ "$(sysctl -n hw.optional.arm64 2>/dev/null || echo 0)" = 1 ]; then machine=arm64; fi
 case "$machine" in x86_64|amd64) arch=amd64 ;; arm64|aarch64) arch=arm64 ;; *) fail "unsupported architecture $machine" ;; esac
-if [ "$channel" = main ] && [ "$os" = darwin ] && [ "$arch" = amd64 ]; then fail 'main channel has no macOS Intel build; use --channel=stable'; fi
+if [ "$channel" != stable ] && [ "$os" = darwin ] && [ "$arch" = amd64 ]; then fail "$channel channel has no macOS Intel build; use --channel=stable"; fi
 case "$channel" in
     stable) base=https://github.com/flexdinesh/tokeninsights/releases/latest/download ;;
     main) base=https://github.com/flexdinesh/tokeninsights/releases/download/main-build ;;
+    edge) base=https://github.com/flexdinesh/tokeninsights/releases/download/edge-build ;;
 esac
 base="${TOKENINSIGHTS_DOWNLOAD_URL:-$base}"
 slug="tokeninsights-$product"
@@ -165,11 +170,14 @@ find "$src" -type l -exec sh -c '
 ' sh "$src" "$link_limit" {} + || fail 'extracted links escape the product or have missing targets'
 [ -f "$src/LICENSE" ] && [ -f "$src/build-info.json" ] || fail 'archive lacks license or build metadata'
 [ -f "$src/product.txt" ] && [ "$(cat "$src/product.txt")" = "tokeninsights-product-v1 $product $os $arch" ] || fail 'incompatible product archive'
+app=
 case "$product" in
     cli) binary=tokeninsights ;;
-    desktop) binary=tokeninsights-desktop; app='TokenInsights Desktop.app'; identity=com.flexdinesh.tokeninsights.desktop ;;
+    desktop) binary=tokeninsights-desktop; app='TokenInsights Desktop.app'; identity=com.flexdinesh.tokeninsights.desktop; title='TokenInsights desktop'; scheme=tokeninsights-desktop ;;
+    # The native experiment claims only its own scheme and never the tokeninsights command.
+    desktop-native) binary=tokeninsights-native; app='TokenInsights Native.app'; identity=com.flexdinesh.tokeninsights.native; title='TokenInsights Native'; scheme=tokeninsights-native ;;
 esac
-if [ "$os" = darwin ] && [ "$product" = desktop ]; then
+if [ "$os" = darwin ] && [ -n "$app" ]; then
     executable="$src/$app/Contents/MacOS/$binary"
     grep -F "<string>$identity</string>" "$src/$app/Contents/Info.plist" >/dev/null || fail 'incompatible app identity'
     backend="$src/$app/Contents/MacOS/tokeninsights-backend"
@@ -194,7 +202,7 @@ fi
 bin="$HOME/.local/bin"
 link="$bin/$binary"
 target="$dest/$binary"
-if [ "$os" = darwin ] && [ "$product" = desktop ]; then
+if [ "$os" = darwin ] && [ -n "$app" ]; then
     bin="$HOME/Applications"
     link="$bin/$app"
     target="$dest/$app"
@@ -236,7 +244,7 @@ if [ "$product" = desktop ]; then
         else fail "refusing to replace unowned path $cli_link"; fi
     else publish_cli=true; fi
 fi
-if [ "$os" = linux ] && [ "$product" = desktop ]; then
+if [ "$os" = linux ] && [ -n "$app" ]; then
     entry="$data/applications/$slug.desktop"
     case "$dest" in *[\"\`\$\\%]*) fail 'install path cannot be represented in a desktop entry' ;; esac
     if [ -e "$entry" ] || [ -L "$entry" ]; then
@@ -273,27 +281,27 @@ if [ "$publish_cli" = true ]; then
     rmdir "$link_stage"
     link_stage=
 fi
-if [ "$os" = linux ] && [ "$product" = desktop ]; then
+if [ "$os" = linux ] && [ -n "$app" ]; then
     mkdir -p "$data/applications"
     cat > "$dest/desktop-entry" <<EOF
 [Desktop Entry]
 Type=Application
-Name=TokenInsights $product
+Name=$title
 Exec="$dest/$binary" %u
 Icon=$dest/$binary.png
 Terminal=false
 Categories=Utility;
-MimeType=x-scheme-handler/tokeninsights-$product;
+MimeType=x-scheme-handler/$scheme;
 X-TokenInsights-Product=$product
 EOF
     cp "$dest/desktop-entry" "$entry"
     if command -v update-desktop-database >/dev/null 2>&1; then update-desktop-database "$data/applications" >/dev/null 2>&1 || true; fi
     if command -v xdg-mime >/dev/null 2>&1; then
         mkdir -p "${XDG_CONFIG_HOME:-$HOME/.config}"
-        xdg-mime default "$slug.desktop" "x-scheme-handler/tokeninsights-$product" || printf 'warning: open the app once to register links\n' >&2
+        xdg-mime default "$slug.desktop" "x-scheme-handler/$scheme" || printf 'warning: open the app once to register links\n' >&2
     fi
 fi
-if [ "$os" = darwin ] && [ "$product" = desktop ]; then
+if [ "$os" = darwin ] && [ -n "$app" ]; then
     register=/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister
     if [ -x "$register" ]; then "$register" -f "$dest/$app" || printf 'warning: open the app once to register links\n' >&2; fi
 fi
@@ -303,6 +311,8 @@ printf 'Installed %s (%s): %s\n' "$product" "$channel" "$link"
 if [ -n "$previous_cli" ]; then
     printf 'tokeninsights now runs the desktop CLI; rerun install.sh --cli-only to return to CLI-only\n'
 fi
+# The native experiment exposes no tokeninsights command, so PATH stays untouched.
+if [ "$product" = desktop-native ]; then exit 0; fi
 # Profile edits follow a complete install and are best effort: a read-only dotfile
 # must not undo a working product.
 path_marker='# Added by the tokeninsights installer'

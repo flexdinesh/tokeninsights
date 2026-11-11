@@ -176,7 +176,7 @@ func generatedArtifactPath(path string) bool {
 			return true
 		}
 	}
-	for _, product := range []string{"cli", "backend", "desktop"} {
+	for _, product := range []string{"cli", "backend", "desktop", "desktop-native"} {
 		for _, output := range []string{"bin", "build", "dist", "out", "release", ".mygo"} {
 			if strings.HasPrefix(path, "packages/"+product+"/"+output+"/") {
 				return true

@@ -21,10 +21,18 @@ Main has no macOS Intel build. `--no-modify-path` leaves shell profiles untouche
 Updates recognize installer-owned MyGo CLI links from before the desktop rename,
 without deleting the old product files.
 
+Experimental **TokenInsights Native** (native UI, no webview) installs beside desktop
+from the edge channel and never takes over the `tokeninsights` command:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/flexdinesh/tokeninsights/main/install.sh | sh -s -- --channel=edge
+```
+
 ## Use
 
 ```sh
 tokeninsights                                 # desktop
+tokeninsights --app=native                    # experimental native app; also on connect
 tokeninsights tui
 tokeninsights web
 tokeninsights connect ssh://you@devbox

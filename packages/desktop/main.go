@@ -8,6 +8,7 @@ import (
 	"os"
 
 	"github.com/egoist/mygo"
+	"github.com/flexdinesh/tokeninsights/packages/core/browser"
 	"github.com/flexdinesh/tokeninsights/packages/core/desktoplaunch"
 )
 
@@ -28,7 +29,7 @@ func main() {
 			v.focus()
 		} else {
 			for _, arg := range args {
-				if _, err := desktoplaunch.ID(arg); err == nil {
+				if _, err := desktoplaunch.ID(browser.DesktopApp, arg); err == nil {
 					v.open(arg)
 				}
 			}
@@ -48,7 +49,7 @@ func main() {
 			v.focus()
 		} else {
 			for _, arg := range os.Args[1:] {
-				if _, err := desktoplaunch.ID(arg); err == nil {
+				if _, err := desktoplaunch.ID(browser.DesktopApp, arg); err == nil {
 					v.open(arg)
 				}
 			}
@@ -62,7 +63,7 @@ func main() {
 
 func validateArguments(args []string) error {
 	for _, arg := range args {
-		if _, err := desktoplaunch.ID(arg); err != nil {
+		if _, err := desktoplaunch.ID(browser.DesktopApp, arg); err != nil {
 			return errors.New("use tokeninsights connect URI to select a desktop connection")
 		}
 	}
@@ -71,7 +72,7 @@ func validateArguments(args []string) error {
 
 func hasLink(args []string) bool {
 	for _, arg := range args {
-		if _, err := desktoplaunch.ID(arg); err == nil {
+		if _, err := desktoplaunch.ID(browser.DesktopApp, arg); err == nil {
 			return true
 		}
 	}

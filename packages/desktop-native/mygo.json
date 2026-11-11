@@ -1,0 +1,8 @@
+{
+  "name": "TokenInsights Native",
+  "slug": "tokeninsights-native",
+  "identifier": "com.flexdinesh.tokeninsights.native",
+  "version": "0.0.0",
+  "urlSchemes": ["tokeninsights-native"],
+  "out": "build"
+}

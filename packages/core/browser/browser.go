@@ -16,20 +16,54 @@ type Mode string
 const (
 	// ModeDesktop requires the desktop application.
 	ModeDesktop Mode = "desktop"
+	// ModeNative requires the experimental native desktop application.
+	ModeNative Mode = "native"
 	// ModeBrowser always uses the system browser.
 	ModeBrowser Mode = "browser"
 	// ModeOff prints the dashboard URL without opening anything.
 	ModeOff Mode = "false"
 )
 
-// Desktop identity registered by the desktop installer.
+// Desktop identities registered by the installers.
 const (
-	DesktopScheme = "tokeninsights-desktop"
-	appBundleID   = "com.flexdinesh.tokeninsights.desktop"
+	DesktopScheme  = "tokeninsights-desktop"
+	appBundleID    = "com.flexdinesh.tokeninsights.desktop"
+	NativeScheme   = "tokeninsights-native"
+	nativeBundleID = "com.flexdinesh.tokeninsights.native"
 )
 
 // ErrAppUnavailable reports an unavailable desktop target.
 var ErrAppUnavailable = errors.New("TokenInsights Desktop is unavailable; install the desktop product or run tokeninsights tui")
+
+// ErrNativeUnavailable reports an unavailable experimental native target.
+var ErrNativeUnavailable = errors.New("TokenInsights Native is unavailable; install it from the edge channel or omit --app=native")
+
+// App identifies one installed desktop application. Launch links carry only
+// its scheme; the application acknowledges with its Mode.
+type App struct {
+	Mode        Mode
+	Scheme      string
+	bundleID    string
+	unavailable error
+}
+
+var (
+	// DesktopApp is the default webview desktop application.
+	DesktopApp = App{Mode: ModeDesktop, Scheme: DesktopScheme, bundleID: appBundleID, unavailable: ErrAppUnavailable}
+	// NativeApp is the experimental native desktop application.
+	NativeApp = App{Mode: ModeNative, Scheme: NativeScheme, bundleID: nativeBundleID, unavailable: ErrNativeUnavailable}
+)
+
+// AppFor selects exactly the named desktop application.
+func AppFor(mode Mode) (App, error) {
+	switch mode {
+	case ModeDesktop:
+		return DesktopApp, nil
+	case ModeNative:
+		return NativeApp, nil
+	}
+	return App{}, errors.New("desktop app must be desktop or native")
+}
 
 // Via names what opened a dashboard.
 type Via int
@@ -123,17 +157,17 @@ func (s system) display() bool {
 	return s.getenv("DISPLAY") != "" || s.getenv("WAYLAND_DISPLAY") != ""
 }
 
-// openApp hands link to the desktop viewer when one is registered.
-func (s system) openApp(ctx context.Context, link string) bool {
+// openApp hands link to app when it is registered.
+func (s system) openApp(ctx context.Context, app App, link string) bool {
 	switch s.platform {
 	case "darwin":
 		// open -b fails when no application has the bundle identifier.
-		return s.run(ctx, "open", "-b", appBundleID, link) == nil
+		return s.run(ctx, "open", "-b", app.bundleID, link) == nil
 	case "linux":
 		if !s.display() {
 			return false
 		}
-		handler, err := s.output(ctx, "xdg-mime", "query", "default", "x-scheme-handler/"+DesktopScheme)
+		handler, err := s.output(ctx, "xdg-mime", "query", "default", "x-scheme-handler/"+app.Scheme)
 		if err != nil || strings.TrimSpace(string(handler)) == "" {
 			return false
 		}
@@ -156,11 +190,11 @@ func (s system) browserCommand(dashboardURL string) []string {
 	return nil
 }
 
-// Launch sends an opaque rendezvous link to the installed desktop app.
-// The caller must separately await the desktop's live-session acknowledgement.
-func Launch(ctx context.Context, link string) error {
-	if hostSystem().openApp(ctx, link) {
+// Launch sends an opaque rendezvous link to the installed app.
+// The caller must separately await the app's live-session acknowledgement.
+func Launch(ctx context.Context, app App, link string) error {
+	if hostSystem().openApp(ctx, app, link) {
 		return nil
 	}
-	return ErrAppUnavailable
+	return app.unavailable
 }

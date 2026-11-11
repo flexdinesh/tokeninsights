@@ -347,15 +347,18 @@ and bridge lifetime. `web --host` accepts loopback only; use `remote` for TCP ac
 
 Bare `tokeninsights` opens desktop; `web` explicitly opens a browser and
 `web --open=false` prints its URL without opening one. An unavailable desktop
-fails with repair guidance.
-No browser, transport or local-data fallback is permitted.
+fails with repair guidance. `--app=native` on bare or `connect` selects the
+experimental native app instead (ADR 0030).
+No browser, transport, other-app or local-data fallback is permitted.
 
 `desktoplaunch` owns native Unix-socket rendezvous. The launch specification and
-TCP secret stay native; the OS URL carries only an opaque rendezvous ID. Launch
-returns after the desktop acknowledges a live requested session, not
-after the OS opener exits. No credential files are written. Each window keeps its
-own target/session. Desktop composes the shared dashboard/bridge without
-owning storage.
+TCP secret stay native; the OS URL carries only the selected app's scheme and an
+opaque rendezvous ID. Launch returns after that app acknowledges a live requested
+session, not after the OS opener exits. No credential files are written. Each
+window keeps its own target/session. Desktop composes the shared dashboard/bridge
+without owning storage. Native (`packages/desktop-native`) renders MyGo native UI
+over its window's `localclient` session with no bridge; DESIGN.md roles are its
+guarded visual contract. Neither shell imports the other.
 
 ## Packages and contracts
 
@@ -375,7 +378,7 @@ cancellation and ownership; ADR 0027 supersedes their retired product boundaries
 | `endpoint`, `sshtransport`, `tcptransport` | Pure target values and explicit transport adapters |
 | `remoteaccess` | Temporary authenticated TLS gateway over one session |
 | `dashboardproxy`, `desktoplaunch` | Loopback dashboard bridge and private acknowledged launch |
-| CLI/TUI/desktop | Executable preferences and presentation composition |
+| CLI/TUI/desktop/native | Executable preferences and presentation composition |
 
 Resolve executable flags/env once into typed settings. Domains neither read
 deployment settings nor construct another layer's adapters. Keep SQL/driver types
@@ -454,7 +457,8 @@ configuration explicitly. There is no automatic migration.
 
 The default installer installs the desktop product, which includes CLI/backend, and
 adds `~/.local/bin` to the shell profile when PATH lacks it. The CLI-only product
-remains behind `--cli-only` for hosts without a display.
+remains behind `--cli-only` for hosts without a display. `--channel=edge`
+installs only the experimental native app beside them; it never owns the command.
 Either product install can take command ownership from the former MyGo product only
 when the CLI symlink targets its known bundled path and its product directory has
 the matching installer ownership marker. Retired product files and launchers remain
@@ -463,7 +467,7 @@ Go products need no host JavaScript runtime.
 Shared React presentation lives in packages/dashboard, browser composition in
 packages/web and TypeScript contracts in packages/contracts. The backend embeds
 ignored generated browser assets. No binaries/bundles/generated assets are committed.
-Stable source tags and rolling main-build prereleases publish prebuilt archives;
+Stable source tags and rolling main-build and edge-build prereleases publish prebuilt archives;
 see [release](release.md). There is no hosted server, PostgreSQL, account UI,
 server installer, Docker product deployment, completion plugin or sync job product.
 

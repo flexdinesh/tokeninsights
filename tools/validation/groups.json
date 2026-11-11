@@ -93,6 +93,7 @@
         "golangci-lint.sum",
         "packages/cli/",
         "packages/desktop/",
+        "packages/desktop-native/",
         "schema/",
         "docs/openapi.yaml",
         "packages/web/",
@@ -139,6 +140,7 @@
         ".github/workflows/",
         "install.sh",
         "packages/desktop/",
+        "packages/desktop-native/",
         ".gitattributes",
         ".gitignore",
         "LICENSE",
@@ -156,10 +158,12 @@
     },
     "go": {
       "inputs": [
+        "DESIGN.md",
         "go.mod",
         "go.sum",
         "packages/cli/",
         "packages/desktop/",
+        "packages/desktop-native/",
         "schema/",
         "docs/openapi.yaml",
         "packages/web/",
@@ -194,6 +198,7 @@
         "packages/core/",
         "packages/backend/",
         "packages/desktop/",
+        "packages/desktop-native/",
         "packages/dashboard/",
         "packages/contracts/"
       ],
@@ -219,6 +224,7 @@
         "packages/core/",
         "packages/backend/",
         "packages/desktop/",
+        "packages/desktop-native/",
         "packages/dashboard/",
         "packages/contracts/",
         "install/",
@@ -245,6 +251,7 @@
         "packages/core/",
         "packages/backend/",
         "packages/desktop/",
+        "packages/desktop-native/",
         "packages/dashboard/",
         "packages/contracts/"
       ],
@@ -269,6 +276,7 @@
         "packages/core/",
         "packages/backend/",
         "packages/desktop/",
+        "packages/desktop-native/",
         "packages/dashboard/",
         "packages/contracts/"
       ],

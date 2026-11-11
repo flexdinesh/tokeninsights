@@ -13,6 +13,7 @@ func usageText() string {
 
   tokeninsights               open local desktop app
   connect URI                open exact local, ssh://host or tokeninsights://connect/v1 connection
+  --app=native                open the experimental native app instead (bare or connect)
   remote                      foreground temporary TCP gateway; print connect command
   remote --listen HOST:PORT --advertise HOST
   tui                         local terminal dashboard, also inside SSH

@@ -1,0 +1,75 @@
+name: Edge
+
+# Rolling native desktop experiment. Ships only desktop-native; main and stable never include it.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Branch, tag or commit to build (default main)
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+env:
+  HUSKY: '0'
+
+concurrency:
+  group: edge-tokeninsights
+  cancel-in-progress: true
+
+jobs:
+  source:
+    runs-on: ubuntu-24.04
+    outputs:
+      commit: ${{ steps.source.outputs.commit }}
+      version: ${{ steps.source.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+      - id: source
+        run: |
+          commit="$(git rev-parse HEAD)"
+          echo "commit=$commit" >> "$GITHUB_OUTPUT"
+          echo "version=edge.${commit:0:12}" >> "$GITHUB_OUTPUT"
+  products:
+    needs: source
+    uses: ./.github/workflows/products.yml
+    with:
+      source: ${{ needs.source.outputs.commit }}
+      version: ${{ needs.source.outputs.version }}
+      platforms: >-
+        [
+        {"runner":"ubuntu-24.04","os":"linux","arch":"amd64"},
+        {"runner":"ubuntu-24.04-arm","os":"linux","arch":"arm64"},
+        {"runner":"macos-15","os":"darwin","arch":"arm64"}
+        ]
+  publish:
+    needs: [source, products]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.source.outputs.commit }}
+          fetch-depth: 0
+      - uses: jdx/mise-action@v5
+        with:
+          install_args: node
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: products-*
+          path: dist
+          merge-multiple: true
+      - name: Publish verified edge build
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PRODUCT_VERSION: ${{ needs.source.outputs.version }}
+        run: |
+          node --input-type=module -e 'import { writeChecksums } from "./tools/build/src/build-products.ts"; await writeChecksums("dist")'
+          node tools/build/src/publish-release.ts edge "$PRODUCT_VERSION" dist

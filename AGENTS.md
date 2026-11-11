@@ -2,7 +2,7 @@
 
 Track local token usage for OpenCode, Pi, Codex, and Claude Code.
 
-TokenInsights has CLI/TUI, web and desktop over one personal Go backend per storage identity. Bare invocation opens desktop; unavailable desktop fails with actionable guidance. `connect STRING` selects exactly local/SSH/temporary TCP; `tui|web --connection STRING` explicitly selects another backend. No implicit remote defaults or fallback.
+TokenInsights has CLI/TUI, web and desktop over one personal Go backend per storage identity. Bare invocation opens desktop; unavailable desktop fails with actionable guidance. `--app=native` selects the experimental native app (ADR 0030, edge channel only). `connect STRING` selects exactly local/SSH/temporary TCP; `tui|web --connection STRING` explicitly selects another backend. No implicit remote defaults or fallback.
 
 The backend alone owns SQLite capture, direct acceptance, durable processing and queries. Local sessions use private Unix socket protocol 3. Capture runs on launch and explicit Refresh, coalescing overlap; no periodic scans. `--capture=false` skips launch capture while processing resumes. Filters/query reload only read saved data. Each session holds a lease; final disconnect plus grace cancels/joins work and closes stores. SSH can discover/start the backend. Foreground `remote` shares it through ephemeral pinned TLS, default `0.0.0.0:0`, with `--listen`/`--advertise` and a shell-quoted connect command on stdout (guidance on stderr). Stop invalidates its strings/connections; other leases survive. TCP remains TCP on the serving host.
 

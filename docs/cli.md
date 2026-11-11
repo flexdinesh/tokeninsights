@@ -17,7 +17,9 @@ tokeninsights web --host 127.0.0.1 --port 9000
 ```
 
 An unavailable desktop fails; no browser fallback. Launch returns after the app
-acknowledges a live requested session. `web --open` is boolean: true opens the system browser,
+acknowledges a live requested session. `--app=native` (bare or `connect`) opens the
+experimental TokenInsights Native app from the edge channel instead; when it is
+missing the command fails rather than opening desktop. `web --open` is boolean: true opens the system browser,
 false prints its loopback URL. Web's default port is 0 (available port); host must
 be loopback. The command stays foreground and Ctrl+C releases its lease.
 

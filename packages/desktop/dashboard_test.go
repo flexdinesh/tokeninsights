@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/flexdinesh/tokeninsights/packages/core/browser"
 	"github.com/flexdinesh/tokeninsights/packages/core/config"
 	"github.com/flexdinesh/tokeninsights/packages/core/desktoplaunch"
 	"github.com/flexdinesh/tokeninsights/packages/core/localbackend"
@@ -63,7 +64,7 @@ func TestExpiredHandoffDoesNotOpenDefaultStorage(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "expired") {
 		t.Fatal("expired handoff resolved default configuration", err)
 	}
-	if _, err := desktoplaunch.ID("tokeninsights-desktop://open?url=http://localhost"); err == nil {
+	if _, err := desktoplaunch.ID(browser.DesktopApp, "tokeninsights-desktop://open?url=http://localhost"); err == nil {
 		t.Fatal("retired URL handoff accepted")
 	}
 }

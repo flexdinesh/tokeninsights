@@ -18,6 +18,7 @@ import { join } from 'node:path'
 import test, { type TestContext } from 'node:test'
 import { workspacePath } from '../src/workspace.ts'
 import { archiveRoot, type Product } from '../src/build-products.ts'
+import { desktopIdentities } from '../src/build-desktop.ts'
 
 function executable(path: string, text: string): void {
   writeFileSync(path, `#!/bin/sh\n${text}\n`, { mode: 0o755 })
@@ -69,27 +70,28 @@ function fixture(t: TestContext) {
     version = 'v1',
     os: 'linux' | 'darwin' = 'linux',
     extra?: (path: string) => void,
+    arch: 'amd64' | 'arm64' = 'amd64',
   ) => {
-    const name = archiveRoot(product, { os, arch: 'amd64' })
+    const name = archiveRoot(product, { os, arch })
     const dir = join(root, 'stage', name)
     rmSync(dir, { recursive: true, force: true })
     mkdirSync(dir, { recursive: true })
-    const binary = product === 'cli' ? 'tokeninsights' : `tokeninsights-${product}`
-    const app = 'TokenInsights Desktop.app'
+    const identity = product === 'cli' ? undefined : desktopIdentities[product]
+    const binary = identity?.binary ?? 'tokeninsights'
     const binaryDir =
-      os === 'darwin' && product === 'desktop' ? join(dir, app, 'Contents/MacOS') : dir
+      os === 'darwin' && identity !== undefined ? join(dir, identity.app, 'Contents/MacOS') : dir
     mkdirSync(binaryDir, { recursive: true })
     executable(join(binaryDir, binary), `echo ${version}`)
     executable(join(binaryDir, 'tokeninsights-backend'), `echo backend-${version}`)
     if (product === 'desktop') executable(join(binaryDir, 'tokeninsights'), `echo cli-${version}`)
-    if (os === 'darwin' && product === 'desktop')
+    if (os === 'darwin' && identity !== undefined)
       writeFileSync(
-        join(dir, app, 'Contents/Info.plist'),
-        `<string>com.flexdinesh.tokeninsights.${product}</string>`,
+        join(dir, identity.app, 'Contents/Info.plist'),
+        `<string>${identity.identifier}</string>`,
       )
     writeFileSync(join(dir, 'LICENSE'), 'MIT')
     writeFileSync(join(dir, 'build-info.json'), '{}')
-    writeFileSync(join(dir, 'product.txt'), `tokeninsights-product-v1 ${product} ${os} amd64\n`)
+    writeFileSync(join(dir, 'product.txt'), `tokeninsights-product-v1 ${product} ${os} ${arch}\n`)
     extra?.(dir)
     const filename = `${name}.tar.gz`
     execFileSync('tar', ['-czf', join(release, filename), '-C', join(root, 'stage'), name])
@@ -677,14 +679,111 @@ void test('rejects unsupported host and channel before download', (t) => {
   assert.match(f.run('install.sh', ['--product=cli']).stderr, /unknown option/)
   assert.match(f.run('install.sh', [], { TEST_OS: 'FreeBSD' }).stderr, /unsupported OS/)
   assert.match(f.run('install.sh', [], { TEST_ARCH: 'i686' }).stderr, /unsupported architecture/)
-  assert.match(f.run('install.sh', ['--channel=edge']).stderr, /unknown option/)
+  assert.match(f.run('install.sh', ['--channel=nightly']).stderr, /unknown option/)
+  for (const args of [
+    ['--channel=edge', '--cli-only'],
+    ['--cli-only', '--channel=edge'],
+  ])
+    assert.match(f.run('install.sh', args).stderr, /cannot be combined with --cli-only/)
+  assert.match(f.runCli('install-edge.sh').stderr, /cannot be combined with --cli-only/)
   assert.ok(!existsSync(f.log))
+})
+for (const script of ['install-edge.sh', 'install.sh']) {
+  void test(`${script} edge installs only desktop-native with its own scheme`, (t) => {
+    const f = fixture(t)
+    f.archive('desktop-native')
+    const result = f.run(script, script === 'install.sh' ? ['--channel=edge'] : [])
+    assert.equal(result.status, 0, result.stderr)
+    const product = f.installed('desktop-native')
+    assert.equal(readFileSync(join(product, '.channel'), 'utf8'), 'edge\n')
+    assert.equal(
+      readFileSync(join(product, '.installed-by-tokeninsights'), 'utf8'),
+      'tokeninsights-product:desktop-native\n',
+    )
+    assert.ok(existsSync(join(product, 'tokeninsights-backend')))
+    assert.equal(
+      execFileSync(join(f.home, '.local/bin/tokeninsights-native'), { encoding: 'utf8' }).trim(),
+      'v1',
+    )
+    const entry = readFileSync(
+      join(f.home, '.local/share/applications/tokeninsights-desktop-native.desktop'),
+      'utf8',
+    )
+    assert.ok(entry.includes('Name=TokenInsights Native\n'))
+    assert.ok(entry.includes(`Exec="${join(product, 'tokeninsights-native')}" %u\n`))
+    assert.ok(entry.includes(`Icon=${join(product, 'tokeninsights-native.png')}\n`))
+    assert.ok(entry.includes('MimeType=x-scheme-handler/tokeninsights-native;\n'))
+    assert.ok(entry.includes('X-TokenInsights-Product=desktop-native\n'))
+    assert.doesNotMatch(entry, /x-scheme-handler\/tokeninsights(?:-desktop)?;/)
+    // The native experiment never owns the command or edits shell profiles.
+    assert.ok(!existsSync(join(f.home, '.local/bin/tokeninsights')))
+    assert.ok(!existsSync(join(f.home, '.profile')))
+    assert.ok(!existsSync(f.installed('desktop')) && !existsSync(f.installed('cli')))
+    const urls = readFileSync(f.log, 'utf8')
+    assert.match(urls, /releases\/download\/edge-build\/tokeninsights-desktop-native_linux_amd64/)
+    assert.doesNotMatch(urls, /tokeninsights-(?:cli|desktop)_/)
+  })
+}
+void test('edge registers the native scheme with xdg-mime only', (t) => {
+  const f = fixture(t)
+  const mime = join(f.root, 'mime')
+  executable(join(f.bin, 'xdg-mime'), `printf '%s\\n' "$*" >> ${JSON.stringify(mime)}`)
+  f.archive('desktop-native')
+  const result = f.run('install-edge.sh')
+  assert.equal(result.status, 0, result.stderr)
+  assert.equal(
+    readFileSync(mime, 'utf8'),
+    'default tokeninsights-desktop-native.desktop x-scheme-handler/tokeninsights-native\n',
+  )
+})
+for (const os of ['linux', 'darwin']) {
+  void test(`${os} edge coexists with desktop and leaves its command untouched`, (t) => {
+    const f = fixture(t)
+    const platform = os === 'darwin' ? 'darwin' : 'linux'
+    const overrides = { TEST_OS: os === 'darwin' ? 'Darwin' : 'Linux', TEST_ARCH: 'arm64' }
+    const command = join(f.home, '.local/bin/tokeninsights')
+    // Edge has no macOS Intel build, so both products use arm64.
+    const archive = (product: Product) => f.archive(product, 'v1', platform, undefined, 'arm64')
+    archive('desktop')
+    const desktop = f.run('install.sh', [], overrides)
+    assert.equal(desktop.status, 0, desktop.stderr)
+    const owned = readlinkSync(command)
+    archive('desktop-native')
+    const edge = f.run('install-edge.sh', [], overrides)
+    assert.equal(edge.status, 0, edge.stderr)
+    assert.equal(readlinkSync(command), owned)
+    assert.equal(execFileSync(command, { encoding: 'utf8' }).trim(), 'cli-v1')
+    assert.equal(readFileSync(join(f.installed('desktop'), '.channel'), 'utf8'), 'stable\n')
+    assert.equal(readFileSync(join(f.installed('desktop-native'), '.channel'), 'utf8'), 'edge\n')
+    if (os === 'darwin') {
+      assert.ok(existsSync(join(f.home, 'Applications/TokenInsights Desktop.app')))
+      assert.equal(
+        readlinkSync(join(f.home, 'Applications/TokenInsights Native.app')),
+        join(f.installed('desktop-native'), 'TokenInsights Native.app'),
+      )
+      assert.ok(!existsSync(join(f.home, '.local/bin/tokeninsights-native')))
+    } else {
+      const entries = join(f.home, '.local/share/applications')
+      assert.ok(existsSync(join(entries, 'tokeninsights-desktop.desktop')))
+      assert.ok(existsSync(join(entries, 'tokeninsights-desktop-native.desktop')))
+    }
+  })
+}
+void test('edge refuses an unowned tokeninsights-native launcher', (t) => {
+  const f = fixture(t)
+  f.archive('desktop-native')
+  mkdirSync(join(f.home, '.local/bin'), { recursive: true })
+  executable(join(f.home, '.local/bin/tokeninsights-native'), 'echo foreign')
+  const result = f.run('install-edge.sh')
+  assert.match(result.stderr, /unowned path/)
+  assert.ok(!existsSync(f.installed('desktop-native')))
 })
 void test('main channel rejects macOS Intel before download; Apple Silicon and stable proceed', (t) => {
   const f = fixture(t)
   const intel = { TEST_OS: 'Darwin' }
   assert.match(f.run('install-main.sh', [], intel).stderr, /no macOS Intel build/)
   assert.match(f.run('install.sh', ['--channel=main'], intel).stderr, /no macOS Intel build/)
+  assert.match(f.run('install-edge.sh', [], intel).stderr, /edge channel has no macOS Intel build/)
   assert.ok(!existsSync(f.log))
   f.run('install-main.sh', [], { ...intel, TEST_ARCH: 'arm64' })
   assert.match(

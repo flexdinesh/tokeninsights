@@ -4,7 +4,7 @@ import { workspaceRoot } from './workspace.ts'
 
 export function generatedArtifact(path: string, bytes: Uint8Array): boolean {
   if (
-    /^(?:dist\/|packages\/core\/server\/static\/|packages\/(?:cli|backend)\/bin\/|packages\/desktop\/(?:build|dist|out|release|\.mygo)\/)/.test(
+    /^(?:dist\/|packages\/core\/server\/static\/|packages\/(?:cli|backend)\/bin\/|packages\/desktop(?:-native)?\/(?:build|dist|out|release|\.mygo)\/)/.test(
       path,
     )
   )
