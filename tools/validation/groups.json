@@ -158,6 +158,7 @@
     },
     "go": {
       "inputs": [
+        "DESIGN.md",
         "go.mod",
         "go.sum",
         "packages/cli/",
