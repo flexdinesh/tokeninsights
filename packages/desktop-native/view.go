@@ -66,7 +66,7 @@ func (d *dashboard) view(c *ui.Context) {
 		theme.Brand(ui.Text(c, "TokenInsights")).TextColor(t.Ink)
 		theme.Title(ui.Text(c, d.info.Hostname)).TextColor(t.Ink)
 		theme.Label(ui.Text(c, connectionLine(d.info))).TextColor(t.InkMuted)
-		status := "Native views arrive in upcoming edge builds. TokenInsights Desktop has the full dashboard."
+		status := "Native views arrive in upcoming builds. TokenInsights Desktop has the full dashboard."
 		color := t.InkMuted
 		if d.refreshing {
 			status = "Refreshing…"

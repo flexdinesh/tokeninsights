@@ -39,7 +39,7 @@ function fixture(t: TestContext) {
   executable(join(bin, 'sysctl'), 'echo 0')
   executable(
     join(bin, 'curl'),
-    `url=; out=; while [ "$#" -gt 0 ]; do case "$1" in -o) shift; out="$1" ;; https:*) url="$1" ;; esac; shift; done\nprintf '%s\\n' "$url" >> "$TEST_DOWNLOAD_LOG"\ncp "$TEST_RELEASE/\${url##*/}" "$out"`,
+    `url=; out=; while [ "$#" -gt 0 ]; do case "$1" in -o) shift; out="$1" ;; https:*|file:*) url="$1" ;; esac; shift; done\nprintf '%s\\n' "$url" >> "$TEST_DOWNLOAD_LOG"\ncase "$url" in file://*) cp "\${url#file://}" "$out" ;; *) cp "$TEST_RELEASE/\${url##*/}" "$out" ;; esac`,
   )
   for (const runtime of ['go', 'node', 'npm', 'pnpm'])
     executable(join(bin, runtime), 'echo forbidden-runtime >&2; exit 71')
@@ -57,6 +57,12 @@ function fixture(t: TestContext) {
     })
   const runCli = (script = 'install.sh', args: string[] = [], overrides: NodeJS.ProcessEnv = {}) =>
     run(script, ['--cli-only', ...args], overrides)
+  // install/source.sh hands lib.sh a local build directory; the release fixture stands in for it.
+  const runSource = (product: Product, args: string[] = [], overrides: NodeJS.ProcessEnv = {}) =>
+    run('install/lib.sh', ['--channel=source', `--product=${product}`, ...args], {
+      TOKENINSIGHTS_DOWNLOAD_URL: `file://${release}`,
+      ...overrides,
+    })
   const runPiped = (script = 'install.sh', args: string[] = []) =>
     spawnSync('sh', ['-s', '--', ...args], {
       input: readFileSync(workspacePath(script), 'utf8'),
@@ -128,7 +134,20 @@ function fixture(t: TestContext) {
     symlinkSync(cli, command)
     return { product, marker, cli, command, launcher }
   }
-  return { root, home, release, bin, log, run, runCli, runPiped, installed, archive, retiredMyGo }
+  return {
+    root,
+    home,
+    release,
+    bin,
+    log,
+    run,
+    runCli,
+    runSource,
+    runPiped,
+    installed,
+    archive,
+    retiredMyGo,
+  }
 }
 
 void test('piped entrypoint ignores a hostile working-directory helper', (t) => {
@@ -227,7 +246,7 @@ for (const kind of ['relative escape', 'chained escape', 'cycle', 'dangling', 's
     assert.match(readFileSync(join(f.installed('cli'), 'tokeninsights'), 'utf8'), /echo v1/)
   })
 }
-void test('CLI-only stable and main installers replace a whole product including backend', (t) => {
+void test('CLI-only stable upgrades replace a whole product including backend', (t) => {
   const f = fixture(t)
   f.archive()
   const first = f.runCli()
@@ -241,20 +260,18 @@ void test('CLI-only stable and main installers replace a whole product including
     /backend-v1/,
   )
   f.archive('cli', 'v2')
-  const next = f.runCli('install-main.sh')
+  const next = f.runCli()
   assert.equal(next.status, 0, next.stderr)
-  assert.equal(readFileSync(join(f.installed('cli'), '.channel'), 'utf8'), 'main\n')
+  assert.equal(readFileSync(join(f.installed('cli'), '.channel'), 'utf8'), 'stable\n')
   assert.match(
     readFileSync(join(f.installed('cli'), 'tokeninsights-backend'), 'utf8'),
     /backend-v2/,
   )
-  const urls = readFileSync(f.log, 'utf8')
-  assert.match(urls, /releases\/latest\/download\/tokeninsights-cli/)
-  assert.match(urls, /releases\/download\/main-build\/tokeninsights-cli/)
+  const urls = readFileSync(f.log, 'utf8').trim().split('\n')
+  assert.ok(urls.every((url) => url.includes('/releases/latest/download/')))
 })
 for (const { script, channel, source } of [
   { script: 'install.sh', channel: 'stable', source: /latest\/download\/tokeninsights-desktop/ },
-  { script: 'install-main.sh', channel: 'main', source: /main-build\/tokeninsights-desktop/ },
 ]) {
   void test(`${script} installs desktop and its CLI by default`, (t) => {
     const f = fixture(t)
@@ -289,12 +306,12 @@ void test('--cli-only leaves no desktop product, launcher or entry', (t) => {
   assert.ok(!existsSync(join(f.home, '.local/share/applications/tokeninsights-desktop.desktop')))
   assert.doesNotMatch(readFileSync(f.log, 'utf8'), /tokeninsights-desktop/)
 })
-void test('desktop default supports main and registers its desktop entry', (t) => {
+void test('desktop default registers its desktop entry', (t) => {
   const f = fixture(t)
   f.archive('desktop')
-  const result = f.run('install.sh', ['--channel=main'])
+  const result = f.run('install.sh')
   assert.equal(result.status, 0, result.stderr)
-  assert.equal(readFileSync(join(f.installed('desktop'), '.channel'), 'utf8'), 'main\n')
+  assert.equal(readFileSync(join(f.installed('desktop'), '.channel'), 'utf8'), 'stable\n')
   const entry = readFileSync(
     join(f.home, '.local/share/applications/tokeninsights-desktop.desktop'),
     'utf8',
@@ -473,11 +490,7 @@ for (const platform of ['linux', 'darwin']) {
       const retired = f.retiredMyGo(os)
       const launcherTarget = readlinkSync(retired.launcher)
       f.archive(current, 'v2', os)
-      const result = f.run(
-        script,
-        [...productArgs, ...(os === 'linux' ? ['--channel=main'] : [])],
-        overrides,
-      )
+      const result = f.run(script, productArgs, overrides)
       assert.equal(result.status, 0, result.stderr)
       assert.equal(
         execFileSync(retired.command, { encoding: 'utf8' }).trim(),
@@ -676,26 +689,45 @@ void test('an unwritable profile warns and keeps the completed install', (t) => 
 })
 void test('rejects unsupported host and channel before download', (t) => {
   const f = fixture(t)
-  assert.match(f.run('install.sh', ['--product=cli']).stderr, /unknown option/)
+  assert.match(f.run('install.sh', ['--product=cli']).stderr, /--product requires --channel=source/)
   assert.match(f.run('install.sh', [], { TEST_OS: 'FreeBSD' }).stderr, /unsupported OS/)
   assert.match(f.run('install.sh', [], { TEST_ARCH: 'i686' }).stderr, /unsupported architecture/)
-  assert.match(f.run('install.sh', ['--channel=nightly']).stderr, /unknown option/)
-  for (const args of [
-    ['--channel=edge', '--cli-only'],
-    ['--cli-only', '--channel=edge'],
-  ])
-    assert.match(f.run('install.sh', args).stderr, /cannot be combined with --cli-only/)
-  assert.match(f.runCli('install-edge.sh').stderr, /cannot be combined with --cli-only/)
+  for (const channel of ['nightly', 'main', 'edge'])
+    assert.match(f.run('install.sh', [`--channel=${channel}`]).stderr, /unknown option/)
+  // Source archives come only from a local build; there is no published source channel.
+  assert.match(
+    f.run('install.sh', ['--channel=source', '--product=cli']).stderr,
+    /requires TOKENINSIGHTS_DOWNLOAD_URL/,
+  )
+  assert.match(f.run('install.sh', ['--channel=source']).stderr, /requires --product/)
+  assert.match(
+    f.runSource('cli', ['--cli-only']).stderr,
+    /selects products with --product, not --cli-only/,
+  )
   assert.ok(!existsSync(f.log))
 })
-for (const script of ['install-edge.sh', 'install.sh']) {
-  void test(`${script} edge installs only desktop-native with its own scheme`, (t) => {
-    const f = fixture(t)
-    f.archive('desktop-native')
-    const result = f.run(script, script === 'install.sh' ? ['--channel=edge'] : [])
-    assert.equal(result.status, 0, result.stderr)
+void test('stable installs macOS Intel; source archives install on any supported host', (t) => {
+  const f = fixture(t)
+  const intel = { TEST_OS: 'Darwin' }
+  f.archive('desktop', 'v1', 'darwin')
+  assert.equal(f.run('install.sh', [], intel).status, 0)
+  assert.match(
+    readFileSync(f.log, 'utf8'),
+    /latest\/download\/tokeninsights-desktop_darwin_amd64\.tar\.gz/,
+  )
+  f.archive('desktop-native', 'v1', 'darwin')
+  const source = f.runSource('desktop-native', [], intel)
+  assert.equal(source.status, 0, source.stderr)
+  assert.equal(readFileSync(join(f.installed('desktop-native'), '.channel'), 'utf8'), 'source\n')
+})
+void test('source channel installs only desktop-native with its own scheme', (t) => {
+  const f = fixture(t)
+  f.archive('desktop-native')
+  const result = f.runSource('desktop-native')
+  assert.equal(result.status, 0, result.stderr)
+  {
     const product = f.installed('desktop-native')
-    assert.equal(readFileSync(join(product, '.channel'), 'utf8'), 'edge\n')
+    assert.equal(readFileSync(join(product, '.channel'), 'utf8'), 'source\n')
     assert.equal(
       readFileSync(join(product, '.installed-by-tokeninsights'), 'utf8'),
       'tokeninsights-product:desktop-native\n',
@@ -720,16 +752,16 @@ for (const script of ['install-edge.sh', 'install.sh']) {
     assert.ok(!existsSync(join(f.home, '.profile')))
     assert.ok(!existsSync(f.installed('desktop')) && !existsSync(f.installed('cli')))
     const urls = readFileSync(f.log, 'utf8')
-    assert.match(urls, /releases\/download\/edge-build\/tokeninsights-desktop-native_linux_amd64/)
-    assert.doesNotMatch(urls, /tokeninsights-(?:cli|desktop)_/)
-  })
-}
-void test('edge registers the native scheme with xdg-mime only', (t) => {
+    assert.match(urls, /^file:\/\/.*\/tokeninsights-desktop-native_linux_amd64\.tar\.gz$/m)
+    assert.doesNotMatch(urls, /https:|tokeninsights-(?:cli|desktop)_/)
+  }
+})
+void test('native source install registers its scheme with xdg-mime only', (t) => {
   const f = fixture(t)
   const mime = join(f.root, 'mime')
   executable(join(f.bin, 'xdg-mime'), `printf '%s\\n' "$*" >> ${JSON.stringify(mime)}`)
   f.archive('desktop-native')
-  const result = f.run('install-edge.sh')
+  const result = f.runSource('desktop-native')
   assert.equal(result.status, 0, result.stderr)
   assert.equal(
     readFileSync(mime, 'utf8'),
@@ -737,24 +769,23 @@ void test('edge registers the native scheme with xdg-mime only', (t) => {
   )
 })
 for (const os of ['linux', 'darwin']) {
-  void test(`${os} edge coexists with desktop and leaves its command untouched`, (t) => {
+  void test(`${os} native source install coexists with desktop and leaves its command untouched`, (t) => {
     const f = fixture(t)
     const platform = os === 'darwin' ? 'darwin' : 'linux'
     const overrides = { TEST_OS: os === 'darwin' ? 'Darwin' : 'Linux', TEST_ARCH: 'arm64' }
     const command = join(f.home, '.local/bin/tokeninsights')
-    // Edge has no macOS Intel build, so both products use arm64.
     const archive = (product: Product) => f.archive(product, 'v1', platform, undefined, 'arm64')
     archive('desktop')
     const desktop = f.run('install.sh', [], overrides)
     assert.equal(desktop.status, 0, desktop.stderr)
     const owned = readlinkSync(command)
     archive('desktop-native')
-    const edge = f.run('install-edge.sh', [], overrides)
-    assert.equal(edge.status, 0, edge.stderr)
+    const native = f.runSource('desktop-native', [], overrides)
+    assert.equal(native.status, 0, native.stderr)
     assert.equal(readlinkSync(command), owned)
     assert.equal(execFileSync(command, { encoding: 'utf8' }).trim(), 'cli-v1')
     assert.equal(readFileSync(join(f.installed('desktop'), '.channel'), 'utf8'), 'stable\n')
-    assert.equal(readFileSync(join(f.installed('desktop-native'), '.channel'), 'utf8'), 'edge\n')
+    assert.equal(readFileSync(join(f.installed('desktop-native'), '.channel'), 'utf8'), 'source\n')
     if (os === 'darwin') {
       assert.ok(existsSync(join(f.home, 'Applications/TokenInsights Desktop.app')))
       assert.equal(
@@ -769,30 +800,287 @@ for (const os of ['linux', 'darwin']) {
     }
   })
 }
-void test('edge refuses an unowned tokeninsights-native launcher', (t) => {
+void test('native source install refuses an unowned tokeninsights-native launcher', (t) => {
   const f = fixture(t)
   f.archive('desktop-native')
   mkdirSync(join(f.home, '.local/bin'), { recursive: true })
   executable(join(f.home, '.local/bin/tokeninsights-native'), 'echo foreign')
-  const result = f.run('install-edge.sh')
+  const result = f.runSource('desktop-native')
   assert.match(result.stderr, /unowned path/)
   assert.ok(!existsSync(f.installed('desktop-native')))
 })
-void test('main channel rejects macOS Intel before download; Apple Silicon and stable proceed', (t) => {
+
+// Source installs use real Git against a local repository. The mise stub stands in for
+// the pinned toolchain and packages one Linux archive like build-products.ts.
+function sourceFixture(t: TestContext) {
   const f = fixture(t)
-  const intel = { TEST_OS: 'Darwin' }
-  assert.match(f.run('install-main.sh', [], intel).stderr, /no macOS Intel build/)
-  assert.match(f.run('install.sh', ['--channel=main'], intel).stderr, /no macOS Intel build/)
-  assert.match(f.run('install-edge.sh', [], intel).stderr, /edge channel has no macOS Intel build/)
-  assert.ok(!existsSync(f.log))
-  f.run('install-main.sh', [], { ...intel, TEST_ARCH: 'arm64' })
-  assert.match(
-    readFileSync(f.log, 'utf8'),
-    /main-build\/tokeninsights-desktop_darwin_arm64\.tar\.gz/,
+  const work = join(f.root, 'source-work')
+  const remote = join(f.root, 'source.git')
+  mkdirSync(work)
+  const gitEnv = {
+    PATH: '/usr/bin:/bin',
+    HOME: f.home,
+    GIT_CONFIG_NOSYSTEM: '1',
+    GIT_AUTHOR_NAME: 'Fixture',
+    GIT_AUTHOR_EMAIL: 'fixture@example.invalid',
+    GIT_COMMITTER_NAME: 'Fixture',
+    GIT_COMMITTER_EMAIL: 'fixture@example.invalid',
+  }
+  const git = (...args: string[]) =>
+    execFileSync('git', args, { cwd: work, env: gitEnv, encoding: 'utf8' }).trim()
+  const commit = (message: string, files: Record<string, string>) => {
+    for (const [path, text] of Object.entries(files)) {
+      mkdirSync(join(work, path, '..'), { recursive: true })
+      writeFileSync(join(work, path), text)
+    }
+    git('add', '.')
+    git('commit', '-q', '-m', message)
+    return git('rev-parse', 'HEAD')
+  }
+  git('init', '-q', '--initial-branch=main')
+  git('config', 'commit.gpgsign', 'false')
+  git('config', 'tag.gpgsign', 'false')
+  const legacy = commit('before source installs', { README: 'old\n' })
+  const main = commit('source installs', {
+    'install/source.sh': '# marker\n',
+    '.gitignore': 'node_modules/\n',
+  })
+  git('tag', '-a', 'v9.0.0', '-m', 'release')
+  git('switch', '-q', '-c', 'feature/x')
+  const feature = commit('feature', { feature: 'x\n' })
+  git('switch', '-q', 'main')
+  git('init', '-q', '--bare', remote)
+  git('push', '-q', remote, 'main', 'feature/x', 'refs/tags/v9.0.0', `${legacy}:refs/heads/legacy`)
+  const miseLog = join(f.root, 'mise.jsonl')
+  writeFileSync(
+    join(f.bin, 'mise'),
+    `#!${process.execPath}
+const fs = require('node:fs'), path = require('node:path'), cp = require('node:child_process'), crypto = require('node:crypto');
+const args = process.argv.slice(2);
+fs.appendFileSync(process.env.TEST_MISE_LOG, JSON.stringify({ cwd: process.cwd(), args, husky: process.env.HUSKY }) + '\\n');
+if (!(args[0] === 'exec' && args[3] === 'tools/build/src/build-products.ts')) process.exit(0);
+if (process.env.TEST_MISE_FAIL === '1') process.exit(9);
+const [version, out, product, ref] = args.slice(4);
+const name = 'tokeninsights-' + product + '_linux_amd64';
+const stage = fs.mkdtempSync(path.join(process.env.TMPDIR, 'source-stage-'));
+const root = path.join(stage, name);
+fs.mkdirSync(root);
+const exe = (file, text) => fs.writeFileSync(path.join(root, file), '#!/bin/sh\\necho ' + text + '\\n', { mode: 0o755 });
+exe({ cli: 'tokeninsights', desktop: 'tokeninsights-desktop', 'desktop-native': 'tokeninsights-native' }[product], version);
+exe('tokeninsights-backend', 'backend-' + version);
+if (product === 'desktop') exe('tokeninsights', 'cli-' + version);
+const commit = cp.execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
+fs.writeFileSync(path.join(root, 'LICENSE'), 'MIT');
+fs.writeFileSync(path.join(root, 'build-info.json'), JSON.stringify({ version, commit, ref: ref.slice('--ref='.length) }));
+fs.writeFileSync(path.join(root, 'product.txt'), 'tokeninsights-product-v1 ' + product + ' linux amd64\\n');
+fs.mkdirSync(out, { recursive: true });
+const archive = path.join(out, name + '.tar.gz');
+cp.execFileSync('tar', ['-czf', archive, '-C', stage, name]);
+fs.writeFileSync(path.join(out, 'checksums.txt'), crypto.createHash('sha256').update(fs.readFileSync(archive)).digest('hex') + '  ' + name + '.tar.gz\\n');
+`,
+    { mode: 0o755 },
   )
-  f.run('install.sh', [], intel)
+  const cache = join(f.home, '.cache/tokeninsights/source')
+  const dev = (script: string, args: string[] = [], overrides: NodeJS.ProcessEnv = {}) =>
+    f.run(script, args, {
+      TOKENINSIGHTS_SOURCE_URL: remote,
+      TEST_MISE_LOG: miseLog,
+      ...overrides,
+    })
+  const builds = () =>
+    existsSync(miseLog)
+      ? readFileSync(miseLog, 'utf8')
+          .trim()
+          .split('\n')
+          .map((line) => {
+            const value: unknown = JSON.parse(line)
+            assert.ok(typeof value === 'object' && value !== null && 'args' in value)
+            assert.ok(Array.isArray(value.args))
+            return value.args.map((arg: unknown) => String(arg))
+          })
+          .filter((args) => args[3] === 'tools/build/src/build-products.ts')
+      : []
+  const info = (product: Product) => {
+    const value: unknown = JSON.parse(
+      readFileSync(join(f.installed(product), 'build-info.json'), 'utf8'),
+    )
+    return value
+  }
+  return { ...f, remote, legacy, main, feature, cache, miseLog, dev, builds, info }
+}
+void test('install-dev.sh builds and installs desktop from main by default', (t) => {
+  const f = sourceFixture(t)
+  const result = f.dev('install-dev.sh')
+  assert.equal(result.status, 0, result.stderr)
+  const version = `src.${f.main.slice(0, 12)}`
+  assert.deepEqual(f.builds(), [
+    [
+      'exec',
+      '--',
+      'node',
+      'tools/build/src/build-products.ts',
+      version,
+      f.builds()[0]?.[5] ?? '',
+      'desktop',
+      '--ref=main',
+    ],
+  ])
+  assert.equal(readFileSync(join(f.installed('desktop'), '.channel'), 'utf8'), 'source\n')
+  assert.deepEqual(f.info('desktop'), { version, commit: f.main, ref: 'main' })
+  assert.equal(
+    execFileSync(join(f.home, '.local/bin/tokeninsights'), { encoding: 'utf8' }).trim(),
+    `cli-${version}`,
+  )
+  // Every toolchain step runs inside the cache checkout, without Git hooks.
+  const calls = readFileSync(f.miseLog, 'utf8').trim().split('\n')
+  for (const line of calls) {
+    const value: unknown = JSON.parse(line)
+    assert.ok(typeof value === 'object' && value !== null && 'cwd' in value && 'husky' in value)
+    assert.equal(value.cwd, f.cache)
+    assert.equal(value.husky, '0')
+  }
+  assert.equal(
+    execFileSync('git', ['-C', f.cache, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(),
+    f.main,
+  )
+  assert.ok(!existsSync(`${f.cache}.lock`))
+  // lib.sh reads only the local build; nothing comes from a published release.
+  for (const url of readFileSync(f.log, 'utf8').trim().split('\n'))
+    assert.match(
+      url,
+      /^file:\/\/.*\/dist\/(?:checksums\.txt|tokeninsights-desktop_linux_amd64\.tar\.gz)$/,
+    )
+})
+for (const { ref, expected } of [
+  { ref: 'feature/x', expected: 'feature' },
+  { ref: 'v9.0.0', expected: 'main' },
+  { ref: 'sha', expected: 'feature' },
+] as const) {
+  void test(`install-dev.sh --ref resolves ${ref} to one commit`, (t) => {
+    const f = sourceFixture(t)
+    const commit = f[expected]
+    const requested = ref === 'sha' ? f.feature : ref
+    const result = f.dev('install-dev.sh', [`--ref=${requested}`, '--cli-only'])
+    assert.equal(result.status, 0, result.stderr)
+    assert.deepEqual(f.info('cli'), {
+      version: `src.${commit.slice(0, 12)}`,
+      commit,
+      ref: requested,
+    })
+    assert.ok(!existsSync(f.installed('desktop')))
+  })
+}
+void test('source installs reject unknown, invalid and legacy refs before building', (t) => {
+  const f = sourceFixture(t)
+  assert.match(f.dev('install-dev.sh', ['--ref=missing']).stderr, /unknown ref 'missing'/)
+  for (const ref of ['', '-x', 'a b', 'a..b'])
+    assert.match(f.dev('install-dev.sh', [`--ref=${ref}`]).stderr, /invalid ref/)
+  assert.match(f.dev('install-dev.sh', [`--ref=${'f'.repeat(40)}`]).stderr, /cannot fetch f{40}/)
   assert.match(
-    readFileSync(f.log, 'utf8'),
-    /latest\/download\/tokeninsights-desktop_darwin_amd64\.tar\.gz/,
+    f.dev('install-dev.sh', ['--ref=legacy']).stderr,
+    /ref 'legacy' predates source install support/,
+  )
+  assert.deepEqual(f.builds(), [])
+  assert.ok(!existsSync(f.installed('desktop')))
+  assert.ok(!existsSync(`${f.cache}.lock`))
+})
+void test('source installs require mise and fail before touching the cache', (t) => {
+  const f = sourceFixture(t)
+  rmSync(join(f.bin, 'mise'))
+  const result = f.dev('install-dev.sh')
+  assert.notEqual(result.status, 0)
+  assert.match(result.stderr, /mise is required to build from source/)
+  assert.ok(!existsSync(f.cache))
+})
+void test('a held source lock rejects a concurrent install and stays with its owner', (t) => {
+  const f = sourceFixture(t)
+  mkdirSync(`${f.cache}.lock`, { recursive: true })
+  const result = f.dev('install-dev.sh')
+  assert.match(result.stderr, /another source install holds/)
+  assert.ok(existsSync(`${f.cache}.lock`))
+  assert.deepEqual(f.builds(), [])
+})
+void test('failed source build keeps the installed product and a reusable cache', (t) => {
+  const f = sourceFixture(t)
+  assert.equal(f.dev('install-dev.sh', ['--cli-only']).status, 0)
+  const installed = `src.${f.main.slice(0, 12)}`
+  mkdirSync(join(f.cache, 'node_modules'))
+  writeFileSync(join(f.cache, 'node_modules/kept'), 'dependency')
+  writeFileSync(join(f.cache, 'stale-output'), 'generated')
+  const failed = f.dev('install-dev.sh', ['--cli-only', '--ref=feature/x'], { TEST_MISE_FAIL: '1' })
+  assert.notEqual(failed.status, 0)
+  assert.equal(
+    execFileSync(join(f.home, '.local/bin/tokeninsights'), { encoding: 'utf8' }).trim(),
+    installed,
+  )
+  assert.ok(!existsSync(`${f.cache}.lock`))
+  // Dependencies persist between builds; other generated files never leak into the next.
+  assert.equal(readFileSync(join(f.cache, 'node_modules/kept'), 'utf8'), 'dependency')
+  assert.ok(!existsSync(join(f.cache, 'stale-output')))
+  const retry = f.dev('install-dev.sh', ['--cli-only', '--ref=feature/x'])
+  assert.equal(retry.status, 0, retry.stderr)
+  assert.equal(
+    execFileSync(join(f.home, '.local/bin/tokeninsights'), { encoding: 'utf8' }).trim(),
+    `src.${f.feature.slice(0, 12)}`,
   )
 })
+void test('source installs refuse a cache path they do not own', (t) => {
+  const f = sourceFixture(t)
+  mkdirSync(f.cache, { recursive: true })
+  writeFileSync(join(f.cache, 'user-file'), 'keep')
+  const result = f.dev('install-dev.sh')
+  assert.match(result.stderr, /refusing to use .*: not a source cache/)
+  assert.equal(readFileSync(join(f.cache, 'user-file'), 'utf8'), 'keep')
+})
+void test('install-dev-native.sh builds only TokenInsights Native and never takes the command', (t) => {
+  const f = sourceFixture(t)
+  assert.match(
+    f.dev('install-dev-native.sh', ['--cli-only']).stderr,
+    /TokenInsights Native has no CLI-only build/,
+  )
+  const result = f.dev('install-dev-native.sh', ['--ref=feature/x'])
+  assert.equal(result.status, 0, result.stderr)
+  assert.equal(f.builds()[0]?.[6], 'desktop-native')
+  assert.equal(readFileSync(join(f.installed('desktop-native'), '.channel'), 'utf8'), 'source\n')
+  assert.deepEqual(f.info('desktop-native'), {
+    version: `src.${f.feature.slice(0, 12)}`,
+    commit: f.feature,
+    ref: 'feature/x',
+  })
+  assert.ok(!existsSync(join(f.home, '.local/bin/tokeninsights')))
+  assert.ok(!existsSync(join(f.home, '.profile')))
+  assert.ok(!existsSync(f.installed('desktop')) && !existsSync(f.installed('cli')))
+})
+for (const script of ['install-dev.sh', 'install-dev-native.sh']) {
+  void test(`piped ${script} fetches both helpers from main and ignores the working directory`, (t) => {
+    const f = sourceFixture(t)
+    mkdirSync(join(f.home, 'install'))
+    for (const helper of ['source.sh', 'lib.sh']) {
+      executable(join(f.home, 'install', helper), 'echo hostile-helper >&2; exit 71')
+      writeFileSync(join(f.release, helper), readFileSync(workspacePath(`install/${helper}`)))
+    }
+    const result = spawnSync('sh', ['-s', '--', '--ref=feature/x'], {
+      input: readFileSync(workspacePath(script), 'utf8'),
+      cwd: f.home,
+      encoding: 'utf8',
+      env: {
+        PATH: `${f.bin}:/usr/bin:/bin`,
+        HOME: f.home,
+        TMPDIR: f.root,
+        TEST_RELEASE: f.release,
+        TEST_DOWNLOAD_LOG: f.log,
+        TOKENINSIGHTS_SOURCE_URL: f.remote,
+        TEST_MISE_LOG: f.miseLog,
+      },
+    })
+    assert.equal(result.status, 0, result.stderr)
+    assert.doesNotMatch(result.stderr, /hostile-helper/)
+    const urls = readFileSync(f.log, 'utf8')
+    for (const helper of ['source.sh', 'lib.sh'])
+      assert.match(
+        urls,
+        new RegExp(`raw\\.githubusercontent\\.com/flexdinesh/tokeninsights/main/install/${helper}`),
+      )
+    assert.equal(f.builds()[0]?.[6], script === 'install-dev.sh' ? 'desktop' : 'desktop-native')
+  })
+}

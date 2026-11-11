@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { execFileSync, spawnSync } from 'node:child_process'
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
@@ -9,7 +9,6 @@ import {
   prepareTag,
   releasePlatforms,
   releaseTag,
-  type ReleaseChannel,
   verifyReleaseAssets,
 } from '../src/publish-release.ts'
 import { writeChecksums } from '../src/build-products.ts'
@@ -62,59 +61,39 @@ void test('source tags point directly at source, retries preserve them and anoth
 void test('publication requires complete unique verified product assets', async (t) => {
   const dir = mkdtempSync(join(tmpdir(), 'tokeninsights-release-assets-'))
   t.after(() => rmSync(dir, { recursive: true, force: true }))
-  for (const name of expectedArchives('stable')) writeFileSync(join(dir, name), `archive ${name}`)
+  for (const name of expectedArchives()) writeFileSync(join(dir, name), `archive ${name}`)
   await writeChecksums(dir)
-  await verifyReleaseAssets(dir, 'stable')
-  await assert.rejects(verifyReleaseAssets(dir, 'main'), /main release requires exactly 6/)
-  const first = expectedArchives('stable')[0]
+  await verifyReleaseAssets(dir)
+  const first = expectedArchives()[0]
   assert.ok(first)
   const checksums = readFileSync(join(dir, 'checksums.txt'), 'utf8')
   writeFileSync(join(dir, 'checksums.txt'), checksums + checksums.split('\n')[0] + '\n')
-  await assert.rejects(verifyReleaseAssets(dir, 'stable'), /checksum count/)
+  await assert.rejects(verifyReleaseAssets(dir), /checksum count/)
   writeFileSync(join(dir, 'checksums.txt'), checksums)
   writeFileSync(join(dir, first), 'corrupt')
-  await assert.rejects(verifyReleaseAssets(dir, 'stable'), /checksum mismatch/)
+  await assert.rejects(verifyReleaseAssets(dir), /checksum mismatch/)
   rmSync(join(dir, first))
-  await assert.rejects(verifyReleaseAssets(dir, 'stable'), /stable release requires exactly 8/)
+  await assert.rejects(verifyReleaseAssets(dir), /stable release requires exactly 8/)
 })
-void test('main publication accepts its archives and stable rejects them', async (t) => {
-  const dir = mkdtempSync(join(tmpdir(), 'tokeninsights-main-assets-'))
+void test('stable publication carries CLI and desktop on every platform, never desktop-native', async (t) => {
+  assert.equal(expectedArchives().length, 8)
+  assert.ok(expectedArchives().some((name) => name.endsWith('_darwin_amd64.tar.gz')))
+  assert.ok(!expectedArchives().some((name) => name.includes('desktop-native')))
+  const dir = mkdtempSync(join(tmpdir(), 'tokeninsights-native-assets-'))
   t.after(() => rmSync(dir, { recursive: true, force: true }))
-  for (const name of expectedArchives('main')) writeFileSync(join(dir, name), `archive ${name}`)
+  for (const name of [...expectedArchives(), 'tokeninsights-desktop-native_linux_amd64.tar.gz'])
+    writeFileSync(join(dir, name), `archive ${name}`)
   await writeChecksums(dir)
-  await verifyReleaseAssets(dir, 'main')
-  await assert.rejects(verifyReleaseAssets(dir, 'stable'), /stable release requires exactly 8/)
-  await assert.rejects(verifyReleaseAssets(dir, 'edge'), /edge release requires exactly 3/)
+  await assert.rejects(verifyReleaseAssets(dir), /stable release requires exactly 8/)
 })
-void test('edge publication carries only desktop-native without macOS Intel', async (t) => {
-  assert.deepEqual(expectedArchives('edge'), [
-    'tokeninsights-desktop-native_darwin_arm64.tar.gz',
-    'tokeninsights-desktop-native_linux_amd64.tar.gz',
-    'tokeninsights-desktop-native_linux_arm64.tar.gz',
-  ])
-  const legacy: ReleaseChannel[] = ['stable', 'main']
-  for (const channel of legacy)
-    assert.ok(!expectedArchives(channel).some((name) => name.includes('desktop-native')))
-  const dir = mkdtempSync(join(tmpdir(), 'tokeninsights-edge-assets-'))
-  t.after(() => rmSync(dir, { recursive: true, force: true }))
-  for (const name of expectedArchives('edge')) writeFileSync(join(dir, name), `archive ${name}`)
-  await writeChecksums(dir)
-  await verifyReleaseAssets(dir, 'edge')
-  await assert.rejects(verifyReleaseAssets(dir, 'main'), /main release requires exactly 6/)
-})
-void test('workflow build matrices match each channel release contract', () => {
-  const workflows: ReadonlyArray<readonly [string, ReleaseChannel]> = [
-    ['ci.yml', 'main'],
-    ['release.yml', 'stable'],
-    ['edge.yml', 'edge'],
-  ]
-  for (const [file, channel] of workflows) {
-    const workflow = readFileSync(workspacePath(`.github/workflows/${file}`), 'utf8')
-    const platforms = [...workflow.matchAll(/"os":"(\w+)","arch":"(\w+)"/g)].map(
-      (match) => `${match[1]}/${match[2]}`,
-    )
-    assert.deepEqual(platforms.toSorted(), releasePlatforms(channel).toSorted())
-  }
+void test('only the stable release workflow publishes, matching its build matrix', () => {
+  const workflows = readdirSync(workspacePath('.github/workflows')).toSorted()
+  assert.deepEqual(workflows, ['products.yml', 'release.yml'])
+  const workflow = readFileSync(workspacePath('.github/workflows/release.yml'), 'utf8')
+  const platforms = [...workflow.matchAll(/"os":"(\w+)","arch":"(\w+)"/g)].map(
+    (match) => `${match[1]}/${match[2]}`,
+  )
+  assert.deepEqual(platforms.toSorted(), releasePlatforms.toSorted())
 })
 void test('artifact guard rejects generated files and compiled binary signatures', () => {
   for (const path of [
@@ -131,15 +110,7 @@ void test('artifact guard rejects generated files and compiled binary signatures
     !generatedArtifact('packages/desktop/resources/icon.png', Buffer.from('89504e47', 'hex')),
   )
 })
-for (const scenario of [
-  'stable',
-  'published stable',
-  'main',
-  'superseded main',
-  'edge',
-  'edge from another ref',
-  'upload failure',
-]) {
+for (const scenario of ['stable', 'published stable', 'moved tag', 'upload failure']) {
   void test(`release publication handles ${scenario} without exposing partial assets`, (t) => {
     const dir = mkdtempSync(join(tmpdir(), 'tokeninsights-publisher-'))
     t.after(() => rmSync(dir, { recursive: true, force: true }))
@@ -148,13 +119,8 @@ for (const scenario of [
     const stage = join(dir, 'stage')
     for (const path of [out, bin, stage]) mkdirSync(path)
     const commit = 'a'.repeat(40)
-    const channel: ReleaseChannel = scenario.includes('main')
-      ? 'main'
-      : scenario.includes('edge')
-        ? 'edge'
-        : 'stable'
-    const version = channel === 'stable' ? '1.2.3' : `${channel}.${commit.slice(0, 12)}`
-    for (const name of expectedArchives(channel)) {
+    const version = '1.2.3'
+    for (const name of expectedArchives()) {
       const root = name.replace(/\.tar\.gz$/, '')
       const [slug, os, arch] = root.split('_')
       const path = join(stage, root)
@@ -199,7 +165,7 @@ if (args[1] === 'upload' && process.env.FAIL_UPLOAD === '1') process.exit(23);
       [
         '--input-type=module',
         '-e',
-        `import { writeChecksums } from ${JSON.stringify(workspacePath('tools/build/src/build-products.ts'))}; import { publish } from ${JSON.stringify(workspacePath('tools/build/src/publish-release.ts'))}; await writeChecksums(${JSON.stringify(out)}); await publish(${JSON.stringify(channel)}, ${JSON.stringify(version)}, ${JSON.stringify(out)});`,
+        `import { writeChecksums } from ${JSON.stringify(workspacePath('tools/build/src/build-products.ts'))}; import { publish } from ${JSON.stringify(workspacePath('tools/build/src/publish-release.ts'))}; await writeChecksums(${JSON.stringify(out)}); await publish(${JSON.stringify(version)}, ${JSON.stringify(out)});`,
       ],
       {
         encoding: 'utf8',
@@ -208,8 +174,8 @@ if (args[1] === 'upload' && process.env.FAIL_UPLOAD === '1') process.exit(23);
           PATH: `${bin}:${process.env.PATH ?? ''}`,
           PUBLISH_LOG: log,
           SOURCE_SHA: commit,
-          EXISTING: ['published stable', 'main', 'edge'].includes(scenario) ? '1' : '0',
-          SUPERSEDED: scenario.startsWith('superseded') || scenario.includes('another') ? '1' : '0',
+          EXISTING: scenario === 'published stable' ? '1' : '0',
+          SUPERSEDED: scenario === 'moved tag' ? '1' : '0',
           FAIL_UPLOAD: scenario === 'upload failure' ? '1' : '0',
         },
       },
@@ -226,39 +192,29 @@ if (args[1] === 'upload' && process.env.FAIL_UPLOAD === '1') process.exit(23);
     const create = calls.findIndex((args) => args[0] === 'gh' && args[2] === 'create')
     const upload = calls.findIndex((args) => args[0] === 'gh' && args[2] === 'upload')
     const edit = calls.findIndex((args) => args[0] === 'gh' && args[2] === 'edit')
-    if (scenario === 'published stable' || scenario === 'superseded main') {
+    // Stable never force-moves or deletes tags and releases.
+    assert.ok(!calls.some((args) => args.includes('--force') || args.includes('delete')))
+    if (scenario === 'published stable' || scenario === 'moved tag') {
       assert.equal(create, -1)
       assert.equal(upload, -1)
       assert.equal(edit, -1)
-      assert.equal(result.status, scenario === 'published stable' ? 1 : 0, result.stderr)
+      assert.notEqual(result.status, 0)
+      assert.match(
+        result.stderr,
+        scenario === 'moved tag' ? /differs from tested source/ : /immutable/,
+      )
     } else {
       assert.ok(create >= 0 && upload > create)
       assert.ok(calls[create]?.includes('--draft'))
-      assert.equal(
-        calls[upload]?.some((arg) => arg.includes('_darwin_amd64')),
-        channel === 'stable',
-      )
+      assert.ok(calls[upload]?.some((arg) => arg.includes('_darwin_amd64')))
       if (scenario === 'upload failure') {
         assert.notEqual(result.status, 0)
         assert.equal(edit, -1)
       } else {
         assert.equal(result.status, 0, result.stderr)
         assert.ok(edit > upload)
-        assert.ok(calls[edit]?.includes(`--latest=${scenario === 'stable'}`))
-        assert.ok(calls[edit]?.includes(`--prerelease=${channel !== 'stable'}`))
-      }
-      if (channel === 'edge') {
-        // Edge never consults main and replaces only its own rolling tag.
-        assert.ok(!calls.some((args) => args.includes('refs/heads/main')))
-        assert.ok(calls[create]?.includes('edge-build'))
-        assert.ok(
-          calls.some((args) => args.join(' ') === 'git push --force origin refs/tags/edge-build'),
-        )
-        assert.ok(
-          calls[upload]?.every((arg) => !arg.endsWith('.tar.gz') || arg.includes('desktop-native')),
-        )
-        if (scenario === 'edge')
-          assert.ok(calls.some((args) => args.join(' ') === 'gh release delete edge-build --yes'))
+        assert.ok(calls[edit]?.includes('--latest=true'))
+        assert.ok(calls[edit]?.includes('--prerelease=false'))
       }
     }
   })

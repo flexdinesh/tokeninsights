@@ -36,7 +36,7 @@ const (
 var ErrAppUnavailable = errors.New("TokenInsights Desktop is unavailable; install the desktop product or run tokeninsights tui")
 
 // ErrNativeUnavailable reports an unavailable experimental native target.
-var ErrNativeUnavailable = errors.New("TokenInsights Native is unavailable; install it from the edge channel or omit --app=native")
+var ErrNativeUnavailable = errors.New("TokenInsights Native is unavailable; install it with install-dev-native.sh or omit --app=native")
 
 // App identifies one installed desktop application. Launch links carry only
 // its scheme; the application acknowledges with its Mode.

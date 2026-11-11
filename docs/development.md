@@ -2,15 +2,17 @@
 
 Run from repo root. `mise tasks ls` lists tasks. User commands: [CLI](cli.md).
 
-## Install main
+## Install any ref
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/flexdinesh/tokeninsights/main/install-main.sh | sh
+curl -fsSL https://raw.githubusercontent.com/flexdinesh/tokeninsights/main/install-dev.sh | sh -s -- --ref=my-branch
+curl -fsSL https://raw.githubusercontent.com/flexdinesh/tokeninsights/main/install-dev-native.sh | sh -s -- --ref=my-branch
 ```
 
-Installs desktop with CLI/backend and puts the CLI on PATH. `--cli-only` supports TUI/web on hosts without a display. Main has no macOS Intel build.
-Use `tokeninsights --version` to inspect the installed version.
-Stable/main replace the selected product. Installation never terminates viewers.
+Builds locally from a branch, tag or full commit SHA of the canonical repository (default `main`); no CI publishes non-stable builds. Requires `git` and mise; mise installs the locked Go, Node and pnpm. `install-dev.sh` installs desktop with CLI/backend and puts the CLI on PATH; `--cli-only` builds the CLI product. `install-dev-native.sh` builds TokenInsights Native only. Any macOS or Linux host on amd64/arm64 works, including macOS Intel.
+The checkout lives in `${XDG_CACHE_HOME:-~/.cache}/tokeninsights/source`, which keeps `node_modules` between builds and is locked against concurrent installs. Delete it to reclaim space.
+Use `tokeninsights --version` (`src.<sha12>`) or the product's `build-info.json` (`ref`, `commit`) to inspect the installed build.
+Stable and dev installs replace the same product. Installation never terminates viewers. `TOKENINSIGHTS_SOURCE_URL` overrides the repository for local fixtures.
 
 ## Setup and fixtures
 
@@ -99,8 +101,8 @@ mise run check:pr
 mise run build:docs
 ```
 
-Full successful evidence must match inputs. No PR CI runs; main/release CI builds
-and publishes products only.
+Full successful evidence must match inputs. No PR or push CI runs; manual stable
+release CI builds and publishes products only.
 Packaging/runtime/SSH/network checks remain isolated. Never weaken accounting,
 privacy, receipt replay or restart assertions to accommodate a failure.
 

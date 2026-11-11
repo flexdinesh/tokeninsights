@@ -4,7 +4,7 @@ showAskAi: false
 
 # Install
 
-macOS/Linux, amd64/arm64. Products are prebuilt GitHub Release downloads.
+macOS/Linux, amd64/arm64. Stable products are prebuilt GitHub Release downloads.
 No Go or Node installation is required.
 
 ## Desktop and CLI
@@ -48,17 +48,28 @@ under `${XDG_DATA_HOME:-~/.local/share}/tokeninsights/products/`.
 No login service is installed. The backend starts on demand and stops after its
 last lease and reconnect grace.
 
-`install.sh` uses stable and `install-main.sh` the latest main build; both accept
-`--channel=stable` or `--channel=main`. Main has no macOS Intel build:
-
-```sh
-curl -fsSL https://raw.githubusercontent.com/flexdinesh/tokeninsights/main/install-main.sh | sh
-```
-
-Rerun to update.
+`install.sh` installs the latest stable release. Rerun to update.
 Both products recognize CLI links from installer-owned MyGo products before the
 desktop rename; they update the command without deleting the old product or launcher.
-Downloads/checksums come from stable releases or the rolling main prerelease.
+Downloads/checksums come from stable releases.
 Failed downloads preserve the existing installation. Close viewers before an
 incompatible backend upgrade; installation never terminates them, migrates history
 or deletes usage files. Homebrew and Go source installs are retired.
+
+## Unreleased builds
+
+Install any branch, tag or full commit SHA (default `main`) by building it on your
+machine. This needs `git` and [mise](https://mise.jdx.dev); mise installs the
+locked Go, Node and pnpm. No CI publishes these builds.
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/flexdinesh/tokeninsights/main/install-dev.sh | sh -s -- --ref=my-branch
+curl -fsSL https://raw.githubusercontent.com/flexdinesh/tokeninsights/main/install-dev-native.sh | sh
+```
+
+`install-dev.sh` installs desktop, or the CLI with `--cli-only`, and replaces a
+stable install of the same product. `install-dev-native.sh` installs the
+experimental TokenInsights Native app beside desktop; it never takes over the
+`tokeninsights` command or edits shell profiles. `tokeninsights --version` shows
+`src.<sha12>`. The source checkout is cached in
+`${XDG_CACHE_HOME:-~/.cache}/tokeninsights/source`; delete it to reclaim space.

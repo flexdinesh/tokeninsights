@@ -25,7 +25,7 @@ func TestMatchPattern(t *testing.T) {
 		{"packages/", "packagesX/main.go", false},
 		{"packages/*/package.json", "packages/web/package.json", true},
 		{"packages/*/package.json", "packages/web/sub/package.json", false},
-		{"install*.sh", "install-main.sh", true},
+		{"install*.sh", "install-dev.sh", true},
 		{"**/*_test.go", "main_test.go", true},
 		{"**/*_test.go", "packages/core/a/b_test.go", true},
 		{"**/dist/", "packages/web/dist/index.html", true},
