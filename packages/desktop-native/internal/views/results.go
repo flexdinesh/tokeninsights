@@ -42,20 +42,29 @@ const (
 )
 
 // DashboardResults builds the results of the window's query, as the web's
-// DashboardResults: processing and read-failure notes, the loading
-// skeleton or empty-state message, then the summary readouts above the
-// chart and table.
+// DashboardResults: the excluded usage review's header, processing and
+// read-failure notes, the loading skeleton or empty-state message, then
+// the summary readouts and the excluded usage notice above the chart and
+// table.
 func DashboardResults(c *ui.Context, w *model.Window) ui.Element {
-	query, _ := w.Query()
+	query, ok := w.Query()
 	estimated := query.Quality == dashboardview.QualityEstimated
 	label := resultsLabel
 	if estimated {
 		label = excludedResultsLabel
 	}
-	region := ui.Column(c).MinWidth(0).Role(ui.RoleRegion).Label(label)
+	// Focusable out of Tab's order, as the web's tabIndex -1 region, so a
+	// quality switch can give it the focus.
+	region := ui.Column(c).MinWidth(0).Role(ui.RoleRegion).Label(label).Focusable().TabStop(false)
 	table := ui.Local(region, "table", newTableState)
 	chart := ui.Local(region, "chart", newChartState)
+	if ok {
+		ui.Local(region, "quality", func() qualityChange { return qualityChange{} }).follow(c, region, query.Quality)
+	}
 	return region.Children(func() {
+		if estimated {
+			reviewHeader(c, w)
+		}
 		results(c, w, estimated, table, chart)
 	})
 }
@@ -98,14 +107,21 @@ func results(c *ui.Context, w *model.Window, estimated bool, table *tableState, 
 	if enabled && (!hasData || waitingForFirstData) && usageErr == nil {
 		DashboardSkeleton(c)
 	}
+	excluded, hasExcluded := w.ExcludedUsage()
+	excludedErr := w.ExcludedError()
 	if enabled && hasData && usage.Summary.SyncedSessions == 0 && usageErr == nil && !sync.Loading &&
-		!sync.CollectionFailed && !sync.CollectionUnknown && status.Failed == 0 {
-		// Excluded usage, read with review mode, refines this message.
-		note(c, emptyMessage(estimated, false), ui.RoleStatus)
+		!sync.CollectionFailed && !sync.CollectionUnknown && (estimated || !w.ExcludedPending()) && status.Failed == 0 {
+		note(c, emptyMessage(estimated, hasExcluded || excludedErr != nil), ui.RoleStatus)
 	}
 	if enabled && hasData && !waitingForFirstData {
 		ui.Column(c).Busy(w.UsageFetching()).Children(func() {
 			SummaryCards(c, usage.Summary, estimated)
+			if !estimated && hasExcluded {
+				excludedNotice(c, w, excluded)
+			}
+			if !estimated && excludedErr != nil {
+				excludedError(c, w)
+			}
 			placeholder, matches := w.UsagePlaceholder(), w.UsageMatchesView()
 			switch {
 			case placeholder && !matches && usageErr == nil:

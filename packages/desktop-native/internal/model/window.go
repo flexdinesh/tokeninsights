@@ -1,7 +1,7 @@
 // Package model owns what one native window shows and does: its connection
-// identity, the backend instance, the dashboard query and its usage,
-// refresh state and its synchronization with backend status and collector
-// progress.
+// identity, the backend instance, the dashboard query, its usage and the
+// usage excluded from its totals, refresh state and its synchronization
+// with backend status and collector progress.
 // Views read it and call its actions on the main thread; its I/O runs on
 // worker goroutines that publish results back on the main thread.
 package model
@@ -70,6 +70,7 @@ type Window struct {
 
 	sync     syncState
 	usage    usageState
+	excluded usageState
 	facets   facetsState
 	sessions sessionSearch
 }

@@ -212,6 +212,41 @@ func TestTransitionsNeverShareSlices(t *testing.T) {
 	}
 }
 
+// TestExcludedUsageQueryAsTheWeb pins App.tsx's excluded usage read: one
+// estimated row of the Tokens view, or of Repo under its grouping and
+// locations, by day, newest or largest first, under the query's filters.
+func TestExcludedUsageQueryAsTheWeb(t *testing.T) {
+	defaults := analytics.Selection{Period: "month", Bucket: "week", From: "2026-11-01", To: "2026-11-30"}
+	providers := []string{"openai"}
+	models := dashboardview.InitialQuery(defaults, dashboardview.TabModels).
+		WithSelection(dashboardview.SelectionChange{Providers: &providers}).SortBy(dashboardview.SortName).WithPageSize(200)
+	got := models.ExcludedUsageQuery().ToAnalytics()
+	want := analytics.Query{
+		Quality: "estimated", Tab: "tokens", Sort: "date", Direction: "desc", Page: 1, PageSize: 1,
+		Selection: analytics.Selection{Period: "month", Bucket: "day", From: "2026-11-01", To: "2026-11-30",
+			Providers: []string{"openai"}, Models: []string{}, Harnesses: []string{}, Sessions: []string{}},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("models excluded read = %+v, want %+v", got, want)
+	}
+	if models.Quality != dashboardview.QualityConfirmed || models.Bucket != "week" || models.Tab != dashboardview.TabModels {
+		t.Fatalf("ExcludedUsageQuery changed its receiver: %+v", models)
+	}
+
+	repositories := []string{"repo-key"}
+	repo := dashboardview.InitialQuery(defaults, dashboardview.TabRepo).WithLocationGroup(analytics.RepoGroupDirectory).
+		WithLocations(dashboardview.LocationChange{Repositories: &repositories})
+	got = repo.ExcludedUsageQuery().ToAnalytics()
+	if got.Tab != "repo" || got.Sort != "total" || got.Direction != "desc" || got.Quality != "estimated" || got.PageSize != 1 ||
+		got.LocationGroup != analytics.RepoGroupDirectory || !reflect.DeepEqual(got.RepositoryKeys, repositories) {
+		t.Errorf("repo excluded read = %+v", got)
+	}
+	got.RepositoryKeys[0] = "changed"
+	if repo.Repositories[0] != "repo-key" {
+		t.Fatal("ExcludedUsageQuery aliases the query's locations")
+	}
+}
+
 func TestHasFiltersMatchesClearFilters(t *testing.T) {
 	plain := dashboardview.InitialQuery(analytics.Selection{Period: "all", Bucket: "day"}, dashboardview.TabTokens)
 	if plain.HasFilters() {

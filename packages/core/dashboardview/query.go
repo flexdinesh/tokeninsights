@@ -149,6 +149,26 @@ func (q Query) WithQuality(quality Quality) Query {
 	return q
 }
 
+// excludedUsageBucket is the bucket of the excluded usage read, whose chart
+// nobody shows.
+const excludedUsageBucket = "day"
+
+// ExcludedUsageQuery is the web's excluded usage read beside confirmed
+// usage: one row of estimated usage under the same period, bounds and
+// filters, whose summary says how much usage stays outside the totals. It
+// reads Tokens rows, or Repo rows under the Repo grouping and locations.
+func (q Query) ExcludedUsageQuery() Query {
+	tab, sort := TabTokens, SortDate
+	if q.Tab == TabRepo {
+		tab, sort = TabRepo, SortTotal
+	}
+	q.Selection = cloneSelection(q.Selection)
+	q.Repositories, q.Directories = clone(q.Repositories), clone(q.Directories)
+	q.Quality, q.Tab, q.Bucket, q.Sort, q.Direction = QualityEstimated, tab, excludedUsageBucket, sort, Descending
+	q.Page, q.PageSize = 1, 1
+	return q
+}
+
 // WithSelection applies a selection change and returns to the first page.
 func (q Query) WithSelection(change SelectionChange) Query {
 	assign(&q.Period, change.Period)

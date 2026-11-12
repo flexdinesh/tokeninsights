@@ -16,6 +16,9 @@ import (
 )
 
 // fakeBackend answers each call with the next value its test sends.
+// Excluded usage reads go to excluded instead of calls, each with its own
+// answer, and wait for it even when cancelled: tests of other reads leave
+// them unanswered, and those reads publish nothing while the test runs.
 type fakeBackend struct {
 	instances  chan instanceResult
 	captures   chan error
@@ -26,6 +29,26 @@ type fakeBackend struct {
 	facets     chan facetsResult
 	facetReqs  chan application.FacetRequest
 	calls      chan string
+	excluded   chan excludedCall
+	// done ends the test: unanswered reads return.
+	done chan struct{}
+}
+
+// excludedCall is one excluded usage read: its request, and where the
+// test answers it.
+type excludedCall struct {
+	request analytics.Query
+	answer  chan usageResult
+}
+
+// excludedCallLimit is how many excluded reads a test may leave
+// unanswered.
+const excludedCallLimit = 64
+
+// isExcludedRead reports whether query is the excluded usage read beside
+// confirmed usage: one estimated row.
+func isExcludedRead(query analytics.Query) bool {
+	return query.Quality == string(dashboardview.QualityEstimated) && query.PageSize == 1
 }
 
 type instanceResult struct {
@@ -56,11 +79,23 @@ type facetsResult struct {
 func newFakeBackend() *fakeBackend {
 	return &fakeBackend{instances: make(chan instanceResult), captures: make(chan error), statuses: make(chan statusResult),
 		progresses: make(chan progressResult), usages: make(chan usageResult), requests: make(chan analytics.Query, 8),
-		facets: make(chan facetsResult), facetReqs: make(chan application.FacetRequest, 8), calls: make(chan string, 8)}
+		facets: make(chan facetsResult), facetReqs: make(chan application.FacetRequest, 8), calls: make(chan string, 8),
+		excluded: make(chan excludedCall, excludedCallLimit), done: make(chan struct{})}
 }
 
-// Usage sends its request to requests before it waits for its answer.
+// Usage sends its request to requests before it waits for its answer;
+// an excluded read sends itself to excluded.
 func (b *fakeBackend) Usage(ctx context.Context, query analytics.Query) (application.Usage, error) {
+	if isExcludedRead(query) {
+		call := excludedCall{request: query, answer: make(chan usageResult, 1)}
+		b.excluded <- call
+		select {
+		case r := <-call.answer:
+			return r.usage, r.err
+		case <-b.done:
+			return application.Usage{}, context.Canceled
+		}
+	}
 	b.calls <- "usage"
 	b.requests <- query
 	select {
@@ -142,7 +177,14 @@ func newHarness(t *testing.T) *harness {
 	ctx, cancel := context.WithCancel(context.Background())
 	h.cancel = cancel
 	t.Cleanup(cancel)
-	rt := Runtime{Context: ctx, Go: func(fn func()) { go fn() }, Update: func(fn func()) { h.updates <- fn },
+	t.Cleanup(func() { close(h.backend.done) })
+	update := func(fn func()) {
+		select {
+		case h.updates <- fn:
+		case <-h.backend.done:
+		}
+	}
+	rt := Runtime{Context: ctx, Go: func(fn func()) { go fn() }, Update: update,
 		Now: func() time.Time { return clock }}
 	connection := endpoint.Info{Transport: "ssh", Target: "ssh://alice@studio:2222", State: "connected", Hostname: "studio.local"}
 	h.window = NewWindow(connection, h.backend, rt)
