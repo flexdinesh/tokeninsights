@@ -140,7 +140,10 @@ func TestTableShowsEachTabsColumnsAndRows(t *testing.T) {
 }
 
 func TestNumericCellsAlignAtTheirEnd(t *testing.T) {
-	tt := loaded().onTab(t, dashboardview.TabTokens, false)
+	f := loaded()
+	// Without chart rows, the chart's axis shows no period names.
+	f.backend.charts = map[dashboardview.Tab][]analytics.Row{dashboardview.TabTokens: {}}
+	tt := f.onTab(t, dashboardview.TabTokens, false)
 	total := heading(t, tt, "Total")
 	value, _ := tt.Find("220K")
 	period := heading(t, tt, "Period")
@@ -151,6 +154,13 @@ func TestNumericCellsAlignAtTheirEnd(t *testing.T) {
 	if name.X < period.Bounds.X || name.X > period.Bounds.X+24 {
 		t.Errorf("period %v not at the start of %v", name, period.Bounds)
 	}
+}
+
+// clickHeading clicks the middle of the column heading label.
+func clickHeading(t *testing.T, tt *ui.Tester, label string) {
+	t.Helper()
+	b := heading(t, tt, label).Bounds
+	tt.ClickAt(b.X+b.W/2, b.Y+b.H/2)
 }
 
 func TestCellTooltipsNameExactValues(t *testing.T) {
@@ -224,9 +234,8 @@ func TestFooterSummarizesTheResults(t *testing.T) {
 func TestHeadingsAndControlsSortThroughTheBackend(t *testing.T) {
 	f := loaded()
 	tt := f.onTab(t, dashboardview.TabTokens, false)
-	if err := tt.Click("Total"); err != nil {
-		t.Fatal(err)
-	}
+	// The chart's metric choice shows Total too: click the heading.
+	clickHeading(t, tt, "Total")
 	f.sync(tt)
 	if got := f.lastRequest(); got.Sort != string(dashboardview.SortTotal) || got.Direction != string(dashboardview.Descending) || got.Page != 1 {
 		t.Fatalf("heading sort %+v", got)

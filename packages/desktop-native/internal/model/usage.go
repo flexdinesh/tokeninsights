@@ -225,6 +225,10 @@ func (w *Window) RetryUsage() {
 	w.readUsage(key)
 }
 
+// SameRequest reports whether two usage requests ask the same rows and
+// chart: the same view, sort, page, bucket and summary scope.
+func SameRequest(a, b analytics.Query) bool { return sameRequest(a, b) }
+
 // sameRequest reports whether two usage requests ask the same.
 func sameRequest(a, b analytics.Query) bool {
 	return a.Tab == b.Tab && a.Sort == b.Sort && a.Direction == b.Direction && a.Page == b.Page &&

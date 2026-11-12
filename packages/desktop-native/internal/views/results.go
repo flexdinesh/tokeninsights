@@ -54,12 +54,13 @@ func DashboardResults(c *ui.Context, w *model.Window) ui.Element {
 	}
 	region := ui.Column(c).MinWidth(0).Role(ui.RoleRegion).Label(label)
 	table := ui.Local(region, "table", newTableState)
+	chart := ui.Local(region, "chart", newChartState)
 	return region.Children(func() {
-		results(c, w, estimated, table)
+		results(c, w, estimated, table, chart)
 	})
 }
 
-func results(c *ui.Context, w *model.Window, estimated bool, table *tableState) {
+func results(c *ui.Context, w *model.Window, estimated bool, table *tableState, chart *chartState) {
 	sync := w.SyncState()
 	status, _ := w.Status()
 	usage, hasData := w.Usage()
@@ -110,7 +111,7 @@ func results(c *ui.Context, w *model.Window, estimated bool, table *tableState) 
 			case placeholder && !matches && usageErr == nil:
 				RouteResultsSkeleton(c)
 			case !placeholder || matches:
-				usageChart(c, w)
+				usageChart(c, w, chart)
 			}
 			if !placeholder || matches {
 				resultsTable(c, w, table)
@@ -118,10 +119,6 @@ func results(c *ui.Context, w *model.Window, estimated bool, table *tableState) 
 		})
 	}
 }
-
-// usageChart is where the usage chart goes, under the readouts; it shows
-// the chart once its view arrives.
-func usageChart(*ui.Context, *model.Window) {}
 
 // processingNote says that published usage trails accepted input: a
 // rebuild for a new generation, else the entries pending.

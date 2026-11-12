@@ -83,6 +83,16 @@ A usage filter's options are a virtualized list, as the backend offers up
 to 1,000 values per filter; long option names wrap instead of truncating with a
 hover title. Facets are keyed on the facet request, so a sort change does not
 reread them.
+The usage chart is drawn with MyGo `ui/chart`. Its Y axis rounds to steps
+of 1, 2 or 5 times a power of ten (0–300K where the web's five even ticks
+read 0–260K). Hovering, or the arrows, Home and End once the plot has the
+keyboard focus, select one row: a timeline shows a rule and point, bars
+the hover surface behind their category, and the row's tooltip sits at
+the plot's top beside it rather than following the pointer, its values
+reading "Total: 257,000" rather than "Total : 257,000". X axis labels
+that would overlap are dropped from the start, keeping the last, by the
+width the window gives the plot, and a shortened category label shows its
+whole name on hover.
 
 ## Consequences
 

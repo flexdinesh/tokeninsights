@@ -66,6 +66,10 @@ type fakeBackend struct {
 	// pageErr fails the reads of the pages after the first.
 	rows    map[dashboardview.Tab][]analytics.Row
 	pageErr error
+	// charts replace a tab's chart rows, which are otherwise the Tokens
+	// rows on timelines and the first analytics.ChartLimit rows of a tab
+	// elsewhere, as the backend's.
+	charts map[dashboardview.Tab][]analytics.Row
 	// requests are the usage requests read.
 	requests []analytics.Query
 	// facets answer facets reads, sessions matching a search; facetsErr
@@ -107,7 +111,20 @@ func (b *fakeBackend) Usage(_ context.Context, query analytics.Query) (applicati
 	start := min((query.Page-1)*query.PageSize, len(rows))
 	usage.Rows = rows[start:min(start+query.PageSize, len(rows))]
 	usage.RowCount, usage.Page, usage.PageSize = len(rows), query.Page, query.PageSize
+	usage.Chart = b.chart(dashboardview.Tab(query.Tab))
 	return usage, nil
+}
+
+// chart is tab's chart rows.
+func (b *fakeBackend) chart(tab dashboardview.Tab) []analytics.Row {
+	if chart, ok := b.charts[tab]; ok {
+		return chart
+	}
+	if dashboardview.ChartIsTimeline(tab) {
+		return b.rows[dashboardview.TabTokens]
+	}
+	rows := b.rows[tab]
+	return rows[:min(len(rows), analytics.ChartLimit)]
 }
 
 func (b *fakeBackend) Status(context.Context) (application.Status, error) {
