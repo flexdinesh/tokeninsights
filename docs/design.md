@@ -363,10 +363,11 @@ and filter rules come from pure `dashboardview`, pinned to the web by shared
 fixtures in `packages/contracts/fixtures/dashboard-view` (ADR 0032). Its theme
 choice persists app-wide in the app's user data `preferences.json`. Each
 window's model polls status and collector progress every 5 seconds while the
-window shows, follows snapshot identity/revision as the web dashboard does
-and derives its header status from `dashboardview`. It reads the first
-usage page of its query once status reports the dataset ready, rereads it on
-a query, tab or revision change, drops it on an identity change, discards
+window shows, on its own timer, redrawing only when what the window shows
+changes, so idle windows draw nothing. It follows snapshot identity/revision
+as the web dashboard does and derives its header status from `dashboardview`.
+It reads the first usage page of its query once status reports the dataset
+ready, rereads it on a query, tab or revision change, drops it on an identity change, discards
 superseded answers and rereads status when usage answers from another
 snapshot. Its results table is virtualized and reads further 200-row pages
 of the same request and snapshot on demand, one at a time, instead of the

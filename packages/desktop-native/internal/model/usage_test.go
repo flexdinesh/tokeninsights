@@ -37,7 +37,6 @@ func (h *harness) answerUsage(usage application.Usage, err error) {
 func synced(t *testing.T) *harness {
 	h := newHarness(t)
 	h.loaded(testInstance)
-	h.window.Poll(at(0), false)
 	h.answerReads(statusAt(1, 1), progressOf())
 	if got := h.expectUsage(); got.Tab != string(DefaultTab) {
 		t.Fatalf("first usage read %+v", got)
@@ -50,7 +49,6 @@ func TestUsageReadsTheQueryOnceStatusIsReady(t *testing.T) {
 	h := newHarness(t)
 	w := h.window
 	h.loaded(testInstance)
-	w.Poll(at(0), false)
 	h.expectCalls("status", "progress")
 	waiting := statusAt(1, 1)
 	waiting.Readiness = "starting"
@@ -77,7 +75,7 @@ func TestUsageReadsTheQueryOnceStatusIsReady(t *testing.T) {
 	}
 	assertStatus(t, w, "Ready", dashboardview.StatusReady)
 
-	w.Poll(at(PollInterval), false)
+	h.advance(PollInterval)
 	h.answerReads(statusAt(1, 1), progressOf())
 	h.noCall() // an unchanged snapshot keeps its usage
 }
@@ -164,7 +162,6 @@ func TestNewerUsageRereadsStatus(t *testing.T) {
 	h := newHarness(t)
 	w := h.window
 	h.loaded(testInstance)
-	w.Poll(at(0), false)
 	h.answerReads(statusAt(1, 1), progressOf())
 	h.expectUsage()
 	h.answerUsage(usageAt(2, 1), nil)
@@ -181,7 +178,6 @@ func TestUsageFromAnotherSnapshotRereadsStatusThenUsageOnce(t *testing.T) {
 	h := newHarness(t)
 	w := h.window
 	h.loaded(testInstance)
-	w.Poll(at(0), false)
 	h.answerReads(statusAt(1, 1), progressOf())
 	h.expectUsage()
 	h.answerUsage(usageAt(1, 2), nil) // another generation
@@ -212,7 +208,7 @@ func TestUsageFailureKeepsUsageUntilRetry(t *testing.T) {
 	}
 	assertStatus(t, w, "Usage couldn’t load", dashboardview.StatusAttention)
 
-	w.Poll(at(PollInterval), false)
+	h.advance(PollInterval)
 	h.answerReads(statusAt(1, 1), progressOf())
 	h.noCall() // a failed read waits for Retry
 
@@ -242,7 +238,6 @@ func TestRetriesReadWhatFailed(t *testing.T) {
 	h.backend.instances <- instanceResult{instance: syncInstance}
 	h.apply()
 
-	w.Poll(at(0), false)
 	h.expectCalls("status", "progress")
 	h.answerStatus(application.Status{}, errors.New("status unavailable"))
 	h.answerProgress(progressOf(), errors.New("progress unavailable"))

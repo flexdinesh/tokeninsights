@@ -43,8 +43,14 @@ type syncState struct {
 	progressRunning, progressAgain bool
 	progressDue                    time.Time
 
-	// hidden is whether the window was hidden at the last poll.
+	// hidden is whether the view last reported the window hidden.
 	hidden bool
+	// stop cancels the armed poll timer; nil when none is armed.
+	stop func()
+	// shown is what the window last showed of what reads change without
+	// building its view: what its last frame built, or a later result's
+	// that invalidated it.
+	shown presented
 
 	// checkNext is the acceptance transition the next status read checks;
 	// requested is the last one asked for and checked the last one whose
@@ -59,25 +65,50 @@ type syncState struct {
 	listeners []func(SnapshotChange)
 }
 
-// Poll starts the status and progress reads due at now while the window
-// shows, and returns how long until the next is due; ok is false when
-// none is: while hidden, before the instance loads, or while every read
-// runs, whose result builds the view again. Reads start once the instance
-// loaded, as the web's start after bootstrap. Showing a hidden window
-// reads status at once, as the web's refetch on focus; progress keeps its
-// own interval. Views call it as they build, with the frame's time.
-func (w *Window) Poll(now time.Time, hidden bool) (wait time.Duration, ok bool) {
+// stopTimer cancels the armed poll timer, if any.
+func (s *syncState) stopTimer() {
+	if s.stop != nil {
+		s.stop()
+		s.stop = nil
+	}
+}
+
+// SetHidden tells the window whether nothing of it shows on screen, as
+// the view reads it while it builds; MyGo builds the view again as the
+// window hides and shows. Hidden, polling pauses: no reads start and no
+// timer stays armed. Showing reads status at once, as the web's refetch
+// on focus, and polls again; progress keeps its own interval. Each call
+// also notes what the frame being built shows, so later reads redraw the
+// window only when that changes.
+func (w *Window) SetHidden(hidden bool) {
 	s := &w.sync
+	s.shown = w.presented()
+	if hidden == s.hidden {
+		return
+	}
+	s.hidden = hidden
 	if hidden {
-		s.hidden = true
-		return 0, false
+		s.stopTimer()
+		return
 	}
-	if s.hidden {
-		s.hidden, s.statusDue = false, time.Time{}
+	s.statusDue = time.Time{}
+	w.poll()
+}
+
+// poll starts the status and progress reads due now while the window
+// shows, and arms one timer for the next moment due: the next read, or
+// the server's next calendar day, when the dates the window shows
+// change. Reads start once the instance loaded, as the web's start after
+// bootstrap, and stop once the window closed. A read that runs arms
+// nothing; its result polls again. Polling at another moment starts
+// only what is due, so a late or extra call is harmless.
+func (w *Window) poll() {
+	s := &w.sync
+	s.stopTimer()
+	if s.hidden || w.instance == nil || w.rt.Context.Err() != nil {
+		return
 	}
-	if w.instance == nil || w.rt.Context.Err() != nil {
-		return 0, false
-	}
+	now := w.rt.Now()
 	if !s.statusRunning && !now.Before(s.statusDue) {
 		s.statusDue = now.Add(PollInterval)
 		w.readStatus()
@@ -86,17 +117,28 @@ func (w *Window) Poll(now time.Time, hidden bool) (wait time.Duration, ok bool) 
 		s.progressDue = now.Add(PollInterval)
 		w.readProgress()
 	}
-	var next time.Time
-	if !s.statusRunning {
+	next := nextServerDay(w.instance.Timezone, now)
+	if !s.statusRunning && s.statusDue.Before(next) {
 		next = s.statusDue
 	}
-	if w.progressEnabled() && !s.progressRunning && (next.IsZero() || s.progressDue.Before(next)) {
+	if w.progressEnabled() && !s.progressRunning && s.progressDue.Before(next) {
 		next = s.progressDue
 	}
-	if next.IsZero() {
-		return 0, false
-	}
-	return next.Sub(now), true
+	s.stop = w.rt.After(next.Sub(now), w.wake)
+}
+
+// wake is the poll timer's: it polls and redraws the window if what it
+// shows changed meanwhile, as the server's calendar day does.
+func (w *Window) wake() {
+	w.poll()
+	w.present()
+}
+
+// nextServerDay is the start of the day after now's on the server's
+// calendar, when its "today" changes.
+func nextServerDay(timezone string, now time.Time) time.Time {
+	local := dashboardview.ResolveServerZone(timezone).In(now)
+	return time.Date(local.Year(), local.Month(), local.Day()+1, 0, 0, 0, 0, local.Location())
 }
 
 // RefetchStatus reads status now, whether the window shows or not. A
@@ -123,7 +165,7 @@ func (w *Window) readStatus() {
 	ctx := w.rt.Context
 	w.rt.Go(func() {
 		status, err := w.backend.Status(ctx)
-		w.rt.Update(func() { w.statusRead(status, err, checking) })
+		w.rt.Apply(func() { w.statusRead(status, err, checking) })
 	})
 }
 
@@ -144,6 +186,8 @@ func (w *Window) statusRead(status application.Status, err error, checking strin
 		w.readStatus()
 	}
 	w.syncReads()
+	w.poll()
+	w.present()
 }
 
 // observe tells listeners how status changed the snapshot. A change after
@@ -199,7 +243,7 @@ func (w *Window) readProgress() {
 		if err == nil && snapshot.InstanceID != instanceID {
 			err = errForeignProgress
 		}
-		w.rt.Update(func() { w.progressRead(snapshot, err) })
+		w.rt.Apply(func() { w.progressRead(snapshot, err) })
 	})
 }
 
@@ -216,6 +260,8 @@ func (w *Window) progressRead(snapshot collectorprogress.Snapshot, err error) {
 		s.progressAgain = false
 		w.readProgress()
 	}
+	w.poll()
+	w.present()
 }
 
 // checkAcceptance reads status once for each newly accepted attempt, so

@@ -57,7 +57,6 @@ func TestExcludedUsageReadsOnceUsageAnswers(t *testing.T) {
 	h := newHarness(t)
 	w := h.window
 	h.loaded(testInstance)
-	w.Poll(at(0), false)
 	h.answerReads(statusAt(1, 1), progressOf())
 	h.expectUsage()
 	h.noExcluded() // waits for usage, as the web's analytics.isSuccess
@@ -104,7 +103,6 @@ func TestExcludedUsageWaitsForSuccessfulUsage(t *testing.T) {
 	h := newHarness(t)
 	w := h.window
 	h.loaded(testInstance)
-	w.Poll(at(0), false)
 	h.answerReads(statusAt(1, 1), progressOf())
 	h.expectUsage()
 	h.answerUsage(application.Usage{}, errors.New("usage unavailable"))
@@ -160,7 +158,7 @@ func TestExcludedFailureWaitsForRetry(t *testing.T) {
 	assertExcluded(t, w, false)
 	assertStatus(t, w, "Ready", dashboardview.StatusReady)
 
-	w.Poll(at(PollInterval), false)
+	h.advance(PollInterval)
 	h.answerReads(statusAt(1, 1), progressOf())
 	h.noExcluded() // a failed read waits for Retry
 

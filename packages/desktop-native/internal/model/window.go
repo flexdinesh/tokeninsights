@@ -41,12 +41,20 @@ type Backend interface {
 // Runtime is how a window runs I/O off the main thread and publishes its
 // results on it. Context ends the window's work; Go starts a worker the
 // app joins on quit; Update runs a function on the main thread and builds
-// the window's view again; Now is the wall clock reads are stamped with.
+// the window's view again; Apply runs one on the main thread without
+// building it, and Invalidate builds it again, so results that rarely
+// change what the window shows redraw only when they do; After runs fn
+// on the main thread, without building the view, once d passed, unless
+// stop is called first (a timer already firing may still run it once);
+// Now is the wall clock reads are stamped with and After counts from.
 type Runtime struct {
-	Context context.Context
-	Go      func(func())
-	Update  func(func())
-	Now     func() time.Time
+	Context    context.Context
+	Go         func(func())
+	Update     func(func())
+	Apply      func(func())
+	Invalidate func()
+	After      func(d time.Duration, fn func()) (stop func())
+	Now        func() time.Time
 }
 
 // DefaultTab is the tab a new window opens on, as the web's index route.
@@ -81,6 +89,8 @@ func NewWindow(connection endpoint.Info, backend Backend, rt Runtime) *Window {
 	w := &Window{backend: backend, rt: rt, connection: connection, tab: DefaultTab, facets: facetsState{anyRequest: true}}
 	w.OnSnapshotChange(w.usageSnapshotChanged)
 	w.OnSnapshotChange(w.facetsSnapshotChanged)
+	// Closing the window stops its poll timer.
+	context.AfterFunc(rt.Context, func() { rt.Apply(w.sync.stopTimer) })
 	return w
 }
 
@@ -156,6 +166,7 @@ func (w *Window) loaded(instance application.Instance, err error) {
 		w.query = dashboardview.InitialQuery(instance.Defaults, w.tab).WithPageSize(TablePageSize)
 	}
 	w.syncReads()
+	w.poll()
 }
 
 // SelectTab shows tab, keeping the query's filters, and reads its usage

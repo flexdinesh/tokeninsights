@@ -250,14 +250,12 @@ func TestStatusPollsWhileShownAndPausesWhileHidden(t *testing.T) {
 	if f.backend.statuses != 1 {
 		t.Fatalf("status reads %d after the first frame", f.backend.statuses)
 	}
-	tt.Advance(model.PollInterval)
-	f.sync(tt)
+	f.advance(tt, model.PollInterval)
 	if f.backend.statuses != 2 {
 		t.Fatalf("status reads %d after one interval", f.backend.statuses)
 	}
 	tt.SetWindowHidden(true)
-	tt.Advance(3 * model.PollInterval)
-	f.sync(tt)
+	f.advance(tt, 3*model.PollInterval)
 	if f.backend.statuses != 2 {
 		t.Fatalf("a hidden window read status: %d", f.backend.statuses)
 	}
@@ -265,6 +263,36 @@ func TestStatusPollsWhileShownAndPausesWhileHidden(t *testing.T) {
 	f.sync(tt)
 	if f.backend.statuses != 3 {
 		t.Fatalf("showing did not read status at once: %d", f.backend.statuses)
+	}
+}
+
+func TestSettledWindowDrawsNothingWhilePolling(t *testing.T) {
+	f := withAttempts(accepted)
+	tt := f.synced(windowWidth, windowHeight, false)
+	tt.Advance(settle)
+	if tt.FramePending() {
+		t.Fatal("a synced window keeps asking for frames")
+	}
+	f.updated, f.invalidated = 0, 0
+	statuses := f.backend.statuses
+	for range 3 {
+		f.advance(tt, model.PollInterval)
+	}
+	if f.backend.statuses != statuses+3 {
+		t.Fatalf("status reads %d, want %d", f.backend.statuses, statuses+3)
+	}
+	if f.updated != 0 || f.invalidated != 0 || tt.FramePending() {
+		t.Fatalf("unchanged polls built the view %d times, redrew %d times, frame pending %v", f.updated, f.invalidated, tt.FramePending())
+	}
+
+	f.backend.status.Pending = 3
+	f.advance(tt, model.PollInterval)
+	if f.updated != 0 || f.invalidated != 1 {
+		t.Fatalf("a changed status built the view %d times, redrew %d times", f.updated, f.invalidated)
+	}
+	tt.Frame()
+	if _, ok := tt.AccessByRole(ui.RoleButton, statusLabelPrefix+"Processing usage"); !ok {
+		t.Fatalf("status after the redraw: %q", tt.Texts())
 	}
 }
 

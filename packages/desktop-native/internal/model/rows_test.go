@@ -33,7 +33,6 @@ func pageAt(rows []analytics.Row, page int, revision int64) application.Usage {
 func pagedSynced(t *testing.T, rows []analytics.Row) *harness {
 	h := newHarness(t)
 	h.loaded(testInstance)
-	h.window.Poll(at(0), false)
 	h.answerReads(statusAt(1, 1), progressOf())
 	if got := h.expectUsage(); got.Page != 1 || got.PageSize != TablePageSize {
 		t.Fatalf("first usage read %+v", got)

@@ -132,7 +132,8 @@ func (v *viewer) show(connected *session.Session) {
 	ctx, cancel := context.WithCancel(v.ctx)
 	var window *mygo.Window
 	state := model.NewWindow(connected.Info, sessionBackend{connected}, model.Runtime{
-		Context: ctx, Go: v.workers.Go, Update: func(fn func()) { window.Update(fn) }, Now: time.Now,
+		Context: ctx, Go: v.workers.Go, Update: func(fn func()) { window.Update(fn) },
+		Apply: mygo.RunOnMain, Invalidate: func() { window.Invalidate() }, After: afterOnMain, Now: time.Now,
 	})
 	window = mygo.NewWindow(mygo.WindowOptions{
 		Title: appName, Content: ui.View(func(c *ui.Context) {
@@ -168,6 +169,13 @@ func (v *viewer) show(connected *session.Session) {
 			})
 		}
 	})
+}
+
+// afterOnMain runs fn on the main thread once d passed, without
+// redrawing, unless stop is called first.
+func afterOnMain(d time.Duration, fn func()) (stop func()) {
+	timer := time.AfterFunc(d, func() { mygo.RunOnMain(fn) })
+	return func() { timer.Stop() }
 }
 
 // refresh requests capture for window's session; overlapping requests
