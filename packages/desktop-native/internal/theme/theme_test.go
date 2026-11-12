@@ -95,6 +95,9 @@ func TestEveryRoleResolvesInBothAppearances(t *testing.T) {
 	if For(false).Surface == For(true).Surface {
 		t.Fatal("light and dark surfaces match")
 	}
+	if light, dark := For(false).Shadow, For(true).Shadow; light.A == 0 || dark.A <= light.A {
+		t.Fatal("overlay shadow must be visible and deeper in the dark", light, dark)
+	}
 }
 
 func TestColorParserRejectsUnsupportedForms(t *testing.T) {
@@ -110,7 +113,8 @@ func TestWidgetThemeIsSquareGeistAndQuietBlue(t *testing.T) {
 		tokens := For(isDark)
 		widgets := tokens.Widgets()
 		if widgets.Radius != 0 || widgets.Font != Font || widgets.FontSize != SizeBody || widgets.Accent != tokens.Action ||
-			widgets.Focus != tokens.Focus || widgets.Background != tokens.Surface || widgets.Dark != isDark {
+			widgets.Focus != tokens.Focus || widgets.Background != tokens.Surface || widgets.Dark != isDark ||
+			widgets.FocusRingWidth != FocusRing || widgets.FocusRingOffset != FocusOffset {
 			t.Fatalf("%+v", widgets)
 		}
 	}
