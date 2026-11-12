@@ -96,6 +96,13 @@ whole name on hover.
 Switching between usage and its excluded usage review gives the results
 the focus and announces what they show, rather than keeping the web's
 hidden status line beside them.
+Every web tab is ported, Repo last. Returning to Repo keeps the grouping
+the window last chose there (`dashboardview.Query.WithTab`), where the web's
+address, which carries the grouping only on Repo, starts it at Repository
+again; location filters are dropped on leaving Repo in both. An unknown
+location's directories open from a MyGo disclosure, which assistive
+technology reads as one rather than as a button, and grow into view with
+their table row rather than appearing at once.
 
 ## Consequences
 

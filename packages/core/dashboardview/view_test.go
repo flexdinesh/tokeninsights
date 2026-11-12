@@ -176,14 +176,17 @@ func TestChartRules(t *testing.T) {
 
 // TestBucketOptionsFollowTheAPIEnum pins the bucket choices to the API's
 // Bucket enum, the source of the web's bucketSchema options.
-func TestBucketOptionsFollowTheAPIEnum(t *testing.T) {
+// openAPIEnum reads the values of the string enum schema name in
+// docs/openapi.yaml.
+func openAPIEnum(t *testing.T, name string) []string {
+	t.Helper()
 	spec, err := os.ReadFile(filepath.Join("..", "..", "..", "docs", "openapi.yaml"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, after, ok := strings.Cut(string(spec), "\n    Bucket:\n      type: string\n      enum:\n")
+	_, after, ok := strings.Cut(string(spec), "\n    "+name+":\n      type: string\n      enum:\n")
 	if !ok {
-		t.Fatal("no Bucket enum in docs/openapi.yaml")
+		t.Fatalf("no %s enum in docs/openapi.yaml", name)
 	}
 	var enum []string
 	for line := range strings.Lines(after) {
@@ -193,6 +196,11 @@ func TestBucketOptionsFollowTheAPIEnum(t *testing.T) {
 		}
 		enum = append(enum, value)
 	}
+	return enum
+}
+
+func TestBucketOptionsFollowTheAPIEnum(t *testing.T) {
+	enum := openAPIEnum(t, "Bucket")
 	var keys []string
 	for _, option := range dashboardview.BucketOptions() {
 		keys = append(keys, option.Key)
@@ -367,5 +375,62 @@ func TestRowValuesAndTexts(t *testing.T) {
 		if got := dashboardview.RowText(row, column); got != want {
 			t.Errorf("RowText(%s) = %q, want %q", column, got, want)
 		}
+	}
+}
+
+func TestLocationGroupsFollowTheAPIEnum(t *testing.T) {
+	var groups []string
+	for _, option := range dashboardview.LocationGroups() {
+		key := string(option.Group)
+		groups = append(groups, key)
+		if want := strings.ToUpper(key[:1]) + key[1:]; option.Label != want {
+			t.Errorf("group %q label %q, want %q", key, option.Label, want)
+		}
+	}
+	if enum := openAPIEnum(t, "LocationGroup"); !slices.Equal(groups, enum) {
+		t.Errorf("location groups %q, API enum %q", groups, enum)
+	}
+}
+
+func TestLocationFiltersAsTheWebToolbar(t *testing.T) {
+	facets := analytics.Facets{
+		Repositories: []analytics.LocationOption{{Key: "repo-1", Name: "tokeninsights"}, {Key: "unknown", Name: ""}},
+		Directories:  []analytics.LocationOption{{Key: "directory-2", Name: "~/workspace/client-a"}},
+	}
+	want := map[dashboardview.LocationDimension][]dashboardview.FilterOption{
+		dashboardview.LocationRepositories: {{Key: "repo-1", Name: "tokeninsights"}, {Key: "unknown", Name: "unknown"}},
+		dashboardview.LocationDirectories:  {{Key: "directory-2", Name: "~/workspace/client-a"}},
+	}
+	plain := dashboardview.InitialQuery(analytics.Selection{Period: "month", Bucket: "day"}, dashboardview.TabRepo)
+	for _, d := range dashboardview.LocationDimensions() {
+		values := dashboardview.LocationValues(facets, d.Key)
+		if !reflect.DeepEqual(values, want[d.Key]) {
+			t.Fatalf("%s values %+v, want %+v", d.Key, values, want[d.Key])
+		}
+		keys := []string{values[0].Key, "gone"}
+		query := plain.WithLocations(dashboardview.LocationsChange(d.Key, keys))
+		if got := query.Locations(d.Key); !slices.Equal(got, keys) {
+			t.Fatalf("%s locations %v, want %v", d.Key, got, keys)
+		}
+		keys[0] = "changed"
+		if query.Locations(d.Key)[0] == "changed" {
+			t.Fatalf("%s change aliases its keys", d.Key)
+		}
+		names := dashboardview.SelectedFilterNames(values, query.Locations(d.Key), d.MissingName())
+		if wantNames := []string{values[0].Name, d.Label + " (unavailable)"}; !slices.Equal(names, wantNames) {
+			t.Fatalf("%s names %q, want %q", d.Key, names, wantNames)
+		}
+	}
+	if dashboardview.LocationValues(facets, "sessions") != nil || dashboardview.LocationsChange("sessions", []string{"x"}) != (dashboardview.LocationChange{}) {
+		t.Fatal("an unknown location dimension filters")
+	}
+}
+
+func TestIsUnknownLocationOnlyOnRepo(t *testing.T) {
+	unknown := analytics.Row{Key: "unknown\x00", Name: "unknown", LocationKey: "unknown", RepositoryName: "unknown"}
+	known := analytics.Row{Key: "repo-1\x00", Name: "tokeninsights", LocationKey: "repo-1"}
+	if !dashboardview.IsUnknownLocation(unknown, dashboardview.TabRepo) || dashboardview.IsUnknownLocation(known, dashboardview.TabRepo) ||
+		dashboardview.IsUnknownLocation(unknown, dashboardview.TabModels) {
+		t.Fatal("unknown location outside a Repo row without a location")
 	}
 }

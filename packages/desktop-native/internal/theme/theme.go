@@ -16,6 +16,10 @@ import (
 // Font is the registered interface family. Text falls back to the system font.
 const Font = "Geist"
 
+// FontMono is DESIGN.md's mono family, the system monospace, reserved for
+// code and paths.
+const FontMono = "monospace"
+
 //go:embed fonts/geist-latin-variable.ttf
 var geist []byte
 
@@ -112,12 +116,13 @@ const (
 // PulseLow is the skeleton's dimmest opacity, as Tailwind's animate-pulse.
 const PulseLow float32 = 0.5
 
-// Motion from DESIGN.md: state colors, loading rotation and the skeleton
-// pulse (Tailwind's animate-pulse period).
+// Motion from DESIGN.md: state colors, disclosure rotation, loading
+// rotation and the skeleton pulse (Tailwind's animate-pulse period).
 const (
-	DurationFast  = 150 * time.Millisecond
-	DurationSpin  = 1200 * time.Millisecond
-	DurationPulse = 2 * time.Second
+	DurationFast       = 150 * time.Millisecond
+	DurationDisclosure = 180 * time.Millisecond
+	DurationSpin       = 1200 * time.Millisecond
+	DurationPulse      = 2 * time.Second
 )
 
 // ChartColors is the number of categorical chart series colors.
@@ -357,6 +362,9 @@ func Medium(e ui.Element) ui.Element { return e.FontWeight(weightMedium) }
 
 // Strong gives emphasized text, such as alert titles, its semibold weight.
 func Strong(e ui.Element) ui.Element { return e.FontWeight(weightStrong) }
+
+// Mono sets paths in DESIGN.md's mono family.
+func Mono(e ui.Element) ui.Element { return e.Font(FontMono) }
 
 // Brand styles the TokenInsights wordmark.
 func Brand(e ui.Element) ui.Element { return e.FontSize(SizeTitle).FontWeight(weightBrand) }

@@ -42,6 +42,7 @@ type gallery struct {
 	name, password   string
 	query            string
 	popover, removed bool
+	disclosed        bool
 	table            ui.ListState
 	tableSort        int
 	tableDescending  bool
@@ -98,6 +99,7 @@ var sections = []section{
 	{name: "focus", width: 560, height: 200, texts: []string{"Focused"}, build: focusSection, prepare: tabTwice},
 	{name: "typography", width: 720, height: 320, texts: []string{"Page heading", "Section heading"}, build: typographySection},
 	{name: "chart-parts", width: 560, height: 220, texts: []string{"2026-09-13 · Sep 13, 2026, 11:00 · Europe/London", "Total: 257,000", "gpt-5", "48.1%", "Average"}, build: chartPartsSection},
+	{name: "disclosure", width: 420, height: 200, texts: []string{"Hide directories", "~/workspace/client-a"}, build: disclosureSection, prepare: openDisclosure},
 	{name: "table", width: 720, height: 300, texts: []string{"Model", "Total", "gpt-5", "311K", "openai"}, build: tableSection, prepare: hoverTableRow},
 }
 
@@ -265,6 +267,36 @@ func tableSection(g *gallery, c *ui.Context) {
 		g.tableDescending = col == g.tableSort && !g.tableDescending
 		g.tableSort = col
 	}).MaxHeight(theme.TableMaxHeight)
+}
+
+// disclosureSection is the web's unknown location disclosure, composed
+// from the kit.
+func disclosureSection(g *gallery, c *ui.Context) {
+	t := theme.Current(c)
+	label := "Show directories"
+	if g.disclosed {
+		label = "Hide directories"
+	}
+	ui.Column(c).Gap(theme.Unit).Children(func() {
+		var p ui.CollapsibleParts
+		ui.Row(c).AlignItems(ui.Center).Gap(theme.Unit * 2).Children(func() {
+			theme.Medium(theme.Body(ui.Text(c, "unknown")))
+			p = Disclosure(c.Key("directories"), &g.disclosed, label)
+		})
+		p.Panel(func() {
+			ui.Column(c).Gap(theme.Unit).PaddingStart(theme.Unit*2).BorderWidth(0, 0, 0, theme.Rule).BorderColor(t.Line).Children(func() {
+				for _, path := range []string{"~/workspace/client-a", "~/workspace/client-b"} {
+					theme.Mono(theme.Label(ui.Text(c, path))).TextColor(t.InkSubtle)
+				}
+			})
+		})
+	})
+	Disclosure(c.Key("closed"), new(bool), "Show directories").Trigger.AlignSelf(ui.Start)
+}
+
+func openDisclosure(t *testing.T, tt *ui.Tester) {
+	t.Helper()
+	click(t, tt, "Show directories")
 }
 
 func hoverTableRow(t *testing.T, tt *ui.Tester) {

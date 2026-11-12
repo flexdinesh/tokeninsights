@@ -71,7 +71,8 @@ func filtersCaption(c *ui.Context) {
 }
 
 // dimensionFilters are the harness, provider and model filters, then the
-// session filter, after the date filter, as the web's.
+// session filter, after the date filter, and on Repo its location
+// filters, as the web's.
 func dimensionFilters(c *ui.Context, w *model.Window) {
 	query, _ := w.Query()
 	facets, _ := w.Facets()
@@ -88,6 +89,7 @@ func dimensionFilters(c *ui.Context, w *model.Window) {
 			OnChange: func(values []string) { w.UpdateSelection(dashboardview.DimensionChange(dimension, values)) },
 		})
 	}
+	locationFilters(c, w)
 }
 
 // sessionFilter is the web's SessionFilter: the session multi-select over
@@ -120,7 +122,8 @@ func sessionFilter(c *ui.Context, w *model.Window, label string, selected []stri
 
 // activeFilters are the chips of the active filters, each removing its
 // filter, and Clear All, under the toolbar row, as the web's. They show
-// while a dimension filter or custom dates are set.
+// while a dimension filter, a location filter on Repo or custom dates are
+// set.
 func activeFilters(c *ui.Context, w *model.Window) {
 	query, _ := w.Query()
 	if !query.HasActiveFilters() {
@@ -138,7 +141,7 @@ func activeFilters(c *ui.Context, w *model.Window) {
 				}
 			}
 		}
-		// Repo location chips join here with the location filters.
+		locationChips(c, w, query)
 		if query.CustomDates() && kit.Chip(c.Key("dates"), "", customDatesLabel, customDatesLabel).Clicked() {
 			w.UpdateSelection(dashboardview.CustomRangeChange("", ""))
 		}

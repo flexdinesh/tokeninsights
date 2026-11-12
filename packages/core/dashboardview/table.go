@@ -185,6 +185,13 @@ func IdentityDetails(row analytics.Row, tab Tab) []string {
 	return details
 }
 
+// IsUnknownLocation reports whether a row is the Repo location of usage
+// without a known location, which the web's ResultsCell names "unknown"
+// beside the directories recorded for it.
+func IsUnknownLocation(row analytics.Row, tab Tab) bool {
+	return tab == TabRepo && row.LocationKey == unknownKey
+}
+
 // RowValue is a row's count in the numeric column column, as the web reads
 // row[column]; ok is false for a text column.
 func RowValue(row analytics.Row, column Sort) (value int64, ok bool) {

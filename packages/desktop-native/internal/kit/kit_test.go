@@ -3,6 +3,7 @@ package kit
 import (
 	"slices"
 	"testing"
+	"time"
 
 	"github.com/egoist/mygo/ui"
 	"github.com/flexdinesh/tokeninsights/packages/desktop-native/internal/icons"
@@ -358,5 +359,31 @@ func TestOptionLookup(t *testing.T) {
 	}
 	if labelOf(sortOptions, "date") != "Date" || labelOf(sortOptions, "none") != "" {
 		t.Fatal("labelOf")
+	}
+}
+
+func TestDisclosureTogglesItsPanel(t *testing.T) {
+	open := false
+	tt := newTester(func(c *ui.Context) {
+		label := "Show directories"
+		if open {
+			label = "Hide directories"
+		}
+		p := Disclosure(c.Key("d"), &open, label)
+		p.Panel(func() { ui.Text(c, "~/workspace/tools") })
+	})
+	a, ok := tt.AccessByRole(ui.RoleDisclosure, "Show directories")
+	if !ok || a.Expanded || tt.HasText("~/workspace/tools") {
+		t.Fatalf("closed disclosure %+v, %q", a, tt.Texts())
+	}
+	click(t, tt, "Show directories")
+	tt.Advance(time.Second)
+	if a, ok := tt.AccessByRole(ui.RoleDisclosure, "Hide directories"); !open || !ok || !a.Expanded || !tt.HasText("~/workspace/tools") {
+		t.Fatalf("open disclosure %+v, %q", a, tt.Texts())
+	}
+	tt.Key(0, ui.KeySpace) // the click left the focus on the trigger
+	tt.Advance(time.Second)
+	if open || tt.HasText("~/workspace/tools") {
+		t.Fatal("Space did not close the disclosure")
 	}
 }

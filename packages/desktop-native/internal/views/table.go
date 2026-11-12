@@ -61,17 +61,31 @@ const (
 
 // tableState is a window's results table state, kept by its results
 // region: each tab's table place and column widths, the hidden columns
-// (per window, in memory, ADR 0032), the Columns popover, and the read
-// whose rows the table last showed.
+// (per window, in memory, ADR 0032), the Columns popover, the read whose
+// rows the table last showed, and which unknown locations show their
+// directories, by row key.
 type tableState struct {
 	lists       map[dashboardview.Tab]*ui.ListState
 	hidden      []dashboardview.Sort
 	columnsOpen bool
 	shown       analytics.Query
+	expanded    map[string]*bool
 }
 
 func newTableState() tableState {
-	return tableState{lists: map[dashboardview.Tab]*ui.ListState{}}
+	return tableState{lists: map[dashboardview.Tab]*ui.ListState{}, expanded: map[string]*bool{}}
+}
+
+// disclosed is whether the unknown location of the row keyed key shows
+// its directories, which rows of the table keep as they scroll out of
+// view and back.
+func (s *tableState) disclosed(key string) *bool {
+	open, ok := s.expanded[key]
+	if !ok {
+		open = new(bool)
+		s.expanded[key] = open
+	}
+	return open
 }
 
 // list is tab's table state, kept while the window shows.
@@ -138,7 +152,8 @@ func resultsTable(c *ui.Context, w *model.Window, s *tableState) {
 		if _, last := list.Visible(); list.AtEnd() || last >= len(usage.Rows)-tablePrefetchRows {
 			w.LoadMoreRows()
 		}
-		rowsTable(c, list, rowsView{rows: usage.Rows, tab: tab, columns: columns, query: query, timezone: instance.Timezone}, w.SortBy).
+		view := rowsView{rows: usage.Rows, tab: tab, columns: columns, query: query, timezone: instance.Timezone, disclosed: s.disclosed}
+		rowsTable(c, list, view, w.SortBy).
 			MaxHeight(tableHeight(c))
 		if usage.RowCount == 0 && len(usage.Rows) == 0 {
 			emptyTable(c, w, query)
@@ -148,13 +163,15 @@ func resultsTable(c *ui.Context, w *model.Window, s *tableState) {
 }
 
 // rowsView is what the table shows: the rows of tab in columns, sorted
-// as query says, with dates in the server's timezone.
+// as query says, with dates in the server's timezone; disclosed is
+// whether an unknown location shows its directories, by row key.
 type rowsView struct {
-	rows     []analytics.Row
-	tab      dashboardview.Tab
-	columns  []dashboardview.Column
-	query    dashboardview.Query
-	timezone string
+	rows      []analytics.Row
+	tab       dashboardview.Tab
+	columns   []dashboardview.Column
+	query     dashboardview.Query
+	timezone  string
+	disclosed func(key string) *bool
 }
 
 // rowsTable builds the rows in a kit table whose headings sort them by
@@ -181,18 +198,19 @@ func rowsTable(c *ui.Context, list *ui.ListState, v rowsView, sortBy func(dashbo
 	table := kit.Table(c, list, columns, len(v.rows), func(row, col int) {
 		column := v.columns[col]
 		kit.TableCell(c, kit.TableCellStyle{Numeric: column.Numeric, LastRow: row == last}, func() {
-			resultsCell(c, v.rows[row], column, v.tab, v.timezone)
+			resultsCell(c, v.rows[row], column, v)
 		})
 	}, func(col int) { sortBy(dashboardview.HeaderSort(v.tab, v.columns[col].ID)) })
 	return table.Label(dashboardview.TableTitle(v.tab, v.query.Quality))
 }
 
-// resultsCell builds one cell, as the web's ResultsCell: dates in the
-// server's timezone, compact counts named by their exact values, the
-// name with the dimensions the tab does not group by, and dimension
-// summaries one per line.
-func resultsCell(c *ui.Context, row analytics.Row, column dashboardview.Column, tab dashboardview.Tab, timezone string) {
+// resultsCell builds one cell of v, as the web's ResultsCell: dates in
+// the server's timezone, compact counts named by their exact values, the
+// name with the dimensions the tab does not group by or Repo's unknown
+// location, and dimension summaries one per line.
+func resultsCell(c *ui.Context, row analytics.Row, column dashboardview.Column, v rowsView) {
 	t := theme.Current(c)
+	tab, timezone := v.tab, v.timezone
 	if column.ID == dashboardview.SortDate {
 		date := theme.Body(ui.Text(c, dashboardview.FormatServerDate(row.Date, timezone))).SingleLine()
 		kit.Tooltip(c, date, dashboardview.FormatServerDateTime(row.Date, timezone)+" · "+dashboardview.ServerZoneLabel(timezone))
@@ -206,6 +224,10 @@ func resultsCell(c *ui.Context, row analytics.Row, column dashboardview.Column, 
 	text := dashboardview.RowText(row, column.ID)
 	switch column.ID {
 	case dashboardview.SortName:
+		if dashboardview.IsUnknownLocation(row, tab) {
+			unknownLocation(c, row, v.disclosed(row.Key))
+			return
+		}
 		ui.Column(c).MinWidth(0).Gap(theme.Unit).Children(func() {
 			name := theme.Medium(theme.Body(ui.Text(c, text)))
 			if tab == dashboardview.TabTokens {

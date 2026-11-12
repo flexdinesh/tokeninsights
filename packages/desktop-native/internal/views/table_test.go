@@ -41,7 +41,8 @@ func sessionRow(name, harness, provider, model string, date, total int64) analyt
 	return row
 }
 
-// mockRows are the web mocks' rows of each tab but Repo.
+// mockRows are the web mocks' rows of each tab, Repo's grouped by
+// repository.
 func mockRows() map[dashboardview.Tab][]analytics.Row {
 	tokens := []analytics.Row{
 		{Key: "2026-09-12", Name: "2026-09-12", Date: dayOne, Sessions: 3, Input: 126_000, Output: 25_000, Reasoning: 4_000, CacheRead: 62_000, CacheWrite: 3_000, Total: 220_000},
@@ -76,6 +77,7 @@ func mockRows() map[dashboardview.Tab][]analytics.Row {
 			context("claude-code", "anthropic", "claude-sonnet-4-5", 92_000, 92_000, 133_000),
 			context("opencode", "openai", "gpt-5-mini", 61_000, 61_000, 89_000),
 		},
+		dashboardview.TabRepo: repositoryRows(),
 	}
 }
 
