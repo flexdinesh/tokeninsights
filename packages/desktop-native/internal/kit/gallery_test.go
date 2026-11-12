@@ -45,10 +45,12 @@ type gallery struct {
 	table            ui.ListState
 	tableSort        int
 	tableDescending  bool
+	from, to         time.Time
 }
 
 func newGallery() *gallery {
-	return &gallery{checkedPi: true, sort: "total", metric: "total", period: "daily", password: "short"}
+	return &gallery{checkedPi: true, sort: "total", metric: "total", period: "daily", password: "short",
+		from: time.Date(2026, time.November, 20, 0, 0, 0, 0, time.UTC)}
 }
 
 var (
@@ -89,6 +91,7 @@ var sections = []section{
 	{name: "empty-skeleton", width: 720, height: 360, texts: []string{"No usage matches these filters", "Clear filters"}, build: emptySection},
 	{name: "section-header", width: 900, height: 180, texts: []string{"Models", "1,204", "Sort", "Total"}, build: sectionHeaderSection},
 	{name: "fields", width: 560, height: 520, texts: []string{"Key name", "Shown in the key list.", "Use 15–128 characters.", "Daily", "pi"}, build: fieldsSection},
+	{name: "date-input", width: 560, height: 420, texts: []string{"From", "To", "11/20/2026", "Now", "Today", "Clear"}, build: dateInputSection, prepare: openCalendar},
 	{name: "popover", width: 560, height: 360, texts: []string{"Harness", "Clear", "pi", "codex"}, build: popoverSection, prepare: openPopover},
 	{name: "select-open", width: 560, height: 240, texts: []string{"Date"}, build: sectionHeaderSelect, prepare: openSelect},
 	{name: "tooltip", width: 420, height: 160, texts: []string{"Columns"}, build: tooltipSection, prepare: restOnColumns},
@@ -283,6 +286,22 @@ func fieldsSection(g *gallery, c *ui.Context) {
 		CheckboxOption(c.Key("codex"), &g.checkedCodex, "codex")
 		CheckboxOptionWith(c.Key("claude"), &g.checkedPi, "claude-code", CheckboxStyle{Disabled: true})
 	})
+}
+
+func dateInputSection(g *gallery, c *ui.Context) {
+	ui.Grid(c).Columns(2).Gap(theme.Unit * 3).Children(func() {
+		Field(c, "From", func() {
+			DateInput(c.Key("from"), &g.from, DateInputOptions{Placeholder: "Beginning", Today: galleryToday, Invalid: g.from.After(g.to) && !g.to.IsZero()}).Label("From date").FillWidth()
+		})
+		Field(c, "To", func() {
+			DateInput(c.Key("to"), &g.to, DateInputOptions{Placeholder: "Now", Today: galleryToday}).Label("To date").FillWidth()
+		})
+	})
+}
+
+func openCalendar(t *testing.T, tt *ui.Tester) {
+	t.Helper()
+	pressNamed(t, tt, ui.RolePopUpButton, "From date")
 }
 
 func popoverSection(g *gallery, c *ui.Context) {

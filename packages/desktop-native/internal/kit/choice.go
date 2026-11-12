@@ -77,7 +77,8 @@ func Select[T comparable](c *ui.Context, selected *T, options []Option[T], size 
 // look of s (Quiet or Outline, Compact or Default), the choice in the
 // selection tint. label names the group for assistive technology, which
 // reads it as a radio group. Give it a key with c.Key; query Changed on the
-// result, the track.
+// result, the track, which reports a choice, the current one clicked again
+// too, as the web's onValueChange.
 func Segmented[T comparable](c *ui.Context, label string, selected *T, options []Option[T], s ButtonStyle) ui.Element {
 	shown := indexOf(options, *selected)
 	index := shown
@@ -88,6 +89,9 @@ func Segmented[T comparable](c *ui.Context, label string, selected *T, options [
 			style := s
 			style.Selected = i == shown
 			segment := seg.Segment(i).Checked(style.Selected)
+			if style.Selected && segment.Clicked() {
+				track.SetChanged()
+			}
 			underline := styleButton(c, segment, style)
 			segment.Children(func() {
 				m := s.Size.metrics()

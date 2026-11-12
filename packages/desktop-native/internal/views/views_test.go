@@ -130,7 +130,7 @@ var (
 		InstanceID: "4f1c9a0e-7b2d-4c55-9a61-0d3e8b7f2c10", DatasetID: "default", Hostname: "studio", Timezone: "Europe/London",
 		Capabilities: serverfeatures.Capabilities{serverfeatures.Usage, serverfeatures.Facets, serverfeatures.CollectorProgress},
 		Permissions:  serverfeatures.Permissions{serverfeatures.Read},
-		Defaults:     analytics.Selection{Period: "month", From: "2026-11-01", To: "2026-11-30", Bucket: "day"},
+		Defaults:     analytics.Selection{Period: "month", Bucket: "day"},
 	}
 	studioStatus = application.Status{InstanceID: studioInstance.InstanceID, Readiness: "ready", Metadata: application.Publication{
 		DatabaseID: "db-7a2e", DatasetID: "default", Revision: 42, Generation: 3, TargetGeneration: 3, InputRevision: 42,
@@ -344,8 +344,8 @@ func TestShellThemesFromTheChoice(t *testing.T) {
 	f := loaded()
 	f.appearance = theme.AppearanceDark
 	tt := f.synced(minWidth, minHeight, false)
-	// A point of the page between the placeholder and the footer.
-	got := tt.Image().RGBAAt(minWidth*3/4, minHeight*3/4)
+	// A point of the page's right gutter, beside the results.
+	got := tt.Image().RGBAAt(minWidth-int(theme.Gutter)/2, minHeight*3/4)
 	want := theme.For(true).Surface
 	if got.R != want.R || got.G != want.G || got.B != want.B {
 		t.Fatalf("dark choice on a light system painted %v, want %v", got, want)
