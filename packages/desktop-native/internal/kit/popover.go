@@ -10,8 +10,9 @@ type PopoverOptions struct {
 	// Width is the panel's width; zero is theme.PopoverWidth.
 	Width float32
 	// End lines the panel's end up with the anchor's end, as the web's
-	// align="end"; otherwise the panel centers on the anchor.
-	End bool
+	// align="end"; Start lines their starts up, as align="start";
+	// otherwise the panel centers on the anchor.
+	End, Start bool
 }
 
 // Popover shows a panel below anchor, centered on it, while open is true;
@@ -29,8 +30,11 @@ func PopoverWith(c *ui.Context, anchor ui.Element, open *bool, o PopoverOptions,
 	if o.Width != 0 {
 		width = o.Width
 	}
-	if o.End {
+	switch {
+	case o.End:
 		at, self = ui.AnchorBottomEnd, ui.AnchorTopEnd
+	case o.Start:
+		at, self = ui.AnchorBottomStart, ui.AnchorTopStart
 	}
 	return ui.PopoverBase(c, anchor, open, func(panel ui.Element) {
 		overlay(t, panel).AttachTo(anchor, at, self).AttachEdgeMargin(theme.PopoverEdge).

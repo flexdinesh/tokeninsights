@@ -143,7 +143,7 @@ func (w *Window) statusRead(status application.Status, err error, checking strin
 		s.statusAgain = false
 		w.readStatus()
 	}
-	w.syncUsage()
+	w.syncReads()
 }
 
 // observe tells listeners how status changed the snapshot. A change after
@@ -268,8 +268,9 @@ func (w *Window) StatusValue() dashboardview.StatusValue {
 		input.UsageCapability = w.instance.Capabilities.Has(serverfeatures.Usage)
 		input.FacetsCapability = w.instance.Capabilities.Has(serverfeatures.Facets)
 	}
-	input.UsageFailed = w.usage.err != nil
+	input.UsageFailed, input.FacetsFailed = w.usage.err != nil, w.facets.err != nil
 	input.UsageFetching, input.UsageLoaded = w.UsageFetching(), w.usage.data != nil
+	input.FacetsPending = w.FacetsPending()
 	return dashboardview.DashboardStatus(input)
 }
 

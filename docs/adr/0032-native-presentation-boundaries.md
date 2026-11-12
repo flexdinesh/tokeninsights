@@ -74,6 +74,15 @@ calendar starts its weeks as the user's region does, while weekly periods
 stay Monday to Sunday. Opening the date filter leaves the focus on its
 trigger, from which Tab moves into the popover, rather than moving it to
 the popover's first control.
+The filter values a window offers stay while the facets of a changed query
+or revision of the same snapshot are read, where the web offers only the
+selected values until they answer; a snapshot identity change still drops
+them. A failed facets read, as a failed usage read, shows its banner at once,
+and facets answered from another snapshot are read once more after status.
+A usage filter's options are a virtualized list, as the backend offers up
+to 1,000 values per filter; long option names wrap instead of truncating with a
+hover title. Facets are keyed on the facet request, so a sort change does not
+reread them.
 
 ## Consequences
 

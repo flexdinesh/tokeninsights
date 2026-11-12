@@ -23,6 +23,8 @@ type fakeBackend struct {
 	progresses chan progressResult
 	usages     chan usageResult
 	requests   chan analytics.Query
+	facets     chan facetsResult
+	facetReqs  chan application.FacetRequest
 	calls      chan string
 }
 
@@ -46,10 +48,15 @@ type usageResult struct {
 	err   error
 }
 
+type facetsResult struct {
+	facets application.Facets
+	err    error
+}
+
 func newFakeBackend() *fakeBackend {
 	return &fakeBackend{instances: make(chan instanceResult), captures: make(chan error), statuses: make(chan statusResult),
 		progresses: make(chan progressResult), usages: make(chan usageResult), requests: make(chan analytics.Query, 8),
-		calls: make(chan string, 8)}
+		facets: make(chan facetsResult), facetReqs: make(chan application.FacetRequest, 8), calls: make(chan string, 8)}
 }
 
 // Usage sends its request to requests before it waits for its answer.
@@ -61,6 +68,18 @@ func (b *fakeBackend) Usage(ctx context.Context, query analytics.Query) (applica
 		return r.usage, r.err
 	case <-ctx.Done():
 		return application.Usage{}, ctx.Err()
+	}
+}
+
+// Facets sends its request to facetReqs before it waits for its answer.
+func (b *fakeBackend) Facets(ctx context.Context, request application.FacetRequest) (application.Facets, error) {
+	b.calls <- "facets"
+	b.facetReqs <- request
+	select {
+	case r := <-b.facets:
+		return r.facets, r.err
+	case <-ctx.Done():
+		return application.Facets{}, ctx.Err()
 	}
 }
 
@@ -167,9 +186,11 @@ func (h *harness) noCall() {
 	}
 }
 
+// testInstance offers usage and collector progress; facetsInstance adds
+// filter values.
 var testInstance = application.Instance{
 	InstanceID: "inst-4f1c", DatasetID: "default", Hostname: "studio", Timezone: "Europe/London",
-	Capabilities: serverfeatures.Capabilities{serverfeatures.Usage, serverfeatures.Facets, serverfeatures.CollectorProgress},
+	Capabilities: serverfeatures.Capabilities{serverfeatures.Usage, serverfeatures.CollectorProgress},
 	Permissions:  serverfeatures.Permissions{serverfeatures.Read},
 	Defaults:     analytics.Selection{Period: "month", From: "2026-11-01", To: "2026-11-30", Bucket: "day"},
 }
@@ -178,7 +199,13 @@ var testInstance = application.Instance{
 // and progress reads alone.
 var syncInstance = func() application.Instance {
 	instance := testInstance
-	instance.Capabilities = serverfeatures.Capabilities{serverfeatures.Facets, serverfeatures.CollectorProgress}
+	instance.Capabilities = serverfeatures.Capabilities{serverfeatures.CollectorProgress}
+	return instance
+}()
+
+var facetsInstance = func() application.Instance {
+	instance := testInstance
+	instance.Capabilities = serverfeatures.Capabilities{serverfeatures.Usage, serverfeatures.Facets, serverfeatures.CollectorProgress}
 	return instance
 }()
 

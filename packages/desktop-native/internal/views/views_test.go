@@ -7,6 +7,8 @@ import (
 	"image/png"
 	"os"
 	"path/filepath"
+	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -66,6 +68,30 @@ type fakeBackend struct {
 	pageErr error
 	// requests are the usage requests read.
 	requests []analytics.Query
+	// facets answer facets reads, sessions matching a search; facetsErr
+	// fails them and searchErr fails searches; facetRequests are the
+	// facets requests read.
+	facets        application.Facets
+	facetsErr     error
+	searchErr     error
+	facetRequests []application.FacetRequest
+}
+
+func (b *fakeBackend) Facets(_ context.Context, request application.FacetRequest) (application.Facets, error) {
+	b.facetRequests = append(b.facetRequests, request)
+	if b.facetsErr != nil {
+		return application.Facets{}, b.facetsErr
+	}
+	facets := b.facets
+	if request.Search != "" {
+		if b.searchErr != nil {
+			return application.Facets{}, b.searchErr
+		}
+		facets.Sessions = slices.DeleteFunc(slices.Clone(facets.Sessions), func(s string) bool {
+			return !strings.Contains(s, request.Search)
+		})
+	}
+	return facets, nil
 }
 
 func (b *fakeBackend) Usage(_ context.Context, query analytics.Query) (application.Usage, error) {
@@ -152,6 +178,16 @@ var studioUsage = application.Usage{InstanceID: studioInstance.InstanceID, Dashb
 	LastSynced: lastIngestion, Range: "Sep 12 – Sep 14, 2026",
 }}
 
+// studioFacets are the web mocks' filter values, answered from
+// studioStatus's snapshot.
+var studioFacets = application.Facets{InstanceID: studioInstance.InstanceID, Facets: analytics.Facets{
+	DatabaseID: "db-7a2e", DatasetID: "default", Revision: 42, Generation: 3,
+	Harnesses: []string{"claude-code", "codex", "opencode", "pi"},
+	Providers: []string{"anthropic", "openai"},
+	Models:    []string{"claude-sonnet-4-5", "gpt-5", "gpt-5-mini"},
+	Sessions:  []string{"mock-claude-session", "mock-codex-session", "mock-opencode-session", "mock-pi-session"},
+}}
+
 // totalReadout names the total readout of studioUsage by its exact count.
 const totalReadout = "Total tokens: 647,000"
 
@@ -168,7 +204,7 @@ type fixture struct {
 
 func newFixture() *fixture {
 	backend := &fakeBackend{instance: studioInstance, status: studioStatus, progress: collectorprogress.Snapshot{InstanceID: studioInstance.InstanceID},
-		usage: studioUsage, rows: mockRows()}
+		usage: studioUsage, rows: mockRows(), facets: studioFacets}
 	f := &fixture{backend: backend, workers: &workers{}, appearance: theme.AppearanceSystem}
 	rt := model.Runtime{Context: context.Background(), Go: f.workers.Go, Update: func(fn func()) { fn() }, Now: func() time.Time { return readsAt }}
 	f.window = model.NewWindow(studioConnection, f.backend, rt)

@@ -28,6 +28,7 @@ const (
 	retryRequest      = "Retry Request"
 	requestFailed     = "Request failed"
 	dataChanged       = "Data changed. Refreshing service status."
+	facetsFailed      = "Filter values couldn’t load."
 	refreshFailed     = "Refresh failed. Saved usage remains available. Try Refresh again."
 	collectionUnknown = "Collection status couldn’t load. Saved usage remains available."
 	collectionFailed  = "Saved usage remains available. Use Refresh to retry collection."
@@ -80,7 +81,9 @@ func results(c *ui.Context, w *model.Window, estimated bool, table *tableState) 
 	if enabled && usageErr != nil {
 		ErrorBanner(c.Key("usage"), errorMessage(usageErr), w.RetryUsage)
 	}
-	// The filter values' banner joins here with the filters.
+	if enabled && w.FacetsError() != nil {
+		ErrorBanner(c.Key("facets"), facetsFailed, w.RetryFacets)
+	}
 	if w.RefreshError() != nil {
 		note(c, refreshFailed, ui.RoleAlert)
 	}

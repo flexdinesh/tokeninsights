@@ -339,7 +339,7 @@ func TestProgressStaysHiddenWithoutItsCapability(t *testing.T) {
 	h := newHarness(t)
 	w := h.window
 	instance := syncInstance
-	instance.Capabilities = serverfeatures.Capabilities{serverfeatures.Facets}
+	instance.Capabilities = serverfeatures.Capabilities{}
 	h.loaded(instance)
 	wait, ok := w.Poll(at(0), false)
 	h.expectCall("status")

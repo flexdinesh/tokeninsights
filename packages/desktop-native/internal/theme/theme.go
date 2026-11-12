@@ -68,6 +68,11 @@ const (
 	MenuMinWidth float32 = 128
 	// ChipValueWidth truncates identity text inside chips.
 	ChipValueWidth float32 = 240
+	// FilterSelectionWidth truncates a filter trigger's selected names,
+	// near the web's 16ch of label text; FilterOptionsMaxHeight caps a
+	// filter popover's options before they scroll, the web's 16rem.
+	FilterSelectionWidth   float32 = 128
+	FilterOptionsMaxHeight float32 = 256
 	// ProseWidth caps explanatory paragraphs near 70 characters of body text.
 	ProseWidth float32 = 560
 	// ServerIdentityWidth caps the header's hostname before it truncates.

@@ -33,6 +33,9 @@ type Backend interface {
 	// Usage reads one page of usage for a query, with the summary and
 	// chart of the whole query.
 	Usage(ctx context.Context, query analytics.Query) (application.Usage, error)
+	// Facets reads the filter values of a query, sessions matching its
+	// search.
+	Facets(ctx context.Context, request application.FacetRequest) (application.Facets, error)
 }
 
 // Runtime is how a window runs I/O off the main thread and publishes its
@@ -65,15 +68,18 @@ type Window struct {
 	refreshing bool
 	refreshErr error
 
-	sync  syncState
-	usage usageState
+	sync     syncState
+	usage    usageState
+	facets   facetsState
+	sessions sessionSearch
 }
 
 // NewWindow returns the state of a window connected as connection. Call
 // Load to read the backend instance.
 func NewWindow(connection endpoint.Info, backend Backend, rt Runtime) *Window {
-	w := &Window{backend: backend, rt: rt, connection: connection, tab: DefaultTab}
+	w := &Window{backend: backend, rt: rt, connection: connection, tab: DefaultTab, facets: facetsState{anyRequest: true}}
 	w.OnSnapshotChange(w.usageSnapshotChanged)
+	w.OnSnapshotChange(w.facetsSnapshotChanged)
 	return w
 }
 
@@ -148,10 +154,11 @@ func (w *Window) loaded(instance application.Instance, err error) {
 	if first {
 		w.query = dashboardview.InitialQuery(instance.Defaults, w.tab).WithPageSize(TablePageSize)
 	}
-	w.syncUsage()
+	w.syncReads()
 }
 
-// SelectTab shows tab, keeping the query's filters, and reads its usage.
+// SelectTab shows tab, keeping the query's filters, and reads its usage
+// and facets.
 func (w *Window) SelectTab(tab dashboardview.Tab) {
 	if tab == w.tab {
 		return
@@ -159,7 +166,7 @@ func (w *Window) SelectTab(tab dashboardview.Tab) {
 	w.tab = tab
 	if w.instance != nil {
 		w.query = w.query.WithTab(tab)
-		w.syncUsage()
+		w.syncReads()
 	}
 }
 
@@ -171,7 +178,7 @@ func (w *Window) SortBy(sort dashboardview.Sort) {
 		return
 	}
 	w.query = w.query.SortBy(sort)
-	w.syncUsage()
+	w.syncReads()
 }
 
 // ClearFilters removes every dimension, location and date filter and
@@ -181,7 +188,7 @@ func (w *Window) ClearFilters() {
 		return
 	}
 	w.query = w.query.ClearFilters()
-	w.syncUsage()
+	w.syncReads()
 }
 
 // Refresh starts capture and reports whether it started: a refresh while

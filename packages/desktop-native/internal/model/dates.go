@@ -10,7 +10,7 @@ func (w *Window) UpdateSelection(change dashboardview.SelectionChange) {
 		return
 	}
 	w.query = w.query.WithSelection(change)
-	w.syncUsage()
+	w.syncReads()
 }
 
 // PeriodNavigation is the query's calendar navigation on the server

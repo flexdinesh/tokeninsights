@@ -229,3 +229,51 @@ func TestHasFiltersMatchesClearFilters(t *testing.T) {
 		}
 	}
 }
+
+func TestHasActiveFiltersAsTheWebToolbar(t *testing.T) {
+	plain := dashboardview.InitialQuery(analytics.Selection{Period: "month", Bucket: "day"}, dashboardview.TabTokens)
+	if plain.HasActiveFilters() {
+		t.Fatal("a query without filters shows active filters")
+	}
+	calendar := dashboardview.DateModeCalendar
+	navigated := plain.WithSelection(dashboardview.SelectionChange{From: new("2026-10-01"), To: new("2026-10-31"), DateMode: &calendar})
+	if navigated.HasActiveFilters() {
+		t.Fatal("a navigated calendar period is an active filter")
+	}
+	repositories := []string{"repo-1"}
+	located := plain.WithTab(dashboardview.TabRepo).WithLocations(dashboardview.LocationChange{Repositories: &repositories})
+	for name, query := range map[string]dashboardview.Query{
+		"custom":   plain.WithSelection(dashboardview.CustomRangeChange("2026-11-01", "")),
+		"sessions": plain.WithSelection(dashboardview.DimensionChange(dashboardview.DimensionSessions, []string{"ses-1"})),
+		"repo":     located,
+	} {
+		if !query.HasActiveFilters() || query.ClearFilters().HasActiveFilters() {
+			t.Errorf("%s: active %v, after ClearFilters %v", name, query.HasActiveFilters(), query.ClearFilters().HasActiveFilters())
+		}
+	}
+	// Location filters show only on Repo, as the web's.
+	located.Tab = dashboardview.TabTokens
+	if located.HasActiveFilters() {
+		t.Fatal("location filters off Repo are active")
+	}
+}
+
+func TestDimensionValuesAndChanges(t *testing.T) {
+	plain := dashboardview.InitialQuery(analytics.Selection{Period: "month", Bucket: "day"}, dashboardview.TabTokens)
+	facets := analytics.Facets{Harnesses: []string{"pi"}, Providers: []string{"openai"}, Models: []string{"gpt-5"}, Sessions: []string{"ses-1"}}
+	for _, d := range dashboardview.FilterDimensions() {
+		values := dashboardview.FacetValues(facets, d.Key)
+		if len(values) != 1 {
+			t.Fatalf("%s facet values %v", d.Key, values)
+		}
+		query := plain.WithSelection(dashboardview.DimensionChange(d.Key, values))
+		got := query.Values(d.Key)
+		if !reflect.DeepEqual(got, values) {
+			t.Fatalf("%s values %v, want %v", d.Key, got, values)
+		}
+		values[0] = "changed"
+		if query.Values(d.Key)[0] == "changed" {
+			t.Fatalf("%s change aliases its values", d.Key)
+		}
+	}
+}

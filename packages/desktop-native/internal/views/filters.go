@@ -1,7 +1,11 @@
 package views
 
 import (
+	"slices"
+	"strings"
+
 	"github.com/egoist/mygo/ui"
+	"github.com/flexdinesh/tokeninsights/packages/core/dashboardview"
 	"github.com/flexdinesh/tokeninsights/packages/core/serverfeatures"
 	"github.com/flexdinesh/tokeninsights/packages/desktop-native/internal/icons"
 	"github.com/flexdinesh/tokeninsights/packages/desktop-native/internal/kit"
@@ -14,6 +18,12 @@ const (
 	filtersLabel   = "Filters"
 	dashboardLabel = "Dashboard filters"
 	filtersNote    = "Date and usage filters apply to every view. Location filters apply only to Repo. Sync always refreshes all supported harnesses."
+
+	activeFiltersLabel  = "Active filters"
+	removePrefix        = "Remove "
+	customDatesLabel    = "Custom dates"
+	clearAllLabel       = "Clear All"
+	sessionValuesFailed = "Session values couldn’t load."
 )
 
 // filterRow is the row under the header, as the web's: the filter
@@ -60,10 +70,80 @@ func filtersCaption(c *ui.Context) {
 	})
 }
 
-// dimensionFilters is where the harness, provider, model and session
-// filters go, after the date filter; they arrive with their facets.
-func dimensionFilters(*ui.Context, *model.Window) {}
+// dimensionFilters are the harness, provider and model filters, then the
+// session filter, after the date filter, as the web's.
+func dimensionFilters(c *ui.Context, w *model.Window) {
+	query, _ := w.Query()
+	facets, _ := w.Facets()
+	for _, d := range dashboardview.FilterDimensions() {
+		if d.Key == dashboardview.DimensionSessions {
+			sessionFilter(c.Key(string(d.Key)), w, d.Label, query.Sessions)
+			continue
+		}
+		dimension := d.Key
+		MultiSelect(c.Key(string(d.Key)), MultiSelectOptions{
+			Label:    d.Label,
+			Values:   dashboardview.StringOptions(dashboardview.FacetValues(facets.Facets, dimension)),
+			Selected: query.Values(dimension),
+			OnChange: func(values []string) { w.UpdateSelection(dashboardview.DimensionChange(dimension, values)) },
+		})
+	}
+}
 
-// activeFilters is where the chips of the active filters and Clear All
-// go, under the toolbar row; they arrive with the dimension filters.
-func activeFilters(*ui.Context, *model.Window) {}
+// sessionFilter is the web's SessionFilter: the session multi-select over
+// the query's sessions, or the backend's matches of the search typed,
+// which the window searches once typing rests.
+func sessionFilter(c *ui.Context, w *model.Window, label string, selected []string) {
+	choices := w.SessionChoices()
+	search := w.SessionSearch()
+	o := MultiSelectOptions{
+		Label:    label,
+		Values:   dashboardview.StringOptions(choices.Values),
+		Selected: selected,
+		Search:   &search,
+		Loading:  choices.Loading,
+		OnChange: func(values []string) {
+			w.UpdateSelection(dashboardview.DimensionChange(dashboardview.DimensionSessions, values))
+		},
+	}
+	if choices.Err != nil {
+		o.Error, o.Retry = sessionValuesFailed, w.RetrySessionSearch
+	}
+	MultiSelect(c, o)
+	if search != w.SessionSearch() {
+		w.SearchSessions(search, c.Now())
+	}
+	if wait, ok := w.PollSessionSearch(c.Now()); ok {
+		c.After(wait)
+	}
+}
+
+// activeFilters are the chips of the active filters, each removing its
+// filter, and Clear All, under the toolbar row, as the web's. They show
+// while a dimension filter or custom dates are set.
+func activeFilters(c *ui.Context, w *model.Window) {
+	query, _ := w.Query()
+	if !query.HasActiveFilters() {
+		return
+	}
+	row := ui.Row(c).Wrap().Gap(theme.Unit*2).Margin(theme.Unit*2, 0, 0, 0).Role(ui.RoleGroup).Label(activeFiltersLabel)
+	row.Children(func() {
+		for _, d := range dashboardview.FilterDimensions() {
+			values := query.Values(d.Key)
+			for _, value := range values {
+				remove := removePrefix + strings.ToLower(d.Label) + " " + value
+				if kit.Chip(c.Key(string(d.Key)+":"+value), d.Label, value, remove).Clicked() {
+					rest := slices.DeleteFunc(slices.Clone(values), func(v string) bool { return v == value })
+					w.UpdateSelection(dashboardview.DimensionChange(d.Key, rest))
+				}
+			}
+		}
+		// Repo location chips join here with the location filters.
+		if query.CustomDates() && kit.Chip(c.Key("dates"), "", customDatesLabel, customDatesLabel).Clicked() {
+			w.UpdateSelection(dashboardview.CustomRangeChange("", ""))
+		}
+		if kit.Button(c.Key("clear"), clearAllLabel, kit.ButtonStyle{Variant: kit.Link, Size: kit.SizeCompact}).Clicked() {
+			w.ClearFilters()
+		}
+	})
+}
