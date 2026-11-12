@@ -7,10 +7,11 @@ import test from 'node:test'
 import { desktopIdentities, parseTarget } from '../src/build-desktop.ts'
 import {
   archiveRoot,
-  channelProducts,
+  buildProducts,
   packageProduct,
   products,
   sourceMetadata,
+  stableProducts,
   verifyProduct,
   versionChannel,
   writeChecksums,
@@ -81,15 +82,26 @@ void test('native desktop identity never claims desktop or CLI names', () => {
   })
   assert.notEqual(native.identifier, desktopIdentities.desktop.identifier)
 })
-void test('versions select channels and only edge ships desktop-native', () => {
+void test('versions select stable or source and stable never ships desktop-native', async () => {
   assert.equal(versionChannel('1.2.3'), 'stable')
-  assert.equal(versionChannel(`main.${'a'.repeat(12)}`), 'main')
-  assert.equal(versionChannel(`edge.${'b'.repeat(12)}`), 'edge')
-  for (const version of ['edge.abc', 'edge.ABCDEF123456', '01.2.3', 'nightly.aaaaaaaaaaaa'])
+  assert.equal(versionChannel(`src.${'a'.repeat(12)}`), 'source')
+  for (const version of [
+    'src.abc',
+    'src.ABCDEF123456',
+    `main.${'a'.repeat(12)}`,
+    `edge.${'b'.repeat(12)}`,
+    '01.2.3',
+  ])
     assert.throws(() => sourceMetadata(version), /invalid product version/)
-  assert.deepEqual(channelProducts('stable'), ['cli', 'desktop'])
-  assert.deepEqual(channelProducts('main'), ['cli', 'desktop'])
-  assert.deepEqual(channelProducts('edge'), ['desktop-native'])
+  assert.deepEqual(stableProducts, ['cli', 'desktop'])
+  // A source build never guesses its product.
+  await assert.rejects(
+    buildProducts(tmpdir(), { version: `src.${'a'.repeat(12)}`, commit: 'a', date: 'd' }),
+    /source builds require explicit products/,
+  )
+  const metadata = sourceMetadata(`src.${'c'.repeat(12)}`, undefined, 'feature/x')
+  assert.equal(metadata.ref, 'feature/x')
+  assert.ok(!('ref' in sourceMetadata('1.2.3')))
 })
 void test('unsupported or malformed product targets reject', () => {
   for (const value of ['windows/amd64', 'linux/386', 'linux', 'darwin/arm64/x'])
@@ -110,6 +122,11 @@ void test('local product archives include backend, deterministic source metadata
     assert.ok(entries.includes(`${archiveRoot('cli', target)}/${entry}`))
   const info: unknown = JSON.parse(await readFile(join(root, 'build-info.json'), 'utf8'))
   assert.deepEqual(info, { format: 1, product: 'cli', ...target, ...metadata })
+  // Source builds record the requested ref beside the resolved commit.
+  const source = { ...metadata, version: `src.${'a'.repeat(12)}`, ref: 'feature/x' }
+  await packageProduct(dir, 'cli', target, dir, source)
+  const sourceInfo: unknown = JSON.parse(await readFile(join(root, 'build-info.json'), 'utf8'))
+  assert.deepEqual(sourceInfo, { format: 1, product: 'cli', ...target, ...source })
   await writeChecksums(dir)
   assert.match(
     await readFile(join(dir, 'checksums.txt'), 'utf8'),

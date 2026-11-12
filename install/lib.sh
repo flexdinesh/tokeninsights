@@ -1,35 +1,43 @@
 #!/bin/sh
-# Common prebuilt product installer. No Go, Node, npm or pnpm required.
+# Common product installer: stable prebuilt releases, or archives built locally by
+# install/source.sh. No Go, Node, npm or pnpm required here.
 set -eu
 fail() { printf 'error: %s\n' "$*" >&2; exit 1; }
 need() { command -v "$1" >/dev/null 2>&1 || fail "$1 is required"; }
-product=desktop
+product=
+cli_only=false
 channel=stable
 modify_path=true
 for arg in "$@"; do
     case "$arg" in
-        --cli-only) product=cli ;;
+        --cli-only) cli_only=true ;;
         --no-modify-path) modify_path=false ;;
-        --channel=stable|--channel=main|--channel=edge) channel="${arg#*=}" ;;
-        --help) printf '%s\n' 'Usage: install[-main|-edge].sh [--cli-only] [--channel=stable|main|edge] [--no-modify-path]' 'edge installs only the native desktop experiment.'; exit 0 ;;
+        --channel=stable|--channel=source) channel="${arg#*=}" ;;
+        --product=cli|--product=desktop|--product=desktop-native) product="${arg#*=}" ;;
+        --help) printf '%s\n' 'Usage: install.sh [--cli-only] [--no-modify-path]' 'Build any branch locally with install-dev.sh or install-dev-native.sh.'; exit 0 ;;
         *) fail "unknown option $arg" ;;
     esac
 done
-if [ "$channel" = edge ]; then
-    [ "$product" = desktop ] || fail 'edge channel ships only the native desktop; it cannot be combined with --cli-only'
-    product=desktop-native
-fi
+case "$channel" in
+    stable)
+        [ -z "$product" ] || fail '--product requires --channel=source'
+        product=desktop
+        if [ "$cli_only" = true ]; then product=cli; fi
+        base=https://github.com/flexdinesh/tokeninsights/releases/latest/download
+        ;;
+    source)
+        # Source archives exist only on this machine; install/source.sh supplies them.
+        [ -n "$product" ] || fail 'source channel requires --product'
+        [ "$cli_only" = false ] || fail 'source channel selects products with --product, not --cli-only'
+        [ -n "${TOKENINSIGHTS_DOWNLOAD_URL:-}" ] || fail 'source channel requires TOKENINSIGHTS_DOWNLOAD_URL'
+        base=
+        ;;
+esac
 for tool in curl tar awk mktemp; do need "$tool"; done
 case "$(uname -s)" in Darwin) os=darwin ;; Linux) os=linux ;; *) fail 'unsupported OS; use macOS or Linux' ;; esac
 machine="$(uname -m)"
 if [ "$os" = darwin ] && [ "$(sysctl -n hw.optional.arm64 2>/dev/null || echo 0)" = 1 ]; then machine=arm64; fi
 case "$machine" in x86_64|amd64) arch=amd64 ;; arm64|aarch64) arch=arm64 ;; *) fail "unsupported architecture $machine" ;; esac
-if [ "$channel" != stable ] && [ "$os" = darwin ] && [ "$arch" = amd64 ]; then fail "$channel channel has no macOS Intel build; use --channel=stable"; fi
-case "$channel" in
-    stable) base=https://github.com/flexdinesh/tokeninsights/releases/latest/download ;;
-    main) base=https://github.com/flexdinesh/tokeninsights/releases/download/main-build ;;
-    edge) base=https://github.com/flexdinesh/tokeninsights/releases/download/edge-build ;;
-esac
 base="${TOKENINSIGHTS_DOWNLOAD_URL:-$base}"
 slug="tokeninsights-$product"
 root="${slug}_${os}_${arch}"

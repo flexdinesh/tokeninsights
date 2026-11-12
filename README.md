@@ -16,16 +16,23 @@ curl -fsSL https://raw.githubusercontent.com/flexdinesh/tokeninsights/main/insta
 curl -fsSL https://raw.githubusercontent.com/flexdinesh/tokeninsights/main/install.sh | sh -s -- --cli-only # servers without a display
 ```
 
-Rerun to update, repeating `--cli-only` on servers. Latest main build: `install-main.sh`.
-Main has no macOS Intel build. `--no-modify-path` leaves shell profiles untouched.
-Updates recognize installer-owned MyGo CLI links from before the desktop rename,
-without deleting the old product files.
+Rerun to update, repeating `--cli-only` on servers. `--no-modify-path` leaves shell
+profiles untouched. Updates recognize installer-owned MyGo CLI links from before the
+desktop rename, without deleting the old product files.
 
-Experimental **TokenInsights Native** (native UI, no webview) installs beside desktop
-from the edge channel and never takes over the `tokeninsights` command:
+Unreleased code builds on your machine from any branch, tag or commit (default
+`main`); it needs `git` and [mise](https://mise.jdx.dev):
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/flexdinesh/tokeninsights/main/install.sh | sh -s -- --channel=edge
+curl -fsSL https://raw.githubusercontent.com/flexdinesh/tokeninsights/main/install-dev.sh | sh
+curl -fsSL https://raw.githubusercontent.com/flexdinesh/tokeninsights/main/install-dev.sh | sh -s -- --ref=my-branch --cli-only
+```
+
+Experimental **TokenInsights Native** (native UI, no webview) builds the same way,
+installs beside desktop and never takes over the `tokeninsights` command:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/flexdinesh/tokeninsights/main/install-dev-native.sh | sh
 ```
 
 ## Use

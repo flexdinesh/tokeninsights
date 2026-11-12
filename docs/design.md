@@ -457,8 +457,9 @@ configuration explicitly. There is no automatic migration.
 
 The default installer installs the desktop product, which includes CLI/backend, and
 adds `~/.local/bin` to the shell profile when PATH lacks it. The CLI-only product
-remains behind `--cli-only` for hosts without a display. `--channel=edge`
-installs only the experimental native app beside them; it never owns the command.
+remains behind `--cli-only` for hosts without a display. `install-dev.sh` builds
+desktop or CLI from any canonical ref on the installing host; `install-dev-native.sh`
+builds only the experimental native app beside them, and it never owns the command.
 Either product install can take command ownership from the former MyGo product only
 when the CLI symlink targets its known bundled path and its product directory has
 the matching installer ownership marker. Retired product files and launchers remain
@@ -467,8 +468,8 @@ Go products need no host JavaScript runtime.
 Shared React presentation lives in packages/dashboard, browser composition in
 packages/web and TypeScript contracts in packages/contracts. The backend embeds
 ignored generated browser assets. No binaries/bundles/generated assets are committed.
-Stable source tags and rolling main-build and edge-build prereleases publish prebuilt archives;
-see [release](release.md). There is no hosted server, PostgreSQL, account UI,
+Only stable source tags publish prebuilt archives; other refs build locally from source
+(ADR 0031). See [release](release.md). There is no hosted server, PostgreSQL, account UI,
 server installer, Docker product deployment, completion plugin or sync job product.
 
 Validation remains local through isolated Docker Compose projects (ADR 0029),

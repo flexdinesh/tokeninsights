@@ -2,12 +2,7 @@ import { execFileSync, spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { readFile, readdir } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
-import {
-  archiveName,
-  channelProducts,
-  versionChannel,
-  type ReleaseChannel,
-} from './build-products.ts'
+import { archiveName, stableProducts, versionChannel } from './build-products.ts'
 import { parseTarget } from './build-desktop.ts'
 import { workspaceRoot } from './workspace.ts'
 
@@ -16,26 +11,22 @@ export function releaseTag(version: string): string {
   if (!stableVersion.test(version)) throw new Error('version must be x.y.z without leading zeros')
   return `v${version}`
 }
-export type { ReleaseChannel }
-export function releasePlatforms(channel: ReleaseChannel): string[] {
-  return channel === 'stable'
-    ? ['linux/amd64', 'linux/arm64', 'darwin/amd64', 'darwin/arm64']
-    : ['linux/amd64', 'linux/arm64', 'darwin/arm64']
-}
-export function expectedArchives(channel: ReleaseChannel): string[] {
-  return releasePlatforms(channel)
+// Stable is the only published release; other refs build locally from source.
+export const releasePlatforms: readonly string[] = [
+  'linux/amd64',
+  'linux/arm64',
+  'darwin/amd64',
+  'darwin/arm64',
+]
+export function expectedArchives(): string[] {
+  return releasePlatforms
     .flatMap((platform) =>
-      channelProducts(channel).map((product) => archiveName(product, parseTarget(platform))),
+      stableProducts.map((product) => archiveName(product, parseTarget(platform))),
     )
     .toSorted()
 }
-// Rolling prereleases are replaced in place; stable releases are immutable.
-export function releaseName(
-  channel: ReleaseChannel,
-  version: string,
-): { tag: string; title: string } {
-  if (channel === 'main') return { tag: 'main-build', title: 'Main build' }
-  if (channel === 'edge') return { tag: 'edge-build', title: 'Edge build' }
+// Stable releases are immutable.
+export function releaseName(version: string): { tag: string; title: string } {
   const tag = releaseTag(version)
   return { tag, title: `TokenInsights ${tag}` }
 }
@@ -79,15 +70,14 @@ export function verifyArchiveMetadata(
 }
 export async function verifyReleaseAssets(
   out: string,
-  channel: ReleaseChannel,
   metadata?: { version: string; commit: string },
 ): Promise<void> {
-  const archives = expectedArchives(channel)
+  const archives = expectedArchives()
   const names = (await readdir(out)).toSorted()
   const expected = [...archives, 'checksums.txt'].toSorted()
   if (JSON.stringify(names) !== JSON.stringify(expected))
     throw new Error(
-      `${channel} release requires exactly ${archives.length} product archives and checksums.txt`,
+      `stable release requires exactly ${archives.length} product archives and checksums.txt`,
     )
   const checksums = (await readFile(join(out, 'checksums.txt'), 'utf8')).trim().split('\n')
   if (checksums.length !== archives.length) throw new Error('unexpected checksum count')
@@ -120,78 +110,38 @@ export function prepareTag(version: string, cwd = workspaceRoot): string {
   git('push', 'origin', `refs/tags/${tag}`)
   return tag
 }
-export async function publish(
-  channel: ReleaseChannel,
-  version: string,
-  out: string,
-  cwd = workspaceRoot,
-): Promise<void> {
+export async function publish(version: string, out: string, cwd = workspaceRoot): Promise<void> {
   const git = (...args: string[]) => execFileSync('git', args, { cwd, encoding: 'utf8' }).trim()
   const gh = (...args: string[]) => execFileSync('gh', args, { cwd, stdio: 'inherit' })
-  if (versionChannel(version) !== channel) throw new Error(`${version} is not a ${channel} version`)
+  if (versionChannel(version) !== 'stable') throw new Error(`${version} is not a stable version`)
   const source = git('rev-parse', 'HEAD')
-  await verifyReleaseAssets(out, channel, { version, commit: source })
-  const { tag, title } = releaseName(channel, version)
-  const rollingRelease = channel !== 'stable'
+  await verifyReleaseAssets(out, { version, commit: source })
+  const { tag, title } = releaseName(version)
   const existing = spawnSync(
     'gh',
     ['release', 'view', tag, '--json', 'isDraft', '--jq', '.isDraft'],
     { cwd, encoding: 'utf8' },
   )
-  if (rollingRelease) {
-    // Edge may publish any dispatched ref; workflow concurrency keeps the newest run.
-    if (
-      channel === 'main' &&
-      git('ls-remote', 'origin', 'refs/heads/main').split(/\s+/)[0] !== source
-    ) {
-      console.log('Main advanced; publication skipped')
-      return
-    }
-    if (existing.status === 0) gh('release', 'delete', tag, '--yes')
-    git('tag', '--force', tag, source)
-    git('push', '--force', 'origin', `refs/tags/${tag}`)
-  } else {
-    if (git('ls-remote', 'origin', `refs/tags/${tag}`).split(/\s+/)[0] !== source)
-      throw new Error('release tag differs from tested source')
-    if (existing.status === 0 && existing.stdout.trim() !== 'true')
-      throw new Error('published stable releases are immutable')
-  }
-  if (rollingRelease || existing.status !== 0) {
-    gh(
-      'release',
-      'create',
-      tag,
-      '--verify-tag',
-      '--draft',
-      '--title',
-      title,
-      ...(rollingRelease ? ['--prerelease'] : ['--generate-notes']),
-    )
-  }
+  if (git('ls-remote', 'origin', `refs/tags/${tag}`).split(/\s+/)[0] !== source)
+    throw new Error('release tag differs from tested source')
+  if (existing.status === 0 && existing.stdout.trim() !== 'true')
+    throw new Error('published stable releases are immutable')
+  if (existing.status !== 0)
+    gh('release', 'create', tag, '--verify-tag', '--draft', '--title', title, '--generate-notes')
   gh(
     'release',
     'upload',
     tag,
-    ...[...expectedArchives(channel), 'checksums.txt'].map((name) => join(out, name)),
+    ...[...expectedArchives(), 'checksums.txt'].map((name) => join(out, name)),
     '--clobber',
   )
-  gh(
-    'release',
-    'edit',
-    tag,
-    '--draft=false',
-    `--prerelease=${rollingRelease}`,
-    `--latest=${channel === 'stable'}`,
-  )
+  gh('release', 'edit', tag, '--draft=false', '--prerelease=false', '--latest=true')
 }
 if (import.meta.main) {
   const [action, version, directory] = process.argv.slice(2)
   if (version === undefined)
-    throw new Error(
-      'usage: publish-release.ts tag|stable|main|edge <x.y.z|main.sha|edge.sha> [directory]',
-    )
+    throw new Error('usage: publish-release.ts tag|stable <x.y.z> [directory]')
   if (action === 'tag') console.log(prepareTag(version))
-  else if (action === 'stable' || action === 'main' || action === 'edge')
-    await publish(action, version, resolve(directory ?? 'dist'))
+  else if (action === 'stable') await publish(version, resolve(directory ?? 'dist'))
   else throw new Error(`unknown release action ${action}`)
 }

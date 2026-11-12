@@ -3,6 +3,9 @@
 [ADR 0029](0029-compose-check-runner.md) replaces local Dagger validation with
 Docker Compose; real SSH/network coverage remains.
 
+[ADR 0031](0031-local-source-installs.md) retires the rolling `main-build`
+prerelease; non-stable installs build locally from any ref.
+
 Status: Accepted. Date: 5 November 2026. User approved the redesign, breaking
 CLI/config cleanup and retired product/schema removal.
 

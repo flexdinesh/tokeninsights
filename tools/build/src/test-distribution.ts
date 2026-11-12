@@ -31,12 +31,14 @@ try {
   const { writeChecksums } = await import('./build-products.ts')
   await writeChecksums(out)
   // Inherited ZDOTDIR could reach a real profile, so this host-run contract never edits PATH.
-  for (const args of [
-    ['--cli-only', '--no-modify-path'],
-    ['--no-modify-path'],
-    ['--channel=edge', '--no-modify-path'],
-  ])
+  for (const args of [['--cli-only', '--no-modify-path'], ['--no-modify-path']])
     execFileSync('sh', [workspacePath('install.sh'), ...args], { env, stdio: 'inherit' })
+  // Native installs only from local source builds; install/source.sh hands lib.sh this layout.
+  execFileSync(
+    'sh',
+    [workspacePath('install/lib.sh'), '--channel=source', '--product=desktop-native'],
+    { env, stdio: 'inherit' },
+  )
   const installed = join(fixture, 'data/tokeninsights/products')
   // The native experiment installs beside desktop and never takes the command.
   const nativeRoot =
@@ -45,7 +47,7 @@ try {
       : join(installed, 'desktop-native')
   for (const binary of ['tokeninsights-native', 'tokeninsights-backend'])
     accessSync(join(nativeRoot, binary), constants.X_OK)
-  assert.equal(await readFile(join(installed, 'desktop-native/.channel'), 'utf8'), 'edge\n')
+  assert.equal(await readFile(join(installed, 'desktop-native/.channel'), 'utf8'), 'source\n')
   assert.equal(
     readlinkSync(join(fixture, '.local/bin/tokeninsights')),
     process.platform === 'darwin'

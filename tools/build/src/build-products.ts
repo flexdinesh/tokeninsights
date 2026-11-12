@@ -14,15 +14,13 @@ import { workspacePath, workspaceRoot } from './workspace.ts'
 
 export type Product = 'cli' | DesktopProduct
 export const products: readonly Product[] = ['cli', 'desktop', 'desktop-native']
-export type ReleaseChannel = 'stable' | 'main' | 'edge'
-// Edge ships only the native desktop experiment; stable and main never ship it.
-export function channelProducts(channel: ReleaseChannel): readonly Product[] {
-  return channel === 'edge' ? ['desktop-native'] : ['cli', 'desktop']
-}
+// Stable archives are published by CI; source archives are built locally by install/source.sh.
+export type ReleaseChannel = 'stable' | 'source'
+// Stable never ships the native desktop experiment.
+export const stableProducts: readonly Product[] = ['cli', 'desktop']
 const stableVersion = /^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)$/
 export function versionChannel(version: string): ReleaseChannel {
-  if (/^main\.[0-9a-f]{12}$/.test(version)) return 'main'
-  if (/^edge\.[0-9a-f]{12}$/.test(version)) return 'edge'
+  if (/^src\.[0-9a-f]{12}$/.test(version)) return 'source'
   if (stableVersion.test(version)) return 'stable'
   throw new Error(`invalid product version ${version}`)
 }
@@ -33,6 +31,8 @@ export interface BuildMetadata {
   version: string
   commit: string
   date: string
+  // Requested branch, tag or commit of a source build.
+  ref?: string
 }
 export function archiveRoot(product: Product, target: DesktopTarget): string {
   return `tokeninsights-${product}_${target.os}_${target.arch}`
@@ -40,13 +40,14 @@ export function archiveRoot(product: Product, target: DesktopTarget): string {
 export function archiveName(product: Product, target: DesktopTarget): string {
   return `${archiveRoot(product, target)}.tar.gz`
 }
-export function sourceMetadata(version: string, cwd = workspaceRoot): BuildMetadata {
+export function sourceMetadata(version: string, cwd = workspaceRoot, ref?: string): BuildMetadata {
   versionChannel(version)
   const git = (...args: string[]) => execFileSync('git', args, { cwd, encoding: 'utf8' }).trim()
   return {
     version,
     commit: git('rev-parse', 'HEAD'),
     date: git('show', '-s', '--format=%cI', 'HEAD'),
+    ...(ref === undefined ? {} : { ref }),
   }
 }
 export function linkerFlags(metadata: BuildMetadata): string {
@@ -112,8 +113,12 @@ function runBuildTool(command: string, args: string[]): void {
 export async function buildProducts(
   out: string,
   metadata: BuildMetadata,
-  selected: readonly Product[] = channelProducts(versionChannel(metadata.version)),
+  requested?: readonly Product[],
 ): Promise<void> {
+  // Source installs build exactly the product the user asked for.
+  if (requested === undefined && versionChannel(metadata.version) === 'source')
+    throw new Error('source builds require explicit products')
+  const selected = requested ?? stableProducts
   const target = hostTarget()
   const temporary = await mkdtemp(join(tmpdir(), 'tokeninsights-products-'))
   await mkdir(out, { recursive: true })
@@ -197,14 +202,22 @@ function isProduct(value: string): value is Product {
   return products.some((product) => product === value)
 }
 if (import.meta.main) {
-  const [version, directory, ...names] = process.argv.slice(2)
+  const refFlag = '--ref='
+  const args = process.argv.slice(2)
+  const refs = args.filter((arg) => arg.startsWith(refFlag)).map((arg) => arg.slice(refFlag.length))
+  const [version, directory, ...names] = args.filter((arg) => !arg.startsWith(refFlag))
   const selected = names.filter(isProduct)
-  if (version === undefined || selected.length !== names.length)
+  if (
+    version === undefined ||
+    selected.length !== names.length ||
+    refs.length > 1 ||
+    refs[0] === ''
+  )
     throw new Error(
-      `usage: build-products.ts <x.y.z|main.sha|edge.sha> [output-directory] [${products.join('|')}...]`,
+      `usage: build-products.ts <x.y.z|src.sha> [output-directory] [${products.join('|')}...] [--ref=<ref>]`,
     )
   const out = resolve(workspaceRoot, directory ?? 'dist')
-  const metadata = sourceMetadata(version)
+  const metadata = sourceMetadata(version, workspaceRoot, refs[0])
   await buildProducts(out, metadata, selected.length === 0 ? undefined : selected)
   await writeChecksums(out)
 }

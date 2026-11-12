@@ -1,5 +1,8 @@
 # Experimental native desktop on the edge channel
 
+[ADR 0031](0031-local-source-installs.md) retires the `edge` channel and
+`edge-build` prerelease; `install-dev-native.sh` builds the native app locally.
+
 Status: Accepted. Date: 11 November 2026. User directed a second, fully native
 desktop app installed beside the current desktop until it can replace it.
 
