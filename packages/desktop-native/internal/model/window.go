@@ -1,6 +1,7 @@
 // Package model owns what one native window shows and does: its connection
-// identity, the backend instance, the dashboard query, refresh state and
-// its synchronization with backend status and collector progress.
+// identity, the backend instance, the dashboard query and its usage,
+// refresh state and its synchronization with backend status and collector
+// progress.
 // Views read it and call its actions on the main thread; its I/O runs on
 // worker goroutines that publish results back on the main thread.
 package model
@@ -9,6 +10,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/flexdinesh/tokeninsights/packages/core/analytics"
 	"github.com/flexdinesh/tokeninsights/packages/core/application"
 	"github.com/flexdinesh/tokeninsights/packages/core/collectorprogress"
 	"github.com/flexdinesh/tokeninsights/packages/core/dashboardview"
@@ -28,6 +30,9 @@ type Backend interface {
 	Status(ctx context.Context) (application.Status, error)
 	// Progress observes the backend's collection attempts.
 	Progress(ctx context.Context) (collectorprogress.Snapshot, error)
+	// Usage reads one page of usage for a query, with the summary and
+	// chart of the whole query.
+	Usage(ctx context.Context, query analytics.Query) (application.Usage, error)
 }
 
 // Runtime is how a window runs I/O off the main thread and publishes its
@@ -60,13 +65,16 @@ type Window struct {
 	refreshing bool
 	refreshErr error
 
-	sync syncState
+	sync  syncState
+	usage usageState
 }
 
 // NewWindow returns the state of a window connected as connection. Call
 // Load to read the backend instance.
 func NewWindow(connection endpoint.Info, backend Backend, rt Runtime) *Window {
-	return &Window{backend: backend, rt: rt, connection: connection, tab: DefaultTab}
+	w := &Window{backend: backend, rt: rt, connection: connection, tab: DefaultTab}
+	w.OnSnapshotChange(w.usageSnapshotChanged)
+	return w
 }
 
 // Connection is the window's connection: transport, target and state.
@@ -140,9 +148,10 @@ func (w *Window) loaded(instance application.Instance, err error) {
 	if first {
 		w.query = dashboardview.InitialQuery(instance.Defaults, w.tab)
 	}
+	w.syncUsage()
 }
 
-// SelectTab shows tab, keeping the query's filters.
+// SelectTab shows tab, keeping the query's filters, and reads its usage.
 func (w *Window) SelectTab(tab dashboardview.Tab) {
 	if tab == w.tab {
 		return
@@ -150,6 +159,7 @@ func (w *Window) SelectTab(tab dashboardview.Tab) {
 	w.tab = tab
 	if w.instance != nil {
 		w.query = w.query.WithTab(tab)
+		w.syncUsage()
 	}
 }
 

@@ -81,6 +81,14 @@ const (
 	ReadoutNarrow float32 = 720
 	// ReadoutPrimaryShare is the total readout's width relative to the others.
 	ReadoutPrimaryShare float32 = 1.25
+	// ChartHeight is the usage chart's plot height.
+	ChartHeight float32 = 192
+	// SkeletonReadout and SkeletonTable are the loading blocks standing
+	// for a readout and the results table; SkeletonChart stands for the
+	// chart with its two control rows.
+	SkeletonReadout float32 = 128
+	SkeletonTable   float32 = 448
+	SkeletonChart           = ChartHeight + 2*ControlHeight
 )
 
 // Overlay shadow geometry from DESIGN.md elevation: 0 0.75rem 2rem.

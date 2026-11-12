@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 
+	"github.com/flexdinesh/tokeninsights/packages/core/analytics"
 	"github.com/flexdinesh/tokeninsights/packages/core/application"
 	"github.com/flexdinesh/tokeninsights/packages/core/collectorprogress"
 	"github.com/flexdinesh/tokeninsights/packages/desktop-native/internal/session"
@@ -29,4 +30,8 @@ func (b sessionBackend) Status(ctx context.Context) (application.Status, error) 
 func (b sessionBackend) Progress(ctx context.Context) (collectorprogress.Snapshot, error) {
 	detail, err := b.session.Progress(ctx)
 	return detail.Collection, err
+}
+
+func (b sessionBackend) Usage(ctx context.Context, query analytics.Query) (application.Usage, error) {
+	return b.session.Query.Usage(ctx, query)
 }
