@@ -165,6 +165,32 @@ func TestPopoverOpensAndDismisses(t *testing.T) {
 	}
 }
 
+func TestPopoverWithAlignsEndAndSizes(t *testing.T) {
+	open := true
+	tt := newTester(func(c *ui.Context) {
+		ui.Row(c).Justify(ui.End).Padding(theme.Unit * 12).Children(func() {
+			anchor := Button(c, "Status", ButtonStyle{Variant: Ghost})
+			PopoverWith(c, anchor, &open, PopoverOptions{Width: theme.StatusPopoverWidth, End: true}, func() {
+				ui.Text(c, "Details")
+			}).Label("Status details")
+		})
+	})
+	tt.Advance(settle)
+	anchor, _ := tt.Find("Status")
+	panel, ok := tt.Access("Status details")
+	if !ok {
+		t.Fatal("no panel")
+	}
+	r := panel.Bounds
+	if r.W != theme.StatusPopoverWidth || r.Y <= anchor.Y {
+		t.Fatalf("panel %+v below anchor %+v", r, anchor)
+	}
+	// The panel's end lines up with the button's, whose label is centered in it.
+	if end := r.X + r.W; end < anchor.X+anchor.W || end > anchor.X+anchor.W+theme.ControlHeight {
+		t.Fatalf("panel end %v, anchor text %+v", end, anchor)
+	}
+}
+
 func TestTooltipShowsOnRestAndDescribes(t *testing.T) {
 	tt := newTester(func(c *ui.Context) {
 		ui.Row(c).Padding(theme.Unit * 12).Gap(theme.Unit * 12).Children(func() {

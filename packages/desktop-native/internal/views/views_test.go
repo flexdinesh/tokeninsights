@@ -13,8 +13,10 @@ import (
 	"github.com/egoist/mygo/ui"
 	"github.com/flexdinesh/tokeninsights/packages/core/analytics"
 	"github.com/flexdinesh/tokeninsights/packages/core/application"
+	"github.com/flexdinesh/tokeninsights/packages/core/collectorprogress"
 	"github.com/flexdinesh/tokeninsights/packages/core/dashboardview"
 	"github.com/flexdinesh/tokeninsights/packages/core/endpoint"
+	"github.com/flexdinesh/tokeninsights/packages/core/serverfeatures"
 	"github.com/flexdinesh/tokeninsights/packages/desktop-native/internal/model"
 	"github.com/flexdinesh/tokeninsights/packages/desktop-native/internal/theme"
 )
@@ -45,12 +47,26 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 
-// fakeBackend answers with fixed results.
+// fakeBackend answers with fixed results and counts the reads.
 type fakeBackend struct {
 	instance    application.Instance
 	instanceErr error
 	captureErr  error
 	captures    int
+	status      application.Status
+	statusErr   error
+	statuses    int
+	progress    collectorprogress.Snapshot
+	progressErr error
+}
+
+func (b *fakeBackend) Status(context.Context) (application.Status, error) {
+	b.statuses++
+	return b.status, b.statusErr
+}
+
+func (b *fakeBackend) Progress(context.Context) (collectorprogress.Snapshot, error) {
+	return b.progress, b.progressErr
 }
 
 func (b *fakeBackend) Instance(context.Context) (application.Instance, error) {
@@ -68,21 +84,32 @@ type workers struct{ pending []func() }
 
 func (r *workers) Go(fn func()) { r.pending = append(r.pending, fn) }
 
+// run runs the pending workers and those they start.
 func (r *workers) run() {
-	pending := r.pending
-	r.pending = nil
-	for _, fn := range pending {
-		fn()
+	for len(r.pending) > 0 {
+		pending := r.pending
+		r.pending = nil
+		for _, fn := range pending {
+			fn()
+		}
 	}
 }
 
 var (
 	studioConnection = endpoint.Info{Transport: "ssh", Target: "ssh://alice@studio.lan:2222", State: "connected", Hostname: "studio.lan"}
 	studioInstance   = application.Instance{
-		InstanceID: "4f1c9a0e-7b2d-4c55-9a61-0d3e8b7f2c10", Hostname: "studio", Timezone: "Europe/London",
-		Defaults: analytics.Selection{Period: "month", From: "2026-11-01", To: "2026-11-30", Bucket: "day"},
+		InstanceID: "4f1c9a0e-7b2d-4c55-9a61-0d3e8b7f2c10", DatasetID: "default", Hostname: "studio", Timezone: "Europe/London",
+		Capabilities: serverfeatures.Capabilities{serverfeatures.Usage, serverfeatures.Facets, serverfeatures.CollectorProgress},
+		Permissions:  serverfeatures.Permissions{serverfeatures.Read},
+		Defaults:     analytics.Selection{Period: "month", From: "2026-11-01", To: "2026-11-30", Bucket: "day"},
 	}
+	studioStatus = application.Status{InstanceID: studioInstance.InstanceID, Readiness: "ready", Metadata: application.Publication{
+		DatabaseID: "db-7a2e", DatasetID: "default", Revision: 42, Generation: 3, TargetGeneration: 3, InputRevision: 42,
+	}}
 )
+
+// readsAt is the wall time of the fixtures' reads: 13 Nov 2026, 09:30 UTC.
+var readsAt = time.Date(2026, time.November, 13, 9, 30, 0, 0, time.UTC)
 
 // fixture is a window over a fake backend and the app-wide appearance.
 type fixture struct {
@@ -93,8 +120,9 @@ type fixture struct {
 }
 
 func newFixture() *fixture {
-	f := &fixture{backend: &fakeBackend{instance: studioInstance}, workers: &workers{}, appearance: theme.AppearanceSystem}
-	rt := model.Runtime{Context: context.Background(), Go: f.workers.Go, Update: func(fn func()) { fn() }}
+	backend := &fakeBackend{instance: studioInstance, status: studioStatus, progress: collectorprogress.Snapshot{InstanceID: studioInstance.InstanceID}}
+	f := &fixture{backend: backend, workers: &workers{}, appearance: theme.AppearanceSystem}
+	rt := model.Runtime{Context: context.Background(), Go: f.workers.Go, Update: func(fn func()) { fn() }, Now: func() time.Time { return readsAt }}
 	f.window = model.NewWindow(studioConnection, f.backend, rt)
 	return f
 }
@@ -111,8 +139,23 @@ func (f *fixture) view(c *ui.Context) {
 	AppShell(c, Shell{Window: f.window, Appearance: f.appearance, SetAppearance: func(a theme.Appearance) { f.appearance = a }})
 }
 
+// tester renders the shell, whose first frame starts the status and
+// progress reads; synced testers have answered them.
 func (f *fixture) tester(width, height int, dark bool) *ui.Tester {
 	return ui.NewTesterWith(f.view, width, height, ui.TesterOptions{Dark: dark})
+}
+
+// synced is a tester whose first reads were answered.
+func (f *fixture) synced(width, height int, dark bool) *ui.Tester {
+	tt := f.tester(width, height, dark)
+	f.sync(tt)
+	return tt
+}
+
+// sync runs the pending reads and shows their results.
+func (f *fixture) sync(tt *ui.Tester) {
+	f.workers.run()
+	tt.Frame()
 }
 
 func assertTexts(t *testing.T, tt *ui.Tester, texts ...string) {
@@ -126,7 +169,7 @@ func assertTexts(t *testing.T, tt *ui.Tester, texts ...string) {
 
 func TestSidebarShowsEveryTabAndDisablesUnportedOnes(t *testing.T) {
 	f := loaded()
-	tt := f.tester(windowWidth, windowHeight, false)
+	tt := f.synced(windowWidth, windowHeight, false)
 	assertTexts(t, tt, "TokenInsights", "Personal workspace", "Usage metadata only")
 	for _, tab := range dashboardview.Tabs() {
 		label := dashboardview.TabLabel(tab)
@@ -170,7 +213,7 @@ func TestHeaderShowsIdentityAndConnection(t *testing.T) {
 func TestRefreshButtonDisablesWhilePendingAndShowsFailure(t *testing.T) {
 	f := loaded()
 	f.backend.captureErr = errors.New("capture failed")
-	tt := f.tester(windowWidth, windowHeight, false)
+	tt := f.synced(windowWidth, windowHeight, false)
 	if err := tt.Click("Refresh"); err != nil {
 		t.Fatal(err)
 	}
@@ -211,7 +254,7 @@ func TestInstanceFailureShowsQuietDangerLine(t *testing.T) {
 
 func TestThemeButtonCyclesAppearance(t *testing.T) {
 	f := loaded()
-	tt := f.tester(windowWidth, windowHeight, false)
+	tt := f.synced(windowWidth, windowHeight, false)
 	for _, want := range []theme.Appearance{theme.AppearanceLight, theme.AppearanceDark, theme.AppearanceSystem} {
 		name := "Theme: " + string(f.appearance) + ". Change theme"
 		if err := tt.Click(name); err != nil {
@@ -226,7 +269,7 @@ func TestThemeButtonCyclesAppearance(t *testing.T) {
 func TestShellThemesFromTheChoice(t *testing.T) {
 	f := loaded()
 	f.appearance = theme.AppearanceDark
-	tt := f.tester(minWidth, minHeight, false)
+	tt := f.synced(minWidth, minHeight, false)
 	// A point of the page between the placeholder and the footer.
 	got := tt.Image().RGBAAt(minWidth*3/4, minHeight*3/4)
 	want := theme.For(true).Surface
@@ -237,7 +280,7 @@ func TestShellThemesFromTheChoice(t *testing.T) {
 
 func TestEveryControlIsNamed(t *testing.T) {
 	for _, size := range [][2]int{{windowWidth, windowHeight}, {minWidth, minHeight}} {
-		tt := loaded().tester(size[0], size[1], false)
+		tt := loaded().synced(size[0], size[1], false)
 		for _, a := range tt.AccessAll() {
 			if a.Role == ui.RoleButton && a.Name == "" {
 				t.Errorf("unnamed button at %v", a.Bounds)
@@ -268,7 +311,7 @@ func TestShellImages(t *testing.T) {
 				f.backend.captureErr = errors.New("capture failed")
 				f.window.Refresh()
 				f.workers.run()
-				tt := f.tester(shot.width, shot.height, dark)
+				tt := f.synced(shot.width, shot.height, dark)
 				if shot.hover {
 					r, ok := tt.Find("studio")
 					if !ok {

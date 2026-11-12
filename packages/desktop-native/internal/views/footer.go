@@ -33,14 +33,13 @@ func FooterLine(w *model.Window) string {
 	return line
 }
 
-// footerTone is the dot's meaning until the status ladder arrives: danger
-// after a failure, pending while loading or refreshing, success otherwise.
+// footerTone is the dot's meaning, as the web footer's: danger when the
+// status needs attention, pending while it loads, success when ready.
 func footerTone(w *model.Window) kit.DotTone {
-	_, loaded := w.Instance()
-	switch {
-	case w.InstanceError() != nil || w.RefreshError() != nil:
+	switch w.StatusValue().State {
+	case dashboardview.StatusAttention:
 		return kit.DotDanger
-	case !loaded || w.Refreshing():
+	case dashboardview.StatusLoading:
 		return kit.DotPending
 	}
 	return kit.DotSuccess

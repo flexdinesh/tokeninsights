@@ -13,8 +13,8 @@ import (
 )
 
 // Header builds the page header: the current view's heading, then the
-// backend identity, Refresh and the theme cycle. It wraps on narrow
-// windows.
+// backend identity, Refresh, the backend status and the theme cycle. It
+// wraps on narrow windows.
 func Header(c *ui.Context, s Shell) ui.Element {
 	t := theme.Current(c)
 	w := s.Window
@@ -27,6 +27,7 @@ func Header(c *ui.Context, s Shell) ui.Element {
 			identity(c, w)
 			headerDivider(c)
 			refreshButton(c.Key("refresh"), w)
+			DashboardStatus(c.Key("status"), statusDetails(w))
 			themeButton(c.Key("theme"), s.Appearance, s.SetAppearance)
 		})
 	})
@@ -40,9 +41,17 @@ func identity(c *ui.Context, w *model.Window) {
 		if instance, ok := w.Instance(); ok {
 			kit.Tooltip(c, host, "Backend hostname: "+w.Hostname()+" · Identity: "+instance.InstanceID)
 		}
-		theme.Label(ui.Text(c, ConnectionLine(w.Connection()))).Role(ui.RoleStatus)
+		connection := w.Connection()
+		if w.ConnectionUnavailable() {
+			connection.State = connectionUnavailable
+		}
+		theme.Label(ui.Text(c, ConnectionLine(connection))).Role(ui.RoleStatus)
 	})
 }
+
+// connectionUnavailable replaces the connection's state while status
+// reads fail, as on the web.
+const connectionUnavailable = "unavailable"
 
 // ConnectionLine is the web header's connection summary:
 // TRANSPORT · target · state.
@@ -62,17 +71,19 @@ const (
 	refreshPending = "Refreshing…"
 )
 
-// refreshButton requests capture; it is disabled while a refresh runs.
+// refreshButton requests capture; it is disabled while a refresh or a
+// collection runs.
 func refreshButton(c *ui.Context, w *model.Window) {
+	pending := w.RefreshPending()
 	label := refreshLabel
-	if w.Refreshing() {
+	if pending {
 		label = refreshPending
 	}
-	b := kit.ButtonContent(c, kit.ButtonStyle{Variant: kit.Outline, Size: kit.SizeCompact, Disabled: w.Refreshing()}, func() {
+	b := kit.ButtonContent(c, kit.ButtonStyle{Variant: kit.Outline, Size: kit.SizeCompact, Disabled: pending}, func() {
 		kit.Icon(c, icons.RotateCw())
 		ui.Text(c, label).SingleLine()
 	})
-	if !w.Refreshing() && b.Clicked() {
+	if !pending && b.Clicked() {
 		w.Refresh()
 	}
 }

@@ -1,13 +1,16 @@
 // Package model owns what one native window shows and does: its connection
-// identity, the backend instance, the dashboard query and refresh state.
+// identity, the backend instance, the dashboard query, refresh state and
+// its synchronization with backend status and collector progress.
 // Views read it and call its actions on the main thread; its I/O runs on
 // worker goroutines that publish results back on the main thread.
 package model
 
 import (
 	"context"
+	"time"
 
 	"github.com/flexdinesh/tokeninsights/packages/core/application"
+	"github.com/flexdinesh/tokeninsights/packages/core/collectorprogress"
 	"github.com/flexdinesh/tokeninsights/packages/core/dashboardview"
 	"github.com/flexdinesh/tokeninsights/packages/core/endpoint"
 )
@@ -20,16 +23,22 @@ type Backend interface {
 	Instance(ctx context.Context) (application.Instance, error)
 	// Capture runs default capture and returns once it finished.
 	Capture(ctx context.Context) error
+	// Status observes the published snapshot and processing of the
+	// session's dataset.
+	Status(ctx context.Context) (application.Status, error)
+	// Progress observes the backend's collection attempts.
+	Progress(ctx context.Context) (collectorprogress.Snapshot, error)
 }
 
 // Runtime is how a window runs I/O off the main thread and publishes its
 // results on it. Context ends the window's work; Go starts a worker the
 // app joins on quit; Update runs a function on the main thread and builds
-// the window's view again.
+// the window's view again; Now is the wall clock reads are stamped with.
 type Runtime struct {
 	Context context.Context
 	Go      func(func())
 	Update  func(func())
+	Now     func() time.Time
 }
 
 // DefaultTab is the tab a new window opens on, as the web's index route.
@@ -50,6 +59,8 @@ type Window struct {
 
 	refreshing bool
 	refreshErr error
+
+	sync syncState
 }
 
 // NewWindow returns the state of a window connected as connection. Call
@@ -94,11 +105,20 @@ func (w *Window) Refreshing() bool { return w.refreshing }
 // RefreshError is why the last refresh failed, or nil.
 func (w *Window) RefreshError() error { return w.refreshErr }
 
-// Load reads the backend instance unless it is loaded or loading. The
-// first load starts the query from the instance's defaults on the
-// selected tab.
+// Load reads the backend instance unless it is loaded or loading; a
+// failed read loads again. The first load starts the query from the
+// instance's defaults on the selected tab.
 func (w *Window) Load() {
-	if w.instance != nil || w.loading {
+	if w.instance != nil && w.instanceErr == nil {
+		return
+	}
+	w.loadInstance()
+}
+
+// loadInstance reads the backend instance unless a read runs. A loaded
+// instance stays until another replaces it.
+func (w *Window) loadInstance() {
+	if w.loading {
 		return
 	}
 	w.loading = true
@@ -115,8 +135,11 @@ func (w *Window) loaded(instance application.Instance, err error) {
 		w.instanceErr = err
 		return
 	}
+	first := w.instance == nil
 	w.instance, w.instanceErr = &instance, nil
-	w.query = dashboardview.InitialQuery(instance.Defaults, w.tab)
+	if first {
+		w.query = dashboardview.InitialQuery(instance.Defaults, w.tab)
+	}
 }
 
 // SelectTab shows tab, keeping the query's filters.
@@ -131,8 +154,8 @@ func (w *Window) SelectTab(tab dashboardview.Tab) {
 }
 
 // Refresh starts capture and reports whether it started: a refresh while
-// one runs coalesces into it. A finished refresh loads an instance that
-// failed to load before.
+// one runs coalesces into it. A finished refresh reads status and progress
+// again, as the web's, and loads an instance that failed to load before.
 func (w *Window) Refresh() bool {
 	if w.refreshing {
 		return false
@@ -148,5 +171,7 @@ func (w *Window) Refresh() bool {
 
 func (w *Window) refreshed(err error) {
 	w.refreshing, w.refreshErr = false, err
+	w.RefetchStatus()
+	w.readProgress()
 	w.Load()
 }

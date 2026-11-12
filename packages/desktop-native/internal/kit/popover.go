@@ -5,15 +5,36 @@ import (
 	"github.com/flexdinesh/tokeninsights/packages/desktop-native/internal/theme"
 )
 
+// PopoverOptions place a popover's panel below its anchor.
+type PopoverOptions struct {
+	// Width is the panel's width; zero is theme.PopoverWidth.
+	Width float32
+	// End lines the panel's end up with the anchor's end, as the web's
+	// align="end"; otherwise the panel centers on the anchor.
+	End bool
+}
+
 // Popover shows a panel below anchor, centered on it, while open is true;
 // a press outside or Escape sets open to false. content builds the panel's
 // children; the panel is 22rem wide with 0.75rem padding and fades and
 // scales in. It returns the panel, invalid while closed.
 func Popover(c *ui.Context, anchor ui.Element, open *bool, content func()) ui.Element {
+	return PopoverWith(c, anchor, open, PopoverOptions{}, content)
+}
+
+// PopoverWith shows a popover as Popover does, placed and sized by o.
+func PopoverWith(c *ui.Context, anchor ui.Element, open *bool, o PopoverOptions, content func()) ui.Element {
 	t := theme.Current(c)
+	width, at, self := theme.PopoverWidth, ui.AnchorBottom, ui.AnchorTop
+	if o.Width != 0 {
+		width = o.Width
+	}
+	if o.End {
+		at, self = ui.AnchorBottomEnd, ui.AnchorTopEnd
+	}
 	return ui.PopoverBase(c, anchor, open, func(panel ui.Element) {
-		overlay(t, panel).AttachTo(anchor, ui.AnchorBottom, ui.AnchorTop).AttachEdgeMargin(theme.PopoverEdge).
-			Margin(theme.PopoverOffset, 0, 0, 0).Width(theme.PopoverWidth).Padding(theme.Unit * 3).
+		overlay(t, panel).AttachTo(anchor, at, self).AttachEdgeMargin(theme.PopoverEdge).
+			Margin(theme.PopoverOffset, 0, 0, 0).Width(width).Padding(theme.Unit * 3).
 			AttachedOrigin().Transition(ui.ElementTransition{
 			Duration: theme.DurationFast,
 			Enter:    &ui.Motion{Scale: popoverEnterScale, Flip: true},
