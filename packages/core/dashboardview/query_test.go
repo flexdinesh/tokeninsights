@@ -211,3 +211,21 @@ func TestTransitionsNeverShareSlices(t *testing.T) {
 		t.Fatal("ToAnalytics aliases query state")
 	}
 }
+
+func TestHasFiltersMatchesClearFilters(t *testing.T) {
+	plain := dashboardview.InitialQuery(analytics.Selection{Period: "all", Bucket: "day"}, dashboardview.TabTokens)
+	if plain.HasFilters() {
+		t.Fatal("a query without filters has filters")
+	}
+	providers, repositories := []string{"openai"}, []string{"repo-1"}
+	for name, query := range map[string]dashboardview.Query{
+		"bounds":       dashboardview.InitialQuery(analytics.Selection{Period: "month", From: "2026-11-01", To: "2026-11-30"}, dashboardview.TabTokens),
+		"from":         plain.WithSelection(dashboardview.SelectionChange{From: new("2026-11-01")}),
+		"providers":    plain.WithSelection(dashboardview.SelectionChange{Providers: &providers}),
+		"repositories": plain.WithTab(dashboardview.TabRepo).WithLocations(dashboardview.LocationChange{Repositories: &repositories}),
+	} {
+		if !query.HasFilters() || query.ClearFilters().HasFilters() {
+			t.Errorf("%s: HasFilters %v, after ClearFilters %v", name, query.HasFilters(), query.ClearFilters().HasFilters())
+		}
+	}
+}

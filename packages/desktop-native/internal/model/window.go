@@ -115,7 +115,7 @@ func (w *Window) RefreshError() error { return w.refreshErr }
 
 // Load reads the backend instance unless it is loaded or loading; a
 // failed read loads again. The first load starts the query from the
-// instance's defaults on the selected tab.
+// instance's defaults on the selected tab, in pages of TablePageSize.
 func (w *Window) Load() {
 	if w.instance != nil && w.instanceErr == nil {
 		return
@@ -146,7 +146,7 @@ func (w *Window) loaded(instance application.Instance, err error) {
 	first := w.instance == nil
 	w.instance, w.instanceErr = &instance, nil
 	if first {
-		w.query = dashboardview.InitialQuery(instance.Defaults, w.tab)
+		w.query = dashboardview.InitialQuery(instance.Defaults, w.tab).WithPageSize(TablePageSize)
 	}
 	w.syncUsage()
 }
@@ -161,6 +161,27 @@ func (w *Window) SelectTab(tab dashboardview.Tab) {
 		w.query = w.query.WithTab(tab)
 		w.syncUsage()
 	}
+}
+
+// SortBy sorts the rows by sort, as the web's sortBy: the current sort
+// flips its direction. The rows are read again from the first page, as
+// the backend sorts them.
+func (w *Window) SortBy(sort dashboardview.Sort) {
+	if w.instance == nil {
+		return
+	}
+	w.query = w.query.SortBy(sort)
+	w.syncUsage()
+}
+
+// ClearFilters removes every dimension, location and date filter and
+// reads the usage of what remains.
+func (w *Window) ClearFilters() {
+	if w.instance == nil {
+		return
+	}
+	w.query = w.query.ClearFilters()
+	w.syncUsage()
 }
 
 // Refresh starts capture and reports whether it started: a refresh while

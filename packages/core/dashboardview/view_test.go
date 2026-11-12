@@ -305,3 +305,30 @@ func TestFilterOptionsKeepEqualNamesInFacetOrder(t *testing.T) {
 		t.Errorf("SelectedFilterNames = %q", names)
 	}
 }
+
+func TestRowValuesAndTexts(t *testing.T) {
+	row := analytics.Row{
+		Name: "gpt-5", Harness: "codex", Provider: "openai", Model: "gpt-5", Total: 1, Input: 2, Output: 3, Reasoning: 4,
+		CacheRead: 5, CacheWrite: 6, Sessions: 7, Context: 8, AverageContext: 9, MedianContext: 10, MaxContext: 11,
+	}
+	for tab, want := range map[dashboardview.Tab][]int64{
+		dashboardview.TabSessions: {0, 0, 1, 2, 3, 5, 6, 4, 8},
+		dashboardview.TabContext:  {0, 0, 0, 7, 9, 10, 11},
+	} {
+		columns := dashboardview.Columns(tab)
+		for i, column := range columns {
+			value, ok := dashboardview.RowValue(row, column.ID)
+			if ok != column.Numeric || value != want[i] {
+				t.Errorf("%s %s = %d, %v", tab, column.ID, value, ok)
+			}
+		}
+	}
+	for column, want := range map[dashboardview.Sort]string{
+		dashboardview.SortName: "gpt-5", dashboardview.SortHarness: "codex", dashboardview.SortProvider: "openai",
+		dashboardview.SortModel: "gpt-5", dashboardview.SortDate: "",
+	} {
+		if got := dashboardview.RowText(row, column); got != want {
+			t.Errorf("RowText(%s) = %q, want %q", column, got, want)
+		}
+	}
+}

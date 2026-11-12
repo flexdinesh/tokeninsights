@@ -199,7 +199,7 @@ func TestLoadStartsQueryFromInstanceDefaults(t *testing.T) {
 		t.Fatalf("instance %+v, %v", instance, ok)
 	}
 	query, ok := w.Query()
-	want := dashboardview.InitialQuery(testInstance.Defaults, DefaultTab)
+	want := dashboardview.InitialQuery(testInstance.Defaults, DefaultTab).WithPageSize(TablePageSize)
 	if !ok || query.Tab != want.Tab || query.From != want.From || query.Sort != want.Sort || query.PageSize != want.PageSize {
 		t.Fatalf("query %+v, want %+v", query, want)
 	}

@@ -192,6 +192,18 @@ func (q Query) ClearFilters() Query {
 	return q
 }
 
+// HasFilters reports whether ClearFilters would change the rows: a
+// dimension or location filter or a date bound is set, as the web's
+// results table decides whether to offer Clear filters.
+func (q Query) HasFilters() bool {
+	for _, values := range [][]string{q.Providers, q.Models, q.Harnesses, q.Sessions, q.Repositories, q.Directories} {
+		if len(values) > 0 {
+			return true
+		}
+	}
+	return q.From != "" || q.To != ""
+}
+
 // WithTab switches views. Filters persist, location filters only on Repo, and
 // sorting resets to the tab default.
 func (q Query) WithTab(tab Tab) Query {

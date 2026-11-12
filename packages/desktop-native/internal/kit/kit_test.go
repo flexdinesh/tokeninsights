@@ -73,6 +73,50 @@ func TestCheckboxOptionTogglesByPointerAndSpace(t *testing.T) {
 	}
 }
 
+func TestDisabledCheckboxOptionKeepsItsValue(t *testing.T) {
+	checked := true
+	tt := newTester(func(c *ui.Context) {
+		CheckboxOptionWith(c.Key("pi"), &checked, "pi", CheckboxStyle{Disabled: true})
+	})
+	_ = tt.Click("pi")
+	if box, _ := tt.AccessByRole(ui.RoleCheckBox, "pi"); !checked || !box.Disabled {
+		t.Fatalf("disabled option: %v, %+v", checked, box)
+	}
+}
+
+func TestTableHeadingsSortAndCellsFillTheirRows(t *testing.T) {
+	g := newGallery()
+	tt := newTester(func(c *ui.Context) { tableSection(g, c) })
+	head, ok := tt.AccessByRole(ui.RoleColumnHeader, "Model")
+	if !ok || head.Sort != ui.SortAscending {
+		t.Fatalf("Model heading %+v", head)
+	}
+	if total, ok := tt.AccessByRole(ui.RoleColumnHeader, "Total"); !ok || total.Sort != ui.SortNone {
+		t.Fatalf("Total heading %+v", total)
+	}
+	if head.Bounds.H != theme.TableRowHeight {
+		t.Errorf("heading row %v high, want %v", head.Bounds.H, theme.TableRowHeight)
+	}
+	click(t, tt, "Total")
+	if g.tableSort != 2 || g.tableDescending {
+		t.Fatalf("Total click sorted %d descending %v", g.tableSort, g.tableDescending)
+	}
+	click(t, tt, "Total")
+	if total, _ := tt.AccessByRole(ui.RoleColumnHeader, "Total"); !g.tableDescending || total.Sort != ui.SortDescending {
+		t.Fatalf("second Total click: %+v", total)
+	}
+	name, _ := tt.Find("gpt-5")
+	value, _ := tt.Find("311K")
+	sessions, _ := tt.AccessByRole(ui.RoleColumnHeader, "Sessions")
+	total, _ := tt.AccessByRole(ui.RoleColumnHeader, "Total")
+	if name.X-head.Bounds.X != theme.Unit*3 || total.Bounds.X+total.Bounds.W-(value.X+value.W) != theme.Unit*3 {
+		t.Errorf("cells not padded 0.75rem: name %v under %v, total %v under %v", name, head.Bounds, value, total.Bounds)
+	}
+	if value.X < sessions.Bounds.X+sessions.Bounds.W {
+		t.Errorf("total %v left of its column %v", value, total.Bounds)
+	}
+}
+
 func TestSelectChoosesByPointerAndKeyboard(t *testing.T) {
 	sort := "total"
 	changes := 0

@@ -184,3 +184,49 @@ func IdentityDetails(row analytics.Row, tab Tab) []string {
 	}
 	return details
 }
+
+// RowValue is a row's count in the numeric column column, as the web reads
+// row[column]; ok is false for a text column.
+func RowValue(row analytics.Row, column Sort) (value int64, ok bool) {
+	switch column {
+	case SortTotal:
+		return row.Total, true
+	case SortInput:
+		return row.Input, true
+	case SortOutput:
+		return row.Output, true
+	case SortReasoning:
+		return row.Reasoning, true
+	case SortCacheRead:
+		return row.CacheRead, true
+	case SortCacheWrite:
+		return row.CacheWrite, true
+	case SortSessions:
+		return row.Sessions, true
+	case SortContext:
+		return row.Context, true
+	case SortAverageContext:
+		return row.AverageContext, true
+	case SortMedianContext:
+		return row.MedianContext, true
+	case SortMaxContext:
+		return row.MaxContext, true
+	}
+	return 0, false
+}
+
+// RowText is a row's text in the text column column: its name or one of
+// its dimensions, "" for another column.
+func RowText(row analytics.Row, column Sort) string {
+	switch column {
+	case SortName:
+		return row.Name
+	case SortHarness:
+		return row.Harness
+	case SortProvider:
+		return row.Provider
+	case SortModel:
+		return row.Model
+	}
+	return ""
+}

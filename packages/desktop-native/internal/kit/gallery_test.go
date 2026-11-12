@@ -5,6 +5,7 @@ import (
 	"image/png"
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 	"time"
 
@@ -41,6 +42,9 @@ type gallery struct {
 	name, password   string
 	query            string
 	popover, removed bool
+	table            ui.ListState
+	tableSort        int
+	tableDescending  bool
 }
 
 func newGallery() *gallery {
@@ -90,6 +94,7 @@ var sections = []section{
 	{name: "tooltip", width: 420, height: 160, texts: []string{"Columns"}, build: tooltipSection, prepare: restOnColumns},
 	{name: "focus", width: 560, height: 200, texts: []string{"Focused"}, build: focusSection, prepare: tabTwice},
 	{name: "typography", width: 720, height: 320, texts: []string{"Page heading", "Section heading"}, build: typographySection},
+	{name: "table", width: 720, height: 300, texts: []string{"Model", "Total", "gpt-5", "311K", "openai"}, build: tableSection, prepare: hoverTableRow},
 }
 
 func buttonsSection(g *gallery, c *ui.Context) {
@@ -219,6 +224,51 @@ func sectionHeaderSelect(g *gallery, c *ui.Context) {
 	})
 }
 
+// galleryRows are the gallery table's rows: a model, its provider, and
+// its compact sessions and total.
+var galleryRows = [][4]string{
+	{"gpt-5", "openai", "2", "311K"}, {"claude-sonnet-4-5", "anthropic", "1", "205K"}, {"gpt-5-mini", "openai", "1", "131K"},
+	{"gemini-2.5-pro", "google", "1", "88K"}, {"qwen3-coder", "openrouter", "3", "42K"},
+}
+
+// galleryColumns head the gallery table: a text column and two numeric.
+var galleryColumns = []TableColumn{
+	{ID: "name", Label: "Model", Width: 224, MinWidth: 176},
+	{ID: "sessions", Label: "Sessions", Numeric: true, Width: 128, MinWidth: 112},
+	{ID: "total", Label: "Total", Numeric: true, Width: 128, MinWidth: 112},
+}
+
+func tableSection(g *gallery, c *ui.Context) {
+	columns := slices.Clone(galleryColumns)
+	columns[g.tableSort].Sorted = ui.SortAscending
+	if g.tableDescending {
+		columns[g.tableSort].Sorted = ui.SortDescending
+	}
+	Table(c, &g.table, columns, len(galleryRows), func(row, col int) {
+		values := galleryRows[row]
+		TableCell(c, TableCellStyle{Numeric: columns[col].Numeric, LastRow: row == len(galleryRows)-1}, func() {
+			switch col {
+			case 0:
+				ui.Column(c).MinWidth(0).Children(func() {
+					theme.Medium(theme.Body(ui.Text(c, values[0]).SingleLine()))
+					theme.Label(ui.Text(c, values[1])).TextColor(theme.Current(c).InkSubtle)
+				})
+			default:
+				theme.Body(ui.Text(c, values[col+1])).FontFeatures("tnum")
+			}
+		})
+	}, func(col int) {
+		g.tableDescending = col == g.tableSort && !g.tableDescending
+		g.tableSort = col
+	}).MaxHeight(theme.TableMaxHeight)
+}
+
+func hoverTableRow(t *testing.T, tt *ui.Tester) {
+	t.Helper()
+	x, y := center(t, tt, "claude-sonnet-4-5")
+	tt.Move(x, y)
+}
+
 func fieldsSection(g *gallery, c *ui.Context) {
 	Field(c, "Key name", func() { Input(c, &g.name).Placeholder("Work laptop") }).Description("Shown in the key list.")
 	Field(c, "New password", func() { Input(c, &g.password).Password() }).Error("Use 15–128 characters.")
@@ -231,6 +281,7 @@ func fieldsSection(g *gallery, c *ui.Context) {
 	ui.Row(c).Gap(theme.Unit * 2).Children(func() {
 		CheckboxOption(c.Key("pi"), &g.checkedPi, "pi")
 		CheckboxOption(c.Key("codex"), &g.checkedCodex, "codex")
+		CheckboxOptionWith(c.Key("claude"), &g.checkedPi, "claude-code", CheckboxStyle{Disabled: true})
 	})
 }
 

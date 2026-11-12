@@ -52,6 +52,20 @@ after the web's single automatic retry; only usage answered from another
 snapshot than the status is read once more, after status is read again.
 Usage of earlier filters is not kept, so returning to them shows the
 loading skeleton until their read answers.
+The results table is one virtualized MyGo table rather than the web's
+pager and rows-per-page select: its query keeps Page 1 and a PageSize of
+200 (the backend's maximum), and as the table's view nears the end of the
+rows read it reads the next 200-row page of the same request and snapshot,
+one at a time. A new query or revision reads the first page again; a page
+of another revision is dropped and status is read again; a failed page keeps
+the rows read and shows Retry Request in the table footer. The table scrolls
+within its own region, capped at DESIGN.md's 35rem and at the window's page
+height under its section header and footer, so the whole region fits as the
+page scrolls to it. Its last column takes the room the others leave instead
+of the web's proportional stretch. Columns resize by dragging (a double click
+fits a column to its cells instead of resetting it) and move by dragging
+their headings, as in Finder; their edges take no keyboard resizing. A tab
+without Name (Context) keeps its last shown column.
 
 ## Consequences
 
