@@ -1,0 +1,530 @@
+{
+  "defaults": {
+    "period": "week",
+    "bucket": "day",
+    "from": "",
+    "to": "",
+    "providers": ["openai"],
+    "models": [],
+    "harnesses": [],
+    "sessions": []
+  },
+  "defaultSort": {
+    "tokens": "date",
+    "models": "total",
+    "providers": "total",
+    "harnesses": "total",
+    "sessions": "date",
+    "context": "averageContext",
+    "repo": "total"
+  },
+  "compatibleSort": [
+    { "tab": "context", "sort": "total", "expected": "averageContext" },
+    { "tab": "context", "sort": "model", "expected": "model" },
+    { "tab": "context", "sort": "sessions", "expected": "sessions" },
+    { "tab": "context", "sort": "maxContext", "expected": "maxContext" },
+    { "tab": "context", "sort": "name", "expected": "averageContext" },
+    { "tab": "tokens", "sort": "averageContext", "expected": "date" },
+    { "tab": "tokens", "sort": "model", "expected": "date" },
+    { "tab": "tokens", "sort": "name", "expected": "name" },
+    { "tab": "sessions", "sort": "context", "expected": "context" },
+    { "tab": "models", "sort": "sessions", "expected": "sessions" },
+    { "tab": "harnesses", "sort": "maxContext", "expected": "total" },
+    { "tab": "repo", "sort": "harness", "expected": "total" },
+    { "tab": "repo", "sort": "cacheRead", "expected": "cacheRead" }
+  ],
+  "reducer": [
+    {
+      "name": "starts from backend defaults on Tokens",
+      "tab": "tokens",
+      "actions": [],
+      "expected": {
+        "period": "week",
+        "bucket": "day",
+        "from": "",
+        "to": "",
+        "providers": ["openai"],
+        "models": [],
+        "harnesses": [],
+        "sessions": [],
+        "quality": "confirmed",
+        "tab": "tokens",
+        "locationGroup": "repository",
+        "repositories": [],
+        "directories": [],
+        "sort": "date",
+        "direction": "desc",
+        "page": 1,
+        "pageSize": 50
+      },
+      "apiParams": [
+        ["period", "week"],
+        ["bucket", "day"],
+        ["tab", "tokens"],
+        ["sort", "date"],
+        ["direction", "desc"],
+        ["page", "1"],
+        ["pageSize", "50"],
+        ["provider", "openai"]
+      ]
+    },
+    {
+      "name": "starts Context on its default sort",
+      "tab": "context",
+      "actions": [],
+      "expected": {
+        "period": "week",
+        "bucket": "day",
+        "from": "",
+        "to": "",
+        "providers": ["openai"],
+        "models": [],
+        "harnesses": [],
+        "sessions": [],
+        "quality": "confirmed",
+        "tab": "context",
+        "locationGroup": "repository",
+        "repositories": [],
+        "directories": [],
+        "sort": "averageContext",
+        "direction": "desc",
+        "page": 1,
+        "pageSize": 50
+      }
+    },
+    {
+      "name": "keeps calendar navigation through filter and view changes",
+      "tab": "tokens",
+      "actions": [
+        {
+          "type": "selection",
+          "value": {
+            "period": "month",
+            "from": "2026-09-01",
+            "to": "2026-09-30",
+            "dateMode": "calendar"
+          }
+        },
+        { "type": "page", "value": 3 },
+        { "type": "selection", "value": { "models": ["model-a"] } },
+        { "type": "tab", "value": "models" }
+      ],
+      "expected": {
+        "period": "month",
+        "bucket": "day",
+        "from": "2026-09-01",
+        "to": "2026-09-30",
+        "dateMode": "calendar",
+        "providers": ["openai"],
+        "models": ["model-a"],
+        "harnesses": [],
+        "sessions": [],
+        "quality": "confirmed",
+        "tab": "models",
+        "locationGroup": "repository",
+        "repositories": [],
+        "directories": [],
+        "sort": "total",
+        "direction": "desc",
+        "page": 1,
+        "pageSize": 50
+      },
+      "apiParams": [
+        ["period", "month"],
+        ["bucket", "day"],
+        ["tab", "models"],
+        ["sort", "total"],
+        ["direction", "desc"],
+        ["page", "1"],
+        ["pageSize", "50"],
+        ["from", "2026-09-01"],
+        ["to", "2026-09-30"],
+        ["provider", "openai"],
+        ["model", "model-a"]
+      ]
+    },
+    {
+      "name": "clears dimensions, bounds and calendar mode but keeps period and bucket",
+      "tab": "sessions",
+      "actions": [
+        {
+          "type": "selection",
+          "value": {
+            "period": "month",
+            "from": "2026-09-01",
+            "to": "2026-09-30",
+            "dateMode": "calendar"
+          }
+        },
+        {
+          "type": "selection",
+          "value": { "bucket": "week", "harnesses": ["codex"], "sessions": ["session:one"] }
+        },
+        { "type": "clearFilters" }
+      ],
+      "expected": {
+        "period": "month",
+        "bucket": "week",
+        "from": "",
+        "to": "",
+        "providers": [],
+        "models": [],
+        "harnesses": [],
+        "sessions": [],
+        "quality": "confirmed",
+        "tab": "sessions",
+        "locationGroup": "repository",
+        "repositories": [],
+        "directories": [],
+        "sort": "date",
+        "direction": "desc",
+        "page": 1,
+        "pageSize": 50
+      }
+    },
+    {
+      "name": "an explicit empty date mode leaves calendar navigation",
+      "tab": "tokens",
+      "actions": [
+        {
+          "type": "selection",
+          "value": {
+            "period": "week",
+            "from": "2026-10-05",
+            "to": "2026-10-11",
+            "dateMode": "calendar"
+          }
+        },
+        { "type": "selection", "value": { "from": "2026-10-01", "to": "", "dateMode": null } }
+      ],
+      "expected": {
+        "period": "week",
+        "bucket": "day",
+        "from": "2026-10-01",
+        "to": "",
+        "providers": ["openai"],
+        "models": [],
+        "harnesses": [],
+        "sessions": [],
+        "quality": "confirmed",
+        "tab": "tokens",
+        "locationGroup": "repository",
+        "repositories": [],
+        "directories": [],
+        "sort": "date",
+        "direction": "desc",
+        "page": 1,
+        "pageSize": 50
+      },
+      "apiParams": [
+        ["period", "week"],
+        ["bucket", "day"],
+        ["tab", "tokens"],
+        ["sort", "date"],
+        ["direction", "desc"],
+        ["page", "1"],
+        ["pageSize", "50"],
+        ["from", "2026-10-01"],
+        ["provider", "openai"]
+      ]
+    },
+    {
+      "name": "preserves filters across views and resets sorting and pagination",
+      "tab": "tokens",
+      "actions": [
+        { "type": "page", "value": 4 },
+        { "type": "sort", "value": "total" },
+        { "type": "page", "value": 2 },
+        { "type": "tab", "value": "context" }
+      ],
+      "expected": {
+        "period": "week",
+        "bucket": "day",
+        "from": "",
+        "to": "",
+        "providers": ["openai"],
+        "models": [],
+        "harnesses": [],
+        "sessions": [],
+        "quality": "confirmed",
+        "tab": "context",
+        "locationGroup": "repository",
+        "repositories": [],
+        "directories": [],
+        "sort": "averageContext",
+        "direction": "desc",
+        "page": 1,
+        "pageSize": 50
+      }
+    },
+    {
+      "name": "a new dimension sort starts ascending and repeating it flips",
+      "tab": "context",
+      "actions": [
+        { "type": "sort", "value": "model" },
+        { "type": "sort", "value": "model" },
+        { "type": "sort", "value": "model" }
+      ],
+      "expected": {
+        "period": "week",
+        "bucket": "day",
+        "from": "",
+        "to": "",
+        "providers": ["openai"],
+        "models": [],
+        "harnesses": [],
+        "sessions": [],
+        "quality": "confirmed",
+        "tab": "context",
+        "locationGroup": "repository",
+        "repositories": [],
+        "directories": [],
+        "sort": "model",
+        "direction": "asc",
+        "page": 1,
+        "pageSize": 50
+      }
+    },
+    {
+      "name": "the current sort flips and a new numeric sort starts descending",
+      "tab": "tokens",
+      "actions": [
+        { "type": "sort", "value": "date" },
+        { "type": "sort", "value": "name" },
+        { "type": "sort", "value": "cacheRead" },
+        { "type": "page", "value": 5 },
+        { "type": "sort", "value": "cacheRead" }
+      ],
+      "expected": {
+        "period": "week",
+        "bucket": "day",
+        "from": "",
+        "to": "",
+        "providers": ["openai"],
+        "models": [],
+        "harnesses": [],
+        "sessions": [],
+        "quality": "confirmed",
+        "tab": "tokens",
+        "locationGroup": "repository",
+        "repositories": [],
+        "directories": [],
+        "sort": "cacheRead",
+        "direction": "asc",
+        "page": 1,
+        "pageSize": 50
+      }
+    },
+    {
+      "name": "sends Repo grouping and locations only on Repo",
+      "tab": "repo",
+      "actions": [
+        { "type": "locationGroup", "value": "directory" },
+        {
+          "type": "locations",
+          "value": { "repositories": ["repo-key"], "directories": ["dir-key"] }
+        },
+        { "type": "locations", "value": { "directories": [] } }
+      ],
+      "expected": {
+        "period": "week",
+        "bucket": "day",
+        "from": "",
+        "to": "",
+        "providers": ["openai"],
+        "models": [],
+        "harnesses": [],
+        "sessions": [],
+        "quality": "confirmed",
+        "tab": "repo",
+        "locationGroup": "directory",
+        "repositories": ["repo-key"],
+        "directories": [],
+        "sort": "total",
+        "direction": "desc",
+        "page": 1,
+        "pageSize": 50
+      },
+      "apiParams": [
+        ["period", "week"],
+        ["bucket", "day"],
+        ["tab", "repo"],
+        ["sort", "total"],
+        ["direction", "desc"],
+        ["page", "1"],
+        ["pageSize", "50"],
+        ["provider", "openai"],
+        ["locationGroup", "directory"],
+        ["repository", "repo-key"]
+      ]
+    },
+    {
+      "name": "leaving Repo drops location filters but keeps the grouping",
+      "tab": "repo",
+      "actions": [
+        { "type": "locationGroup", "value": "directory" },
+        {
+          "type": "locations",
+          "value": { "repositories": ["repo-key"], "directories": ["dir-key"] }
+        },
+        { "type": "tab", "value": "tokens" }
+      ],
+      "expected": {
+        "period": "week",
+        "bucket": "day",
+        "from": "",
+        "to": "",
+        "providers": ["openai"],
+        "models": [],
+        "harnesses": [],
+        "sessions": [],
+        "quality": "confirmed",
+        "tab": "tokens",
+        "locationGroup": "directory",
+        "repositories": [],
+        "directories": [],
+        "sort": "date",
+        "direction": "desc",
+        "page": 1,
+        "pageSize": 50
+      },
+      "apiParams": [
+        ["period", "week"],
+        ["bucket", "day"],
+        ["tab", "tokens"],
+        ["sort", "date"],
+        ["direction", "desc"],
+        ["page", "1"],
+        ["pageSize", "50"],
+        ["provider", "openai"]
+      ]
+    },
+    {
+      "name": "reviewing excluded usage requests estimated quality",
+      "tab": "harnesses",
+      "actions": [
+        { "type": "page", "value": 2 },
+        { "type": "quality", "value": "estimated" }
+      ],
+      "expected": {
+        "period": "week",
+        "bucket": "day",
+        "from": "",
+        "to": "",
+        "providers": ["openai"],
+        "models": [],
+        "harnesses": [],
+        "sessions": [],
+        "quality": "estimated",
+        "tab": "harnesses",
+        "locationGroup": "repository",
+        "repositories": [],
+        "directories": [],
+        "sort": "total",
+        "direction": "desc",
+        "page": 1,
+        "pageSize": 50
+      },
+      "apiParams": [
+        ["period", "week"],
+        ["bucket", "day"],
+        ["tab", "harnesses"],
+        ["sort", "total"],
+        ["direction", "desc"],
+        ["page", "1"],
+        ["pageSize", "50"],
+        ["quality", "estimated"],
+        ["provider", "openai"]
+      ]
+    },
+    {
+      "name": "reset restores defaults and clears date mode and locations",
+      "tab": "repo",
+      "actions": [
+        {
+          "type": "selection",
+          "value": {
+            "period": "month",
+            "from": "2026-09-01",
+            "to": "2026-09-30",
+            "dateMode": "calendar",
+            "providers": [],
+            "models": ["model-a"]
+          }
+        },
+        { "type": "locations", "value": { "repositories": ["repo-key"] } },
+        { "type": "sort", "value": "input" },
+        {
+          "type": "reset",
+          "value": {
+            "period": "month",
+            "bucket": "week",
+            "from": "",
+            "to": "",
+            "providers": [],
+            "models": [],
+            "harnesses": ["claude-code"],
+            "sessions": []
+          }
+        }
+      ],
+      "expected": {
+        "period": "month",
+        "bucket": "week",
+        "from": "",
+        "to": "",
+        "providers": [],
+        "models": [],
+        "harnesses": ["claude-code"],
+        "sessions": [],
+        "quality": "confirmed",
+        "tab": "repo",
+        "locationGroup": "repository",
+        "repositories": [],
+        "directories": [],
+        "sort": "input",
+        "direction": "desc",
+        "page": 1,
+        "pageSize": 50
+      }
+    },
+    {
+      "name": "page moves keep the page size and size changes return to the first page",
+      "tab": "providers",
+      "actions": [
+        { "type": "page", "value": 3 },
+        { "type": "pageSize", "value": 200 },
+        { "type": "page", "value": 2 }
+      ],
+      "expected": {
+        "period": "week",
+        "bucket": "day",
+        "from": "",
+        "to": "",
+        "providers": ["openai"],
+        "models": [],
+        "harnesses": [],
+        "sessions": [],
+        "quality": "confirmed",
+        "tab": "providers",
+        "locationGroup": "repository",
+        "repositories": [],
+        "directories": [],
+        "sort": "total",
+        "direction": "desc",
+        "page": 2,
+        "pageSize": 200
+      },
+      "apiParams": [
+        ["period", "week"],
+        ["bucket", "day"],
+        ["tab", "providers"],
+        ["sort", "total"],
+        ["direction", "desc"],
+        ["page", "2"],
+        ["pageSize", "200"],
+        ["provider", "openai"]
+      ]
+    }
+  ]
+}

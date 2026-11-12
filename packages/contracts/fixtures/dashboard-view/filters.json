@@ -1,0 +1,278 @@
+{
+  "options": [
+    {
+      "name": "orders names like localeCompare",
+      "values": [
+        {
+          "key": "日本",
+          "name": "日本"
+        },
+        {
+          "key": " space",
+          "name": " space"
+        },
+        {
+          "key": "z.ai",
+          "name": "z.ai"
+        },
+        {
+          "key": "_internal",
+          "name": "_internal"
+        },
+        {
+          "key": "xai",
+          "name": "xai"
+        },
+        {
+          "key": "-dash",
+          "name": "-dash"
+        },
+        {
+          "key": "x-ai",
+          "name": "x-ai"
+        },
+        {
+          "key": "(none)",
+          "name": "(none)"
+        },
+        {
+          "key": "unknown",
+          "name": "unknown"
+        },
+        {
+          "key": "~tilde",
+          "name": "~tilde"
+        },
+        {
+          "key": "Ünit",
+          "name": "Ünit"
+        },
+        {
+          "key": "10",
+          "name": "10"
+        },
+        {
+          "key": "unit",
+          "name": "unit"
+        },
+        {
+          "key": "9",
+          "name": "9"
+        },
+        {
+          "key": "ß",
+          "name": "ß"
+        },
+        {
+          "key": "a",
+          "name": "a"
+        },
+        {
+          "key": "ss",
+          "name": "ss"
+        },
+        {
+          "key": "A",
+          "name": "A"
+        },
+        {
+          "key": "session:one",
+          "name": "session:one"
+        },
+        {
+          "key": "a/b",
+          "name": "a/b"
+        },
+        {
+          "key": "OpenAI",
+          "name": "OpenAI"
+        },
+        {
+          "key": "anthropic",
+          "name": "anthropic"
+        },
+        {
+          "key": "openai",
+          "name": "openai"
+        },
+        {
+          "key": "Anthropic",
+          "name": "Anthropic"
+        },
+        {
+          "key": "o3",
+          "name": "o3"
+        },
+        {
+          "key": "b",
+          "name": "b"
+        },
+        {
+          "key": "model + 1",
+          "name": "model + 1"
+        },
+        {
+          "key": "B",
+          "name": "B"
+        },
+        {
+          "key": "Gpt-4o",
+          "name": "Gpt-4o"
+        },
+        {
+          "key": "Claude",
+          "name": "Claude"
+        },
+        {
+          "key": "gpt-4o",
+          "name": "gpt-4o"
+        },
+        {
+          "key": "claude-3-5-sonnet",
+          "name": "claude-3-5-sonnet"
+        },
+        {
+          "key": "gpt-4.1",
+          "name": "gpt-4.1"
+        },
+        {
+          "key": "claude-sonnet-4-5",
+          "name": "claude-sonnet-4-5"
+        },
+        {
+          "key": "gpt-4-1",
+          "name": "gpt-4-1"
+        },
+        {
+          "key": "claude-sonnet-4.5",
+          "name": "claude-sonnet-4.5"
+        },
+        {
+          "key": "GPT-4",
+          "name": "GPT-4"
+        },
+        {
+          "key": "eclair",
+          "name": "eclair"
+        },
+        {
+          "key": "Ezra",
+          "name": "Ezra"
+        },
+        {
+          "key": "éclair",
+          "name": "éclair"
+        }
+      ],
+      "selected": [],
+      "search": "",
+      "expected": [
+        " space",
+        "_internal",
+        "-dash",
+        "(none)",
+        "~tilde",
+        "10",
+        "9",
+        "a",
+        "A",
+        "a/b",
+        "anthropic",
+        "Anthropic",
+        "b",
+        "B",
+        "Claude",
+        "claude-3-5-sonnet",
+        "claude-sonnet-4-5",
+        "claude-sonnet-4.5",
+        "eclair",
+        "éclair",
+        "Ezra",
+        "GPT-4",
+        "gpt-4-1",
+        "gpt-4.1",
+        "gpt-4o",
+        "Gpt-4o",
+        "model + 1",
+        "o3",
+        "openai",
+        "OpenAI",
+        "session:one",
+        "ss",
+        "ß",
+        "unit",
+        "Ünit",
+        "unknown",
+        "x-ai",
+        "xai",
+        "z.ai",
+        "日本"
+      ]
+    },
+    {
+      "name": "keeps selected values the facets no longer return",
+      "values": [
+        {
+          "key": "model-b",
+          "name": "model-b"
+        },
+        {
+          "key": "model-a",
+          "name": "model-a"
+        }
+      ],
+      "selected": ["unavailable-model", "model-b"],
+      "search": "",
+      "expected": ["model-a", "model-b", "unavailable-model"]
+    },
+    {
+      "name": "searches names case-insensitively by substring",
+      "values": [
+        {
+          "key": "GPT-4o",
+          "name": "GPT-4o"
+        },
+        {
+          "key": "Claude",
+          "name": "Claude"
+        },
+        {
+          "key": "gpt-4.1",
+          "name": "gpt-4.1"
+        },
+        {
+          "key": "o3-gpt",
+          "name": "o3-gpt"
+        }
+      ],
+      "selected": ["Claude"],
+      "search": "GpT",
+      "expected": ["gpt-4.1", "GPT-4o", "o3-gpt"]
+    },
+    {
+      "name": "names unavailable locations without exposing keys",
+      "values": [
+        {
+          "key": "hash-1",
+          "name": "tokeninsights"
+        }
+      ],
+      "selected": ["opaque-key", "unknown"],
+      "missingName": "Repository (unavailable)",
+      "search": "",
+      "expected": ["Repository (unavailable)", "tokeninsights", "unknown"]
+    },
+    {
+      "name": "shows no options when nothing matches",
+      "values": [
+        {
+          "key": "model-a",
+          "name": "model-a"
+        }
+      ],
+      "selected": [],
+      "search": "zzz",
+      "expected": []
+    }
+  ]
+}

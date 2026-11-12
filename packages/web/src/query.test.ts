@@ -1,7 +1,17 @@
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { apiQueryParams } from './http-query'
 import { describe, expect, it } from 'vitest'
+import { z } from 'zod'
+import {
+  locationGroupSchema,
+  selectionSchema,
+  sortSchema,
+  tabSchema,
+} from '@tokeninsights/contracts'
 import type { Selection } from '@tokeninsights/contracts'
 import {
+  defaultSort,
   initialQuery,
   parseDashboardSearch,
   parseDashboardSearchParams,
@@ -10,7 +20,7 @@ import {
   searchFromQuery,
   stringifyDashboardSearch,
 } from '../../dashboard/src/query'
-import type { QueryState } from '../../dashboard/src/query'
+import type { QueryAction, QueryState } from '../../dashboard/src/query'
 
 const defaults: Selection = {
   period: 'week',
@@ -106,22 +116,6 @@ describe('dashboard navigation', () => {
     expect(parseDashboardSearchParams(value).models).toEqual(['a/b', 'model + 1'])
   })
 
-  it('preserves filters across paths and resets incompatible sorting and pagination', () => {
-    const query = { ...initialQuery(defaults), page: 4 }
-    const context = reduceQuery(query, { type: 'tab', value: 'context' })
-    expect(context).toMatchObject({
-      providers: ['openai'],
-      tab: 'context',
-      page: 1,
-      sort: 'averageContext',
-      direction: 'desc',
-    })
-    const sorted = reduceQuery(context, { type: 'sort', value: 'model' })
-    expect(sorted.direction).toBe('asc')
-    expect(reduceQuery(sorted, { type: 'sort', value: 'model' }).direction).toBe('desc')
-    expect(reduceQuery(sorted, { type: 'selection', value: { providers: [] } }).page).toBe(1)
-  })
-
   it('recovers incompatible bookmarked sorts and unsafe page sizes', () => {
     const search = parseDashboardSearch({ v: 1, sort: 'total', pageSize: 900 })
     expect(queryFromSearch(search, 'context', defaults)).toMatchObject({
@@ -156,5 +150,107 @@ describe('dashboard navigation', () => {
     expect(stringifyDashboardSearch(searchFromQuery(query))).not.toMatch(
       /worktree|branch|breakdown/,
     )
+  })
+})
+
+// Shared with packages/core/dashboardview so native query state stays identical.
+const quality = z.enum(['confirmed', 'estimated'])
+const strings = z.array(z.string())
+const queryState = selectionSchema.extend({
+  dateMode: z.literal('calendar').optional(),
+  quality,
+  tab: tabSchema,
+  locationGroup: locationGroupSchema,
+  repositories: strings,
+  directories: strings,
+  sort: sortSchema,
+  direction: z.enum(['asc', 'desc']),
+  page: z.int().min(1),
+  pageSize: z.int().min(1),
+})
+const action = z.discriminatedUnion('type', [
+  z.strictObject({ type: z.literal('quality'), value: quality }),
+  z.strictObject({
+    type: z.literal('selection'),
+    // null is an explicit clear; an absent dateMode keeps calendar navigation.
+    value: selectionSchema
+      .partial()
+      .extend({ dateMode: z.literal('calendar').nullable().optional() }),
+  }),
+  z.strictObject({ type: z.literal('reset'), value: selectionSchema }),
+  z.strictObject({ type: z.literal('clearFilters') }),
+  z.strictObject({ type: z.literal('tab'), value: tabSchema }),
+  z.strictObject({ type: z.literal('locationGroup'), value: locationGroupSchema }),
+  z.strictObject({
+    type: z.literal('locations'),
+    value: z.strictObject({ repositories: strings.optional(), directories: strings.optional() }),
+  }),
+  z.strictObject({ type: z.literal('sort'), value: sortSchema }),
+  z.strictObject({ type: z.literal('page'), value: z.int().min(1) }),
+  z.strictObject({ type: z.literal('pageSize'), value: z.int().min(1) }),
+])
+const fixture = z
+  .strictObject({
+    defaults: selectionSchema,
+    defaultSort: z.record(tabSchema, sortSchema),
+    compatibleSort: z.array(
+      z.strictObject({ tab: tabSchema, sort: sortSchema, expected: sortSchema }),
+    ),
+    reducer: z.array(
+      z.strictObject({
+        name: z.string(),
+        tab: tabSchema,
+        actions: z.array(action),
+        expected: queryState,
+        apiParams: z.array(z.tuple([z.string(), z.string()])).optional(),
+      }),
+    ),
+  })
+  .parse(
+    JSON.parse(
+      readFileSync(
+        join(import.meta.dirname, '../../contracts/fixtures/dashboard-view/query.json'),
+        'utf8',
+      ),
+    ),
+  )
+
+function queryAction(value: z.infer<typeof action>): QueryAction {
+  if (value.type !== 'selection') return value
+  const { dateMode, ...selection } = value.value
+  return {
+    type: 'selection',
+    value: dateMode === undefined ? selection : { ...selection, dateMode: dateMode ?? undefined },
+  }
+}
+
+describe('shared query fixtures', () => {
+  it('starts each view on its default sort', () => {
+    for (const tab of tabSchema.options) expect(defaultSort(tab)).toBe(fixture.defaultSort[tab])
+  })
+
+  it('recovers sorts a restored view cannot use', () => {
+    for (const { tab, sort, expected } of fixture.compatibleSort) {
+      const search = parseDashboardSearch({ v: 1, sort })
+      expect(queryFromSearch(search, tab, fixture.defaults).sort, `${tab} ${sort}`).toBe(expected)
+    }
+  })
+
+  function reduced(tab: QueryState['tab'], actions: z.infer<typeof action>[]): QueryState {
+    return actions.reduce(
+      (state, value) => reduceQuery(state, queryAction(value)),
+      initialQuery(fixture.defaults, tab),
+    )
+  }
+
+  it.each(fixture.reducer)('$name', ({ tab, actions, expected }) => {
+    expect(reduced(tab, actions)).toEqual(expected)
+  })
+
+  const apiCases = fixture.reducer.flatMap(({ name, tab, actions, apiParams }) =>
+    apiParams ? [{ name, tab, actions, apiParams }] : [],
+  )
+  it.each(apiCases)('requests $name', ({ tab, actions, apiParams }) => {
+    expect([...apiQueryParams(reduced(tab, actions))]).toEqual(apiParams)
   })
 })

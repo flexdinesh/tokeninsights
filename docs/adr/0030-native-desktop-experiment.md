@@ -49,8 +49,8 @@ Replacing desktop with the native app is a separate future decision.
 ## Consequences
 
 - Drift is the main cost. DESIGN.md stays the visual contract: a Go guard test
-  fails when native color roles differ from its frontmatter. Shared formatting
-  rules are pinned by fixtures both TypeScript and Go tests consume.
+  fails when native color roles differ from its frontmatter. Shared presentation
+  rules are pinned by fixtures both TypeScript and Go tests consume (ADR 0032).
 - Native rendering needs GTK 3 and OpenGL on Linux (CPU fallback in VMs), not
   WebKitGTK. macOS uses Metal.
 - Two desktop shells must stay independently removable; a dependency guard

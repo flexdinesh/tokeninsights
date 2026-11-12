@@ -1,5 +1,24 @@
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { expect, it } from 'vitest'
+import { z } from 'zod'
 import { categoricalChartColor, formatTokenShare } from './UsageChart'
+
+// Shared with packages/core/dashboardview so native shares stay identical.
+const { tokenShare } = z
+  .object({
+    tokenShare: z.array(
+      z.strictObject({ tokens: z.number(), total: z.number(), expected: z.string() }),
+    ),
+  })
+  .parse(
+    JSON.parse(
+      readFileSync(
+        join(import.meta.dirname, '../../../contracts/fixtures/dashboard-view/format.json'),
+        'utf8',
+      ),
+    ),
+  )
 
 it('assigns a distinct color to every displayed category', () => {
   const colors = Array.from({ length: 12 }, (_, index) => categoricalChartColor(index))
@@ -8,15 +27,8 @@ it('assigns a distinct color to every displayed category', () => {
   expect(categoricalChartColor(12)).toBe(colors[0])
 })
 
-it('uses the full filtered token total even when the chart shows only top groups', () => {
-  expect(formatTokenShare(300, 1000)).toBe('30%')
-  expect(formatTokenShare(200, 1000)).toBe('20%')
-  expect(formatTokenShare(300, 300)).toBe('100%')
-})
-
-it('rounds shares and keeps tiny nonzero usage distinguishable from zero', () => {
-  expect(formatTokenShare(1, 3)).toBe('33.3%')
-  expect(formatTokenShare(1, 10000)).toBe('<0.1%')
-  expect(formatTokenShare(0, 1000)).toBe('0%')
-  expect(formatTokenShare(0, 0)).toBe('0%')
+it('rounds shares of the full filtered total and keeps tiny nonzero usage distinguishable', () => {
+  for (const { tokens, total, expected } of tokenShare) {
+    expect(formatTokenShare(tokens, total), `${tokens}/${total}`).toBe(expected)
+  }
 })

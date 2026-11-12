@@ -1,0 +1,520 @@
+{
+  "isCalendarRange": [
+    {
+      "period": "today",
+      "from": "2024-02-29",
+      "to": "2024-02-29",
+      "expected": true
+    },
+    {
+      "period": "yesterday",
+      "from": "2026-10-17",
+      "to": "2026-10-17",
+      "expected": true
+    },
+    {
+      "period": "week",
+      "from": "2025-12-29",
+      "to": "2026-01-04",
+      "expected": true
+    },
+    {
+      "period": "month",
+      "from": "2024-02-01",
+      "to": "2024-02-29",
+      "expected": true
+    },
+    {
+      "period": "year",
+      "from": "2024-01-01",
+      "to": "2024-12-31",
+      "expected": true
+    },
+    {
+      "period": "week",
+      "from": "2026-10-12",
+      "to": "2026-10-18",
+      "expected": true
+    },
+    {
+      "period": "all",
+      "from": "2026-10-01",
+      "to": "2026-10-31",
+      "expected": false
+    },
+    {
+      "period": "unknown",
+      "from": "2026-10-01",
+      "to": "2026-10-31",
+      "expected": false
+    },
+    {
+      "period": "week",
+      "from": "2026-13-01",
+      "to": "2026-13-02",
+      "expected": false
+    },
+    {
+      "period": "week",
+      "from": "2026-10-18",
+      "to": "2026-10-12",
+      "expected": false
+    },
+    {
+      "period": "week",
+      "from": "2026-10-13",
+      "to": "2026-10-19",
+      "expected": false
+    },
+    {
+      "period": "week",
+      "from": "2026-10-12",
+      "to": "2026-10-17",
+      "expected": false
+    },
+    {
+      "period": "month",
+      "from": "2026-10-02",
+      "to": "2026-10-31",
+      "expected": false
+    },
+    {
+      "period": "month",
+      "from": "2026-10-01",
+      "to": "2026-11-01",
+      "expected": false
+    },
+    {
+      "period": "month",
+      "from": "2026-02-01",
+      "to": "2026-02-29",
+      "expected": false
+    },
+    {
+      "period": "year",
+      "from": "2026-01-01",
+      "to": "2026-12-30",
+      "expected": false
+    },
+    {
+      "period": "today",
+      "from": "2026-02-29",
+      "to": "2026-02-29",
+      "expected": false
+    },
+    {
+      "period": "today",
+      "from": "2026-10-18",
+      "to": "2026-10-19",
+      "expected": false
+    },
+    {
+      "period": "today",
+      "from": "2026-10-18",
+      "to": "",
+      "expected": false
+    },
+    {
+      "period": "today",
+      "from": "2026-1-01",
+      "to": "2026-1-01",
+      "expected": false
+    },
+    {
+      "period": "today",
+      "from": "",
+      "to": "",
+      "expected": false
+    },
+    {
+      "period": "today",
+      "from": "2026-04-31",
+      "to": "2026-04-31",
+      "expected": false
+    },
+    {
+      "period": "today",
+      "from": "2026-02-00",
+      "to": "2026-02-00",
+      "expected": false
+    }
+  ],
+  "calendarRange": [
+    {
+      "period": "today",
+      "timezone": "UTC",
+      "now": "2026-01-01T00:30:00Z",
+      "expected": {
+        "from": "2026-01-01",
+        "to": "2026-01-01"
+      }
+    },
+    {
+      "period": "today",
+      "timezone": "America/Los_Angeles",
+      "now": "2026-01-01T00:30:00Z",
+      "expected": {
+        "from": "2025-12-31",
+        "to": "2025-12-31"
+      }
+    },
+    {
+      "period": "yesterday",
+      "timezone": "UTC",
+      "now": "2026-01-01T00:30:00Z",
+      "expected": {
+        "from": "2025-12-31",
+        "to": "2025-12-31"
+      }
+    },
+    {
+      "period": "year",
+      "timezone": "America/Los_Angeles",
+      "now": "2026-01-01T00:30:00Z",
+      "expected": {
+        "from": "2025-01-01",
+        "to": "2025-12-31"
+      }
+    },
+    {
+      "period": "week",
+      "timezone": "Australia/Sydney",
+      "now": "2026-10-04T12:00:00Z",
+      "expected": {
+        "from": "2026-09-28",
+        "to": "2026-10-04"
+      }
+    },
+    {
+      "period": "week",
+      "timezone": "America/New_York",
+      "now": "2026-11-01T18:00:00Z",
+      "expected": {
+        "from": "2026-10-26",
+        "to": "2026-11-01"
+      }
+    },
+    {
+      "period": "week",
+      "timezone": "Australia/Sydney",
+      "now": "2026-10-04T13:30:00Z",
+      "expected": {
+        "from": "2026-10-05",
+        "to": "2026-10-11"
+      }
+    },
+    {
+      "period": "month",
+      "timezone": "UTC",
+      "now": "2024-02-29T12:00:00Z",
+      "expected": {
+        "from": "2024-02-01",
+        "to": "2024-02-29"
+      }
+    },
+    {
+      "period": "year",
+      "timezone": "UTC",
+      "now": "2024-02-29T12:00:00Z",
+      "expected": {
+        "from": "2024-01-01",
+        "to": "2024-12-31"
+      }
+    },
+    {
+      "period": "today",
+      "timezone": "UTC-03:30",
+      "now": "2026-01-01T00:30:00Z",
+      "expected": {
+        "from": "2025-12-31",
+        "to": "2025-12-31"
+      }
+    },
+    {
+      "period": "today",
+      "timezone": "UTC+05:45",
+      "now": "2025-12-31T19:00:00Z",
+      "expected": {
+        "from": "2026-01-01",
+        "to": "2026-01-01"
+      }
+    },
+    {
+      "period": "today",
+      "timezone": "",
+      "now": "2026-01-01T00:30:00Z",
+      "expected": {
+        "from": "2026-01-01",
+        "to": "2026-01-01"
+      }
+    },
+    {
+      "period": "today",
+      "timezone": "invalid-zone",
+      "now": "2026-01-01T00:30:00Z",
+      "expected": {
+        "from": "2026-01-01",
+        "to": "2026-01-01"
+      }
+    },
+    {
+      "period": "today",
+      "timezone": "UTC+99:00",
+      "now": "2026-01-01T00:30:00Z",
+      "expected": {
+        "from": "2026-01-01",
+        "to": "2026-01-01"
+      }
+    },
+    {
+      "period": "month",
+      "timezone": "Asia/Tokyo",
+      "now": "2026-01-31T15:00:00Z",
+      "expected": {
+        "from": "2026-02-01",
+        "to": "2026-02-28"
+      }
+    },
+    {
+      "period": "yesterday",
+      "timezone": "UTC",
+      "now": "2024-03-01T00:00:00Z",
+      "expected": {
+        "from": "2024-02-29",
+        "to": "2024-02-29"
+      }
+    },
+    {
+      "period": "week",
+      "timezone": "UTC",
+      "now": "2026-11-16T00:00:00Z",
+      "expected": {
+        "from": "2026-11-16",
+        "to": "2026-11-22"
+      }
+    },
+    {
+      "period": "week",
+      "timezone": "UTC",
+      "now": "2026-11-15T23:59:59Z",
+      "expected": {
+        "from": "2026-11-09",
+        "to": "2026-11-15"
+      }
+    }
+  ],
+  "shiftCalendarRange": [
+    {
+      "period": "today",
+      "from": "2024-03-01",
+      "direction": -1,
+      "expected": {
+        "from": "2024-02-29",
+        "to": "2024-02-29"
+      }
+    },
+    {
+      "period": "yesterday",
+      "from": "2024-02-29",
+      "direction": 1,
+      "expected": {
+        "from": "2024-03-01",
+        "to": "2024-03-01"
+      }
+    },
+    {
+      "period": "today",
+      "from": "2025-12-31",
+      "direction": 1,
+      "expected": {
+        "from": "2026-01-01",
+        "to": "2026-01-01"
+      }
+    },
+    {
+      "period": "week",
+      "from": "2026-09-28",
+      "direction": 1,
+      "expected": {
+        "from": "2026-10-05",
+        "to": "2026-10-11"
+      }
+    },
+    {
+      "period": "week",
+      "from": "2026-10-05",
+      "direction": -1,
+      "expected": {
+        "from": "2026-09-28",
+        "to": "2026-10-04"
+      }
+    },
+    {
+      "period": "week",
+      "from": "2025-12-29",
+      "direction": 1,
+      "expected": {
+        "from": "2026-01-05",
+        "to": "2026-01-11"
+      }
+    },
+    {
+      "period": "week",
+      "from": "2026-10-08",
+      "direction": -1,
+      "expected": {
+        "from": "2026-09-28",
+        "to": "2026-10-04"
+      }
+    },
+    {
+      "period": "month",
+      "from": "2024-03-01",
+      "direction": -1,
+      "expected": {
+        "from": "2024-02-01",
+        "to": "2024-02-29"
+      }
+    },
+    {
+      "period": "month",
+      "from": "2026-01-01",
+      "direction": -1,
+      "expected": {
+        "from": "2025-12-01",
+        "to": "2025-12-31"
+      }
+    },
+    {
+      "period": "month",
+      "from": "2025-12-01",
+      "direction": 1,
+      "expected": {
+        "from": "2026-01-01",
+        "to": "2026-01-31"
+      }
+    },
+    {
+      "period": "month",
+      "from": "2024-02-01",
+      "direction": 1,
+      "expected": {
+        "from": "2024-03-01",
+        "to": "2024-03-31"
+      }
+    },
+    {
+      "period": "month",
+      "from": "2026-01-31",
+      "direction": 1,
+      "expected": {
+        "from": "2026-02-01",
+        "to": "2026-02-28"
+      }
+    },
+    {
+      "period": "year",
+      "from": "2024-01-01",
+      "direction": 1,
+      "expected": {
+        "from": "2025-01-01",
+        "to": "2025-12-31"
+      }
+    },
+    {
+      "period": "year",
+      "from": "2025-01-01",
+      "direction": -1,
+      "expected": {
+        "from": "2024-01-01",
+        "to": "2024-12-31"
+      }
+    },
+    {
+      "period": "year",
+      "from": "2024-02-29",
+      "direction": 1,
+      "expected": {
+        "from": "2025-01-01",
+        "to": "2025-12-31"
+      }
+    },
+    {
+      "period": "today",
+      "from": "2026-02-30",
+      "direction": 1,
+      "expected": {
+        "from": "2026-03-03",
+        "to": "2026-03-03"
+      }
+    }
+  ],
+  "calendarRangeLabel": [
+    {
+      "period": "today",
+      "from": "2026-10-18",
+      "to": "2026-10-18",
+      "expected": "Oct 18, 2026"
+    },
+    {
+      "period": "yesterday",
+      "from": "2026-10-17",
+      "to": "2026-10-17",
+      "expected": "Oct 17, 2026"
+    },
+    {
+      "period": "week",
+      "from": "2026-10-12",
+      "to": "2026-10-18",
+      "expected": "Oct 12 – 18, 2026"
+    },
+    {
+      "period": "week",
+      "from": "2026-09-28",
+      "to": "2026-10-04",
+      "expected": "Sep 28 – Oct 4, 2026"
+    },
+    {
+      "period": "week",
+      "from": "2025-12-29",
+      "to": "2026-01-04",
+      "expected": "Dec 29, 2025 – Jan 4, 2026"
+    },
+    {
+      "period": "week",
+      "from": "2026-10-12",
+      "to": "2026-10-12",
+      "expected": "Oct 12, 2026"
+    },
+    {
+      "period": "month",
+      "from": "2026-10-01",
+      "to": "2026-10-31",
+      "expected": "October 2026"
+    },
+    {
+      "period": "month",
+      "from": "2026-01-01",
+      "to": "2026-01-31",
+      "expected": "January 2026"
+    },
+    {
+      "period": "month",
+      "from": "2026-09-01",
+      "to": "2026-09-30",
+      "expected": "September 2026"
+    },
+    {
+      "period": "year",
+      "from": "2026-01-01",
+      "to": "2026-12-31",
+      "expected": "2026"
+    },
+    {
+      "period": "today",
+      "from": "2026-01-05",
+      "to": "2026-01-05",
+      "expected": "Jan 5, 2026"
+    }
+  ]
+}

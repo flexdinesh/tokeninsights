@@ -148,6 +148,9 @@ func TestLayerDependencies(t *testing.T) {
 		{"writerlock", []string{"database/sql", "net/http"}},
 		{"dbpath", []string{"database/sql", "net/http"}},
 		{"storagecompat", pureContract},
+		// The native presentation model stays pure: no UI toolkit, shell,
+		// transport client or storage owner.
+		{"dashboardview", []string{"github.com/egoist/mygo", module + "packages/desktop", module + "packages/desktop-native", module + "packages/cli", module + "packages/backend", prefix + "server", prefix + "queryclient", prefix + "localruntime", prefix + "localclient", prefix + "localbackend", prefix + "datastore", prefix + "collector", prefix + "pipeline"}},
 	}
 	persistenceOwners := map[string]bool{"datastore": true, "pipeline": true, "localruntime": true, "collector": true, "collectordb": true}
 	// Command packages compose through localruntime; they never construct
@@ -158,6 +161,7 @@ func TestLayerDependencies(t *testing.T) {
 		allowed   []string
 	}{
 		{"application", []string{"os", "net/url"}, nil},
+		{"dashboardview", []string{"os", "net/http", "net/url", "database/sql"}, nil},
 		{"tui", []string{"net/http", "database/sql", prefix + "server", prefix + "adapters", prefix + "datastore", prefix + "persistence", prefix + "syncjob", prefix + "remoteserver"}, nil},
 		{"cli", []string{"database/sql", prefix + "adapters", prefix + "datastore", prefix + "persistence", prefix + "remoteserver"}, nil},
 	}
