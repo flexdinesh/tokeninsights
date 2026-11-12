@@ -67,6 +67,12 @@ const (
 	ChipValueWidth float32 = 240
 	// ProseWidth caps explanatory paragraphs near 70 characters of body text.
 	ProseWidth float32 = 560
+	// ServerIdentityWidth caps the header's hostname before it truncates.
+	ServerIdentityWidth float32 = 448
+	// BrandMark is the Split T mark's square; BrandGap separates it from
+	// the wordmark.
+	BrandMark float32 = 20
+	BrandGap  float32 = 6
 	// ReadoutNarrow is the readout strip width below which readouts form
 	// two columns with the total spanning both.
 	ReadoutNarrow float32 = 720

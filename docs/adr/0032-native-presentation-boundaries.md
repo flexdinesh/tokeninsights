@@ -30,12 +30,19 @@ of those rules drift silently unless both sides prove the same outputs.
 - **Review**: a tester gallery renders kit and view states to PNGs on demand for
   manual parity review against web captures. No pixel goldens run in validation.
 - **Preferences**: theme persists app-wide in MyGo `PathUserData`
-  `preferences.json`. Hidden columns and chart metric are per window, in memory.
+  `preferences.json` (versioned, written atomically). A missing, unreadable or
+  unrecognized file starts with the system theme; an unrecognized file is never
+  replaced or deleted. The header's theme cycle and the View menu radios set
+  one choice, which native window chrome follows too. Hidden columns and chart
+  metric are per window, in memory.
 
 Accepted native differences: no backend CPU/RAM in the status popover; native
 dialogs for startup instead of the web connection screen; a virtualized table
 fetching 200-row pages on demand instead of a pager; native menu and shortcuts;
-the MyGo inactive-window accent fade.
+the MyGo inactive-window accent fade; the sidebar stays a rail at every
+supported window width; the footer omits the web's static harness list, which
+the backend instance does not report; a failed instance load shows a retry
+line under the header; closing a window cancels its in-flight refresh.
 
 ## Consequences
 

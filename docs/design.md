@@ -360,7 +360,8 @@ without owning storage. Native (`packages/desktop-native`) renders MyGo native U
 over its window's `localclient` session with no bridge; DESIGN.md roles are its
 guarded visual contract. Its formatting, calendar, query, status, column, chart
 and filter rules come from pure `dashboardview`, pinned to the web by shared
-fixtures in `packages/contracts/fixtures/dashboard-view` (ADR 0032). Neither
+fixtures in `packages/contracts/fixtures/dashboard-view` (ADR 0032). Its theme
+choice persists app-wide in the app's user data `preferences.json`. Neither
 shell imports the other.
 
 ## Packages and contracts
