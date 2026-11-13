@@ -34,10 +34,12 @@ const (
 
 // AppShell builds a window: the sidebar beside a column of the header and
 // the scrolling page, which holds the selected tab's content above the
-// footer. It themes the window from s.Appearance.
+// footer. It themes the window from s.Appearance and keeps the window's
+// status current while it shows.
 func AppShell(c *ui.Context, s Shell) ui.Element {
 	t := s.Appearance.Tokens(c.Theme().Dark)
 	c.SetTheme(t.Widgets())
+	poll(c, s.Window)
 	shell := ui.Row(c).Fill().AlignItems(ui.Stretch).Background(t.Surface).TextColor(t.Ink)
 	return shell.Children(func() {
 		Sidebar(c, s.Window)
@@ -85,4 +87,13 @@ func placeholder(c *ui.Context) ui.Element {
 	return ui.Column(c).Center().Padding(theme.Unit*12, 0).Children(func() {
 		theme.Body(ui.Text(c, placeholderText)).TextColor(t.InkMuted).TextAlign(ui.Center).MaxWidth(theme.ProseWidth)
 	})
+}
+
+// poll starts the window's due status reads and wakes the view when the
+// next is due. A hidden window builds as it hides and as it shows, so
+// polling pauses and resumes with it; a closed window builds no more.
+func poll(c *ui.Context, w *model.Window) {
+	if wait, ok := w.Poll(c.Now(), c.WindowHidden()); ok {
+		c.After(wait)
+	}
 }

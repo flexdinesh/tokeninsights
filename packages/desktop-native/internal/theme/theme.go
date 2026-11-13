@@ -57,10 +57,13 @@ const (
 	// PopoverWidth is the target popover width; PopoverEdge keeps
 	// popovers clear of the window edges; PopoverOffset separates them
 	// from their anchor and MenuOffset select menus from their trigger.
-	PopoverWidth  float32 = 352
-	PopoverEdge   float32 = 16
-	PopoverOffset float32 = 8
-	MenuOffset    float32 = 4
+	PopoverWidth float32 = 352
+	// StatusPopoverWidth is the narrower backend status popover, as the
+	// web's --status-popover-width.
+	StatusPopoverWidth float32 = 288
+	PopoverEdge        float32 = 16
+	PopoverOffset      float32 = 8
+	MenuOffset         float32 = 4
 	// MenuMinWidth is the narrowest select menu.
 	MenuMinWidth float32 = 128
 	// ChipValueWidth truncates identity text inside chips.

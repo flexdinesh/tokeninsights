@@ -42,7 +42,12 @@ fetching 200-row pages on demand instead of a pager; native menu and shortcuts;
 the MyGo inactive-window accent fade; the sidebar stays a rail at every
 supported window width; the footer omits the web's static harness list, which
 the backend instance does not report; a failed instance load shows a retry
-line under the header; closing a window cancels its in-flight refresh.
+line under the header and reports "Connection unavailable" in the header
+status; closing a window cancels its in-flight refresh. Each window reads
+status and collector progress every 5 seconds only while it shows (MyGo
+`WindowHidden`), reading status at once as it shows again, and does not
+reread its instance on the first status read, which the web's bootstrap
+invalidation does.
 
 ## Consequences
 

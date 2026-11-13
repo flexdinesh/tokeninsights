@@ -6,10 +6,12 @@ import (
 	"os"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 	"github.com/flexdinesh/tokeninsights/packages/core/application"
+	"github.com/flexdinesh/tokeninsights/packages/core/collectorprogress"
 	"github.com/flexdinesh/tokeninsights/packages/core/endpoint"
 	"github.com/flexdinesh/tokeninsights/packages/desktop-native/internal/model"
 	"github.com/flexdinesh/tokeninsights/packages/desktop-native/internal/preferences"
@@ -32,6 +34,12 @@ func (idleBackend) Instance(context.Context) (application.Instance, error) {
 	return application.Instance{Hostname: "studio"}, nil
 }
 func (idleBackend) Capture(context.Context) error { return nil }
+func (idleBackend) Status(context.Context) (application.Status, error) {
+	return application.Status{}, nil
+}
+func (idleBackend) Progress(context.Context) (collectorprogress.Snapshot, error) {
+	return collectorprogress.Snapshot{}, nil
+}
 
 // testAppearance is the app's appearance over a preferences file in dir,
 // with its View menu built and its flushes joined by flushes.
@@ -66,7 +74,7 @@ func TestHeaderThemeCycleSyncsMenuAndPersists(t *testing.T) {
 		t.Fatalf("first run checks %v", got)
 	}
 	window := model.NewWindow(endpoint.Info{Transport: "local", Target: "local", State: "connected"}, idleBackend{},
-		model.Runtime{Context: context.Background(), Go: func(func()) {}, Update: func(fn func()) { fn() }})
+		model.Runtime{Context: context.Background(), Go: func(func()) {}, Update: func(fn func()) { fn() }, Now: time.Now})
 	tt := ui.NewTester(func(c *ui.Context) {
 		views.AppShell(c, views.Shell{Window: window, Appearance: a.choice, SetAppearance: a.set})
 	}, windowWidth, windowHeight)

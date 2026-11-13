@@ -20,9 +20,13 @@ var stageLabels = map[string]string{
 	StageAccepted: "Usage accepted", StageFailed: "Collection failed", StageInterrupted: "Collection interrupted",
 }
 
+// HarnessSkipped is the harness state of a run whose sources were unchanged
+// or absent; the web explains it with a tooltip.
+const HarnessSkipped = "skipped"
+
 var harnessStateLabels = map[string]string{
 	"waiting": "Waiting", "running": "Collecting", "complete": "Collected",
-	"failed": "Collection failed", "skipped": "No new usage",
+	"failed": "Collection failed", HarnessSkipped: "No new usage",
 }
 
 // CollectorStageLabel labels an attempt stage, e.g. "Collecting usage"; unknown stages are empty.

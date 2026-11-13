@@ -361,8 +361,11 @@ over its window's `localclient` session with no bridge; DESIGN.md roles are its
 guarded visual contract. Its formatting, calendar, query, status, column, chart
 and filter rules come from pure `dashboardview`, pinned to the web by shared
 fixtures in `packages/contracts/fixtures/dashboard-view` (ADR 0032). Its theme
-choice persists app-wide in the app's user data `preferences.json`. Neither
-shell imports the other.
+choice persists app-wide in the app's user data `preferences.json`. Each
+window's model polls status and collector progress every 5 seconds while the
+window shows, follows snapshot identity/revision as the web dashboard does
+and derives its header status from `dashboardview`. Neither shell imports
+the other.
 
 ## Packages and contracts
 

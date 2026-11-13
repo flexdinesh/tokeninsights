@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"sync"
+	"time"
 
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
@@ -131,7 +132,7 @@ func (v *viewer) show(connected *session.Session) {
 	ctx, cancel := context.WithCancel(v.ctx)
 	var window *mygo.Window
 	state := model.NewWindow(connected.Info, sessionBackend{connected}, model.Runtime{
-		Context: ctx, Go: v.workers.Go, Update: func(fn func()) { window.Update(fn) },
+		Context: ctx, Go: v.workers.Go, Update: func(fn func()) { window.Update(fn) }, Now: time.Now,
 	})
 	window = mygo.NewWindow(mygo.WindowOptions{
 		Title: appName, Content: ui.View(func(c *ui.Context) {

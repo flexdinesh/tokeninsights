@@ -3,19 +3,25 @@ package model
 import (
 	"context"
 	"errors"
+	"slices"
 	"testing"
+	"time"
 
 	"github.com/flexdinesh/tokeninsights/packages/core/analytics"
 	"github.com/flexdinesh/tokeninsights/packages/core/application"
+	"github.com/flexdinesh/tokeninsights/packages/core/collectorprogress"
 	"github.com/flexdinesh/tokeninsights/packages/core/dashboardview"
 	"github.com/flexdinesh/tokeninsights/packages/core/endpoint"
+	"github.com/flexdinesh/tokeninsights/packages/core/serverfeatures"
 )
 
 // fakeBackend answers each call with the next value its test sends.
 type fakeBackend struct {
-	instances chan instanceResult
-	captures  chan error
-	calls     chan string
+	instances  chan instanceResult
+	captures   chan error
+	statuses   chan statusResult
+	progresses chan progressResult
+	calls      chan string
 }
 
 type instanceResult struct {
@@ -23,8 +29,39 @@ type instanceResult struct {
 	err      error
 }
 
+type statusResult struct {
+	status application.Status
+	err    error
+}
+
+type progressResult struct {
+	progress collectorprogress.Snapshot
+	err      error
+}
+
 func newFakeBackend() *fakeBackend {
-	return &fakeBackend{instances: make(chan instanceResult), captures: make(chan error), calls: make(chan string, 8)}
+	return &fakeBackend{instances: make(chan instanceResult), captures: make(chan error), statuses: make(chan statusResult),
+		progresses: make(chan progressResult), calls: make(chan string, 8)}
+}
+
+func (b *fakeBackend) Status(ctx context.Context) (application.Status, error) {
+	b.calls <- "status"
+	select {
+	case r := <-b.statuses:
+		return r.status, r.err
+	case <-ctx.Done():
+		return application.Status{}, ctx.Err()
+	}
+}
+
+func (b *fakeBackend) Progress(ctx context.Context) (collectorprogress.Snapshot, error) {
+	b.calls <- "progress"
+	select {
+	case r := <-b.progresses:
+		return r.progress, r.err
+	case <-ctx.Done():
+		return collectorprogress.Snapshot{}, ctx.Err()
+	}
 }
 
 func (b *fakeBackend) Instance(ctx context.Context) (application.Instance, error) {
@@ -48,19 +85,26 @@ func (b *fakeBackend) Capture(ctx context.Context) error {
 }
 
 // harness runs a window's workers as goroutines and its updates when the
-// test, standing in for the main thread, applies them.
+// test, standing in for the main thread, applies them. Its clock is
+// fixed at clock; cancel ends the window's work as closing it does.
 type harness struct {
 	t       *testing.T
 	backend *fakeBackend
 	updates chan func()
 	window  *Window
+	cancel  context.CancelFunc
 }
+
+// clock is the wall time harness reads are stamped with.
+var clock = time.Date(2026, time.November, 13, 9, 0, 0, 0, time.UTC)
 
 func newHarness(t *testing.T) *harness {
 	h := &harness{t: t, backend: newFakeBackend(), updates: make(chan func(), 8)}
 	ctx, cancel := context.WithCancel(context.Background())
+	h.cancel = cancel
 	t.Cleanup(cancel)
-	rt := Runtime{Context: ctx, Go: func(fn func()) { go fn() }, Update: func(fn func()) { h.updates <- fn }}
+	rt := Runtime{Context: ctx, Go: func(fn func()) { go fn() }, Update: func(fn func()) { h.updates <- fn },
+		Now: func() time.Time { return clock }}
 	connection := endpoint.Info{Transport: "ssh", Target: "ssh://alice@studio:2222", State: "connected", Hostname: "studio.local"}
 	h.window = NewWindow(connection, h.backend, rt)
 	return h
@@ -71,6 +115,22 @@ func (h *harness) expectCall(name string) {
 	h.t.Helper()
 	if got := <-h.backend.calls; got != name {
 		h.t.Fatalf("backend call %q, want %q", got, name)
+	}
+}
+
+// expectCalls waits for the backend to receive names, in any order, as
+// reads started together race.
+func (h *harness) expectCalls(names ...string) {
+	h.t.Helper()
+	got := make([]string, len(names))
+	for i := range names {
+		got[i] = <-h.backend.calls
+	}
+	want := slices.Clone(names)
+	slices.Sort(got)
+	slices.Sort(want)
+	if !slices.Equal(got, want) {
+		h.t.Fatalf("backend calls %q, want %q", got, want)
 	}
 }
 
@@ -88,8 +148,10 @@ func (h *harness) noCall() {
 }
 
 var testInstance = application.Instance{
-	InstanceID: "inst-4f1c", Hostname: "studio", Timezone: "Europe/London",
-	Defaults: analytics.Selection{Period: "month", From: "2026-11-01", To: "2026-11-30", Bucket: "day"},
+	InstanceID: "inst-4f1c", DatasetID: "default", Hostname: "studio", Timezone: "Europe/London",
+	Capabilities: serverfeatures.Capabilities{serverfeatures.Usage, serverfeatures.Facets, serverfeatures.CollectorProgress},
+	Permissions:  serverfeatures.Permissions{serverfeatures.Read},
+	Defaults:     analytics.Selection{Period: "month", From: "2026-11-01", To: "2026-11-30", Bucket: "day"},
 }
 
 func TestLoadStartsQueryFromInstanceDefaults(t *testing.T) {
@@ -160,6 +222,7 @@ func TestRefreshCoalescesAndReportsFailure(t *testing.T) {
 	if w.Refreshing() || w.RefreshError() == nil {
 		t.Fatal("failed refresh kept running or lost its error")
 	}
+	h.answerReads(statusAt(1, 1), progressOf())
 	if !w.Refresh() || w.RefreshError() != nil {
 		t.Fatal("a new refresh kept the old failure")
 	}
@@ -169,6 +232,7 @@ func TestRefreshCoalescesAndReportsFailure(t *testing.T) {
 	if w.Refreshing() || w.RefreshError() != nil {
 		t.Fatal("successful refresh")
 	}
+	h.answerReads(statusAt(1, 1), progressOf())
 	h.noCall()
 }
 
