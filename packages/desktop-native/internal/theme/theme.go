@@ -54,6 +54,8 @@ const (
 	CheckSize float32 = 14
 	// DotSize is the status dot diameter.
 	DotSize float32 = 8
+	// SwatchSize is the square of a chart legend's color swatch.
+	SwatchSize float32 = 8
 	// PopoverWidth is the target popover width; PopoverEdge keeps
 	// popovers clear of the window edges; PopoverOffset separates them
 	// from their anchor and MenuOffset select menus from their trigger.

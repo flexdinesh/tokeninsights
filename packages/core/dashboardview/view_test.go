@@ -1,8 +1,11 @@
 package dashboardview_test
 
 import (
+	"os"
+	"path/filepath"
 	"reflect"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/flexdinesh/tokeninsights/packages/core/analytics"
@@ -168,6 +171,40 @@ func TestChartRules(t *testing.T) {
 	}
 	if dashboardview.ChartColorIndex(12) != 0 || dashboardview.ChartColorIndex(13) != 1 {
 		t.Error("palette cycles every 12 colors")
+	}
+}
+
+// TestBucketOptionsFollowTheAPIEnum pins the bucket choices to the API's
+// Bucket enum, the source of the web's bucketSchema options.
+func TestBucketOptionsFollowTheAPIEnum(t *testing.T) {
+	spec, err := os.ReadFile(filepath.Join("..", "..", "..", "docs", "openapi.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, after, ok := strings.Cut(string(spec), "\n    Bucket:\n      type: string\n      enum:\n")
+	if !ok {
+		t.Fatal("no Bucket enum in docs/openapi.yaml")
+	}
+	var enum []string
+	for line := range strings.Lines(after) {
+		value, ok := strings.CutPrefix(strings.TrimRight(line, "\n"), "        - ")
+		if !ok {
+			break
+		}
+		enum = append(enum, value)
+	}
+	var keys []string
+	for _, option := range dashboardview.BucketOptions() {
+		keys = append(keys, option.Key)
+		if want := strings.ToUpper(option.Key[:1]) + option.Key[1:]; option.Label != want {
+			t.Errorf("bucket %q label %q, want %q", option.Key, option.Label, want)
+		}
+		if err := (analytics.Selection{Period: "week", Bucket: option.Key}).Validate(); err != nil {
+			t.Errorf("bucket %q: %v", option.Key, err)
+		}
+	}
+	if !slices.Equal(keys, enum) {
+		t.Errorf("buckets %q, API enum %q", keys, enum)
 	}
 }
 

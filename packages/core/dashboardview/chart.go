@@ -21,6 +21,18 @@ func ChartMetrics() []ChartMetric {
 	}
 }
 
+// BucketOption is a timeline bucket choice: the query's bucket and its label.
+type BucketOption struct {
+	Key, Label string
+}
+
+// BucketOptions lists the timeline bucket choices in the order of the
+// API's Bucket enum, labeled with a capital first letter, as the web's
+// BucketControl.
+func BucketOptions() []BucketOption {
+	return []BucketOption{{"day", "Day"}, {"week", "Week"}, {"month", "Month"}, {"year", "Year"}}
+}
+
 // ContextSeries lists the Context chart's bars and legend in order.
 func ContextSeries() []ChartMetric {
 	return []ChartMetric{{SortAverageContext, "Average"}, {SortMedianContext, "Median"}, {SortMaxContext, "Maximum"}}

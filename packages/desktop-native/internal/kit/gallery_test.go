@@ -97,6 +97,7 @@ var sections = []section{
 	{name: "tooltip", width: 420, height: 160, texts: []string{"Columns"}, build: tooltipSection, prepare: restOnColumns},
 	{name: "focus", width: 560, height: 200, texts: []string{"Focused"}, build: focusSection, prepare: tabTwice},
 	{name: "typography", width: 720, height: 320, texts: []string{"Page heading", "Section heading"}, build: typographySection},
+	{name: "chart-parts", width: 560, height: 220, texts: []string{"2026-09-13 · Sep 13, 2026, 11:00 · Europe/London", "Total: 257,000", "gpt-5", "48.1%", "Average"}, build: chartPartsSection},
 	{name: "table", width: 720, height: 300, texts: []string{"Model", "Total", "gpt-5", "311K", "openai"}, build: tableSection, prepare: hoverTableRow},
 }
 
@@ -318,6 +319,30 @@ func popoverSection(g *gallery, c *ui.Context) {
 			CheckboxOption(c.Key("pi"), &g.checkedPi, "pi")
 			CheckboxOption(c.Key("codex"), &g.checkedCodex, "codex")
 		})
+	})
+}
+
+// chartPartsSection shows a chart tooltip panel, a legend of filter links
+// and a legend of swatches.
+func chartPartsSection(g *gallery, c *ui.Context) {
+	t := theme.Current(c)
+	ui.Row(c).Children(func() {
+		ChartTip(c, "2026-09-13 · Sep 13, 2026, 11:00 · Europe/London", []string{"Total: 257,000"})
+	})
+	ui.Row(c).Wrap().GapX(theme.Unit * 3).Children(func() {
+		for i, item := range [][2]string{{"gpt-5", "48.1%"}, {"claude-sonnet-4-5", "31.7%"}, {"gpt-5-mini", "20.2%"}} {
+			if LegendButton(c.Key(i), t.Chart[i], item[0], item[1]).Clicked() {
+				g.clicks++
+			}
+		}
+	})
+	ui.Row(c).Wrap().GapX(theme.Unit * 4).TextColor(t.InkMuted).Children(func() {
+		for i, label := range []string{"Average", "Median", "Maximum"} {
+			ui.Row(c).Gap(theme.Unit * 2).Children(func() {
+				Swatch(c, t.Chart[i])
+				theme.Label(ui.Text(c, label))
+			})
+		}
 	})
 }
 

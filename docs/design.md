@@ -377,6 +377,11 @@ custom bounds are picked from a calendar rather than typed.
 Its harness, provider, model and session filters read the query's facets
 with the same snapshot rules as usage and apply each check at once; the
 session filter searches the backend once typing rests 200 ms, as the web's.
+Its usage chart plots the usage answer's chart rows as the web's: a
+timeline of the chosen metric (kept per window in memory) with a bucket
+select that reads usage again, share bars whose legend filters by one
+category, or Context's average, median and maximum bars; its series are
+prepared once per answer and metric, not per frame.
 Neither shell imports the other.
 
 ## Packages and contracts
