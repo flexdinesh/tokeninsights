@@ -181,23 +181,23 @@ var roles = []role{
 	{"selected", "#eef2fc", "#1f2738", func(t *Tokens) *ui.Color { return &t.Selected }},
 	{"selected-ink", "#285bd4", "#82aaff", func(t *Tokens) *ui.Color { return &t.SelectedInk }},
 	{"focus", "#285bd4", "#82aaff", func(t *Tokens) *ui.Color { return &t.Focus }},
-	{"status-success", "oklch(0.49 0.14 155)", "oklch(0.72 0.16 155)", func(t *Tokens) *ui.Color { return &t.StatusSuccess }},
-	{"status-warning", "oklch(0.55 0.14 75)", "oklch(0.78 0.15 80)", func(t *Tokens) *ui.Color { return &t.StatusWarning }},
-	{"status-danger", "oklch(0.56 0.22 27)", "oklch(0.68 0.19 23)", func(t *Tokens) *ui.Color { return &t.StatusDanger }},
+	{"status-success", "#007e3b", "#35c177", func(t *Tokens) *ui.Color { return &t.StatusSuccess }},
+	{"status-warning", "#9e6300", "#e9ab2b", func(t *Tokens) *ui.Color { return &t.StatusWarning }},
+	{"status-danger", "#d8151e", "#f75c5e", func(t *Tokens) *ui.Color { return &t.StatusDanger }},
 	{"status-danger-ink", "#ffffff", "#121316", func(t *Tokens) *ui.Color { return &t.StatusDangerInk }},
-	{"status-danger-surface", "oklch(0.96 0.025 25)", "oklch(0.2 0.04 25)", func(t *Tokens) *ui.Color { return &t.StatusDangerSurface }},
+	{"status-danger-surface", "#ffecea", "#250e0d", func(t *Tokens) *ui.Color { return &t.StatusDangerSurface }},
 	{"chart-1", "#285bd4", "#82aaff", func(t *Tokens) *ui.Color { return &t.Chart[0] }},
 	{"chart-2", "#b45c7f", "#e59aba", func(t *Tokens) *ui.Color { return &t.Chart[1] }},
-	{"chart-3", "oklch(0.67 0.16 65)", "oklch(0.76 0.15 70)", func(t *Tokens) *ui.Color { return &t.Chart[2] }},
-	{"chart-4", "oklch(0.58 0.16 165)", "oklch(0.72 0.14 165)", func(t *Tokens) *ui.Color { return &t.Chart[3] }},
-	{"chart-5", "oklch(0.6 0.2 25)", "oklch(0.72 0.18 25)", func(t *Tokens) *ui.Color { return &t.Chart[4] }},
-	{"chart-6", "oklch(0.62 0.18 330)", "oklch(0.74 0.16 330)", func(t *Tokens) *ui.Color { return &t.Chart[5] }},
-	{"chart-7", "oklch(0.55 0.14 200)", "oklch(0.72 0.13 200)", func(t *Tokens) *ui.Color { return &t.Chart[6] }},
-	{"chart-8", "oklch(0.63 0.16 125)", "oklch(0.75 0.14 125)", func(t *Tokens) *ui.Color { return &t.Chart[7] }},
-	{"chart-9", "oklch(0.61 0.15 90)", "oklch(0.78 0.14 90)", func(t *Tokens) *ui.Color { return &t.Chart[8] }},
-	{"chart-10", "oklch(0.54 0.16 225)", "oklch(0.7 0.15 225)", func(t *Tokens) *ui.Color { return &t.Chart[9] }},
-	{"chart-11", "oklch(0.58 0.15 355)", "oklch(0.73 0.14 355)", func(t *Tokens) *ui.Color { return &t.Chart[10] }},
-	{"chart-12", "oklch(0.54 0.11 45)", "oklch(0.7 0.1 45)", func(t *Tokens) *ui.Color { return &t.Chart[11] }},
+	{"chart-3", "#d77b00", "#ed9e2f", func(t *Tokens) *ui.Color { return &t.Chart[2] }},
+	{"chart-4", "#009664", "#2dc08e", func(t *Tokens) *ui.Color { return &t.Chart[3] }},
+	{"chart-5", "#de3b3d", "#ff6c67", func(t *Tokens) *ui.Color { return &t.Chart[4] }},
+	{"chart-6", "#bf56b9", "#e282da", func(t *Tokens) *ui.Color { return &t.Chart[5] }},
+	{"chart-7", "#00868c", "#00bdc2", func(t *Tokens) *ui.Color { return &t.Chart[6] }},
+	{"chart-8", "#739a00", "#9abd53", func(t *Tokens) *ui.Color { return &t.Chart[7] }},
+	{"chart-9", "#a37d00", "#dab33a", func(t *Tokens) *ui.Color { return &t.Chart[8] }},
+	{"chart-10", "#007ca4", "#00afe4", func(t *Tokens) *ui.Color { return &t.Chart[9] }},
+	{"chart-11", "#bb4e7f", "#eb80ac", func(t *Tokens) *ui.Color { return &t.Chart[10] }},
+	{"chart-12", "#a25834", "#d28a69", func(t *Tokens) *ui.Color { return &t.Chart[11] }},
 }
 
 var light, dark = mustBuild(false), mustBuild(true)
@@ -241,35 +241,17 @@ func build(isDark bool) (Tokens, error) {
 	return tokens, nil
 }
 
-// parseColor reads the two DESIGN.md color forms: #rrggbb and oklch(L C H).
+// parseColor reads the DESIGN.md color form, #rrggbb in sRGB. Tokens are
+// sRGB so that no role makes a window switch to a wide-gamut frame buffer.
 func parseColor(spec string) (ui.Color, error) {
-	if strings.HasPrefix(spec, "#") {
-		if len(spec) != len("#rrggbb") {
-			return ui.Color{}, fmt.Errorf("unsupported hex color %q", spec)
-		}
-		if _, err := strconv.ParseUint(spec[1:], 16, 32); err != nil {
-			return ui.Color{}, fmt.Errorf("invalid hex color %q", spec)
-		}
-		return ui.Hex(spec), nil
+	hex, ok := strings.CutPrefix(spec, "#")
+	if !ok || len(hex) != len("rrggbb") {
+		return ui.Color{}, fmt.Errorf("unsupported color %q, want #rrggbb", spec)
 	}
-	inner, ok := strings.CutPrefix(spec, "oklch(")
-	if !ok {
-		return ui.Color{}, fmt.Errorf("unsupported color %q", spec)
+	if _, err := strconv.ParseUint(hex, 16, 32); err != nil {
+		return ui.Color{}, fmt.Errorf("invalid hex color %q", spec)
 	}
-	inner, ok = strings.CutSuffix(inner, ")")
-	parts := strings.Fields(inner)
-	if !ok || len(parts) != 3 {
-		return ui.Color{}, fmt.Errorf("invalid oklch color %q", spec)
-	}
-	var values [3]float32
-	for i, part := range parts {
-		value, err := strconv.ParseFloat(part, 32)
-		if err != nil {
-			return ui.Color{}, fmt.Errorf("invalid oklch color %q", spec)
-		}
-		values[i] = float32(value)
-	}
-	return ui.Oklch(values[0], values[1], values[2]), nil
+	return ui.Hex(spec), nil
 }
 
 // Widgets returns the MyGo widget theme for these tokens: square corners,

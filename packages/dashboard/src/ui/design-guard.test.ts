@@ -180,6 +180,19 @@ describe('design guard', () => {
     expect(designFrontmatterColors()).toEqual(colors)
   })
 
+  it('writes every color token as sRGB hex', () => {
+    const colors = designFrontmatterColors()
+    expect(Object.keys(colors).length).toBeGreaterThan(0)
+    expect(Object.entries(colors).filter(([, value]) => !/^#[0-9a-f]{6}$/.test(value))).toEqual([])
+    const wideGamut = /\b(oklch|oklab|lab|lch|color)\(/gi
+    expect(
+      matches(
+        wideGamut,
+        sources.filter(({ path }) => path.startsWith(tokenDirectory)),
+      ),
+    ).toEqual([])
+  })
+
   it('loads the design catalog only behind the development flag', () => {
     const references = sources
       .filter(({ path }) => !path.startsWith('design/'))

@@ -38,40 +38,40 @@ colors:
   dark-selected-ink: "#82aaff"
   focus: "#285bd4"
   dark-focus: "#82aaff"
-  status-success: "oklch(0.49 0.14 155)"
-  dark-status-success: "oklch(0.72 0.16 155)"
-  status-warning: "oklch(0.55 0.14 75)"
-  dark-status-warning: "oklch(0.78 0.15 80)"
-  status-danger: "oklch(0.56 0.22 27)"
-  dark-status-danger: "oklch(0.68 0.19 23)"
+  status-success: "#007e3b"
+  dark-status-success: "#35c177"
+  status-warning: "#9e6300"
+  dark-status-warning: "#e9ab2b"
+  status-danger: "#d8151e"
+  dark-status-danger: "#f75c5e"
   status-danger-ink: "#ffffff"
   dark-status-danger-ink: "#121316"
-  status-danger-surface: "oklch(0.96 0.025 25)"
-  dark-status-danger-surface: "oklch(0.2 0.04 25)"
+  status-danger-surface: "#ffecea"
+  dark-status-danger-surface: "#250e0d"
   chart-1: "#285bd4"
   dark-chart-1: "#82aaff"
   chart-2: "#b45c7f"
   dark-chart-2: "#e59aba"
-  chart-3: "oklch(0.67 0.16 65)"
-  dark-chart-3: "oklch(0.76 0.15 70)"
-  chart-4: "oklch(0.58 0.16 165)"
-  dark-chart-4: "oklch(0.72 0.14 165)"
-  chart-5: "oklch(0.6 0.2 25)"
-  dark-chart-5: "oklch(0.72 0.18 25)"
-  chart-6: "oklch(0.62 0.18 330)"
-  dark-chart-6: "oklch(0.74 0.16 330)"
-  chart-7: "oklch(0.55 0.14 200)"
-  dark-chart-7: "oklch(0.72 0.13 200)"
-  chart-8: "oklch(0.63 0.16 125)"
-  dark-chart-8: "oklch(0.75 0.14 125)"
-  chart-9: "oklch(0.61 0.15 90)"
-  dark-chart-9: "oklch(0.78 0.14 90)"
-  chart-10: "oklch(0.54 0.16 225)"
-  dark-chart-10: "oklch(0.7 0.15 225)"
-  chart-11: "oklch(0.58 0.15 355)"
-  dark-chart-11: "oklch(0.73 0.14 355)"
-  chart-12: "oklch(0.54 0.11 45)"
-  dark-chart-12: "oklch(0.7 0.1 45)"
+  chart-3: "#d77b00"
+  dark-chart-3: "#ed9e2f"
+  chart-4: "#009664"
+  dark-chart-4: "#2dc08e"
+  chart-5: "#de3b3d"
+  dark-chart-5: "#ff6c67"
+  chart-6: "#bf56b9"
+  dark-chart-6: "#e282da"
+  chart-7: "#00868c"
+  dark-chart-7: "#00bdc2"
+  chart-8: "#739a00"
+  dark-chart-8: "#9abd53"
+  chart-9: "#a37d00"
+  dark-chart-9: "#dab33a"
+  chart-10: "#007ca4"
+  dark-chart-10: "#00afe4"
+  chart-11: "#bb4e7f"
+  dark-chart-11: "#eb80ac"
+  chart-12: "#a25834"
+  dark-chart-12: "#d28a69"
 typography:
   page:
     fontFamily: "'Geist', ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
@@ -273,6 +273,13 @@ primitive. Features never restyle a primitive's color, border or typography.
 ## Colors
 
 Neutral surfaces carry the workspace; one quiet blue carries every interaction.
+
+**The sRGB Rule.** Every color token is sRGB hex (`#rrggbb`), never `oklch()`
+or another wide-gamut form. A token then looks the same on every screen, in the
+browser and the native app, and the native app never switches a window to
+wide-gamut frame buffers, which a color outside sRGB forces and which double
+their memory. Tune hues inside sRGB by lightness, hue and chroma; both guards
+reject any other form.
 
 ### Primary
 
@@ -482,8 +489,10 @@ communicate state alongside text.
 `design:capture` writes desktop and mobile captures in both themes to `.scratch/`.
 `src/ui/design-guard.test.ts` fails on raw colors outside the palette, undefined
 custom properties, arbitrary or reset-default Tailwind classes, Radix/cva imports
-outside `src/ui`, catalog loading outside the DEV branch, and frontmatter colors
-that differ from the semantic roles.
+outside `src/ui`, catalog loading outside the DEV branch, frontmatter colors
+that differ from the semantic roles, and color tokens that are not sRGB hex. The
+native `internal/theme` tests check the same frontmatter and that every role is
+inside sRGB.
 
 ## Do's and Don'ts
 
