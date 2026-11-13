@@ -66,6 +66,14 @@ of the web's proportional stretch. Columns resize by dragging (a double click
 fits a column to its cells instead of resetting it) and move by dragging
 their headings, as in Finder; their edges take no keyboard resizing. A tab
 without Name (Context) keeps its last shown column.
+The custom date bounds are picked from MyGo's calendar below each field
+rather than typed: an empty bound shows Beginning or Now, as the date
+filter's label reads it, and the calendar's Clear and Today buttons empty
+a bound or choose the server's date, as a browser's date picker. The
+calendar starts its weeks as the user's region does, while weekly periods
+stay Monday to Sunday. Opening the date filter leaves the focus on its
+trigger, from which Tab moves into the popover, rather than moving it to
+the popover's first control.
 
 ## Consequences
 

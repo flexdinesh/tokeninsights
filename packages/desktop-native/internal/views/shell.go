@@ -49,11 +49,12 @@ func AppShell(c *ui.Context, s Shell) ui.Element {
 }
 
 // page is the centered content column, the web's PageContent: the
-// results of the selected tab, then the footer, which follows the content
-// as on the web.
+// filter row, the results of the selected tab, then the footer, which
+// follows the content as on the web.
 func page(c *ui.Context, w *model.Window) {
 	ui.Column(c).FillWidth().MaxWidth(theme.ContentMax).Margin(0, ui.Auto).
 		PaddingX(theme.Gutter).Role(ui.RoleMain).Children(func() {
+		filterRow(c, w)
 		DashboardResults(c, w)
 		Footer(c, w)
 	})

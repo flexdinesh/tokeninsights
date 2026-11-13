@@ -317,6 +317,7 @@ func toggleColumn(t *testing.T, tt *ui.Tester, label string) {
 func TestEmptyResultsOfferClearFilters(t *testing.T) {
 	f := loaded()
 	f.backend.rows = nil
+	f.window.UpdateSelection(dashboardview.CustomRangeChange("2026-11-01", "2026-11-30"))
 	tt := f.onTab(t, dashboardview.TabTokens, false)
 	assertTexts(t, tt, noMatches, includedScope+widerRange+orClearFilters+".")
 	heading(t, tt, "Period")
