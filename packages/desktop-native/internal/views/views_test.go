@@ -58,6 +58,15 @@ type fakeBackend struct {
 	statuses    int
 	progress    collectorprogress.Snapshot
 	progressErr error
+	usage       application.Usage
+	usageErr    error
+	// requests are the usage requests read.
+	requests []analytics.Query
+}
+
+func (b *fakeBackend) Usage(_ context.Context, query analytics.Query) (application.Usage, error) {
+	b.requests = append(b.requests, query)
+	return b.usage, b.usageErr
 }
 
 func (b *fakeBackend) Status(context.Context) (application.Status, error) {
@@ -84,14 +93,19 @@ type workers struct{ pending []func() }
 
 func (r *workers) Go(fn func()) { r.pending = append(r.pending, fn) }
 
+// step runs the pending workers, leaving those they start pending.
+func (r *workers) step() {
+	pending := r.pending
+	r.pending = nil
+	for _, fn := range pending {
+		fn()
+	}
+}
+
 // run runs the pending workers and those they start.
 func (r *workers) run() {
 	for len(r.pending) > 0 {
-		pending := r.pending
-		r.pending = nil
-		for _, fn := range pending {
-			fn()
-		}
+		r.step()
 	}
 }
 
@@ -108,6 +122,24 @@ var (
 	}}
 )
 
+// lastIngestion is when the fixtures' usage was last ingested: 14 Sep
+// 2026, 10:00 UTC, as the web mocks'.
+var lastIngestion = time.Date(2026, time.September, 14, 10, 0, 0, 0, time.UTC).UnixMilli()
+
+// studioUsage is the web mocks' usage summary, answered from studioStatus's
+// snapshot.
+var studioUsage = application.Usage{InstanceID: studioInstance.InstanceID, Dashboard: analytics.Dashboard{
+	DatabaseID: "db-7a2e", DatasetID: "default", Revision: 42, Generation: 3, Page: 1, PageSize: dashboardview.DefaultPageSize,
+	Summary: analytics.ViewerSummaryRow{
+		TotalTokens: 647_000, InputTokens: 369_000, OutputTokens: 78_000, ReasoningTokens: 13_000,
+		CacheReadTokens: 178_000, CacheWriteTokens: 9_000, SessionCount: 4, SyncedSessions: 5,
+	},
+	LastSynced: lastIngestion, Range: "Sep 12 – Sep 14, 2026",
+}}
+
+// totalReadout names the total readout of studioUsage by its exact count.
+const totalReadout = "Total tokens: 647,000"
+
 // readsAt is the wall time of the fixtures' reads: 13 Nov 2026, 09:30 UTC.
 var readsAt = time.Date(2026, time.November, 13, 9, 30, 0, 0, time.UTC)
 
@@ -120,7 +152,7 @@ type fixture struct {
 }
 
 func newFixture() *fixture {
-	backend := &fakeBackend{instance: studioInstance, status: studioStatus, progress: collectorprogress.Snapshot{InstanceID: studioInstance.InstanceID}}
+	backend := &fakeBackend{instance: studioInstance, status: studioStatus, progress: collectorprogress.Snapshot{InstanceID: studioInstance.InstanceID}, usage: studioUsage}
 	f := &fixture{backend: backend, workers: &workers{}, appearance: theme.AppearanceSystem}
 	rt := model.Runtime{Context: context.Background(), Go: f.workers.Go, Update: func(fn func()) { fn() }, Now: func() time.Time { return readsAt }}
 	f.window = model.NewWindow(studioConnection, f.backend, rt)
@@ -178,15 +210,28 @@ func TestSidebarShowsEveryTabAndDisablesUnportedOnes(t *testing.T) {
 			t.Fatalf("no %s tab in %q", label, tt.Texts())
 		}
 		current := tab == model.DefaultTab
-		if a.Disabled == current || (a.Current == ui.CurrentPage) != current {
+		if a.Disabled == ported(tab) || (a.Current == ui.CurrentPage) != current {
 			t.Errorf("%s tab: disabled %v, current %v", label, a.Disabled, a.Current)
 		}
 	}
-	_ = tt.Click("Models")
+	if ported(dashboardview.TabRepo) {
+		t.Fatal("Repo is enabled before its views")
+	}
+	_ = tt.Click("Repo")
 	if f.window.Tab() != model.DefaultTab {
 		t.Fatal("a disabled tab was selected")
 	}
-	assertTexts(t, tt, "/ Tokens", placeholderText)
+	if err := tt.Click("Models"); err != nil {
+		t.Fatal(err)
+	}
+	f.sync(tt)
+	if f.window.Tab() != dashboardview.TabModels || len(f.backend.requests) != 2 || f.backend.requests[1].Tab != string(dashboardview.TabModels) {
+		t.Fatalf("models tab: %s, requests %+v", f.window.Tab(), f.backend.requests)
+	}
+	assertTexts(t, tt, "/ Models", totalReadout)
+	if a, ok := tt.AccessByRole(ui.RoleButton, "Models"); !ok || a.Current != ui.CurrentPage {
+		t.Fatalf("models tab not current: %+v", a)
+	}
 }
 
 func TestHeaderShowsIdentityAndConnection(t *testing.T) {
@@ -243,13 +288,26 @@ func TestRefreshButtonDisablesWhilePendingAndShowsFailure(t *testing.T) {
 	}
 }
 
-func TestInstanceFailureShowsQuietDangerLine(t *testing.T) {
+func TestInstanceFailureShowsAConnectionAlertThatRetries(t *testing.T) {
 	f := newFixture()
 	f.backend.instanceErr = errors.New("backend busy")
 	f.window.Load()
 	f.workers.run()
 	tt := f.tester(windowWidth, windowHeight, false)
-	assertTexts(t, tt, instanceFailed, "studio.lan")
+	assertTexts(t, tt, "backend busy", "studio.lan")
+	if _, ok := tt.AccessByRole(ui.RoleAlert, ""); !ok {
+		t.Fatal("no connection alert")
+	}
+	f.backend.instanceErr = nil
+	if err := tt.Click(retryRequest); err != nil {
+		t.Fatal(err)
+	}
+	f.sync(tt)
+	f.sync(tt)
+	if _, ok := f.window.Instance(); !ok || tt.HasText("backend busy") {
+		t.Fatal("Retry Request did not load the instance")
+	}
+	assertTexts(t, tt, totalReadout)
 }
 
 func TestThemeButtonCyclesAppearance(t *testing.T) {
@@ -320,7 +378,7 @@ func TestShellImages(t *testing.T) {
 					tt.Move(r.X+r.W/2, r.Y+r.H/2)
 				}
 				tt.Advance(settle)
-				assertTexts(t, tt, "/ Tokens", "Refresh", placeholderText, refreshFailed)
+				assertTexts(t, tt, "/ Tokens", "Refresh", totalReadout, refreshFailed)
 				if shot.hover {
 					assertTexts(t, tt, "Backend hostname: studio · Identity: "+studioInstance.InstanceID)
 				}

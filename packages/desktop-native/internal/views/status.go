@@ -28,10 +28,13 @@ type StatusDetails struct {
 	Progress *collectorprogress.Snapshot
 }
 
-// statusDetails is the header status of w. Usage, which reports the last
-// ingestion, is not read yet, so the popover omits it.
+// statusDetails is the header status of w, with the last ingestion of the
+// usage shown.
 func statusDetails(w *model.Window) StatusDetails {
 	d := StatusDetails{Value: w.StatusValue()}
+	if usage, ok := w.Usage(); ok {
+		d.LastSynced = usage.LastSynced
+	}
 	if instance, ok := w.Instance(); ok {
 		d.InstanceID, d.Timezone = instance.InstanceID, instance.Timezone
 	}

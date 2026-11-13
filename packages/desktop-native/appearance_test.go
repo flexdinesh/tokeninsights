@@ -10,6 +10,7 @@ import (
 
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
+	"github.com/flexdinesh/tokeninsights/packages/core/analytics"
 	"github.com/flexdinesh/tokeninsights/packages/core/application"
 	"github.com/flexdinesh/tokeninsights/packages/core/collectorprogress"
 	"github.com/flexdinesh/tokeninsights/packages/core/endpoint"
@@ -39,6 +40,9 @@ func (idleBackend) Status(context.Context) (application.Status, error) {
 }
 func (idleBackend) Progress(context.Context) (collectorprogress.Snapshot, error) {
 	return collectorprogress.Snapshot{}, nil
+}
+func (idleBackend) Usage(context.Context, analytics.Query) (application.Usage, error) {
+	return application.Usage{}, nil
 }
 
 // testAppearance is the app's appearance over a preferences file in dir,

@@ -41,13 +41,17 @@ dialogs for startup instead of the web connection screen; a virtualized table
 fetching 200-row pages on demand instead of a pager; native menu and shortcuts;
 the MyGo inactive-window accent fade; the sidebar stays a rail at every
 supported window width; the footer omits the web's static harness list, which
-the backend instance does not report; a failed instance load shows a retry
-line under the header and reports "Connection unavailable" in the header
-status; closing a window cancels its in-flight refresh. Each window reads
+the backend instance does not report; a failed instance load shows the
+connection alert, whose Retry Request reads the instance again, and reports
+"Connection unavailable" in the header status; closing a window cancels its in-flight refresh. Each window reads
 status and collector progress every 5 seconds only while it shows (MyGo
 `WindowHidden`), reading status at once as it shows again, and does not
 reread its instance on the first status read, which the web's bootstrap
-invalidation does.
+invalidation does. A failed usage read shows its alert at once rather than
+after the web's single automatic retry; only usage answered from another
+snapshot than the status is read once more, after status is read again.
+Usage of earlier filters is not kept, so returning to them shows the
+loading skeleton until their read answers.
 
 ## Consequences
 

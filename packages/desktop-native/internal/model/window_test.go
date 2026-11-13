@@ -21,6 +21,8 @@ type fakeBackend struct {
 	captures   chan error
 	statuses   chan statusResult
 	progresses chan progressResult
+	usages     chan usageResult
+	requests   chan analytics.Query
 	calls      chan string
 }
 
@@ -39,9 +41,27 @@ type progressResult struct {
 	err      error
 }
 
+type usageResult struct {
+	usage application.Usage
+	err   error
+}
+
 func newFakeBackend() *fakeBackend {
 	return &fakeBackend{instances: make(chan instanceResult), captures: make(chan error), statuses: make(chan statusResult),
-		progresses: make(chan progressResult), calls: make(chan string, 8)}
+		progresses: make(chan progressResult), usages: make(chan usageResult), requests: make(chan analytics.Query, 8),
+		calls: make(chan string, 8)}
+}
+
+// Usage sends its request to requests before it waits for its answer.
+func (b *fakeBackend) Usage(ctx context.Context, query analytics.Query) (application.Usage, error) {
+	b.calls <- "usage"
+	b.requests <- query
+	select {
+	case r := <-b.usages:
+		return r.usage, r.err
+	case <-ctx.Done():
+		return application.Usage{}, ctx.Err()
+	}
 }
 
 func (b *fakeBackend) Status(ctx context.Context) (application.Status, error) {
@@ -154,6 +174,14 @@ var testInstance = application.Instance{
 	Defaults:     analytics.Selection{Period: "month", From: "2026-11-01", To: "2026-11-30", Bucket: "day"},
 }
 
+// syncInstance is testInstance without usage, for tests of the status
+// and progress reads alone.
+var syncInstance = func() application.Instance {
+	instance := testInstance
+	instance.Capabilities = serverfeatures.Capabilities{serverfeatures.Facets, serverfeatures.CollectorProgress}
+	return instance
+}()
+
 func TestLoadStartsQueryFromInstanceDefaults(t *testing.T) {
 	h := newHarness(t)
 	w := h.window
@@ -209,7 +237,7 @@ func TestRefreshCoalescesAndReportsFailure(t *testing.T) {
 	w := h.window
 	w.Load()
 	h.expectCall("instance")
-	h.backend.instances <- instanceResult{instance: testInstance}
+	h.backend.instances <- instanceResult{instance: syncInstance}
 	h.apply()
 
 	if !w.Refresh() || w.Refresh() || !w.Refreshing() {

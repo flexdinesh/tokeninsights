@@ -31,7 +31,7 @@ func attempt(stage string, updatedAtMs int64) collectorprogress.Attempt {
 // at is a frame time offset from the first poll.
 func at(offset time.Duration) time.Time { return clock.Add(offset) }
 
-// loaded loads testInstance into the harness's window.
+// loaded loads instance into the harness's window.
 func (h *harness) loaded(instance application.Instance) {
 	h.t.Helper()
 	h.window.Load()
@@ -75,7 +75,7 @@ func TestPollReadsAfterInstanceEveryInterval(t *testing.T) {
 	}
 	h.noCall()
 	assertStatus(t, w, "Loading…", dashboardview.StatusLoading)
-	h.loaded(testInstance)
+	h.loaded(syncInstance)
 
 	if _, ok := w.Poll(at(0), false); ok {
 		t.Fatal("a wake while both reads run")
@@ -105,7 +105,7 @@ func TestPollReadsAfterInstanceEveryInterval(t *testing.T) {
 func TestPollPausesWhileHiddenAndReadsStatusOnShow(t *testing.T) {
 	h := newHarness(t)
 	w := h.window
-	h.loaded(testInstance)
+	h.loaded(syncInstance)
 	w.Poll(at(0), false)
 	h.answerReads(statusAt(1, 1), progressOf())
 
@@ -119,7 +119,7 @@ func TestPollPausesWhileHiddenAndReadsStatusOnShow(t *testing.T) {
 	// Showing reads status at once; progress waits for its interval.
 	h2 := newHarness(t)
 	w2 := h2.window
-	h2.loaded(testInstance)
+	h2.loaded(syncInstance)
 	w2.Poll(at(0), false)
 	h2.answerReads(statusAt(1, 1), progressOf())
 	w2.Poll(at(2*time.Second), true)
@@ -139,7 +139,7 @@ func TestPollPausesWhileHiddenAndReadsStatusOnShow(t *testing.T) {
 func TestNoReadsAfterTheWindowCloses(t *testing.T) {
 	h := newHarness(t)
 	w := h.window
-	h.loaded(testInstance)
+	h.loaded(syncInstance)
 	h.cancel()
 	if _, ok := w.Poll(at(0), false); ok {
 		t.Fatal("a closed window scheduled a read")
@@ -153,7 +153,7 @@ func TestSnapshotChangesSignalAndReloadInstance(t *testing.T) {
 	w := h.window
 	var changes []SnapshotChange
 	w.OnSnapshotChange(func(change SnapshotChange) { changes = append(changes, change) })
-	h.loaded(testInstance)
+	h.loaded(syncInstance)
 	w.SelectTab(dashboardview.TabModels)
 	w.Poll(at(0), false)
 	h.answerReads(statusAt(1, 1), progressOf())
@@ -175,7 +175,7 @@ func TestSnapshotChangesSignalAndReloadInstance(t *testing.T) {
 	if len(changes) != 2 || changes[1] != (SnapshotChange{RevisionChanged: true}) {
 		t.Fatalf("revision change %+v", changes)
 	}
-	renamed := testInstance
+	renamed := syncInstance
 	renamed.Hostname = "studio-2"
 	reload(renamed)
 	query, _ := w.Query()
@@ -192,7 +192,7 @@ func TestSnapshotChangesSignalAndReloadInstance(t *testing.T) {
 	if w.SyncState().Identity != dashboardview.StatusIdentity(statusAt(2, 2)) {
 		t.Fatal("identity not followed")
 	}
-	reload(testInstance)
+	reload(syncInstance)
 
 	w.RefetchStatus()
 	h.expectCall("status")
@@ -206,7 +206,7 @@ func TestSnapshotChangesSignalAndReloadInstance(t *testing.T) {
 func TestAcceptedAttemptRefetchesStatusOnce(t *testing.T) {
 	h := newHarness(t)
 	w := h.window
-	h.loaded(testInstance)
+	h.loaded(syncInstance)
 	w.Poll(at(0), false)
 	h.answerReads(statusAt(1, 1), progressOf(attempt(dashboardview.StageCapturing, 1)))
 	assertStatus(t, w, "Collecting usage", dashboardview.StatusLoading)
@@ -226,7 +226,7 @@ func TestAcceptedAttemptRefetchesStatusOnce(t *testing.T) {
 		t.Fatalf("acceptance check did not finish: %+v", sync)
 	}
 	h.expectCall("instance") // the revision changed
-	h.backend.instances <- instanceResult{instance: testInstance}
+	h.backend.instances <- instanceResult{instance: syncInstance}
 	h.apply()
 	assertStatus(t, w, "Ready", dashboardview.StatusReady)
 
@@ -238,7 +238,7 @@ func TestAcceptedAttemptRefetchesStatusOnce(t *testing.T) {
 func TestAcceptanceSeenDuringAStatusReadReadsAgain(t *testing.T) {
 	h := newHarness(t)
 	w := h.window
-	h.loaded(testInstance)
+	h.loaded(syncInstance)
 	w.Poll(at(0), false)
 	h.expectCalls("status", "progress")
 	h.answerProgress(progressOf(attempt(dashboardview.StageAccepted, 2)), nil)
@@ -257,7 +257,7 @@ func TestAcceptanceSeenDuringAStatusReadReadsAgain(t *testing.T) {
 func TestReadFailuresNeedAttention(t *testing.T) {
 	h := newHarness(t)
 	w := h.window
-	h.loaded(testInstance)
+	h.loaded(syncInstance)
 	w.Poll(at(0), false)
 	h.expectCalls("status", "progress")
 	h.answerStatus(application.Status{}, errors.New("backend busy"))
@@ -305,7 +305,7 @@ func TestInstanceFailureIsAnUnavailableConnection(t *testing.T) {
 func TestRefreshRereadsStatusAndProgress(t *testing.T) {
 	h := newHarness(t)
 	w := h.window
-	h.loaded(testInstance)
+	h.loaded(syncInstance)
 	w.Poll(at(0), false)
 	h.answerReads(statusAt(1, 1), progressOf())
 	w.Refresh()
@@ -321,7 +321,7 @@ func TestRefreshRereadsStatusAndProgress(t *testing.T) {
 func TestProcessingPendingAndBackoff(t *testing.T) {
 	h := newHarness(t)
 	w := h.window
-	h.loaded(testInstance)
+	h.loaded(syncInstance)
 	w.Poll(at(0), false)
 	pending := statusAt(1, 1)
 	pending.Pending = 3
@@ -338,8 +338,8 @@ func TestProcessingPendingAndBackoff(t *testing.T) {
 func TestProgressStaysHiddenWithoutItsCapability(t *testing.T) {
 	h := newHarness(t)
 	w := h.window
-	instance := testInstance
-	instance.Capabilities = serverfeatures.Capabilities{serverfeatures.Usage, serverfeatures.Facets}
+	instance := syncInstance
+	instance.Capabilities = serverfeatures.Capabilities{serverfeatures.Facets}
 	h.loaded(instance)
 	wait, ok := w.Poll(at(0), false)
 	h.expectCall("status")

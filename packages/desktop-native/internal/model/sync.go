@@ -143,6 +143,7 @@ func (w *Window) statusRead(status application.Status, err error, checking strin
 		s.statusAgain = false
 		w.readStatus()
 	}
+	w.syncUsage()
 }
 
 // observe tells listeners how status changed the snapshot. A change after
@@ -267,11 +268,45 @@ func (w *Window) StatusValue() dashboardview.StatusValue {
 		input.UsageCapability = w.instance.Capabilities.Has(serverfeatures.Usage)
 		input.FacetsCapability = w.instance.Capabilities.Has(serverfeatures.Facets)
 	}
+	input.UsageFailed = w.usage.err != nil
+	input.UsageFetching, input.UsageLoaded = w.UsageFetching(), w.usage.data != nil
 	return dashboardview.DashboardStatus(input)
 }
 
 // ConnectionUnavailable reports whether the last status read failed.
 func (w *Window) ConnectionUnavailable() bool { return w.sync.statusErr != nil }
+
+// ConnectionError is why the backend is unavailable: the failed instance
+// read, else the failed status read, or nil.
+func (w *Window) ConnectionError() error {
+	if w.instanceErr != nil {
+		return w.instanceErr
+	}
+	return w.sync.statusErr
+}
+
+// RetryConnection reads again what made the connection unavailable: the
+// instance when it failed, else the status, as the web's Retry Request.
+func (w *Window) RetryConnection() {
+	if w.instanceErr != nil {
+		w.loadInstance()
+		return
+	}
+	w.RefetchStatus()
+}
+
+// RetryProgress reads collector progress again, as the web's Retry
+// Request when collection status could not load.
+func (w *Window) RetryProgress() { w.readProgress() }
+
+// Status is the latest status read, kept through a failed read; ok is
+// false before one succeeded.
+func (w *Window) Status() (application.Status, bool) {
+	if w.sync.status == nil {
+		return application.Status{}, false
+	}
+	return *w.sync.status, true
+}
 
 // RefreshPending reports whether Refresh should wait: a refresh or a
 // collection runs, as the web's Refresh button.

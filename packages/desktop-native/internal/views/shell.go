@@ -20,17 +20,13 @@ type Shell struct {
 
 // portedTabs are the tabs native views show. Others stay disabled in the
 // sidebar until their views arrive.
-var portedTabs = map[dashboardview.Tab]bool{}
+var portedTabs = map[dashboardview.Tab]bool{
+	dashboardview.TabTokens: true, dashboardview.TabModels: true, dashboardview.TabProviders: true,
+	dashboardview.TabHarnesses: true, dashboardview.TabSessions: true, dashboardview.TabContext: true,
+}
 
 // ported reports whether native views show tab.
 func ported(tab dashboardview.Tab) bool { return portedTabs[tab] }
-
-// Messages the content region shows.
-const (
-	placeholderText = "Native views arrive in upcoming builds."
-	refreshFailed   = "Refresh failed. Saved usage remains available. Try Refresh again."
-	instanceFailed  = "Backend details couldn’t load. Use Refresh to retry."
-)
 
 // AppShell builds a window: the sidebar beside a column of the header and
 // the scrolling page, which holds the selected tab's content above the
@@ -52,40 +48,14 @@ func AppShell(c *ui.Context, s Shell) ui.Element {
 	})
 }
 
-// page is the centered content column, the web's PageContent: messages,
-// the tab's content, then the footer, which follows the content as on the
-// web.
+// page is the centered content column, the web's PageContent: the
+// results of the selected tab, then the footer, which follows the content
+// as on the web.
 func page(c *ui.Context, w *model.Window) {
 	ui.Column(c).FillWidth().MaxWidth(theme.ContentMax).Margin(0, ui.Auto).
 		PaddingX(theme.Gutter).Role(ui.RoleMain).Children(func() {
-		messages(c, w)
-		placeholder(c)
+		DashboardResults(c, w)
 		Footer(c, w)
-	})
-}
-
-// messages are the quiet danger lines for failed backend reads under the
-// header.
-func messages(c *ui.Context, w *model.Window) {
-	t := theme.Current(c)
-	for _, failed := range []struct {
-		show bool
-		text string
-	}{
-		{w.InstanceError() != nil, instanceFailed},
-		{w.RefreshError() != nil, refreshFailed},
-	} {
-		if failed.show {
-			theme.Label(ui.Text(c, failed.text)).TextColor(t.StatusDanger).Role(ui.RoleAlert).PaddingY(theme.Unit * 2)
-		}
-	}
-}
-
-// placeholder stands in for a tab native views do not show yet.
-func placeholder(c *ui.Context) ui.Element {
-	t := theme.Current(c)
-	return ui.Column(c).Center().Padding(theme.Unit*12, 0).Children(func() {
-		theme.Body(ui.Text(c, placeholderText)).TextColor(t.InkMuted).TextAlign(ui.Center).MaxWidth(theme.ProseWidth)
 	})
 }
 
