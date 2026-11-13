@@ -386,6 +386,11 @@ Beside confirmed usage that answered, it reads one row of the query's
 estimated usage (Tokens, or Repo under its grouping), with the same snapshot
 rules, to tell of usage excluded from the totals and offer its review, which
 switches the query's quality and back, as the web's.
+Every web tab is ported. Repo adds the web's Group by select (repository or
+directory), which reads usage and excluded usage of the grouping but not
+facets, repository and directory filters with their chips, offered and sent
+on Repo only and dropped on leaving it, and the unknown location's
+disclosure of its recorded directories.
 Neither shell imports the other.
 
 ## Packages and contracts

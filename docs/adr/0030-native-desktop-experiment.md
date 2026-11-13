@@ -39,7 +39,7 @@ This supersedes, for this experiment only:
   from any ref by manual dispatch. Edge installs never own `~/.local/bin/tokeninsights`.
 
 The native app ships in vertical slices (shell, filters, then tabs). Tabs not
-yet ported stay visible but disabled. Accepted native-first differences: a
+yet ported stay visible but disabled; every web tab is now ported (ADR 0032). Accepted native-first differences: a
 native menu and shortcuts, a virtualized table that fetches pages on demand
 instead of a pager, and a desktop-only layout (minimum 720×520). It keeps the
 DESIGN.md roles, square corners and bundled Geist.

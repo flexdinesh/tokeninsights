@@ -62,10 +62,12 @@ type fakeBackend struct {
 	progressErr error
 	usage       application.Usage
 	usageErr    error
-	// rows are each tab's rows, which usage reads answer a page of;
-	// pageErr fails the reads of the pages after the first.
-	rows    map[dashboardview.Tab][]analytics.Row
-	pageErr error
+	// rows are each tab's rows, which usage reads answer a page of, Repo's
+	// grouped by repository; directoryRows are Repo's rows grouped by
+	// directory. pageErr fails the reads of the pages after the first.
+	rows          map[dashboardview.Tab][]analytics.Row
+	directoryRows []analytics.Row
+	pageErr       error
 	// charts replace a tab's chart rows, which are otherwise the Tokens
 	// rows on timelines and the first analytics.ChartLimit rows of a tab
 	// elsewhere, as the backend's.
@@ -129,22 +131,25 @@ func (b *fakeBackend) Usage(_ context.Context, query analytics.Query) (applicati
 	}
 	tab := dashboardview.Tab(query.Tab)
 	rows := rowsByTab[tab]
+	if tab == dashboardview.TabRepo && query.LocationGroup == analytics.RepoGroupDirectory && !estimated {
+		rows = b.directoryRows
+	}
 	start := min((query.Page-1)*query.PageSize, len(rows))
 	usage.Rows = rows[start:min(start+query.PageSize, len(rows))]
 	usage.RowCount, usage.Page, usage.PageSize = len(rows), query.Page, query.PageSize
-	usage.Chart = b.chart(tab, rowsByTab, !estimated)
+	usage.Chart = b.chart(tab, rows, rowsByTab, !estimated)
 	return usage, nil
 }
 
-// chart is tab's chart rows of rowsByTab; charts replaces confirmed ones.
-func (b *fakeBackend) chart(tab dashboardview.Tab, rowsByTab map[dashboardview.Tab][]analytics.Row, confirmed bool) []analytics.Row {
+// chart is the chart rows of tab's rows; charts replaces confirmed ones,
+// and timelines chart rowsByTab's Tokens rows.
+func (b *fakeBackend) chart(tab dashboardview.Tab, rows []analytics.Row, rowsByTab map[dashboardview.Tab][]analytics.Row, confirmed bool) []analytics.Row {
 	if chart, ok := b.charts[tab]; ok && confirmed {
 		return chart
 	}
 	if dashboardview.ChartIsTimeline(tab) {
 		return rowsByTab[dashboardview.TabTokens]
 	}
-	rows := rowsByTab[tab]
 	return rows[:min(len(rows), analytics.ChartLimit)]
 }
 
@@ -220,10 +225,16 @@ var studioUsage = application.Usage{InstanceID: studioInstance.InstanceID, Dashb
 // studioStatus's snapshot.
 var studioFacets = application.Facets{InstanceID: studioInstance.InstanceID, Facets: analytics.Facets{
 	DatabaseID: "db-7a2e", DatasetID: "default", Revision: 42, Generation: 3,
-	Harnesses: []string{"claude-code", "codex", "opencode", "pi"},
-	Providers: []string{"anthropic", "openai"},
-	Models:    []string{"claude-sonnet-4-5", "gpt-5", "gpt-5-mini"},
-	Sessions:  []string{"mock-claude-session", "mock-codex-session", "mock-opencode-session", "mock-pi-session"},
+	Harnesses:    []string{"claude-code", "codex", "opencode", "pi"},
+	Providers:    []string{"anthropic", "openai"},
+	Models:       []string{"claude-sonnet-4-5", "gpt-5", "gpt-5-mini"},
+	Sessions:     []string{"mock-claude-session", "mock-codex-session", "mock-opencode-session", "mock-pi-session"},
+	Repositories: []analytics.LocationOption{{Key: "repo-1", Name: "tokeninsights"}, {Key: "unknown", Name: "unknown"}},
+	Directories: []analytics.LocationOption{
+		{Key: "directory-1", Name: "~/workspace/tokeninsights/main"}, {Key: "directory-2", Name: "~/workspace/client-a"},
+		{Key: "directory-3", Name: "~/workspace/client-b"}, {Key: "directory-4", Name: "~/workspace/scratch"},
+		{Key: "directory-5", Name: "~/workspace/tools"}, {Key: "unknown", Name: "unknown"},
+	},
 }}
 
 // totalReadout names the total readout of studioUsage by its exact count.
@@ -242,7 +253,7 @@ type fixture struct {
 
 func newFixture() *fixture {
 	backend := &fakeBackend{instance: studioInstance, status: studioStatus, progress: collectorprogress.Snapshot{InstanceID: studioInstance.InstanceID},
-		usage: studioUsage, rows: mockRows(), facets: studioFacets}
+		usage: studioUsage, rows: mockRows(), directoryRows: directoryRows(), facets: studioFacets}
 	f := &fixture{backend: backend, workers: &workers{}, appearance: theme.AppearanceSystem}
 	rt := model.Runtime{Context: context.Background(), Go: f.workers.Go, Update: func(fn func()) { fn() }, Now: func() time.Time { return readsAt }}
 	f.window = model.NewWindow(studioConnection, f.backend, rt)
@@ -289,7 +300,7 @@ func assertTexts(t *testing.T, tt *ui.Tester, texts ...string) {
 	}
 }
 
-func TestSidebarShowsEveryTabAndDisablesUnportedOnes(t *testing.T) {
+func TestSidebarShowsEveryTabEnabled(t *testing.T) {
 	f := loaded()
 	tt := f.synced(windowWidth, windowHeight, false)
 	assertTexts(t, tt, "TokenInsights", "Personal workspace", "Usage metadata only")
@@ -300,16 +311,9 @@ func TestSidebarShowsEveryTabAndDisablesUnportedOnes(t *testing.T) {
 			t.Fatalf("no %s tab in %q", label, tt.Texts())
 		}
 		current := tab == model.DefaultTab
-		if a.Disabled == ported(tab) || (a.Current == ui.CurrentPage) != current {
-			t.Errorf("%s tab: disabled %v, current %v", label, a.Disabled, a.Current)
+		if !ported(tab) || a.Disabled || (a.Current == ui.CurrentPage) != current {
+			t.Errorf("%s tab: ported %v, disabled %v, current %v", label, ported(tab), a.Disabled, a.Current)
 		}
-	}
-	if ported(dashboardview.TabRepo) {
-		t.Fatal("Repo is enabled before its views")
-	}
-	_ = tt.Click("Repo")
-	if f.window.Tab() != model.DefaultTab {
-		t.Fatal("a disabled tab was selected")
 	}
 	if err := tt.Click("Models"); err != nil {
 		t.Fatal(err)

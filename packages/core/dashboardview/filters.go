@@ -105,6 +105,70 @@ func LocationDimensions() []LocationOption {
 	return []LocationOption{{LocationRepositories, "Repository"}, {LocationDirectories, "Directory"}}
 }
 
+// unavailableSuffix follows a location filter's label in the name of a
+// selected key its facets no longer offer.
+const unavailableSuffix = " (unavailable)"
+
+// MissingName names a selected key of the filter its facets no longer
+// offer, as the web's "Repository (unavailable)"; "unknown" keeps its
+// own name (FilterOptions).
+func (o LocationOption) MissingName() string { return o.Label + unavailableSuffix }
+
+// Locations are the keys q filters location d by, in selection order.
+func (q Query) Locations(d LocationDimension) []string {
+	switch d {
+	case LocationRepositories:
+		return q.Repositories
+	case LocationDirectories:
+		return q.Directories
+	}
+	return nil
+}
+
+// LocationsChange filters location d by keys, as the web's
+// updateLocations({ [d]: keys }).
+func LocationsChange(d LocationDimension, keys []string) LocationChange {
+	keys = clone(keys)
+	switch d {
+	case LocationRepositories:
+		return LocationChange{Repositories: &keys}
+	case LocationDirectories:
+		return LocationChange{Directories: &keys}
+	}
+	return LocationChange{}
+}
+
+// LocationValues are the locations facets offer for d, keyed as the
+// backend filters them and named as its presentation names them: an
+// unnamed location is "unknown".
+func LocationValues(facets analytics.Facets, d LocationDimension) []FilterOption {
+	locations := facets.Repositories
+	if d == LocationDirectories {
+		locations = facets.Directories
+	} else if d != LocationRepositories {
+		return nil
+	}
+	options := make([]FilterOption, len(locations))
+	for index, location := range locations {
+		options[index] = FilterOption{Key: location.Key, Name: analytics.LocationDisplayName(location)}
+	}
+	return options
+}
+
+// LocationGroupOption is a Repo grouping choice: the query's location
+// group and its label.
+type LocationGroupOption struct {
+	Group analytics.RepoGroup
+	Label string
+}
+
+// LocationGroups lists the Repo groupings in the order of the API's
+// LocationGroup enum, labeled with a capital first letter, as the web's
+// Group by select.
+func LocationGroups() []LocationGroupOption {
+	return []LocationGroupOption{{analytics.RepoGroupRepository, "Repository"}, {analytics.RepoGroupDirectory, "Directory"}}
+}
+
 // PeriodOption is a date preset.
 type PeriodOption struct {
 	Period string

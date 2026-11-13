@@ -18,11 +18,12 @@ type Shell struct {
 	SetAppearance func(theme.Appearance)
 }
 
-// portedTabs are the tabs native views show. Others stay disabled in the
-// sidebar until their views arrive.
+// portedTabs are the tabs native views show: every tab. A tab added
+// later stays disabled in the sidebar until its views arrive.
 var portedTabs = map[dashboardview.Tab]bool{
 	dashboardview.TabTokens: true, dashboardview.TabModels: true, dashboardview.TabProviders: true,
 	dashboardview.TabHarnesses: true, dashboardview.TabSessions: true, dashboardview.TabContext: true,
+	dashboardview.TabRepo: true,
 }
 
 // ported reports whether native views show tab.
@@ -49,12 +50,13 @@ func AppShell(c *ui.Context, s Shell) ui.Element {
 }
 
 // page is the centered content column, the web's PageContent: the
-// filter row, the results of the selected tab, then the footer, which
-// follows the content as on the web.
+// filter row, Repo's view options, the results of the selected tab, then
+// the footer, which follows the content as on the web.
 func page(c *ui.Context, w *model.Window) {
 	ui.Column(c).FillWidth().MaxWidth(theme.ContentMax).Margin(0, ui.Auto).
 		PaddingX(theme.Gutter).Role(ui.RoleMain).Children(func() {
 		filterRow(c, w)
+		repoOptions(c, w)
 		DashboardResults(c, w)
 		Footer(c, w)
 	})
