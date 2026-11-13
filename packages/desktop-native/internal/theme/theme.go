@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/egoist/mygo/ui"
 )
@@ -43,6 +44,51 @@ const (
 	SidebarWidth   float32 = 192
 	HeaderHeight   float32 = 44
 	ContentMax     float32 = 1600
+
+	// FocusOffset is the gap between a control and its focus ring.
+	FocusOffset float32 = 2
+	// IconSize is the inline icon square; IconLarge marks empty states.
+	IconSize  float32 = 16
+	IconLarge float32 = 24
+	// CheckSize is the check mark inside a checkbox.
+	CheckSize float32 = 14
+	// DotSize is the status dot diameter.
+	DotSize float32 = 8
+	// PopoverWidth is the target popover width; PopoverEdge keeps
+	// popovers clear of the window edges; PopoverOffset separates them
+	// from their anchor and MenuOffset select menus from their trigger.
+	PopoverWidth  float32 = 352
+	PopoverEdge   float32 = 16
+	PopoverOffset float32 = 8
+	MenuOffset    float32 = 4
+	// MenuMinWidth is the narrowest select menu.
+	MenuMinWidth float32 = 128
+	// ChipValueWidth truncates identity text inside chips.
+	ChipValueWidth float32 = 240
+	// ProseWidth caps explanatory paragraphs near 70 characters of body text.
+	ProseWidth float32 = 560
+	// ReadoutNarrow is the readout strip width below which readouts form
+	// two columns with the total spanning both.
+	ReadoutNarrow float32 = 720
+	// ReadoutPrimaryShare is the total readout's width relative to the others.
+	ReadoutPrimaryShare float32 = 1.25
+)
+
+// Overlay shadow geometry from DESIGN.md elevation: 0 0.75rem 2rem.
+const (
+	ShadowY    float32 = 12
+	ShadowBlur float32 = 32
+)
+
+// PulseLow is the skeleton's dimmest opacity, as Tailwind's animate-pulse.
+const PulseLow float32 = 0.5
+
+// Motion from DESIGN.md: state colors, loading rotation and the skeleton
+// pulse (Tailwind's animate-pulse period).
+const (
+	DurationFast  = 150 * time.Millisecond
+	DurationSpin  = 1200 * time.Millisecond
+	DurationPulse = 2 * time.Second
 )
 
 // ChartColors is the number of categorical chart series colors.
@@ -63,7 +109,17 @@ type Tokens struct {
 	StatusSuccess, StatusWarning, StatusDanger, StatusDangerInk, StatusDangerSurface ui.Color
 
 	Chart [ChartColors]ui.Color
+
+	// Shadow is the overlay shadow color: black at 12% light and 45% dark,
+	// per DESIGN.md elevation. It is not a frontmatter color role.
+	Shadow ui.Color
 }
+
+// Overlay shadow opacity of black per appearance.
+const (
+	shadowLight float32 = 0.12
+	shadowDark  float32 = 0.45
+)
 
 // role pairs one DESIGN.md color role with its light and dark values.
 type role struct {
@@ -112,6 +168,10 @@ var roles = []role{
 
 var light, dark = mustBuild(false), mustBuild(true)
 
+// Current returns the tokens of the appearance c builds with: the window's
+// theme set from Widgets, or a Themed part's.
+func Current(c *ui.Context) *Tokens { return For(c.Theme().Dark) }
+
 // For returns the tokens of the light or dark appearance.
 func For(isDark bool) *Tokens {
 	if isDark {
@@ -129,7 +189,10 @@ func mustBuild(isDark bool) Tokens {
 }
 
 func build(isDark bool) (Tokens, error) {
-	tokens := Tokens{Dark: isDark}
+	tokens := Tokens{Dark: isDark, Shadow: ui.RGBA(0, 0, 0, shadowLight)}
+	if isDark {
+		tokens.Shadow = ui.RGBA(0, 0, 0, shadowDark)
+	}
 	for _, r := range roles {
 		spec := r.light
 		if isDark {
@@ -191,7 +254,7 @@ func (t *Tokens) Widgets() *ui.Theme {
 	theme.Text = t.Ink
 	theme.TextMuted = t.InkMuted
 	theme.Accent = t.Action
-	theme.AccentHover = t.Action.Alpha(hoverOpacity)
+	theme.AccentHover = t.Action.Alpha(HoverOpacity)
 	theme.AccentPressed = t.Action
 	theme.AccentText = t.ActionInk
 	theme.Danger = t.StatusDanger
@@ -199,6 +262,8 @@ func (t *Tokens) Widgets() *ui.Theme {
 	theme.Success = t.StatusSuccess
 	theme.Selection = t.Selected
 	theme.Focus = t.Focus
+	theme.FocusRingWidth = FocusRing
+	theme.FocusRingOffset = FocusOffset
 	theme.Radius = 0
 	theme.Spacing = Unit
 	theme.FontSize = SizeBody
@@ -206,26 +271,38 @@ func (t *Tokens) Widgets() *ui.Theme {
 	return &theme
 }
 
-// hoverOpacity is DESIGN.md's filled-button hover: reduce to 90%.
-const hoverOpacity = 0.9
+// Hover opacity from DESIGN.md: filled buttons reduce to 90%, secondary
+// buttons to 80%.
+const (
+	HoverOpacity       float32 = 0.9
+	HoverOpacityRaised float32 = 0.8
+)
+
+// UnderlineOffset is the gap below hovered link text, in em.
+const UnderlineOffset float32 = 0.2
 
 // Letter spacing in em, per DESIGN.md typography.
 const (
 	trackingDisplay float32 = -0.035
 	trackingTitle   float32 = -0.015
+	weightMedium            = 500
 	weightStrong            = 600
 	weightBrand             = 650
+	leadingTight    float32 = 1.15
 )
 
 // Page styles page and startup headings.
 func Page(e ui.Element) ui.Element {
-	return e.FontSize(SizePage).FontWeight(weightStrong).LineHeight(1.15).LetterSpacing(trackingDisplay * SizePage)
+	return e.FontSize(SizePage).FontWeight(weightStrong).LineHeight(leadingTight).LetterSpacing(trackingDisplay * SizePage)
 }
 
 // Readout styles usage readout values with tabular digits.
 func Readout(e ui.Element) ui.Element {
-	return e.FontSize(SizeReadout).FontWeight(weightStrong).LineHeight(1.15).LetterSpacing(trackingDisplay * SizeReadout).FontFeatures("tnum")
+	return e.FontSize(SizeReadout).FontWeight(weightStrong).LineHeight(leadingTight).LetterSpacing(trackingDisplay * SizeReadout).FontFeatures("tnum")
 }
+
+// ReadoutHeight is the line height of a readout value.
+const ReadoutHeight = SizeReadout * leadingTight
 
 // Title styles section headings.
 func Title(e ui.Element) ui.Element {
@@ -237,6 +314,20 @@ func Body(e ui.Element) ui.Element { return e.FontSize(SizeBody).LineHeight(1.42
 
 // Label styles captions, axes, compact controls and metadata.
 func Label(e ui.Element) ui.Element { return e.FontSize(SizeLabel).LineHeight(1.3333) }
+
+// Sub styles empty-state, alert and popover titles.
+func Sub(e ui.Element) ui.Element { return Body(e).FontWeight(weightStrong) }
+
+// View styles the compact current-view heading in the header.
+func View(e ui.Element) ui.Element {
+	return e.FontSize(SizeLabel).FontWeight(weightStrong).LineHeight(leadingTight).LetterSpacing(trackingDisplay * SizeLabel)
+}
+
+// Medium gives controls and field labels their medium weight.
+func Medium(e ui.Element) ui.Element { return e.FontWeight(weightMedium) }
+
+// Strong gives emphasized text, such as alert titles, its semibold weight.
+func Strong(e ui.Element) ui.Element { return e.FontWeight(weightStrong) }
 
 // Brand styles the TokenInsights wordmark.
 func Brand(e ui.Element) ui.Element { return e.FontSize(SizeTitle).FontWeight(weightBrand) }
