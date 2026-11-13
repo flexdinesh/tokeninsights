@@ -111,10 +111,9 @@ func (w *Window) rowsRead(usageSeq, seq uint64, page int, usage application.Usag
 	d.Rows = append(slices.Clip(d.Rows), usage.Rows...)
 }
 
-// dropRows cancels the page read and forgets its failure, as the rows it
+// drop cancels the page read and forgets its failure, as the rows it
 // would extend go.
-func (w *Window) dropRows() {
-	r := &w.usage.rows
+func (r *rowsState) drop() {
 	if r.cancel != nil {
 		r.cancel()
 	}

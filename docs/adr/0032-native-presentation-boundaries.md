@@ -93,6 +93,9 @@ reading "Total: 257,000" rather than "Total : 257,000". X axis labels
 that would overlap are dropped from the start, keeping the last, by the
 width the window gives the plot, and a shortened category label shows its
 whole name on hover.
+Switching between usage and its excluded usage review gives the results
+the focus and announces what they show, rather than keeping the web's
+hidden status line beside them.
 
 ## Consequences
 

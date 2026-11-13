@@ -293,8 +293,8 @@ func columnsControl(c *ui.Context, s *tableState, tab dashboardview.Tab) {
 }
 
 // emptyTable explains a query without rows, as the web's: a wider date
-// range, or clearing the filters it offers when set. Reviewing excluded
-// usage adds its own action here with the excluded usage it reads.
+// range, or clearing the filters it offers when set, and the way back to
+// usage while reviewing excluded usage, else to its review when it exists.
 func emptyTable(c *ui.Context, w *model.Window, query dashboardview.Query) {
 	title, description := noMatches, includedScope
 	if query.Quality == dashboardview.QualityEstimated {
@@ -305,11 +305,15 @@ func emptyTable(c *ui.Context, w *model.Window, query dashboardview.Query) {
 	if hasFilters {
 		description += orClearFilters
 	}
+	toggleLabel, toggle, toggles := qualityToggle(w, query.Quality)
 	var actions func()
-	if hasFilters {
+	if hasFilters || toggles {
 		actions = func() {
-			if kit.Button(c, clearFiltersLabel, kit.ButtonStyle{Variant: kit.Outline}).Clicked() {
+			if hasFilters && kit.Button(c, clearFiltersLabel, kit.ButtonStyle{Variant: kit.Outline}).Clicked() {
 				w.ClearFilters()
+			}
+			if toggles && kit.Button(c, toggleLabel, kit.ButtonStyle{Variant: kit.Ghost}).Clicked() {
+				toggle()
 			}
 		}
 	}

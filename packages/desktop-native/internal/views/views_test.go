@@ -79,6 +79,13 @@ type fakeBackend struct {
 	facetsErr     error
 	searchErr     error
 	facetRequests []application.FacetRequest
+	// excluded answers estimated reads: its summary and each tab's
+	// rows. excludedErr fails the excluded usage reads beside confirmed
+	// usage, which excludedRequests records instead of requests.
+	excluded         analytics.ViewerSummaryRow
+	excludedRows     map[dashboardview.Tab][]analytics.Row
+	excludedErr      error
+	excludedRequests []analytics.Query
 }
 
 func (b *fakeBackend) Facets(_ context.Context, request application.FacetRequest) (application.Facets, error) {
@@ -99,31 +106,45 @@ func (b *fakeBackend) Facets(_ context.Context, request application.FacetRequest
 }
 
 func (b *fakeBackend) Usage(_ context.Context, query analytics.Query) (application.Usage, error) {
-	b.requests = append(b.requests, query)
+	estimated := query.Quality == string(dashboardview.QualityEstimated)
+	excludedRead := estimated && query.PageSize == 1
+	if excludedRead {
+		b.excludedRequests = append(b.excludedRequests, query)
+	} else {
+		b.requests = append(b.requests, query)
+	}
 	if b.usageErr != nil {
 		return application.Usage{}, b.usageErr
+	}
+	if excludedRead && b.excludedErr != nil {
+		return application.Usage{}, b.excludedErr
 	}
 	if query.Page > 1 && b.pageErr != nil {
 		return application.Usage{}, b.pageErr
 	}
-	usage := b.usage
-	rows := b.rows[dashboardview.Tab(query.Tab)]
+	usage, rowsByTab := b.usage, b.rows
+	usage.Quality = string(dashboardview.QualityConfirmed)
+	if estimated {
+		usage.Quality, usage.Summary, rowsByTab = query.Quality, b.excluded, b.excludedRows
+	}
+	tab := dashboardview.Tab(query.Tab)
+	rows := rowsByTab[tab]
 	start := min((query.Page-1)*query.PageSize, len(rows))
 	usage.Rows = rows[start:min(start+query.PageSize, len(rows))]
 	usage.RowCount, usage.Page, usage.PageSize = len(rows), query.Page, query.PageSize
-	usage.Chart = b.chart(dashboardview.Tab(query.Tab))
+	usage.Chart = b.chart(tab, rowsByTab, !estimated)
 	return usage, nil
 }
 
-// chart is tab's chart rows.
-func (b *fakeBackend) chart(tab dashboardview.Tab) []analytics.Row {
-	if chart, ok := b.charts[tab]; ok {
+// chart is tab's chart rows of rowsByTab; charts replaces confirmed ones.
+func (b *fakeBackend) chart(tab dashboardview.Tab, rowsByTab map[dashboardview.Tab][]analytics.Row, confirmed bool) []analytics.Row {
+	if chart, ok := b.charts[tab]; ok && confirmed {
 		return chart
 	}
 	if dashboardview.ChartIsTimeline(tab) {
-		return b.rows[dashboardview.TabTokens]
+		return rowsByTab[dashboardview.TabTokens]
 	}
-	rows := b.rows[tab]
+	rows := rowsByTab[tab]
 	return rows[:min(len(rows), analytics.ChartLimit)]
 }
 

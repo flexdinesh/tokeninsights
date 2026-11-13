@@ -88,10 +88,17 @@ func (w *Window) usageWanted() (usageKey, bool) {
 // syncUsage reads usage when the wanted read differs from the latest one:
 // a new query, tab, snapshot identity or revision. A failed read stays
 // failed until RetryUsage. It runs after each change that can change the
-// wanted read.
+// wanted read, and syncs the excluded usage read after it.
 func (w *Window) syncUsage() {
-	u := &w.usage
 	key, ok := w.usageWanted()
+	w.syncUsageRead(&w.usage, key, ok)
+	w.syncExcluded()
+}
+
+// syncUsageRead reads key into u when it differs from u's latest read. An
+// answer from another snapshot is read once more after status; a second
+// one fails with ErrDataChanged.
+func (w *Window) syncUsageRead(u *usageState, key usageKey, ok bool) {
 	if !ok || w.rt.Context.Err() != nil {
 		return
 	}
@@ -106,7 +113,7 @@ func (w *Window) syncUsage() {
 				return
 			}
 			u.staleRetried = true
-			w.readUsage(key)
+			w.readUsage(u, key)
 			return
 		}
 	}
@@ -114,13 +121,13 @@ func (w *Window) syncUsage() {
 		return
 	}
 	u.staleRetried = false
-	w.readUsage(key)
+	w.readUsage(u, key)
 }
 
-// readUsage starts the read of key, superseding any running one. Data of
-// another summary scope goes, as the web shows no placeholder for it.
-func (w *Window) readUsage(key usageKey) {
-	u := &w.usage
+// readUsage starts the read of key into u, superseding any running one.
+// Data of another summary scope goes, as the web shows no placeholder for
+// it. Its answer syncs the excluded usage read, which waits for usage.
+func (w *Window) readUsage(u *usageState, key usageKey) {
 	if u.cancel != nil {
 		u.cancel()
 	}
@@ -128,22 +135,25 @@ func (w *Window) readUsage(key usageKey) {
 	seq := u.seq
 	ctx, cancel := context.WithCancel(w.rt.Context)
 	u.cancel, u.running, u.requested, u.err = cancel, true, &key, nil
-	w.dropRows()
+	u.rows.drop()
 	if u.data != nil && (u.dataKey.identity != key.identity || !sameSummaryScope(u.dataKey.request, key.request)) {
 		u.data = nil
 	}
 	w.rt.Go(func() {
 		usage, err := w.backend.Usage(ctx, key.request)
-		w.rt.Update(func() { w.usageRead(seq, key, usage, err) })
+		w.rt.Update(func() {
+			w.usageRead(u, seq, key, usage, err)
+			w.syncExcluded()
+		})
 	})
 }
 
-// usageRead applies the answer of read seq unless a later read superseded
-// it. An answer from another snapshot identity or an older revision than
-// the status reads status again, then the usage once more; an answer from
-// a newer revision is shown and reads status again, as the web's.
-func (w *Window) usageRead(seq uint64, key usageKey, usage application.Usage, err error) {
-	u := &w.usage
+// usageRead applies the answer of read seq of u unless a later read
+// superseded it. An answer from another snapshot identity or an older
+// revision than the status reads status again, then the usage once more;
+// an answer from a newer revision is shown and reads status again, as the
+// web's.
+func (w *Window) usageRead(u *usageState, seq uint64, key usageKey, usage application.Usage, err error) {
 	if seq != u.seq {
 		return
 	}
@@ -166,18 +176,33 @@ func (w *Window) usageRead(seq uint64, key usageKey, usage application.Usage, er
 	u.dataKey, u.staleRetried = key, false
 }
 
-// usageSnapshotChanged drops usage of another snapshot identity and its
-// running read, as the web removes its cached usage.
+// retryUsage reads key into u again, whatever its latest read.
+func (w *Window) retryUsage(u *usageState, key usageKey, ok bool) {
+	if !ok || w.rt.Context.Err() != nil {
+		return
+	}
+	u.awaitingStatus, u.staleRetried = false, false
+	w.readUsage(u, key)
+}
+
+// drop forgets u's read and its data, cancelling a running read, as the
+// web removes usage of another snapshot identity.
+func (u *usageState) drop() {
+	if u.cancel != nil {
+		u.cancel()
+	}
+	u.rows.drop()
+	*u = usageState{seq: u.seq + 1, rows: rowsState{seq: u.rows.seq}}
+}
+
+// usageSnapshotChanged drops usage and excluded usage of another snapshot
+// identity and their running reads.
 func (w *Window) usageSnapshotChanged(change SnapshotChange) {
 	if !change.IdentityChanged {
 		return
 	}
-	u := &w.usage
-	if u.cancel != nil {
-		u.cancel()
-	}
-	w.dropRows()
-	w.usage = usageState{seq: u.seq + 1}
+	w.usage.drop()
+	w.excluded.drop()
 }
 
 // Usage is the usage the window shows for the query's summary scope and
@@ -218,11 +243,7 @@ func (w *Window) UsageMatchesView() bool {
 // RetryUsage reads usage again, the ErrorBanner's Retry Request.
 func (w *Window) RetryUsage() {
 	key, ok := w.usageWanted()
-	if !ok || w.rt.Context.Err() != nil {
-		return
-	}
-	w.usage.awaitingStatus, w.usage.staleRetried = false, false
-	w.readUsage(key)
+	w.retryUsage(&w.usage, key, ok)
 }
 
 // SameRequest reports whether two usage requests ask the same rows and

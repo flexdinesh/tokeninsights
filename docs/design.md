@@ -382,6 +382,10 @@ timeline of the chosen metric (kept per window in memory) with a bucket
 select that reads usage again, share bars whose legend filters by one
 category, or Context's average, median and maximum bars; its series are
 prepared once per answer and metric, not per frame.
+Beside confirmed usage that answered, it reads one row of the query's
+estimated usage (Tokens, or Repo under its grouping), with the same snapshot
+rules, to tell of usage excluded from the totals and offer its review, which
+switches the query's quality and back, as the web's.
 Neither shell imports the other.
 
 ## Packages and contracts
