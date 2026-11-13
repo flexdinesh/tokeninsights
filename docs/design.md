@@ -358,7 +358,10 @@ session, not after the OS opener exits. No credential files are written. Each
 window keeps its own target/session. Desktop composes the shared dashboard/bridge
 without owning storage. Native (`packages/desktop-native`) renders MyGo native UI
 over its window's `localclient` session with no bridge; DESIGN.md roles are its
-guarded visual contract. Neither shell imports the other.
+guarded visual contract. Its formatting, calendar, query, status, column, chart
+and filter rules come from pure `dashboardview`, pinned to the web by shared
+fixtures in `packages/contracts/fixtures/dashboard-view` (ADR 0032). Neither
+shell imports the other.
 
 ## Packages and contracts
 
@@ -378,6 +381,7 @@ cancellation and ownership; ADR 0027 supersedes their retired product boundaries
 | `endpoint`, `sshtransport`, `tcptransport` | Pure target values and explicit transport adapters |
 | `remoteaccess` | Temporary authenticated TLS gateway over one session |
 | `dashboardproxy`, `desktoplaunch` | Loopback dashboard bridge and private acknowledged launch |
+| `dashboardview` | Pure native dashboard presentation rules; no UI toolkit, shell or transport |
 | CLI/TUI/desktop/native | Executable preferences and presentation composition |
 
 Resolve executable flags/env once into typed settings. Domains neither read

@@ -1,0 +1,872 @@
+{
+  "compactCount": [
+    {
+      "value": 0,
+      "expected": "0"
+    },
+    {
+      "value": 1,
+      "expected": "1"
+    },
+    {
+      "value": 999,
+      "expected": "999"
+    },
+    {
+      "value": 1000,
+      "expected": "1K"
+    },
+    {
+      "value": 1049,
+      "expected": "1K"
+    },
+    {
+      "value": 1050,
+      "expected": "1.1K"
+    },
+    {
+      "value": 1249,
+      "expected": "1.2K"
+    },
+    {
+      "value": 1250,
+      "expected": "1.3K"
+    },
+    {
+      "value": 1950,
+      "expected": "2K"
+    },
+    {
+      "value": 9949,
+      "expected": "9.9K"
+    },
+    {
+      "value": 9950,
+      "expected": "10K"
+    },
+    {
+      "value": 12345,
+      "expected": "12.3K"
+    },
+    {
+      "value": 99950,
+      "expected": "100K"
+    },
+    {
+      "value": 123456,
+      "expected": "123.5K"
+    },
+    {
+      "value": 999949,
+      "expected": "999.9K"
+    },
+    {
+      "value": 999950,
+      "expected": "1M"
+    },
+    {
+      "value": 1000000,
+      "expected": "1M"
+    },
+    {
+      "value": 1050000,
+      "expected": "1.1M"
+    },
+    {
+      "value": 1234567,
+      "expected": "1.2M"
+    },
+    {
+      "value": 999950000,
+      "expected": "1B"
+    },
+    {
+      "value": 1234567890,
+      "expected": "1.2B"
+    },
+    {
+      "value": 1500000000000,
+      "expected": "1.5T"
+    },
+    {
+      "value": 999950000000,
+      "expected": "1T"
+    },
+    {
+      "value": 1000000000000000,
+      "expected": "1000T"
+    },
+    {
+      "value": 1234000000000000,
+      "expected": "1234T"
+    },
+    {
+      "value": 10000000000000000,
+      "expected": "10,000T"
+    },
+    {
+      "value": 9007199254740991,
+      "expected": "9007.2T"
+    },
+    {
+      "value": -1,
+      "expected": "-1"
+    },
+    {
+      "value": -1234,
+      "expected": "-1.2K"
+    },
+    {
+      "value": -999950,
+      "expected": "-1M"
+    }
+  ],
+  "exactCount": [
+    {
+      "value": 0,
+      "expected": "0"
+    },
+    {
+      "value": 7,
+      "expected": "7"
+    },
+    {
+      "value": 999,
+      "expected": "999"
+    },
+    {
+      "value": 1000,
+      "expected": "1,000"
+    },
+    {
+      "value": 1234567,
+      "expected": "1,234,567"
+    },
+    {
+      "value": 9007199254740991,
+      "expected": "9,007,199,254,740,991"
+    },
+    {
+      "value": -1234,
+      "expected": "-1,234"
+    }
+  ],
+  "tokenShare": [
+    {
+      "tokens": 300,
+      "total": 1000,
+      "expected": "30%"
+    },
+    {
+      "tokens": 200,
+      "total": 1000,
+      "expected": "20%"
+    },
+    {
+      "tokens": 300,
+      "total": 300,
+      "expected": "100%"
+    },
+    {
+      "tokens": 1,
+      "total": 3,
+      "expected": "33.3%"
+    },
+    {
+      "tokens": 2,
+      "total": 3,
+      "expected": "66.7%"
+    },
+    {
+      "tokens": 1,
+      "total": 7,
+      "expected": "14.3%"
+    },
+    {
+      "tokens": 1,
+      "total": 10000,
+      "expected": "<0.1%"
+    },
+    {
+      "tokens": 0,
+      "total": 1000,
+      "expected": "0%"
+    },
+    {
+      "tokens": 0,
+      "total": 0,
+      "expected": "0%"
+    },
+    {
+      "tokens": 7,
+      "total": 0,
+      "expected": "0%"
+    },
+    {
+      "tokens": 1,
+      "total": 80,
+      "expected": "1.3%"
+    },
+    {
+      "tokens": 1,
+      "total": 8,
+      "expected": "12.5%"
+    },
+    {
+      "tokens": 115,
+      "total": 10000,
+      "expected": "1.2%"
+    },
+    {
+      "tokens": 145,
+      "total": 10000,
+      "expected": "1.5%"
+    },
+    {
+      "tokens": 235,
+      "total": 10000,
+      "expected": "2.4%"
+    },
+    {
+      "tokens": 1,
+      "total": 1000,
+      "expected": "0.1%"
+    },
+    {
+      "tokens": 1,
+      "total": 1001,
+      "expected": "<0.1%"
+    },
+    {
+      "tokens": 999999,
+      "total": 1000000,
+      "expected": "100%"
+    },
+    {
+      "tokens": 15,
+      "total": 1,
+      "expected": "1,500%"
+    },
+    {
+      "tokens": 12345,
+      "total": 1000,
+      "expected": "1,234.5%"
+    },
+    {
+      "tokens": -5,
+      "total": 100,
+      "expected": "-5%"
+    }
+  ],
+  "serverZoneLabel": [
+    {
+      "timezone": "UTC",
+      "expected": "UTC"
+    },
+    {
+      "timezone": "UTC+05:45",
+      "expected": "UTC+05:45"
+    },
+    {
+      "timezone": "UTC-03:30",
+      "expected": "UTC-03:30"
+    },
+    {
+      "timezone": "UTC+00:00",
+      "expected": "UTC+00:00"
+    },
+    {
+      "timezone": "UTC-23:59",
+      "expected": "UTC-23:59"
+    },
+    {
+      "timezone": "America/Los_Angeles",
+      "expected": "America/Los_Angeles"
+    },
+    {
+      "timezone": "Australia/Sydney",
+      "expected": "Australia/Sydney"
+    },
+    {
+      "timezone": "Etc/UTC",
+      "expected": "Etc/UTC"
+    },
+    {
+      "timezone": "",
+      "expected": "UTC (server timezone unavailable)"
+    },
+    {
+      "timezone": "invalid-zone",
+      "expected": "UTC (server timezone unavailable)"
+    },
+    {
+      "timezone": "UTC+99:00",
+      "expected": "UTC (server timezone unavailable)"
+    },
+    {
+      "timezone": "UTC+23:60",
+      "expected": "UTC (server timezone unavailable)"
+    },
+    {
+      "timezone": "UTC+5:45",
+      "expected": "UTC (server timezone unavailable)"
+    },
+    {
+      "timezone": "Local",
+      "expected": "UTC (server timezone unavailable)"
+    }
+  ],
+  "serverDate": [
+    {
+      "instant": "2026-01-01T00:30:00Z",
+      "timezone": "UTC",
+      "expected": "Jan 1, 2026"
+    },
+    {
+      "instant": "2026-01-01T00:30:00Z",
+      "timezone": "America/Los_Angeles",
+      "expected": "Dec 31, 2025"
+    },
+    {
+      "instant": "2026-01-01T00:30:00Z",
+      "timezone": "Australia/Sydney",
+      "expected": "Jan 1, 2026"
+    },
+    {
+      "instant": "2026-01-01T00:30:00Z",
+      "timezone": "America/New_York",
+      "expected": "Dec 31, 2025"
+    },
+    {
+      "instant": "2026-01-01T00:30:00Z",
+      "timezone": "UTC-03:30",
+      "expected": "Dec 31, 2025"
+    },
+    {
+      "instant": "2026-01-01T00:30:00Z",
+      "timezone": "UTC+05:45",
+      "expected": "Jan 1, 2026"
+    },
+    {
+      "instant": "2026-01-01T00:30:00Z",
+      "timezone": "",
+      "expected": "Jan 1, 2026"
+    },
+    {
+      "instant": "2026-01-01T00:30:00Z",
+      "timezone": "invalid-zone",
+      "expected": "Jan 1, 2026"
+    },
+    {
+      "instant": "2026-01-01T00:30:00Z",
+      "timezone": "UTC+99:00",
+      "expected": "Jan 1, 2026"
+    },
+    {
+      "instant": "2026-01-15T00:00:00Z",
+      "timezone": "UTC",
+      "expected": "Jan 15, 2026"
+    },
+    {
+      "instant": "2026-01-15T00:00:00Z",
+      "timezone": "America/Los_Angeles",
+      "expected": "Jan 14, 2026"
+    },
+    {
+      "instant": "2026-01-15T00:00:00Z",
+      "timezone": "Australia/Sydney",
+      "expected": "Jan 15, 2026"
+    },
+    {
+      "instant": "2026-01-15T00:00:00Z",
+      "timezone": "America/New_York",
+      "expected": "Jan 14, 2026"
+    },
+    {
+      "instant": "2026-01-15T00:00:00Z",
+      "timezone": "UTC-03:30",
+      "expected": "Jan 14, 2026"
+    },
+    {
+      "instant": "2026-01-15T00:00:00Z",
+      "timezone": "UTC+05:45",
+      "expected": "Jan 15, 2026"
+    },
+    {
+      "instant": "2026-01-15T00:00:00Z",
+      "timezone": "",
+      "expected": "Jan 15, 2026"
+    },
+    {
+      "instant": "2026-01-15T00:00:00Z",
+      "timezone": "invalid-zone",
+      "expected": "Jan 15, 2026"
+    },
+    {
+      "instant": "2026-01-15T00:00:00Z",
+      "timezone": "UTC+99:00",
+      "expected": "Jan 15, 2026"
+    },
+    {
+      "instant": "2026-07-15T00:00:00Z",
+      "timezone": "UTC",
+      "expected": "Jul 15, 2026"
+    },
+    {
+      "instant": "2026-07-15T00:00:00Z",
+      "timezone": "America/Los_Angeles",
+      "expected": "Jul 14, 2026"
+    },
+    {
+      "instant": "2026-07-15T00:00:00Z",
+      "timezone": "Australia/Sydney",
+      "expected": "Jul 15, 2026"
+    },
+    {
+      "instant": "2026-07-15T00:00:00Z",
+      "timezone": "America/New_York",
+      "expected": "Jul 14, 2026"
+    },
+    {
+      "instant": "2026-07-15T00:00:00Z",
+      "timezone": "UTC-03:30",
+      "expected": "Jul 14, 2026"
+    },
+    {
+      "instant": "2026-07-15T00:00:00Z",
+      "timezone": "UTC+05:45",
+      "expected": "Jul 15, 2026"
+    },
+    {
+      "instant": "2026-07-15T00:00:00Z",
+      "timezone": "",
+      "expected": "Jul 15, 2026"
+    },
+    {
+      "instant": "2026-07-15T00:00:00Z",
+      "timezone": "invalid-zone",
+      "expected": "Jul 15, 2026"
+    },
+    {
+      "instant": "2026-07-15T00:00:00Z",
+      "timezone": "UTC+99:00",
+      "expected": "Jul 15, 2026"
+    },
+    {
+      "instant": "2025-12-31T19:00:00Z",
+      "timezone": "UTC",
+      "expected": "Dec 31, 2025"
+    },
+    {
+      "instant": "2025-12-31T19:00:00Z",
+      "timezone": "America/Los_Angeles",
+      "expected": "Dec 31, 2025"
+    },
+    {
+      "instant": "2025-12-31T19:00:00Z",
+      "timezone": "Australia/Sydney",
+      "expected": "Jan 1, 2026"
+    },
+    {
+      "instant": "2025-12-31T19:00:00Z",
+      "timezone": "America/New_York",
+      "expected": "Dec 31, 2025"
+    },
+    {
+      "instant": "2025-12-31T19:00:00Z",
+      "timezone": "UTC-03:30",
+      "expected": "Dec 31, 2025"
+    },
+    {
+      "instant": "2025-12-31T19:00:00Z",
+      "timezone": "UTC+05:45",
+      "expected": "Jan 1, 2026"
+    },
+    {
+      "instant": "2025-12-31T19:00:00Z",
+      "timezone": "",
+      "expected": "Dec 31, 2025"
+    },
+    {
+      "instant": "2025-12-31T19:00:00Z",
+      "timezone": "invalid-zone",
+      "expected": "Dec 31, 2025"
+    },
+    {
+      "instant": "2025-12-31T19:00:00Z",
+      "timezone": "UTC+99:00",
+      "expected": "Dec 31, 2025"
+    },
+    {
+      "instant": "2024-02-29T23:59:00Z",
+      "timezone": "UTC",
+      "expected": "Feb 29, 2024"
+    },
+    {
+      "instant": "2024-02-29T23:59:00Z",
+      "timezone": "America/Los_Angeles",
+      "expected": "Feb 29, 2024"
+    },
+    {
+      "instant": "2024-02-29T23:59:00Z",
+      "timezone": "Australia/Sydney",
+      "expected": "Mar 1, 2024"
+    },
+    {
+      "instant": "2024-02-29T23:59:00Z",
+      "timezone": "America/New_York",
+      "expected": "Feb 29, 2024"
+    },
+    {
+      "instant": "2024-02-29T23:59:00Z",
+      "timezone": "UTC-03:30",
+      "expected": "Feb 29, 2024"
+    },
+    {
+      "instant": "2024-02-29T23:59:00Z",
+      "timezone": "UTC+05:45",
+      "expected": "Mar 1, 2024"
+    },
+    {
+      "instant": "2024-02-29T23:59:00Z",
+      "timezone": "",
+      "expected": "Feb 29, 2024"
+    },
+    {
+      "instant": "2024-02-29T23:59:00Z",
+      "timezone": "invalid-zone",
+      "expected": "Feb 29, 2024"
+    },
+    {
+      "instant": "2024-02-29T23:59:00Z",
+      "timezone": "UTC+99:00",
+      "expected": "Feb 29, 2024"
+    },
+    {
+      "instant": "1970-01-01T00:00:00Z",
+      "timezone": "UTC",
+      "expected": "Jan 1, 1970"
+    },
+    {
+      "instant": "1970-01-01T00:00:00Z",
+      "timezone": "America/Los_Angeles",
+      "expected": "Dec 31, 1969"
+    },
+    {
+      "instant": "1970-01-01T00:00:00Z",
+      "timezone": "Australia/Sydney",
+      "expected": "Jan 1, 1970"
+    },
+    {
+      "instant": "1970-01-01T00:00:00Z",
+      "timezone": "America/New_York",
+      "expected": "Dec 31, 1969"
+    },
+    {
+      "instant": "1970-01-01T00:00:00Z",
+      "timezone": "UTC-03:30",
+      "expected": "Dec 31, 1969"
+    },
+    {
+      "instant": "1970-01-01T00:00:00Z",
+      "timezone": "UTC+05:45",
+      "expected": "Jan 1, 1970"
+    },
+    {
+      "instant": "1970-01-01T00:00:00Z",
+      "timezone": "",
+      "expected": "Jan 1, 1970"
+    },
+    {
+      "instant": "1970-01-01T00:00:00Z",
+      "timezone": "invalid-zone",
+      "expected": "Jan 1, 1970"
+    },
+    {
+      "instant": "1970-01-01T00:00:00Z",
+      "timezone": "UTC+99:00",
+      "expected": "Jan 1, 1970"
+    }
+  ],
+  "serverDateTime": [
+    {
+      "instant": "2026-01-01T00:30:00Z",
+      "timezone": "UTC",
+      "expected": "Jan 1, 2026, 00:30"
+    },
+    {
+      "instant": "2026-01-01T00:30:00Z",
+      "timezone": "America/Los_Angeles",
+      "expected": "Dec 31, 2025, 16:30"
+    },
+    {
+      "instant": "2026-01-01T00:30:00Z",
+      "timezone": "Australia/Sydney",
+      "expected": "Jan 1, 2026, 11:30"
+    },
+    {
+      "instant": "2026-01-01T00:30:00Z",
+      "timezone": "America/New_York",
+      "expected": "Dec 31, 2025, 19:30"
+    },
+    {
+      "instant": "2026-01-01T00:30:00Z",
+      "timezone": "UTC-03:30",
+      "expected": "Dec 31, 2025, 21:00"
+    },
+    {
+      "instant": "2026-01-01T00:30:00Z",
+      "timezone": "UTC+05:45",
+      "expected": "Jan 1, 2026, 06:15"
+    },
+    {
+      "instant": "2026-01-01T00:30:00Z",
+      "timezone": "",
+      "expected": "Jan 1, 2026, 00:30"
+    },
+    {
+      "instant": "2026-01-01T00:30:00Z",
+      "timezone": "invalid-zone",
+      "expected": "Jan 1, 2026, 00:30"
+    },
+    {
+      "instant": "2026-01-01T00:30:00Z",
+      "timezone": "UTC+99:00",
+      "expected": "Jan 1, 2026, 00:30"
+    },
+    {
+      "instant": "2026-01-15T00:00:00Z",
+      "timezone": "UTC",
+      "expected": "Jan 15, 2026, 00:00"
+    },
+    {
+      "instant": "2026-01-15T00:00:00Z",
+      "timezone": "America/Los_Angeles",
+      "expected": "Jan 14, 2026, 16:00"
+    },
+    {
+      "instant": "2026-01-15T00:00:00Z",
+      "timezone": "Australia/Sydney",
+      "expected": "Jan 15, 2026, 11:00"
+    },
+    {
+      "instant": "2026-01-15T00:00:00Z",
+      "timezone": "America/New_York",
+      "expected": "Jan 14, 2026, 19:00"
+    },
+    {
+      "instant": "2026-01-15T00:00:00Z",
+      "timezone": "UTC-03:30",
+      "expected": "Jan 14, 2026, 20:30"
+    },
+    {
+      "instant": "2026-01-15T00:00:00Z",
+      "timezone": "UTC+05:45",
+      "expected": "Jan 15, 2026, 05:45"
+    },
+    {
+      "instant": "2026-01-15T00:00:00Z",
+      "timezone": "",
+      "expected": "Jan 15, 2026, 00:00"
+    },
+    {
+      "instant": "2026-01-15T00:00:00Z",
+      "timezone": "invalid-zone",
+      "expected": "Jan 15, 2026, 00:00"
+    },
+    {
+      "instant": "2026-01-15T00:00:00Z",
+      "timezone": "UTC+99:00",
+      "expected": "Jan 15, 2026, 00:00"
+    },
+    {
+      "instant": "2026-07-15T00:00:00Z",
+      "timezone": "UTC",
+      "expected": "Jul 15, 2026, 00:00"
+    },
+    {
+      "instant": "2026-07-15T00:00:00Z",
+      "timezone": "America/Los_Angeles",
+      "expected": "Jul 14, 2026, 17:00"
+    },
+    {
+      "instant": "2026-07-15T00:00:00Z",
+      "timezone": "Australia/Sydney",
+      "expected": "Jul 15, 2026, 10:00"
+    },
+    {
+      "instant": "2026-07-15T00:00:00Z",
+      "timezone": "America/New_York",
+      "expected": "Jul 14, 2026, 20:00"
+    },
+    {
+      "instant": "2026-07-15T00:00:00Z",
+      "timezone": "UTC-03:30",
+      "expected": "Jul 14, 2026, 20:30"
+    },
+    {
+      "instant": "2026-07-15T00:00:00Z",
+      "timezone": "UTC+05:45",
+      "expected": "Jul 15, 2026, 05:45"
+    },
+    {
+      "instant": "2026-07-15T00:00:00Z",
+      "timezone": "",
+      "expected": "Jul 15, 2026, 00:00"
+    },
+    {
+      "instant": "2026-07-15T00:00:00Z",
+      "timezone": "invalid-zone",
+      "expected": "Jul 15, 2026, 00:00"
+    },
+    {
+      "instant": "2026-07-15T00:00:00Z",
+      "timezone": "UTC+99:00",
+      "expected": "Jul 15, 2026, 00:00"
+    },
+    {
+      "instant": "2025-12-31T19:00:00Z",
+      "timezone": "UTC",
+      "expected": "Dec 31, 2025, 19:00"
+    },
+    {
+      "instant": "2025-12-31T19:00:00Z",
+      "timezone": "America/Los_Angeles",
+      "expected": "Dec 31, 2025, 11:00"
+    },
+    {
+      "instant": "2025-12-31T19:00:00Z",
+      "timezone": "Australia/Sydney",
+      "expected": "Jan 1, 2026, 06:00"
+    },
+    {
+      "instant": "2025-12-31T19:00:00Z",
+      "timezone": "America/New_York",
+      "expected": "Dec 31, 2025, 14:00"
+    },
+    {
+      "instant": "2025-12-31T19:00:00Z",
+      "timezone": "UTC-03:30",
+      "expected": "Dec 31, 2025, 15:30"
+    },
+    {
+      "instant": "2025-12-31T19:00:00Z",
+      "timezone": "UTC+05:45",
+      "expected": "Jan 1, 2026, 00:45"
+    },
+    {
+      "instant": "2025-12-31T19:00:00Z",
+      "timezone": "",
+      "expected": "Dec 31, 2025, 19:00"
+    },
+    {
+      "instant": "2025-12-31T19:00:00Z",
+      "timezone": "invalid-zone",
+      "expected": "Dec 31, 2025, 19:00"
+    },
+    {
+      "instant": "2025-12-31T19:00:00Z",
+      "timezone": "UTC+99:00",
+      "expected": "Dec 31, 2025, 19:00"
+    },
+    {
+      "instant": "2024-02-29T23:59:00Z",
+      "timezone": "UTC",
+      "expected": "Feb 29, 2024, 23:59"
+    },
+    {
+      "instant": "2024-02-29T23:59:00Z",
+      "timezone": "America/Los_Angeles",
+      "expected": "Feb 29, 2024, 15:59"
+    },
+    {
+      "instant": "2024-02-29T23:59:00Z",
+      "timezone": "Australia/Sydney",
+      "expected": "Mar 1, 2024, 10:59"
+    },
+    {
+      "instant": "2024-02-29T23:59:00Z",
+      "timezone": "America/New_York",
+      "expected": "Feb 29, 2024, 18:59"
+    },
+    {
+      "instant": "2024-02-29T23:59:00Z",
+      "timezone": "UTC-03:30",
+      "expected": "Feb 29, 2024, 20:29"
+    },
+    {
+      "instant": "2024-02-29T23:59:00Z",
+      "timezone": "UTC+05:45",
+      "expected": "Mar 1, 2024, 05:44"
+    },
+    {
+      "instant": "2024-02-29T23:59:00Z",
+      "timezone": "",
+      "expected": "Feb 29, 2024, 23:59"
+    },
+    {
+      "instant": "2024-02-29T23:59:00Z",
+      "timezone": "invalid-zone",
+      "expected": "Feb 29, 2024, 23:59"
+    },
+    {
+      "instant": "2024-02-29T23:59:00Z",
+      "timezone": "UTC+99:00",
+      "expected": "Feb 29, 2024, 23:59"
+    },
+    {
+      "instant": "1970-01-01T00:00:00Z",
+      "timezone": "UTC",
+      "expected": "Jan 1, 1970, 00:00"
+    },
+    {
+      "instant": "1970-01-01T00:00:00Z",
+      "timezone": "America/Los_Angeles",
+      "expected": "Dec 31, 1969, 16:00"
+    },
+    {
+      "instant": "1970-01-01T00:00:00Z",
+      "timezone": "Australia/Sydney",
+      "expected": "Jan 1, 1970, 10:00"
+    },
+    {
+      "instant": "1970-01-01T00:00:00Z",
+      "timezone": "America/New_York",
+      "expected": "Dec 31, 1969, 19:00"
+    },
+    {
+      "instant": "1970-01-01T00:00:00Z",
+      "timezone": "UTC-03:30",
+      "expected": "Dec 31, 1969, 20:30"
+    },
+    {
+      "instant": "1970-01-01T00:00:00Z",
+      "timezone": "UTC+05:45",
+      "expected": "Jan 1, 1970, 05:45"
+    },
+    {
+      "instant": "1970-01-01T00:00:00Z",
+      "timezone": "",
+      "expected": "Jan 1, 1970, 00:00"
+    },
+    {
+      "instant": "1970-01-01T00:00:00Z",
+      "timezone": "invalid-zone",
+      "expected": "Jan 1, 1970, 00:00"
+    },
+    {
+      "instant": "1970-01-01T00:00:00Z",
+      "timezone": "UTC+99:00",
+      "expected": "Jan 1, 1970, 00:00"
+    }
+  ],
+  "tabLabels": {
+    "tokens": "Tokens",
+    "models": "Models",
+    "providers": "Providers",
+    "harnesses": "Harnesses",
+    "sessions": "Sessions",
+    "context": "Context",
+    "repo": "Repo"
+  }
+}

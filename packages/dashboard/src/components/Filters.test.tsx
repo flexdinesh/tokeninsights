@@ -1,4 +1,7 @@
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { afterEach, expect, it, vi } from 'vitest'
+import { z } from 'zod'
 import { cleanup, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { useState } from 'react'
@@ -111,4 +114,46 @@ it('hides opaque keys when a selected location is unavailable', async () => {
   expect(button).not.toHaveTextContent('opaque-key')
   await user.click(button)
   expect(screen.getByRole('checkbox', { name: 'Repository (unavailable)' })).toBeChecked()
+})
+
+// Shared with packages/core/dashboardview so native option order and search stay identical.
+const { options: optionCases } = z
+  .strictObject({
+    options: z.array(
+      z.strictObject({
+        name: z.string(),
+        values: z.array(z.strictObject({ key: z.string(), name: z.string() })),
+        selected: z.array(z.string()),
+        missingName: z.string().optional(),
+        search: z.string(),
+        expected: z.array(z.string()),
+      }),
+    ),
+  })
+  .parse(
+    JSON.parse(
+      readFileSync(
+        join(import.meta.dirname, '../../../contracts/fixtures/dashboard-view/filters.json'),
+        'utf8',
+      ),
+    ),
+  )
+
+it.each(optionCases)('$name', async ({ values, selected, missingName, search, expected }) => {
+  const user = userEvent.setup()
+  render(
+    <MultiSelect
+      label="Value"
+      values={values}
+      selected={selected}
+      onChange={() => undefined}
+      missingName={missingName}
+    />,
+  )
+  await user.click(screen.getByRole('button', { name: /^Value/ }))
+  if (search) await user.type(screen.getByRole('textbox', { name: 'Search value' }), search)
+  const names = screen
+    .queryAllByRole('checkbox')
+    .map((checkbox) => checkbox.closest('label')?.textContent ?? '')
+  expect(names).toEqual(expected)
 })

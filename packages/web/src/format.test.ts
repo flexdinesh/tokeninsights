@@ -1,36 +1,63 @@
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { expect, it } from 'vitest'
+import { z } from 'zod'
+import { tabSchema } from '@tokeninsights/contracts'
 import {
+  exactCount,
+  formatCount,
   formatServerDate,
   formatServerDateTime,
+  labels,
   serverTimeZoneLabel,
 } from '../../dashboard/src/format'
 
-it('uses the server calendar across a browser/server midnight boundary', () => {
-  const instant = Date.parse('2026-01-01T00:30:00Z')
-  expect(formatServerDate(instant, 'UTC')).toBe('Jan 1, 2026')
-  expect(formatServerDate(instant, 'America/Los_Angeles')).toBe('Dec 31, 2025')
-})
-
-it('uses the historical DST offset of an IANA server timezone', () => {
-  expect(formatServerDateTime(Date.parse('2026-01-15T00:00:00Z'), 'Australia/Sydney')).toBe(
-    'Jan 15, 2026, 11:00',
+// Shared with packages/core/dashboardview so native formatting stays identical.
+const countCases = z.array(z.strictObject({ value: z.number(), expected: z.string() }))
+const instantCases = z.array(
+  z.strictObject({ instant: z.iso.datetime(), timezone: z.string(), expected: z.string() }),
+)
+const fixture = z
+  .strictObject({
+    compactCount: countCases,
+    exactCount: countCases,
+    tokenShare: z.array(
+      z.strictObject({ tokens: z.number(), total: z.number(), expected: z.string() }),
+    ),
+    serverZoneLabel: z.array(z.strictObject({ timezone: z.string(), expected: z.string() })),
+    serverDate: instantCases,
+    serverDateTime: instantCases,
+    tabLabels: z.record(tabSchema, z.string()),
+  })
+  .parse(
+    JSON.parse(
+      readFileSync(
+        join(import.meta.dirname, '../../contracts/fixtures/dashboard-view/format.json'),
+        'utf8',
+      ),
+    ),
   )
-  expect(formatServerDateTime(Date.parse('2026-07-15T00:00:00Z'), 'Australia/Sydney')).toBe(
-    'Jul 15, 2026, 10:00',
-  )
+
+it('formats compact and exact counts', () => {
+  for (const { value, expected } of fixture.compactCount) expect(formatCount(value)).toBe(expected)
+  for (const { value, expected } of fixture.exactCount) expect(exactCount(value)).toBe(expected)
 })
 
-it('supports explicit fixed offsets without interpreting them as IANA DST zones', () => {
-  const instant = Date.parse('2026-01-01T00:30:00Z')
-  expect(formatServerDateTime(instant, 'UTC-03:30')).toBe('Dec 31, 2025, 21:00')
-  expect(formatServerDateTime(instant, 'UTC+05:45')).toBe('Jan 1, 2026, 06:15')
-  expect(serverTimeZoneLabel('UTC+05:45')).toBe('UTC+05:45')
-})
-
-it('labels unavailable server zones and falls back explicitly to UTC', () => {
-  const instant = Date.parse('2026-01-01T00:30:00Z')
-  for (const timezone of ['', 'invalid-zone', 'UTC+99:00']) {
-    expect(serverTimeZoneLabel(timezone)).toBe('UTC (server timezone unavailable)')
-    expect(formatServerDateTime(instant, timezone)).toBe('Jan 1, 2026, 00:30')
+it('labels server zones and falls back explicitly to UTC', () => {
+  for (const { timezone, expected } of fixture.serverZoneLabel) {
+    expect(serverTimeZoneLabel(timezone)).toBe(expected)
   }
+})
+
+it('formats server dates on the server calendar with historical DST offsets', () => {
+  for (const { instant, timezone, expected } of fixture.serverDate) {
+    expect(formatServerDate(Date.parse(instant), timezone)).toBe(expected)
+  }
+  for (const { instant, timezone, expected } of fixture.serverDateTime) {
+    expect(formatServerDateTime(Date.parse(instant), timezone)).toBe(expected)
+  }
+})
+
+it('labels every tab', () => {
+  expect(labels).toEqual(fixture.tabLabels)
 })
