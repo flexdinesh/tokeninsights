@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -82,6 +83,32 @@ func TestRolesMatchDesignContract(t *testing.T) {
 	}
 }
 
+// sRGBHex is the one DESIGN.md color form.
+var sRGBHex = regexp.MustCompile(`^#[0-9a-f]{6}$`)
+
+func TestDesignColorsAreSRGBHex(t *testing.T) {
+	for name, values := range designColors(t) {
+		for _, value := range values {
+			if !sRGBHex.MatchString(value) {
+				t.Errorf("DESIGN.md %s = %q, want sRGB #rrggbb", name, value)
+			}
+		}
+	}
+}
+
+// A color outside sRGB makes MyGo switch a window to wide-gamut frame
+// buffers, so every role must be an sRGB color.
+func TestEveryRoleIsInsideSRGB(t *testing.T) {
+	for _, isDark := range []bool{false, true} {
+		tokens := For(isDark)
+		for _, r := range roles {
+			if c := *r.field(tokens); c.SRGB() != c {
+				t.Errorf("%s (dark %v) is outside sRGB", r.name, isDark)
+			}
+		}
+	}
+}
+
 func TestEveryRoleResolvesInBothAppearances(t *testing.T) {
 	for _, isDark := range []bool{false, true} {
 		tokens, err := build(isDark)
@@ -101,7 +128,7 @@ func TestEveryRoleResolvesInBothAppearances(t *testing.T) {
 }
 
 func TestColorParserRejectsUnsupportedForms(t *testing.T) {
-	for _, spec := range []string{"", "#fff", "#gggggg", "rgb(0 0 0)", "oklch(0.5 0.1)", "oklch(a b c)", "oklch(0.5 0.1 20"} {
+	for _, spec := range []string{"", "#fff", "#gggggg", "#+12345", "#ffffff00", "rgb(0 0 0)", "oklch(0.5 0.1 20)"} {
 		if _, err := parseColor(spec); err == nil {
 			t.Error("accepted", spec)
 		}
