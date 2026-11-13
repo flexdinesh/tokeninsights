@@ -4,6 +4,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/flexdinesh/tokeninsights/packages/core/analytics"
 	"golang.org/x/text/collate"
 	"golang.org/x/text/language"
 )
@@ -20,6 +21,69 @@ func FilterDimensions() []DimensionOption {
 		{DimensionHarnesses, "Harness"}, {DimensionProviders, "Provider"},
 		{DimensionModels, "Model"}, {DimensionSessions, "Session"},
 	}
+}
+
+// Values are the values q filters dimension d by, in selection order.
+func (q Query) Values(d Dimension) []string {
+	switch d {
+	case DimensionHarnesses:
+		return q.Harnesses
+	case DimensionProviders:
+		return q.Providers
+	case DimensionModels:
+		return q.Models
+	case DimensionSessions:
+		return q.Sessions
+	}
+	return nil
+}
+
+// DimensionChange filters dimension d by values, as the web's
+// updateSelection({ [d]: values }).
+func DimensionChange(d Dimension, values []string) SelectionChange {
+	values = clone(values)
+	switch d {
+	case DimensionHarnesses:
+		return SelectionChange{Harnesses: &values}
+	case DimensionProviders:
+		return SelectionChange{Providers: &values}
+	case DimensionModels:
+		return SelectionChange{Models: &values}
+	case DimensionSessions:
+		return SelectionChange{Sessions: &values}
+	}
+	return SelectionChange{}
+}
+
+// FacetValues are the values facets offer for dimension d.
+func FacetValues(facets analytics.Facets, d Dimension) []string {
+	switch d {
+	case DimensionHarnesses:
+		return facets.Harnesses
+	case DimensionProviders:
+		return facets.Providers
+	case DimensionModels:
+		return facets.Models
+	case DimensionSessions:
+		return facets.Sessions
+	}
+	return nil
+}
+
+// HasActiveFilters reports whether the filter toolbar shows its active
+// filters, as the web's FilterToolbar: a dimension filter, a location
+// filter on Repo, or custom dates. Bounds of a navigated calendar period
+// are not active filters.
+func (q Query) HasActiveFilters() bool {
+	for _, d := range FilterDimensions() {
+		if len(q.Values(d.Key)) > 0 {
+			return true
+		}
+	}
+	if q.Tab == TabRepo && (len(q.Repositories) > 0 || len(q.Directories) > 0) {
+		return true
+	}
+	return q.CustomDates()
 }
 
 // LocationDimension is a Repo-only location filter.

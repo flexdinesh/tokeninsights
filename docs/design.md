@@ -374,6 +374,9 @@ web's pager; sorting reads the first page again, sorted by the backend.
 Its date filter and period navigation change the query as the web's do, with
 calendar periods computed on the server calendar (instance timezone);
 custom bounds are picked from a calendar rather than typed.
+Its harness, provider, model and session filters read the query's facets
+with the same snapshot rules as usage and apply each check at once; the
+session filter searches the backend once typing rests 200 ms, as the web's.
 Neither shell imports the other.
 
 ## Packages and contracts

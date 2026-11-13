@@ -29,14 +29,35 @@ func Input(c *ui.Context, value *string) ui.Element {
 // has the focus. placeholder also names the input. The result is the
 // wrapper; compare query to detect edits.
 func SearchField(c *ui.Context, query *string, placeholder string) ui.Element {
+	return SearchFieldWith(c, query, SearchFieldOptions{Placeholder: placeholder})
+}
+
+// SearchFieldOptions describe a search field: its placeholder, the name
+// of its input, the placeholder when Label is empty, and whether the
+// input takes the keyboard focus as it appears, as in a popover that
+// opens to search.
+type SearchFieldOptions struct {
+	Placeholder, Label string
+	AutoFocus          bool
+}
+
+// SearchFieldWith builds a search field as SearchField does, described by o.
+func SearchFieldWith(c *ui.Context, query *string, o SearchFieldOptions) ui.Element {
 	t := theme.Current(c)
+	label := o.Label
+	if label == "" {
+		label = o.Placeholder
+	}
 	box := ui.Row(c).Gap(theme.Unit*2).MinHeight(theme.ControlHeight).PaddingX(theme.Unit*3).
 		Background(t.SurfaceField).Border(theme.Rule, t.LineStrong).TextColor(t.InkSubtle)
 	focusRing(c, box, box.FocusWithin())
 	return box.Children(func() {
 		icon(c, icons.Search())
 		in := ui.TextInputBase(c, query).Grow(1).MinWidth(0).PaddingY(theme.Unit).FocusRing(false).
-			Placeholder(placeholder).Label(placeholder).Search().TextColor(t.Ink).CaretColor(t.Action).PlaceholderColor(t.InkSubtle)
+			Placeholder(o.Placeholder).Label(label).Search().TextColor(t.Ink).CaretColor(t.Action).PlaceholderColor(t.InkSubtle)
+		if o.AutoFocus {
+			in.AutoFocus()
+		}
 		theme.Body(in)
 	})
 }

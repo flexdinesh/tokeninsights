@@ -35,3 +35,7 @@ func (b sessionBackend) Progress(ctx context.Context) (collectorprogress.Snapsho
 func (b sessionBackend) Usage(ctx context.Context, query analytics.Query) (application.Usage, error) {
 	return b.session.Query.Usage(ctx, query)
 }
+
+func (b sessionBackend) Facets(ctx context.Context, request application.FacetRequest) (application.Facets, error) {
+	return b.session.Query.Facets(ctx, request)
+}

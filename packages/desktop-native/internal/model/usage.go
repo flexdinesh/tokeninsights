@@ -11,10 +11,10 @@ import (
 	"github.com/flexdinesh/tokeninsights/packages/core/serverfeatures"
 )
 
-// ErrDataChanged reports usage answered from another snapshot than the
-// status, again after the status was read once more: the web's "Data
-// changed. Refreshing service status."
-var ErrDataChanged = errors.New("usage answered from another snapshot than the status")
+// ErrDataChanged reports usage or facets answered from another snapshot
+// than the status, again after the status was read once more: the web's
+// "Data changed. Refreshing service status."
+var ErrDataChanged = errors.New("read answered from another snapshot than the status")
 
 // Usage is the usage a window shows: the first page of a usage read, with
 // the summary, chart and last ingestion of the whole query, and the view

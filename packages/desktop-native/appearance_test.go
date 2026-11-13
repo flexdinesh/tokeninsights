@@ -44,6 +44,9 @@ func (idleBackend) Progress(context.Context) (collectorprogress.Snapshot, error)
 func (idleBackend) Usage(context.Context, analytics.Query) (application.Usage, error) {
 	return application.Usage{}, nil
 }
+func (idleBackend) Facets(context.Context, application.FacetRequest) (application.Facets, error) {
+	return application.Facets{}, nil
+}
 
 // testAppearance is the app's appearance over a preferences file in dir,
 // with its View menu built and its flushes joined by flushes.
