@@ -20,6 +20,10 @@ func fade(c *ui.Context, e ui.Element, key string, target ui.Color) ui.Color {
 	return e.AnimateColor(key, target, ui.Animation{Duration: theme.DurationFast})
 }
 
+// Icon draws a Lucide icon at the inline icon size in the inherited ink,
+// as inside ButtonContent. It is decorative: pair it with text.
+func Icon(c *ui.Context, svg *ui.SVG) ui.Element { return icon(c, svg) }
+
 // icon draws a Lucide icon at the inline icon size in the inherited ink.
 func icon(c *ui.Context, svg *ui.SVG) ui.Element {
 	return ui.Icon(c, svg).Size(theme.IconSize, theme.IconSize).Shrink(0)

@@ -8,7 +8,11 @@ import (
 	"github.com/egoist/mygo/ui"
 	"github.com/flexdinesh/tokeninsights/packages/core/browser"
 	"github.com/flexdinesh/tokeninsights/packages/core/desktoplaunch"
+	"github.com/flexdinesh/tokeninsights/packages/desktop-native/internal/model"
+	"github.com/flexdinesh/tokeninsights/packages/desktop-native/internal/preferences"
 	"github.com/flexdinesh/tokeninsights/packages/desktop-native/internal/session"
+	"github.com/flexdinesh/tokeninsights/packages/desktop-native/internal/theme"
+	"github.com/flexdinesh/tokeninsights/packages/desktop-native/internal/views"
 )
 
 const (
@@ -25,19 +29,23 @@ const (
 // close joins them.
 type viewer struct {
 	connect    session.Connector
-	windows    map[*mygo.Window]*dashboard
+	windows    map[*mygo.Window]*model.Window
 	connecting map[string]bool
 	launches   map[string]bool
-	appearance appearance
+	appearance *appearance
 	ctx        context.Context
 	cancel     context.CancelFunc
 	workers    sync.WaitGroup
 }
 
-func newViewer(connect session.Connector) *viewer {
+// newViewer starts with saved preferences; a nil store keeps choices for
+// this run only.
+func newViewer(connect session.Connector, store *preferences.Store, saved preferences.Preferences) *viewer {
 	ctx, cancel := context.WithCancel(context.Background())
-	return &viewer{connect: connect, windows: make(map[*mygo.Window]*dashboard), connecting: make(map[string]bool),
+	v := &viewer{connect: connect, windows: make(map[*mygo.Window]*model.Window), connecting: make(map[string]bool),
 		launches: make(map[string]bool), ctx: ctx, cancel: cancel}
+	v.appearance = &appearance{choice: saved.Appearance, store: store, applied: v.applyAppearance, spawn: v.workers.Go}
+	return v
 }
 
 // openArguments opens each native launch link, or focuses when there are none.
@@ -117,19 +125,25 @@ func (v *viewer) retry(err error) bool {
 	return dialogErr == nil && result.Button == 0
 }
 
-// show opens a window that owns connected until it closes.
+// show opens a window that owns connected until it closes. The window's
+// reads end as it closes, before its lease is released.
 func (v *viewer) show(connected *session.Session) {
-	state := newDashboard(connected.Info, &v.appearance, func(ctx context.Context) error {
-		return connected.Capture(ctx, false, "")
+	ctx, cancel := context.WithCancel(v.ctx)
+	var window *mygo.Window
+	state := model.NewWindow(connected.Info, sessionBackend{connected}, model.Runtime{
+		Context: ctx, Go: v.workers.Go, Update: func(fn func()) { window.Update(fn) },
 	})
-	window := mygo.NewWindow(mygo.WindowOptions{
-		Title: appName, Content: ui.View(state.view),
+	window = mygo.NewWindow(mygo.WindowOptions{
+		Title: appName, Content: ui.View(func(c *ui.Context) {
+			views.AppShell(c, views.Shell{Window: state, Appearance: v.appearance.choice, SetAppearance: v.appearance.set})
+		}),
 		Width: windowWidth, Height: windowHeight, MinWidth: minWidth, MinHeight: minHeight,
 	})
 	v.windows[window] = state
 	closed := false
 	window.OnClosed(func() {
 		closed = true
+		cancel()
 		delete(v.windows, window)
 		v.release(connected)
 	})
@@ -138,6 +152,7 @@ func (v *viewer) show(connected *session.Session) {
 		v.fail("Cannot acknowledge requested connection.", "Run tokeninsights again.")
 		return
 	}
+	state.Load()
 	// A lost backend leaves nothing to show; reopening attaches a new lease.
 	v.workers.Go(func() {
 		select {
@@ -154,20 +169,18 @@ func (v *viewer) show(connected *session.Session) {
 	})
 }
 
-// refresh requests capture for window's session off the GUI thread.
+// refresh requests capture for window's session; overlapping requests
+// coalesce.
 func (v *viewer) refresh(window *mygo.Window) {
-	state, ok := v.windows[window]
-	if !ok || !state.beginRefresh() {
-		return
+	if state, ok := v.windows[window]; ok {
+		state.Refresh()
 	}
-	v.workers.Go(func() {
-		err := state.capture(v.ctx)
-		window.Update(func() { state.endRefresh(err) })
-	})
 }
 
-func (v *viewer) setAppearance(choice appearance) {
-	v.appearance = choice
+// applyAppearance shows a new appearance choice in native chrome and every
+// window.
+func (v *viewer) applyAppearance(choice theme.Appearance) {
+	mygo.Theme.SetSource(themeSource(choice))
 	for window := range v.windows {
 		window.Invalidate()
 	}
@@ -209,22 +222,19 @@ func (v *viewer) menu() *mygo.Menu {
 		}
 		return mygo.FocusedWindow()
 	}
-	choose := func(choice appearance) func(*mygo.MenuItem, *mygo.Window) {
-		return func(*mygo.MenuItem, *mygo.Window) { v.setAppearance(choice) }
+	view := []*mygo.MenuItem{
+		{Label: "Refresh", Accelerator: "CmdOrCtrl+R", Click: func(_ *mygo.MenuItem, window *mygo.Window) { v.refresh(target(window)) }},
+		mygo.Separator(),
 	}
-	return mygo.NewMenu([]*mygo.MenuItem{
+	view = append(view, v.appearance.menuItems()...)
+	view = append(view, mygo.Separator(), &mygo.MenuItem{Role: mygo.RoleToggleFullScreen})
+	menu := mygo.NewMenu([]*mygo.MenuItem{
 		{Role: mygo.RoleAppMenu},
 		{Label: "File", Submenu: []*mygo.MenuItem{{Role: mygo.RoleClose}, {Role: mygo.RoleQuit}}},
 		{Role: mygo.RoleEditMenu},
-		{Label: "View", Submenu: []*mygo.MenuItem{
-			{Label: "Refresh", Accelerator: "CmdOrCtrl+R", Click: func(_ *mygo.MenuItem, window *mygo.Window) { v.refresh(target(window)) }},
-			mygo.Separator(),
-			{Label: "System Theme", Type: mygo.MenuItemRadio, Checked: true, Click: choose(appearanceSystem)},
-			{Label: "Light Theme", Type: mygo.MenuItemRadio, Click: choose(appearanceLight)},
-			{Label: "Dark Theme", Type: mygo.MenuItemRadio, Click: choose(appearanceDark)},
-			mygo.Separator(),
-			{Role: mygo.RoleToggleFullScreen},
-		}},
+		{Label: "View", Submenu: view},
 		{Role: mygo.RoleWindowMenu},
 	})
+	v.appearance.menu = menu
+	return menu
 }

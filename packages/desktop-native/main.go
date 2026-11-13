@@ -25,7 +25,9 @@ func main() {
 	if err := theme.RegisterFonts(); err != nil {
 		log.Fatal(err)
 	}
-	v := newViewer(session.Connect)
+	store, saved := openPreferences()
+	mygo.Theme.SetSource(themeSource(saved.Appearance))
+	v := newViewer(session.Connect, store, saved)
 	mygo.App.SetMenu(v.menu())
 	mygo.App.OnOpenURL(v.open)
 	mygo.App.OnSecondInstance(func(args []string, _ string) { v.openArguments(args) })
