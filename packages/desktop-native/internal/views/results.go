@@ -51,12 +51,14 @@ func DashboardResults(c *ui.Context, w *model.Window) ui.Element {
 	if estimated {
 		label = excludedResultsLabel
 	}
-	return ui.Column(c).MinWidth(0).Role(ui.RoleRegion).Label(label).Children(func() {
-		results(c, w, estimated)
+	region := ui.Column(c).MinWidth(0).Role(ui.RoleRegion).Label(label)
+	table := ui.Local(region, "table", newTableState)
+	return region.Children(func() {
+		results(c, w, estimated, table)
 	})
 }
 
-func results(c *ui.Context, w *model.Window, estimated bool) {
+func results(c *ui.Context, w *model.Window, estimated bool, table *tableState) {
 	sync := w.SyncState()
 	status, _ := w.Status()
 	usage, hasData := w.Usage()
@@ -108,7 +110,7 @@ func results(c *ui.Context, w *model.Window, estimated bool) {
 				usageChart(c, w)
 			}
 			if !placeholder || matches {
-				resultsTable(c, w)
+				resultsTable(c, w, table)
 			}
 		})
 	}
@@ -117,10 +119,6 @@ func results(c *ui.Context, w *model.Window, estimated bool) {
 // usageChart is where the usage chart goes, under the readouts; it shows
 // the chart once its view arrives.
 func usageChart(*ui.Context, *model.Window) {}
-
-// resultsTable is where the results table goes, under the chart; it shows
-// the table once its view arrives.
-func resultsTable(*ui.Context, *model.Window) {}
 
 // processingNote says that published usage trails accepted input: a
 // rebuild for a new generation, else the entries pending.

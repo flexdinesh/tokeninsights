@@ -18,14 +18,22 @@ var ErrDataChanged = errors.New("usage answered from another snapshot than the s
 
 // Usage is the usage a window shows: the first page of a usage read, with
 // the summary, chart and last ingestion of the whole query, and the view
-// it answered. Rows are the rows read so far.
+// it answered. Rows are the rows read so far: the first page and those
+// LoadMoreRows appended; RowCount counts every row of the query.
 type Usage struct {
 	application.Usage
 	// Tab and LocationGroup are the view the read answered, which a tab
 	// switch leaves behind until its own read answers.
 	Tab           dashboardview.Tab
 	LocationGroup analytics.RepoGroup
+	// Request is the read the rows answered: another request's rows are
+	// other rows, in another order, where the same request's rows of
+	// another revision are the same rows updated.
+	Request analytics.Query
 }
+
+// SameRows reports whether request reads the rows u shows, in their order.
+func (u Usage) SameRows(request analytics.Query) bool { return sameRequest(u.Request, request) }
 
 // usageKey is one usage read: the request sent and the snapshot it must
 // answer from, the web's usage query key.
@@ -59,6 +67,8 @@ type usageState struct {
 	// for the status read it requested; staleRetried whether the read
 	// was already repeated once for that, as the web's single retry.
 	awaitingStatus, staleRetried bool
+	// rows reads the pages of data after its first.
+	rows rowsState
 }
 
 // usageWanted is the usage read the window should show, and whether it
@@ -118,6 +128,7 @@ func (w *Window) readUsage(key usageKey) {
 	seq := u.seq
 	ctx, cancel := context.WithCancel(w.rt.Context)
 	u.cancel, u.running, u.requested, u.err = cancel, true, &key, nil
+	w.dropRows()
 	if u.data != nil && (u.dataKey.identity != key.identity || !sameSummaryScope(u.dataKey.request, key.request)) {
 		u.data = nil
 	}
@@ -151,7 +162,7 @@ func (w *Window) usageRead(seq uint64, key usageKey, usage application.Usage, er
 	if usage.Revision > key.revision {
 		w.RefetchStatus()
 	}
-	u.data = &Usage{Usage: usage, Tab: dashboardview.Tab(key.request.Tab), LocationGroup: key.request.LocationGroup}
+	u.data = &Usage{Usage: usage, Tab: dashboardview.Tab(key.request.Tab), LocationGroup: key.request.LocationGroup, Request: key.request}
 	u.dataKey, u.staleRetried = key, false
 }
 
@@ -165,6 +176,7 @@ func (w *Window) usageSnapshotChanged(change SnapshotChange) {
 	if u.cancel != nil {
 		u.cancel()
 	}
+	w.dropRows()
 	w.usage = usageState{seq: u.seq + 1}
 }
 

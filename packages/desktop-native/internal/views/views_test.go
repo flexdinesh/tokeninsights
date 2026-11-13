@@ -60,13 +60,28 @@ type fakeBackend struct {
 	progressErr error
 	usage       application.Usage
 	usageErr    error
+	// rows are each tab's rows, which usage reads answer a page of;
+	// pageErr fails the reads of the pages after the first.
+	rows    map[dashboardview.Tab][]analytics.Row
+	pageErr error
 	// requests are the usage requests read.
 	requests []analytics.Query
 }
 
 func (b *fakeBackend) Usage(_ context.Context, query analytics.Query) (application.Usage, error) {
 	b.requests = append(b.requests, query)
-	return b.usage, b.usageErr
+	if b.usageErr != nil {
+		return application.Usage{}, b.usageErr
+	}
+	if query.Page > 1 && b.pageErr != nil {
+		return application.Usage{}, b.pageErr
+	}
+	usage := b.usage
+	rows := b.rows[dashboardview.Tab(query.Tab)]
+	start := min((query.Page-1)*query.PageSize, len(rows))
+	usage.Rows = rows[start:min(start+query.PageSize, len(rows))]
+	usage.RowCount, usage.Page, usage.PageSize = len(rows), query.Page, query.PageSize
+	return usage, nil
 }
 
 func (b *fakeBackend) Status(context.Context) (application.Status, error) {
@@ -129,7 +144,7 @@ var lastIngestion = time.Date(2026, time.September, 14, 10, 0, 0, 0, time.UTC).U
 // studioUsage is the web mocks' usage summary, answered from studioStatus's
 // snapshot.
 var studioUsage = application.Usage{InstanceID: studioInstance.InstanceID, Dashboard: analytics.Dashboard{
-	DatabaseID: "db-7a2e", DatasetID: "default", Revision: 42, Generation: 3, Page: 1, PageSize: dashboardview.DefaultPageSize,
+	DatabaseID: "db-7a2e", DatasetID: "default", Revision: 42, Generation: 3,
 	Summary: analytics.ViewerSummaryRow{
 		TotalTokens: 647_000, InputTokens: 369_000, OutputTokens: 78_000, ReasoningTokens: 13_000,
 		CacheReadTokens: 178_000, CacheWriteTokens: 9_000, SessionCount: 4, SyncedSessions: 5,
@@ -152,7 +167,8 @@ type fixture struct {
 }
 
 func newFixture() *fixture {
-	backend := &fakeBackend{instance: studioInstance, status: studioStatus, progress: collectorprogress.Snapshot{InstanceID: studioInstance.InstanceID}, usage: studioUsage}
+	backend := &fakeBackend{instance: studioInstance, status: studioStatus, progress: collectorprogress.Snapshot{InstanceID: studioInstance.InstanceID},
+		usage: studioUsage, rows: mockRows()}
 	f := &fixture{backend: backend, workers: &workers{}, appearance: theme.AppearanceSystem}
 	rt := model.Runtime{Context: context.Background(), Go: f.workers.Go, Update: func(fn func()) { fn() }, Now: func() time.Time { return readsAt }}
 	f.window = model.NewWindow(studioConnection, f.backend, rt)

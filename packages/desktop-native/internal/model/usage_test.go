@@ -15,7 +15,7 @@ func usageAt(revision, generation int64) application.Usage {
 	return application.Usage{InstanceID: testInstance.InstanceID, Dashboard: analytics.Dashboard{
 		DatabaseID: "db-1", DatasetID: testInstance.DatasetID, Revision: revision, Generation: generation,
 		Summary:    analytics.ViewerSummaryRow{TotalTokens: 647_000, SessionCount: 4, SyncedSessions: 5},
-		LastSynced: clock.UnixMilli(), Page: 1, PageSize: dashboardview.DefaultPageSize,
+		LastSynced: clock.UnixMilli(), Page: 1, PageSize: TablePageSize,
 	}}
 }
 
@@ -66,7 +66,7 @@ func TestUsageReadsTheQueryOnceStatusIsReady(t *testing.T) {
 	h.answerStatus(statusAt(1, 1), nil)
 	query, _ := w.Query()
 	request := h.expectUsage()
-	if want := query.ToAnalytics(); !sameRequest(request, want) || request.Page != 1 || request.PageSize != dashboardview.DefaultPageSize {
+	if want := query.ToAnalytics(); !sameRequest(request, want) || request.Page != 1 || request.PageSize != TablePageSize {
 		t.Fatalf("usage request %+v, want %+v", request, want)
 	}
 	assertStatus(t, w, "Loading…", dashboardview.StatusLoading)

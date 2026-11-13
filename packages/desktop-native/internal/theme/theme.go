@@ -89,6 +89,11 @@ const (
 	SkeletonReadout float32 = 128
 	SkeletonTable   float32 = 448
 	SkeletonChart           = ChartHeight + 2*ControlHeight
+	// TableRowHeight is a table row's least height and its heading
+	// row's, DESIGN.md's 2rem; TableMaxHeight caps a table's own scroll
+	// region at 35rem.
+	TableRowHeight float32 = 32
+	TableMaxHeight float32 = 560
 )
 
 // Overlay shadow geometry from DESIGN.md elevation: 0 0.75rem 2rem.

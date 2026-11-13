@@ -41,12 +41,28 @@ func SearchField(c *ui.Context, query *string, placeholder string) ui.Element {
 	})
 }
 
+// CheckboxStyle selects a check box option's state. Disabled dims it and
+// keeps its value; set it here rather than on the returned element so the
+// look follows in the same frame.
+type CheckboxStyle struct {
+	Disabled bool
+}
+
 // CheckboxOption builds a check box and its label as one compact row that
 // toggles checked, as a filter option. The ring of the keyboard focus goes
 // around the box.
 func CheckboxOption(c *ui.Context, checked *bool, label string) ui.Element {
+	return CheckboxOptionWith(c, checked, label, CheckboxStyle{})
+}
+
+// CheckboxOptionWith builds a check box option as CheckboxOption does, in
+// the state s selects.
+func CheckboxOptionWith(c *ui.Context, checked *bool, label string, s CheckboxStyle) ui.Element {
 	t := theme.Current(c)
 	row := ui.CheckboxBase(c, checked).Gap(theme.Unit * 2).MinHeight(theme.ControlCompact).PaddingX(theme.Unit)
+	if s.Disabled {
+		row.Disabled(true)
+	}
 	hover := ui.Transparent
 	if row.Hovered() && !row.IsDisabled() {
 		hover = t.SurfaceRaised
