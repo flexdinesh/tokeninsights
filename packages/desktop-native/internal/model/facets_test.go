@@ -46,7 +46,6 @@ func (h *harness) expectUsageAndFacets() (analytics.Query, application.FacetRequ
 func facetsSynced(t *testing.T) *harness {
 	h := newHarness(t)
 	h.loaded(facetsInstance)
-	h.window.Poll(at(0), false)
 	h.answerReads(statusAt(1, 1), progressOf())
 	h.expectUsageAndFacets()
 	h.answerUsage(usageAt(1, 1), nil)
@@ -58,7 +57,6 @@ func TestFacetsReadTheQueryWithoutSearchOnceStatusIsReady(t *testing.T) {
 	h := newHarness(t)
 	w := h.window
 	h.loaded(facetsInstance)
-	w.Poll(at(0), false)
 	h.answerReads(statusAt(1, 1), progressOf())
 	_, request := h.expectUsageAndFacets()
 	query, _ := w.Query()
@@ -77,7 +75,7 @@ func TestFacetsReadTheQueryWithoutSearchOnceStatusIsReady(t *testing.T) {
 	}
 	assertStatus(t, w, "Ready", dashboardview.StatusReady)
 
-	w.Poll(at(PollInterval), false)
+	h.advance(PollInterval)
 	h.answerReads(statusAt(1, 1), progressOf())
 	h.noCall() // an unchanged snapshot keeps its facets
 }
@@ -208,7 +206,7 @@ func TestFacetsFailureWaitsForRetry(t *testing.T) {
 	}
 	assertStatus(t, w, "Filters couldn’t load", dashboardview.StatusAttention)
 
-	w.Poll(at(PollInterval), false)
+	h.advance(PollInterval)
 	h.answerReads(statusAt(1, 1), progressOf())
 	h.noCall() // a failed read waits for Retry
 

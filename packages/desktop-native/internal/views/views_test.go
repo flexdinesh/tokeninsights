@@ -244,27 +244,76 @@ const totalReadout = "Total tokens: 647,000"
 var readsAt = time.Date(2026, time.November, 13, 9, 30, 0, 0, time.UTC)
 
 // fixture is a window over a fake backend and the app-wide appearance.
+// Its model's clock starts at readsAt and its timers fire as advance
+// moves it; it counts the results that built the view and the redraws
+// the model asked for.
 type fixture struct {
 	backend    *fakeBackend
 	workers    *workers
 	window     *model.Window
 	appearance theme.Appearance
+
+	elapsed              time.Duration
+	timers               []*fixtureTimer
+	updated, invalidated int
+}
+
+// fixtureTimer is one After of the fixture's model, due elapsed at.
+type fixtureTimer struct {
+	at      time.Duration
+	fn      func()
+	stopped bool
 }
 
 func newFixture() *fixture {
 	backend := &fakeBackend{instance: studioInstance, status: studioStatus, progress: collectorprogress.Snapshot{InstanceID: studioInstance.InstanceID},
 		usage: studioUsage, rows: mockRows(), directoryRows: directoryRows(), facets: studioFacets}
 	f := &fixture{backend: backend, workers: &workers{}, appearance: theme.AppearanceSystem}
-	rt := model.Runtime{Context: context.Background(), Go: f.workers.Go, Update: func(fn func()) { fn() }, Now: func() time.Time { return readsAt }}
+	rt := model.Runtime{
+		Context: context.Background(), Go: f.workers.Go,
+		Update: func(fn func()) { f.updated++; fn() }, Apply: func(fn func()) { fn() }, Invalidate: func() { f.invalidated++ },
+		After: f.after, Now: func() time.Time { return readsAt.Add(f.elapsed) },
+	}
 	f.window = model.NewWindow(studioConnection, f.backend, rt)
 	return f
 }
 
-// loaded is a fixture whose instance has loaded.
+func (f *fixture) after(d time.Duration, fn func()) (stop func()) {
+	timer := &fixtureTimer{at: f.elapsed + d, fn: fn}
+	f.timers = append(f.timers, timer)
+	return func() { timer.stopped = true }
+}
+
+// advance moves the tester's clock and the model's on by d, firing the
+// model's timers due meanwhile, then runs the reads they started without
+// a frame: the window draws only what the model asks for.
+func (f *fixture) advance(tt *ui.Tester, d time.Duration) {
+	tt.Advance(d)
+	end := f.elapsed + d
+	for {
+		var next *fixtureTimer
+		for _, timer := range f.timers {
+			if !timer.stopped && timer.at <= end && (next == nil || timer.at < next.at) {
+				next = timer
+			}
+		}
+		if next == nil {
+			break
+		}
+		f.elapsed, next.stopped = next.at, true
+		next.fn()
+	}
+	f.elapsed = end
+	f.workers.run()
+}
+
+// loaded is a fixture whose instance has loaded, leaving the status and
+// progress reads its loading started pending, so a test can change what
+// they answer first.
 func loaded() *fixture {
 	f := newFixture()
 	f.window.Load()
-	f.workers.run()
+	f.workers.step()
 	return f
 }
 
@@ -272,8 +321,8 @@ func (f *fixture) view(c *ui.Context) {
 	AppShell(c, Shell{Window: f.window, Appearance: f.appearance, SetAppearance: func(a theme.Appearance) { f.appearance = a }})
 }
 
-// tester renders the shell, whose first frame starts the status and
-// progress reads; synced testers have answered them.
+// tester renders the shell; synced testers have answered the status and
+// progress reads the instance's loading started.
 func (f *fixture) tester(width, height int, dark bool) *ui.Tester {
 	return ui.NewTesterWith(f.view, width, height, ui.TesterOptions{Dark: dark})
 }

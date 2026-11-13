@@ -47,8 +47,10 @@ connection alert, whose Retry Request reads the instance again, and reports
 status and collector progress every 5 seconds only while it shows (MyGo
 `WindowHidden`), reading status at once as it shows again, and does not
 reread its instance on the first status read, which the web's bootstrap
-invalidation does. A failed usage read shows its alert at once rather than
-after the web's single automatic retry; only usage answered from another
+invalidation does. Its model owns the poll timer and redraws only when what
+the window shows changes (or the server's calendar day turns), so an idle
+window draws nothing, where the web re-renders on every poll. A failed usage
+read shows its alert at once rather than after the web's single automatic retry; only usage answered from another
 snapshot than the status is read once more, after status is read again.
 Usage of earlier filters is not kept, so returning to them shows the
 loading skeleton until their read answers.

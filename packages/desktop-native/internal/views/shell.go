@@ -31,12 +31,12 @@ func ported(tab dashboardview.Tab) bool { return portedTabs[tab] }
 
 // AppShell builds a window: the sidebar beside a column of the header and
 // the scrolling page, which holds the selected tab's content above the
-// footer. It themes the window from s.Appearance and keeps the window's
-// status current while it shows.
+// footer. It themes the window from s.Appearance and tells the window's
+// model whether it shows, which polls status only while it does.
 func AppShell(c *ui.Context, s Shell) ui.Element {
 	t := s.Appearance.Tokens(c.Theme().Dark)
 	c.SetTheme(t.Widgets())
-	poll(c, s.Window)
+	s.Window.SetHidden(c.WindowHidden())
 	shell := ui.Row(c).Fill().AlignItems(ui.Stretch).Background(t.Surface).TextColor(t.Ink)
 	return shell.Children(func() {
 		Sidebar(c, s.Window)
@@ -60,13 +60,4 @@ func page(c *ui.Context, w *model.Window) {
 		DashboardResults(c, w)
 		Footer(c, w)
 	})
-}
-
-// poll starts the window's due status reads and wakes the view when the
-// next is due. A hidden window builds as it hides and as it shows, so
-// polling pauses and resumes with it; a closed window builds no more.
-func poll(c *ui.Context, w *model.Window) {
-	if wait, ok := w.Poll(c.Now(), c.WindowHidden()); ok {
-		c.After(wait)
-	}
 }

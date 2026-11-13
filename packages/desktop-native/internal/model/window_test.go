@@ -158,38 +158,110 @@ func (b *fakeBackend) Capture(ctx context.Context) error {
 	}
 }
 
-// harness runs a window's workers as goroutines and its updates when the
-// test, standing in for the main thread, applies them. Its clock is
-// fixed at clock; cancel ends the window's work as closing it does.
+// harness runs a window's workers as goroutines and its results when the
+// test, standing in for the main thread, applies them, counting those
+// that build the view (Update) and the redraws the window asks for
+// (Invalidate). Its clock starts at clock and its timers fire only as the
+// test advances it; cancel ends the window's work as closing it does.
 type harness struct {
 	t       *testing.T
 	backend *fakeBackend
 	updates chan func()
 	window  *Window
 	cancel  context.CancelFunc
+
+	now    time.Time
+	timers []*fakeTimer
+	// updated counts results applied with Update; invalidated the
+	// window's Invalidate calls.
+	updated, invalidated int
 }
 
-// clock is the wall time harness reads are stamped with.
+// fakeTimer is one After of the harness: due at at, unless stopped.
+type fakeTimer struct {
+	at      time.Time
+	fn      func()
+	stopped bool
+}
+
+// clock is the wall time a harness starts at.
 var clock = time.Date(2026, time.November, 13, 9, 0, 0, 0, time.UTC)
 
 func newHarness(t *testing.T) *harness {
-	h := &harness{t: t, backend: newFakeBackend(), updates: make(chan func(), 8)}
+	h := &harness{t: t, backend: newFakeBackend(), updates: make(chan func(), 8), now: clock}
 	ctx, cancel := context.WithCancel(context.Background())
 	h.cancel = cancel
 	t.Cleanup(cancel)
 	t.Cleanup(func() { close(h.backend.done) })
-	update := func(fn func()) {
+	apply := func(fn func()) {
 		select {
 		case h.updates <- fn:
 		case <-h.backend.done:
 		}
 	}
-	rt := Runtime{Context: ctx, Go: func(fn func()) { go fn() }, Update: update,
-		Now: func() time.Time { return clock }}
+	rt := Runtime{
+		Context: ctx, Go: func(fn func()) { go fn() }, Apply: apply,
+		Update:     func(fn func()) { apply(func() { h.updated++; fn() }) },
+		Invalidate: func() { h.invalidated++ },
+		After:      h.after,
+		Now:        func() time.Time { return h.now },
+	}
 	connection := endpoint.Info{Transport: "ssh", Target: "ssh://alice@studio:2222", State: "connected", Hostname: "studio.local"}
 	h.window = NewWindow(connection, h.backend, rt)
 	return h
 }
+
+// after arms a timer the test fires by advancing the clock.
+func (h *harness) after(d time.Duration, fn func()) (stop func()) {
+	timer := &fakeTimer{at: h.now.Add(d), fn: fn}
+	h.timers = append(h.timers, timer)
+	return func() { timer.stopped = true }
+}
+
+// armed is the timer that will fire next, or nil.
+func (h *harness) armed() *fakeTimer {
+	var next *fakeTimer
+	for _, timer := range h.timers {
+		if !timer.stopped && (next == nil || timer.at.Before(next.at)) {
+			next = timer
+		}
+	}
+	return next
+}
+
+// armedCount counts the timers that will fire.
+func (h *harness) armedCount() int {
+	n := 0
+	for _, timer := range h.timers {
+		if !timer.stopped {
+			n++
+		}
+	}
+	return n
+}
+
+// nextWake is how long until the next timer fires; ok is false when none
+// will.
+func (h *harness) nextWake() (time.Duration, bool) {
+	if next := h.armed(); next != nil {
+		return next.at.Sub(h.now), true
+	}
+	return 0, false
+}
+
+// advance moves the clock on by d, firing the timers due meanwhile at
+// their times, on the test's main thread.
+func (h *harness) advance(d time.Duration) {
+	end := h.now.Add(d)
+	for next := h.armed(); next != nil && !next.at.After(end); next = h.armed() {
+		h.now, next.stopped = next.at, true
+		next.fn()
+	}
+	h.now = end
+}
+
+// resetCounts forgets the results and redraws counted so far.
+func (h *harness) resetCounts() { h.updated, h.invalidated = 0, 0 }
 
 // expectCall waits for the backend to receive name.
 func (h *harness) expectCall(name string) {
@@ -262,6 +334,7 @@ func TestLoadStartsQueryFromInstanceDefaults(t *testing.T) {
 	h.expectCall("instance")
 	h.backend.instances <- instanceResult{instance: testInstance}
 	h.apply()
+	h.expectCalls("status", "progress") // polling starts once the instance loaded
 	h.noCall()
 	instance, ok := w.Instance()
 	if !ok || instance.InstanceID != "inst-4f1c" || w.Hostname() != "studio" {
@@ -304,10 +377,8 @@ func TestInstanceFailureReloadsAfterRefresh(t *testing.T) {
 func TestRefreshCoalescesAndReportsFailure(t *testing.T) {
 	h := newHarness(t)
 	w := h.window
-	w.Load()
-	h.expectCall("instance")
-	h.backend.instances <- instanceResult{instance: syncInstance}
-	h.apply()
+	h.loaded(syncInstance)
+	h.answerReads(statusAt(1, 1), progressOf())
 
 	if !w.Refresh() || w.Refresh() || !w.Refreshing() {
 		t.Fatal("overlapping refresh was not coalesced")

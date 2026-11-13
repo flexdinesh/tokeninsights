@@ -81,7 +81,8 @@ func TestHeaderThemeCycleSyncsMenuAndPersists(t *testing.T) {
 		t.Fatalf("first run checks %v", got)
 	}
 	window := model.NewWindow(endpoint.Info{Transport: "local", Target: "local", State: "connected"}, idleBackend{},
-		model.Runtime{Context: context.Background(), Go: func(func()) {}, Update: func(fn func()) { fn() }, Now: time.Now})
+		model.Runtime{Context: context.Background(), Go: func(func()) {}, Update: func(fn func()) { fn() }, Apply: func(fn func()) { fn() },
+			Invalidate: func() {}, After: func(time.Duration, func()) func() { return func() {} }, Now: time.Now})
 	tt := ui.NewTester(func(c *ui.Context) {
 		views.AppShell(c, views.Shell{Window: window, Appearance: a.choice, SetAppearance: a.set})
 	}, windowWidth, windowHeight)
