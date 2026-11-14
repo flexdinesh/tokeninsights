@@ -1,0 +1,279 @@
+/* The app as the demos draw it: the site's tokens mapped onto the kit's, so
+   light and dark follow the page. Square corners, mild rules, Geist. */
+.ti-demo .ss-stage {
+  --ss-canvas: var(--ti-bg);
+  --ss-surface: var(--ti-raised);
+  --ss-chrome: var(--ti-raised);
+  --ss-raised: var(--ti-raised);
+  --ss-well: transparent;
+  --ss-line: var(--ti-line);
+  --ss-line-faint: var(--ti-line);
+  --ss-text: var(--ti-muted);
+  --ss-text-strong: var(--ti-ink);
+  --ss-text-faint: var(--ti-muted);
+  --ss-icon: var(--ti-muted);
+  --ss-icon-faint: var(--ti-line-strong);
+  --ss-accent: var(--ti-accent);
+  --ss-accent-soft: var(--ti-selected);
+  --ss-success: var(--ti-success);
+  --ss-font: var(--ti-sans);
+  --ss-mono: var(--ti-mono);
+  --ss-radius-sm: 0;
+  --ss-radius-md: 0;
+  --ss-radius-lg: 0;
+  --ss-radius-window: 0;
+  --ti-app-skeleton: light-dark(#eeeef0, #24262b);
+  --ti-app-shadow:
+    0 0 0 1px var(--ti-line), 0 24px 48px -28px light-dark(rgb(34 37 43 / 0.28), rgb(0 0 0 / 0.7));
+
+  overflow: hidden;
+  background: transparent;
+  color: var(--ti-ink);
+  font: 400 13px/1.4 var(--ti-sans);
+  font-variant-numeric: tabular-nums;
+}
+
+.ti-demo .ss-window:not([data-chrome]) {
+  background: var(--ti-raised);
+  box-shadow: var(--ti-app-shadow);
+}
+.ti-demo .ss-window__dot {
+  border-radius: 50%;
+}
+.ti-demo .ss-window__side {
+  background: var(--ti-raised);
+  border-right: 1px solid var(--ti-line);
+}
+.ti-demo .ss-window:not([data-chrome]) .ss-window__bar {
+  border-bottom: 1px solid var(--ti-line);
+  background: var(--ti-raised);
+}
+.ti-demo .ss-window:not([data-chrome]) .ss-window__body {
+  background: var(--ti-raised);
+}
+
+.ti-app-icon {
+  display: block;
+  width: 14px;
+  height: 14px;
+}
+
+/* Sidebar */
+.ti-app-side {
+  display: flex;
+  flex-direction: column;
+  padding: 4px 10px 12px;
+}
+.ti-app-lockup {
+  display: block;
+  width: auto;
+  height: 18px;
+  margin: 0 10px 14px;
+}
+.ti-app-lockup--dark,
+:root[data-vocs-theme='dark'] .ti-app-lockup--light {
+  display: none;
+}
+:root[data-vocs-theme='dark'] .ti-app-lockup--dark {
+  display: block;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-vocs-theme='light']) .ti-app-lockup--light {
+    display: none;
+  }
+  :root:not([data-vocs-theme='light']) .ti-app-lockup--dark {
+    display: block;
+  }
+}
+.ti-app-nav span {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  color: var(--ti-muted);
+}
+.ti-app-nav [data-on] {
+  background: var(--ti-selected);
+  color: var(--ti-selected-ink);
+  font-weight: 500;
+}
+.ti-app-note {
+  margin: 28px 10px 0;
+  color: var(--ti-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+/* Header */
+.ti-app-title {
+  font-size: 14px;
+  font-weight: 600;
+}
+.ti-app-title span {
+  color: var(--ti-muted);
+  font-weight: 400;
+}
+.ti-app-tag {
+  margin-left: 10px;
+  padding: 1px 6px;
+  border: 1px solid var(--ti-line);
+  color: var(--ti-muted);
+  font-size: 11px;
+  line-height: 1.3;
+}
+.ti-app-conn {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  color: var(--ti-muted);
+  font-size: 11px;
+  line-height: 1.3;
+  white-space: nowrap;
+}
+.ti-app-conn b {
+  color: var(--ti-ink);
+  font-weight: 600;
+}
+.ti-app-rule {
+  flex: none;
+  width: 1px;
+  height: 20px;
+  margin-inline: 12px;
+  background: var(--ti-line);
+}
+.ti-demo .ti-app-refresh {
+  box-shadow: inset 0 0 0 1px var(--ti-line-strong);
+  font-size: 12px;
+}
+.ti-demo .ti-app-refresh[data-pending] .ti-app-icon {
+  animation: ti-app-spin 0.7s linear infinite;
+}
+@keyframes ti-app-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Readouts */
+.ti-app-reads {
+  display: grid;
+  border-bottom: 1px solid var(--ti-line);
+}
+.ti-app-read {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  padding: 10px 14px 12px;
+}
+.ti-app-read + .ti-app-read {
+  border-left: 1px solid var(--ti-line);
+}
+.ti-app-read > span,
+.ti-app-read > small {
+  overflow: hidden;
+  color: var(--ti-muted);
+  font-size: 11px;
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ti-demo .ti-app-read b {
+  display: block;
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1.25;
+}
+.ti-app-skeleton {
+  display: inline-block;
+  height: 0.62em;
+  background: var(--ti-app-skeleton);
+  vertical-align: middle;
+}
+
+/* Sections */
+.ti-app-sec {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--ti-line);
+}
+.ti-app-sh {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 6px;
+}
+.ti-app-sh > span:first-child {
+  font-size: 13px;
+  font-weight: 600;
+}
+.ti-app-seg {
+  display: flex;
+  gap: 2px;
+  font-size: 12px;
+}
+.ti-app-seg span {
+  padding: 3px 9px;
+  color: var(--ti-muted);
+}
+.ti-app-seg [data-on] {
+  background: var(--ti-selected);
+  color: var(--ti-selected-ink);
+  font-weight: 500;
+}
+
+/* Chart */
+.ti-app-chart {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+.ti-app-chart line {
+  stroke: var(--ti-line);
+}
+.ti-app-chart text {
+  fill: var(--ti-muted);
+  font: 11px var(--ti-sans);
+}
+.ti-app-chart .ti-app-line {
+  fill: none;
+  stroke: var(--ti-accent);
+  stroke-width: 1.5;
+  stroke-linejoin: round;
+  d: var(--ti-line-d);
+  transition: d 900ms cubic-bezier(0.45, 0, 0.1, 1);
+}
+.ti-app-chart .ti-app-area {
+  fill: var(--ti-accent);
+  opacity: 0.07;
+  d: var(--ti-area-d);
+  transition: d 900ms cubic-bezier(0.45, 0, 0.1, 1);
+}
+.ti-app-chart .ti-app-end {
+  fill: var(--ti-accent);
+  transition: transform 900ms cubic-bezier(0.45, 0, 0.1, 1);
+}
+
+/* Breakdown table */
+.ti-app-table table {
+  width: 100%;
+  border-collapse: collapse;
+  white-space: nowrap;
+}
+.ti-app-table th,
+.ti-app-table td {
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--ti-line);
+  text-align: right;
+}
+.ti-app-table th {
+  border-top: 1px solid var(--ti-line);
+  color: var(--ti-muted);
+  font-weight: 500;
+}
+.ti-app-table th:first-child,
+.ti-app-table td:first-child {
+  text-align: left;
+}

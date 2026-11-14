@@ -1,0 +1,40 @@
+/* Hero: the window pinned a gutter in from the top and sides, running off the
+   bottom into the section rule. */
+.ti-hero-demo .ss-stage {
+  --gutter: 32px;
+}
+.ti-hero-demo .ti-hero-window {
+  position: absolute;
+  top: var(--gutter);
+  left: var(--gutter);
+  width: calc(100% - var(--gutter) * 2);
+  height: 560px;
+}
+.ti-hero-demo .ss-stage[data-layout='compact'] {
+  --gutter: 16px;
+}
+.ti-hero-demo .ss-stage[data-layout='compact'] .ti-hero-window {
+  height: 380px;
+}
+
+.ti-hero-filters {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--ti-line);
+  color: var(--ti-muted);
+  font-size: 12px;
+}
+.ti-hero-ctl {
+  padding: 3px 9px;
+  border: 1px solid var(--ti-line-strong);
+  color: var(--ti-ink);
+}
+
+.ti-hero-reads {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+[data-layout='compact'] .ti-hero-reads {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}

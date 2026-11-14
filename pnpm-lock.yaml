@@ -185,6 +185,9 @@ importers:
 
   docs-website:
     dependencies:
+      lucide-react:
+        specifier: 1.59.0
+        version: 1.59.0(@types/react@19.3.0)(react@19.3.1)
       react:
         specifier: 19.3.1
         version: 19.3.1
