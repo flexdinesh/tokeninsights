@@ -40,6 +40,7 @@
   ],
   "ignorePatterns": [
     "packages/cli/internal/server/static/**",
-    "packages/web/public/mockServiceWorker.js"
+    "packages/web/public/mockServiceWorker.js",
+    "docs-website/src/stageshow/**"
   ]
 }

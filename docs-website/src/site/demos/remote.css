@@ -1,0 +1,93 @@
+/* Remote: two app windows cascaded, pinned from the top and running off the
+   bottom into the section rule; the laptop's terminal straddles their left
+   edge over the sidebar. */
+.ti-remote-demo .ti-remote-back,
+.ti-remote-demo .ti-remote-front {
+  position: absolute;
+  width: 600px;
+  height: 520px;
+}
+.ti-remote-demo .ti-remote-back {
+  top: 32px;
+  left: 96px;
+}
+.ti-remote-demo .ti-remote-front {
+  top: 76px;
+  left: 128px;
+  opacity: 0;
+  transform: scale(0.97);
+  transform-origin: 50% 20%;
+  will-change: transform;
+  transition:
+    opacity 180ms ease,
+    transform 220ms cubic-bezier(0.3, 0.75, 0.1, 1);
+}
+.ti-remote-demo .ti-remote-front[data-open] {
+  opacity: 1;
+  transform: none;
+}
+.ti-remote-demo .ti-remote-front-window {
+  width: 100%;
+  height: 100%;
+}
+
+.ti-remote-demo .ti-remote-term {
+  position: absolute;
+  top: 282px;
+  left: 32px;
+  width: 384px;
+  height: 156px;
+  box-shadow:
+    0 0 0 1px rgb(0 0 0 / 0.5),
+    0 18px 36px -16px rgb(0 0 0 / 0.45);
+}
+.ti-remote-demo .ti-remote-term .ss-term {
+  padding: 10px 14px 14px;
+  font: 400 11px/1.6 var(--ti-mono);
+}
+.ti-remote-demo .ti-remote-term-lines {
+  height: 100%;
+}
+/* A long pasted command wraps at the terminal's edge, as a terminal does */
+.ti-remote-demo .ti-remote-term .ss-term__prompt {
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.ti-remote-reads {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.ti-remote-chart .ti-app-line,
+.ti-remote-chart .ti-app-area,
+.ti-remote-chart .ti-app-end {
+  transition: opacity 400ms ease;
+}
+.ti-remote-front .ti-remote-chart:not([data-ready]) :is(.ti-app-line, .ti-app-area, .ti-app-end) {
+  opacity: 0;
+}
+
+/* Compact: the windows across the column, the terminal over their foot */
+.ti-remote-demo .ss-stage[data-layout='compact'] .ti-remote-back {
+  top: 16px;
+  left: 16px;
+  width: 420px;
+  height: 400px;
+}
+.ti-remote-demo .ss-stage[data-layout='compact'] .ti-remote-front {
+  top: 52px;
+  left: 32px;
+  width: 420px;
+  height: 400px;
+}
+.ti-remote-demo .ss-stage[data-layout='compact'] .ti-remote-term {
+  top: 166px;
+  left: 16px;
+  width: 326px;
+  height: 168px;
+}
+.ti-remote-demo .ss-stage[data-layout='compact'] .ti-remote-reads {
+  grid-template-columns: 158px 158px;
+}
+.ti-remote-demo .ss-stage[data-layout='compact'] .ti-app-conn {
+  align-items: flex-start;
+}
