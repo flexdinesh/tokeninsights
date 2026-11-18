@@ -144,6 +144,11 @@ depends = ["build:internal:deps"]
 description = "Build public documentation as static files"
 run = "pnpm --filter @tokeninsights/docs run build"
 
+[tasks."readme:cover"]
+depends = ["build:internal:deps"]
+description = "Film the landing hero demo into the README cover WebPs (needs setup:browser)"
+run = "pnpm --filter @tokeninsights/docs run readme:cover"
+
 # Test
 
 [tasks."test:js"]

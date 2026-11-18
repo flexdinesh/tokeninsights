@@ -77,9 +77,12 @@ incumbent browser identity is recorded separately in `DESIGN.md`.
 
 ## Evidence on Hand
 
-- [README.md](README.md): current product description, commands, and screenshots.
+- [README.md](README.md): current product description, features and commands.
+- `assets/readme/cover-{light,dark}.webp`: README cover filmed from the landing
+  hero demo (`mise run readme:cover`; see `docs-website/README.md`).
 - `assets/tokeninsights-web.png` and `assets/tokeninsights-tui.png`:
-  committed browser and terminal captures; verify freshness before visual work.
+  committed browser and terminal captures used by the docs site; verify freshness
+  before visual work.
 - `packages/cli/testdata/conformance/sync-first-basic/` and `packages/web/src/mocks/`:
   synthetic development/demo data, not customer evidence or usage benchmarks.
 

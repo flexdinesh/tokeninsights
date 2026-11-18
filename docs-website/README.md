@@ -20,6 +20,15 @@ mise run build:docs
 
 `renderStrategy: 'full-static'` writes plain files to `docs-website/dist/public/`, ignored by Git. `baseUrl` adds a `<base>` tag, so `vocs preview` on localhost loads client JavaScript from the production origin and pages do not hydrate there; check interactive behavior with `mise run dev:docs`. The build fails on dead internal links. Both tasks call this package's `dev` and `build` scripts. Before PR creation/update, root runs the docs build plus full `check:pr` on clean committed HEAD. Pre-push runs no checks.
 
+The README cover is filmed from the landing page's hero demo (`src/site/demos/HeroDemo.tsx`). After changing the demo, regenerate both color schemes into `assets/readme/cover-{light,dark}.webp`:
+
+```sh
+mise run setup:browser   # once, installs Chromium
+mise run readme:cover
+```
+
+`scripts/readme-cover.ts` starts `vocs dev` on a free port, plays the demo slowed down while taking screenshots, resamples them to 20 fps, holds the result and fades back to the first frame. `--url` reuses a running server; `--fps`, `--width` and `--quality` tune size against the 3 MB budget per file.
+
 Edit public user guides in `src/pages/docs/` as Markdown or MDX. The landing page is `src/pages/index.tsx`. Each page's `# H1` sets its title; `vocs.config.ts` controls the sidebar labels and order. Run `mise run format` and `mise run lint` from the root to format and lint pages and configuration.
 
 Internal architecture, ADRs, and other engineering docs stay in the repository's `docs/` directory. This site has no dependency on the application, its databases, or its browser build.
