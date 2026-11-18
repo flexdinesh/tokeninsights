@@ -7,7 +7,8 @@
   "scripts": {
     "dev": "vocs dev",
     "build": "vocs build",
-    "preview": "vocs preview"
+    "preview": "vocs preview",
+    "readme:cover": "node scripts/readme-cover.ts"
   },
   "dependencies": {
     "lucide-react": "1.59.0",
@@ -16,5 +17,9 @@
     "vite": "8.3.4",
     "vocs": "2.10.3",
     "waku": "1.0.0-rc.3"
+  },
+  "devDependencies": {
+    "playwright": "1.64.1",
+    "sharp": "0.35.4"
   }
 }
